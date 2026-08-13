@@ -2,7 +2,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "./mcp/http-mcp-tool-client.ts";
+} from "../application/ports/out/mcp-tool-client.ts";
 import {
   type LiveThreadGraphPatch,
   type LiveThreadUpdateJournal,

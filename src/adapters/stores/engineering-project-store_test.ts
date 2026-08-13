@@ -9,7 +9,7 @@ import type { EngineeringProjectSnapshot } from "../../domain/project/engineerin
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
 
 Deno.test("FileEngineeringProjectStore loads a validated project manifest read-only", async () => {

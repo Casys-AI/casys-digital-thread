@@ -10,7 +10,7 @@ import type {
 } from "../../../domain/analysis/static-structural-solver.ts";
 import { StaticStructuralResponseError } from "../../../domain/analysis/static-structural-solver.ts";
 import type { JsonValue } from "../../../domain/analysis/resolved-operation-plan.ts";
-import type { McpToolClient } from "../../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import {
   bindStaticStructuralSolveExecution,
   type FeaSolverResponseExpectation,

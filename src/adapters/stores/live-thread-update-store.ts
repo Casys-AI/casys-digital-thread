@@ -4,12 +4,22 @@ import type {
   ThreadGraphNode,
   ThreadWorkbenchSnapshot,
 } from "../../contracts/thread-workbench.ts";
+import {
+  LIVE_THREAD_OVERLAY_SCHEMA,
+  type LiveThreadGraphState,
+  type LiveThreadUpdateState,
+  type LiveThreadWorkbenchSnapshot,
+} from "../../contracts/engineering-workbench.ts";
+
+export { LIVE_THREAD_OVERLAY_SCHEMA } from "../../contracts/engineering-workbench.ts";
+export type {
+  LiveThreadGraphState,
+  LiveThreadOverlay,
+  LiveThreadUpdateState,
+  LiveThreadWorkbenchSnapshot,
+} from "../../contracts/engineering-workbench.ts";
 
 export const LIVE_THREAD_UPDATE_SCHEMA = "live-thread-update/1.0" as const;
-export const LIVE_THREAD_OVERLAY_SCHEMA = "live-thread-overlay/1.0" as const;
-
-export type LiveThreadGraphState = "running" | "fresh" | "failed";
-export type LiveThreadUpdateState = LiveThreadGraphState | "reconciled";
 
 export interface LiveThreadGraphPatch {
   nodes: ThreadGraphNode[];
@@ -36,24 +46,6 @@ export interface LiveThreadUpdate extends Omit<AppendLiveThreadUpdate, "state"> 
   sequence: number;
   state: LiveThreadUpdateState;
 }
-
-export interface LiveThreadOverlay {
-  schemaVersion: typeof LIVE_THREAD_OVERLAY_SCHEMA;
-  version: number;
-  active: Array<{
-    runId: string;
-    operationId: string;
-    state: LiveThreadGraphState;
-    recordedAt: string;
-    baseRevision: number;
-    sequence: number;
-  }>;
-}
-
-export type LiveThreadWorkbenchSnapshot = ThreadWorkbenchSnapshot & {
-  /** Non-canonical activity overlaid on the canonical snapshot graph. */
-  live: LiveThreadOverlay;
-};
 
 export interface LiveThreadUpdateJournal {
   append(input: AppendLiveThreadUpdate): Promise<LiveThreadUpdate>;

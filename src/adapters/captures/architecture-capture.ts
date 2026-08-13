@@ -1,8 +1,8 @@
 /** Exact, shared parser for generic `model.write-architecture@1` captures. */
 
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
 import {
   type SysmlSourceAnalysisReference,
   validateSysmlSourceAnalysisReference,

@@ -1,4 +1,5 @@
-import type { DesiredServer, ObservedContainer } from "../domain/kernel/types.ts";
+import type { ContainerObserver } from "../application/control-plane/ports.ts";
+import type { DesiredServer, ObservedContainer } from "../contracts/console.ts";
 
 export interface CommandResult {
   success: boolean;
@@ -11,9 +12,8 @@ export interface CommandRunner {
   run(command: string, args: string[], cwd: string): Promise<CommandResult>;
 }
 
-export interface DockerObserver {
-  observe(servers: DesiredServer[]): Promise<Map<string, ObservedContainer>>;
-}
+/** Compatibility name for callers which describe the concrete Docker source. */
+export type DockerObserver = ContainerObserver;
 
 export interface DockerComposeObserverOptions {
   cwd?: string;
@@ -84,7 +84,7 @@ export class DenoCommandRunner implements CommandRunner {
  * Observes Compose/container/image state through read-only CLI commands only.
  * No start, stop, pull, restart, remove, or volume command is ever issued.
  */
-export class DockerComposeObserver implements DockerObserver {
+export class DockerComposeObserver implements ContainerObserver {
   readonly #cwd: string;
   readonly #runner: CommandRunner;
 

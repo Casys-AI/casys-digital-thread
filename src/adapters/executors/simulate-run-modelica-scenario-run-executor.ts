@@ -58,10 +58,14 @@
 
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -92,7 +96,7 @@ import {
 } from "../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
-import type { EvidenceArtifact, RunDetail } from "../../domain/kernel/types.ts";
+import type { EvidenceArtifact, RunDetail } from "../../contracts/console.ts";
 import {
   parseSimulationCaseDecisionParameters,
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,

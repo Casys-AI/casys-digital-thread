@@ -1,7 +1,10 @@
-import type { ContentFingerprint, IsoDateTime } from "../kernel/types.ts";
+import type {
+  ContentFingerprint as KernelContentFingerprint,
+  IsoDateTime,
+} from "../kernel/primitives.ts";
 import type { AnalysisGraph } from "../analysis/analysis-graph.ts";
 
-export type { ContentFingerprint } from "../kernel/types.ts";
+export type ContentFingerprint = Readonly<KernelContentFingerprint>;
 
 /**
  * Versioned, transport-independent state of one executable digital thread.
@@ -20,37 +23,37 @@ export type ThreadSnapshotSchemaVersion = "1.0" | "1.1";
 export type ThreadFreshnessStatus = "fresh" | "stale" | "running" | "failed";
 
 export interface ThreadFreshness {
-  status: ThreadFreshnessStatus;
-  changedAt: IsoDateTime;
+  readonly status: ThreadFreshnessStatus;
+  readonly changedAt: IsoDateTime;
   /** Required for stale and failed states; never a hidden inferred default. */
-  reason?: string;
+  readonly reason?: string;
   /** Changes which made this entity stale or caused its recomputation. */
-  invalidatedByChangeIds: string[];
+  readonly invalidatedByChangeIds: readonly string[];
 }
 
 export interface EngineeringQuantity {
-  value: number;
+  readonly value: number;
   /** Explicit engineering unit; use "1" for a dimensionless quantity. */
-  unit: string;
+  readonly unit: string;
 }
 
 export interface ThreadOperationRef {
-  serverId: string;
-  tool: string;
-  runId: string;
+  readonly serverId: string;
+  readonly tool: string;
+  readonly runId: string;
 }
 
 export interface ThreadSubject {
-  id: string;
-  name: string;
-  kind: "system" | "assembly" | "part" | "process";
-  version: string;
-  modelArtifactId: string;
+  readonly id: string;
+  readonly name: string;
+  readonly kind: "system" | "assembly" | "part" | "process";
+  readonly version: string;
+  readonly modelArtifactId: string;
 }
 
 export interface PreviousThreadSnapshot {
-  snapshotId: string;
-  revision: number;
+  readonly snapshotId: string;
+  readonly revision: number;
 }
 
 export type ThreadArtifactKind =
@@ -68,17 +71,17 @@ export type ThreadArtifactKind =
   | "other";
 
 export interface ThreadArtifact {
-  id: string;
-  name: string;
-  kind: ThreadArtifactKind;
-  version: string;
-  fingerprint: ContentFingerprint;
-  uri?: string;
-  mediaType?: string;
-  producer: ThreadOperationRef;
+  readonly id: string;
+  readonly name: string;
+  readonly kind: ThreadArtifactKind;
+  readonly version: string;
+  readonly fingerprint: ContentFingerprint;
+  readonly uri?: string;
+  readonly mediaType?: string;
+  readonly producer: ThreadOperationRef;
   /** Exact upstream artefacts consumed to produce this version. */
-  inputArtifactIds: string[];
-  freshness: ThreadFreshness;
+  readonly inputArtifactIds: readonly string[];
+  readonly freshness: ThreadFreshness;
 }
 
 /**
@@ -87,96 +90,96 @@ export interface ThreadArtifact {
  * the input observed by the downstream engineering tool.
  */
 export interface ThreadArtifactConsumption {
-  id: string;
-  artifactId: string;
-  consumer: ThreadOperationRef;
-  observedFingerprint: ContentFingerprint;
-  verifiedAt: IsoDateTime;
-  status: "verified" | "mismatch";
+  readonly id: string;
+  readonly artifactId: string;
+  readonly consumer: ThreadOperationRef;
+  readonly observedFingerprint: ContentFingerprint;
+  readonly verifiedAt: IsoDateTime;
+  readonly status: "verified" | "mismatch";
 }
 
 export interface ThreadObservationSource {
-  operation: ThreadOperationRef;
-  artifactIds: string[];
-  capturedAt: IsoDateTime;
+  readonly operation: ThreadOperationRef;
+  readonly artifactIds: readonly string[];
+  readonly capturedAt: IsoDateTime;
 }
 
 export interface ThreadObservation {
-  id: string;
-  name: string;
+  readonly id: string;
+  readonly name: string;
   /** Stable metric identity, independent from a display label. */
-  metric: string;
-  quantity: EngineeringQuantity;
-  source: ThreadObservationSource;
-  freshness: ThreadFreshness;
+  readonly metric: string;
+  readonly quantity: EngineeringQuantity;
+  readonly source: ThreadObservationSource;
+  readonly freshness: ThreadFreshness;
 }
 
 export type RequirementOperator = "<=" | ">=" | "<" | ">" | "=";
 
 export interface RequirementCriterion {
-  metric: string;
-  operator: RequirementOperator;
-  limit: EngineeringQuantity;
+  readonly metric: string;
+  readonly operator: RequirementOperator;
+  readonly limit: EngineeringQuantity;
 }
 
 export interface RequirementTrace {
   /** Versioned model containing the requirement. */
-  sourceArtifactId: string;
+  readonly sourceArtifactId: string;
   /** Stable SysML or source-system element identifier. */
-  elementId: string;
+  readonly elementId: string;
   /** Artefacts whose design or behaviour is constrained by this requirement. */
-  targetArtifactIds: string[];
+  readonly targetArtifactIds: readonly string[];
 }
 
 export interface TracedRequirement {
-  id: string;
-  name: string;
-  statement: string;
-  version: string;
-  criterion: RequirementCriterion;
-  trace: RequirementTrace;
-  freshness: ThreadFreshness;
+  readonly id: string;
+  readonly name: string;
+  readonly statement: string;
+  readonly version: string;
+  readonly criterion: RequirementCriterion;
+  readonly trace: RequirementTrace;
+  readonly freshness: ThreadFreshness;
 }
 
 export type RequirementEvaluationStatus = "pass" | "fail" | "unresolved" | "error";
 
 export interface EvaluationComparison {
-  observationId: string;
+  readonly observationId: string;
   /** Values after unit normalization by the requirement oracle. */
-  actual: EngineeringQuantity;
-  operator: RequirementOperator;
-  limit: EngineeringQuantity;
-  normalizedUnit: string;
-  margin?: EngineeringQuantity;
+  readonly actual: EngineeringQuantity;
+  readonly operator: RequirementOperator;
+  readonly limit: EngineeringQuantity;
+  readonly normalizedUnit: string;
+  readonly margin?: EngineeringQuantity;
 }
 
 export interface RequirementEvaluation {
-  id: string;
-  name: string;
-  requirementId: string;
-  observationIds: string[];
-  status: RequirementEvaluationStatus;
-  evaluatedAt: IsoDateTime;
-  evaluator: ThreadOperationRef;
-  comparison?: EvaluationComparison;
-  evidenceArtifactIds: string[];
-  message: string;
-  freshness: ThreadFreshness;
+  readonly id: string;
+  readonly name: string;
+  readonly requirementId: string;
+  readonly observationIds: readonly string[];
+  readonly status: RequirementEvaluationStatus;
+  readonly evaluatedAt: IsoDateTime;
+  readonly evaluator: ThreadOperationRef;
+  readonly comparison?: EvaluationComparison;
+  readonly evidenceArtifactIds: readonly string[];
+  readonly message: string;
+  readonly freshness: ThreadFreshness;
 }
 
 export interface ThreadViolation {
-  id: string;
+  readonly id: string;
   /** Human-readable, stable violation name; never only a numeric result. */
-  name: string;
-  requirementId: string;
-  evaluationId: string;
-  severity: "info" | "warning" | "error" | "critical";
-  status: "open" | "accepted" | "resolved";
-  detectedAt: IsoDateTime;
-  observationIds: string[];
-  evidenceArtifactIds: string[];
-  summary: string;
-  freshness: ThreadFreshness;
+  readonly name: string;
+  readonly requirementId: string;
+  readonly evaluationId: string;
+  readonly severity: "info" | "warning" | "error" | "critical";
+  readonly status: "open" | "accepted" | "resolved";
+  readonly detectedAt: IsoDateTime;
+  readonly observationIds: readonly string[];
+  readonly evidenceArtifactIds: readonly string[];
+  readonly summary: string;
+  readonly freshness: ThreadFreshness;
 }
 
 export type ThreadEntityKind =
@@ -190,28 +193,28 @@ export type ThreadEntityKind =
   | "action";
 
 export interface ThreadEntityRef {
-  kind: ThreadEntityKind;
-  id: string;
+  readonly kind: ThreadEntityKind;
+  readonly id: string;
 }
 
 export type ThreadChangeKind = "created" | "modified" | "deleted" | "archived";
 
 export interface ThreadChange {
-  id: string;
-  kind: ThreadChangeKind;
-  target: ThreadEntityRef;
-  summary: string;
-  beforeFingerprint?: ContentFingerprint;
-  afterFingerprint?: ContentFingerprint;
+  readonly id: string;
+  readonly kind: ThreadChangeKind;
+  readonly target: ThreadEntityRef;
+  readonly summary: string;
+  readonly beforeFingerprint?: ContentFingerprint;
+  readonly afterFingerprint?: ContentFingerprint;
 }
 
 export interface ThreadChangeSet {
-  id: string;
-  name: string;
-  status: "proposed" | "applied";
-  createdAt: IsoDateTime;
-  appliedAt?: IsoDateTime;
-  changes: ThreadChange[];
+  readonly id: string;
+  readonly name: string;
+  readonly status: "proposed" | "applied";
+  readonly createdAt: IsoDateTime;
+  readonly appliedAt?: IsoDateTime;
+  readonly changes: readonly ThreadChange[];
 }
 
 export type ProvenanceRelation =
@@ -226,32 +229,34 @@ export type ProvenanceRelation =
   | "supersedes";
 
 export interface ThreadProvenanceLink {
-  id: string;
-  relation: ProvenanceRelation;
-  from: ThreadEntityRef;
-  to: ThreadEntityRef;
+  readonly id: string;
+  readonly relation: ProvenanceRelation;
+  readonly from: ThreadEntityRef;
+  readonly to: ThreadEntityRef;
   /** Short factual explanation displayed alongside the causal edge. */
-  rationale: string;
+  readonly rationale: string;
 }
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue = JsonPrimitive | readonly JsonValue[] | {
+  readonly [key: string]: JsonValue;
+};
 
 export interface ProposedThreadAction {
-  id: string;
-  name: string;
-  kind: "recompute" | "correct" | "review" | "synchronize" | "inspect";
-  readiness: "ready" | "blocked";
-  rationale: string;
-  targets: ThreadEntityRef[];
-  addressesViolationIds: string[];
-  dependsOnActionIds: string[];
+  readonly id: string;
+  readonly name: string;
+  readonly kind: "recompute" | "correct" | "review" | "synchronize" | "inspect";
+  readonly readiness: "ready" | "blocked";
+  readonly rationale: string;
+  readonly targets: readonly ThreadEntityRef[];
+  readonly addressesViolationIds: readonly string[];
+  readonly dependsOnActionIds: readonly string[];
   /** Domain operation resolved to a concrete transport by the orchestrator. */
-  operation?: {
-    id: string;
-    inputs: { [key: string]: JsonValue };
+  readonly operation?: {
+    readonly id: string;
+    readonly inputs: { readonly [key: string]: JsonValue };
   };
-  blockedReason?: string;
+  readonly blockedReason?: string;
 }
 
 /**
@@ -274,26 +279,26 @@ export function archivedRefKeys(snapshot: ThreadSnapshot): ReadonlySet<string> {
 }
 
 export interface ThreadSnapshot {
-  schemaVersion: ThreadSnapshotSchemaVersion;
-  id: string;
-  revision: number;
-  previous?: PreviousThreadSnapshot;
-  generatedAt: IsoDateTime;
-  subject: ThreadSubject;
-  freshness: ThreadFreshness;
-  changeSet: ThreadChangeSet;
-  artifacts: ThreadArtifact[];
-  consumptions: ThreadArtifactConsumption[];
-  observations: ThreadObservation[];
-  requirements: TracedRequirement[];
-  evaluations: RequirementEvaluation[];
-  violations: ThreadViolation[];
-  provenance: ThreadProvenanceLink[];
-  proposedActions: ProposedThreadAction[];
+  readonly schemaVersion: ThreadSnapshotSchemaVersion;
+  readonly id: string;
+  readonly revision: number;
+  readonly previous?: PreviousThreadSnapshot;
+  readonly generatedAt: IsoDateTime;
+  readonly subject: ThreadSubject;
+  readonly freshness: ThreadFreshness;
+  readonly changeSet: ThreadChangeSet;
+  readonly artifacts: readonly ThreadArtifact[];
+  readonly consumptions: readonly ThreadArtifactConsumption[];
+  readonly observations: readonly ThreadObservation[];
+  readonly requirements: readonly TracedRequirement[];
+  readonly evaluations: readonly RequirementEvaluation[];
+  readonly violations: readonly ThreadViolation[];
+  readonly provenance: readonly ThreadProvenanceLink[];
+  readonly proposedActions: readonly ProposedThreadAction[];
   /**
    * Provider-neutral semantic facts. This is intentionally not provenance:
    * `derived_from` and `caused_by` retain their execution/violation semantics.
    * Present exactly for schema 1.1; see validateThreadSnapshot.
    */
-  analysisGraph?: AnalysisGraph;
+  readonly analysisGraph?: AnalysisGraph;
 }

@@ -17,7 +17,7 @@ import {
   safeId,
 } from "../kernel/case-validation.ts";
 import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 
 export const ENGINEERING_ASSERTION_SCHEMA = "engineering-assertion/1.0" as const;
 export const AUTHORITY_ADMISSION_SCHEMA = "authority-admission/1.0" as const;

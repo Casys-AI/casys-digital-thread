@@ -301,7 +301,7 @@ Deno.test(
   "resolveSnapshotComponentCatalog forwards the canonical geometry reader to the generic Product projector",
   async () => {
     const { snapshot, captureFp, captureRecord } = await snapshotWithGenericArch();
-    const withGeometry = structuredClone(snapshot);
+    const withGeometry = mutableClone(snapshot);
     const geometryFp = fingerprint("c");
     withGeometry.artifacts.push({
       id: `geometry-${geometryFp.digest}`,
@@ -342,3 +342,11 @@ Deno.test(
     assertStringIncludes(catalog.rationale, "not durably readable");
   },
 );
+
+type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+  : T;
+
+function mutableClone<T>(value: T): Mutable<T> {
+  return structuredClone(value) as Mutable<T>;
+}

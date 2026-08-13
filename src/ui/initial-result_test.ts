@@ -1,5 +1,5 @@
 import { assertEquals, assertStrictEquals, assertThrows } from "@std/assert";
-import type { ConsoleSnapshot } from "../domain/kernel/types.ts";
+import type { ConsoleSnapshot } from "../contracts/console.ts";
 import {
   initialSnapshotFromResult,
   toolResultErrorMessage,

@@ -11,7 +11,7 @@ import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import {
   type RenderedArchitectureSysml,
   validateRenderedArchitectureSysml,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 import {
   SOURCE_ANALYSIS_SCHEMA,
   type SourceAnalysisBundle,

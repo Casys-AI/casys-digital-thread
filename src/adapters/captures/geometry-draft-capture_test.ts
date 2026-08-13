@@ -28,17 +28,20 @@ import {
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
 } from "./file-capture-store.ts";
 import { PythonCadSourceAnalyzer } from "../analyzers/python-cad-source-analyzer.ts";
-import type { McpToolCall, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
-import { GeometryScriptValidationError } from "../../domain/platform/geometry-script-validation.ts";
+import type {
+  McpToolCall,
+  McpToolResult,
+} from "../../application/ports/out/mcp-tool-client.ts";
+import { GeometryScriptValidationError } from "../../domain/engineering/geometry-script-validation.ts";
 import {
   GEOMETRY_MANIFEST_SCHEMA,
   type GeometryManifest,
-} from "../../domain/platform/geometry-proposal.ts";
+} from "../../domain/engineering/geometry-proposal.ts";
 import {
   GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
   GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
   type GeometryBundleManifest,
-} from "../../domain/platform/geometry-bundle.ts";
+} from "../../domain/engineering/geometry-bundle.ts";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 

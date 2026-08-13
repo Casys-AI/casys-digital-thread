@@ -325,7 +325,7 @@ Deno.test("cross-validation resolves entities in the exact ThreadSnapshot, not l
     project.id,
   );
 
-  const incomplete = structuredClone(thread);
+  const incomplete = mutableClone(thread);
   incomplete.artifacts = incomplete.artifacts.filter((artifact) =>
     artifact.id !== "syson-inventory-ca7f3bda7bfa"
   );
@@ -338,7 +338,7 @@ Deno.test("cross-validation resolves entities in the exact ThreadSnapshot, not l
     true,
   );
 
-  const newerOnly = structuredClone(thread);
+  const newerOnly = mutableClone(thread);
   newerOnly.id = `${thread.subject.id}:r8:newer`;
   newerOnly.revision = 8;
   assertEquals(
@@ -417,6 +417,10 @@ async function projectWithAmbiguousBlockerDecisionScope(
 type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
   : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
   : T;
+
+function mutableClone<T>(value: T): Mutable<T> {
+  return structuredClone(value) as Mutable<T>;
+}
 
 function fingerprint(digit: string): { algorithm: "sha256"; digest: string } {
   return { algorithm: "sha256", digest: digit.repeat(64) };

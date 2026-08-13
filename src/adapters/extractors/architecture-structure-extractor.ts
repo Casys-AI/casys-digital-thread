@@ -28,12 +28,12 @@
  * Project-agnostic: no product name or constant in this module.
  */
 
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import type {
   ExistingArchitectureStructure,
   ExistingPartDef,
   ExistingPartUsage,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 
 // ── AQL expression (pinned contract) ─────────────────────────────────────────
 

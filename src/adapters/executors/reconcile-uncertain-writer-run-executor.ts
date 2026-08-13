@@ -33,10 +33,14 @@
 
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,

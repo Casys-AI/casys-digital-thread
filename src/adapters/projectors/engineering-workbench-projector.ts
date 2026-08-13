@@ -4,181 +4,40 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
-import type {
-  LiveThreadUpdate,
-  LiveThreadUpdateState,
-  LiveThreadWorkbenchSnapshot,
-} from "../stores/live-thread-update-store.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
+import {
+  ENGINEERING_WORKBENCH_SCHEMA,
+  type EngineeringDocumentaryTechnicalStart,
+  type EngineeringDocumentaryTechnicalStartState,
+  type EngineeringDocumentaryTechnicalStartStep,
+  type EngineeringDocumentaryWorkbenchSnapshot,
+  type EngineeringEvidenceWorkbenchSnapshot,
+  type EngineeringPlanningActivity,
+  type EngineeringPlanningBaselineRun,
+  type EngineeringPlanningWorkbenchSnapshot,
+  type EngineeringTechnicalBaselineStatus,
+  type LiveThreadWorkbenchSnapshot,
+} from "../../contracts/engineering-workbench.ts";
+import type { LiveThreadUpdate } from "../stores/live-thread-update-store.ts";
 
-export const ENGINEERING_WORKBENCH_SCHEMA = "engineering-workbench/0.2" as const;
-
-/**
- * Complete, browser-facing read model for one engineering project.
- *
- * A project can legitimately exist before any technical baseline. Keep that
- * state distinct from an observed engineering thread: the browser must never
- * receive an invented empty ThreadSnapshot merely to satisfy a single shape.
- */
-export interface EngineeringWorkbenchBaseSnapshot {
-  schemaVersion: typeof ENGINEERING_WORKBENCH_SCHEMA;
-  project: EngineeringProjectSnapshot;
-}
-
-/** Project intent plus a real, persisted technical evidence projection. */
-export interface EngineeringEvidenceWorkbenchSnapshot
-  extends EngineeringWorkbenchBaseSnapshot {
-  surface: "evidence";
-  thread: LiveThreadWorkbenchSnapshot;
-  alignment: EngineeringWorkbenchAlignment;
-}
-
-/**
- * Durable provenance after the approved-brief baseline has been recorded,
- * before a linked technical operation produces any engineering evidence.
- *
- * The record intentionally does not carry the generic thread graph. A
- * documentary capture proves that exact approved intent was retained; it does
- * not prove a model, calculation, measurement, requirement evaluation or
- * compliance conclusion.
- */
-export interface EngineeringDocumentaryWorkbenchSnapshot
-  extends EngineeringWorkbenchBaseSnapshot {
-  surface: "documentary";
-  documentary: {
-    status: "recorded";
-    message: string;
-    record: {
-      origin: "approved-brief";
-      snapshotId: string;
-      snapshotRevision: number;
-      artifactId: string;
-      label: string;
-      fingerprint: string;
-      uri?: string;
-      recordedAt: string;
-    };
-    technicalEvidence: {
-      status: "not-recorded";
-      message: string;
-    };
-    /**
-     * The one bounded technical operation that may run while r1 remains the
-     * only canonical snapshot. This is a browser-safe progress projection,
-     * never a provider result or a second, invented technical graph.
-     */
-    technicalStart?: EngineeringDocumentaryTechnicalStart;
-  };
-}
-
-export type EngineeringDocumentaryTechnicalStartState =
-  | "queued"
-  | "running"
-  | "publishing"
-  | "failed";
-
-/**
- * A deliberately closed projection for the SysON container seed. The server
- * derives each step from a known run and known live-milestone IDs; neither
- * provider IDs, tool arguments nor raw results cross this BFF boundary.
- */
-export interface EngineeringDocumentaryTechnicalStart {
-  readonly kind: "sysml-container-seed";
-  readonly state: EngineeringDocumentaryTechnicalStartState;
-  readonly message: string;
-  readonly activity: {
-    /** Latest relevant live-journal sequence, not a thread revision. */
-    readonly version: number;
-    readonly steps: readonly EngineeringDocumentaryTechnicalStartStep[];
-  };
-}
-
-export interface EngineeringDocumentaryTechnicalStartStep {
-  readonly id: "project-container" | "sysml-document" | "root-package";
-  readonly state: "running" | "fresh" | "failed";
-  readonly label: string;
-  readonly summary: string;
-  readonly recordedAt: string;
-  /** The declared containment relation to the preceding visible step. */
-  readonly predecessor?: "project-container" | "sysml-document";
-}
-
-/**
- * Project intent only. There is no technical observation, graph or tool state
- * until a deterministic operation publishes an exact ThreadSnapshot.
- */
-export interface EngineeringPlanningWorkbenchSnapshot
-  extends EngineeringWorkbenchBaseSnapshot {
-  surface: "planning";
-  planning: {
-    technicalBaseline: {
-      status: EngineeringTechnicalBaselineStatus;
-      message: string;
-    };
-    /**
-     * A deliberately redacted summary of the one run that can create the
-     * first documentary pre-technical baseline. It is status/provenance only: browser clients
-     * never receive tool inputs, structured output or provider diagnostics.
-     */
-    baselineRun?: EngineeringPlanningBaselineRun;
-    /**
-     * Non-canonical milestones from the live journal for that one baseline
-     * run. The graph patch stays server-side until canonical evidence exists.
-     */
-    activity: EngineeringPlanningActivity;
-  };
-}
-
-export type EngineeringTechnicalBaselineStatus =
-  | "not-created"
-  | "queued"
-  | "running"
-  | "publishing"
-  | "failed";
-
-export interface EngineeringPlanningBaselineRun {
-  id: string;
-  status: EngineeringAgentRunStatus;
-  workItem: {
-    id: string;
-    title: string;
-    kind: EngineeringWorkItem["kind"];
-  };
-  queuedAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  /** No command id, actor id or free-text run summary crosses this boundary. */
-  statusHistory: readonly EngineeringPlanningBaselineRunMilestone[];
-}
-
-export interface EngineeringPlanningBaselineRunMilestone {
-  status: EngineeringAgentRunStatus;
-  at: string;
-}
-
-export interface EngineeringPlanningActivity {
-  /** Latest append-only journal sequence observed for this subject. */
-  version: number;
-  /** Only state/timing from updates belonging to baselineRun. */
-  milestones: readonly EngineeringPlanningActivityMilestone[];
-}
-
-export interface EngineeringPlanningActivityMilestone {
-  sequence: number;
-  state: LiveThreadUpdateState;
-  recordedAt: string;
-}
-
-export type EngineeringWorkbenchSnapshot =
-  | EngineeringEvidenceWorkbenchSnapshot
-  | EngineeringDocumentaryWorkbenchSnapshot
-  | EngineeringPlanningWorkbenchSnapshot;
-
-export interface EngineeringWorkbenchAlignment {
-  status: "aligned" | "thread-ahead";
-  projectThreadRevision: number;
-  currentThreadRevision: number;
-}
+export { ENGINEERING_WORKBENCH_SCHEMA } from "../../contracts/engineering-workbench.ts";
+export type {
+  EngineeringDocumentaryTechnicalStart,
+  EngineeringDocumentaryTechnicalStartState,
+  EngineeringDocumentaryTechnicalStartStep,
+  EngineeringDocumentaryWorkbenchSnapshot,
+  EngineeringEvidenceWorkbenchSnapshot,
+  EngineeringPlanningActivity,
+  EngineeringPlanningActivityMilestone,
+  EngineeringPlanningAgentRunStatus,
+  EngineeringPlanningBaselineRun,
+  EngineeringPlanningBaselineRunMilestone,
+  EngineeringPlanningWorkbenchSnapshot,
+  EngineeringTechnicalBaselineStatus,
+  EngineeringWorkbenchAlignment,
+  EngineeringWorkbenchBaseSnapshot,
+  EngineeringWorkbenchSnapshot,
+} from "../../contracts/engineering-workbench.ts";
 
 /**
  * Compose project intent and observed thread evidence without deriving new

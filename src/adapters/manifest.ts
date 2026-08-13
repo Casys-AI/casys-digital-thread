@@ -1,4 +1,4 @@
-import type { DesiredServer, FleetManifest } from "../domain/kernel/types.ts";
+import type { DesiredServer, FleetManifest } from "../contracts/console.ts";
 
 export interface ManifestLoaderOptions {
   readTextFile?: (path: string) => Promise<string>;

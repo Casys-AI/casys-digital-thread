@@ -12,6 +12,11 @@ import { projectThreadWorkbenchSnapshot } from "./thread-workbench-projector.ts"
 
 const AT = "2026-08-01T08:00:00.000Z";
 
+type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+  : T;
+type MutableThreadSnapshot = Mutable<ThreadSnapshot>;
+
 Deno.test("ThreadSnapshot projects linked evidence into the native Workbench contract", () => {
   const canonical = linkedSnapshot();
   const projection = projectThreadWorkbenchSnapshot(canonical);
@@ -126,7 +131,7 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
 Deno.test("the Workbench projects a qualified sensitivity assertion separately from provenance", () => {
   const canonical = linkedSnapshot();
   canonical.schemaVersion = "1.1";
-  canonical.analysisGraph = validateAnalysisGraph({
+  canonical.analysisGraph = structuredClone(validateAnalysisGraph({
     schemaVersion: "analysis-graph/1.0",
     nodes: [{
       id: "analysis:parameter:wall-thickness",
@@ -193,7 +198,7 @@ Deno.test("the Workbench projects a qualified sensitivity assertion separately f
         rationale: "Measured from the exact retained CalculiX result pair.",
       },
     }],
-  });
+  })) as Mutable<NonNullable<ThreadSnapshot["analysisGraph"]>>;
   const validated = validateThreadSnapshot(canonical);
 
   const projection = projectThreadWorkbenchSnapshot(validated);
@@ -681,7 +686,7 @@ Deno.test("Evidence fails closed when a GLB preview diverges from its canonical 
   const cases: Array<{
     name: string;
     mutate: (
-      canonical: ThreadSnapshot,
+      canonical: MutableThreadSnapshot,
       catalog: ThreadComponentCatalog,
     ) => void;
   }> = [{
@@ -816,7 +821,7 @@ Deno.test("Evidence keeps exact SysML structure before CAD and suppresses a decl
 });
 
 function componentStructureFixture(): {
-  canonical: ThreadSnapshot;
+  canonical: MutableThreadSnapshot;
   catalog: ThreadComponentCatalog;
 } {
   const canonical = linkedSnapshot();
@@ -1015,7 +1020,7 @@ function repeatStemOccurrencePath(
   return repeatedHead;
 }
 
-function linkedSnapshot(): ThreadSnapshot {
+function linkedSnapshot(): MutableThreadSnapshot {
   const cad = operation("mcp-build123d", "build123d_export", "cad-run-r2");
   const fea = operation("mcp-calculix", "calculix_solve_static", "fea-run-r2");
   const oracle = operation("mcp-syson", "evaluate_requirement", "eval-run-r2");
@@ -1187,7 +1192,7 @@ function fingerprint(character: string): ContentFingerprint {
   return { algorithm: "sha256", digest: character.repeat(64) };
 }
 
-function fresh(): ThreadFreshness {
+function fresh(): Mutable<ThreadFreshness> {
   return { status: "fresh", changedAt: AT, invalidatedByChangeIds: [] };
 }
 
@@ -1244,6 +1249,6 @@ function assertNoComponentStructure(
   );
 }
 
-function clone(snapshot: ThreadSnapshot): ThreadSnapshot {
-  return JSON.parse(JSON.stringify(snapshot)) as ThreadSnapshot;
+function clone(snapshot: ThreadSnapshot): MutableThreadSnapshot {
+  return JSON.parse(JSON.stringify(snapshot)) as MutableThreadSnapshot;
 }

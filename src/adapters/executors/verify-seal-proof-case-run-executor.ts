@@ -55,10 +55,14 @@
 
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -71,7 +75,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import { parseSysonModelSeedCapture } from "../../domain/platform/syson-model-seed.ts";
+import { parseSysonModelSeedCapture } from "../../domain/engineering/syson-model-seed.ts";
 import {
   canonicalProofText,
   type FeaProofDecisionParameters,
@@ -115,7 +119,7 @@ import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
 } from "./thread-write-basis-guard.ts";
-import type { CanonicalAssetReader } from "./canonical-asset-reader.ts";
+import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
 import {
   REQUIREMENTS_CAPTURE_SCHEMA,
   requireRequirementsTip,

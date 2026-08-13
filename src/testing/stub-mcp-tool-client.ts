@@ -1,4 +1,4 @@
-import type { McpToolCall } from "../adapters/mcp/http-mcp-tool-client.ts";
+import type { McpToolCall } from "../application/ports/out/mcp-tool-client.ts";
 
 /**
  * Default implementation of callToolTextResult for test stubs.

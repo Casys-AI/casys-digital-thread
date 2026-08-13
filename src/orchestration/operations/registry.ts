@@ -3,19 +3,29 @@ import type {
   EngineeringOperationRef,
   EngineeringProjectStartingPoint,
   EngineeringThreadEntityRef,
-  EngineeringWorkItemKind,
 } from "../../domain/project/engineering-project.ts";
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
 import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
-} from "../../domain/platform/geometry-proposal.ts";
-import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
+} from "../../domain/engineering/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "./recorded-analysis.ts";
+import {
+  type EngineeringOperationBasisKind,
+  type EngineeringOperationRegistry,
+  EngineeringOperationRegistryError,
+  type EngineeringOperationValidationStage,
+  type RegisteredEngineeringOperation,
+  type RegisteredEngineeringOperationInput,
+  type ValidatedRegisteredEngineeringOperationInput,
+} from "./operation-contract.ts";
+
+export * from "./operation-contract.ts";
 
 /**
  * Reviewed, code-owned engineering operations.
@@ -23,141 +33,6 @@ import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "./recorded-analysis.ts"
  * This registry intentionally describes only the safe planning boundary.  It
  * does not reveal provider selection, tool names, or provider arguments.
  */
-
-export type EngineeringOperationBasisKind =
-  | "approved-brief"
-  | "thread-snapshot";
-
-/**
- * Publishing a plan checks the reviewed descriptor and its declared state
- * bindings. Queueing additionally checks the concrete immutable basis that
- * the run will consume. Keeping those two moments explicit prevents a later
- * operation from inheriting the discovery basis merely because its plan was
- * authored from discovery.
- */
-export type EngineeringOperationValidationStage = "planning" | "queue";
-
-export type EngineeringOperationRiskClass = "low" | "consequential";
-
-/**
- * Whether this reviewed descriptor is backed by a trusted server-owned
- * executor. Planning-only operations may appear in a reviewed plan, but they
- * must never become an agent run until a concrete executor is added and the
- * descriptor is promoted deliberately.
- */
-export type EngineeringOperationExecution = "trusted" | "planning-only";
-
-export type EngineeringOperationBindingSourceKind =
-  EngineeringOperationInputBinding["source"]["kind"];
-
-/** One named input the reviewed operation permits in an agent plan. */
-export interface RegisteredEngineeringOperationBinding {
-  readonly name: string;
-  readonly allowedSourceKinds: readonly EngineeringOperationBindingSourceKind[];
-  /** Default is one exact binding; one-or-more is an explicit reviewed variadic slot. */
-  readonly cardinality?: "one" | "one-or-more";
-  /** Optional safe subtype restriction when the source is a thread entity. */
-  readonly allowedThreadEntityKinds?: readonly ThreadEntityKind[];
-  /** Prevents an N-target operation from accepting the same exact entity twice. */
-  readonly uniqueThreadEntityReferences?: true;
-}
-
-/** Safe descriptor suitable for a project plan and a human-facing UI. */
-export interface RegisteredEngineeringOperation {
-  readonly id: string;
-  readonly version: string;
-  readonly startingPoint: EngineeringProjectStartingPoint;
-  readonly allowedBasisKinds: readonly EngineeringOperationBasisKind[];
-  readonly title: string;
-  readonly description: string;
-  /** Human-facing work classification derived from the reviewed operation. */
-  readonly workItemKind: EngineeringWorkItemKind;
-  readonly riskClass: EngineeringOperationRiskClass;
-  readonly execution: EngineeringOperationExecution;
-  /**
-   * Opt-in for a future recorded vertical. No current operation is marked
-   * until its resolver, executor and recovery policy are independently wired.
-   */
-  readonly resolvedOperationPlan?: "2.0";
-  /** Makes a consequential decision bind the exact thread-entity targets. */
-  readonly decisionEvidenceScope?: "thread-entity-bindings";
-  /**
-   * This operation must be introduced by an additive project change
-   * (project_change_append), not in the initial plan.  The executor enforces
-   * this at runtime; the flag lets publishPlan catch it early — before any run
-   * has completed and locked the plan against republication.
-   *
-   * Only needed when the executor requires exactly one planChange lineage (e.g.
-   * architecture.seed-syson-model@2, which must follow the approved-brief
-   * baseline).  All other generic operations leave this absent.
-   */
-  readonly requiresAdditiveChange?: true;
-  /**
-   * Execution demands a human origin; an agent-originated call must be refused.
-   *
-   * The executor gate is still the authority — this flag does not replace it.
-   * What it adds is *reachability*: without a declarative marker, the surface
-   * that dispatches runs has no way to know it should offer the human its
-   * elicitation, so a human-only operation becomes unexecutable by anyone and
-   * the state it was meant to unlock stays locked forever. That is not
-   * hypothetical — it stranded two projects on a quarantined provider write.
-   */
-  readonly mustOrigin?: "human";
-  readonly bindings: readonly RegisteredEngineeringOperationBinding[];
-}
-
-/** Input which a plan publisher or queue gate resolves against the registry. */
-export type RegisteredEngineeringOperationInput =
-  | {
-    readonly operation: EngineeringOperationRef;
-    readonly stage: "planning";
-  }
-  | {
-    readonly operation: EngineeringOperationRef;
-    readonly stage: "queue";
-    readonly basisKind: EngineeringOperationBasisKind;
-  };
-
-export interface ValidatedRegisteredEngineeringOperationInput {
-  readonly operation: RegisteredEngineeringOperation;
-  readonly stage: EngineeringOperationValidationStage;
-  /** Present only when a concrete run is being queued. */
-  readonly basisKind?: EngineeringOperationBasisKind;
-  readonly bindings: readonly EngineeringOperationInputBinding[];
-}
-
-/**
- * Code-owned boundary used by planning and, later, a trusted executor.
- * Implementations never expose provider selection or provider arguments.
- */
-export interface EngineeringOperationRegistry {
-  get(
-    reference: Pick<EngineeringOperationRef, "id" | "version">,
-  ): RegisteredEngineeringOperation | undefined;
-  require(
-    reference: Pick<EngineeringOperationRef, "id" | "version">,
-  ): RegisteredEngineeringOperation;
-  getIntake(
-    startingPoint: EngineeringProjectStartingPoint,
-  ): RegisteredEngineeringOperation | undefined;
-  validate(input: unknown): ValidatedRegisteredEngineeringOperationInput;
-}
-
-export type EngineeringOperationRegistryErrorCode =
-  | "invalid_input"
-  | "unknown_operation"
-  | "unsupported_basis"
-  | "invalid_bindings";
-
-export class EngineeringOperationRegistryError extends Error {
-  constructor(
-    readonly code: EngineeringOperationRegistryErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "EngineeringOperationRegistryError";
-  }
-}
 
 const THREAD_ENTITY_KINDS = [
   "artifact",

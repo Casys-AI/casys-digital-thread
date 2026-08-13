@@ -9,7 +9,7 @@
  * provider response.
  */
 
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { JsonValue } from "./resolved-operation-plan.ts";
 import type { MechanicalProofCase } from "./mechanical-proof-case.ts";
 

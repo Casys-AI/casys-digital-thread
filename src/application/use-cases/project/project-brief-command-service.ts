@@ -1,16 +1,21 @@
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
+} from "./engineering-project-command-service.ts";
+import type { EngineeringProjectCommandOrigin } from "../../ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "./engineering-project-command-service.ts";
+} from "../../ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringProjectCommandName,
   EngineeringProjectSnapshot,
-} from "./engineering-project.ts";
-import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
-import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
+} from "../../../domain/project/engineering-project.ts";
+import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
+import {
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import {
   currentProjectAnswer,
   isProjectBriefGateKind,
@@ -22,8 +27,8 @@ import {
   type ProjectQuestionConfidence,
   type ProjectQuestionOption,
   type ProjectQuestionRisk,
-} from "./project-brief.ts";
-import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
+} from "../../../domain/project/project-brief.ts";
+import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
 
 export interface StartEngineeringProjectCommand {
   readonly commandId: string;

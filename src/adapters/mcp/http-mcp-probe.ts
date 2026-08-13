@@ -1,23 +1,17 @@
 import type {
-  Availability,
+  McpProbe,
+  McpProbeResult,
+} from "../../application/control-plane/ports.ts";
+import type {
   DesiredServer,
-  IsoDateTime,
   ObservedMcp,
   ObservedTool,
-} from "../../domain/kernel/types.ts";
+} from "../../contracts/console.ts";
 
-export interface McpProbeResult {
-  checkedAt: IsoDateTime;
-  status: Availability;
-  latencyMs?: number;
-  httpStatus?: number;
-  mcp: ObservedMcp;
-  error?: string;
-}
-
-export interface McpProbe {
-  probe(server: DesiredServer): Promise<McpProbeResult>;
-}
+export type {
+  McpProbe,
+  McpProbeResult,
+} from "../../application/control-plane/ports.ts";
 
 export interface HttpMcpProbeOptions {
   fetch?: typeof fetch;

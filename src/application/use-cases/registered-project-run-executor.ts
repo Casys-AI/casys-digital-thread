@@ -1,28 +1,19 @@
+import { EngineeringProjectCommandError } from "./project/engineering-project-command-service.ts";
+import type { EngineeringProjectCommandOrigin } from "../ports/in/engineering-project-command-origin.ts";
+import type { EngineeringProjectRevisionStore } from "../ports/out/engineering-project-revision-store.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
+import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../orchestration/operations/approved-brief-baseline.ts";
 import type {
-  EngineeringProjectCommandOrigin,
-  EngineeringProjectRevisionStore,
-} from "../domain/project/engineering-project-command-service.ts";
-import { EngineeringProjectCommandError } from "../domain/project/engineering-project-command-service.ts";
-import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
-import { APPROVED_BRIEF_BASELINE_OPERATION } from "../orchestration/operations/approved-brief-baseline.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../domain/platform/syson-model-seed.ts";
-import type { ApprovedBriefBaselineRunExecutor } from "./executors/approved-brief-baseline-run-executor.ts";
-import type { SysonModelSeedRunExecutor } from "./executors/syson-model-seed-run-executor.ts";
-
-/** Stable command shared by the one agent-visible execution tool. */
-export interface RegisteredProjectRunExecutorCommand {
-  readonly commandId: string;
-  readonly projectId: string;
-  readonly expectedRevision: number;
-  readonly issuedAt: string;
-  readonly runId: string;
-}
+  ProjectRunExecutor,
+  RegisteredProjectRunExecutorCommand,
+} from "../ports/in/project-run-executor.ts";
 
 export interface RegisteredProjectRunExecutorDependencies {
   readonly projects: Pick<EngineeringProjectRevisionStore, "get">;
-  readonly baseline: Pick<ApprovedBriefBaselineRunExecutor, "execute">;
+  readonly baseline: ProjectRunExecutor;
   /** Omit only when SysON is intentionally unavailable on this server. */
-  readonly sysonModelSeed?: Pick<SysonModelSeedRunExecutor, "execute">;
+  readonly sysonModelSeed?: ProjectRunExecutor;
   /** Additional code-owned operations, such as a reviewed product kit. */
   readonly additional?: readonly RegisteredProjectRunExecutorRegistration[];
 }
@@ -34,13 +25,6 @@ type ExactOperationRef = Readonly<{
 
 type ExactOperationKey = `${string}@${string}`;
 
-interface RegisteredOperationExecutor {
-  execute(
-    origin: EngineeringProjectCommandOrigin,
-    command: RegisteredProjectRunExecutorCommand,
-  ): Promise<EngineeringProjectSnapshot>;
-}
-
 /**
  * Server-owned registration for one exact reviewed operation revision.
  *
@@ -49,13 +33,13 @@ interface RegisteredOperationExecutor {
  */
 export interface RegisteredProjectRunExecutorRegistration {
   readonly operation: ExactOperationRef;
-  readonly executor?: RegisteredOperationExecutor;
+  readonly executor?: ProjectRunExecutor;
   /** Safe reason exposed when a reviewed capability is intentionally absent. */
   readonly unavailableMessage?: string;
 }
 
 interface ExecutorDispatchEntry {
-  readonly executor: RegisteredOperationExecutor | undefined;
+  readonly executor: ProjectRunExecutor | undefined;
   /** Preserves the reviewed fail-closed reason when a local capability is absent. */
   readonly unavailableMessage?: string;
 }
@@ -69,7 +53,7 @@ type ExecutorDispatch = ReadonlyMap<ExactOperationKey, ExecutorDispatchEntry>;
  * a provider, tool, argument, file or arbitrary workflow; each concrete
  * executor still rechecks the exact project/run shape before it performs work.
  */
-export class RegisteredProjectRunExecutor {
+export class RegisteredProjectRunExecutor implements ProjectRunExecutor {
   readonly #projects: Pick<EngineeringProjectRevisionStore, "get">;
   readonly #dispatch: ExecutorDispatch;
 

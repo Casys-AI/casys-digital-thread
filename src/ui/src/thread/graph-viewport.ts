@@ -1,7 +1,8 @@
 import type { ThreadGraphRef } from "./types.ts";
-
-const NODE_WIDTH = 216;
-const NODE_HEIGHT = 82;
+import {
+  THREAD_GRAPH_NODE_HEIGHT,
+  THREAD_GRAPH_NODE_WIDTH,
+} from "./thread-graph-layout-model.ts";
 const MAX_ZOOM = 4.5;
 const DEFAULT_COMPONENT_ROW_WIDTH = 1320;
 
@@ -83,11 +84,11 @@ export function graphViewport(
     : undefined;
   const centerX = options.center?.x ??
     (positionedTarget
-      ? positionedTarget.x + (NODE_WIDTH / 2)
+      ? positionedTarget.x + (THREAD_GRAPH_NODE_WIDTH / 2)
       : layout.width / 2);
   const centerY = options.center?.y ??
     (positionedTarget
-      ? positionedTarget.y + (NODE_HEIGHT / 2)
+      ? positionedTarget.y + (THREAD_GRAPH_NODE_HEIGHT / 2)
       : layout.height / 2);
 
   return {

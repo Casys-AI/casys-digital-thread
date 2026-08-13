@@ -23,7 +23,7 @@ import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { validateFeaSysonEvaluationCapture } from "../captures/fea-syson-evaluation-capture.ts";
 import { FileByteStore } from "../captures/file-byte-store.ts";
 import { ProviderResourceCaptureService } from "../captures/provider-resource-capture-service.ts";
-import type { CanonicalAssetReader } from "./canonical-asset-reader.ts";
+import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
 import type { ContainerAssetStager } from "./container-asset-stager.ts";
 import {
   VerifyRunFeaStaticProofV2RunExecutor,

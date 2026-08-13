@@ -38,10 +38,14 @@
 
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -54,7 +58,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import { parseSysonModelSeedCapture } from "../../domain/platform/syson-model-seed.ts";
+import { parseSysonModelSeedCapture } from "../../domain/engineering/syson-model-seed.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   parseRequirementsProposalParameters,
@@ -62,7 +66,7 @@ import {
   requirementEntriesToOracleRequirements,
   type RequirementsProposal,
   type RequirementsTarget,
-} from "../../domain/platform/requirements-proposal.ts";
+} from "../../domain/engineering/requirements-proposal.ts";
 import {
   ORACLE_REQUIREMENT_OPERATORS,
   type OracleRequirement,
@@ -100,7 +104,7 @@ import {
   assertThreadSnapshotLineageIntact,
   ThreadSnapshotLineageIntegrityError,
 } from "../stores/thread-snapshot-lineage.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   ARCHITECTURE_FEATURE_TYPING_AQL,

@@ -4,9 +4,9 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import { EngineeringProjectCommandService } from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
+import { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import type { ThreadArtifact } from "../../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-snapshot-extension.ts";
 import {
@@ -25,7 +25,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../mcp/http-mcp-tool-client.ts";
+} from "../../application/ports/out/mcp-tool-client.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
@@ -36,13 +36,11 @@ import { FileSysonModelSeedAttemptStore } from "../wal/file-syson-model-seed-att
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
 import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import {
+  INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT,
   INSPECTION_DRONE_V4_PART_USAGE_CONTRACT,
   INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT,
-} from "./inspection-drone-v4-architecture-run-executor.ts";
-import {
-  INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT,
-  InspectionDroneV4PartDefinitionsRunExecutor,
-} from "./inspection-drone-v4-part-definitions-run-executor.ts";
+} from "../captures/inspection-drone-v4-architecture-capture.ts";
+import { InspectionDroneV4PartDefinitionsRunExecutor } from "./inspection-drone-v4-part-definitions-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 const PROJECT_ID = "inspection-drone-v4";

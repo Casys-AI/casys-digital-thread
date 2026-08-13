@@ -1,6 +1,4 @@
-import type { DockerObserver } from "../../adapters/docker-observer.ts";
-import type { McpProbe, McpProbeResult } from "../../adapters/mcp/http-mcp-probe.ts";
-import { buildServerRecord } from "./drift.ts";
+import { buildServerRecord } from "./server-drift.ts";
 import type {
   Availability,
   ConsoleMode,
@@ -9,18 +7,27 @@ import type {
   FleetCounts,
   FleetManifest,
   ObservedContainer,
-  ObservedRunCatalog,
   ObservedServer,
   RunDetail,
   RunSummary,
   ServerRecord,
-  SnapshotOptions,
-} from "../kernel/types.ts";
+} from "../../contracts/console.ts";
+import type {
+  ContainerObserver,
+  McpProbe,
+  McpProbeResult,
+  ObservedRunCatalog,
+} from "./ports.ts";
+
+export interface ControlPlaneSnapshotOptions {
+  /** Ignore the short-lived in-memory snapshot cache. */
+  refresh?: boolean;
+}
 
 export interface ControlPlaneOptions {
   manifest: FleetManifest;
   probe: McpProbe;
-  docker: DockerObserver;
+  docker: ContainerObserver;
   now?: () => Date;
   monotonicNow?: () => number;
   cacheTtlMs?: number;
@@ -38,7 +45,7 @@ export class ControlPlaneNotFoundError extends Error {
 export class ControlPlane {
   readonly #manifest: FleetManifest;
   readonly #probe: McpProbe;
-  readonly #docker: DockerObserver;
+  readonly #docker: ContainerObserver;
   readonly #now: () => Date;
   readonly #monotonicNow: () => number;
   readonly #cacheTtlMs: number;
@@ -58,7 +65,9 @@ export class ControlPlane {
     this.#observedRuns = options.observedRuns;
   }
 
-  async snapshot(options: SnapshotOptions = {}): Promise<ConsoleSnapshot> {
+  async snapshot(
+    options: ControlPlaneSnapshotOptions = {},
+  ): Promise<ConsoleSnapshot> {
     const current = this.#monotonicNow();
     if (!options.refresh && this.#cache && this.#cache.expiresAt > current) {
       return structuredClone(this.#cache.value);

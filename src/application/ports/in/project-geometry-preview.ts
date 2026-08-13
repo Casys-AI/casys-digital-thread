@@ -7,14 +7,14 @@
  */
 
 import type {
-  GeometryExportFormat,
-  GeometryManifest,
-} from "../domain/platform/geometry-proposal.ts";
-import type {
   GeometryBundleExportFormat,
   GeometryBundleManifest,
   GeometryBundleOccurrence,
-} from "../domain/platform/geometry-bundle.ts";
+} from "../../../domain/engineering/geometry-bundle.ts";
+import type {
+  GeometryExportFormat,
+  GeometryManifest,
+} from "../../../domain/engineering/geometry-proposal.ts";
 
 export interface GeometryPreviewDecisionParameter {
   readonly key: string;

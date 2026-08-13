@@ -1,5 +1,5 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
-import type { ProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
+import type { ProjectReviewIntentStore } from "../application/ports/out/project-review-intent-store.ts";
 import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import {
   isApprovalBoundProjectReviewIntent,

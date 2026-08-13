@@ -9,11 +9,14 @@ import {
   validateThreadComponentCatalog,
 } from "../../domain/thread/thread-component-catalog.ts";
 import {
+  INSPECTION_DRONE_V4_ARCHITECTURE_URI_PREFIX,
+  parseInspectionDroneV4ArchitectureCapture,
+} from "../captures/inspection-drone-v4-architecture-capture.ts";
+import {
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_STATEMENT,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_URI_PREFIX,
-  parseInspectionDroneV4ArchitectureCapture,
-} from "../executors/inspection-drone-v4-part-definitions-run-executor.ts";
+} from "../captures/inspection-drone-v4-part-definitions-capture.ts";
 import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../orchestration/operations/inspection-drone-v4.ts";
 
 export const INSPECTION_DRONE_V4_SUBJECT_ID = "project:inspection-drone-v4" as const;
@@ -58,7 +61,7 @@ export async function resolveInspectionDroneV4ProductStructureCatalog(
     candidate.kind === "sysml-model" &&
     candidate.id.startsWith("inspection-drone-v4-architecture-") &&
     candidate.uri ===
-      `casys://inspection-drone-v4-architecture-capture/sha256/${candidate.fingerprint.digest}` &&
+      `${INSPECTION_DRONE_V4_ARCHITECTURE_URI_PREFIX}${candidate.fingerprint.digest}` &&
     candidate.id ===
       `inspection-drone-v4-architecture-${candidate.fingerprint.digest}` &&
     candidate.version === candidate.fingerprint.digest

@@ -4,7 +4,7 @@ import {
   gatedProposalOperations,
   ProposalGrammarError,
 } from "./proposal-validation.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import { validateSimulationCase } from "../../domain/analysis/simulation-case.ts";
 import {

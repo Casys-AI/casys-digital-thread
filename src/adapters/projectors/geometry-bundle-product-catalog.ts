@@ -28,7 +28,7 @@ import {
   type GeometryBundleExportFormat,
   type GeometryBundleManifest,
   parseGeometryBundleDecisionParameters,
-} from "../../domain/platform/geometry-bundle.ts";
+} from "../../domain/engineering/geometry-bundle.ts";
 import {
   type ThreadComponentBinding,
   type ThreadComponentCatalog,

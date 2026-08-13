@@ -1,7 +1,7 @@
 import type {
   McpToolClient,
   McpToolResult,
-} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+} from "../../src/application/ports/out/mcp-tool-client.ts";
 import type {
   CompiledBinding,
   CompiledThreadWorkflow,

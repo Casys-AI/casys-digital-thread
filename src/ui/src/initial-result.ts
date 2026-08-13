@@ -1,4 +1,4 @@
-import type { ConsoleSnapshot } from "../../domain/kernel/types.ts";
+import type { ConsoleSnapshot } from "../../contracts/console.ts";
 
 /** Minimal shape of the MCP Apps result notification delivered by a host. */
 export interface InitialToolResult {

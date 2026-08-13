@@ -13,7 +13,7 @@ import {
   type ModelicaResumableSubmission,
   validateModelicaQualifiedManifestDocument,
 } from "../../../domain/analysis/modelica-resumable-capabilities.ts";
-import type { McpToolClient } from "../../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import {
   lowerSubmission,
   McpModelicaResumableAdapter,

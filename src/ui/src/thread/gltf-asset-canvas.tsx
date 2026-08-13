@@ -3,8 +3,8 @@
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
 
 export interface GltfAssetCanvasProps {
   readonly url: string;
@@ -29,43 +29,22 @@ export function GltfAssetCanvas({
   useEffect(() => {
     const container = host.current;
     if (!container) return;
-    let disposed = false;
-    let frame = 0;
     let loadedScene: THREE.Object3D | undefined;
     setState("loading");
 
-    const scene = new THREE.Scene();
+    const viewport = createThreeOrbitViewport(container);
+    const { scene } = viewport;
     scene.background = new THREE.Color(0xf4efe5);
-    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.replaceChildren(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.07;
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0xb9aa98, 2.4));
     const key = new THREE.DirectionalLight(0xfff8ed, 3.4);
     key.position.set(180, 220, 260);
     scene.add(key);
 
-    const resize = () => {
-      const width = Math.max(container.clientWidth, 1);
-      const height = Math.max(container.clientHeight, 1);
-      renderer.setSize(width, height, false);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-    resize();
-
     new GLTFLoader().load(
       url,
       (gltf) => {
-        if (disposed) {
+        if (viewport.isDisposed()) {
           disposeObject(gltf.scene);
           return;
         }
@@ -76,40 +55,24 @@ export function GltfAssetCanvas({
         const size = box.getSize(new THREE.Vector3());
         const radius = Math.max(size.length() / 2, 1);
         loadedScene.position.sub(center);
-        resetView.current = () => {
-          camera.near = Math.max(radius / 100, 0.1);
-          camera.far = radius * 30;
-          camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
-          camera.updateProjectionMatrix();
-          controls.target.set(0, 0, 0);
-          controls.update();
-        };
+        resetView.current = () => viewport.fitRadius(radius);
         resetView.current();
         setState("ready");
       },
       undefined,
-      () => !disposed && setState("error"),
+      () => !viewport.isDisposed() && setState("error"),
     );
 
-    const render = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(render);
-    };
-    render();
+    viewport.start();
 
     return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      controls.dispose();
-      if (loadedScene) {
-        scene.remove(loadedScene);
-        disposeObject(loadedScene);
-      }
-      resetView.current = undefined;
-      renderer.dispose();
-      renderer.domElement.remove();
+      viewport.dispose(() => {
+        if (loadedScene) {
+          scene.remove(loadedScene);
+          disposeObject(loadedScene);
+        }
+        resetView.current = undefined;
+      });
     };
   }, [url]);
 

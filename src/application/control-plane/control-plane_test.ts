@@ -1,16 +1,19 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import type { DockerObserver } from "../../adapters/docker-observer.ts";
-import type { McpProbe, McpProbeResult } from "../../adapters/mcp/http-mcp-probe.ts";
 import { loadRunFixtures } from "../../adapters/run-fixtures.ts";
 import { ControlPlane } from "./control-plane.ts";
+import type {
+  ContainerObserver,
+  McpProbe,
+  McpProbeResult,
+  ObservedRunCatalog,
+} from "./ports.ts";
 import type {
   DesiredServer,
   FleetManifest,
   ObservedContainer,
-  ObservedRunCatalog,
   RunDetail,
   RunSummary,
-} from "../kernel/types.ts";
+} from "../../contracts/console.ts";
 
 Deno.test("ControlPlane combines honest offline fleet data with labelled demo run", async () => {
   const runs = await loadRunFixtures([
@@ -177,7 +180,7 @@ function unavailableProbe(): McpProbe {
   };
 }
 
-function unavailableDocker(): DockerObserver {
+function unavailableDocker(): ContainerObserver {
   return {
     observe: (servers) =>
       Promise.resolve(

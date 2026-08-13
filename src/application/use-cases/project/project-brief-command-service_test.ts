@@ -2,25 +2,27 @@ import { assertEquals, assertRejects } from "@std/assert";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringProjectSnapshot,
-} from "./engineering-project.ts";
+} from "../../../domain/project/engineering-project.ts";
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectPlanningDependencies,
   type EngineeringProjectPlanOperationRegistry,
-  type EngineeringProjectRevisionStore,
-  EngineeringProjectStoreConflictError,
   type QueueRunCommand,
 } from "./engineering-project-command-service.ts";
-import type { RegisteredRunPlanSealInput } from "./resolved-run-plan-sealer.ts";
-import type { ResolvedOperationPlanRef } from "../analysis/resolved-operation-plan-v2.ts";
+import {
+  type EngineeringProjectRevisionStore,
+  EngineeringProjectStoreConflictError,
+} from "../../ports/out/engineering-project-revision-store.ts";
+import type { RegisteredRunPlanSealInput } from "../../../domain/project/resolved-run-plan-sealer.ts";
+import type { ResolvedOperationPlanRef } from "../../../domain/analysis/resolved-operation-plan-v2.ts";
 import {
   ProjectBriefCommandService,
   type ProjectBriefMutationCommand,
 } from "./project-brief-command-service.ts";
-import type { ProjectBriefItem } from "./project-brief.ts";
-import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
-import { collectEngineeringProjectIssues } from "./engineering-project-validation.ts";
+import type { ProjectBriefItem } from "../../../domain/project/project-brief.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../../orchestration/operations/registry.ts";
+import { collectEngineeringProjectIssues } from "../../../domain/project/engineering-project-validation.ts";
 
 const PROJECT_ID = "project-v3";
 const AGENT = { kind: "agent" as const, actorId: "agent:guide" };

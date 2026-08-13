@@ -27,8 +27,14 @@
  */
 
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  replaceAttemptFileDurably,
+  syncAttemptDirectoryChain,
+  writeNewAttemptFileDurably,
+} from "./durable-attempt-file-writes.ts";
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
+const NO_WRITE_PROGRESS = "Modelica scenario attempt journal made no write progress.";
 
 export type ModelicaScenarioAttempt =
   | {
@@ -168,14 +174,19 @@ export class FileModelicaScenarioAttemptStore {
     };
     const path = await this.pathFor(fresh.projectId, fresh.runId);
     try {
-      await writeNewDurably(path, `${deterministicJson(fresh)}\n`, this.directory);
+      await writeNewAttemptFileDurably(
+        path,
+        `${deterministicJson(fresh)}\n`,
+        this.directory,
+        NO_WRITE_PROGRESS,
+      );
       return { action: "dispatch" };
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
     }
     // Race: another concurrent begin just won the link — read and apply.
     const existing = await this.requiredRun(fresh.projectId, fresh.runId);
-    await syncDirectoryChain(this.directory);
+    await syncAttemptDirectoryChain(this.directory);
     return actionFor(existing, fresh.planDigest);
   }
 
@@ -225,14 +236,15 @@ export class FileModelicaScenarioAttemptStore {
       if (deterministicJson(existing) !== deterministicJson(next)) {
         throw new ModelicaScenarioOutcomeUnknownError();
       }
-      await syncDirectoryChain(this.directory);
+      await syncAttemptDirectoryChain(this.directory);
       return;
     }
     // existing.status === "dispatched" — durable rename advance.
-    await replaceDurably(
+    await replaceAttemptFileDurably(
       await this.pathFor(existing.projectId, existing.runId),
       `${deterministicJson(next)}\n`,
       this.directory,
+      NO_WRITE_PROGRESS,
     );
   }
 
@@ -285,14 +297,15 @@ export class FileModelicaScenarioAttemptStore {
           "Completed Modelica scenario attempt conflicts with the existing record.",
         );
       }
-      await syncDirectoryChain(this.directory);
+      await syncAttemptDirectoryChain(this.directory);
       return;
     }
     // existing.status === "provider-run-known" — durable rename advance.
-    await replaceDurably(
+    await replaceAttemptFileDurably(
       await this.pathFor(existing.projectId, existing.runId),
       `${deterministicJson(next)}\n`,
       this.directory,
+      NO_WRITE_PROGRESS,
     );
   }
 
@@ -322,11 +335,16 @@ export class FileModelicaScenarioAttemptStore {
     await Deno.mkdir(this.directory, { recursive: true });
     const path = await this.quarantinePath(record.projectId, record.runId);
     try {
-      await writeNewDurably(path, `${deterministicJson(record)}\n`, this.directory);
+      await writeNewAttemptFileDurably(
+        path,
+        `${deterministicJson(record)}\n`,
+        this.directory,
+        NO_WRITE_PROGRESS,
+      );
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
       await this.requiredQuarantine(record.projectId, record.runId);
-      await syncDirectoryChain(this.directory);
+      await syncAttemptDirectoryChain(this.directory);
     }
   }
 
@@ -446,77 +464,6 @@ function actionFor(
     receiptFp: attempt.receiptFp,
     canonicalSimulateEnvelope: attempt.canonicalSimulateEnvelope,
   };
-}
-
-async function writeNewDurably(
-  path: string,
-  text: string,
-  directory: string,
-): Promise<void> {
-  const temporary = `${root(directory)}/.${crypto.randomUUID()}.tmp`;
-  try {
-    await writeTemporaryDurably(temporary, text);
-    await Deno.link(temporary, path);
-    await syncDirectoryChain(directory);
-  } finally {
-    await Deno.remove(temporary).catch((error) => {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    });
-  }
-}
-
-async function writeTemporaryDurably(path: string, text: string): Promise<void> {
-  const file = await Deno.open(path, { createNew: true, write: true });
-  try {
-    await writeAll(file, text);
-    await file.syncData();
-  } finally {
-    file.close();
-  }
-}
-
-async function replaceDurably(
-  path: string,
-  text: string,
-  directory: string,
-): Promise<void> {
-  const temporary = `${root(directory)}/.${crypto.randomUUID()}.tmp`;
-  try {
-    await writeTemporaryDurably(temporary, text);
-    await Deno.rename(temporary, path);
-    await syncDirectoryChain(directory);
-  } finally {
-    await Deno.remove(temporary).catch((error) => {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    });
-  }
-}
-
-async function writeAll(file: Deno.FsFile, text: string): Promise<void> {
-  const bytes = new TextEncoder().encode(text);
-  let written = 0;
-  while (written < bytes.length) {
-    const count = await file.write(bytes.subarray(written));
-    if (count <= 0) {
-      throw new Error("Modelica scenario attempt journal made no write progress.");
-    }
-    written += count;
-  }
-}
-
-async function syncDirectoryChain(path: string): Promise<void> {
-  let current = root(path) || ".";
-  while (current !== "/") {
-    const directory = await Deno.open(current, { read: true });
-    try {
-      await directory.sync();
-    } finally {
-      directory.close();
-    }
-    if (current === "state" || current.endsWith("/state") || current === ".") return;
-    const slash = current.lastIndexOf("/");
-    current = slash < 0 ? "." : slash === 0 ? "/" : current.slice(0, slash);
-  }
 }
 
 function parseAttempt(

@@ -7,7 +7,7 @@
  * but not a source-level CAD parameter occurrence.
  */
 
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import {
   type AnalysisGraph,
   type AnalysisGraphNode,

@@ -40,7 +40,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -56,7 +56,7 @@ import type {
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
-import type { CanonicalAssetReader } from "../executors/canonical-asset-reader.ts";
+import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
 import type { ExactThreadSnapshotReader } from "../stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../stores/thread-snapshot-lineage.ts";
 import {

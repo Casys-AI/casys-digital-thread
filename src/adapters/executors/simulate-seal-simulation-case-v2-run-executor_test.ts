@@ -27,11 +27,11 @@ import {
   type ProviderResourceReader,
 } from "../../domain/analysis/provider-resource-reader.ts";
 import type {
-  EngineeringProjectCommandOrigin,
   EngineeringProjectPlanOperationRegistry,
-  EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
-import { EngineeringProjectCommandService } from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import type { EngineeringProjectCommandOrigin } from "../../application/ports/in/engineering-project-command-origin.ts";
+import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
+import { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
 import type {
   EngineeringAgentRun,
@@ -42,7 +42,7 @@ import type {
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
 import type { RegisteredRunPlanSealInput } from "../../domain/project/resolved-run-plan-sealer.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import {
   RECORDED_ANALYSIS_OPERATION_DESCRIPTORS,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,

@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { createConsoleServer } from "../../server.ts";
 import { FileEngineeringProjectRevisionStore } from "../adapters/stores/engineering-project-store.ts";
-import { ProjectBriefCommandService } from "../domain/project/project-brief-command-service.ts";
+import { ProjectBriefCommandService } from "../application/use-cases/project/project-brief-command-service.ts";
 
 Deno.test("project MCP framing uses one project identity from intent through approved brief", async () => {
   const directory = await Deno.makeTempDir({ prefix: "project-brief-tools-" });

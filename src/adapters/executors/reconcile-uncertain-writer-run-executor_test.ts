@@ -2,8 +2,10 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import { ReconcileUncertainWriterRunExecutor } from "./reconcile-uncertain-writer-run-executor.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";

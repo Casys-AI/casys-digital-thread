@@ -26,10 +26,14 @@
 
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -45,14 +49,14 @@ import {
 import {
   parseSysonModelSeedCapture,
   requireExactSysonModelSeed,
-} from "../../domain/platform/syson-model-seed.ts";
+} from "../../domain/engineering/syson-model-seed.ts";
 import {
   type ArchitectureProposal,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
   planArchitectureInsertion,
   renderArchitectureSysmlWithManifest,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
@@ -91,7 +95,7 @@ import {
   assertThreadSnapshotLineageIntact,
   ThreadSnapshotLineageIntegrityError,
 } from "../stores/thread-snapshot-lineage.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   ArchitectureStructureExtractionError,

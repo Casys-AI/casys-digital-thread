@@ -12,8 +12,8 @@ import type {
   SimulationRunReader,
 } from "../../../domain/analysis/simulation-capabilities.ts";
 import { DynamicSystemResponseError } from "../../../domain/analysis/simulation-capabilities.ts";
-import { EngineeringProjectCommandError } from "../../../domain/project/engineering-project-command-service.ts";
-import type { McpToolClient } from "../../mcp/http-mcp-tool-client.ts";
+import { EngineeringProjectCommandError } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import {
   assertSimulateMatchesRunGet,
   canonicalizeSimulateEnvelope,

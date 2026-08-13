@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
-import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "./src/project/fixture.ts";
+import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "../testing/workbench/generic-engineering-workbench-fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
   nextLiveActivityNode,
   shouldAcceptWorkbenchUpdate,

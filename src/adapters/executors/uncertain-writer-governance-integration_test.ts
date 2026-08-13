@@ -2,12 +2,14 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import {
   assertUncertainWriterBasisReleaseProposal,
   UNCERTAIN_WRITER_BASIS_RELEASE_ACTION,

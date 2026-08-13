@@ -1,4 +1,4 @@
-import type { RunDetail } from "../domain/kernel/types.ts";
+import type { RunDetail } from "../contracts/console.ts";
 
 export interface RunFixtureLoaderOptions {
   readTextFile?: (path: string) => Promise<string>;

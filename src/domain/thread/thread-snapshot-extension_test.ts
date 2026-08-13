@@ -95,7 +95,10 @@ Deno.test("repeated assembly preserves one immutable head and advances from that
   assertEquals(second.snapshot.id, `${base.subject.id}:r3:capture-pressure-run`);
 
   const conflicting = thermalExtension(base.subject.id);
-  conflicting.artifacts[0]!.name = "Divergent content under a reused artifact id";
+  conflicting.artifacts[0] = {
+    ...conflicting.artifacts[0]!,
+    name: "Divergent content under a reused artifact id",
+  };
   assertThrows(
     () => applyThreadSnapshotExtensionIfNew(first.snapshot, conflicting),
     Error,

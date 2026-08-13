@@ -7,11 +7,13 @@
  */
 
 import {
-  type EngineeringProjectCommandOrigin,
   EngineeringProjectCommandService,
   type EngineeringProjectPlanOperationRegistry,
-} from "../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../domain/project/project-brief-command-service.ts";
+} from "../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../application/ports/in/engineering-project-command-origin.ts";
+import { ProjectBriefCommandService } from "../application/use-cases/project/project-brief-command-service.ts";
 import {
   canonicalSimulationCaseV2Text,
   type SimulationCaseV2,

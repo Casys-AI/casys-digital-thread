@@ -1,16 +1,6 @@
-/**
- * Stable data contract shared by the control-plane tools and the MCP App.
- *
- * Keep protocol-specific types out of this module: the domain can be tested
- * without starting an MCP server or having Docker installed.
- */
+import type { IsoDateTime } from "../domain/kernel/primitives.ts";
 
-export type IsoDateTime = string;
-
-export interface ContentFingerprint {
-  algorithm: "sha256";
-  digest: string;
-}
+/** Browser-safe DTOs shared by the Console BFF and its MCP App. */
 
 export type ConsoleMode = "live" | "mixed" | "demo";
 
@@ -274,15 +264,6 @@ export interface RunDetail extends RunSummary {
   modelicaEvidence?: ModelicaEvidenceIdentity;
 }
 
-/**
- * Read-only source of runs which are owned by another engineering service.
- * The console never accesses a service's Docker volume directly.
- */
-export interface ObservedRunCatalog {
-  list(): Promise<readonly RunSummary[]>;
-  detail(id: string): Promise<RunDetail | undefined>;
-}
-
 export interface RunsSnapshot {
   items: RunSummary[];
 }
@@ -293,9 +274,4 @@ export interface ConsoleSnapshot {
   mode: ConsoleMode;
   fleet: FleetSnapshot;
   runs: RunsSnapshot;
-}
-
-export interface SnapshotOptions {
-  /** Ignore the short-lived in-memory snapshot cache. */
-  refresh?: boolean;
 }

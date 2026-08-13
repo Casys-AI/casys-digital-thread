@@ -43,7 +43,7 @@ import {
   type OracleRequirement,
 } from "../../domain/analysis/proof-case.ts";
 import type { MechanicalRequirement } from "../../domain/analysis/mechanical-proof-case.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import {
   type ParsedOracleResult,
   parseOracleOutcome,

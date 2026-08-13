@@ -3,8 +3,8 @@ import {
   createThreadWorkbenchClient,
   HttpThreadWorkbenchClient,
 } from "./src/thread/client.ts";
-import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "./src/project/fixture.ts";
-import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "../testing/workbench/generic-engineering-workbench-fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
   isEngineeringWorkbenchSnapshot,
   isThreadWorkbenchSnapshot,
@@ -31,6 +31,88 @@ Deno.test("injected Workbench projection is preserved without a transport call",
     GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
   );
   assertEquals(isEngineeringWorkbenchSnapshot(await client.load()), true);
+});
+
+Deno.test("evidence Workbench rejects unknown fields and incomplete array entities", () => {
+  const extraRoot = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as Record<string, unknown>;
+  extraRoot.providerResult = { hidden: true };
+  assertEquals(isEngineeringWorkbenchSnapshot(extraRoot), false);
+
+  const extraSubject = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as { thread: { subject: Record<string, unknown> } };
+  extraSubject.thread.subject.providerId = "must-stay-server-side";
+  assertEquals(isEngineeringWorkbenchSnapshot(extraSubject), false);
+
+  const extraChange = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as { thread: { change: Record<string, unknown> } };
+  extraChange.thread.change.toolArguments = {};
+  assertEquals(isEngineeringWorkbenchSnapshot(extraChange), false);
+
+  const malformedArtifacts = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as { thread: { artifacts: unknown[] } };
+  malformedArtifacts.thread.artifacts = [null];
+  assertEquals(isEngineeringWorkbenchSnapshot(malformedArtifacts), false);
+
+  const malformedActions = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as { thread: { actions: unknown[] } };
+  malformedActions.thread.actions = [{
+    id: "action-without-authority-boundary",
+  }];
+  assertEquals(isEngineeringWorkbenchSnapshot(malformedActions), false);
+});
+
+Deno.test("evidence Workbench rejects incoherent revisions and malformed live overlays", () => {
+  const missingLive = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as { thread: { live?: unknown } };
+  delete missingLive.thread.live;
+  assertEquals(isEngineeringWorkbenchSnapshot(missingLive), false);
+
+  const fractionalRevision = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as { alignment: { currentThreadRevision: number } };
+  fractionalRevision.alignment.currentThreadRevision = 1.5;
+  assertEquals(isEngineeringWorkbenchSnapshot(fractionalRevision), false);
+
+  const mismatchedAsOf = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as {
+    thread: { evidenceFamilyGraph: { asOf: { revision: number } } };
+  };
+  mismatchedAsOf.thread.evidenceFamilyGraph.asOf.revision = 2;
+  assertEquals(isEngineeringWorkbenchSnapshot(mismatchedAsOf), false);
+
+  const impossibleLiveVersion = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as {
+    thread: {
+      live: {
+        version: number;
+        active: unknown[];
+      };
+    };
+  };
+  impossibleLiveVersion.thread.live.active = [{
+    runId: "run-1",
+    operationId: "design.write-geometry@1",
+    state: "running",
+    recordedAt: "2026-08-02T12:00:00.000Z",
+    baseRevision: 1,
+    sequence: 1,
+  }];
+  assertEquals(isEngineeringWorkbenchSnapshot(impossibleLiveVersion), false);
+
+  const crossSubject = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as { thread: { subject: { id: string } } };
+  crossSubject.thread.subject.id = "another-subject";
+  assertEquals(isEngineeringWorkbenchSnapshot(crossSubject), false);
 });
 
 Deno.test("Workbench contract accepts a planning surface only when no technical baseline is declared", () => {
@@ -235,6 +317,72 @@ Deno.test("the Workbench contract requires a typed native graph", () => {
   ) as typeof GENERIC_THREAD_FIXTURE;
   unsupportedRelation.graph.edges[0].relation = "fuzzy_match" as never;
   assertEquals(isThreadWorkbenchSnapshot(unsupportedRelation), false);
+});
+
+Deno.test("the Workbench contract rejects duplicate graph identities and dangling edges", () => {
+  const duplicateNodeId = structuredClone(GENERIC_THREAD_FIXTURE);
+  const firstNode = duplicateNodeId.graph.nodes[0];
+  if (!firstNode) throw new Error("Expected one graph-node fixture.");
+  duplicateNodeId.graph.nodes.push(structuredClone(firstNode));
+  assertEquals(isThreadWorkbenchSnapshot(duplicateNodeId), false);
+
+  const duplicateReference = structuredClone(GENERIC_THREAD_FIXTURE);
+  const referencedNode = duplicateReference.graph.nodes[0];
+  if (!referencedNode) throw new Error("Expected one graph-node fixture.");
+  duplicateReference.graph.nodes.push({
+    ...structuredClone(referencedNode),
+    id: `${referencedNode.id}:duplicate-browser-key`,
+  });
+  assertEquals(isThreadWorkbenchSnapshot(duplicateReference), false);
+
+  const danglingEdge = structuredClone(GENERIC_THREAD_FIXTURE);
+  const firstEdge = danglingEdge.graph.edges[0];
+  if (!firstEdge) throw new Error("Expected one graph-edge fixture.");
+  firstEdge.from = { kind: "artifact", id: "missing-graph-node" };
+  assertEquals(isThreadWorkbenchSnapshot(danglingEdge), false);
+});
+
+Deno.test("the Workbench contract permits duplicate edge ids for distinct occurrences", () => {
+  const duplicateEdgeId = structuredClone(GENERIC_THREAD_FIXTURE);
+  const [firstEdge, secondEdge] = duplicateEdgeId.graph.edges;
+  if (!firstEdge || !secondEdge) {
+    throw new Error("Expected two distinct graph-edge fixtures.");
+  }
+  secondEdge.id = firstEdge.id;
+
+  assertEquals(isThreadWorkbenchSnapshot(duplicateEdgeId), true);
+});
+
+Deno.test("evidence families cannot mask valid evidence without exact raw supersession", () => {
+  const valid = evidenceWorkbenchWithDeclaredFamily();
+  assertEquals(isEngineeringWorkbenchSnapshot(valid), true);
+
+  const masksUnrelatedEvidence = evidenceWorkbenchWithDeclaredFamily();
+  masksUnrelatedEvidence.thread.evidenceFamilyGraph.families[0]!
+    .historicalRefs.push({ kind: "artifact", id: "ART-CAD-018" });
+  assertEquals(isEngineeringWorkbenchSnapshot(masksUnrelatedEvidence), false);
+
+  const unknownTransition = evidenceWorkbenchWithDeclaredFamily();
+  unknownTransition.thread.evidenceFamilyGraph.families[0]!
+    .transitions[0]!.edgeRef.id = "missing-raw-supersession";
+  assertEquals(isEngineeringWorkbenchSnapshot(unknownTransition), false);
+
+  const outsideGraph = evidenceWorkbenchWithDeclaredFamily();
+  const outsideFamily = outsideGraph.thread.evidenceFamilyGraph.families[0]!;
+  outsideFamily.currentRefs[0] = { kind: "artifact", id: "missing-current" };
+  outsideFamily.transitions[0]!.successor = {
+    kind: "artifact",
+    id: "missing-current",
+  };
+  assertEquals(isEngineeringWorkbenchSnapshot(outsideGraph), false);
+
+  const duplicateMembership = evidenceWorkbenchWithDeclaredFamily();
+  const declaredFamily = duplicateMembership.thread.evidenceFamilyGraph.families[0]!;
+  duplicateMembership.thread.evidenceFamilyGraph.families.push({
+    ...structuredClone(declaredFamily),
+    id: "duplicate-membership-family",
+  });
+  assertEquals(isEngineeringWorkbenchSnapshot(duplicateMembership), false);
 });
 
 Deno.test("the Workbench contract requires one non-empty structured requirement source identity", () => {
@@ -556,3 +704,61 @@ Deno.test("native Workbench has no nested document or direct MCP tool call", asy
   assertEquals(workbench.includes("executeProjectCommand"), false);
   assertEquals(workbench.includes("agent-run.queue"), false);
 });
+
+function evidenceWorkbenchWithDeclaredFamily() {
+  const workbench = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
+  const supersession = workbench.thread.graph.edges.find((edge) =>
+    edge.relation === "supersedes"
+  );
+  if (
+    !supersession || supersession.origin !== "provenance" ||
+    supersession.from.kind !== "artifact" ||
+    supersession.to.kind !== "artifact"
+  ) {
+    throw new Error("Expected one exact artifact supersession fixture.");
+  }
+  const historicalNode = workbench.thread.graph.nodes.find((node) =>
+    node.ref.kind === supersession.from.kind && node.ref.id === supersession.from.id
+  );
+  const currentNode = workbench.thread.graph.nodes.find((node) =>
+    node.ref.kind === supersession.to.kind && node.ref.id === supersession.to.id
+  );
+  if (
+    !historicalNode || !currentNode ||
+    typeof historicalNode.artifactKind !== "string" ||
+    historicalNode.artifactKind !== currentNode.artifactKind
+  ) {
+    throw new Error("Expected compatible superseded artifact-node fixtures.");
+  }
+  const edgeRef = {
+    id: supersession.id,
+    relation: supersession.relation,
+    origin: supersession.origin,
+  };
+  workbench.thread.evidenceFamilyGraph.families = [{
+    id: "fixture-driptray-fea-family",
+    entityKind: "artifact",
+    artifactKind: historicalNode.artifactKind,
+    historicalRefs: [{ ...supersession.from }],
+    currentRefs: [{ ...supersession.to }],
+    revisionCount: 1,
+    status: "current",
+    relationship: {
+      relation: "supersedes",
+      classification: "not-recorded",
+      equivalence: "not-recorded",
+    },
+    transitions: [{
+      edgeRef: { ...edgeRef },
+      historical: { ...supersession.from },
+      successor: { ...supersession.to },
+    }],
+  }];
+  workbench.thread.evidenceFamilyGraph.edges = [];
+  workbench.thread.evidenceFamilyGraph.omittedSelfLoops = [{
+    familyId: "fixture-driptray-fea-family",
+    memberEdgeRefs: [{ ...edgeRef }],
+  }];
+  workbench.thread.evidenceFamilyGraph.omittedCycleEdges = [];
+  return workbench;
+}

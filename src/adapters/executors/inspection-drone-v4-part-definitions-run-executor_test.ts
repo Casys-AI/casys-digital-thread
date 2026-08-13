@@ -19,23 +19,31 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../mcp/http-mcp-tool-client.ts";
+} from "../../application/ports/out/mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileInspectionDroneV4PartDefinitionsPublicationStore } from "../wal/file-inspection-drone-v4-part-definitions-publication-store.ts";
 import {
+  INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT,
   INSPECTION_DRONE_V4_PART_USAGE_CONTRACT,
   INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT,
-} from "./inspection-drone-v4-architecture-run-executor.ts";
-import {
-  INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT,
-  InspectionDroneV4PartDefinitionsRunExecutor,
   parseInspectionDroneV4ArchitectureCapture,
-} from "./inspection-drone-v4-part-definitions-run-executor.ts";
+} from "../captures/inspection-drone-v4-architecture-capture.ts";
+import { InspectionDroneV4PartDefinitionsRunExecutor } from "./inspection-drone-v4-part-definitions-run-executor.ts";
 import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../orchestration/operations/inspection-drone-v4.ts";
 import { resolveInspectionDroneV4ProductStructureCatalog } from "../projectors/inspection-drone-v4-product-structure-catalog.ts";
 
 const DIGEST = "9535ba575e0dc79ae24b67a96b74802444930adee621af534bd79fc72fbe4862";
 const KIND = "siriusComponents://semantic?domain=sysml&entity=";
+
+type DeepMutable<T> = T extends (...args: never[]) => unknown ? T
+  : T extends readonly (infer Item)[] ? DeepMutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: DeepMutable<T[Key]> }
+  : T;
+
+/** Test-only mutable copy used to model persisted-byte corruption explicitly. */
+function mutableClone<T>(value: T): DeepMutable<T> {
+  return structuredClone(value) as DeepMutable<T>;
+}
 
 /**
  * Frozen from the 2026-08-08 r3 SysON readback, but built locally so CI never
@@ -235,7 +243,7 @@ Deno.test("inspection-drone PartDefinitions rejects tampered WAL artifact, produ
     await assertRejects(() => fixture.executor().execute(AGENT, fixture.command()));
     fixture.syson.failIfCalled = true;
     const publications = new TamperedPublicationStore(fixture.publications, (value) => {
-      const snapshot = structuredClone(value.snapshot);
+      const snapshot = mutableClone(value.snapshot);
       if (tamper === "artifact") snapshot.artifacts.at(-1)!.kind = "document";
       if (tamper === "producer") snapshot.artifacts.at(-1)!.producer.serverId = "evil";
       if (tamper === "consumption") snapshot.consumptions.at(-1)!.status = "mismatch";
@@ -402,7 +410,7 @@ Deno.test("inspection-drone product catalog accepts only the exact r3 identities
     );
     assertEquals(tampered?.components, []);
   }
-  const producerSnapshot = structuredClone(fixture.snapshot) as typeof fixture.snapshot;
+  const producerSnapshot = mutableClone(fixture.snapshot);
   const product = producerSnapshot.artifacts[1]!;
   product.producer = { ...product.producer, serverId: "evil" };
   producerSnapshot.consumptions[0]!.consumer = product.producer;
@@ -412,7 +420,7 @@ Deno.test("inspection-drone product catalog accepts only the exact r3 identities
   );
   assertEquals(producerTamper?.components, []);
 
-  const descendant = structuredClone(fixture.snapshot) as typeof fixture.snapshot;
+  const descendant = mutableClone(fixture.snapshot);
   descendant.generatedAt = "2026-08-08T06:00:00.000Z";
   descendant.changeSet.appliedAt = "2026-08-08T06:00:00.000Z";
   const inherited = await resolveInspectionDroneV4ProductStructureCatalog(

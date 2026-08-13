@@ -1,4 +1,4 @@
-import type { ContentFingerprint } from "../../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { EngineeringDecision } from "../../../domain/project/engineering-project.ts";
 import {
   type ProjectReviewIntent,

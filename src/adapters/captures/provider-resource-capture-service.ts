@@ -15,7 +15,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
   canonicalProviderResourceAcquisitionLedgerText,
   fingerprintResourceBytes,

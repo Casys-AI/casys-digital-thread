@@ -8,7 +8,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../mcp/http-mcp-tool-client.ts";
+} from "../../application/ports/out/mcp-tool-client.ts";
 
 // ── Minimal MCP stub ─────────────────────────────────────────────────────────
 

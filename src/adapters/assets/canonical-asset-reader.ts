@@ -17,15 +17,7 @@
 
 // ── Interface ─────────────────────────────────────────────────────────────────
 
-export interface CanonicalAssetReader {
-  /**
-   * Read a canonical STEP asset by its SHA-256 hex digest.
-   *
-   * Returns the raw bytes on success.  Throws `CanonicalAssetReadError` on
-   * every failure condition — absent file, I/O error, or hash divergence.
-   */
-  read(digest: string): Promise<Uint8Array>;
-}
+import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
 
 // ── Error ────────────────────────────────────────────────────────────────────
 

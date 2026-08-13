@@ -1,4 +1,4 @@
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import { deepFreeze, exactRecord } from "../kernel/case-validation.ts";
 
 export type ProjectReviewIntentAction = "validate" | "request-revision";

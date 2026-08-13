@@ -17,8 +17,8 @@ import { FixedSourceAnalysisFrontendRegistry } from "../../domain/analysis/sourc
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-executor.ts";
-import { EngineeringProjectCommandService } from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+import { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import {
   fingerprintSourceAnalysisBundle,

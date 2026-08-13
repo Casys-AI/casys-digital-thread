@@ -19,11 +19,11 @@ import { assertEquals } from "@std/assert";
 import {
   encodeGeometryBundleDecisionParameters,
   type GeometryBundleManifest,
-} from "../domain/platform/geometry-bundle.ts";
+} from "../domain/engineering/geometry-bundle.ts";
 import {
   encodeGeometryDecisionParameters,
   type GeometryManifest,
-} from "../domain/platform/geometry-proposal.ts";
+} from "../domain/engineering/geometry-proposal.ts";
 import {
   type GeometryDecisionParameter,
   parseGeometryDecisionView,

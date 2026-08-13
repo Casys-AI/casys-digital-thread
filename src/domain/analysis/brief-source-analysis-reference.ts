@@ -6,7 +6,7 @@
 
 import { exactRecord, safeId } from "../kernel/case-validation.ts";
 import { deterministicJson } from "../kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 
 export interface BriefSourceAnalysisReference {
   readonly briefId: string;

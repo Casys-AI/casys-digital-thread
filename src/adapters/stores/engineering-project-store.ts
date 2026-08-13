@@ -2,7 +2,7 @@ import type { EngineeringProjectSnapshot } from "../../domain/project/engineerin
 import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import { validateEngineeringProjectSnapshot } from "../../domain/project/engineering-project-validation.ts";
 import {
   deterministicJson,

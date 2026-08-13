@@ -2,7 +2,7 @@ import type {
   ContentFingerprint,
   ThreadEntityKind,
 } from "../thread/thread-snapshot.ts";
-import type { IsoDateTime } from "../kernel/types.ts";
+import type { IsoDateTime } from "../kernel/primitives.ts";
 import type { EngineeringProjectFraming } from "./project-brief.ts";
 import type { ResolvedOperationPlanRef } from "../analysis/resolved-operation-plan-v2.ts";
 

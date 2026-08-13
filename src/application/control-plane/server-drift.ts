@@ -4,7 +4,7 @@ import type {
   DriftStatus,
   ObservedServer,
   ServerRecord,
-} from "../kernel/types.ts";
+} from "../../contracts/console.ts";
 
 export function buildServerRecord(
   desired: DesiredServer,

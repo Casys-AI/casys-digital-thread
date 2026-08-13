@@ -2,7 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   parseArchitectureProposalParameters,
   renderArchitectureSysmlWithManifest,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 import {
   RenderedArchitectureSysmlAnalyzer,
   sysmlRenderedSourceIdFor,

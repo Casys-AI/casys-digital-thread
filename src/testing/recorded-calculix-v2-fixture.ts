@@ -16,9 +16,9 @@ import { fingerprintResourceBytes } from "../domain/analysis/provider-resource-r
 import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import {
   EngineeringProjectCommandService,
-} from "../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../domain/project/project-brief-command-service.ts";
-import type { ContentFingerprint } from "../domain/kernel/types.ts";
+} from "../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../application/use-cases/project/project-brief-command-service.ts";
+import type { ContentFingerprint } from "../domain/kernel/primitives.ts";
 import type {
   ThreadArtifact,
   ThreadArtifactConsumption,

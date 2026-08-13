@@ -1,13 +1,13 @@
 import type {
   EvidenceArtifact,
-  ObservedRunCatalog,
   RunDetail,
   RunMeasurement,
   RunProvenance,
   RunStage,
   RunStatus,
   RunSummary,
-} from "../../domain/kernel/types.ts";
+} from "../../contracts/console.ts";
+import type { ObservedRunCatalog } from "../../application/control-plane/ports.ts";
 
 const MCP_PROTOCOL_VERSION = "2026-07-28";
 const MODELICA_RESULTS_SCHEMA_VERSION = "1.0";

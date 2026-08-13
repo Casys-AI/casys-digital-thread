@@ -1,13 +1,13 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
 import { fingerprintsEqual } from "../domain/kernel/deterministic-json.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
-import type { EngineeringProjectRevisionStore } from "../domain/project/engineering-project-command-service.ts";
+import type { EngineeringProjectRevisionStore } from "../application/ports/out/engineering-project-revision-store.ts";
 import {
   type ProjectAnswerInput,
   ProjectBriefCommandService,
   type ProjectBriefMutationCommand,
   type ProjectQuestionProposalInput,
-} from "../domain/project/project-brief-command-service.ts";
+} from "../application/use-cases/project/project-brief-command-service.ts";
 import type {
   ProjectBriefItem,
   ProjectBriefSourceKind,

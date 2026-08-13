@@ -1,7 +1,7 @@
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectInitialCompletionEvidenceValidator,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   deterministicJson,
   fingerprintsEqual,

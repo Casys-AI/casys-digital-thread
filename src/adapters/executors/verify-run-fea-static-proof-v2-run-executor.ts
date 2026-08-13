@@ -10,10 +10,14 @@
 
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import {
   fingerprintResolvedOperationPlanV2,
@@ -42,7 +46,7 @@ import {
   deterministicJson,
   fingerprintsEqual,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type {
   ProposedThreadAction,
   ThreadArtifact,
@@ -68,7 +72,7 @@ import {
   validateFeaSysonEvaluationCapture,
 } from "../captures/fea-syson-evaluation-capture.ts";
 import type { FileByteStore } from "../captures/file-byte-store.ts";
-import type { CanonicalAssetReader } from "./canonical-asset-reader.ts";
+import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
 import type { ContainerAssetStager } from "./container-asset-stager.ts";
 import { requiredStart, requireRun, snapshotRef } from "./executor-run-helpers.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
@@ -87,7 +91,7 @@ import {
   parseCapturedFeaConstraintOracleOutcome,
   prepareFeaConstraintOracleCall,
 } from "../captures/fea-oracle-adapter.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import {
   type CalculixRecordedStaticAttempt,
   type CalculixRecordedStaticCasReference,
@@ -99,11 +103,7 @@ import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
 } from "./thread-write-basis-guard.ts";
-
-export const VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION = {
-  id: "verify.run-fea-static-proof",
-  version: "2",
-} as const;
+import { VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION } from "../../orchestration/operations/recorded-analysis.ts";
 
 const PROFILE = [
   ["input.step", "model/step"],

@@ -3,8 +3,8 @@
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
 import type {
   ThreadArtifact,
   ThreadComponent,
@@ -886,25 +886,14 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
   useEffect(() => {
     const container = host.current;
     if (!container) return;
-    let disposed = false;
-    let frame = 0;
     let geometry: THREE.BufferGeometry | undefined;
     let material: THREE.MeshStandardMaterial | undefined;
     setState("loading");
 
-    const scene = new THREE.Scene();
+    const viewport = createThreeOrbitViewport(container);
+    const { scene } = viewport;
     scene.background = new THREE.Color(0xf8f6f0);
     scene.fog = new THREE.Fog(0xf8f6f0, 350, 900);
-    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.replaceChildren(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.07;
-    controls.enablePan = true;
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0xd5ddd8, 2.3));
     const key = new THREE.DirectionalLight(0xfff4e8, 3.6);
@@ -916,21 +905,10 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
     const grid = new THREE.GridHelper(500, 20, 0x7c8b83, 0xd5dad4);
     scene.add(grid);
 
-    const resize = () => {
-      const width = Math.max(container.clientWidth, 1);
-      const height = Math.max(container.clientHeight, 1);
-      renderer.setSize(width, height, false);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-    resize();
-
     new STLLoader().load(
       preview.url,
       (loaded) => {
-        if (disposed) {
+        if (viewport.isDisposed()) {
           loaded.dispose();
           return;
         }
@@ -949,35 +927,21 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
         mesh.receiveShadow = true;
         scene.add(mesh);
         const radius = Math.max(geometry.boundingSphere?.radius ?? 50, 1);
-        camera.near = Math.max(radius / 100, 0.1);
-        camera.far = radius * 30;
-        camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
-        camera.updateProjectionMatrix();
-        controls.target.set(0, 0, 0);
-        controls.update();
+        viewport.fitRadius(radius);
         grid.scale.setScalar(Math.max(radius / 120, 0.35));
         setState("ready");
       },
       undefined,
-      () => !disposed && setState("error"),
+      () => !viewport.isDisposed() && setState("error"),
     );
 
-    const render = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(render);
-    };
-    render();
+    viewport.start();
 
     return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      controls.dispose();
-      geometry?.dispose();
-      material?.dispose();
-      renderer.dispose();
-      renderer.domElement.remove();
+      viewport.dispose(() => {
+        geometry?.dispose();
+        material?.dispose();
+      });
     };
   }, [preview.url]);
 

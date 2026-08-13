@@ -5,14 +5,14 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import { exactRecord, safeId } from "../../domain/kernel/case-validation.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
   type ArchitectureProposal,
   renderArchitectureSysmlWithManifest,
   type RenderedArchitectureSysml,
   type SysmlArchitectureSourceSelector,
   validateRenderedArchitectureSysml,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 import {
   fingerprintSourceAnalysisBundle,
   validateSourceAnalysisBundle,

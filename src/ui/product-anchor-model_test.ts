@@ -4,7 +4,7 @@ import {
   productDefinitionSummary,
   productStructureAvailability,
 } from "./src/thread/product-anchor-model.ts";
-import { GENERIC_THREAD_FIXTURE } from "./src/thread/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import type { ThreadComponent, ThreadWorkbenchSnapshot } from "./src/thread/types.ts";
 
 // ── helpers ───────────────────────────────────────────────────────────────────

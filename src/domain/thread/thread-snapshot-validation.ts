@@ -20,6 +20,7 @@ import {
   type AnalysisGraph,
   validateAnalysisGraph,
 } from "../analysis/analysis-graph.ts";
+import { deepFreeze } from "../kernel/case-validation.ts";
 
 export interface ThreadSnapshotValidationIssue {
   code: string;
@@ -42,7 +43,7 @@ export class ThreadSnapshotValidationError extends Error {
 }
 
 /**
- * Validate an untrusted JSON value and return it as a ThreadSnapshot.
+ * Validate untrusted JSON, clone it and recursively freeze the result.
  *
  * This function performs no I/O and never fills missing engineering data.
  */
@@ -51,7 +52,7 @@ export function validateThreadSnapshot(value: unknown): ThreadSnapshot {
   if (issues.length > 0) {
     throw new ThreadSnapshotValidationError(issues);
   }
-  return value as ThreadSnapshot;
+  return deepFreeze(structuredClone(value)) as ThreadSnapshot;
 }
 
 /** Alias emphasizing construction at a BFF/domain boundary. */
@@ -65,7 +66,33 @@ export function collectThreadSnapshotIssues(
 ): ThreadSnapshotValidationIssue[] {
   const issues: ThreadSnapshotValidationIssue[] = [];
   validateJsonValue(value, "$", issues, new Set());
-  const root = record(value, "$", issues);
+  const schemaVersion = threadSnapshotSchemaVersion(value);
+  const root = exactRecord(
+    value,
+    "$",
+    [
+      "schemaVersion",
+      "id",
+      "revision",
+      "generatedAt",
+      "subject",
+      "freshness",
+      "changeSet",
+      "artifacts",
+      "consumptions",
+      "observations",
+      "requirements",
+      "evaluations",
+      "violations",
+      "provenance",
+      "proposedActions",
+    ],
+    [
+      "previous",
+      ...(schemaVersion === "1.1" ? ["analysisGraph"] : []),
+    ],
+    issues,
+  );
   if (!root) return issues;
 
   oneOf(root.schemaVersion, ["1.0", "1.1"], "$.schemaVersion", issues);
@@ -74,7 +101,13 @@ export function collectThreadSnapshotIssues(
   isoDateTime(root.generatedAt, "$.generatedAt", issues);
 
   if (root.previous !== undefined) {
-    const previous = record(root.previous, "$.previous", issues);
+    const previous = exactRecord(
+      root.previous,
+      "$.previous",
+      ["snapshotId", "revision"],
+      [],
+      issues,
+    );
     if (previous) {
       nonEmptyString(previous.snapshotId, "$.previous.snapshotId", issues);
       positiveInteger(previous.revision, "$.previous.revision", issues);
@@ -98,6 +131,16 @@ export function collectThreadSnapshotIssues(
     validateInvariants(value as ThreadSnapshot, issues);
   }
   return issues;
+}
+
+function threadSnapshotSchemaVersion(
+  value: unknown,
+): ThreadSnapshot["schemaVersion"] | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const candidate = (value as Record<string, unknown>).schemaVersion;
+  return candidate === "1.0" || candidate === "1.1" ? candidate : undefined;
 }
 
 /**
@@ -148,7 +191,13 @@ function validateSubject(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["id", "name", "kind", "version", "modelArtifactId"],
+    [],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.name, `${path}.name`, issues);
@@ -162,7 +211,13 @@ function validateChangeSet(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["id", "name", "status", "createdAt", "changes"],
+    ["appliedAt"],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.name, `${path}.name`, issues);
@@ -177,7 +232,13 @@ function validateChange(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["id", "kind", "target", "summary"],
+    ["beforeFingerprint", "afterFingerprint"],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   oneOf(
@@ -197,7 +258,22 @@ function validateArtifact(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "id",
+      "name",
+      "kind",
+      "version",
+      "fingerprint",
+      "producer",
+      "inputArtifactIds",
+      "freshness",
+    ],
+    ["uri", "mediaType"],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.name, `${path}.name`, issues);
@@ -234,13 +310,25 @@ function validateObservation(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["id", "name", "metric", "quantity", "source", "freshness"],
+    [],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.name, `${path}.name`, issues);
   nonEmptyString(input.metric, `${path}.metric`, issues);
   validateQuantity(input.quantity, `${path}.quantity`, issues);
-  const source = record(input.source, `${path}.source`, issues);
+  const source = exactRecord(
+    input.source,
+    `${path}.source`,
+    ["operation", "artifactIds", "capturedAt"],
+    [],
+    issues,
+  );
   if (source) {
     validateOperation(source.operation, `${path}.source.operation`, issues);
     stringArray(source.artifactIds, `${path}.source.artifactIds`, issues);
@@ -254,7 +342,20 @@ function validateConsumption(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "id",
+      "artifactId",
+      "consumer",
+      "observedFingerprint",
+      "verifiedAt",
+      "status",
+    ],
+    [],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.artifactId, `${path}.artifactId`, issues);
@@ -269,13 +370,25 @@ function validateRequirement(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["id", "name", "statement", "version", "criterion", "trace", "freshness"],
+    [],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.name, `${path}.name`, issues);
   nonEmptyString(input.statement, `${path}.statement`, issues);
   nonEmptyString(input.version, `${path}.version`, issues);
-  const criterion = record(input.criterion, `${path}.criterion`, issues);
+  const criterion = exactRecord(
+    input.criterion,
+    `${path}.criterion`,
+    ["metric", "operator", "limit"],
+    [],
+    issues,
+  );
   if (criterion) {
     nonEmptyString(criterion.metric, `${path}.criterion.metric`, issues);
     oneOf(
@@ -286,7 +399,13 @@ function validateRequirement(
     );
     validateQuantity(criterion.limit, `${path}.criterion.limit`, issues);
   }
-  const trace = record(input.trace, `${path}.trace`, issues);
+  const trace = exactRecord(
+    input.trace,
+    `${path}.trace`,
+    ["sourceArtifactId", "elementId", "targetArtifactIds"],
+    [],
+    issues,
+  );
   if (trace) {
     nonEmptyString(trace.sourceArtifactId, `${path}.trace.sourceArtifactId`, issues);
     nonEmptyString(trace.elementId, `${path}.trace.elementId`, issues);
@@ -300,7 +419,24 @@ function validateEvaluation(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "id",
+      "name",
+      "requirementId",
+      "observationIds",
+      "status",
+      "evaluatedAt",
+      "evaluator",
+      "evidenceArtifactIds",
+      "message",
+      "freshness",
+    ],
+    ["comparison"],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.name, `${path}.name`, issues);
@@ -327,7 +463,13 @@ function validateComparison(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["observationId", "actual", "operator", "limit", "normalizedUnit"],
+    ["margin"],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.observationId, `${path}.observationId`, issues);
   validateQuantity(input.actual, `${path}.actual`, issues);
@@ -344,7 +486,25 @@ function validateViolation(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "id",
+      "name",
+      "requirementId",
+      "evaluationId",
+      "severity",
+      "status",
+      "detectedAt",
+      "observationIds",
+      "evidenceArtifactIds",
+      "summary",
+      "freshness",
+    ],
+    [],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.name, `${path}.name`, issues);
@@ -369,7 +529,13 @@ function validateProvenanceLink(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["id", "relation", "from", "to", "rationale"],
+    [],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   oneOf(
@@ -398,7 +564,22 @@ function validateAction(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    [
+      "id",
+      "name",
+      "kind",
+      "readiness",
+      "rationale",
+      "targets",
+      "addressesViolationIds",
+      "dependsOnActionIds",
+    ],
+    ["operation", "blockedReason"],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
   nonEmptyString(input.name, `${path}.name`, issues);
@@ -414,7 +595,13 @@ function validateAction(
   stringArray(input.addressesViolationIds, `${path}.addressesViolationIds`, issues);
   stringArray(input.dependsOnActionIds, `${path}.dependsOnActionIds`, issues);
   if (input.operation !== undefined) {
-    const operation = record(input.operation, `${path}.operation`, issues);
+    const operation = exactRecord(
+      input.operation,
+      `${path}.operation`,
+      ["id", "inputs"],
+      [],
+      issues,
+    );
     if (operation) {
       nonEmptyString(operation.id, `${path}.operation.id`, issues);
       record(operation.inputs, `${path}.operation.inputs`, issues);
@@ -428,7 +615,13 @@ function validateFreshness(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["status", "changedAt", "invalidatedByChangeIds"],
+    ["reason"],
+    issues,
+  );
   if (!input) return;
   oneOf(
     input.status,
@@ -446,7 +639,13 @@ function validateOperation(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(
+    value,
+    path,
+    ["serverId", "tool", "runId"],
+    [],
+    issues,
+  );
   if (!input) return;
   nonEmptyString(input.serverId, `${path}.serverId`, issues);
   nonEmptyString(input.tool, `${path}.tool`, issues);
@@ -458,7 +657,7 @@ function validateEntityRef(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(value, path, ["kind", "id"], [], issues);
   if (!input) return;
   oneOf(
     input.kind,
@@ -483,7 +682,7 @@ function validateFingerprint(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(value, path, ["algorithm", "digest"], [], issues);
   if (!input) return;
   literal(input.algorithm, "sha256", `${path}.algorithm`, issues);
   if (
@@ -512,7 +711,7 @@ function validateQuantity(
   path: string,
   issues: ThreadSnapshotValidationIssue[],
 ): void {
-  const input = record(value, path, issues);
+  const input = exactRecord(value, path, ["value", "unit"], [], issues);
   if (!input) return;
   finiteNumber(input.value, `${path}.value`, issues);
   nonEmptyString(input.unit, `${path}.unit`, issues);
@@ -1695,6 +1894,30 @@ function stringArray(
   if (new Set(strings).size !== strings.length) {
     issue(issues, "duplicate_value", path, "must not contain duplicates");
   }
+}
+
+function exactRecord(
+  value: unknown,
+  path: string,
+  required: readonly string[],
+  optional: readonly string[],
+  issues: ThreadSnapshotValidationIssue[],
+): Record<string, unknown> | undefined {
+  const input = record(value, path, issues);
+  if (!input) return undefined;
+
+  const allowed = new Set([...required, ...optional]);
+  for (const key of required) {
+    if (!Object.hasOwn(input, key)) {
+      issue(issues, "missing_property", `${path}.${key}`, "is required");
+    }
+  }
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) {
+      issue(issues, "unknown_property", `${path}.${key}`, "is not allowed");
+    }
+  }
+  return input;
 }
 
 function record(

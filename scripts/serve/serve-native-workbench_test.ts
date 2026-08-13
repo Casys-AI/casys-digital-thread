@@ -1,21 +1,21 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
-import type { CockpitFocusStore } from "../../src/adapters/stores/file-cockpit-focus-store.ts";
+import type { CockpitFocusStore } from "../../src/application/ports/out/cockpit-focus-store.ts";
 import {
   FileProjectReviewIntentStore,
-  type ProjectReviewIntentStore,
 } from "../../src/adapters/stores/file-project-review-intent-store.ts";
+import type { ProjectReviewIntentStore } from "../../src/application/ports/out/project-review-intent-store.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
-import type { EngineeringProjectRevisionStore } from "../../src/domain/project/engineering-project-command-service.ts";
+import type { EngineeringProjectRevisionStore } from "../../src/application/ports/out/engineering-project-revision-store.ts";
 import type {
   ProjectReviewIntent,
   ProjectReviewIntentAcknowledgement,
   ProjectReviewIntentRecord,
 } from "../../src/domain/project/project-review-intent.ts";
-import type { CockpitFocusSnapshot } from "../../src/domain/platform/cockpit-focus.ts";
-import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/platform/cockpit-focus.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/platform/architecture-proposal.ts";
-import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/platform/geometry-proposal.ts";
-import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/platform/requirements-proposal.ts";
+import type { CockpitFocusSnapshot } from "../../src/domain/project/cockpit-focus.ts";
+import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/project/cockpit-focus.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/engineering/architecture-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/engineering/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/engineering/requirements-proposal.ts";
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";

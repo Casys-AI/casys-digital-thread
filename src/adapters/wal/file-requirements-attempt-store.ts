@@ -18,6 +18,13 @@
  */
 
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  replaceAttemptFileDurably,
+  syncAttemptDirectoryChain,
+  writeNewAttemptFileDurably,
+} from "./durable-attempt-file-writes.ts";
+
+const NO_WRITE_PROGRESS = "Requirements write-attempt journal made no write progress.";
 
 export type RequirementsWriteAttempt = {
   readonly schemaVersion: "requirements-write-attempt/1.1";
@@ -95,13 +102,18 @@ export class FileRequirementsAttemptStore {
 
     const path = await this.pathFor(fresh.projectId, fresh.runId);
     try {
-      await writeNewDurably(path, `${deterministicJson(fresh)}\n`, this.directory);
+      await writeNewAttemptFileDurably(
+        path,
+        `${deterministicJson(fresh)}\n`,
+        this.directory,
+        NO_WRITE_PROGRESS,
+      );
       return { action: "dispatch" };
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
     }
     const existing = await this.requiredRun(fresh.projectId, fresh.runId);
-    await syncDirectoryChain(this.directory);
+    await syncAttemptDirectoryChain(this.directory);
     return actionFor(existing, fresh.planDigest);
   }
 
@@ -137,13 +149,14 @@ export class FileRequirementsAttemptStore {
           "Requirements insertion acknowledgement conflicts with the existing attempt.",
         );
       }
-      await syncDirectoryChain(this.directory);
+      await syncAttemptDirectoryChain(this.directory);
       return;
     }
-    await replaceDurably(
+    await replaceAttemptFileDurably(
       await this.pathFor(existing.projectId, existing.runId),
       `${deterministicJson(completed)}\n`,
       this.directory,
+      NO_WRITE_PROGRESS,
     );
   }
 
@@ -172,11 +185,16 @@ export class FileRequirementsAttemptStore {
     await Deno.mkdir(this.directory, { recursive: true });
     const path = await this.quarantinePath(record.projectId, record.runId);
     try {
-      await writeNewDurably(path, `${deterministicJson(record)}\n`, this.directory);
+      await writeNewAttemptFileDurably(
+        path,
+        `${deterministicJson(record)}\n`,
+        this.directory,
+        NO_WRITE_PROGRESS,
+      );
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
       await this.requiredQuarantine(record.projectId, record.runId);
-      await syncDirectoryChain(this.directory);
+      await syncAttemptDirectoryChain(this.directory);
     }
   }
 
@@ -286,77 +304,6 @@ function actionFor(
     action: "completed",
     requirementsElementId: attempt.result.requirementsElementId,
   };
-}
-
-async function writeNewDurably(
-  path: string,
-  text: string,
-  directory: string,
-): Promise<void> {
-  const temporary = `${root(directory)}/.${crypto.randomUUID()}.tmp`;
-  try {
-    await writeTemporaryDurably(temporary, text);
-    await Deno.link(temporary, path);
-    await syncDirectoryChain(directory);
-  } finally {
-    await Deno.remove(temporary).catch((error) => {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    });
-  }
-}
-
-async function writeTemporaryDurably(path: string, text: string): Promise<void> {
-  const file = await Deno.open(path, { createNew: true, write: true });
-  try {
-    await writeAll(file, text);
-    await file.syncData();
-  } finally {
-    file.close();
-  }
-}
-
-async function replaceDurably(
-  path: string,
-  text: string,
-  directory: string,
-): Promise<void> {
-  const temporary = `${root(directory)}/.${crypto.randomUUID()}.tmp`;
-  try {
-    await writeTemporaryDurably(temporary, text);
-    await Deno.rename(temporary, path);
-    await syncDirectoryChain(directory);
-  } finally {
-    await Deno.remove(temporary).catch((error) => {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    });
-  }
-}
-
-async function writeAll(file: Deno.FsFile, text: string): Promise<void> {
-  const bytes = new TextEncoder().encode(text);
-  let written = 0;
-  while (written < bytes.length) {
-    const count = await file.write(bytes.subarray(written));
-    if (count <= 0) {
-      throw new Error("Requirements write-attempt journal made no write progress.");
-    }
-    written += count;
-  }
-}
-
-async function syncDirectoryChain(path: string): Promise<void> {
-  let current = root(path) || ".";
-  while (current !== "/") {
-    const directory = await Deno.open(current, { read: true });
-    try {
-      await directory.sync();
-    } finally {
-      directory.close();
-    }
-    if (current === "state" || current.endsWith("/state") || current === ".") return;
-    const slash = current.lastIndexOf("/");
-    current = slash < 0 ? "." : slash === 0 ? "/" : current.slice(0, slash);
-  }
 }
 
 function parseAttempt(

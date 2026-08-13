@@ -113,10 +113,13 @@ The source, assertion, graph, admission and resolved-plan contracts live in
 `src/domain/analysis/` and import no MCP, storage, provider, UI, Graphology or SysML
 code. Language frontends and provider lowerings are adapters. The agent-facing
 project-control tools validate MCP input and call inward-facing use cases; they do not
-own provider clients or CAS stores. `ProjectGeometryPreviewUseCase` is the first such
-extraction. Its capture-backed adapter owns source capture, analysis and the private
-build123d dispatch. Registered executors remain the only components allowed to call
-private provider MCP clients for admitted project runs.
+own provider clients or CAS stores. `ProjectGeometryPreviewUseCase` lives under
+`src/application/ports/in/`, while exact operation dispatch lives under
+`src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
+contract in `src/application/ports/in/project-run-executor.ts`. The capture-backed
+geometry adapter owns source capture, analysis and the private build123d dispatch.
+Concrete registered executors remain the only components allowed to call private
+provider MCP clients for admitted project runs.
 
 ## Implemented CAD vertical
 

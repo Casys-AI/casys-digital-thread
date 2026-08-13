@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import type { McpToolResult } from "../mcp/http-mcp-tool-client.ts";
+import type { McpToolResult } from "../../application/ports/out/mcp-tool-client.ts";
 import type { OracleRequirement } from "../../domain/analysis/proof-case.ts";
 import {
   extractAndVerifyOracleRequirements,

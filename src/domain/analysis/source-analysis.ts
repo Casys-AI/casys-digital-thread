@@ -7,7 +7,7 @@
  * into it. The bundle reports facts and diagnostics. It grants no authority.
  */
 
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import {
   arrayOf,

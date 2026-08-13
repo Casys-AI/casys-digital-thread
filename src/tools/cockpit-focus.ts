@@ -1,10 +1,10 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
-import type { CockpitFocusStore } from "../adapters/stores/file-cockpit-focus-store.ts";
+import type { CockpitFocusStore } from "../application/ports/out/cockpit-focus-store.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import {
   COCKPIT_FOCUS_SCHEMA_VERSION,
   type CockpitFocusTarget,
-} from "../domain/platform/cockpit-focus.ts";
+} from "../domain/project/cockpit-focus.ts";
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,

@@ -7,12 +7,12 @@ import {
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
 } from "../../domain/analysis/simulation-case-proposal.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
-import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/platform/geometry-proposal.ts";
-import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/platform/requirements-proposal.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/engineering/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
 import {
   EngineeringProjectCommandError,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,

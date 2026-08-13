@@ -19,7 +19,7 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { RegisteredRunPlanSealInput } from "../../domain/project/resolved-run-plan-sealer.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
@@ -35,7 +35,7 @@ import {
 import {
   canonicalModelicaSimulationCaseQualificationCaptureText,
 } from "../captures/modelica-simulation-case-qualification-capture.ts";
-import type { CanonicalAssetReader } from "../executors/canonical-asset-reader.ts";
+import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
 import {
   RecordedOperationPlanResolver,
   type RecordedPlanArtifactReader,
@@ -222,12 +222,15 @@ Deno.test("RecordedOperationPlanResolver rejects a completed Modelica seal resul
 
 Deno.test("RecordedOperationPlanResolver rejects a tampered completed Modelica seal result snapshot", async () => {
   const fixture = await modelicaFixture();
-  const tampered = structuredClone(fixture.sealResult);
+  const tampered = structuredClone(fixture.sealResult) as MutableFixture<
+    ThreadSnapshot
+  >;
   const authority = tampered.artifacts.find((artifact) =>
     artifact.id === fixture.artifacts.authority.id
   );
   if (!authority) throw new Error("Missing test authority artifact.");
-  authority.uri = casUri("simulation-case-qualification", "f".repeat(64));
+  const mutableAuthority = authority as unknown as { uri?: string };
+  mutableAuthority.uri = casUri("simulation-case-qualification", "f".repeat(64));
   fixture.stores.set(tampered.id, tampered);
 
   await assertRejects(
@@ -1553,6 +1556,10 @@ async function legacyStructuredFingerprint(
 function casUri(namespace: string, digest: string): string {
   return `casys://${namespace}/sha256/${digest}`;
 }
+
+type MutableFixture<T> = T extends readonly (infer Item)[] ? MutableFixture<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: MutableFixture<T[Key]> }
+  : T;
 
 type MutableSealRun = {
   resultSnapshot?: {

@@ -7,7 +7,7 @@
  * journal what actually crossed the provider boundary.
  */
 
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { SimulationCase } from "./simulation-case.ts";
 
 /** Exact identity against which a provider run is validated. */

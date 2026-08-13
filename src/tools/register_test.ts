@@ -6,7 +6,7 @@ import type {
   FleetManifest,
   ObservedContainer,
   RunDetail,
-} from "../domain/kernel/types.ts";
+} from "../contracts/console.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import { createConsoleServer, parseConsoleCli } from "../../server.ts";

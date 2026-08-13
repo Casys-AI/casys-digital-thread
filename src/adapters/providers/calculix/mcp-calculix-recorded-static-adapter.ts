@@ -30,7 +30,7 @@ import {
   validateExpectedProviderResource,
 } from "../../../domain/analysis/provider-resource-reader.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
-import type { McpToolClient } from "../../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 
 const SOLVE_RECORDED = "calculix_solve_static_recorded";
 const RUN_GET = "calculix_run_get";

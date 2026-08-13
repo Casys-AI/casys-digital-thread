@@ -3,7 +3,7 @@ import {
   type MechanicalProofCase,
   validateMechanicalProofCase,
 } from "../../../domain/analysis/mechanical-proof-case.ts";
-import type { McpToolClient } from "../../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import {
   lowerCalculixRecordedStatic,

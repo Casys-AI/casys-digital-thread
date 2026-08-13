@@ -1,7 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   EngineeringProjectCommandError,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import {

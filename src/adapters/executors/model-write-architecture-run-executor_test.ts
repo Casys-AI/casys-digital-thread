@@ -24,14 +24,16 @@ import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/o
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import {
   type InsertionItem,
   parseArchitectureProposalParameters,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -59,7 +61,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../mcp/http-mcp-tool-client.ts";
+} from "../../application/ports/out/mcp-tool-client.ts";
 import {
   ArchitectureArtifactRemovedError,
   assertArchitectureArtifactNotRemoved,

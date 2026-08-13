@@ -20,14 +20,15 @@ export class OrderedExactThreadSnapshotReader implements ExactThreadSnapshotRead
   async get(snapshotId: string): Promise<ThreadSnapshot | undefined> {
     exactSnapshotId(snapshotId);
     for (const reader of this.readers) {
-      const snapshot = await reader.get(snapshotId);
-      if (!snapshot) continue;
+      const candidate = await reader.get(snapshotId);
+      if (!candidate) continue;
+      const snapshot = validateThreadSnapshot(candidate);
       if (snapshot.id !== snapshotId) {
         throw new Error(
           `Exact ThreadSnapshot reader returned ${snapshot.id} for requested ID ${snapshotId}.`,
         );
       }
-      return structuredClone(snapshot);
+      return snapshot;
     }
     return undefined;
   }
@@ -93,7 +94,7 @@ export class FileExactThreadSnapshotDirectory implements ExactThreadSnapshotRead
       }
       resolved = snapshot;
     }
-    return resolved ? structuredClone(resolved) : undefined;
+    return resolved;
   }
 }
 

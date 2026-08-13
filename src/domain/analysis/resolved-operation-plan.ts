@@ -17,7 +17,7 @@ import {
   safeId,
 } from "../kernel/case-validation.ts";
 import { deterministicJson, sha256Fingerprint } from "../kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 
 export const RESOLVED_OPERATION_PLAN_SCHEMA = "resolved-operation-plan/1.0" as const;
 

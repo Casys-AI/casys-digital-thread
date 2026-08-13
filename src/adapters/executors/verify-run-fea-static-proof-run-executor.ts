@@ -50,10 +50,14 @@
 
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -118,7 +122,7 @@ import {
   FeaStaticProofOutcomeUnknownError,
   FileFeaStaticProofAttemptStore,
 } from "../wal/file-fea-static-proof-attempt-store.ts";
-import type { CanonicalAssetReader } from "./canonical-asset-reader.ts";
+import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
 import type { ContainerAssetStager } from "./container-asset-stager.ts";
 import {
   describeCause,
@@ -133,7 +137,7 @@ import {
   threadWriteBasisLeaseScope,
 } from "./thread-write-basis-guard.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import {
   extractAndVerifyOracleRequirements,

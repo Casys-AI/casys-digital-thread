@@ -2,7 +2,7 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type {
   DynamicSystemRun,
   SimulationCaseIdentity as PortSimulationCaseIdentity,

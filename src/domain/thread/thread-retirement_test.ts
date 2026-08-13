@@ -56,7 +56,7 @@ function artifact(
   };
 }
 
-function observation(id: string, sourceArtifactIds: string[], digestSeed = "b") {
+function observation(id: string, sourceArtifactIds: string[]) {
   return {
     id,
     name: `Observation ${id}`,
@@ -68,7 +68,6 @@ function observation(id: string, sourceArtifactIds: string[], digestSeed = "b") 
       capturedAt: "2026-08-08T10:00:00.000Z",
     },
     freshness: freshness(),
-    _digestSeed: digestSeed,
   };
 }
 

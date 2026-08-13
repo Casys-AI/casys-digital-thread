@@ -14,11 +14,18 @@ import {
 import {
   type InsertionItem,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 import {
   type SysmlSourceAnalysisReference,
   validateSysmlSourceAnalysisReference,
 } from "../captures/sysml-source-analysis-capture.ts";
+import {
+  replaceAttemptFileDurably,
+  syncAttemptDirectoryChain,
+  writeNewAttemptFileDurably,
+} from "./durable-attempt-file-writes.ts";
+
+const NO_WRITE_PROGRESS = "Architecture write-attempt journal made no write progress.";
 
 type ArchitectureWriteAttemptV2Base = {
   readonly schemaVersion: "architecture-write-attempt/2.0";
@@ -137,13 +144,18 @@ export class FileArchitectureAttemptStore {
 
     const path = await this.pathFor(fresh.projectId, fresh.runId);
     try {
-      await writeNewDurably(path, `${deterministicJson(fresh)}\n`, this.directory);
+      await writeNewAttemptFileDurably(
+        path,
+        `${deterministicJson(fresh)}\n`,
+        this.directory,
+        NO_WRITE_PROGRESS,
+      );
       return { action: "dispatch" };
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
     }
     const existing = await this.requiredRun(fresh.projectId, fresh.runId);
-    await syncDirectoryChain(this.directory);
+    await syncAttemptDirectoryChain(this.directory);
     return actionFor(existing);
   }
 
@@ -183,13 +195,14 @@ export class FileArchitectureAttemptStore {
           "Architecture insertion acknowledgement conflicts with the existing attempt.",
         );
       }
-      await syncDirectoryChain(this.directory);
+      await syncAttemptDirectoryChain(this.directory);
       return;
     }
-    await replaceDurably(
+    await replaceAttemptFileDurably(
       await this.pathFor(existing.projectId, existing.runId),
       `${deterministicJson(completed)}\n`,
       this.directory,
+      NO_WRITE_PROGRESS,
     );
   }
 
@@ -242,22 +255,23 @@ export class FileArchitectureAttemptStore {
     await Deno.mkdir(this.directory, { recursive: true });
     const legacy = await this.readLegacyQuarantine(record.projectId, record.runId);
     if (legacy) {
-      await syncDirectoryChain(this.directory);
+      await syncAttemptDirectoryChain(this.directory);
       return;
     }
     const path = await this.quarantinePath(record.projectId, record.runId);
     try {
-      await writeNewDurably(
+      await writeNewAttemptFileDurably(
         path,
         `${deterministicJson(record)}\n`,
         this.directory,
+        NO_WRITE_PROGRESS,
       );
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
       // An EEXIST sentinel is safe only after its identity and shape have been
       // read back.  A torn/corrupt sentinel is an unknown outcome, not "true".
       await this.requiredQuarantine(record.projectId, record.runId);
-      await syncDirectoryChain(this.directory);
+      await syncAttemptDirectoryChain(this.directory);
     }
   }
 
@@ -399,7 +413,12 @@ export async function writeArchitectureAttemptV2Fixture(
   const path = `${root(directory)}/run-${await sha256Hex(
     JSON.stringify([input.projectId, input.runId]),
   )}.json`;
-  await writeNewDurably(path, `${deterministicJson(normalized)}\n`, directory);
+  await writeNewAttemptFileDurably(
+    path,
+    `${deterministicJson(normalized)}\n`,
+    directory,
+    NO_WRITE_PROGRESS,
+  );
 }
 
 async function attempt(input: {
@@ -451,82 +470,6 @@ function actionFor(
     action: "completed",
     architecturePackageId: attempt.result.architecturePackageId,
   };
-}
-
-async function writeNewDurably(
-  path: string,
-  text: string,
-  directory: string,
-): Promise<void> {
-  // Write a fully synced inode under a short, private name, then publish it
-  // with link(2). Unlike createNew on the final name, readers can never see a
-  // zero-byte/partial record while the producer is still writing it.
-  const temporary = `${root(directory)}/.${crypto.randomUUID()}.tmp`;
-  try {
-    await writeTemporaryDurably(temporary, text);
-    await Deno.link(temporary, path);
-    await syncDirectoryChain(directory);
-  } finally {
-    await Deno.remove(temporary).catch((error) => {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    });
-  }
-}
-
-async function writeTemporaryDurably(path: string, text: string): Promise<void> {
-  const file = await Deno.open(path, { createNew: true, write: true });
-  try {
-    await writeAll(file, text);
-    await file.syncData();
-  } finally {
-    file.close();
-  }
-}
-
-async function replaceDurably(
-  path: string,
-  text: string,
-  directory: string,
-): Promise<void> {
-  // Keep the temporary basename short: appending to an identity-derived name
-  // can exceed NAME_MAX even though the final hash name is safe.
-  const temporary = `${root(directory)}/.${crypto.randomUUID()}.tmp`;
-  try {
-    await writeTemporaryDurably(temporary, text);
-    await Deno.rename(temporary, path);
-    await syncDirectoryChain(directory);
-  } finally {
-    await Deno.remove(temporary).catch((error) => {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    });
-  }
-}
-
-async function writeAll(file: Deno.FsFile, text: string): Promise<void> {
-  const bytes = new TextEncoder().encode(text);
-  let written = 0;
-  while (written < bytes.length) {
-    const count = await file.write(bytes.subarray(written));
-    if (count <= 0) {
-      throw new Error("Architecture write-attempt journal made no write progress.");
-    }
-    written += count;
-  }
-}
-
-async function syncDirectoryChain(path: string): Promise<void> {
-  let current = root(path) || ".";
-  while (current !== "/") {
-    const directory = await Deno.open(current, { read: true });
-    try {
-      await directory.sync();
-    } finally {
-      directory.close();
-    }
-    if (current === "state" || current.endsWith("/state") || current === ".") return;
-    const slash = current.lastIndexOf("/");
-    current = slash < 0 ? "." : slash === 0 ? "/" : current.slice(0, slash);
-  }
 }
 
 async function parseAttempt(

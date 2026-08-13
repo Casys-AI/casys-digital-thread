@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ThreadArtifact } from "../../domain/thread/thread-snapshot.ts";
 import { FileByteStore } from "./file-byte-store.ts";
 import { FileCaptureStore } from "./file-capture-store.ts";

@@ -13,7 +13,7 @@
 
 import {
   EngineeringProjectCommandError,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,

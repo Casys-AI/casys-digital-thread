@@ -3,7 +3,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "./mcp/http-mcp-tool-client.ts";
+} from "../application/ports/out/mcp-tool-client.ts";
 import { LiveThreadUpdateStore } from "./stores/live-thread-update-store.ts";
 import {
   RecordingMcpToolClient,

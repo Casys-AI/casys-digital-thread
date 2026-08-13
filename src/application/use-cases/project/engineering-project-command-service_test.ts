@@ -4,7 +4,7 @@ import {
   deriveEngineeringProjectStatus,
   type EngineeringProjectSnapshot,
   type EngineeringThreadSnapshotRef,
-} from "./engineering-project.ts";
+} from "../../../domain/project/engineering-project.ts";
 import {
   type CancelQueuedRunCommand,
   type CompleteRunCommand,
@@ -13,18 +13,20 @@ import {
   EngineeringProjectCommandService,
   type EngineeringProjectCompletionEvidenceValidator,
   type EngineeringProjectReconciliationOperationPolicy,
-  type EngineeringProjectRevisionStore,
-  EngineeringProjectStoreConflictError,
   type QueueRunCommand,
 } from "./engineering-project-command-service.ts";
 import {
+  type EngineeringProjectRevisionStore,
+  EngineeringProjectStoreConflictError,
+} from "../../ports/out/engineering-project-revision-store.ts";
+import {
   EngineeringProjectValidationError,
   validateEngineeringProjectSnapshot,
-} from "./engineering-project-validation.ts";
-import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
+} from "../../../domain/project/engineering-project-validation.ts";
+import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 
 const CONFIG = new URL(
-  "../../testing/generic-engineering-project.fixture.json",
+  "../../../testing/generic-engineering-project.fixture.json",
   import.meta.url,
 );
 const HUMAN = { kind: "human" as const, actorId: "operator-7" };

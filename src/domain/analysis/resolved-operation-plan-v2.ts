@@ -21,7 +21,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import { canonicalCalculixStepPlanCasUri } from "./calculix-step-asset-uri.ts";
 
 export const RESOLVED_OPERATION_PLAN_V2_SCHEMA = "resolved-operation-plan/2.0" as const;

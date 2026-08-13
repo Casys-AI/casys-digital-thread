@@ -5,7 +5,7 @@
  * staged STEP identity, durable recovery states and exact resource tuples.
  */
 
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { MechanicalProofCase } from "./mechanical-proof-case.ts";
 import type { ExpectedProviderResource } from "./provider-resource-reader.ts";
 

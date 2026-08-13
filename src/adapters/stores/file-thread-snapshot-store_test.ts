@@ -165,6 +165,41 @@ Deno.test("immutable snapshots are not reread while polling latest", async () =>
   assertEquals(io.readCalls, 0);
 });
 
+Deno.test("every snapshot read is deeply frozen and cached reads cannot be poisoned", async () => {
+  const io = new MemoryFileIo();
+  const store = new FileThreadSnapshotStore("snapshots", io);
+  const snapshot = validSnapshot();
+  await store.save(snapshot);
+
+  const first = await store.get(snapshot.id);
+  if (!first) throw new Error("Saved snapshot was not readable.");
+  assertSnapshotDeeplyFrozen(first);
+  assertEquals(Reflect.set(first.subject, "name", "Poisoned cache"), false);
+  assertEquals(
+    Reflect.set(first.artifacts[0].fingerprint, "digest", "0".repeat(64)),
+    false,
+  );
+  assertEquals(
+    Reflect.set(first.artifacts, 0, { ...first.artifacts[0], name: "Poisoned" }),
+    false,
+  );
+
+  const cached = await store.get(snapshot.id);
+  if (!cached) throw new Error("Cached snapshot was not readable.");
+  assertSnapshotDeeplyFrozen(cached);
+  assertEquals(cached.subject.name, snapshot.subject.name);
+  assertEquals(cached.artifacts[0].fingerprint.digest, "b".repeat(64));
+
+  const latest = await store.latest(snapshot.subject.id);
+  if (!latest) throw new Error("Latest snapshot was not readable.");
+  assertSnapshotDeeplyFrozen(latest);
+
+  const fresh = await store.getFresh(snapshot.id);
+  if (!fresh) throw new Error("Fresh snapshot was not readable.");
+  assertSnapshotDeeplyFrozen(fresh);
+  assertEquals(fresh.subject.name, snapshot.subject.name);
+});
+
 class MemoryFileIo implements ThreadSnapshotFileIo {
   readonly files = new Map<string, string>();
   readonly directories = new Set<string>();
@@ -222,6 +257,19 @@ function notFound(): Error {
   const error = new Error("Not found");
   error.name = "NotFound";
   return error;
+}
+
+function assertSnapshotDeeplyFrozen(snapshot: ThreadSnapshot): void {
+  assertEquals(Object.isFrozen(snapshot), true);
+  assertEquals(Object.isFrozen(snapshot.subject), true);
+  assertEquals(Object.isFrozen(snapshot.artifacts), true);
+  assertEquals(Object.isFrozen(snapshot.artifacts[0]), true);
+  assertEquals(Object.isFrozen(snapshot.artifacts[0].fingerprint), true);
+  assertEquals(Object.isFrozen(snapshot.artifacts[0].freshness), true);
+  assertEquals(
+    Object.isFrozen(snapshot.artifacts[0].freshness.invalidatedByChangeIds),
+    true,
+  );
 }
 
 function validSnapshot(): ThreadSnapshot {

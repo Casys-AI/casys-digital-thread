@@ -1,9 +1,13 @@
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApprovedBriefBasis,
@@ -19,7 +23,7 @@ import {
 import {
   parseSysonModelSeedCapture,
   requireExactSysonModelSeed,
-} from "../../domain/platform/syson-model-seed.ts";
+} from "../../domain/engineering/syson-model-seed.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
@@ -30,7 +34,13 @@ import { applyThreadSnapshotExtensionIfNew } from "../../domain/thread/thread-sn
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../orchestration/operations/inspection-drone-v4.ts";
 import { FileCaptureStore } from "../captures/file-capture-store.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+import {
+  INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_SCHEMA,
+  INSPECTION_DRONE_V4_ARCHITECTURE_URI_PREFIX,
+  INSPECTION_DRONE_V4_PART_USAGE_CONTRACT,
+  INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT,
+} from "../captures/inspection-drone-v4-architecture-capture.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
   FileInspectionDroneV4ArchitectureAttemptStore,
@@ -43,9 +53,6 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "./executor-run-helpers.ts";
-
-export const INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_SCHEMA =
-  "inspection-drone-v4-architecture-capture/1.0" as const;
 
 /** Fixed server-owned SysML; it intentionally has no numeric technical claim. */
 export const INSPECTION_DRONE_V4_ARCHITECTURE_SYSML = [
@@ -85,43 +92,6 @@ export const INSPECTION_DRONE_V4_PART_USAGE_FEATURE_TYPING_EXPRESSION =
   "aql:self.ownedRelationship->select(r | r.oclIsKindOf(sysml::FeatureTyping)).type" as const;
 export const INSPECTION_DRONE_V4_REQUIREMENT_DOCUMENTATION_EXPRESSION =
   "aql:self.eAllContents()->select(e | e.oclIsKindOf(sysml::Documentation))->first().body" as const;
-
-export const INSPECTION_DRONE_V4_PART_USAGE_CONTRACT = [
-  { label: "airframe", type: "Airframe" },
-  { label: "energySystem", type: "EnergySystem" },
-  { label: "propulsionSystem", type: "PropulsionSystem" },
-  {
-    label: "avionicsAndFlightControl",
-    type: "AvionicsAndFlightControl",
-  },
-  {
-    label: "inspectionCameraPayload",
-    type: "InspectionCameraPayload",
-  },
-] as const;
-
-export const INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT = [
-  {
-    label: "ControlledOutdoorInspection",
-    documentation:
-      "Qualitative scope only: a first visual inspection mission is considered on a controlled outdoor site with a lightweight camera. TBD before any test: site scenario, route, altitude, obstacles, weather limits and separation from people.",
-  },
-  {
-    label: "CameraPayloadIntegration",
-    documentation:
-      "The initial payload is a lightweight camera. TBD before any mass budget, energy sizing or structural verification: camera mass, power, dimensions, fixation and integration constraints.",
-  },
-  {
-    label: "ExplicitOperationalTbd",
-    documentation:
-      "TBD: autonomy, admissible wind and battery reserve are not fixed; derive and review them from the mission scenario, site, characterised payload and an explicit reserve policy.",
-  },
-  {
-    label: "TraceableEngineeringEvidence",
-    documentation:
-      "Maintain traceable links between the approved brief, SysML model, CAD, physical calculations, named requirements and manufacturing dossier through exact artifacts and consumptions, with visible assumptions and gaps. This is not a certification or authorization verdict.",
-  },
-] as const;
 
 const EXPECTED_PART_DEFINITIONS = [
   "InspectionDrone",
@@ -1054,7 +1024,7 @@ async function materialize(
     kind: "sysml-model",
     version: sha256.digest,
     fingerprint: sha256,
-    uri: `casys://inspection-drone-v4-architecture-capture/sha256/${sha256.digest}`,
+    uri: `${INSPECTION_DRONE_V4_ARCHITECTURE_URI_PREFIX}${sha256.digest}`,
     mediaType: "application/json",
     producer: {
       serverId: "syson",

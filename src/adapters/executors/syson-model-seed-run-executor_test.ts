@@ -2,8 +2,8 @@ import { assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   EngineeringProjectCommandService,
   type EngineeringProjectPlanOperationRegistry,
-} from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import {
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
@@ -28,8 +28,8 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../mcp/http-mcp-tool-client.ts";
-import { materializeSysonModelSeed } from "../../domain/platform/syson-model-seed.ts";
+} from "../../application/ports/out/mcp-tool-client.ts";
+import { materializeSysonModelSeed } from "../../domain/engineering/syson-model-seed.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
 
 const HUMAN = {

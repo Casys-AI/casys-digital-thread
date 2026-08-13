@@ -1,5 +1,5 @@
 import type { OracleRequirement } from "../../domain/analysis/proof-case.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 
 /**
  * Machine-readable error codes for extraction and fidelity failures (AX #4).

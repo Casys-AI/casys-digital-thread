@@ -35,8 +35,8 @@ import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/o
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
-} from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -100,7 +100,7 @@ import {
   geometryBundleManifestFromDraft,
   LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
 } from "../captures/geometry-draft-capture.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/platform/architecture-proposal.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
   ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
@@ -111,12 +111,12 @@ import {
   GEOMETRY_MANIFEST_SCHEMA,
   type GeometryDecisionParameters,
   type GeometryManifest,
-} from "../../domain/platform/geometry-proposal.ts";
+} from "../../domain/engineering/geometry-proposal.ts";
 import {
   GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
   GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
   type GeometryBundleManifest,
-} from "../../domain/platform/geometry-bundle.ts";
+} from "../../domain/engineering/geometry-bundle.ts";
 import { resolveGenericProductStructureCatalog } from "../projectors/product-structure-catalog.ts";
 import { resolveThreadComponentCatalog } from "../../domain/thread/thread-component-catalog.ts";
 
@@ -153,6 +153,17 @@ const acceptingSysmlSourceAnalysisReader: SysmlSourceAnalysisReader = {
   },
 };
 const PROJECT_ID = "project:geo-test-01";
+
+/** Tests deliberately corrupt cloned snapshots; production snapshots stay readonly. */
+type DeepMutable<T> = T extends readonly (infer Item)[] ? DeepMutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: DeepMutable<T[Key]> }
+  : T;
+
+type MutableThreadSnapshot = DeepMutable<ThreadSnapshot>;
+
+function mutableClone<T>(value: T): DeepMutable<T> {
+  return structuredClone(value) as DeepMutable<T>;
+}
 
 // ── Unit: assertGeometryArtifactNotRemoved ────────────────────────────────────
 
@@ -621,7 +632,7 @@ function withArchitectureAttestationDefect(
   snapshot: ThreadSnapshot,
   defect: ArchitectureAttestationDefect,
 ): ThreadSnapshot {
-  const mutated = structuredClone(snapshot);
+  const mutated = mutableClone(snapshot);
   const primary = mutated.artifacts.find((artifact) =>
     artifact.kind === "cad-model" &&
     artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX)
@@ -684,7 +695,7 @@ function withArchitectureAttestationDefect(
       break;
   }
   validateThreadSnapshot(mutated);
-  return mutated;
+  return mutated as MutableThreadSnapshot;
 }
 
 type PriorGeometryLineageDefect =
@@ -702,7 +713,7 @@ function withPriorGeometryLineageDefect(
   snapshot: ThreadSnapshot,
   defect: PriorGeometryLineageDefect,
 ): ThreadSnapshot {
-  const mutated = structuredClone(snapshot);
+  const mutated = mutableClone(snapshot);
   const archivedArtifactIds = new Set(
     mutated.changeSet.changes.filter((change) =>
       change.kind === "archived" && change.target.kind === "artifact"
@@ -775,7 +786,7 @@ function withPriorGeometryLineageDefect(
       break;
   }
   validateThreadSnapshot(mutated);
-  return mutated;
+  return mutated as MutableThreadSnapshot;
 }
 
 type PriorGeometryBinaryGraphDefect =
@@ -788,7 +799,7 @@ function withPriorGeometryBinaryGraphDefect(
   snapshot: ThreadSnapshot,
   defect: PriorGeometryBinaryGraphDefect,
 ): ThreadSnapshot {
-  const mutated = structuredClone(snapshot);
+  const mutated = mutableClone(snapshot);
   const archivedArtifactIds = new Set(
     mutated.changeSet.changes.filter((change) =>
       change.kind === "archived" && change.target.kind === "artifact"
@@ -828,7 +839,7 @@ function withPriorGeometryBinaryGraphDefect(
       break;
   }
   validateThreadSnapshot(mutated);
-  return mutated;
+  return mutated as MutableThreadSnapshot;
 }
 
 Deno.test("geometry bundle predecessor resolution refuses ambiguous active tips before capture read", async () => {
@@ -3054,17 +3065,17 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       assertStringIncludes(unavailable.rationale, expectedReason);
     };
 
-    const extraFamilyArtifact = structuredClone(published);
+    const extraFamilyArtifact = mutableClone(published);
     extraFamilyArtifact.artifacts.push({
-      ...definitionStep,
+      ...mutableClone(definitionStep),
       id:
         `cad-asset-${geometry.fingerprint.digest}-definition-99-0-${definitionStep.fingerprint.digest}`,
     });
     await assertNoProjectedCad(extraFamilyArtifact, "unreviewed extra artifact");
 
-    const extraLegacyMeshFamilyArtifact = structuredClone(published);
+    const extraLegacyMeshFamilyArtifact = mutableClone(published);
     extraLegacyMeshFamilyArtifact.artifacts.push({
-      ...definitionStl,
+      ...mutableClone(definitionStl),
       id: `mesh-${geometry.fingerprint.digest}-${definitionStl.fingerprint.digest}`,
     });
     await assertNoProjectedCad(
@@ -3072,7 +3083,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       "unreviewed extra artifact",
     );
 
-    const archivedDefinitionStep = structuredClone(published);
+    const archivedDefinitionStep = mutableClone(published);
     archivedDefinitionStep.changeSet.changes.push({
       id: `archive-test-${definitionStep.id}`,
       kind: "archived",
@@ -3083,7 +3094,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     await assertNoProjectedCad(archivedDefinitionStep, "incomplete");
 
     const publicationConsumptionId = `consume-${geometry.id}-by-${definitionStep.id}`;
-    const missingPublicationConsumption = structuredClone(published);
+    const missingPublicationConsumption = mutableClone(published);
     missingPublicationConsumption.consumptions = missingPublicationConsumption
       .consumptions.filter((consumption) =>
         consumption.id !== publicationConsumptionId
@@ -3093,7 +3104,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       "publication consumption is not exact",
     );
 
-    const missingPublicationUses = structuredClone(published);
+    const missingPublicationUses = mutableClone(published);
     missingPublicationUses.provenance = missingPublicationUses.provenance.filter(
       (link) =>
         !(link.relation === "uses" && link.from.kind === "consumption" &&
@@ -3109,7 +3120,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       link.from.id === publicationConsumptionId
     );
     assertExists(publicationUses);
-    const wrongPublicationUsesId = structuredClone(published);
+    const wrongPublicationUsesId = mutableClone(published);
     const wrongUsesIdLink = wrongPublicationUsesId.provenance.find((link) =>
       link.id === publicationUses.id
     );
@@ -3126,7 +3137,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       link.to.id === geometry.id
     );
     assertExists(binaryTrace);
-    const wrongBinaryTraceId = structuredClone(published);
+    const wrongBinaryTraceId = mutableClone(published);
     const wrongTraceIdLink = wrongBinaryTraceId.provenance.find((link) =>
       link.id === binaryTrace.id
     );
@@ -3143,7 +3154,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
         [published, binaryTrace.id, "no unique trace to its capture"],
       ] as const
     ) {
-      const wrongRationale = structuredClone(source);
+      const wrongRationale = mutableClone(source);
       const link = wrongRationale.provenance.find((candidate) => candidate.id === id);
       assertExists(link);
       link.rationale = "Structurally valid but unverified adversarial rationale.";
@@ -3183,9 +3194,9 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     );
     assertStringIncludes(missingCaptureCatalog.rationale, "not durably readable");
 
-    const ambiguous = structuredClone(published);
+    const ambiguous = mutableClone(published);
     ambiguous.artifacts.push({
-      ...geometry,
+      ...mutableClone(geometry),
       id: `geometry-${"f".repeat(64)}`,
       version: "f".repeat(64),
       fingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
@@ -3323,7 +3334,7 @@ Deno.test(
         async get(id) {
           const snapshot = await fixture.snapshots.get(id);
           if (!snapshot || id !== run.resultSnapshot!.snapshotId) return snapshot;
-          const mutated = structuredClone(snapshot);
+          const mutated = mutableClone(snapshot);
           const primary = mutated.artifacts.find((artifact) =>
             artifact.kind === "cad-model" &&
             artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
@@ -3380,7 +3391,7 @@ Deno.test(
         async get(id) {
           const snapshot = await fixture.snapshots.get(id);
           if (!snapshot || id !== run.resultSnapshot!.snapshotId) return snapshot;
-          const mutated = structuredClone(snapshot);
+          const mutated = mutableClone(snapshot);
           const historical = mutated.artifacts.find((artifact) =>
             artifact.kind === "sysml-model" &&
             artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
@@ -3690,7 +3701,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
       assertStringIncludes(unavailable.rationale, expectedReason);
     };
 
-    const reactivatedLegacyBinary = structuredClone(snapshot);
+    const reactivatedLegacyBinary = mutableClone(snapshot);
     const legacyBinary = legacyBinaries[0]!;
     reactivatedLegacyBinary.changeSet.changes = reactivatedLegacyBinary.changeSet
       .changes.filter((change) =>
@@ -3702,7 +3713,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
       "predecessor binary family is not fully archived",
     );
 
-    const duplicateSupersedes = structuredClone(snapshot);
+    const duplicateSupersedes = mutableClone(snapshot);
     const supersedes = duplicateSupersedes.provenance.find((link) =>
       link.relation === "supersedes" && link.from.id === newPrimary.id &&
       link.to.id === legacyPrimary.id
@@ -3714,7 +3725,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
     });
     await assertNoUpgradedCad(duplicateSupersedes, "unique supersedes");
 
-    const missingDerivedFrom = structuredClone(snapshot);
+    const missingDerivedFrom = mutableClone(snapshot);
     missingDerivedFrom.provenance = missingDerivedFrom.provenance.filter((link) =>
       !(link.relation === "derived_from" && link.from.id === newPrimary.id &&
         link.to.id === legacyPrimary.id)
@@ -3723,7 +3734,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
 
     const predecessorConsumptionId =
       `consume-geometry-${legacyPrimary.id}-by-${newPrimary.id}`;
-    const missingPredecessorUses = structuredClone(snapshot);
+    const missingPredecessorUses = mutableClone(snapshot);
     missingPredecessorUses.provenance = missingPredecessorUses.provenance.filter(
       (link) =>
         !(link.relation === "uses" && link.from.kind === "consumption" &&
@@ -3751,17 +3762,16 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
         [predecessorUses.id, "predecessor consumption is not exact"],
       ] as const
     ) {
-      const wrongId: ThreadSnapshot = structuredClone(snapshot);
-      const wrongIdLink: ThreadProvenanceLink | undefined = wrongId.provenance.find(
-        (link: ThreadProvenanceLink) => link.id === linkId,
-      );
+      const wrongId: MutableThreadSnapshot = mutableClone(snapshot);
+      const wrongIdLink = wrongId.provenance.find((link) => link.id === linkId);
       assertExists(wrongIdLink);
       wrongIdLink.id = `${wrongIdLink.id}-wrong`;
       await assertNoUpgradedCad(wrongId, reason);
 
-      const wrongRationale: ThreadSnapshot = structuredClone(snapshot);
-      const wrongRationaleLink: ThreadProvenanceLink | undefined = wrongRationale
-        .provenance.find((link: ThreadProvenanceLink) => link.id === linkId);
+      const wrongRationale: MutableThreadSnapshot = mutableClone(snapshot);
+      const wrongRationaleLink = wrongRationale.provenance.find((link) =>
+        link.id === linkId
+      );
       assertExists(wrongRationaleLink);
       wrongRationaleLink.rationale =
         "Structurally valid but unverified predecessor rationale.";
@@ -3949,7 +3959,7 @@ Deno.test("geometry bundle v2 refuses an arbitrary active artifact traced to the
       async get(id) {
         const stored = await upgradeFixture.snapshots.get(id);
         if (!stored || id !== basisId) return stored;
-        const mutated = structuredClone(stored);
+        const mutated = mutableClone(stored);
         const predecessor = mutated.artifacts.find((artifact) =>
           artifact.kind === "cad-model" &&
           artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX)
@@ -4395,7 +4405,7 @@ Deno.test(
   async () => {
     const mutations: ReadonlyArray<[
       string,
-      (snapshot: ThreadSnapshot) => void,
+      (snapshot: MutableThreadSnapshot) => void,
     ]> = [
       ["foreign subject", (snapshot) => {
         snapshot.subject.id = "subject:foreign-geometry";
@@ -4525,7 +4535,7 @@ Deno.test(
           async get(id) {
             const snapshot = await fixture.snapshots.get(id);
             if (!snapshot || id !== fixture.baselineRef.snapshotId) return snapshot;
-            const altered = structuredClone(snapshot);
+            const altered = mutableClone(snapshot);
             mutate(altered);
             return altered;
           },
@@ -4717,10 +4727,10 @@ function minimalSnapshotBase(
   id: string,
   revision: number,
   previous?: { snapshotId: string; revision: number },
-): Omit<ThreadSnapshot, "artifacts"> {
+): DeepMutable<Omit<ThreadSnapshot, "artifacts">> {
   // `previous` must be omitted (not set to undefined) — validateThreadSnapshot
   // rejects an explicit undefined in this field.
-  const base: Omit<ThreadSnapshot, "artifacts"> = {
+  const base: DeepMutable<Omit<ThreadSnapshot, "artifacts">> = {
     schemaVersion: "1.0",
     id,
     revision,
@@ -4747,7 +4757,7 @@ function minimalSnapshotWithGeometry(
   revision: number,
   fp: ContentFingerprint,
   previous?: { snapshotId: string; revision: number },
-): ThreadSnapshot {
+): MutableThreadSnapshot {
   return {
     ...minimalSnapshotBase(id, revision, previous),
     artifacts: [{
@@ -4768,7 +4778,7 @@ function minimalSnapshotWithoutGeometry(
   id: string,
   revision: number,
   previous?: { snapshotId: string; revision: number },
-): ThreadSnapshot {
+): MutableThreadSnapshot {
   return { ...minimalSnapshotBase(id, revision, previous), artifacts: [] };
 }
 
@@ -4776,7 +4786,7 @@ function minimalSnapshotWithArchitecture(
   id: string,
   revision: number,
   fp: ContentFingerprint,
-): ThreadSnapshot {
+): MutableThreadSnapshot {
   const seedFingerprint: ContentFingerprint = {
     algorithm: "sha256",
     digest: HEX64_B,

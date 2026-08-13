@@ -5,7 +5,7 @@ import type {
   ToolHandler,
   ToolHandlerContext,
 } from "@casys/mcp-server";
-import type { EngineeringProjectCommandService } from "../domain/project/engineering-project-command-service.ts";
+import type { EngineeringProjectCommandService } from "../application/use-cases/project/engineering-project-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type {
   ResolvedOperationPlanRef,
@@ -20,14 +20,14 @@ import {
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
 } from "../adapters/captures/file-capture-store.ts";
 import { PythonCadSourceAnalyzer } from "../adapters/analyzers/python-cad-source-analyzer.ts";
-import { CaptureBackedProjectGeometryPreviewUseCase } from "../adapters/project-geometry-preview-use-case.ts";
+import { CaptureBackedProjectGeometryPreviewAdapter } from "../adapters/captures/capture-backed-project-geometry-preview-adapter.ts";
 import { FileProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
 import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,
 } from "./project-control.ts";
-import { parseGeometryDecisionParameters } from "../domain/platform/geometry-proposal.ts";
+import { parseGeometryDecisionParameters } from "../domain/engineering/geometry-proposal.ts";
 import {
   UNCERTAIN_WRITER_BASIS_RELEASE_ACTION,
   UNCERTAIN_WRITER_BASIS_RELEASE_OUTCOME,
@@ -80,7 +80,7 @@ Deno.test("project_geometry_preview accepts scoped homonymous usages with distin
       app as unknown as McpApp,
       {
         ...dependencies(projectSnapshot()),
-        geometryPreview: new CaptureBackedProjectGeometryPreviewUseCase({
+        geometryPreview: new CaptureBackedProjectGeometryPreviewAdapter({
           client: {
             callTool: () => {
               providerCalls++;
@@ -150,7 +150,7 @@ Deno.test("project_geometry_preview v2 returns a reparsable exact bundle with pr
       app as unknown as McpApp,
       {
         ...dependencies(projectSnapshot()),
-        geometryPreview: new CaptureBackedProjectGeometryPreviewUseCase({
+        geometryPreview: new CaptureBackedProjectGeometryPreviewAdapter({
           client: {
             callTool: (call) => {
               const args = call.arguments as Record<string, unknown>;
@@ -271,7 +271,7 @@ Deno.test("project_geometry_preview v2 rejects incomplete and duplicate definiti
         app as unknown as McpApp,
         {
           ...dependencies(projectSnapshot()),
-          geometryPreview: new CaptureBackedProjectGeometryPreviewUseCase({
+          geometryPreview: new CaptureBackedProjectGeometryPreviewAdapter({
             client: {
               callTool: () => {
                 providerCalls++;
@@ -335,7 +335,7 @@ Deno.test("project_geometry_preview rejects a duplicate provider element before 
       app as unknown as McpApp,
       {
         ...dependencies(projectSnapshot()),
-        geometryPreview: new CaptureBackedProjectGeometryPreviewUseCase({
+        geometryPreview: new CaptureBackedProjectGeometryPreviewAdapter({
           client: {
             callTool: () => {
               providerCalls++;

@@ -2,28 +2,11 @@ import {
   StatelessMcpHttpTransport,
   StatelessMcpTransportError,
 } from "./stateless-mcp-http-transport.ts";
-
-export interface McpToolCall {
-  name: string;
-  arguments?: Readonly<Record<string, unknown>>;
-}
-
-export interface McpToolResult {
-  /** Machine-readable result used by the digital-thread orchestrator. */
-  structuredContent: Readonly<Record<string, unknown>>;
-  /** Optional human-readable summary returned by the provider tool. */
-  text: string;
-}
-
-export interface McpToolClient {
-  callTool(call: McpToolCall): Promise<McpToolResult>;
-  /**
-   * Variant for tools that serialise their result as JSON text in
-   * content[0].text rather than in structuredContent (e.g. syson_constraint_solve).
-   * Uses the same stateless-2026-07-28 transport as callTool.
-   */
-  callToolTextResult(call: McpToolCall): Promise<Record<string, unknown>>;
-}
+import type {
+  McpToolCall,
+  McpToolClient,
+  McpToolResult,
+} from "../../application/ports/out/mcp-tool-client.ts";
 
 export interface HttpMcpToolClientOptions {
   mcpUrl: string;

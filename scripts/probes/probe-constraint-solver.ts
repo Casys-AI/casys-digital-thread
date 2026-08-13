@@ -1,8 +1,6 @@
 import { parseArgs } from "../lib/cli.ts";
-import {
-  HttpMcpToolClient,
-  type McpToolClient,
-} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";
 import { parseZ3Result, type Z3Result } from "../../src/adapters/mcp/z3-result.ts";
 
 /**

@@ -57,7 +57,7 @@ import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
 } from "./src/adapters/executors/design-write-geometry-run-executor.ts";
-import { CaptureBackedProjectGeometryPreviewUseCase } from "./src/adapters/project-geometry-preview-use-case.ts";
+import { CaptureBackedProjectGeometryPreviewAdapter } from "./src/adapters/captures/capture-backed-project-geometry-preview-adapter.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
@@ -86,7 +86,7 @@ import {
 } from "./src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts";
 import { validateFeaExecutionPolicy } from "./src/domain/analysis/fea-execution-policy.ts";
 import { validateSimulationExecutionPolicy } from "./src/domain/analysis/simulation-execution-policy.ts";
-import { FileCanonicalAssetReader } from "./src/adapters/executors/canonical-asset-reader.ts";
+import { FileCanonicalAssetReader } from "./src/adapters/assets/canonical-asset-reader.ts";
 import { SimulateSealSimulationCaseV2RunExecutor } from "./src/adapters/executors/simulate-seal-simulation-case-v2-run-executor.ts";
 import { SimulateRunModelicaScenarioV2RunExecutor } from "./src/adapters/executors/simulate-run-modelica-scenario-v2-run-executor.ts";
 import { VerifyRunFeaStaticProofV2RunExecutor } from "./src/adapters/executors/verify-run-fea-static-proof-v2-run-executor.ts";
@@ -119,7 +119,7 @@ import {
 } from "./src/adapters/captures/file-capture-store.ts";
 import { FileRequirementsAttemptStore } from "./src/adapters/wal/file-requirements-attempt-store.ts";
 import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/captures/file-capture-store.ts";
-import { RegisteredProjectRunExecutor } from "./src/adapters/registered-project-run-executor.ts";
+import { RegisteredProjectRunExecutor } from "./src/application/use-cases/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/stores/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/stores/engineering-project-store.ts";
@@ -138,20 +138,17 @@ import {
 } from "./src/adapters/stores/engineering-thread-snapshot-resolver.ts";
 import { ModelicaRunObserver } from "./src/adapters/historical/modelica-run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
-import { ControlPlane } from "./src/domain/platform/control-plane.ts";
-import { EngineeringProjectCommandError } from "./src/domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "./src/domain/project/project-brief-command-service.ts";
+import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
+import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "./src/application/use-cases/project/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
 } from "./src/orchestration/operations/recorded-analysis.ts";
-import type {
-  FleetManifest,
-  ObservedRunCatalog,
-  RunDetail,
-} from "./src/domain/kernel/types.ts";
+import type { FleetManifest, RunDetail } from "./src/contracts/console.ts";
+import type { ObservedRunCatalog } from "./src/application/control-plane/ports.ts";
 import {
   CONSOLE_RESOURCE_URI,
   registerControlPlaneTools,
@@ -1013,7 +1010,7 @@ async function createProjectControl(
       // program can never touch evidence bytes. No sandbox entry in the fleet
       // manifest ⇒ no preview tool at all, never a ghost that fails when called.
       geometryPreview: build123dSandboxMcpUrl
-        ? new CaptureBackedProjectGeometryPreviewUseCase({
+        ? new CaptureBackedProjectGeometryPreviewAdapter({
           client: new HttpMcpToolClient({
             mcpUrl: build123dSandboxMcpUrl,
             timeoutMs: 120_000,

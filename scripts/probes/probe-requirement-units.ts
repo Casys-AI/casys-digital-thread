@@ -24,10 +24,8 @@
  */
 
 import { parseArgs } from "../lib/cli.ts";
-import {
-  HttpMcpToolClient,
-  type McpToolClient,
-} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";
 import type { OracleRequirement } from "../../src/domain/analysis/proof-case.ts";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:3009/mcp";

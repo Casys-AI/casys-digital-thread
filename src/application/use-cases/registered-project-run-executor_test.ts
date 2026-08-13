@@ -1,11 +1,12 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { APPROVED_BRIEF_BASELINE_OPERATION } from "../orchestration/operations/approved-brief-baseline.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../domain/platform/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../orchestration/operations/approved-brief-baseline.ts";
+import type { RegisteredProjectRunExecutorCommand } from "../ports/in/project-run-executor.ts";
 import { RegisteredProjectRunExecutor } from "./registered-project-run-executor.ts";
-import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 
 const AGENT = { kind: "agent" as const, actorId: "agent:engineering" };
-const COMMAND = {
+const COMMAND: RegisteredProjectRunExecutorCommand = {
   commandId: "execute",
   projectId: "project",
   expectedRevision: 2,
@@ -94,7 +95,7 @@ Deno.test("registered run executor preserves a missing current executor error", 
 
 Deno.test("registered run executor dispatches a code-owned additional exact operation", async () => {
   const calls: string[] = [];
-  const operation = { id: "simulate.cm01-nominal", version: "1" };
+  const operation = { id: "simulate.reviewed-kit", version: "1" };
   const project = projectFixture(operation.id, operation.version);
   const executor = new RegisteredProjectRunExecutor({
     projects: { get: () => Promise.resolve(project) },
@@ -103,7 +104,7 @@ Deno.test("registered run executor dispatches a code-owned additional exact oper
       operation,
       executor: {
         execute: () => {
-          calls.push("cm01-thermal");
+          calls.push("reviewed-kit");
           return Promise.resolve(project);
         },
       },
@@ -111,11 +112,11 @@ Deno.test("registered run executor dispatches a code-owned additional exact oper
   });
 
   assertEquals(await executor.execute(AGENT, COMMAND), project);
-  assertEquals(calls, ["cm01-thermal"]);
+  assertEquals(calls, ["reviewed-kit"]);
 });
 
 Deno.test("registered run executor refuses ambiguous additional registrations", () => {
-  const operation = { id: "simulate.cm01-nominal", version: "1" };
+  const operation = { id: "simulate.reviewed-kit", version: "1" };
   const project = projectFixture(operation.id, operation.version);
 
   assertThrows(
@@ -130,7 +131,7 @@ Deno.test("registered run executor refuses ambiguous additional registrations", 
       });
     },
     Error,
-    "Duplicate trusted executor registration for simulate.cm01-nominal@1",
+    "Duplicate trusted executor registration for simulate.reviewed-kit@1",
   );
 });
 

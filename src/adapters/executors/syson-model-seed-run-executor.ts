@@ -1,9 +1,13 @@
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
@@ -21,8 +25,11 @@ import {
   SYSON_MODEL_SEED_OPERATION,
   type SysonModelSeedLineage,
   type SysonModelSeedMaterialization,
-} from "../../domain/platform/syson-model-seed.ts";
-import type { McpToolClient, McpToolResult } from "../mcp/http-mcp-tool-client.ts";
+} from "../../domain/engineering/syson-model-seed.ts";
+import type {
+  McpToolClient,
+  McpToolResult,
+} from "../../application/ports/out/mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import {
   FileSysonModelSeedAttemptStore,

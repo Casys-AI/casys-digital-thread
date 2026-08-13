@@ -45,17 +45,17 @@ import type {
   GeometryComponentBinding,
   GeometryExportFormat,
   GeometryManifest,
-} from "../../domain/platform/geometry-proposal.ts";
-import { assertGeometryManifestArtifactIdentities } from "../../domain/platform/geometry-proposal.ts";
-import { validateGeometryScript } from "../../domain/platform/geometry-script-validation.ts";
+} from "../../domain/engineering/geometry-proposal.ts";
+import { assertGeometryManifestArtifactIdentities } from "../../domain/engineering/geometry-proposal.ts";
+import { validateGeometryScript } from "../../domain/engineering/geometry-script-validation.ts";
 import {
   assertGeometryBundleManifest,
   type GeometryBundleComponentBinding,
   type GeometryBundleExportFormat,
   type GeometryBundleManifest,
   type GeometryBundleOccurrence,
-} from "../../domain/platform/geometry-bundle.ts";
-import type { McpToolClient } from "../mcp/http-mcp-tool-client.ts";
+} from "../../domain/engineering/geometry-bundle.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import type { FileCaptureStore } from "./file-capture-store.ts";
 import {
   type GeometrySourceAnalysisCaptureDependencies,

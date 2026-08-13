@@ -51,14 +51,14 @@ import {
 } from "../../domain/thread/thread-snapshot-extension.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import type {
-  EngineeringProjectCommandOrigin,
   EngineeringProjectPlanOperationRegistry,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import type { EngineeringProjectCommandOrigin } from "../../application/ports/in/engineering-project-command-origin.ts";
 import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
-} from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,

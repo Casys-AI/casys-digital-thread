@@ -8,7 +8,7 @@ import {
   LIVE_THREAD_OVERLAY_SCHEMA,
   type LiveThreadWorkbenchSnapshot,
 } from "../stores/live-thread-update-store.ts";
-import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "../../ui/src/project/fixture.ts";
+import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "../../testing/workbench/generic-engineering-workbench-fixture.ts";
 
 Deno.test("engineering Workbench composes project intent and observed proof without mutation", () => {
   const thread = threadFixture();

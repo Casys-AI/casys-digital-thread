@@ -11,7 +11,7 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import { exactRecord } from "../../domain/kernel/case-validation.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
   fingerprintSourceAnalysisBundle,
   type SourceAnalysisBundle,

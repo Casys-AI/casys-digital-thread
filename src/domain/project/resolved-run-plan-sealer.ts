@@ -4,7 +4,7 @@
  * persistence and resolution of qualified, code-owned operation details.
  */
 
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type {
   ResolvedOperationPlanRef,
   ResolvedOperationPlanV2,

@@ -5,7 +5,7 @@ import {
 import {
   parseArchitectureProposalParameters,
   renderArchitectureSysmlWithManifest,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 import { FileCaptureStore } from "./file-capture-store.ts";
 import {
   SysmlSourceAnalysisCaptureService,

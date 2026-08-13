@@ -1,22 +1,16 @@
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import type { CockpitFocusStore } from "../../application/ports/out/cockpit-focus-store.ts";
+
 import {
   type CockpitFocusSnapshot,
   validateCockpitFocusSnapshot,
-} from "../../domain/platform/cockpit-focus.ts";
+} from "../../domain/project/cockpit-focus.ts";
 
 export class CockpitFocusConflictError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CockpitFocusConflictError";
   }
-}
-
-export interface CockpitFocusStore {
-  get(workspaceId: string): Promise<CockpitFocusSnapshot | undefined>;
-  select(
-    snapshot: CockpitFocusSnapshot,
-    expectedRevision: number,
-  ): Promise<CockpitFocusSnapshot>;
 }
 
 /**

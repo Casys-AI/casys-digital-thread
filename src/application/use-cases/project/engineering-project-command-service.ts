@@ -25,55 +25,38 @@ import {
   type EngineeringWorkItem,
   type EngineeringWorkOwner,
   queuedRunCancellationSummary,
-} from "./engineering-project.ts";
-import { validateEngineeringProjectSnapshot } from "./engineering-project-validation.ts";
-import type { RegisteredRunPlanSealer } from "./resolved-run-plan-sealer.ts";
-import { validateResolvedOperationPlanRef } from "../analysis/resolved-operation-plan-v2.ts";
-import { deepFreeze } from "../kernel/case-validation.ts";
+} from "../../../domain/project/engineering-project.ts";
+import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
+import type { RegisteredRunPlanSealer } from "../../../domain/project/resolved-run-plan-sealer.ts";
+import { validateResolvedOperationPlanRef } from "../../../domain/analysis/resolved-operation-plan-v2.ts";
+import { deepFreeze } from "../../../domain/kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
-} from "../kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
+} from "../../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
 import {
   currentProjectAnswer,
   isProjectBriefGateKind,
   projectBriefContractVersion,
-} from "./project-brief.ts";
-import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../platform/geometry-proposal.ts";
+} from "../../../domain/project/project-brief.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/engineering/geometry-proposal.ts";
 import {
   type ReconcileUncertainWriterOutcome,
   requireApprovedUncertainWriterReconciliationDecision,
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
-} from "./reconcile-uncertain-writer-proposal.ts";
+} from "../../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import {
   isReservedUncertainWriterBasisReleaseDecisionId,
   uncertainWriterBasisReleaseIds,
   uncertainWriterBasisReleaseText,
-} from "./uncertain-writer-basis-release.ts";
-
-export interface EngineeringProjectRevisionStore {
-  get(projectId: string): Promise<EngineeringProjectSnapshot | undefined>;
-  getRevision(
-    projectId: string,
-    revision: number,
-  ): Promise<EngineeringProjectSnapshot | undefined>;
-  createInitial(
-    snapshot: EngineeringProjectSnapshot,
-  ): Promise<EngineeringProjectSnapshot>;
-  commit(
-    snapshot: EngineeringProjectSnapshot,
-    expectedRevision: number,
-  ): Promise<EngineeringProjectSnapshot>;
-}
-
-export class EngineeringProjectStoreConflictError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "EngineeringProjectStoreConflictError";
-  }
-}
+} from "../../../domain/project/uncertain-writer-basis-release.ts";
+import {
+  type EngineeringProjectRevisionStore,
+  EngineeringProjectStoreConflictError,
+} from "../../ports/out/engineering-project-revision-store.ts";
+import type { EngineeringProjectCommandOrigin } from "../../ports/in/engineering-project-command-origin.ts";
 
 export type EngineeringProjectCommandErrorCode =
   | "project_not_found"
@@ -102,11 +85,6 @@ export class EngineeringProjectCommandError extends Error {
       ? 409
       : 422;
   }
-}
-
-export interface EngineeringProjectCommandOrigin {
-  readonly kind: EngineeringCommandOriginKind;
-  readonly actorId: string;
 }
 
 export interface EngineeringDecisionProposalInput {

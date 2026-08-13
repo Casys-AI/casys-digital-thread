@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import type { RunDetail } from "../domain/kernel/types.ts";
+import type { RunDetail } from "../contracts/console.ts";
 import type { ThreadSnapshot } from "../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtension } from "../domain/thread/thread-snapshot-extension.ts";
 import {
@@ -33,8 +33,11 @@ Deno.test("Modelica extension attaches persisted thermal evidence without a verd
   const result = snapshot.artifacts.find((item) => item.kind === "solver-result");
   const scenario = snapshot.artifacts.find((item) => item.id.includes("-scenario-"));
   const evidence = snapshot.artifacts.find((item) => item.id.includes("-evidence-"));
-  assertEquals(result?.inputArtifactIds, [model?.id, scenario?.id]);
-  assertEquals(result?.inputArtifactIds.includes("support-step"), false);
+  if (!model || !result || !scenario || !evidence) {
+    throw new Error("Expected the complete Modelica artifact fixture.");
+  }
+  assertEquals(result.inputArtifactIds, [model.id, scenario.id]);
+  assertEquals(result.inputArtifactIds.includes("support-step"), false);
   assertEquals(extension.name, "Attach persisted mcp-modelica run thermal evidence");
   assertEquals(extension.modelica, {
     runId: "run_thermal_1",
@@ -58,9 +61,9 @@ Deno.test("Modelica extension attaches persisted thermal evidence without a verd
       },
     },
   });
-  assertEquals(snapshot.consumptions.find((item) => item.artifactId === model?.id), {
+  assertEquals(snapshot.consumptions.find((item) => item.artifactId === model.id), {
     id: "consume-modelica-run-thermal-1-model-a641b63a4934-by-run-thermal-1",
-    artifactId: model?.id,
+    artifactId: model.id,
     consumer: {
       serverId: "modelica",
       tool: "modelica_simulate",
@@ -73,9 +76,9 @@ Deno.test("Modelica extension attaches persisted thermal evidence without a verd
     verifiedAt: "2026-08-01T02:35:57.597Z",
     status: "verified",
   });
-  assertEquals(snapshot.consumptions.find((item) => item.artifactId === scenario?.id), {
+  assertEquals(snapshot.consumptions.find((item) => item.artifactId === scenario.id), {
     id: "consume-modelica-run-thermal-1-scenario-5db8a0659205-by-run-thermal-1",
-    artifactId: scenario?.id,
+    artifactId: scenario.id,
     consumer: {
       serverId: "modelica",
       tool: "modelica_simulate",
@@ -91,20 +94,20 @@ Deno.test("Modelica extension attaches persisted thermal evidence without a verd
   assertEquals(
     snapshot.provenance.some((link) =>
       link.relation === "derived_from" && link.from.kind === "observation" &&
-      link.to.id === evidence?.id
+      link.to.id === evidence.id
     ),
     true,
   );
   assertEquals(
     snapshot.provenance.some((link) =>
       link.relation === "derived_from" && link.from.kind === "artifact" &&
-      link.from.id === result?.id && link.to.id === model?.id
+      link.from.id === result.id && link.to.id === model.id
     ),
     true,
   );
   assertEquals(
     snapshot.provenance.some((link) =>
-      link.relation === "derived_from" && link.from.id === result?.id &&
+      link.relation === "derived_from" && link.from.id === result.id &&
       link.to.id === "support-step"
     ),
     false,

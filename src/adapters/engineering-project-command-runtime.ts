@@ -2,8 +2,10 @@ import {
   EngineeringProjectCommandService,
   type EngineeringProjectInitialCompletionEvidenceValidator,
   type EngineeringProjectPlanningDependencies,
+} from "../application/use-cases/project/engineering-project-command-service.ts";
+import {
   EngineeringProjectStoreConflictError,
-} from "../domain/project/engineering-project-command-service.ts";
+} from "../application/ports/out/engineering-project-revision-store.ts";
 import {
   FileEngineeringProjectRevisionStore,
   FileEngineeringProjectStore,

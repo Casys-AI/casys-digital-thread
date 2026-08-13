@@ -6,7 +6,7 @@ import type {
   ThreadGraphRef,
   ThreadRef,
   ThreadWorkbenchSnapshot,
-} from "./types.ts";
+} from "../../contracts/thread-workbench.ts";
 
 /** Explicit product-design fixture; never presented as live engineering proof. */
 export const GENERIC_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
@@ -77,8 +77,7 @@ export const GENERIC_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
           label: "GEN-01 support bracket",
           evidenceArtifactId: "missing-erp-evidence",
           status: "unverified",
-          reason:
-            "No ERP evidence artifact is present in this fixture revision.",
+          reason: "No ERP evidence artifact is present in this fixture revision.",
         },
       ],
     }],
@@ -714,8 +713,7 @@ export const GENERIC_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
     {
       id: "ACT-THICKNESS",
       label: "Restore wall thickness to 2.0 mm",
-      description:
-        "Prepare the smallest thickness correction suggested by the agent.",
+      description: "Prepare the smallest thickness correction suggested by the agent.",
       kind: "change",
       targetId: "ART-CAD-018",
       system: "build123d",

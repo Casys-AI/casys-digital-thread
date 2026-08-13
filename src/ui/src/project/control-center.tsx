@@ -3,7 +3,6 @@
 import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import type {
   EngineeringProjectSnapshot,
@@ -15,6 +14,7 @@ import {
   type GeometryDecisionValid,
 } from "../thread/geometry-decision-model.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
+import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
 import {
   activityReviewStatus,
   buildProjectReviewRecords,
@@ -1265,44 +1265,23 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
   useEffect(() => {
     const container = host.current;
     if (!container) return;
-    let disposed = false;
-    let frame = 0;
     let geometry: THREE.BufferGeometry | undefined;
     let material: THREE.MeshStandardMaterial | undefined;
     setState("loading");
 
-    const scene = new THREE.Scene();
+    const viewport = createThreeOrbitViewport(container);
+    const { scene } = viewport;
     scene.background = new THREE.Color(0xf4efe5);
-    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 2000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.replaceChildren(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.07;
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0xb9aa98, 2.4));
     const key = new THREE.DirectionalLight(0xfff8ed, 3.4);
     key.position.set(180, 220, 260);
     scene.add(key);
 
-    const resize = () => {
-      const w = Math.max(container.clientWidth, 1);
-      const h = Math.max(container.clientHeight, 1);
-      renderer.setSize(w, h, false);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-    resize();
-
     new STLLoader().load(
       url,
       (loaded) => {
-        if (disposed) {
+        if (viewport.isDisposed()) {
           loaded.dispose();
           return;
         }
@@ -1319,38 +1298,22 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
         mesh.rotation.x = -Math.PI / 2;
         scene.add(mesh);
         const radius = Math.max(geometry.boundingSphere?.radius ?? 50, 1);
-        resetView.current = () => {
-          camera.near = Math.max(radius / 100, 0.1);
-          camera.far = radius * 30;
-          camera.position.set(radius * 1.6, radius * 1.15, radius * 1.9);
-          camera.updateProjectionMatrix();
-          controls.target.set(0, 0, 0);
-          controls.update();
-        };
+        resetView.current = () => viewport.fitRadius(radius);
         resetView.current();
         setState("ready");
       },
       undefined,
-      () => !disposed && setState("error"),
+      () => !viewport.isDisposed() && setState("error"),
     );
 
-    const render = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(render);
-    };
-    render();
+    viewport.start();
 
     return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      controls.dispose();
-      geometry?.dispose();
-      material?.dispose();
-      resetView.current = undefined;
-      renderer.dispose();
-      renderer.domElement.remove();
+      viewport.dispose(() => {
+        geometry?.dispose();
+        material?.dispose();
+        resetView.current = undefined;
+      });
     };
   }, [url]);
 

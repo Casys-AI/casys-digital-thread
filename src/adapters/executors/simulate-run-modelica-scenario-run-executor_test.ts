@@ -29,7 +29,7 @@ import {
 } from "@std/assert";
 import {
   EngineeringProjectCommandError,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   assertSimulateMatchesRunGet,
   buildExecutionReceiptEnvelope,

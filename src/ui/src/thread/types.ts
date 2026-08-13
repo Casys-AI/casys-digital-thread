@@ -5,13 +5,35 @@
  * tool calls and projects their persisted, linked evidence into this snapshot.
  */
 
-import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
+import {
+  ENGINEERING_WORKBENCH_SCHEMA,
+  type EngineeringDocumentaryTechnicalStart,
+  type EngineeringDocumentaryTechnicalStartState,
+  type EngineeringDocumentaryTechnicalStartStep,
+  type EngineeringDocumentaryWorkbenchSnapshot,
+  type EngineeringEvidenceWorkbenchSnapshot,
+  type EngineeringPlanningActivity,
+  type EngineeringPlanningActivityMilestone,
+  type EngineeringPlanningAgentRunStatus,
+  type EngineeringPlanningBaselineRun,
+  type EngineeringPlanningBaselineRunMilestone,
+  type EngineeringPlanningWorkbenchSnapshot,
+  type EngineeringTechnicalBaselineStatus,
+  type EngineeringWorkbenchSnapshot,
+  LIVE_THREAD_OVERLAY_SCHEMA,
+  type LiveThreadOverlay,
+  type LiveThreadOverlayActivity,
+  type LiveThreadWorkbenchSnapshot,
+} from "../../../contracts/engineering-workbench.ts";
 import type {
+  ThreadAction,
   ThreadAnalysisEdgeDetail,
   ThreadAnalysisNodeDetail,
   ThreadAnalysisQuantity,
   ThreadAnalysisScope,
   ThreadAnalysisSemanticRef,
+  ThreadArtifact,
+  ThreadChange,
   ThreadComponent,
   ThreadComponentBinding,
   ThreadComponentCatalog,
@@ -30,8 +52,10 @@ import type {
   ThreadGraphNode,
   ThreadGraphRef,
   ThreadGraphRelation,
+  ThreadObservation,
   ThreadRef,
   ThreadRequirement,
+  ThreadViolation,
   ThreadWorkbenchPreviousSnapshot,
   ThreadWorkbenchSnapshot,
 } from "../../../contracts/thread-workbench.ts";
@@ -73,168 +97,50 @@ export type {
   ThreadWorkbenchSnapshot,
 } from "../../../contracts/thread-workbench.ts";
 
-/** Common BFF fields for a native project surface. */
-export interface EngineeringWorkbenchBaseSnapshot {
-  readonly schemaVersion: "engineering-workbench/0.2";
-  readonly project: EngineeringProjectSnapshot;
-}
-
-/** Project intent and linked technical proof delivered as one atomic BFF read. */
-export interface EngineeringEvidenceWorkbenchSnapshot
-  extends EngineeringWorkbenchBaseSnapshot {
-  readonly surface: "evidence";
-  readonly thread: ThreadWorkbenchSnapshot;
-  readonly alignment: {
-    readonly status: "aligned" | "thread-ahead";
-    readonly projectThreadRevision: number;
-    readonly currentThreadRevision: number;
-  };
-}
-
-/**
- * A durable capture of the approved project brief and reviewed path.
- *
- * This deliberately has no `thread` field: the first record is documentary
- * provenance, not an empty evidence graph. CAD, SysML, simulation,
- * measurement, requirement and compliance claims must arrive through a later
- * linked technical snapshot.
- */
-export interface EngineeringDocumentaryWorkbenchSnapshot
-  extends EngineeringWorkbenchBaseSnapshot {
-  readonly surface: "documentary";
-  readonly documentary: {
-    readonly status: "recorded";
-    readonly message: string;
-    readonly record: {
-      readonly origin: "approved-brief";
-      readonly snapshotId: string;
-      readonly snapshotRevision: number;
-      readonly artifactId: string;
-      readonly label: string;
-      readonly fingerprint: string;
-      readonly uri?: string;
-      readonly recordedAt: string;
-    };
-    readonly technicalEvidence: {
-      readonly status: "not-recorded";
-      readonly message: string;
-    };
-    /**
-     * Browser-safe live context for the one bounded SysON container seed. It
-     * deliberately contains no generic thread graph, provider identities,
-     * tool arguments, or raw structured results.
-     */
-    readonly technicalStart?: EngineeringDocumentaryTechnicalStart;
-  };
-}
-
-export type EngineeringDocumentaryTechnicalStartState =
-  | "queued"
-  | "running"
-  | "publishing"
-  | "failed";
-
-export interface EngineeringDocumentaryTechnicalStart {
-  readonly kind: "sysml-container-seed";
-  readonly state: EngineeringDocumentaryTechnicalStartState;
-  readonly message: string;
-  readonly activity: {
-    readonly version: number;
-    readonly steps: readonly EngineeringDocumentaryTechnicalStartStep[];
-  };
-}
-
-export interface EngineeringDocumentaryTechnicalStartStep {
-  readonly id: "project-container" | "sysml-document" | "root-package";
-  readonly state: "running" | "fresh" | "failed";
-  readonly label: string;
-  readonly summary: string;
-  readonly recordedAt: string;
-  readonly predecessor?: "project-container" | "sysml-document";
-}
-
-/**
- * Discovery-derived project intent before any documentary pre-technical baseline exists.
- * This is deliberately not an empty technical thread.
- */
-export interface EngineeringPlanningWorkbenchSnapshot
-  extends EngineeringWorkbenchBaseSnapshot {
-  readonly surface: "planning";
-  readonly planning: {
-    readonly technicalBaseline: {
-      readonly status: EngineeringTechnicalBaselineStatus;
-      readonly message: string;
-    };
-    /** Public-safe status history for the first documentary baseline attempt. */
-    readonly baselineRun?: EngineeringPlanningBaselineRun;
-    /** Filtered milestones from the append-only live activity journal. */
-    readonly activity: EngineeringPlanningActivity;
-  };
-}
-
-export type EngineeringTechnicalBaselineStatus =
-  | "not-created"
-  | "queued"
-  | "running"
-  | "publishing"
-  | "failed";
-
-export type EngineeringPlanningAgentRunStatus =
-  | "queued"
-  | "running"
-  | "waiting-for-decision"
-  | "publishing"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export interface EngineeringPlanningBaselineRun {
-  readonly id: string;
-  readonly status: EngineeringPlanningAgentRunStatus;
-  readonly workItem: {
-    readonly id: string;
-    readonly title: string;
-    readonly kind: string;
-  };
-  readonly queuedAt: string;
-  readonly startedAt?: string;
-  readonly completedAt?: string;
-  /** Intentionally excludes command id, actor id and agent/provider prose. */
-  readonly statusHistory: readonly EngineeringPlanningBaselineRunMilestone[];
-}
-
-export interface EngineeringPlanningBaselineRunMilestone {
-  readonly status: EngineeringPlanningAgentRunStatus;
-  readonly at: string;
-}
-
-export interface EngineeringPlanningActivity {
-  readonly version: number;
-  /** No run id, operation id, graph patch, tool arguments or tool result. */
-  readonly milestones: readonly EngineeringPlanningActivityMilestone[];
-}
-
-export interface EngineeringPlanningActivityMilestone {
-  readonly sequence: number;
-  readonly state: "running" | "fresh" | "failed" | "reconciled";
-  readonly recordedAt: string;
-}
-
-export type EngineeringWorkbenchSnapshot =
-  | EngineeringEvidenceWorkbenchSnapshot
-  | EngineeringDocumentaryWorkbenchSnapshot
-  | EngineeringPlanningWorkbenchSnapshot;
+export {
+  ENGINEERING_WORKBENCH_SCHEMA,
+  LIVE_THREAD_OVERLAY_SCHEMA,
+} from "../../../contracts/engineering-workbench.ts";
+export type {
+  EngineeringDocumentaryTechnicalStart,
+  EngineeringDocumentaryTechnicalStartState,
+  EngineeringDocumentaryTechnicalStartStep,
+  EngineeringDocumentaryWorkbenchSnapshot,
+  EngineeringEvidenceWorkbenchSnapshot,
+  EngineeringPlanningActivity,
+  EngineeringPlanningActivityMilestone,
+  EngineeringPlanningAgentRunStatus,
+  EngineeringPlanningBaselineRun,
+  EngineeringPlanningBaselineRunMilestone,
+  EngineeringPlanningWorkbenchSnapshot,
+  EngineeringTechnicalBaselineStatus,
+  EngineeringWorkbenchAlignment,
+  EngineeringWorkbenchBaseSnapshot,
+  EngineeringWorkbenchSnapshot,
+  LiveThreadGraphState,
+  LiveThreadOverlay,
+  LiveThreadOverlayActivity,
+  LiveThreadUpdateState,
+  LiveThreadWorkbenchSnapshot,
+} from "../../../contracts/engineering-workbench.ts";
 
 export function isEngineeringWorkbenchSnapshot(
   value: unknown,
 ): value is EngineeringWorkbenchSnapshot {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<EngineeringWorkbenchSnapshot>;
-  if (!(candidate.schemaVersion === "engineering-workbench/0.2")) {
+  if (!isRecord(value)) return false;
+  const candidate = value as
+    & Record<string, unknown>
+    & Partial<EngineeringWorkbenchSnapshot>;
+  if (candidate.schemaVersion !== ENGINEERING_WORKBENCH_SCHEMA) {
     return false;
   }
   if (candidate.surface === "planning") {
-    return isEngineeringPublicPretechnicalProjectSnapshot(candidate.project) &&
+    return hasExactKeys(candidate, [
+      "schemaVersion",
+      "surface",
+      "project",
+      "planning",
+    ]) && isEngineeringPublicPretechnicalProjectSnapshot(candidate.project) &&
       candidate.project.threadSnapshots.length === 0 &&
       isPlanningWorkbenchProjection(candidate.planning);
   }
@@ -243,7 +149,7 @@ export function isEngineeringWorkbenchSnapshot(
       return false;
     }
     const reference = candidate.project.threadSnapshots[0];
-    return hasAllowedKeys(candidate, [
+    return hasExactKeys(candidate, [
       "schemaVersion",
       "surface",
       "project",
@@ -255,13 +161,69 @@ export function isEngineeringWorkbenchSnapshot(
       candidate.documentary.record.snapshotRevision === reference.revision;
   }
   return candidate.surface === "evidence" &&
-    isEngineeringProjectSnapshot(candidate.project) &&
-    isThreadWorkbenchSnapshot(candidate.thread) &&
-    !!candidate.alignment &&
-    (candidate.alignment.status === "aligned" ||
-      candidate.alignment.status === "thread-ahead") &&
-    typeof candidate.alignment.projectThreadRevision === "number" &&
-    typeof candidate.alignment.currentThreadRevision === "number";
+    isEvidenceWorkbenchSnapshot(candidate);
+}
+
+function isEvidenceWorkbenchSnapshot(
+  value: unknown,
+): value is EngineeringEvidenceWorkbenchSnapshot {
+  if (!isRecord(value)) return false;
+  const candidate = value as
+    & Record<string, unknown>
+    & Partial<EngineeringEvidenceWorkbenchSnapshot>;
+  if (
+    !hasExactKeys(candidate, [
+      "schemaVersion",
+      "surface",
+      "project",
+      "thread",
+      "alignment",
+    ]) ||
+    !isEngineeringProjectSnapshot(candidate.project) ||
+    !isLiveThreadWorkbenchSnapshot(candidate.thread) ||
+    !isWorkbenchAlignment(candidate.alignment)
+  ) {
+    return false;
+  }
+  const { project, thread, alignment } = candidate;
+  const projectThreadRevision = Math.max(
+    ...project.threadSnapshots.map((reference) => reference.revision),
+  );
+  const linkedReference = project.threadSnapshots.some((reference) =>
+    reference.snapshotId === thread.id &&
+    reference.subjectId === thread.subject.id &&
+    reference.revision === projectThreadRevision
+  );
+  return project.threadSnapshots.length > 0 &&
+    project.project.subjectId === thread.subject.id &&
+    thread.components.subjectId === thread.subject.id &&
+    linkedReference &&
+    alignment.projectThreadRevision === projectThreadRevision &&
+    alignment.currentThreadRevision >= projectThreadRevision &&
+    thread.evidenceFamilyGraph.asOf.snapshotId === thread.id &&
+    thread.evidenceFamilyGraph.asOf.revision ===
+      alignment.currentThreadRevision &&
+    thread.live.active.every((activity) =>
+      activity.baseRevision <= alignment.currentThreadRevision
+    ) &&
+    alignment.status ===
+      (alignment.currentThreadRevision === projectThreadRevision
+        ? "aligned"
+        : "thread-ahead");
+}
+
+function isWorkbenchAlignment(
+  value: unknown,
+): value is EngineeringEvidenceWorkbenchSnapshot["alignment"] {
+  if (!isRecord(value)) return false;
+  return hasExactKeys(value, [
+    "status",
+    "projectThreadRevision",
+    "currentThreadRevision",
+  ]) &&
+    (value.status === "aligned" || value.status === "thread-ahead") &&
+    isPositiveSafeInteger(value.projectThreadRevision) &&
+    isPositiveSafeInteger(value.currentThreadRevision);
 }
 
 function isDocumentaryWorkbenchProjection(
@@ -473,12 +435,18 @@ function isPlanningBaselineRun(
     !!run.workItem && hasExactKeys(run.workItem, ["id", "title", "kind"]) &&
     typeof run.workItem.id === "string" &&
     typeof run.workItem.title === "string" &&
-    typeof run.workItem.kind === "string" &&
+    isEngineeringWorkItemKind(run.workItem.kind) &&
     typeof run.queuedAt === "string" &&
     (run.startedAt === undefined || typeof run.startedAt === "string") &&
     (run.completedAt === undefined || typeof run.completedAt === "string") &&
     Array.isArray(run.statusHistory) &&
     run.statusHistory.every(isPlanningBaselineRunMilestone);
+}
+
+function isEngineeringWorkItemKind(value: unknown): boolean {
+  return value === "define" || value === "architect" || value === "design" ||
+    value === "simulate" || value === "verify" || value === "industrialize" ||
+    value === "review";
 }
 
 function isPlanningBaselineRunMilestone(
@@ -563,35 +531,275 @@ function hasAllowedKeys(
   return Object.keys(value).every((key) => allowed.includes(key));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function isLiveThreadWorkbenchSnapshot(
+  value: unknown,
+): value is LiveThreadWorkbenchSnapshot {
+  return isThreadWorkbenchSnapshot(value) && isRecord(value) &&
+    isLiveThreadOverlay(value.live);
+}
+
+function isLiveThreadOverlay(value: unknown): value is LiveThreadOverlay {
+  if (!isRecord(value)) return false;
+  const version = value.version;
+  if (
+    !hasExactKeys(value, ["schemaVersion", "version", "active"]) ||
+    value.schemaVersion !== LIVE_THREAD_OVERLAY_SCHEMA ||
+    !isNonNegativeSafeInteger(version) ||
+    !Array.isArray(value.active) ||
+    !value.active.every(isLiveThreadOverlayActivity)
+  ) {
+    return false;
+  }
+  const activities = value.active as LiveThreadOverlayActivity[];
+  return activities.every((activity) => activity.sequence <= version) &&
+    activities.every((activity, index) =>
+      index === 0 || activity.sequence > activities[index - 1]!.sequence
+    );
+}
+
+function isLiveThreadOverlayActivity(
+  value: unknown,
+): value is LiveThreadOverlayActivity {
+  if (!isRecord(value)) return false;
+  return hasExactKeys(value, [
+    "runId",
+    "operationId",
+    "state",
+    "recordedAt",
+    "baseRevision",
+    "sequence",
+  ]) && typeof value.runId === "string" && value.runId.length > 0 &&
+    typeof value.operationId === "string" && value.operationId.length > 0 &&
+    (value.state === "running" || value.state === "fresh" ||
+      value.state === "failed") &&
+    typeof value.recordedAt === "string" &&
+    isNonNegativeSafeInteger(value.baseRevision) &&
+    isPositiveSafeInteger(value.sequence);
+}
+
 export function isThreadWorkbenchSnapshot(
   value: unknown,
 ): value is ThreadWorkbenchSnapshot {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<ThreadWorkbenchSnapshot>;
-  return candidate.schemaVersion === "thread-workbench/0.1" &&
-    typeof candidate.id === "string" &&
+  if (!isRecord(value)) return false;
+  const candidate = value as
+    & Record<string, unknown>
+    & Partial<ThreadWorkbenchSnapshot>;
+  return hasAllowedKeys(candidate, [
+    "schemaVersion",
+    "id",
+    "subject",
+    "generatedAt",
+    "previous",
+    "source",
+    "sourceLabel",
+    "change",
+    "components",
+    "graph",
+    "evidenceFamilyGraph",
+    "flow",
+    "artifacts",
+    "observations",
+    "requirements",
+    "violations",
+    "actions",
+    "live",
+  ]) && candidate.schemaVersion === "thread-workbench/0.1" &&
+    typeof candidate.id === "string" && candidate.id.length > 0 &&
     typeof candidate.generatedAt === "string" &&
     (candidate.previous === undefined ||
       isThreadWorkbenchPreviousSnapshot(candidate.previous)) &&
-    !!candidate.subject &&
-    !!candidate.change &&
+    isThreadSubject(candidate.subject) &&
+    (candidate.source === "observed" || candidate.source === "fixture") &&
+    typeof candidate.sourceLabel === "string" &&
+    isThreadChange(candidate.change) &&
     isThreadComponentCatalog(candidate.components) &&
+    candidate.components.subjectId === candidate.subject.id &&
     isThreadGraph(candidate.graph) &&
-    isThreadEvidenceFamilyGraph(candidate.evidenceFamilyGraph) &&
+    isThreadEvidenceFamilyGraph(
+      candidate.evidenceFamilyGraph,
+      candidate.graph,
+    ) &&
+    candidate.evidenceFamilyGraph.asOf.snapshotId === candidate.id &&
     Array.isArray(candidate.flow) &&
     candidate.flow.every(isThreadFlowStage) &&
     Array.isArray(candidate.artifacts) &&
+    candidate.artifacts.every(isThreadArtifact) &&
     Array.isArray(candidate.observations) &&
+    candidate.observations.every(isThreadObservation) &&
     Array.isArray(candidate.requirements) &&
     candidate.requirements.every(isThreadRequirement) &&
     Array.isArray(candidate.violations) &&
-    Array.isArray(candidate.actions);
+    candidate.violations.every(isThreadViolation) &&
+    Array.isArray(candidate.actions) &&
+    candidate.actions.every(isThreadAction) &&
+    (candidate.live === undefined || isLiveThreadOverlay(candidate.live));
+}
+
+function isThreadSubject(
+  value: unknown,
+): value is ThreadWorkbenchSnapshot["subject"] {
+  return isRecord(value) && hasExactKeys(value, ["id", "label", "program"]) &&
+    typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.label === "string" && typeof value.program === "string";
+}
+
+function isThreadChange(value: unknown): value is ThreadChange {
+  return isRecord(value) && hasExactKeys(value, [
+    "id",
+    "title",
+    "summary",
+    "author",
+    "revision",
+    "changedAt",
+    "status",
+    "files",
+  ]) && typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.title === "string" && typeof value.summary === "string" &&
+    typeof value.author === "string" && typeof value.revision === "string" &&
+    typeof value.changedAt === "string" &&
+    (value.status === "evaluated" || value.status === "partially_evaluated" ||
+      value.status === "pending") &&
+    Array.isArray(value.files) &&
+    value.files.every((file) => typeof file === "string");
+}
+
+function isThreadArtifact(value: unknown): value is ThreadArtifact {
+  if (!isRecord(value)) return false;
+  return hasAllowedKeys(value, [
+    "id",
+    "label",
+    "kind",
+    "system",
+    "revision",
+    "freshness",
+    "fingerprint",
+    "uri",
+    "producedAt",
+    "producedBy",
+    "dependsOn",
+    "attestation",
+  ]) && typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.label === "string" && typeof value.kind === "string" &&
+    typeof value.system === "string" && typeof value.revision === "string" &&
+    isThreadFreshness(value.freshness) &&
+    (value.fingerprint === undefined ||
+      typeof value.fingerprint === "string") &&
+    (value.uri === undefined || typeof value.uri === "string") &&
+    (value.producedAt === undefined || typeof value.producedAt === "string") &&
+    (value.producedBy === undefined || typeof value.producedBy === "string") &&
+    Array.isArray(value.dependsOn) &&
+    value.dependsOn.every((id) => typeof id === "string") &&
+    (value.attestation === undefined ||
+      isThreadArtifactAttestation(value.attestation));
+}
+
+function isThreadArtifactAttestation(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "status",
+    "sourceArtifactId",
+    "producerFingerprint",
+    "consumedFingerprint",
+    "checkedAt",
+  ]) && (value.status === "verified" || value.status === "mismatch") &&
+    typeof value.sourceArtifactId === "string" &&
+    typeof value.producerFingerprint === "string" &&
+    typeof value.consumedFingerprint === "string" &&
+    typeof value.checkedAt === "string";
+}
+
+function isThreadObservation(value: unknown): value is ThreadObservation {
+  return isRecord(value) && hasAllowedKeys(value, [
+    "id",
+    "label",
+    "value",
+    "unit",
+    "display",
+    "sourceArtifactId",
+    "requirementIds",
+    "freshness",
+    "measuredAt",
+  ]) && typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.label === "string" && typeof value.value === "number" &&
+    Number.isFinite(value.value) && typeof value.unit === "string" &&
+    typeof value.display === "string" &&
+    typeof value.sourceArtifactId === "string" &&
+    Array.isArray(value.requirementIds) &&
+    value.requirementIds.every((id) => typeof id === "string") &&
+    isThreadFreshness(value.freshness) &&
+    (value.measuredAt === undefined || typeof value.measuredAt === "string");
+}
+
+function isThreadViolation(value: unknown): value is ThreadViolation {
+  return isRecord(value) && hasExactKeys(value, [
+    "id",
+    "name",
+    "severity",
+    "status",
+    "requirementId",
+    "observationId",
+    "message",
+    "margin",
+    "evidence",
+    "proposedActionIds",
+  ]) && typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.name === "string" &&
+    (value.severity === "blocking" || value.severity === "warning") &&
+    (value.status === "open" || value.status === "resolved") &&
+    typeof value.requirementId === "string" &&
+    typeof value.observationId === "string" &&
+    typeof value.message === "string" &&
+    typeof value.margin === "string" && Array.isArray(value.evidence) &&
+    value.evidence.every((id) => typeof id === "string") &&
+    Array.isArray(value.proposedActionIds) &&
+    value.proposedActionIds.every((id) => typeof id === "string");
+}
+
+function isThreadAction(value: unknown): value is ThreadAction {
+  return isRecord(value) && hasExactKeys(value, [
+    "id",
+    "label",
+    "description",
+    "kind",
+    "targetId",
+    "system",
+    "readiness",
+    "requiresConfirmation",
+  ]) && typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.label === "string" && typeof value.description === "string" &&
+    (value.kind === "change" || value.kind === "recompute" ||
+      value.kind === "inspect") &&
+    typeof value.targetId === "string" &&
+    typeof value.system === "string" &&
+    (value.readiness === "ready" || value.readiness === "blocked") &&
+    typeof value.requiresConfirmation === "boolean";
 }
 
 function isThreadRequirement(value: unknown): value is ThreadRequirement {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const requirement = value as Partial<ThreadRequirement>;
-  return typeof requirement.id === "string" && requirement.id.length > 0 &&
+  return hasExactKeys(value, [
+    "id",
+    "label",
+    "source",
+    "sourceElementId",
+    "expression",
+    "status",
+    "observationIds",
+    "violationIds",
+    "rationale",
+  ]) && typeof requirement.id === "string" && requirement.id.length > 0 &&
     typeof requirement.label === "string" &&
     typeof requirement.source === "string" &&
     typeof requirement.sourceElementId === "string" &&
@@ -614,26 +822,192 @@ function isThreadRequirement(value: unknown): value is ThreadRequirement {
  */
 function isThreadEvidenceFamilyGraph(
   value: unknown,
+  threadGraph: ThreadGraph,
 ): value is ThreadEvidenceFamilyGraph {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const graph = value as Partial<ThreadEvidenceFamilyGraph>;
-  return graph.schemaVersion === "thread-evidence-family-graph/1.0" &&
-    !!graph.asOf && typeof graph.asOf.snapshotId === "string" &&
-    graph.asOf.snapshotId.length > 0 &&
-    typeof graph.asOf.revision === "number" &&
-    Number.isSafeInteger(graph.asOf.revision) && graph.asOf.revision > 0 &&
-    Array.isArray(graph.families) &&
-    graph.families.every(isThreadEvidenceFamily) &&
-    Array.isArray(graph.edges) &&
-    graph.edges.every(isThreadEvidenceFamilyGraphEdge) &&
-    Array.isArray(graph.omittedSelfLoops) &&
-    graph.omittedSelfLoops.every(isThreadEvidenceFamilyOmittedSelfLoop) &&
-    Array.isArray(graph.omittedCycleEdges) &&
-    graph.omittedCycleEdges.every(isThreadEvidenceFamilyOmittedCycleEdge);
+  if (
+    !hasExactKeys(value, [
+      "schemaVersion",
+      "asOf",
+      "families",
+      "edges",
+      "omittedSelfLoops",
+      "omittedCycleEdges",
+    ]) || graph.schemaVersion !== "thread-evidence-family-graph/1.0" ||
+    !isRecord(graph.asOf) ||
+    !hasExactKeys(graph.asOf, ["snapshotId", "revision"]) ||
+    typeof graph.asOf.snapshotId !== "string" ||
+    graph.asOf.snapshotId.length === 0 ||
+    typeof graph.asOf.revision !== "number" ||
+    !Number.isSafeInteger(graph.asOf.revision) || graph.asOf.revision <= 0 ||
+    !Array.isArray(graph.families) ||
+    !graph.families.every(isThreadEvidenceFamily) ||
+    !Array.isArray(graph.edges) ||
+    !graph.edges.every(isThreadEvidenceFamilyGraphEdge) ||
+    !Array.isArray(graph.omittedSelfLoops) ||
+    !graph.omittedSelfLoops.every(isThreadEvidenceFamilyOmittedSelfLoop) ||
+    !Array.isArray(graph.omittedCycleEdges) ||
+    !graph.omittedCycleEdges.every(isThreadEvidenceFamilyOmittedCycleEdge)
+  ) {
+    return false;
+  }
+  return isEvidenceFamilyGraphConsistent(
+    graph as ThreadEvidenceFamilyGraph,
+    threadGraph,
+  );
+}
+
+function isEvidenceFamilyGraphConsistent(
+  graph: ThreadEvidenceFamilyGraph,
+  threadGraph: ThreadGraph,
+): boolean {
+  const nodeByRef = new Map(
+    threadGraph.nodes.map((node) => [threadGraphRefKey(node.ref), node]),
+  );
+  const familyById = new Map(
+    graph.families.map((family) => [family.id, family]),
+  );
+  if (familyById.size !== graph.families.length) return false;
+
+  const familyIdByMember = new Map<string, string>();
+  for (const family of graph.families) {
+    if (!isEvidenceFamilyConsistent(family, nodeByRef, threadGraph.edges)) {
+      return false;
+    }
+    for (const reference of [...family.historicalRefs, ...family.currentRefs]) {
+      const key = threadGraphRefKey(reference);
+      if (familyIdByMember.has(key)) return false;
+      familyIdByMember.set(key, family.id);
+    }
+  }
+
+  return graph.edges.every((edge) =>
+    familyById.has(edge.fromFamilyId) && familyById.has(edge.toFamilyId) &&
+    edge.memberEdgeRefs.every((reference) => {
+      return hasExactlyOneMatchingRawEdge(
+        threadGraph.edges,
+        reference,
+        (rawEdge) =>
+          familyIdByMember.get(threadGraphRefKey(rawEdge.from)) ===
+            edge.fromFamilyId &&
+          familyIdByMember.get(threadGraphRefKey(rawEdge.to)) ===
+            edge.toFamilyId,
+      );
+    })
+  ) &&
+    graph.omittedSelfLoops.every((omitted) =>
+      familyById.has(omitted.familyId) &&
+      omitted.memberEdgeRefs.every((reference) => {
+        return hasExactlyOneMatchingRawEdge(
+          threadGraph.edges,
+          reference,
+          (rawEdge) =>
+            familyIdByMember.get(threadGraphRefKey(rawEdge.from)) ===
+              omitted.familyId &&
+            familyIdByMember.get(threadGraphRefKey(rawEdge.to)) ===
+              omitted.familyId,
+        );
+      })
+    ) &&
+    graph.omittedCycleEdges.every((omitted) =>
+      familyById.has(omitted.fromFamilyId) &&
+      familyById.has(omitted.toFamilyId) &&
+      omitted.memberEdgeRefs.every((reference) => {
+        return hasExactlyOneMatchingRawEdge(
+          threadGraph.edges,
+          reference,
+          (rawEdge) =>
+            familyIdByMember.get(threadGraphRefKey(rawEdge.from)) ===
+              omitted.fromFamilyId &&
+            familyIdByMember.get(threadGraphRefKey(rawEdge.to)) ===
+              omitted.toFamilyId,
+        );
+      })
+    );
+}
+
+function isEvidenceFamilyConsistent(
+  family: ThreadEvidenceFamily,
+  nodeByRef: ReadonlyMap<string, ThreadGraphNode>,
+  rawEdges: readonly ThreadGraphEdge[],
+): boolean {
+  const members = [...family.historicalRefs, ...family.currentRefs];
+  const memberKeys = members.map(threadGraphRefKey);
+  if (members.length === 0 || !hasUniqueStrings(memberKeys)) return false;
+  if (
+    family.entityKind === "artifact"
+      ? typeof family.artifactKind !== "string" ||
+        family.artifactKind.length === 0
+      : family.artifactKind !== undefined
+  ) {
+    return false;
+  }
+  for (const reference of members) {
+    const node = nodeByRef.get(threadGraphRefKey(reference));
+    if (!node || reference.kind !== family.entityKind) return false;
+    if (
+      node.entityKind !== family.entityKind ||
+      (family.entityKind === "artifact" &&
+        node.artifactKind !== family.artifactKind)
+    ) {
+      return false;
+    }
+  }
+
+  const memberKeySet = new Set(memberKeys);
+  const historicalKeys = new Set(family.historicalRefs.map(threadGraphRefKey));
+  const transitionHistoricalKeys = new Set<string>();
+  for (const transition of family.transitions) {
+    const historicalKey = threadGraphRefKey(transition.historical);
+    const successorKey = threadGraphRefKey(transition.successor);
+    if (
+      !historicalKeys.has(historicalKey) || !memberKeySet.has(successorKey) ||
+      !hasExactlyOneMatchingRawEdge(
+        rawEdges,
+        transition.edgeRef,
+        (rawEdge) =>
+          rawEdge.relation === "supersedes" &&
+          rawEdge.origin === "provenance" &&
+          threadGraphRefKey(rawEdge.from) === historicalKey &&
+          threadGraphRefKey(rawEdge.to) === successorKey,
+      )
+    ) {
+      return false;
+    }
+    transitionHistoricalKeys.add(historicalKey);
+  }
+  if (!sameStringSet(historicalKeys, transitionHistoricalKeys)) return false;
+  const derivedCurrentKeys = new Set(
+    memberKeys.filter((key) => !transitionHistoricalKeys.has(key)),
+  );
+  return sameStringSet(
+    derivedCurrentKeys,
+    new Set(family.currentRefs.map(threadGraphRefKey)),
+  );
+}
+
+function matchesRawEdgeRef(
+  reference: ThreadEvidenceFamilyEdgeRef,
+  rawEdge: ThreadGraphEdge,
+): boolean {
+  return reference.id === rawEdge.id &&
+    reference.relation === rawEdge.relation &&
+    reference.origin === rawEdge.origin;
+}
+
+function hasExactlyOneMatchingRawEdge(
+  rawEdges: readonly ThreadGraphEdge[],
+  reference: ThreadEvidenceFamilyEdgeRef,
+  matchesEndpoints: (edge: ThreadGraphEdge) => boolean,
+): boolean {
+  return rawEdges.filter((edge) =>
+    matchesRawEdgeRef(reference, edge) && matchesEndpoints(edge)
+  ).length === 1;
 }
 
 function isThreadEvidenceFamily(value: unknown): value is ThreadEvidenceFamily {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const family = value as Partial<ThreadEvidenceFamily>;
   const hasCurrent = family.status === "current" &&
     Array.isArray(family.currentRefs) && family.currentRefs.length === 1 &&
@@ -641,7 +1015,18 @@ function isThreadEvidenceFamily(value: unknown): value is ThreadEvidenceFamily {
   const needsReview = family.status === "review-required" &&
     (family.reviewReason === "divergent-successors" ||
       family.reviewReason === "no-current-successor");
-  return typeof family.id === "string" && family.id.length > 0 &&
+  return hasAllowedKeys(value, [
+    "id",
+    "entityKind",
+    "artifactKind",
+    "historicalRefs",
+    "currentRefs",
+    "revisionCount",
+    "status",
+    "reviewReason",
+    "relationship",
+    "transitions",
+  ]) && typeof family.id === "string" && family.id.length > 0 &&
     (family.entityKind === "artifact" || family.entityKind === "requirement") &&
     (family.artifactKind === undefined ||
       (family.entityKind === "artifact" &&
@@ -652,7 +1037,12 @@ function isThreadEvidenceFamily(value: unknown): value is ThreadEvidenceFamily {
     family.currentRefs.every(isThreadGraphRef) &&
     typeof family.revisionCount === "number" &&
     Number.isSafeInteger(family.revisionCount) && family.revisionCount >= 1 &&
-    !!family.relationship && family.relationship.relation === "supersedes" &&
+    isRecord(family.relationship) &&
+    hasExactKeys(family.relationship, [
+      "relation",
+      "classification",
+      "equivalence",
+    ]) && family.relationship.relation === "supersedes" &&
     family.relationship.classification === "not-recorded" &&
     family.relationship.equivalence === "not-recorded" &&
     Array.isArray(family.transitions) &&
@@ -664,9 +1054,10 @@ function isThreadEvidenceFamily(value: unknown): value is ThreadEvidenceFamily {
 function isThreadEvidenceFamilyTransition(
   value: unknown,
 ): value is ThreadEvidenceFamilyTransition {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const transition = value as Partial<ThreadEvidenceFamilyTransition>;
-  return isThreadEvidenceFamilyEdgeRef(transition.edgeRef) &&
+  return hasExactKeys(value, ["edgeRef", "historical", "successor"]) &&
+    isThreadEvidenceFamilyEdgeRef(transition.edgeRef) &&
     transition.edgeRef.relation === "supersedes" &&
     isThreadGraphRef(transition.historical) &&
     isThreadGraphRef(transition.successor) &&
@@ -677,9 +1068,10 @@ function isThreadEvidenceFamilyTransition(
 function isThreadEvidenceFamilyEdgeRef(
   value: unknown,
 ): value is ThreadEvidenceFamilyEdgeRef {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const reference = value as Partial<ThreadEvidenceFamilyEdgeRef>;
-  return typeof reference.id === "string" && reference.id.length > 0 &&
+  return hasExactKeys(value, ["id", "relation", "origin"]) &&
+    typeof reference.id === "string" && reference.id.length > 0 &&
     isThreadGraphRelation(reference.relation) &&
     (reference.origin === "provenance" || reference.origin === "structure");
 }
@@ -687,9 +1079,16 @@ function isThreadEvidenceFamilyEdgeRef(
 function isThreadEvidenceFamilyGraphEdge(
   value: unknown,
 ): value is ThreadEvidenceFamilyGraphEdge {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const edge = value as Partial<ThreadEvidenceFamilyGraphEdge>;
-  return typeof edge.id === "string" && edge.id.length > 0 &&
+  return hasExactKeys(value, [
+    "id",
+    "fromFamilyId",
+    "toFamilyId",
+    "relation",
+    "origin",
+    "memberEdgeRefs",
+  ]) && typeof edge.id === "string" && edge.id.length > 0 &&
     typeof edge.fromFamilyId === "string" && edge.fromFamilyId.length > 0 &&
     typeof edge.toFamilyId === "string" && edge.toFamilyId.length > 0 &&
     edge.fromFamilyId !== edge.toFamilyId &&
@@ -703,9 +1102,10 @@ function isThreadEvidenceFamilyGraphEdge(
 function isThreadEvidenceFamilyOmittedSelfLoop(
   value: unknown,
 ): value is ThreadEvidenceFamilyOmittedSelfLoop {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const loop = value as Partial<ThreadEvidenceFamilyOmittedSelfLoop>;
-  return typeof loop.familyId === "string" && loop.familyId.length > 0 &&
+  return hasExactKeys(value, ["familyId", "memberEdgeRefs"]) &&
+    typeof loop.familyId === "string" && loop.familyId.length > 0 &&
     Array.isArray(loop.memberEdgeRefs) && loop.memberEdgeRefs.length > 0 &&
     loop.memberEdgeRefs.every(isThreadEvidenceFamilyEdgeRef);
 }
@@ -713,9 +1113,14 @@ function isThreadEvidenceFamilyOmittedSelfLoop(
 function isThreadEvidenceFamilyOmittedCycleEdge(
   value: unknown,
 ): value is ThreadEvidenceFamilyOmittedCycleEdge {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const edge = value as Partial<ThreadEvidenceFamilyOmittedCycleEdge>;
-  return typeof edge.fromFamilyId === "string" &&
+  return hasExactKeys(value, [
+    "fromFamilyId",
+    "toFamilyId",
+    "memberEdgeRefs",
+  ]) &&
+    typeof edge.fromFamilyId === "string" &&
     edge.fromFamilyId.length > 0 &&
     typeof edge.toFamilyId === "string" && edge.toFamilyId.length > 0 &&
     edge.fromFamilyId !== edge.toFamilyId &&
@@ -737,41 +1142,97 @@ function isThreadWorkbenchPreviousSnapshot(
 function isThreadComponentCatalog(
   value: unknown,
 ): value is ThreadComponentCatalog {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const catalog = value as Partial<ThreadComponentCatalog>;
-  return catalog.schemaVersion === "thread-components/1.0" &&
+  return hasExactKeys(value, [
+    "schemaVersion",
+    "authority",
+    "subjectId",
+    "rationale",
+    "systemViews",
+    "components",
+  ]) && catalog.schemaVersion === "thread-components/1.0" &&
     catalog.authority === "workspace-declared" &&
     typeof catalog.subjectId === "string" &&
     typeof catalog.rationale === "string" &&
-    !!catalog.systemViews &&
+    isThreadComponentSystemViews(catalog.systemViews) &&
     Array.isArray(catalog.components) &&
     catalog.components.every(isThreadComponent);
 }
 
+function isThreadComponentSystemViews(value: unknown): boolean {
+  if (!isRecord(value) || !hasAllowedKeys(value, ["syson", "erpnext"])) {
+    return false;
+  }
+  return (value.syson === undefined ||
+    (isRecord(value.syson) && hasExactKeys(value.syson, [
+      "projectId",
+      "editingContextId",
+      "diagramId",
+      "diagramLabel",
+    ]) && typeof value.syson.projectId === "string" &&
+      typeof value.syson.editingContextId === "string" &&
+      typeof value.syson.diagramId === "string" &&
+      typeof value.syson.diagramLabel === "string")) &&
+    (value.erpnext === undefined ||
+      (isRecord(value.erpnext) && hasExactKeys(value.erpnext, ["bomName"]) &&
+        typeof value.erpnext.bomName === "string"));
+}
+
 function isThreadComponent(value: unknown): value is ThreadComponent {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const component = value as Partial<ThreadComponent>;
-  return typeof component.id === "string" &&
+  return hasAllowedKeys(value, [
+    "id",
+    "label",
+    "kind",
+    "quantity",
+    "parentId",
+    "bindings",
+    "preview",
+  ]) && typeof component.id === "string" && component.id.length > 0 &&
     typeof component.label === "string" &&
     (component.kind === "assembly" || component.kind === "part") &&
     typeof component.quantity === "number" &&
+    Number.isFinite(component.quantity) &&
+    component.quantity > 0 &&
+    (component.parentId === undefined ||
+      typeof component.parentId === "string") &&
     Array.isArray(component.bindings) &&
     component.bindings.every(isThreadComponentBinding) &&
     (component.preview === undefined ||
-      (component.preview.provider === "build123d" &&
-        (component.preview.mediaType === "model/stl" ||
-          component.preview.mediaType === "model/gltf-binary") &&
-        typeof component.preview.artifactId === "string" &&
-        typeof component.preview.url === "string" &&
-        typeof component.preview.sha256 === "string"));
+      isThreadComponentPreview(component.preview));
+}
+
+function isThreadComponentPreview(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "provider",
+    "artifactId",
+    "mediaType",
+    "url",
+    "sha256",
+  ]) && value.provider === "build123d" &&
+    (value.mediaType === "model/stl" ||
+      value.mediaType === "model/gltf-binary") &&
+    typeof value.artifactId === "string" && typeof value.url === "string" &&
+    typeof value.sha256 === "string";
 }
 
 function isThreadComponentBinding(
   value: unknown,
 ): value is ThreadComponentBinding {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const binding = value as Partial<ThreadComponentBinding>;
-  return (binding.provider === "syson" || binding.provider === "erpnext" ||
+  return hasAllowedKeys(value, [
+    "provider",
+    "kind",
+    "id",
+    "label",
+    "evidenceArtifactId",
+    "status",
+    "reason",
+    "selection",
+  ]) && (binding.provider === "syson" || binding.provider === "erpnext" ||
     binding.provider === "build123d" ||
     binding.provider === "digital-thread") &&
     (binding.kind === "part-definition" || binding.kind === "part-usage" ||
@@ -781,20 +1242,65 @@ function isThreadComponentBinding(
     typeof binding.label === "string" &&
     typeof binding.evidenceArtifactId === "string" &&
     (binding.status === "verified" || binding.status === "unverified") &&
+    (binding.reason === undefined || typeof binding.reason === "string") &&
     (binding.selection === undefined || isThreadRef(binding.selection));
 }
 
 function isThreadGraph(value: unknown): value is ThreadGraph {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const graph = value as Partial<ThreadGraph>;
-  return Array.isArray(graph.nodes) && graph.nodes.every(isThreadGraphNode) &&
-    Array.isArray(graph.edges) && graph.edges.every(isThreadGraphEdge);
+  if (
+    !hasExactKeys(value, ["nodes", "edges"]) ||
+    !Array.isArray(graph.nodes) || !graph.nodes.every(isThreadGraphNode) ||
+    !Array.isArray(graph.edges) || !graph.edges.every(isThreadGraphEdge)
+  ) {
+    return false;
+  }
+  const nodes = graph.nodes as ThreadGraphNode[];
+  const edges = graph.edges as ThreadGraphEdge[];
+  const nodeRefs = new Set(nodes.map((node) => threadGraphRefKey(node.ref)));
+  return hasUniqueStrings(nodes.map((node) => node.id)) &&
+    nodeRefs.size === nodes.length &&
+    edges.every((edge) =>
+      nodeRefs.has(threadGraphRefKey(edge.from)) &&
+      nodeRefs.has(threadGraphRefKey(edge.to))
+    );
+}
+
+function threadGraphRefKey(reference: ThreadGraphRef): string {
+  return `${reference.kind}:${reference.id}`;
+}
+
+function hasUniqueStrings(values: readonly string[]): boolean {
+  return new Set(values).size === values.length;
+}
+
+function sameStringSet(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): boolean {
+  return left.size === right.size &&
+    [...left].every((value) => right.has(value));
 }
 
 function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const node = value as Partial<ThreadGraphNode>;
-  return typeof node.id === "string" &&
+  return hasAllowedKeys(value, [
+    "id",
+    "ref",
+    "entityKind",
+    "artifactKind",
+    "analysis",
+    "label",
+    "system",
+    "freshness",
+    "summary",
+    "recordedAt",
+    "affectedComponentId",
+    "activityRole",
+    "selection",
+  ]) && typeof node.id === "string" && node.id.length > 0 &&
     isThreadGraphRef(node.ref) &&
     node.entityKind === node.ref?.kind &&
     (node.artifactKind === undefined ||
@@ -815,9 +1321,18 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
 }
 
 function isThreadGraphEdge(value: unknown): value is ThreadGraphEdge {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const edge = value as Partial<ThreadGraphEdge>;
-  return typeof edge.id === "string" &&
+  return hasAllowedKeys(value, [
+    "id",
+    "from",
+    "to",
+    "relation",
+    "rationale",
+    "origin",
+    "attestation",
+    "analysis",
+  ]) && typeof edge.id === "string" && edge.id.length > 0 &&
     isThreadGraphRef(edge.from) &&
     isThreadGraphRef(edge.to) &&
     isThreadGraphRelation(edge.relation) &&
@@ -841,9 +1356,15 @@ function isThreadGraphEdge(value: unknown): value is ThreadGraphEdge {
 function isThreadGraphEdgeAttestation(
   value: unknown,
 ): value is ThreadGraphEdgeAttestation {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const attestation = value as Partial<ThreadGraphEdgeAttestation>;
-  return typeof attestation.consumptionId === "string" &&
+  return hasExactKeys(value, [
+    "consumptionId",
+    "status",
+    "producerFingerprint",
+    "consumedFingerprint",
+    "checkedAt",
+  ]) && typeof attestation.consumptionId === "string" &&
     (attestation.status === "verified" || attestation.status === "mismatch") &&
     typeof attestation.producerFingerprint === "string" &&
     typeof attestation.consumedFingerprint === "string" &&
@@ -851,9 +1372,10 @@ function isThreadGraphEdgeAttestation(
 }
 
 function isThreadGraphRef(value: unknown): value is ThreadGraphRef {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const reference = value as Partial<ThreadGraphRef>;
-  return typeof reference.id === "string" &&
+  return hasExactKeys(value, ["kind", "id"]) &&
+    typeof reference.id === "string" && reference.id.length > 0 &&
     (reference.kind === "artifact" ||
       reference.kind === "consumption" ||
       reference.kind === "observation" ||
@@ -868,9 +1390,10 @@ function isThreadGraphRef(value: unknown): value is ThreadGraphRef {
 }
 
 function isThreadRef(value: unknown): value is ThreadRef {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const reference = value as Partial<ThreadRef>;
-  return typeof reference.id === "string" &&
+  return hasExactKeys(value, ["kind", "id"]) &&
+    typeof reference.id === "string" && reference.id.length > 0 &&
     (reference.kind === "change" ||
       reference.kind === "artifact" ||
       reference.kind === "observation" ||
@@ -906,7 +1429,7 @@ function isThreadAnalysisRelation(value: unknown): boolean {
 function isThreadAnalysisNodeDetail(
   value: unknown,
 ): value is ThreadAnalysisNodeDetail {
-  return !!value && typeof value === "object" &&
+  return isRecord(value) && hasExactKeys(value, ["semanticRef"]) &&
     isThreadAnalysisSemanticRef(
       (value as Partial<ThreadAnalysisNodeDetail>).semanticRef,
     );
@@ -915,11 +1438,12 @@ function isThreadAnalysisNodeDetail(
 function isThreadAnalysisSemanticRef(
   value: unknown,
 ): value is ThreadAnalysisSemanticRef {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const reference = value as Partial<ThreadAnalysisSemanticRef>;
-  return (reference.domain === "brief" || reference.domain === "sysml" ||
-    reference.domain === "cad" || reference.domain === "modelica" ||
-    reference.domain === "calculix" || reference.domain === "thread") &&
+  return hasAllowedKeys(value, ["domain", "kind", "id", "basisFingerprint"]) &&
+    (reference.domain === "brief" || reference.domain === "sysml" ||
+      reference.domain === "cad" || reference.domain === "modelica" ||
+      reference.domain === "calculix" || reference.domain === "thread") &&
     typeof reference.kind === "string" && reference.kind.length > 0 &&
     typeof reference.id === "string" && reference.id.length > 0 &&
     (reference.basisFingerprint === undefined ||
@@ -929,14 +1453,22 @@ function isThreadAnalysisSemanticRef(
 function isThreadAnalysisEdgeDetail(
   value: unknown,
 ): value is ThreadAnalysisEdgeDetail {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const detail = value as Partial<ThreadAnalysisEdgeDetail>;
-  return typeof detail.assertionId === "string" &&
+  return hasAllowedKeys(value, [
+    "assertionId",
+    "epistemicBasis",
+    "assertedBy",
+    "evidence",
+    "scope",
+    "measurement",
+  ]) && typeof detail.assertionId === "string" &&
     detail.assertionId.length > 0 &&
     (detail.epistemicBasis === "declared" ||
       detail.epistemicBasis === "inferred" ||
       detail.epistemicBasis === "observed") &&
-    !!detail.assertedBy && typeof detail.assertedBy === "object" &&
+    isRecord(detail.assertedBy) &&
+    hasAllowedKeys(detail.assertedBy, ["kind", "id", "version"]) &&
     (detail.assertedBy.kind === "agent" ||
       detail.assertedBy.kind === "analyzer" ||
       detail.assertedBy.kind === "provider" ||
@@ -946,13 +1478,17 @@ function isThreadAnalysisEdgeDetail(
     (detail.assertedBy.version === undefined ||
       typeof detail.assertedBy.version === "string") &&
     Array.isArray(detail.evidence) && detail.evidence.length > 0 &&
-    detail.evidence.every((item) =>
-      !!item && typeof item === "object" && typeof item.id === "string" &&
-      item.id.length > 0 && isSha256Digest(item.fingerprint)
-    ) &&
+    detail.evidence.every((item) => isThreadAnalysisEvidence(item)) &&
     isThreadAnalysisScope(detail.scope) &&
     (detail.measurement === undefined ||
-      (detail.measurement.method === "forward-finite-difference" &&
+      (isRecord(detail.measurement) && hasExactKeys(detail.measurement, [
+        "method",
+        "basePoint",
+        "perturbationStep",
+        "responseAtBase",
+        "responseAtPerturbed",
+        "derivative",
+      ]) && detail.measurement.method === "forward-finite-difference" &&
         isThreadAnalysisQuantity(detail.measurement.basePoint) &&
         isThreadAnalysisQuantity(detail.measurement.perturbationStep) &&
         isThreadAnalysisQuantity(detail.measurement.responseAtBase) &&
@@ -960,19 +1496,40 @@ function isThreadAnalysisEdgeDetail(
         isThreadAnalysisQuantity(detail.measurement.derivative)));
 }
 
+function isThreadAnalysisEvidence(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["id", "fingerprint"]) &&
+    typeof value.id === "string" && value.id.length > 0 &&
+    isSha256Digest(value.fingerprint);
+}
+
 function isThreadAnalysisScope(value: unknown): value is ThreadAnalysisScope {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const scope = value as Partial<ThreadAnalysisScope> & Record<string, unknown>;
   if (!isSha256Digest(scope.basisFingerprint)) return false;
-  if (scope.kind === "basis") return true;
+  if (scope.kind === "basis") {
+    return hasExactKeys(scope, ["kind", "basisFingerprint"]);
+  }
   if (scope.kind === "source-span") {
-    return isThreadAnalysisSemanticRef(scope.source) &&
+    return hasExactKeys(scope, [
+      "kind",
+      "source",
+      "basisFingerprint",
+      "start",
+      "end",
+    ]) && isThreadAnalysisSemanticRef(scope.source) &&
       isSourcePosition(scope.start) && isSourcePosition(scope.end);
   }
   if (scope.kind === "scenario") {
-    return isThreadAnalysisSemanticRef(scope.scenario);
+    return hasExactKeys(scope, ["kind", "scenario", "basisFingerprint"]) &&
+      isThreadAnalysisSemanticRef(scope.scenario);
   }
-  return scope.kind === "local-neighborhood" &&
+  return hasExactKeys(scope, [
+    "kind",
+    "parameter",
+    "basisFingerprint",
+    "lower",
+    "upper",
+  ]) && scope.kind === "local-neighborhood" &&
     isThreadAnalysisSemanticRef(scope.parameter) &&
     isThreadAnalysisQuantity(scope.lower) &&
     isThreadAnalysisQuantity(scope.upper);
@@ -981,15 +1538,13 @@ function isThreadAnalysisScope(value: unknown): value is ThreadAnalysisScope {
 function isThreadAnalysisQuantity(
   value: unknown,
 ): value is ThreadAnalysisQuantity {
-  return !!value && typeof value === "object" &&
-    typeof (value as ThreadAnalysisQuantity).value === "number" &&
-    Number.isFinite((value as ThreadAnalysisQuantity).value) &&
-    typeof (value as ThreadAnalysisQuantity).unit === "string" &&
-    (value as ThreadAnalysisQuantity).unit.length > 0;
+  return isRecord(value) && hasExactKeys(value, ["value", "unit"]) &&
+    typeof value.value === "number" && Number.isFinite(value.value) &&
+    typeof value.unit === "string" && value.unit.length > 0;
 }
 
 function isSourcePosition(value: unknown): boolean {
-  return !!value && typeof value === "object" &&
+  return isRecord(value) && hasExactKeys(value, ["line", "column"]) &&
     Number.isSafeInteger((value as { line?: unknown }).line) &&
     (value as { line: number }).line >= 1 &&
     Number.isSafeInteger((value as { column?: unknown }).column) &&
@@ -1006,9 +1561,20 @@ function isThreadFreshness(value: unknown): value is ThreadFreshness {
 }
 
 function isThreadFlowStage(value: unknown): value is ThreadFlowStage {
-  if (!value || typeof value !== "object") return false;
+  if (!isRecord(value)) return false;
   const stage = value as Partial<ThreadFlowStage>;
-  return typeof stage.id === "string" &&
+  return hasExactKeys(value, [
+    "id",
+    "label",
+    "system",
+    "freshness",
+    "summary",
+    "selection",
+    "dependsOn",
+  ]) && typeof stage.id === "string" && stage.id.length > 0 &&
+    typeof stage.label === "string" && typeof stage.system === "string" &&
+    isThreadFreshness(stage.freshness) && typeof stage.summary === "string" &&
+    isThreadRef(stage.selection) &&
     Array.isArray(stage.dependsOn) &&
     stage.dependsOn.every((dependency) => typeof dependency === "string");
 }

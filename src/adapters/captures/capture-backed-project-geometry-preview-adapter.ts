@@ -1,21 +1,21 @@
-/** Capture-backed implementation of the bounded project geometry preview. */
+/** Capture-backed adapter implementing the bounded project geometry preview port. */
 
-import type { McpToolClient } from "./mcp/http-mcp-tool-client.ts";
-import type { FileCaptureStore } from "./captures/file-capture-store.ts";
+import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
+import type { FileCaptureStore } from "./file-capture-store.ts";
 import {
   captureGeometryBundleDraft,
   captureGeometryDraft,
   geometryBundleManifestFromDraft,
-} from "./captures/geometry-draft-capture.ts";
-import type { GeometrySourceAnalysisCaptureDependencies } from "./captures/geometry-source-analysis-capture.ts";
-import { encodeGeometryDecisionParameters } from "../domain/platform/geometry-proposal.ts";
+} from "./geometry-draft-capture.ts";
+import type { GeometrySourceAnalysisCaptureDependencies } from "./geometry-source-analysis-capture.ts";
+import { encodeGeometryDecisionParameters } from "../../domain/engineering/geometry-proposal.ts";
 import type {
   GeometryPreviewCommand,
   GeometryPreviewResult,
   GeometryPreviewSourceAnalysisSummary,
   ProjectGeometryPreviewUseCase,
-} from "../orchestration/project-geometry-preview.ts";
-import type { ContentFingerprint } from "../domain/thread/thread-snapshot.ts";
+} from "../../application/ports/in/project-geometry-preview.ts";
+import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 
 export interface CaptureBackedProjectGeometryPreviewDependencies {
   readonly client: McpToolClient;
@@ -30,7 +30,7 @@ export interface CaptureBackedProjectGeometryPreviewDependencies {
   readonly previewRunId?: string;
 }
 
-export class CaptureBackedProjectGeometryPreviewUseCase
+export class CaptureBackedProjectGeometryPreviewAdapter
   implements ProjectGeometryPreviewUseCase {
   constructor(
     private readonly dependencies: CaptureBackedProjectGeometryPreviewDependencies,

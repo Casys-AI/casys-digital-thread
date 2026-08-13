@@ -10,14 +10,16 @@ import {
   EngineeringProjectCommandService,
   type EngineeringProjectPlanningDependencies,
   type EngineeringProjectPlanOperationRegistry,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
 } from "../../domain/project/engineering-project.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import type { ProjectBriefItem } from "../../domain/project/project-brief.ts";
 import type { RegisteredRunPlanSealInput } from "../../domain/project/resolved-run-plan-sealer.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
@@ -41,6 +43,10 @@ const CALCULIX_PROOF_CASE = "generic-calculix-proof-case";
 const CALCULIX_GEOMETRY = "generic-calculix-geometry";
 
 type RecordedKind = "modelica" | "calculix";
+
+type MutableFixture<T> = T extends readonly (infer Item)[] ? MutableFixture<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: MutableFixture<T[Key]> }
+  : T;
 
 interface Fixture {
   readonly kind: RecordedKind;
@@ -305,7 +311,9 @@ Deno.test("resolved run-plan execution guard rejects an aliased CalculiX geometr
 
 Deno.test("resolved run-plan execution guard rejects a changed ThreadSnapshot basis after validation", async () => {
   const fixture = await createFixture("calculix");
-  const tampered = structuredClone(fixture.snapshot);
+  const tampered = structuredClone(fixture.snapshot) as MutableFixture<
+    ThreadSnapshot
+  >;
   tampered.generatedAt = "2026-08-12T08:01:00.000Z";
   const validatedTamper = validateThreadSnapshot(tampered);
 

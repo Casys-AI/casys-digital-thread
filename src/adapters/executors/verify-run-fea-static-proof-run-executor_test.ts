@@ -21,7 +21,7 @@
 import { assertEquals, assertRejects, assertStrictEquals } from "@std/assert";
 import {
   EngineeringProjectCommandError,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import {
   deterministicJson,

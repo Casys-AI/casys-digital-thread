@@ -7,7 +7,7 @@ import {
   requireRegisteredEngineeringOperation,
   validateRegisteredEngineeringOperationInput,
 } from "./registry.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,

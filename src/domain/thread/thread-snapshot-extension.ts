@@ -91,15 +91,15 @@ export function snapshotEvidenceExtension(
     name: options.name,
     subjectId: options.subjectId,
     capturedAt: validated.generatedAt,
-    artifacts: structuredClone(validated.artifacts),
-    consumptions: structuredClone(validated.consumptions),
-    observations: structuredClone(validated.observations),
-    requirements: structuredClone(validated.requirements),
-    evaluations: structuredClone(validated.evaluations),
-    violations: structuredClone(validated.violations),
+    artifacts: structuredClone([...validated.artifacts]),
+    consumptions: structuredClone([...validated.consumptions]),
+    observations: structuredClone([...validated.observations]),
+    requirements: structuredClone([...validated.requirements]),
+    evaluations: structuredClone([...validated.evaluations]),
+    violations: structuredClone([...validated.violations]),
     provenance: validated.provenance.filter((link) => link.relation !== "changes")
       .map((link) => structuredClone(link)),
-    proposedActions: structuredClone(validated.proposedActions),
+    proposedActions: structuredClone([...validated.proposedActions]),
     ...(validated.analysisGraph === undefined
       ? {}
       : { analysisGraph: structuredClone(validated.analysisGraph) }),

@@ -6,7 +6,7 @@
  * boundary accepts aliases, suffixes or a caller-selected namespace.
  */
 
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { ThreadArtifact } from "../thread/thread-snapshot.ts";
 
 const SHA256 = /^[a-f0-9]{64}$/;

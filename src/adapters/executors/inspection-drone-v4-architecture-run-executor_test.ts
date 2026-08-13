@@ -1,7 +1,7 @@
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
-import { EngineeringProjectCommandService } from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
+import { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
@@ -13,7 +13,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../mcp/http-mcp-tool-client.ts";
+} from "../../application/ports/out/mcp-tool-client.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { FileThreadSnapshotStore } from "../stores/file-thread-snapshot-store.ts";
@@ -30,8 +30,10 @@ import { ApprovedBriefBaselineRunExecutor } from "./approved-brief-baseline-run-
 import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   INSPECTION_DRONE_V4_PART_USAGE_CONTRACT,
-  INSPECTION_DRONE_V4_PART_USAGE_FEATURE_TYPING_EXPRESSION,
   INSPECTION_DRONE_V4_REQUIREMENT_CONTRACT,
+} from "../captures/inspection-drone-v4-architecture-capture.ts";
+import {
+  INSPECTION_DRONE_V4_PART_USAGE_FEATURE_TYPING_EXPRESSION,
   INSPECTION_DRONE_V4_REQUIREMENT_DOCUMENTATION_EXPRESSION,
   InspectionDroneV4ArchitectureRunExecutor,
 } from "./inspection-drone-v4-architecture-run-executor.ts";

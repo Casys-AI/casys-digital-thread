@@ -34,8 +34,8 @@ import {
   type SourceAnalysisUnresolvedConstruct,
   validateSourceAnalysisBundle,
 } from "../../domain/analysis/source-analysis.ts";
-import { validateGeometryScript } from "../../domain/platform/geometry-script-validation.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import { validateGeometryScript } from "../../domain/engineering/geometry-script-validation.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 
 export const PYTHON_CAD_SOURCE_ANALYZER_ID = "python-cad-lezer" as const;
 export const PYTHON_CAD_SOURCE_ANALYZER_VERSION = "1.0.0" as const;

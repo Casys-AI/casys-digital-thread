@@ -1,4 +1,4 @@
-import type { RegisteredEngineeringOperation } from "./registry.ts";
+import type { RegisteredEngineeringOperation } from "./operation-contract.ts";
 
 /**
  * The only provider-backed architecture operation for the approved V4 drone

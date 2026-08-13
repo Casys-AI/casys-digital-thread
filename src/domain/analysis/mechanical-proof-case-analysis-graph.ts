@@ -9,7 +9,7 @@
  */
 
 import { exactRecord, literalValue, safeId } from "../kernel/case-validation.ts";
-import type { ContentFingerprint } from "../kernel/types.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import {
   type AnalysisGraph,
   type AnalysisGraphNode,

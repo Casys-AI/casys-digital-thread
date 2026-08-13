@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
-import type { InsertionItem } from "../../domain/platform/architecture-proposal.ts";
+import type { InsertionItem } from "../../domain/engineering/architecture-proposal.ts";
 import type { SysmlSourceAnalysisReference } from "../captures/sysml-source-analysis-capture.ts";
 import {
   ArchitectureWriteOutcomeUnknownError,

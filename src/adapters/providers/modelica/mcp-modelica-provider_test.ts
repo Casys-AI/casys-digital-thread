@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { McpToolClient } from "../../mcp/http-mcp-tool-client.ts";
+import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import type { SimulationCase } from "../../../domain/analysis/simulation-case.ts";
 import { DynamicSystemResponseError } from "../../../domain/analysis/simulation-capabilities.ts";
 import {

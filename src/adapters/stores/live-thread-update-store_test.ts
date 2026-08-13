@@ -1,5 +1,5 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
-import { GENERIC_THREAD_FIXTURE } from "../../ui/src/thread/fixture.ts";
+import { GENERIC_THREAD_FIXTURE } from "../../testing/workbench/generic-thread-workbench-fixture.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,

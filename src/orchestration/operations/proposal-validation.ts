@@ -31,16 +31,16 @@ import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "./recorded-analysis.
 import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
-} from "../../domain/platform/architecture-proposal.ts";
+} from "../../domain/engineering/architecture-proposal.ts";
 import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   geometryDecisionParametersToMap,
   parseGeometryDecisionParameters,
-} from "../../domain/platform/geometry-proposal.ts";
+} from "../../domain/engineering/geometry-proposal.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   parseRequirementsProposalParameters,
-} from "../../domain/platform/requirements-proposal.ts";
+} from "../../domain/engineering/requirements-proposal.ts";
 import type { EngineeringDecisionProposalParameter } from "../../domain/project/engineering-project.ts";
 import {
   parseReconcileUncertainWriterProposal,

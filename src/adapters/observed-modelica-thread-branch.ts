@@ -2,7 +2,7 @@ import type {
   EvidenceArtifact,
   RunDetail,
   RunMeasurement,
-} from "../domain/kernel/types.ts";
+} from "../contracts/console.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

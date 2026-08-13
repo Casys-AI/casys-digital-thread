@@ -2,7 +2,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+} from "../../src/application/ports/out/mcp-tool-client.ts";
 
 export class ThreadNormalizationError extends Error {
   constructor(message: string) {

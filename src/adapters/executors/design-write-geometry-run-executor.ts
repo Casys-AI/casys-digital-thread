@@ -28,10 +28,14 @@
 
 import {
   EngineeringProjectCommandError,
-  type EngineeringProjectCommandOrigin,
   type EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type EngineeringProjectCommandOrigin,
+} from "../../application/ports/in/engineering-project-command-origin.ts";
+import {
   type EngineeringProjectRevisionStore,
-} from "../../domain/project/engineering-project-command-service.ts";
+} from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -54,7 +58,7 @@ import {
   geometryDecisionParametersToMap,
   type GeometryManifest,
   parseGeometryDecisionParameters,
-} from "../../domain/platform/geometry-proposal.ts";
+} from "../../domain/engineering/geometry-proposal.ts";
 import {
   GEOMETRY_ARCHITECTURE_CAPTURE_USE_RATIONALE,
   GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE,
@@ -64,7 +68,7 @@ import {
   GEOMETRY_PREDECESSOR_CAPTURE_USE_RATIONALE,
   GEOMETRY_PREDECESSOR_DERIVATION_RATIONALE,
   GEOMETRY_PREDECESSOR_SUPERSEDES_RATIONALE,
-} from "../../domain/platform/geometry-bundle.ts";
+} from "../../domain/engineering/geometry-bundle.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

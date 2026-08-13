@@ -1459,7 +1459,7 @@ function operationKey(operation: ThreadOperationRef): string {
 }
 
 function topologicallySortedArtifacts(
-  artifacts: CanonicalArtifact[],
+  artifacts: readonly CanonicalArtifact[],
 ): CanonicalArtifact[] {
   const byId = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
   const visited = new Set<string>();
@@ -1485,7 +1485,10 @@ function topologicallySortedArtifacts(
   return result;
 }
 
-function groupedBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+function groupedBy<T>(
+  items: readonly T[],
+  key: (item: T) => string,
+): Map<string, T[]> {
   const result = new Map<string, T[]>();
   for (const item of items) append(result, key(item), item);
   return result;

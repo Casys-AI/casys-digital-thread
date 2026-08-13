@@ -35,9 +35,9 @@ import type {
   SimulationRunReader,
 } from "../../domain/analysis/simulation-capabilities.ts";
 import { DynamicSystemResponseError } from "../../domain/analysis/simulation-capabilities.ts";
-import type { EngineeringProjectCommandOrigin } from "../../domain/project/engineering-project-command-service.ts";
-import { EngineeringProjectCommandService } from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+import type { EngineeringProjectCommandOrigin } from "../../application/ports/in/engineering-project-command-origin.ts";
+import { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,

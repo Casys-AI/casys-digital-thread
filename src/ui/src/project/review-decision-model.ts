@@ -9,11 +9,11 @@ import type { ProjectBriefRevision } from "../../../domain/project/project-brief
 import {
   type ArchitectureProposal,
   parseArchitectureProposalParameters,
-} from "../../../domain/platform/architecture-proposal.ts";
+} from "../../../domain/engineering/architecture-proposal.ts";
 import {
   parseRequirementsProposalParameters,
   type RequirementsProposal,
-} from "../../../domain/platform/requirements-proposal.ts";
+} from "../../../domain/engineering/requirements-proposal.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import {
   type GeometryDecisionValid,

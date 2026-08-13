@@ -1,4 +1,4 @@
-import type { RegisteredEngineeringOperation } from "./registry.ts";
+import type { RegisteredEngineeringOperation } from "./operation-contract.ts";
 
 /**
  * Successor operations for the recorded-analysis verticals.

@@ -1,5 +1,7 @@
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { exactRecord } from "../../domain/kernel/case-validation.ts";
+import type { ProjectReviewIntentStore } from "../../application/ports/out/project-review-intent-store.ts";
+
 import {
   isApprovalBoundProjectReviewIntent,
   type LegacyProjectReviewIntent,
@@ -34,16 +36,6 @@ type ProjectReviewIntentJournalEvent =
     readonly kind: "acknowledgement";
     readonly acknowledgement: ProjectReviewIntentAcknowledgement;
   };
-
-export interface ProjectReviewIntentStore {
-  append(intent: ProjectReviewIntent): Promise<ProjectReviewIntentRecord>;
-  list(projectId: string): Promise<ProjectReviewIntentRecord[]>;
-  /** Complete durable outbox, used to recover MCP review work after reconnect. */
-  listAll(): Promise<ProjectReviewIntentRecord[]>;
-  acknowledge(
-    acknowledgement: ProjectReviewIntentAcknowledgement,
-  ): Promise<ProjectReviewIntentRecord>;
-}
 
 export class ProjectReviewIntentConflictError extends Error {
   constructor(message: string) {

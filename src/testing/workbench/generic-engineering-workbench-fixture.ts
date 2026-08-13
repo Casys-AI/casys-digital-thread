@@ -1,6 +1,9 @@
-import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
-import { GENERIC_THREAD_FIXTURE } from "../thread/fixture.ts";
-import type { EngineeringEvidenceWorkbenchSnapshot } from "../thread/types.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import {
+  type EngineeringEvidenceWorkbenchSnapshot,
+  LIVE_THREAD_OVERLAY_SCHEMA,
+} from "../../contracts/engineering-workbench.ts";
+import { GENERIC_THREAD_FIXTURE } from "./generic-thread-workbench-fixture.ts";
 
 /** Labelled UI fallback. It demonstrates project control, never production truth. */
 export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
@@ -151,7 +154,14 @@ export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
     schemaVersion: "engineering-workbench/0.2",
     surface: "evidence",
     project: GENERIC_PROJECT_FIXTURE,
-    thread: GENERIC_THREAD_FIXTURE,
+    thread: {
+      ...GENERIC_THREAD_FIXTURE,
+      live: {
+        schemaVersion: LIVE_THREAD_OVERLAY_SCHEMA,
+        version: 0,
+        active: [],
+      },
+    },
     alignment: {
       status: "aligned",
       projectThreadRevision: 1,
@@ -165,10 +175,9 @@ function phase(
   order: number,
   workItemIds: string[],
   requiredDecisionIds: string[] = [],
-  evidenceKind?:
-    EngineeringProjectSnapshot["phases"][number]["evidenceRefs"][number][
-      "kind"
-    ],
+  evidenceKind?: EngineeringProjectSnapshot["phases"][number]["evidenceRefs"][number][
+    "kind"
+  ],
   evidenceId?: string,
 ): EngineeringProjectSnapshot["phases"][number] {
   return {

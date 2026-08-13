@@ -15,6 +15,11 @@ import {
 
 const AT = "2026-08-01T08:00:00.000Z";
 
+type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
+  : T;
+type MutableThreadSnapshot = Mutable<ThreadSnapshot>;
+
 Deno.test("ThreadSnapshot validates and round-trips a linked CoffeeMachine change", () => {
   const candidate = coffeeMachineSnapshot();
   const snapshot = createThreadSnapshot(candidate);
@@ -34,12 +39,66 @@ Deno.test("ThreadSnapshot validates and round-trips a linked CoffeeMachine chang
   assertEquals(collectThreadSnapshotIssues(snapshot), []);
 });
 
+Deno.test("ThreadSnapshot validation clones and deeply freezes accepted JSON", () => {
+  const candidate = coffeeMachineSnapshot();
+  const snapshot = validateThreadSnapshot(candidate);
+
+  assertEquals(snapshot === candidate, false);
+  assertEquals(Object.isFrozen(snapshot), true);
+  assertEquals(Object.isFrozen(snapshot.subject), true);
+  assertEquals(Object.isFrozen(snapshot.artifacts), true);
+  assertEquals(Object.isFrozen(snapshot.artifacts[0].fingerprint), true);
+
+  candidate.subject.name = "Changed after validation";
+  assertEquals(snapshot.subject.name, "CoffeeMachine CM-01");
+  assertThrows(
+    () => {
+      (snapshot as MutableThreadSnapshot).subject.name = "Illegal mutation";
+    },
+    TypeError,
+  );
+  assertThrows(
+    () => {
+      (snapshot as MutableThreadSnapshot).artifacts.push(candidate.artifacts[0]);
+    },
+    TypeError,
+  );
+});
+
+Deno.test("ThreadSnapshot rejects unknown root and nested properties", () => {
+  const rootCandidate = coffeeMachineSnapshot() as MutableThreadSnapshot & {
+    accidentalRootField?: string;
+  };
+  rootCandidate.accidentalRootField = "must not cross the boundary";
+  assertEquals(
+    collectThreadSnapshotIssues(rootCandidate).some((issue) =>
+      issue.code === "unknown_property" && issue.path === "$.accidentalRootField"
+    ),
+    true,
+  );
+
+  const nestedCandidate = coffeeMachineSnapshot();
+  const artifact = nestedCandidate.artifacts[0] as
+    & typeof nestedCandidate.artifacts[0]
+    & {
+      accidentalArtifactField?: string;
+    };
+  artifact.accidentalArtifactField = "must not cross the boundary";
+  assertEquals(
+    collectThreadSnapshotIssues(nestedCandidate).some((issue) =>
+      issue.code === "unknown_property" &&
+      issue.path === "$.artifacts[0].accidentalArtifactField"
+    ),
+    true,
+  );
+});
+
 Deno.test("ThreadSnapshot 1.0 forbids an analysis graph while 1.1 requires one", () => {
   const legacy = coffeeMachineSnapshot();
   legacy.analysisGraph = analysisGraphFor(legacy);
   assertEquals(
     collectThreadSnapshotIssues(legacy).some((issue) =>
-      issue.code === "unsupported_analysis_graph" && issue.path === "$.analysisGraph"
+      issue.code === "unknown_property" && issue.path === "$.analysisGraph"
     ),
     true,
   );
@@ -225,7 +284,7 @@ Deno.test("ThreadSnapshot keeps unresolved evaluations first-class without inven
   assertEquals(collectThreadSnapshotIssues(candidate), []);
 });
 
-function coffeeMachineSnapshot(): ThreadSnapshot {
+function coffeeMachineSnapshot(): MutableThreadSnapshot {
   const syson = operation("mcp-syson", "syson_project_snapshot", "syson-run-42");
   const author = operation(
     "thread-orchestrator",
@@ -706,7 +765,7 @@ function fingerprint(character: string): ContentFingerprint {
   return { algorithm: "sha256", digest: character.repeat(64) };
 }
 
-function fresh(): ThreadFreshness {
+function fresh(): Mutable<ThreadFreshness> {
   return { status: "fresh", changedAt: AT, invalidatedByChangeIds: [] };
 }
 
@@ -727,11 +786,11 @@ function link(
   };
 }
 
-function clone(snapshot: ThreadSnapshot): ThreadSnapshot {
-  return JSON.parse(JSON.stringify(snapshot)) as ThreadSnapshot;
+function clone(snapshot: ThreadSnapshot): MutableThreadSnapshot {
+  return JSON.parse(JSON.stringify(snapshot)) as MutableThreadSnapshot;
 }
 
-function analysisGraphFor(snapshot: ThreadSnapshot): AnalysisGraph {
+function analysisGraphFor(snapshot: ThreadSnapshot): Mutable<AnalysisGraph> {
   const model = snapshot.artifacts.find((artifact) => artifact.id === "sysml-cm01")!;
   const result = snapshot.artifacts.find((artifact) =>
     artifact.id === "fea-result-cm01"

@@ -26,10 +26,10 @@ import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectCompletionEvidenceValidator,
-} from "../../domain/project/engineering-project-command-service.ts";
-import { ProjectBriefCommandService } from "../../domain/project/project-brief-command-service.ts";
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/platform/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -54,7 +54,7 @@ import type {
   McpToolCall,
   McpToolClient,
   McpToolResult,
-} from "../mcp/http-mcp-tool-client.ts";
+} from "../../application/ports/out/mcp-tool-client.ts";
 import {
   ARCHITECTURE_FEATURE_TYPING_AQL,
 } from "../extractors/architecture-structure-extractor.ts";
@@ -78,7 +78,7 @@ import {
   fingerprintRequirementsEnvelope,
   parseRequirementsProposalParameters,
   requirementEntriesToOracleRequirements,
-} from "../../domain/platform/requirements-proposal.ts";
+} from "../../domain/engineering/requirements-proposal.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
@@ -88,6 +88,17 @@ import type {
   EngineeringProjectSnapshot,
 } from "../../domain/project/engineering-project.ts";
 import { registerProjectControlTools } from "../../tools/project-control.ts";
+
+type DeepMutable<T> = T extends readonly (infer Item)[] ? DeepMutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: DeepMutable<T[Key]> }
+  : T;
+
+type MutableThreadSnapshot = DeepMutable<ThreadSnapshot>;
+
+/** Build an explicitly mutable corruption fixture without weakening production DTOs. */
+function mutableClone<T>(value: T): DeepMutable<T> {
+  return structuredClone(value) as DeepMutable<T>;
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -2366,7 +2377,7 @@ Deno.test(
         async get(id: string) {
           const snapshot = await fixture.snapshots.get(id);
           if (!snapshot || id !== basis.snapshotId) return snapshot;
-          const transplanted = structuredClone(snapshot);
+          const transplanted = mutableClone(snapshot);
           transplanted.subject.id = "subject:foreign-requirements";
           return transplanted;
         },
@@ -4343,7 +4354,7 @@ Deno.test(
       assertExists(run?.resultSnapshot);
       const mutations: ReadonlyArray<[
         string,
-        (snapshot: ThreadSnapshot) => void,
+        (snapshot: MutableThreadSnapshot) => void,
       ]> = [
         ["projected threshold", (snapshot) => {
           snapshot.requirements[0]!.criterion.limit.value = 99;
@@ -4363,7 +4374,7 @@ Deno.test(
           async get(id: string) {
             const snapshot = await fixture.snapshots.get(id);
             if (!snapshot || id !== run.resultSnapshot!.snapshotId) return snapshot;
-            const altered = structuredClone(snapshot);
+            const altered = mutableClone(snapshot);
             mutate(altered);
             return altered;
           },
@@ -4538,7 +4549,7 @@ Deno.test(
   async () => {
     const mutations: ReadonlyArray<[
       string,
-      (snapshot: ThreadSnapshot) => void,
+      (snapshot: MutableThreadSnapshot) => void,
     ]> = [
       ["name", (snapshot) => {
         snapshot.requirements[0]!.name = "Renamed after publication";
@@ -4606,7 +4617,7 @@ Deno.test(
         }
         const basis = await fixture.snapshots.get(run.basis.snapshotId);
         assertExists(basis);
-        const divergent = structuredClone(basis);
+        const divergent = mutableClone(basis);
         mutate(divergent);
         const snapshots = {
           get(id: string) {
@@ -4668,22 +4679,22 @@ Deno.test(
       if (run.basis.kind !== "thread-snapshot") throw new Error("Unexpected basis.");
       const basis = await fixture.snapshots.get(run.basis.snapshotId);
       assertExists(basis);
-      const merged = structuredClone(basis);
+      const merged = mutableClone(basis);
       const tip = merged.artifacts.find((artifact) =>
         artifact.producer.runId === "run:requirements"
       );
       assertExists(tip);
       const architectureId = tip.inputArtifactIds[0]!;
-      const left = makeReqsArtifact(
+      const left = mutableClone(makeReqsArtifact(
         `requirements-Wing-${FAKE_DIGEST_B}`,
         "Wing",
         FAKE_DIGEST_B,
-      );
-      const right = makeReqsArtifact(
+      ));
+      const right = mutableClone(makeReqsArtifact(
         `requirements-Wing-${FAKE_DIGEST_C}`,
         "Wing",
         FAKE_DIGEST_C,
-      );
+      ));
       merged.artifacts.push(left, right);
       tip.inputArtifactIds = [architectureId, left.id, right.id];
       merged.provenance.push(

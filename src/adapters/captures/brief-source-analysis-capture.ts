@@ -9,7 +9,7 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import { exactRecord, safeId } from "../../domain/kernel/case-validation.ts";
-import type { ContentFingerprint } from "../../domain/kernel/types.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts";
 import {
   type BriefSourceAnalysisReference,

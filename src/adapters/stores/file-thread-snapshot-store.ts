@@ -44,13 +44,13 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
     const path = this.pathFor(snapshotId);
     const name = path.slice(path.lastIndexOf("/") + 1);
     const cached = this.#snapshotByFileName.get(name);
-    if (cached) return structuredClone(cached);
+    if (cached) return cached;
     try {
       const snapshot = validateThreadSnapshot(
         JSON.parse(await this.io.readTextFile(path)),
       );
       this.#snapshotByFileName.set(name, snapshot);
-      return structuredClone(snapshot);
+      return snapshot;
     } catch (error) {
       if (isNotFound(error)) return undefined;
       throw error;
@@ -166,7 +166,7 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
 
   private async readSnapshotFile(name: string): Promise<ThreadSnapshot> {
     const cached = this.#snapshotByFileName.get(name);
-    if (cached) return structuredClone(cached);
+    if (cached) return cached;
     return await this.readSnapshotFileFresh(name);
   }
 
@@ -175,7 +175,7 @@ export class FileThreadSnapshotStore implements ThreadSnapshotStore {
       JSON.parse(await this.io.readTextFile(joinPath(this.directory, name))),
     );
     this.#snapshotByFileName.set(name, snapshot);
-    return structuredClone(snapshot);
+    return snapshot;
   }
 
   private async claimRevision(snapshot: ThreadSnapshot): Promise<void> {
