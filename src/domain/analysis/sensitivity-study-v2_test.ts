@@ -1,4 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
+import { computeSensitivities } from "./sensitivity-study.ts";
 import {
   SENSITIVITY_STUDY_CASE_V2_SCHEMA,
   validateSensitivityStudyCaseV2,
@@ -182,5 +183,23 @@ Deno.test(
     assertEquals(Object.isFrozen(result), true);
     assertEquals(Object.isFrozen(result.cadSource), true);
     assertEquals(Object.isFrozen(result.domain), true);
+  },
+);
+
+Deno.test(
+  "computeSensitivities accepts a sensitivity-study-case/2.0 without a recipeSource",
+  () => {
+    const studyCase = validateSensitivityStudyCaseV2(VALID_CASE);
+    const result = computeSensitivities(
+      studyCase,
+      new Map([["assembly_max_displacement", { value: 0.5, unit: "mm" }]]),
+      new Map([["assembly_max_displacement", { value: 1.5, unit: "mm" }]]),
+    );
+    assertEquals(result.derivatives, [{
+      metric: "assembly_max_displacement",
+      value: 1,
+      unit: "mm/mm",
+    }]);
+    assertEquals(result.domain, { base: 50, step: 1, parameterUnit: "mm" });
   },
 );

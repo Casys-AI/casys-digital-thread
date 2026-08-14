@@ -208,8 +208,19 @@ export function validateSensitivityStudyCase(value: unknown): SensitivityStudyCa
  * measurement whose declared unit diverges from the case declaration so unit
  * confusion cannot silently propagate into the derivative.
  */
+/**
+ * Shared finite-difference input. Both sensitivity-study-case/1.0 and /2.0
+ * satisfy this structurally; the arithmetic must not depend on recipeSource
+ * or cadSource.
+ */
+export interface SensitivityFiniteDifferenceCase {
+  readonly metrics: readonly SensitivityMetricDeclaration[];
+  readonly baseValue: { readonly value: number; readonly unit: string };
+  readonly step: { readonly value: number; readonly unit: string };
+}
+
 export function computeSensitivities(
-  sensitivityCase: SensitivityStudyCase,
+  sensitivityCase: SensitivityFiniteDifferenceCase,
   baseMetrics: ReadonlyMap<string, SensitivityMetricMeasurement>,
   steppedMetrics: ReadonlyMap<string, SensitivityMetricMeasurement>,
 ): SensitivityDerivatives {

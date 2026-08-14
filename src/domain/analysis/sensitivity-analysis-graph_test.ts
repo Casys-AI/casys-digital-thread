@@ -1,6 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { deterministicJson } from "../kernel/deterministic-json.ts";
 import { validateSensitivityStudyCase } from "./sensitivity-study.ts";
+import { validateSensitivityStudyCaseV2 } from "./sensitivity-study-v2.ts";
 import { buildSensitivityAnalysisGraph } from "./sensitivity-analysis-graph.ts";
 
 const FP = (digest: string) => ({ algorithm: "sha256" as const, digest });
@@ -175,3 +176,75 @@ function graphInput() {
     },
   };
 }
+
+Deno.test(
+  "buildSensitivityAnalysisGraph emits observed measured-local-sensitivity from a 2.0 case and never a verdict",
+  () => {
+    const graph = buildSensitivityAnalysisGraph({
+      caseFingerprint: FP("d".repeat(64)),
+      sensitivityCase: validateSensitivityStudyCaseV2({
+        schemaVersion: "sensitivity-study-case/2.0",
+        id: "case-sensitivity",
+        revision: 1,
+        scope: "test",
+        evidenceBoundary: "test",
+        project: { id: "project", subjectId: "project:subject" },
+        target: { componentKey: "part", semanticKey: "size-z" },
+        cadSource: {
+          artifactUri: "thread-artifact://project/admission",
+          sha256: "a".repeat(64),
+        },
+        baseValue: { value: 30, unit: "mm" },
+        step: { value: 1, unit: "mm" },
+        metrics: [{ id: "assembly_max_displacement", unit: "mm" }],
+        solver: {
+          provider: "calculix",
+          tool: "calculix_solve_static",
+          resultSchemaVersion: "2.0",
+          mesh: { kind: "tetrahedral-volume", targetSizeMm: 1 },
+          material: {
+            model: "isotropic-linear-elastic",
+            eMpa: 1,
+            nu: 0.3,
+            basis: "test",
+          },
+          supports: [{
+            id: "support",
+            kind: "fixed",
+            selection: {
+              name: "FIXED",
+              box: { min: [0, 0, 0], max: [1, 1, 1], unit: "mm" },
+            },
+          }],
+          loads: [{
+            id: "load",
+            kind: "force",
+            selection: {
+              name: "LOADED",
+              box: { min: [2, 2, 2], max: [3, 3, 3], unit: "mm" },
+            },
+            force: { value: [0, 0, -1], unit: "N" },
+          }],
+        },
+        domain: {
+          approximationOrder: "first-order-forward",
+          remeshingVariationIncluded: true,
+          localValidityNote: "test",
+          limitations: ["test"],
+        },
+      }),
+      baseMetrics: new Map([
+        ["assembly_max_displacement", { value: 0.1, unit: "mm" }],
+      ]),
+      steppedMetrics: new Map([
+        ["assembly_max_displacement", { value: 0.2, unit: "mm" }],
+      ]),
+      evidence: {
+        capture: { id: "sensitivity-capture", fingerprint: FP("c".repeat(64)) },
+      },
+    });
+    assertEquals(graph.relations[0]?.assertion.relation, "measured-local-sensitivity");
+    assertEquals(graph.relations[0]?.assertion.epistemicBasis, "observed");
+    assertEquals("verdict" in (graph.relations[0]?.assertion ?? {}), false);
+  },
+);

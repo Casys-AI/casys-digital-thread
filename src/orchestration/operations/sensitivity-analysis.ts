@@ -1,30 +1,12 @@
 /**
- * Operation constants for the first-order FEA sensitivity analysis vertical.
- *
- * Two operations, two distinct authorities:
- *
- *   analyze.run-fea-sensitivity@1 — runs the two-solve finite-difference
- *   study (base + stepped geometry) against a sealed sensitivity-study-case/2.0
- *   and publishes dimensioned observations and a sensitivity-study capture
- *   artifact. NEVER a verdict.
- *
- *   model.write-sensitivity-edges@1 — reads a sealed sensitivity-study
- *   capture artifact from the thread, renders the derivative set as a SysML
- *   PartDef (via renderSensitivityEdgeSetSysml), inserts it into SysON, and
- *   publishes the resulting sensitivity-edges artifact.
- *
- * Why two operations — the measurement authority (CalculiX, observed data) and
- * the model-authoring authority (SysON, structural declaration) are deliberately
- * separate. The measurement step can be re-run without re-authoring; the
- * model-write step can be reviewed independently before any SysON mutation.
+ * Orchestration re-export of the first-order FEA sensitivity operation
+ * identities. Canonical definitions live in the domain proposal module so
+ * registry, gate and executors share one source without adapters importing
+ * inward-out.
  */
 
-export const ANALYZE_RUN_FEA_SENSITIVITY_OPERATION = {
-  id: "analyze.run-fea-sensitivity",
-  version: "1",
-} as const;
-
-export const MODEL_WRITE_SENSITIVITY_EDGES_OPERATION = {
-  id: "model.write-sensitivity-edges",
-  version: "1",
-} as const;
+export {
+  ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+} from "../../domain/analysis/sensitivity-study-proposal.ts";

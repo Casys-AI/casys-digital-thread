@@ -14,8 +14,8 @@ import {
   validateAnalysisGraph,
 } from "./analysis-graph.ts";
 import type {
+  SensitivityFiniteDifferenceCase,
   SensitivityMetricMeasurement,
-  SensitivityStudyCase,
 } from "./sensitivity-study.ts";
 import { computeSensitivities } from "./sensitivity-study.ts";
 
@@ -34,13 +34,25 @@ export interface SensitivityAnalysisGraphEvidenceArtifact {
   readonly fingerprint: ContentFingerprint;
 }
 
+/**
+ * Case fields the graph actually reads. Both 1.0 and 2.0 satisfy this;
+ * recipeSource / cadSource never enter assertion identity.
+ */
+export interface SensitivityAnalysisGraphCase extends SensitivityFiniteDifferenceCase {
+  readonly id: string;
+  readonly target: {
+    readonly componentKey: string;
+    readonly semanticKey: string;
+  };
+}
+
 export interface SensitivityAnalysisGraphInput {
   /**
    * Exact reviewed case declaration. Node identities and local scope depend on
    * this seal, never on the run-scoped capture occurrence.
    */
   readonly caseFingerprint: ContentFingerprint;
-  readonly sensitivityCase: SensitivityStudyCase;
+  readonly sensitivityCase: SensitivityAnalysisGraphCase;
   readonly baseMetrics: ReadonlyMap<string, SensitivityMetricMeasurement>;
   readonly steppedMetrics: ReadonlyMap<string, SensitivityMetricMeasurement>;
   readonly evidence: SensitivityAnalysisGraphEvidence;
