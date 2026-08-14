@@ -20,6 +20,7 @@ const WORK_ITEM_STATUSES: readonly EngineeringWorkItemStatus[] = [
   "waiting-for-decision",
   "completed",
   "cancelled",
+  "abandoned",
 ];
 
 const AGENT_RUN_STATUSES: readonly EngineeringAgentRunStatus[] = [
@@ -38,6 +39,7 @@ const DECISION_STATUSES: readonly EngineeringDecisionStatus[] = [
   "approved",
   "rejected",
   "superseded",
+  "abandoned",
 ];
 
 const APPROVAL_STATUSES: readonly EngineeringApprovalStatus[] = [
