@@ -8,6 +8,7 @@ import {
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
 } from "../../domain/analysis/simulation-case-proposal.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
+import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineering/part-definitions-capture.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/engineering/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
@@ -60,6 +61,7 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${SYSON_MODEL_SEED_OPERATION.id}@${SYSON_MODEL_SEED_OPERATION.version}`,
   `${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.id}@${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.version}`,
   `${INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION.id}@${INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION.version}`,
+  `${MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.id}@${MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.version}`,
 ]);
 
 /**

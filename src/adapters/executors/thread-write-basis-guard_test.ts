@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
+import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineering/part-definitions-capture.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/engineering/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
 import { EngineeringProjectCommandError } from "../../application/use-cases/project/engineering-project-command-service.ts";
@@ -49,9 +50,34 @@ Deno.test("all generic Thread writers share one lease for an exact basis", () =>
     run("geometry", "queued"),
     run("admission", "queued"),
     run("build123d-execution", "queued"),
+    run("part-definitions", "queued"),
   ].map(threadWriteBasisLeaseScope);
 
   assertEquals(new Set(scopes).size, 1);
+});
+
+Deno.test(
+  "capture-part-definitions shares the thread-write basis lease with architecture and requirements writers",
+  () => {
+    assertEquals(
+      threadWriteBasisLeaseScope(run("part-definitions", "queued")),
+      threadWriteBasisLeaseScope(run("architecture", "queued")),
+    );
+    assertEquals(
+      threadWriteBasisLeaseScope(run("part-definitions", "queued")),
+      threadWriteBasisLeaseScope(run("requirements", "queued")),
+    );
+  },
+);
+
+Deno.test("a completed PartDefinitions capture blocks a same-basis sibling", async () => {
+  const current = run("architecture", "queued");
+  const sibling = run("part-definitions", "completed");
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
+    EngineeringProjectCommandError,
+    "sibling run",
+  );
 });
 
 Deno.test("a queued sibling may wait for the shared basis lease", async () => {
@@ -543,7 +569,8 @@ type OperationName =
   | "requirements"
   | "geometry"
   | "admission"
-  | "build123d-execution";
+  | "build123d-execution"
+  | "part-definitions";
 
 function operation(name: OperationName): EngineeringOperationRef {
   const identity = name === "architecture"
@@ -554,6 +581,8 @@ function operation(name: OperationName): EngineeringOperationRef {
     ? DESIGN_WRITE_GEOMETRY_OPERATION
     : name === "admission"
     ? COMPILE_SEAL_ADMISSION_OPERATION
+    : name === "part-definitions"
+    ? MODEL_CAPTURE_PART_DEFINITIONS_OPERATION
     : DESIGN_EXECUTE_BUILD123D_OPERATION;
   return { ...identity, bindings: [] };
 }

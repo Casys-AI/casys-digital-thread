@@ -27,6 +27,7 @@ import {
   GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+  PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
@@ -99,6 +100,9 @@ import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   ModelWriteArchitectureRunExecutor,
 } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
+import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "./src/domain/engineering/part-definitions-capture.ts";
+import { ModelCapturePartDefinitionsRunExecutor } from "./src/adapters/executors/model-capture-part-definitions-run-executor.ts";
+import { FilePartDefinitionsPublicationStore } from "./src/adapters/wal/file-part-definitions-publication-store.ts";
 import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
@@ -257,6 +261,10 @@ const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
   "state/local/inspection-drone-v4-part-definitions-publications";
 const DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY = "state/local/architecture-captures";
 const DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY = "state/local/architecture-attempts";
+const DEFAULT_PART_DEFINITIONS_CAPTURE_DIRECTORY =
+  "state/local/part-definitions-captures";
+const DEFAULT_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
+  "state/local/part-definitions-publications";
 const DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY = "state/local/geometry-draft-captures";
 const DEFAULT_GEOMETRY_CAPTURE_DIRECTORY = "state/local/geometry-captures";
 const DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY = "state/local/requirements-captures";
@@ -437,6 +445,10 @@ export interface CreateConsoleServerOptions {
   architectureCaptureDirectory?: string;
   /** Generic model.write-architecture@1 WAL attempt directory. */
   architectureAttemptDirectory?: string;
+  /** Generic model.capture-part-definitions@1 capture store directory. */
+  partDefinitionsCaptureDirectory?: string;
+  /** Generic model.capture-part-definitions@1 publication WAL directory. */
+  partDefinitionsPublicationDirectory?: string;
   /** Generic model.write-requirements@1 capture store directory. */
   requirementsCaptureDirectory?: string;
   /** Generic model.write-requirements@1 WAL attempt directory. */
@@ -1194,6 +1206,26 @@ async function createProjectControl(
       liveUpdates,
     })
     : undefined;
+  const genericModelCapturePartDefinitions = sysonMcpUrl
+    ? new ModelCapturePartDefinitionsRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      architectureCaptures: genericArchitectureCaptures,
+      seedCaptures: sysonModelSeedCaptures,
+      captures: new FileCaptureStore({
+        ...PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+        directory: options.partDefinitionsCaptureDirectory ??
+          DEFAULT_PART_DEFINITIONS_CAPTURE_DIRECTORY,
+      }),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+      publications: new FilePartDefinitionsPublicationStore(
+        options.partDefinitionsPublicationDirectory ??
+          DEFAULT_PART_DEFINITIONS_PUBLICATION_DIRECTORY,
+      ),
+    })
+    : undefined;
   /**
    * The write-geometry executor promotes exact bytes from a human-signed draft
    * into the evidence thread.  It makes no provider calls — the draft and its
@@ -1607,6 +1639,13 @@ async function createProjectControl(
             executor: genericModelWriteArchitecture,
             unavailableMessage:
               "The server has no trusted generic model.write-architecture@1 executor " +
+              "configured for this run (SysON provider is required).",
+          },
+          {
+            operation: MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+            executor: genericModelCapturePartDefinitions,
+            unavailableMessage:
+              "The server has no trusted generic model.capture-part-definitions@1 executor " +
               "configured for this run (SysON provider is required).",
           },
           {

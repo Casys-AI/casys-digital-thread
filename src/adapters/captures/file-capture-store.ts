@@ -225,6 +225,25 @@ export const ARCHITECTURE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
 export const ARCHITECTURE_CAPTURE_URI_PREFIX = "casys://architecture-capture/" as const;
 
 /**
+ * Generic project-agnostic PartDefinition structure capture store.
+ *
+ * The URI prefix `casys://part-definitions-capture/sha256/<digest>` is a
+ * reviewed identity, distinct from `ARCHITECTURE_CAPTURE_URI_PREFIX` so the
+ * architecture tip selector never confuses the two.
+ */
+export const PART_DEFINITIONS_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "part-definitions-capture"
+> = {
+  kind: "part-definitions-capture",
+  directory: "state/local/part-definitions-captures",
+  uriNamespace: "part-definitions-capture",
+  label: "Part definitions",
+};
+
+export const PART_DEFINITIONS_CAPTURE_URI_PREFIX =
+  "casys://part-definitions-capture/" as const;
+
+/**
  * Canonical geometry captures (JSON) sealed by `design.write-geometry@1`.
  *
  * URI prefix `casys://geometry-capture/sha256/<digest>` is the discriminant

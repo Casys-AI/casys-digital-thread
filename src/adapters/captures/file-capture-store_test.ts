@@ -8,6 +8,7 @@ import {
   GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+  PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   syncCaptureDirectoryChain,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
@@ -114,6 +115,10 @@ Deno.test(
     assertEquals(
       new FileCaptureStore(SYSML_SOURCE_CAPTURE_DESCRIPTOR).uriFor(fp),
       `casys://sysml-source-capture/sha256/${d}`,
+    );
+    assertEquals(
+      new FileCaptureStore(PART_DEFINITIONS_CAPTURE_DESCRIPTOR).uriFor(fp),
+      `casys://part-definitions-capture/sha256/${d}`,
     );
   },
 );

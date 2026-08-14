@@ -16,6 +16,7 @@ import {
 } from "./recorded-analysis.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
+import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineering/part-definitions-capture.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
@@ -97,6 +98,123 @@ Deno.test("the local CalculiX @3 successor retains the exact ROP2 and artifact-b
     "geometry",
   ]);
 });
+
+Deno.test(
+  "model.capture-part-definitions@1 is a trusted low-risk define operation that binds one architecture artifact",
+  () => {
+    const registered = getRegisteredEngineeringOperation(
+      MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+    )!;
+    assertEquals(registered.execution, "trusted");
+    assertEquals(registered.riskClass, "low");
+    assertEquals(registered.workItemKind, "define");
+    assertEquals(registered.requiresAdditiveChange, true);
+    assertEquals(registered.decisionEvidenceScope, undefined);
+    assertEquals(registered.mustOrigin, undefined);
+    assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+    assertEquals(registered.bindings, [{
+      name: "architecture",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }]);
+  },
+);
+
+Deno.test("model.capture-part-definitions@1 cannot appear in the initial plan", () => {
+  const registered = getRegisteredEngineeringOperation(
+    MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+  )!;
+  assertEquals(registered.requiresAdditiveChange, true);
+});
+
+Deno.test(
+  "model.capture-part-definitions@1 refuses any basis other than thread-snapshot",
+  () => {
+    const binding = {
+      name: "architecture",
+      source: {
+        kind: "thread-entity" as const,
+        reference: {
+          snapshotId: "thread.snapshot.3",
+          snapshotRevision: 3,
+          kind: "artifact" as const,
+          id: "architecture-" + "a".repeat(64),
+        },
+      },
+    };
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+            bindings: [binding],
+          },
+          stage: "queue",
+          basisKind: "approved-brief",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "unsupported_basis");
+  },
+);
+
+Deno.test(
+  "model.capture-part-definitions@1 refuses a missing, duplicate, or non-artifact architecture binding",
+  () => {
+    const binding = {
+      name: "architecture",
+      source: {
+        kind: "thread-entity" as const,
+        reference: {
+          snapshotId: "thread.snapshot.3",
+          snapshotRevision: 3,
+          kind: "artifact" as const,
+          id: "architecture-" + "a".repeat(64),
+        },
+      },
+    };
+    const queued = validateRegisteredEngineeringOperationInput({
+      operation: {
+        ...MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+        bindings: [binding],
+      },
+      stage: "queue",
+      basisKind: "thread-snapshot",
+    });
+    assertEquals(queued.bindings, [binding]);
+
+    for (
+      const bindings of [
+        [],
+        [{
+          ...binding,
+          source: {
+            ...binding.source,
+            reference: {
+              ...binding.source.reference,
+              kind: "requirement" as const,
+            },
+          },
+        }],
+        [binding, structuredClone(binding)],
+      ]
+    ) {
+      const error = assertThrows(
+        () =>
+          validateRegisteredEngineeringOperationInput({
+            operation: {
+              ...MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+              bindings,
+            },
+            stage: "planning",
+          }),
+        EngineeringOperationRegistryError,
+      );
+      assertEquals(error.code, "invalid_bindings");
+    }
+  },
+);
 
 Deno.test("model.seal-architecture-sysml@1 is a provider-free Thread-document seal", () => {
   const registered = getRegisteredEngineeringOperation(

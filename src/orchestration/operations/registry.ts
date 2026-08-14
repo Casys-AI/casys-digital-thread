@@ -7,6 +7,7 @@ import type {
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
+import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineering/part-definitions-capture.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
 import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
@@ -115,6 +116,28 @@ const OPERATIONS = [
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  {
+    id: MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.id,
+    version: MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Capture the reviewed PartDefinition structures",
+    description:
+      "Re-read the exact PartDefinitions sealed by the current generic architecture capture, " +
+      "verify live SysON still matches that parent→usage→target graph, and publish a " +
+      "content-addressed read-only structure bundle. No SysML write, quantity inference, " +
+      "CAD, physics, or verdict.",
+    workItemKind: "define",
+    riskClass: "low",
+    execution: "trusted",
+    requiresAdditiveChange: true,
+    bindings: [{
+      name: "architecture",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
     }],
   },
   /**
