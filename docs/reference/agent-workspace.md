@@ -208,25 +208,25 @@ initial `project_plan_publish`. See
 Same outer contract (`source-analysis/1.0`). Different parsers. Unresolved is
 first-class and never omitted.
 
-| Profile / analyzer                                                   | Language               | Qualifies                                                                                                                                                                                                  | Leaves unresolved                                                                                                          |
-| -------------------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `sysml-architecture-closed-subset-v1`                                | SysML v2 closed subset | `package { part def }`, empty-or-block `part def`, `part usage : Type;`                                                                                                                                    | Comments, strings, numbers, attributes, `requirement`, anything else                                                       |
-| Rendered architecture companion                                      | Server-rendered SysML  | Manifest-attested PartUsage→target only                                                                                                                                                                    | Arbitrary SysML                                                                                                            |
-| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.1.0**) | Python / build123d     | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Pos`, `Rot`, `Compound`; `+`/`-` solids; `scale(solid, scalar)`; `fillet(solid.edges(), radius=scalar)`; numeric params; one `result` | D4-allowed but unproven syntax; chamfer stays unresolved; do not open general MemberExpression, `.faces()`, or `filter_by` |
-| Python CAD frontend (legacy preview)                                 | Python                 | Conservative bindings into `result`                                                                                                                                                                        | Calls, imports, branches, functions…                                                                                       |
-| Project-brief frontend                                               | Canonical brief JSON   | Item ids + explicit V2 gate dependencies                                                                                                                                                                   | Prose inference, V1 gates                                                                                                  |
+| Profile / analyzer                                                   | Language               | Qualifies                                                                                                                                                                                                                                    | Leaves unresolved                                                                                |
+| -------------------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `sysml-architecture-closed-subset-v1`                                | SysML v2 closed subset | `package { part def }`, empty-or-block `part def`, `part usage : Type;`                                                                                                                                                                      | Comments, strings, numbers, attributes, `requirement`, anything else                             |
+| Rendered architecture companion                                      | Server-rendered SysML  | Manifest-attested PartUsage→target only                                                                                                                                                                                                      | Arbitrary SysML                                                                                  |
+| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.2.0**) | Python / build123d     | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Pos`, `Rot`, `Compound`; `+`/`-` solids; `scale(solid, scalar)`; `fillet(solid.edges(), radius=scalar)`; `chamfer(solid.edges(), length)`; numeric params; one `result` | D4-allowed but unproven syntax; do not open general MemberExpression, `.faces()`, or `filter_by` |
+| Python CAD frontend (legacy preview)                                 | Python                 | Conservative bindings into `result`                                                                                                                                                                                                          | Calls, imports, branches, functions…                                                             |
+| Project-brief frontend                                               | Canonical brief JSON   | Item ids + explicit V2 gate dependencies                                                                                                                                                                                                     | Prose inference, V1 gates                                                                        |
 
 Bindings published by the architecture SysML analyzer are **symbol ids**, never labels.
 Labels are display data.
 
-Qualified Build123d 1.1.0 extends the earlier Box/Cylinder/Pos/Compound subset with
-later positional 3-D solids, `Rot`, solid `+`/`-`, algebraic `scale(solid, scalar)`, and
-`fillet(solid.edges(), radius=scalar)`. Previously qualified Box/Cylinder/Pos/Compound
-bundles stay bit-identical; the public analysis identity does not change.
+Qualified Build123d 1.2.0 extends the earlier Box/Cylinder/Pos/Compound subset with
+later positional 3-D solids, `Rot`, solid `+`/`-`, algebraic `scale(solid, scalar)`,
+`fillet(solid.edges(), radius=scalar)`, and `chamfer(solid.edges(), length)`. Previously
+qualified bundles stay bit-identical; the public analysis identity does not change for
+existing sources.
 
-Next AST lock: chamfer still needs its own reviewed form. Do not treat
-`fillet(solid, r)` as reviewed. `extrude` still needs a 2-D sketch subset plus `amount=`
-kwargs.
+Next AST lock: do not treat `fillet(solid, r)` or `chamfer(solid, l)` positional-solid
+forms as reviewed. `extrude` still needs a 2-D sketch subset plus `amount=` kwargs.
 
 ## 7. Golden path (generic V3)
 

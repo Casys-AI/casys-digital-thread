@@ -228,7 +228,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         ) {
           addUnresolved(
             "build123d-call-not-qualified",
-            `build123d name ${name.imported} is admitted by D4 but not qualified by the v1.1 frontend.`,
+            `build123d name ${name.imported} is admitted by D4 but not qualified by this frontend version.`,
             name.node,
           );
           continue;
@@ -372,7 +372,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       addExpressionUnresolved(assignment.rhs, addUnresolved);
       addUnresolved(
         "python-parameter-expression-not-qualified",
-        `Assignment ${assignment.name} is not a closed v1.1 numeric expression or solid.`,
+        `Assignment ${assignment.name} is not a closed qualified numeric expression or solid.`,
         assignment.rhs,
       );
     }
