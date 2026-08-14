@@ -138,13 +138,50 @@ Deno.test("qualified build123d frontend turns forbidden imports and calls into r
   }
 });
 
+Deno.test("qualified build123d frontend accepts Cone, Sphere, and Rot", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Cone
+bottom = 10
+top = 0
+height = 20
+result = Cone(bottom, top, height)
+`,
+    `from build123d import Sphere
+radius = 5
+result = Sphere(radius)
+`,
+    `from build123d import Box, Rot
+result = Rot(0, 0, 45) * Box(10, 20, 30)
+`,
+    `from build123d import Cone, Rot, Sphere
+bottom = 10
+top = 0
+height = 20
+radius = 5
+cone = Cone(bottom, top, height)
+sphere = Rot(90, 0, 0) * Sphere(radius)
+result = cone + sphere
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
+});
+
 Deno.test("D4-admitted but unqualified build123d calls remain explicitly unresolved", async () => {
   const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
     ...INPUT,
-    sourceText: `from build123d import Box, Cone
-radius = 2
-height = 10
-result = Cone(radius, height)
+    sourceText: `from build123d import Box, Torus
+major = 10
+minor = 2
+result = Torus(major, minor)
 `,
   });
 
@@ -219,12 +256,18 @@ result = Compound(children=[base, articulated_arm, head, bulb_holder])
   );
 });
 
-Deno.test("a bare Pos or Compound without named children stays unresolved", async () => {
+Deno.test("a bare Pos, Rot, or Compound without named children stays unresolved", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
   const barePos = await analyzer.analyze({
     ...INPUT,
     sourceText: `from build123d import Pos
 result = Pos(0, 0, 10)
+`,
+  });
+  const bareRot = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Rot
+result = Rot(0, 0, 45)
 `,
   });
   const emptyCompound = await analyzer.analyze({
@@ -233,16 +276,13 @@ result = Pos(0, 0, 10)
 result = Compound(children=[])
 `,
   });
-  assert(
-    barePos.unresolvedConstructs.some((item) =>
-      item.kind === "build123d-result-not-qualified"
-    ),
-  );
-  assert(
-    emptyCompound.unresolvedConstructs.some((item) =>
-      item.kind === "build123d-result-not-qualified"
-    ),
-  );
+  for (const bundle of [barePos, bareRot, emptyCompound]) {
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+    );
+  }
 });
 
 Deno.test("Lezer-recovered non-decimal or malformed numbers never qualify silently", async () => {

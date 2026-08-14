@@ -377,12 +377,71 @@ Deno.test("evidence families cannot mask valid evidence without exact raw supers
   assertEquals(isEngineeringWorkbenchSnapshot(outsideGraph), false);
 
   const duplicateMembership = evidenceWorkbenchWithDeclaredFamily();
-  const declaredFamily = duplicateMembership.thread.evidenceFamilyGraph.families[0]!;
+  const declaredFamily = duplicateMembership.thread.evidenceFamilyGraph
+    .families[0]!;
   duplicateMembership.thread.evidenceFamilyGraph.families.push({
     ...structuredClone(declaredFamily),
     id: "duplicate-membership-family",
   });
   assertEquals(isEngineeringWorkbenchSnapshot(duplicateMembership), false);
+});
+
+Deno.test("evidence families accept an architecture-capture derived_from predecessor", () => {
+  const workbench = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
+  const predecessor = workbench.thread.graph.nodes.find((node) =>
+    node.ref.kind === "artifact" && node.ref.id === "ART-SYSML-018"
+  );
+  if (!predecessor || typeof predecessor.artifactKind !== "string") {
+    throw new Error("Expected ART-SYSML-018 fixture node.");
+  }
+  const edge = {
+    id: "architecture-v2-to-v3",
+    from: { ...predecessor.ref },
+    to: { ...predecessor.ref, id: `${predecessor.ref.id}-v3` },
+    relation: "derived_from" as const,
+    origin: "provenance" as const,
+    rationale: "Parser-backed architecture attests its predecessor.",
+  };
+  const tipNode = {
+    ...predecessor,
+    id: `graph:artifact:${edge.to.id}`,
+    ref: { ...edge.to },
+    label: predecessor.label,
+  };
+  workbench.thread.graph.nodes.push(tipNode);
+  workbench.thread.graph.edges.push(edge);
+  const edgeRef = {
+    id: edge.id,
+    relation: edge.relation,
+    origin: edge.origin,
+  };
+  workbench.thread.evidenceFamilyGraph.families = [{
+    id: "fixture-architecture-family",
+    entityKind: "artifact",
+    artifactKind: predecessor.artifactKind,
+    historicalRefs: [{ ...edge.from }],
+    currentRefs: [{ ...edge.to }],
+    revisionCount: 1,
+    status: "current",
+    relationship: {
+      relation: "supersedes",
+      classification: "not-recorded",
+      equivalence: "not-recorded",
+    },
+    transitions: [{
+      edgeRef,
+      historical: { ...edge.from },
+      successor: { ...edge.to },
+    }],
+  }];
+  workbench.thread.evidenceFamilyGraph.edges = [];
+  workbench.thread.evidenceFamilyGraph.omittedSelfLoops = [{
+    familyId: "fixture-architecture-family",
+    memberEdgeRefs: [edgeRef],
+  }];
+  workbench.thread.evidenceFamilyGraph.omittedCycleEdges = [];
+
+  assertEquals(isEngineeringWorkbenchSnapshot(workbench), true);
 });
 
 Deno.test("the Workbench contract requires one non-empty structured requirement source identity", () => {
@@ -470,7 +529,8 @@ Deno.test("the Workbench contract accepts qualified analysis assertions and reje
   assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
 
   const wrongAssertionId = structuredClone(snapshot);
-  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId = "other-assertion";
+  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId =
+    "other-assertion";
   assertEquals(isThreadWorkbenchSnapshot(wrongAssertionId), false);
 
   const missingMeasurement = structuredClone(snapshot);
@@ -603,7 +663,8 @@ Deno.test("the Workbench contract requires evidence-backed component facets", ()
   partDefinition.components.components[0].bindings[0].kind = "part-definition";
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), true);
 
-  partDefinition.components.components[0].bindings[0].kind = "invented" as never;
+  partDefinition.components.components[0].bindings[0].kind =
+    "invented" as never;
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), false);
 });
 
@@ -718,7 +779,8 @@ function evidenceWorkbenchWithDeclaredFamily() {
     throw new Error("Expected one exact artifact supersession fixture.");
   }
   const historicalNode = workbench.thread.graph.nodes.find((node) =>
-    node.ref.kind === supersession.from.kind && node.ref.id === supersession.from.id
+    node.ref.kind === supersession.from.kind &&
+    node.ref.id === supersession.from.id
   );
   const currentNode = workbench.thread.graph.nodes.find((node) =>
     node.ref.kind === supersession.to.kind && node.ref.id === supersession.to.id

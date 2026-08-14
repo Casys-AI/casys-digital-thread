@@ -19,12 +19,26 @@ export type VersionedGraphSelection =
 
 export interface VersionedEvidenceFamily {
   family: ThreadEvidenceFamily;
-  /** Current canonical record used as the single visible graph node. */
+  /** Canonical tip. Version history marks this CURRENT. */
   representative: ThreadGraphNode;
+  /**
+   * Single visible graph node for the family. Equals `representative` unless
+   * a historical member is being presented as-of.
+   */
+  visible: ThreadGraphNode;
   /** Explicit supersession order, oldest first and current last. */
   members: ThreadGraphNode[];
   /** Canonical relations hidden only because both endpoints are in this node. */
   internalEdges: ThreadGraphEdge[];
+}
+
+/**
+ * Optional presentation overlay. It never mutates family membership or the
+ * canonical graph: it only chooses which folded member occupies the visible
+ * node slot and which of that member's external relations are shown.
+ */
+export interface VersionedProvenanceOptions {
+  readonly presentedMemberRef?: ThreadGraphRef;
 }
 
 export interface VersionedEdgeOccurrence {
@@ -91,6 +105,7 @@ export interface VersionedGraphSelectionIndex {
 export function buildVersionedProvenanceProjection(
   graph: ThreadGraph,
   familyGraph: ThreadEvidenceFamilyGraph,
+  options: VersionedProvenanceOptions = {},
 ): VersionedProvenanceProjection {
   const nodeByRef = new Map(
     graph.nodes.map((node) => [refKey(node.ref), node] as const),
@@ -109,8 +124,15 @@ export function buildVersionedProvenanceProjection(
   const pendingFamilies: Array<{
     family: ThreadEvidenceFamily;
     representative: ThreadGraphNode;
+    visible: ThreadGraphNode;
     members: ThreadGraphNode[];
   }> = [];
+  /**
+   * Members hidden by an as-of presentation. Their external relations must
+   * not be remapped onto the presented node — that would keep the tip's
+   * neighbours while claiming to show an earlier version.
+   */
+  const asOfHiddenMemberKeys = new Set<string>();
 
   for (const family of familyGraph.families) {
     if (family.status !== "current" || family.currentRefs.length !== 1) {
@@ -130,11 +152,36 @@ export function buildVersionedProvenanceProjection(
     const members = references.map((reference) =>
       nodeByRef.get(refKey(reference))!
     );
-    pendingFamilies.push({ family, representative, members });
+    const presented = presentedMemberInFamily(
+      members,
+      options.presentedMemberRef,
+    );
+    const visible = presented ?? representative;
+    pendingFamilies.push({ family, representative, visible, members });
     for (const member of members) {
-      visibleRefByMemberRef.set(refKey(member.ref), representative.ref);
+      visibleRefByMemberRef.set(refKey(member.ref), visible.ref);
+      if (presented && refKey(member.ref) !== refKey(visible.ref)) {
+        asOfHiddenMemberKeys.add(refKey(member.ref));
+      }
     }
   }
+
+  const exclusiveAsOfHiddenKeys = exclusiveDependentKeys(
+    graph,
+    pendingFamilies
+      .filter((pending) =>
+        options.presentedMemberRef !== undefined &&
+        pending.members.some((member) =>
+          refKey(member.ref) === refKey(options.presentedMemberRef!)
+        )
+      )
+      .map((pending) => ({
+        memberKeys: new Set(
+          pending.members.map((member) => refKey(member.ref)),
+        ),
+        presentedKey: refKey(pending.visible.ref),
+      })),
+  );
 
   const memberOccurrences = indexMemberEdgeOccurrences(graph.edges);
   const memberOccurrenceKeyByEdge = memberOccurrences.keyByEdge;
@@ -156,6 +203,14 @@ export function buildVersionedProvenanceProjection(
       internalEdgesByVisibleRef.set(refKey(from), bucket);
       continue;
     }
+    if (
+      asOfHiddenMemberKeys.has(refKey(edge.from)) ||
+      asOfHiddenMemberKeys.has(refKey(edge.to)) ||
+      exclusiveAsOfHiddenKeys.has(refKey(edge.from)) ||
+      exclusiveAsOfHiddenKeys.has(refKey(edge.to))
+    ) {
+      continue;
+    }
     const groupKey = versionedEdgeOccurrenceKey({ ...edge, from, to });
     const bucket = groupedEdges.get(groupKey) ?? [];
     bucket.push({
@@ -170,13 +225,13 @@ export function buildVersionedProvenanceProjection(
       ...pending,
       internalEdges: [
         ...(
-          internalEdgesByVisibleRef.get(refKey(pending.representative.ref)) ??
+          internalEdgesByVisibleRef.get(refKey(pending.visible.ref)) ??
             []
         ),
       ].sort(compareEdges),
     };
     familyByVisibleRef.set(
-      refKey(pending.representative.ref),
+      refKey(pending.visible.ref),
       versionedFamily,
     );
     for (const member of pending.members) {
@@ -186,6 +241,7 @@ export function buildVersionedProvenanceProjection(
 
   const nodes: ThreadGraphNode[] = [];
   for (const node of graph.nodes) {
+    if (exclusiveAsOfHiddenKeys.has(refKey(node.ref))) continue;
     const visibleRef = visibleRefByMemberRef.get(refKey(node.ref));
     if (!visibleRef) {
       nodes.push(node);
@@ -253,7 +309,10 @@ export function buildVersionedProvenanceProjection(
 
   return {
     graph: { nodes, edges },
-    collapsedVersionCount: graph.nodes.length - nodes.length,
+    collapsedVersionCount: pendingFamilies.reduce(
+      (count, pending) => count + pending.members.length - 1,
+      0,
+    ),
     familyByMemberRef,
     familyByVisibleRef,
     edgeGroupByVisibleOccurrenceKey,
@@ -503,6 +562,93 @@ export function threadGraphEdgeRecordSignature(edge: ThreadGraphEdge): string {
 
 export function versionLabel(count: number): string {
   return `${count} recorded version${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * Any foldable family member may occupy the visible node. The unfocused
+ * map keeps the tip plus remapped historical handoffs; selecting a member
+ * presents that member's recorded path only.
+ */
+export function presentedFamilyMemberRef(
+  familyGraph: ThreadEvidenceFamilyGraph,
+  reference: ThreadGraphRef | undefined,
+): ThreadGraphRef | undefined {
+  if (!reference) return undefined;
+  const key = refKey(reference);
+  let found: ThreadGraphRef | undefined;
+  for (const family of familyGraph.families) {
+    if (family.status !== "current" || family.currentRefs.length !== 1) {
+      continue;
+    }
+    if (!familyRefs(family).some((item) => refKey(item) === key)) continue;
+    if (found) return undefined;
+    found = reference;
+  }
+  return found;
+}
+
+/**
+ * Nodes reachable from a hidden family member without walking through the
+ * presented member, minus the presented member's own path. Shared trunk
+ * (seed, common inputs) stays; the other version's exclusive path leaves.
+ */
+function exclusiveDependentKeys(
+  graph: ThreadGraph,
+  presentedFamilies: readonly {
+    readonly memberKeys: ReadonlySet<string>;
+    readonly presentedKey: string;
+  }[],
+): Set<string> {
+  if (presentedFamilies.length === 0) return new Set();
+  const adjacency = new Map<string, Set<string>>();
+  const link = (left: string, right: string) => {
+    if (!adjacency.has(left)) adjacency.set(left, new Set());
+    adjacency.get(left)!.add(right);
+  };
+  for (const edge of graph.edges) {
+    const from = refKey(edge.from);
+    const to = refKey(edge.to);
+    if (from === to) continue;
+    link(from, to);
+    link(to, from);
+  }
+  const cone = (start: string, blocked: ReadonlySet<string>) => {
+    const seen = new Set<string>([start]);
+    const queue = [start];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      for (const next of adjacency.get(current) ?? []) {
+        if (seen.has(next) || (blocked.has(next) && next !== start)) continue;
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+    seen.delete(start);
+    return seen;
+  };
+  const hidden = new Set<string>();
+  for (const family of presentedFamilies) {
+    const presentedCone = cone(family.presentedKey, family.memberKeys);
+    for (const memberKey of family.memberKeys) {
+      if (memberKey === family.presentedKey) continue;
+      for (const key of cone(memberKey, family.memberKeys)) {
+        if (!presentedCone.has(key) && !family.memberKeys.has(key)) {
+          hidden.add(key);
+        }
+      }
+    }
+  }
+  return hidden;
+}
+
+function presentedMemberInFamily(
+  members: readonly ThreadGraphNode[],
+  presentedMemberRef: ThreadGraphRef | undefined,
+): ThreadGraphNode | undefined {
+  if (!presentedMemberRef) return undefined;
+  return members.find((member) =>
+    refKey(member.ref) === refKey(presentedMemberRef)
+  );
 }
 
 export function versionedRefKey(reference: ThreadGraphRef): string {

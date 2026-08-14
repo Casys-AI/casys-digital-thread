@@ -7,6 +7,7 @@ import type {
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
+import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
 import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
@@ -114,6 +115,26 @@ const OPERATIONS = [
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
     }],
+  },
+  /**
+   * Provider-free seal of one agent-authored architecture SysML closed-subset
+   * analysis. The signed proposal names exact CAS identities. The executor
+   * writes a Thread document only and never inserts into SysON.
+   */
+  {
+    id: MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION.id,
+    version: MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed architecture SysML analysis",
+    description:
+      "Reopen the exact captured agent-authored architecture SysML source and its " +
+      "closed-subset analysis, then seal that document into the evidence thread. " +
+      "No SysON insertion, provider call, or compile.seal-admission@1 authority is granted.",
+    workItemKind: "architect",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [],
   },
   /**
    * Generic model-driven correction.  Planning-only until a server-owned

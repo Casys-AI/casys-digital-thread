@@ -5,12 +5,12 @@
  * the existing D4 execution-surface validator, then proves a deliberately
  * smaller AST subset:
  *
- * - named imports of Box, Cylinder, Pos and Compound (aliases allowed;
- *   two aliases for the same imported name stay ambiguous);
+ * - named imports of Box, Cylinder, Cone, Sphere, Pos, Rot and Compound
+ *   (aliases allowed; two aliases for the same imported name stay ambiguous);
  * - unique module-level parameter assignments made only of finite decimal
  *   numbers, unary/binary arithmetic, earlier parameters, and flat lists;
- * - unique module-level solid assignments: a Box/Cylinder call, a Pos *
- *   solid, a solid + solid, a name of an earlier solid, or
+ * - unique module-level solid assignments: a Box/Cylinder/Cone/Sphere call,
+ *   a Pos/Rot * solid, a solid + solid, a name of an earlier solid, or
  *   `Compound(children=[...])` over earlier solid names;
  * - one module-level `result` that is itself one of those solids.
  *
@@ -46,6 +46,13 @@ import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 
 export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
   "build123d-qualified-lezer" as const;
+
+/**
+ * Cone, Sphere and Rot reuse the 1.1 positional-call and placement * solid
+ * identity scheme (`build123d-ast-identity/1.0`).  Previously qualified
+ * Box/Cylinder/Pos/Compound bundles stay bit-identical, so the public
+ * analysis identity does not change.
+ */
 export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.1.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
@@ -59,10 +66,23 @@ const QUALIFIED_BUILD123D_CALLS = new Map(
   [
     ["Box", { role: "solid", positionalArguments: 3 }],
     ["Cylinder", { role: "solid", positionalArguments: 2 }],
+    ["Cone", { role: "solid", positionalArguments: 3 }],
+    ["Sphere", { role: "solid", positionalArguments: 1 }],
     ["Pos", { role: "placement", positionalArguments: 3 }],
+    ["Rot", { role: "placement", positionalArguments: 3 }],
     ["Compound", { role: "assembly", positionalArguments: 0 }],
   ] as const,
 );
+
+type QualifiedBuild123dCallName =
+  | "Box"
+  | "Cylinder"
+  | "Cone"
+  | "Sphere"
+  | "Pos"
+  | "Rot"
+  | "Compound";
+type PositionalBuild123dCallName = Exclude<QualifiedBuild123dCallName, "Compound">;
 
 interface ParsedNode {
   readonly name: string;
@@ -176,7 +196,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       for (const name of imported.names) {
         if (
           !QUALIFIED_BUILD123D_CALLS.has(
-            name.imported as "Box" | "Cylinder" | "Pos" | "Compound",
+            name.imported as QualifiedBuild123dCallName,
           )
         ) {
           addUnresolved(
@@ -373,7 +393,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       addExpressionUnresolved(resultAssignment.rhs, addUnresolved);
       addUnresolved(
         "build123d-result-not-qualified",
-        "result must be one qualified solid: Box/Cylinder, Pos * solid, solid + solid, or Compound(children=[...]).",
+        "result must be one qualified solid: Box/Cylinder/Cone/Sphere, Pos/Rot * solid, solid + solid, or Compound(children=[...]).",
         resultAssignment.rhs,
       );
     }
@@ -540,12 +560,11 @@ function parseShapeExpression(
   }
   const operatorText = currentText(operator);
   if (operatorText === "*") {
-    const placement = parsePositionalCall(
+    const placement = parsePlacementCall(
       left,
       importedCalls,
       parameters,
       before,
-      "Pos",
     );
     const solid = parseShapeExpression(
       right,
@@ -597,7 +616,26 @@ function parsePositionalSolidCall(
   parameters: ReadonlyMap<string, SupportedParameter>,
   before: number,
 ): ShapeExpression | undefined {
-  for (const imported of ["Box", "Cylinder"] as const) {
+  for (const imported of ["Box", "Cylinder", "Cone", "Sphere"] as const) {
+    const parsed = parsePositionalCall(
+      node,
+      importedCalls,
+      parameters,
+      before,
+      imported,
+    );
+    if (parsed !== undefined) return parsed;
+  }
+  return undefined;
+}
+
+function parsePlacementCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  before: number,
+): ShapeExpression | undefined {
+  for (const imported of ["Pos", "Rot"] as const) {
     const parsed = parsePositionalCall(
       node,
       importedCalls,
@@ -615,7 +653,7 @@ function parsePositionalCall(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   before: number,
-  importedName: "Box" | "Cylinder" | "Pos",
+  importedName: PositionalBuild123dCallName,
 ): ShapeExpression | undefined {
   if (node.name !== "CallExpression" || node.children.length !== 2) {
     return undefined;
@@ -866,7 +904,7 @@ function addExpressionUnresolved(
     } else if (candidate.name === "CallExpression") {
       add(
         "python-dynamic-call",
-        "Only reviewed direct Box, Cylinder, Pos, or Compound calls are qualified.",
+        "Only reviewed direct Box, Cylinder, Cone, Sphere, Pos, Rot, or Compound calls are qualified.",
         candidate,
       );
     }

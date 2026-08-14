@@ -130,7 +130,9 @@ export interface NativeWorkbenchHandlerOptions {
   projectSnapshots?: ExactThreadSnapshotReader;
   /** Optional for a focused workspace whose durable focus supplies the project. */
   subjectId?: string;
-  html: string;
+  html?: string;
+  /** When set, each GET re-reads the cockpit HTML so a rebuild is visible. */
+  htmlPath?: string;
   componentCatalog?: ThreadComponentCatalog;
   componentCatalogForSubject?: (
     subjectId: string,
@@ -361,7 +363,10 @@ export function createNativeWorkbenchHandler(
     }
     if (url.pathname === "/" || url.pathname === "/native-workbench.html") {
       if (request.method !== "GET") return methodNotAllowed();
-      return new Response(options.html, {
+      const html = options.htmlPath
+        ? await Deno.readTextFile(options.htmlPath)
+        : options.html ?? "";
+      return new Response(html, {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",
@@ -1033,7 +1038,6 @@ if (import.meta.main) {
     ARCHITECTURE_CAPTURE_DESCRIPTOR.directory;
   const geometryCaptureDirectory = cliArgs["geometry-capture-dir"] ??
     GEOMETRY_CAPTURE_DESCRIPTOR.directory;
-  const html = await Deno.readTextFile(htmlPath);
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
     store,
@@ -1108,7 +1112,7 @@ if (import.meta.main) {
     workspaceId,
     projectSnapshots,
     subjectId,
-    html,
+    htmlPath,
     componentCatalog,
     componentCatalogForSubject: async (resolvedSubjectId) =>
       await readOptionalComponentCatalog(

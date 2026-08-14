@@ -33,6 +33,10 @@ import {
   parseArchitectureProposalParameters,
 } from "../../domain/engineering/architecture-proposal.ts";
 import {
+  MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
+  parseArchitectureSysmlSealParameters,
+} from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
+import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   geometryDecisionParametersToMap,
   parseGeometryDecisionParameters,
@@ -99,6 +103,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(MODEL_WRITE_ARCHITECTURE_OPERATION),
     (parameters) => {
       parseArchitectureProposalParameters(parameters);
+    },
+  ],
+  [
+    keyOf(MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION),
+    (parameters) => {
+      parseArchitectureSysmlSealParameters(parameters);
     },
   ],
   [

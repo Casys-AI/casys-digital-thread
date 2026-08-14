@@ -967,7 +967,7 @@ function isEvidenceFamilyConsistent(
         rawEdges,
         transition.edgeRef,
         (rawEdge) =>
-          rawEdge.relation === "supersedes" &&
+          isVersionFamilyTransitionRelation(rawEdge.relation) &&
           rawEdge.origin === "provenance" &&
           threadGraphRefKey(rawEdge.from) === historicalKey &&
           threadGraphRefKey(rawEdge.to) === successorKey,
@@ -1058,7 +1058,7 @@ function isThreadEvidenceFamilyTransition(
   const transition = value as Partial<ThreadEvidenceFamilyTransition>;
   return hasExactKeys(value, ["edgeRef", "historical", "successor"]) &&
     isThreadEvidenceFamilyEdgeRef(transition.edgeRef) &&
-    transition.edgeRef.relation === "supersedes" &&
+    isVersionFamilyTransitionRelation(transition.edgeRef.relation) &&
     isThreadGraphRef(transition.historical) &&
     isThreadGraphRef(transition.successor) &&
     (transition.historical.kind !== transition.successor.kind ||
@@ -1399,6 +1399,13 @@ function isThreadRef(value: unknown): value is ThreadRef {
       reference.kind === "observation" ||
       reference.kind === "requirement" ||
       reference.kind === "violation");
+}
+
+/** Raw edges that may form one BFF version family. */
+function isVersionFamilyTransitionRelation(
+  value: unknown,
+): value is "supersedes" | "derived_from" {
+  return value === "supersedes" || value === "derived_from";
 }
 
 function isThreadGraphRelation(value: unknown): value is ThreadGraphRelation {

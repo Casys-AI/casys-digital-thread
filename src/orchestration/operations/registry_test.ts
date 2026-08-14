@@ -15,6 +15,7 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./recorded-analysis.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 
@@ -94,6 +95,16 @@ Deno.test("the local CalculiX @3 successor retains the exact ROP2 and artifact-b
     "proofCase",
     "geometry",
   ]);
+});
+
+Deno.test("model.seal-architecture-sysml@1 is a provider-free Thread-document seal", () => {
+  const registered = getRegisteredEngineeringOperation(
+    MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
+  )!;
+  assertEquals(registered.execution, "trusted");
+  assertEquals(registered.workItemKind, "architect");
+  assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(registered.bindings, []);
 });
 
 Deno.test("the qualified local Modelica kit is a consequential zero-binding operation", () => {

@@ -173,8 +173,12 @@ export function EvidenceExploration({
       });
     }
 
-    // clickStage (background) → reset selection
+    // clickStage (background) → reset selection. Ignore the first tick after
+    // mount: choosing a version remounts Sigma under an already-pressed
+    // pointer and would otherwise treat that click as a stage reset.
+    const ignoreStageUntil = performance.now() + 400;
     sigma.on("clickStage", () => {
+      if (performance.now() < ignoreStageUntil) return;
       onSelectionChangeRef.current?.(undefined);
     });
 

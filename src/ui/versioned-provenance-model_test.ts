@@ -1,10 +1,15 @@
-import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
+import {
+  assertEquals,
+  assertStrictEquals,
+  assertStringIncludes,
+} from "@std/assert";
 import {
   buildVersionedGraphSelectionIndex,
   buildVersionedProvenanceProjection,
   currentArtifacts,
   currentRequirements,
   edgeForVersionedGraphSelection,
+  presentedFamilyMemberRef,
   stubEdgeOccurrenceKey,
   versionedEdgeGroupForSelection,
   visibleGraphRef,
@@ -56,6 +61,94 @@ Deno.test("versioned provenance folds one explicit successor chain into its curr
       (edge) => edge.id,
     ),
     ["proof-r2-to-r3"],
+  );
+});
+
+Deno.test("presenting a historical member shows that version's path and hides the other", () => {
+  const projection = buildVersionedProvenanceProjection(
+    asOfGraph(),
+    asOfFamilyGraph(),
+    { presentedMemberRef: ref("proof-r2") },
+  );
+
+  assertEquals(
+    projection.graph.nodes.map((node) => node.ref.id),
+    ["proof-r2", "requirement-old", "result-old", "seed"],
+  );
+  assertStringIncludes(
+    projection.graph.nodes[0]!.summary,
+    "2 recorded versions",
+  );
+  assertEquals(projection.graph.nodes[0]!.label, "Proof");
+  assertEquals(
+    projection.graph.edges.map((edge) => [edge.from.id, edge.to.id]),
+    [
+      ["proof-r2", "requirement-old"],
+      ["requirement-old", "result-old"],
+      ["seed", "proof-r2"],
+    ],
+  );
+  assertEquals(projection.collapsedVersionCount, 1);
+  assertEquals(visibleGraphRef(projection, ref("proof-r3")), ref("proof-r2"));
+  assertEquals(
+    projection.familyByVisibleRef.get("artifact:proof-r2")?.representative.ref
+      .id,
+    "proof-r3",
+  );
+  assertEquals(
+    projection.familyByVisibleRef.get("artifact:proof-r2")?.visible.ref.id,
+    "proof-r2",
+  );
+});
+
+Deno.test("presenting the current member hides the historical exclusive path", () => {
+  const projection = buildVersionedProvenanceProjection(
+    asOfGraph(),
+    asOfFamilyGraph(),
+    { presentedMemberRef: ref("proof-r3") },
+  );
+
+  assertEquals(
+    projection.graph.nodes.map((node) => node.ref.id),
+    ["proof-r3", "requirement-new", "seed"],
+  );
+  assertEquals(
+    projection.graph.edges.map((edge) => [edge.from.id, edge.to.id]),
+    [
+      ["proof-r3", "requirement-new"],
+      ["seed", "proof-r3"],
+    ],
+  );
+  assertEquals(
+    presentedFamilyMemberRef(asOfFamilyGraph(), ref("proof-r3")),
+    ref("proof-r3"),
+  );
+});
+
+Deno.test("the unfocused map keeps remapped historical neighbours until a version is presented", () => {
+  const projection = buildVersionedProvenanceProjection(
+    asOfGraph(),
+    asOfFamilyGraph(),
+  );
+
+  assertEquals(
+    projection.graph.nodes.map((node) => node.ref.id),
+    ["proof-r3", "requirement-old", "requirement-new", "result-old", "seed"],
+  );
+  assertEquals(
+    new Set(
+      projection.graph.edges.map((edge) => `${edge.from.id}->${edge.to.id}`),
+    ),
+    new Set([
+      "proof-r3->requirement-old",
+      "proof-r3->requirement-new",
+      "requirement-old->result-old",
+      "seed->proof-r3",
+    ]),
+  );
+  assertEquals(
+    presentedFamilyMemberRef(asOfFamilyGraph(), ref("proof-r2")),
+    ref("proof-r2"),
   );
 });
 
@@ -190,7 +283,9 @@ Deno.test("folded handoff selection keeps the exact rendered representative in t
     : undefined;
 
   assertStrictEquals(
-    visibleSelection?.kind === "edge" ? visibleSelection.occurrence?.edge : undefined,
+    visibleSelection?.kind === "edge"
+      ? visibleSelection.occurrence?.edge
+      : undefined,
     renderedHandoff,
   );
   assertStrictEquals(inspectorHandoff, renderedHandoff);
@@ -244,11 +339,15 @@ Deno.test("duplicate edge ids retain separate versioned histories and reproject 
   assertEquals(firstVisible?.kind, "edge");
   assertEquals(secondVisible?.kind, "edge");
   assertEquals(
-    firstVisible?.kind === "edge" ? firstVisible.occurrence?.edge.to.id : undefined,
+    firstVisible?.kind === "edge"
+      ? firstVisible.occurrence?.edge.to.id
+      : undefined,
     "requirement-one",
   );
   assertEquals(
-    secondVisible?.kind === "edge" ? secondVisible.occurrence?.edge.to.id : undefined,
+    secondVisible?.kind === "edge"
+      ? secondVisible.occurrence?.edge.to.id
+      : undefined,
     "requirement-two",
   );
   assertEquals(
@@ -282,7 +381,9 @@ Deno.test("duplicate edge ids retain separate versioned histories and reproject 
     "requirement-one",
   );
   assertEquals(
-    refreshedVisible?.kind === "edge" ? refreshedVisible.occurrence?.edge : undefined,
+    refreshedVisible?.kind === "edge"
+      ? refreshedVisible.occurrence?.edge
+      : undefined,
     refreshedFirstVisibleEdge,
   );
   const refreshedFromFoldedSelection = firstVisible?.kind === "edge"
@@ -654,8 +755,50 @@ Deno.test("Evidence owns one versioned graph and one existing inspector", () => 
   assertEquals(source.includes("EvidenceFamilyGraph"), false);
   assertEquals(source.includes("Full provenance"), false);
   assertStringIncludes(source, "buildVersionedProvenanceProjection");
+  assertStringIncludes(source, "presentedVersionRef");
+  assertStringIncludes(source, "selectPresentedVersion");
   assertStringIncludes(source, "EvidenceVersionHistory");
 });
+
+function asOfGraph(): ThreadGraph {
+  return {
+    nodes: [
+      node("proof-r2", "Proof"),
+      node("proof-r3", "Proof current"),
+      node("requirement-old", "Old requirement"),
+      node("requirement-new", "New requirement"),
+      node("result-old", "Old result"),
+      node("seed", "Seed"),
+    ],
+    edges: [
+      edge("proof-r2-to-r3", "proof-r2", "proof-r3", "supersedes"),
+      edge(
+        "proof-r2-to-requirement-old",
+        "proof-r2",
+        "requirement-old",
+        "evidences",
+      ),
+      edge(
+        "proof-r3-to-requirement-new",
+        "proof-r3",
+        "requirement-new",
+        "evidences",
+      ),
+      edge(
+        "requirement-old-to-result-old",
+        "requirement-old",
+        "result-old",
+        "evidences",
+      ),
+      edge("seed-to-proof-r2", "seed", "proof-r2", "input_to"),
+      edge("seed-to-proof-r3", "seed", "proof-r3", "input_to"),
+    ],
+  };
+}
+
+function asOfFamilyGraph(): ThreadEvidenceFamilyGraph {
+  return familyGraph("current");
+}
 
 function rawGraph(): ThreadGraph {
   return {

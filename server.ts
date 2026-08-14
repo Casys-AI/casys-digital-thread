@@ -48,6 +48,14 @@ import {
 import { FileTechnicalCompilationDraftStore } from "./src/adapters/compilers/file-technical-compilation-draft-store.ts";
 import { FixedTechnicalCompilationProfileCatalogProvider } from "./src/adapters/compilers/fixed-technical-compilation-profile-catalog-provider.ts";
 import { createInitialTechnicalSourceAnalysisCaptureService } from "./src/adapters/compilers/initial-technical-source-analysis-composition.ts";
+import { createArchitectureSysmlSourceAnalysisCaptureService } from "./src/adapters/compilers/architecture-sysml-source-analysis-composition.ts";
+import { QualifiedArchitectureSysmlAnalyzer } from "./src/adapters/analyzers/qualified-architecture-sysml-analyzer.ts";
+import { PreviewProjectArchitectureSysml } from "./src/application/use-cases/preview-project-architecture-sysml.ts";
+import type { ProjectArchitectureSysmlSourceCaptureUseCase } from "./src/application/ports/in/project-architecture-sysml-source-capture.ts";
+import {
+  MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
+  ModelSealArchitectureSysmlRunExecutor,
+} from "./src/adapters/executors/model-seal-architecture-sysml-run-executor.ts";
 import type { Build123dExecutionServerOptions } from "./src/adapters/execution/build123d-execution-composition.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/execution/modelica-isolated-execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/execution/calculix-isolated-execution-composition.ts";
@@ -677,6 +685,58 @@ async function createProjectControl(
         await technicalSourceAnalysis.capture(command),
       ) as unknown as Readonly<Record<string, unknown>>,
   };
+  const architectureSysmlDirectory =
+    `${recordedAnalysisDirectory}/architecture-sysml`;
+  const architectureSysmlSourceAnalysis =
+    createArchitectureSysmlSourceAnalysisCaptureService({
+      sourceCaptures: new FileByteStore({
+        kind: "architecture-sysml-source",
+        directory: `${architectureSysmlDirectory}/sources`,
+        uriNamespace: "architecture-sysml-source",
+        label: "Captured architecture SysML source",
+      }),
+      analysisCaptures: new FileByteStore({
+        kind: "architecture-sysml-source-analysis",
+        directory: `${architectureSysmlDirectory}/analyses`,
+        uriNamespace: "architecture-sysml-source-analysis",
+        label: "Captured architecture SysML analysis",
+      }),
+    });
+  const architectureSysmlSourceCapture:
+    ProjectArchitectureSysmlSourceCaptureUseCase = {
+      capture: async (command) =>
+        structuredClone(
+          await architectureSysmlSourceAnalysis.capture(command),
+        ) as unknown as Readonly<Record<string, unknown>>,
+    };
+  const architectureSysmlPreview = new PreviewProjectArchitectureSysml({
+    frontend: new QualifiedArchitectureSysmlAnalyzer(),
+    captures: architectureSysmlSourceAnalysis,
+  });
+  const architectureSysmlSealBytes = new FileByteStore({
+    kind: "architecture-sysml-seal-capture",
+    directory: `${architectureSysmlDirectory}/seals`,
+    uriNamespace: "architecture-sysml-seal-capture",
+    label: "Sealed architecture SysML analysis",
+  });
+  const architectureSysmlSeals = {
+    save: (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+      canonicalText: string,
+    ) =>
+      architectureSysmlSealBytes.save(
+        fingerprint,
+        new TextEncoder().encode(canonicalText),
+      ),
+    read: async (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+    ) => {
+      const stored = await architectureSysmlSealBytes.read(fingerprint);
+      return stored === undefined
+        ? undefined
+        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
+    },
+  };
   const technicalCompilationDrafts = new FileTechnicalCompilationDraftStore(
     new FileByteStore({
       kind: "technical-compilation-draft",
@@ -997,6 +1057,14 @@ async function createProjectControl(
     sources: technicalCompilationSources,
     profiles: technicalCompilationProfiles,
     captures: technicalCompilationSeals,
+    lease,
+  });
+  const modelSealArchitectureSysml = new ModelSealArchitectureSysmlRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    sources: architectureSysmlSourceAnalysis,
+    captures: architectureSysmlSeals,
     lease,
   });
   const designExecuteBuild123d = build123dExecution?.execution === undefined
@@ -1417,6 +1485,8 @@ async function createProjectControl(
       runPlanReader: recordedRunPlans,
       technicalSourceCapture,
       technicalCompilationPreview,
+      architectureSysmlSourceCapture,
+      architectureSysmlPreview,
       build123dExecutionReview,
       modelicaQualifiedKitRunReview,
       reviewIntents: new FileProjectReviewIntentStore(
@@ -1445,6 +1515,10 @@ async function createProjectControl(
           {
             operation: COMPILE_SEAL_ADMISSION_OPERATION,
             executor: compileSealAdmission,
+          },
+          {
+            operation: MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
+            executor: modelSealArchitectureSysml,
           },
           {
             operation: DESIGN_EXECUTE_BUILD123D_OPERATION,

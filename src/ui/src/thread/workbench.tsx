@@ -156,6 +156,10 @@ export function ThreadWorkbench({
   const [selection, setSelection] = useState<ThreadRef>();
   const [graphSelection, setGraphSelection] = useState<ThreadGraphSelection>();
   const [lineageFocus, setLineageFocus] = useState<ThreadGraphRef>();
+  const [presentedVersionRef, setPresentedVersionRef] = useState<
+    ThreadGraphRef
+  >();
+  const ignoreStageResetUntilRef = useRef(0);
   const [activeView, setActiveView] = useState<ProjectWorkspaceView>(() =>
     parseProjectViewHash(globalThis.location?.hash ?? "")
   );
@@ -426,6 +430,8 @@ export function ThreadWorkbench({
   // selection state. The Evidence-only removal of closed actions happens
   // before version folding, so the graph passed to sigma and the graph that
   // resolves highlighted edge occurrences are the same objects.
+  const presentedMemberRef = presentedVersionRef;
+
   const versionedProvenanceMemo = useMemo(() => {
     if (!workbench || workbench.surface !== "evidence") {
       return undefined;
@@ -441,14 +447,13 @@ export function ThreadWorkbench({
         closedIds,
       ),
       thread.evidenceFamilyGraph,
+      { presentedMemberRef },
     );
-  }, [workbench]);
+  }, [workbench, presentedMemberRef]);
 
-  // Memoize evidenceModel on the workbench reference so sigma is NOT killed on
-  // every non-data state change (followLive, graphSelection, inspectorOpen, …).
-  // workbench is stable between SSE events — it changes only when
-  // setWorkbench(incoming) fires. The guards below (planning, documentary,
-  // !workbench) prevent the null sentinel from ever being consumed.
+  // Memoize evidenceModel on the workbench + presented version so sigma is
+  // not killed on highlight/depth changes. Presenting a family member is a
+  // real topology change and must rebuild.
   const evidenceModel = useMemo((): EvidenceGraphModel => {
     if (!workbench || workbench.surface !== "evidence") {
       return null as unknown as EvidenceGraphModel;
@@ -501,10 +506,16 @@ export function ThreadWorkbench({
     return buildEvidenceCanvasProjection(
       evidenceModel,
       versionedProvenanceMemo.collapsedVersionCount,
-      lineageFocus,
+      presentedMemberRef ?? lineageFocus,
       versionedProvenanceMemo.visibleRefByMemberRef,
     );
-  }, [workbench, versionedProvenanceMemo, evidenceModel, lineageFocus]);
+  }, [
+    workbench,
+    versionedProvenanceMemo,
+    evidenceModel,
+    lineageFocus,
+    presentedMemberRef,
+  ]);
 
   // Kind-filtered projection for the full-map Exploration view. This projection
   // replaces the essential-filter projection when evidenceMode==="exploration"
@@ -934,19 +945,36 @@ export function ThreadWorkbench({
     }
   };
 
+  const selectPresentedVersion = (node: ThreadGraphNode) => {
+    ignoreStageResetUntilRef.current = performance.now() + 1_500;
+    setPresentedVersionRef(node.ref);
+    selectGraphNode(node);
+  };
+
   const selectVerificationGraphItem = (
     next: ThreadGraphSelection | undefined,
   ) => {
     if (next?.kind === "node") {
       const node = graphNodeByRef(snapshot, next.ref);
-      if (node) selectGraphNode(node);
+      if (node) {
+        if (
+          !presentedVersionRef ||
+          versionedRefKey(node.ref) !== versionedRefKey(presentedVersionRef)
+        ) {
+          if (performance.now() >= ignoreStageResetUntilRef.current) {
+            setPresentedVersionRef(undefined);
+          }
+        }
+        selectGraphNode(node);
+      }
       return;
     }
     setGraphSelection(next);
     if (next === undefined) {
-      // Background click deselects: clear the bounded-neighbourhood focus so
-      // the canvas returns from "vue locale" to the full visible graph, and
-      // close the inspector panel (whose selection was the source of the focus).
+      // Sigma remounts under the version-history click and fires clickStage.
+      // That is not a user background reset.
+      if (performance.now() < ignoreStageResetUntilRef.current) return;
+      setPresentedVersionRef(undefined);
       setLineageFocus(undefined);
       setInspectorOpen(false);
     }
@@ -1099,8 +1127,8 @@ export function ThreadWorkbench({
             {selectedVersionFamily && (
               <EvidenceVersionHistory
                 family={selectedVersionFamily}
-                selectedRef={selectedGraphNode?.ref}
-                onSelectVersion={selectGraphNode}
+                selectedRef={presentedVersionRef ?? selectedGraphNode?.ref}
+                onSelectVersion={selectPresentedVersion}
               />
             )}
             {drawerMode === "tool"
@@ -1387,12 +1415,16 @@ export function ThreadWorkbench({
                         <div>
                           <p>CURRENT EVIDENCE MAP</p>
                           <h4 id="thread-versioned-provenance-title">
-                            Trace the evidence behind the current design
+                            {presentedMemberRef
+                              ? "Recorded path for the selected version"
+                              : "Trace the evidence behind the current design"}
                           </h4>
                           <span>
-                            {evidenceCanvas.isFiltered
+                            {presentedMemberRef
+                              ? `Recorded path for this version at neighbor depth ${localDepth}. Exclusive dependents of the other version stay hidden.`
+                              : evidenceCanvas.isFiltered
                               ? "Local view — select the canvas background to return to the full map."
-                              : "Select a result, requirement or component to see what supports it and what it affects. Previous versions stay inside the selected node."}
+                              : "Select a result, requirement or component to see what supports it and what it affects. Choosing a recorded version replaces the nodes that belonged to the other path."}
                           </span>
                         </div>
                         <div
@@ -1486,7 +1518,8 @@ export function ThreadWorkbench({
                           </button>
                           {graphMenuOpen && (
                             <div class="evidence-graph-menu-panel">
-                              {evidenceCanvas.isFiltered && (
+                              {(evidenceCanvas.isFiltered ||
+                                presentedMemberRef) && (
                                 <>
                                   <p class="evidence-graph-menu-label">
                                     NEIGHBOR DEPTH
@@ -1567,6 +1600,9 @@ export function ThreadWorkbench({
                             </span>
                           </div>
                           <ThreadGraph
+                            key={presentedMemberRef
+                              ? versionedRefKey(presentedMemberRef)
+                              : "live-map"}
                             nodes={carteNodes as ThreadGraphNode[]}
                             edges={carteEdges as ThreadGraphEdge[]}
                             selection={visibleGraphSelection(
@@ -1576,7 +1612,7 @@ export function ThreadWorkbench({
                             )}
                             focus={visibleGraphRef(
                               versionedProvenance,
-                              lineageFocus,
+                              presentedMemberRef ?? lineageFocus,
                             )}
                             presentation="canvas"
                             initialZoom={2.25}
@@ -1590,14 +1626,20 @@ export function ThreadWorkbench({
                       )}
                       {evidenceMode === "exploration" && (
                         <EvidenceExploration
+                          key={presentedMemberRef
+                            ? `version:${versionedRefKey(presentedMemberRef)}`
+                            : "live-map"}
                           evidenceModel={evidenceModel}
-                          projection={evidenceCanvas.isFiltered
+                          projection={presentedMemberRef ||
+                              evidenceCanvas.isFiltered
                             ? evidenceCanvas
                             : (explorationKindProjectionMemo ?? evidenceCanvas)}
-                          displayDepth={evidenceCanvas.isFiltered
+                          displayDepth={presentedMemberRef ||
+                              evidenceCanvas.isFiltered
                             ? localDepth
                             : undefined}
-                          visibleKinds={evidenceCanvas.isFiltered
+                          visibleKinds={presentedMemberRef ||
+                              evidenceCanvas.isFiltered
                             ? explorationLocalKinds
                             : undefined}
                           selection={visibleGraphSelection(
@@ -1607,7 +1649,7 @@ export function ThreadWorkbench({
                           )}
                           focus={visibleGraphRef(
                             versionedProvenance,
-                            lineageFocus,
+                            presentedMemberRef ?? lineageFocus,
                           )}
                           onSelectionChange={selectVerificationGraphItem}
                         />

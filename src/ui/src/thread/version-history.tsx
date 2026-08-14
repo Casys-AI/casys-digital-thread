@@ -34,8 +34,8 @@ export function EvidenceVersionHistory({
         <span>ONE GRAPH NODE</span>
       </header>
       <p class="thread-version-history-intro">
-        The graph shows the current evidence. Select an earlier recorded version
-        here when you need its exact tool context.
+        Select a version to replace the graph with that version's recorded path
+        — including the nodes that depended on it.
       </p>
       <ol aria-label="Recorded evidence versions">
         {family.members.map((node, index) => {
@@ -49,7 +49,10 @@ export function EvidenceVersionHistory({
               <button
                 type="button"
                 aria-pressed={selected}
-                onClick={() => onSelectVersion(node)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectVersion(node);
+                }}
               >
                 <small>{current ? "CURRENT" : `VERSION ${index + 1}`}</small>
                 <strong>{node.label}</strong>
