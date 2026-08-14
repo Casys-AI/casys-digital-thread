@@ -9,6 +9,7 @@ import type {
   RunCommand,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { EngineeringProjectCommandError } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { BUILD123D_EXECUTION_PROFILE } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
 import type { IsolatedCodeExecutionReceipt } from "../../domain/analysis/isolated-code-execution.ts";
 import {
@@ -18,15 +19,18 @@ import {
 import {
   SENSITIVITY_STUDY_CASE_CAPTURE_SCHEMA,
 } from "../captures/sensitivity-study-case-capture.ts";
+import { validateSensitivityStudyCapture } from "../captures/sensitivity-study-capture.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
+import {
+  FileFeaSensitivityAttemptStore,
+} from "../wal/file-fea-sensitivity-attempt-store.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
-import { FileFeaSensitivityAttemptStore } from "../wal/file-fea-sensitivity-attempt-store.ts";
 import {
   AnalyzeRunFeaSensitivityRunExecutor,
 } from "./analyze-run-fea-sensitivity-run-executor.ts";
@@ -83,11 +87,107 @@ Deno.test("the step used for the finite difference is the sealed case step", asy
   }
 });
 
-Deno.test("an agent-supplied source text never reaches IsolatedCodeRunner", async () => {
+Deno.test(
+  "proposal text is never substituted into IsolatedCodeRunner source",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(fixture.runner.sources, [
+        "size_z = 50\nresult = Box(1, 1, size_z)\n",
+        "size_z = 51\nresult = Box(1, 1, size_z)\n",
+      ]);
+      assertEquals(
+        fixture.runner.sources.some((text) => text.includes("agent-script-XXX")),
+        false,
+      );
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test("cadSource sha256 mismatch is rejected before CAD dispatch", async () => {
+  const fixture = await createFixture({ admissionDigest: "b".repeat(64) });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "sha256",
+    );
+    assertEquals(fixture.runner.sources.length, 0);
+    assertEquals(fixture.solver.calls, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("a retry after WAL completion does not re-dispatch CAD or CalculiX", async () => {
   const fixture = await createFixture();
   try {
-    await fixture.executor.execute(AGENT, fixture.command);
-    assertEquals(fixture.runner.sources.some((text) => text.includes("agent")), false);
+    const first = await fixture.executor.execute(AGENT, fixture.command);
+    const firstSnapshot = first.agentRuns[0]!.resultSnapshot!.snapshotId;
+    assertEquals(fixture.runner.sources.length, 2);
+    assertEquals(fixture.solver.calls, 2);
+    fixture.resetRunToRunningOnOriginalBasis();
+    const second = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(second.agentRuns[0]?.status, "completed");
+    assertEquals(second.agentRuns[0]?.resultSnapshot?.snapshotId, firstSnapshot);
+    assertEquals(fixture.runner.sources.length, 2);
+    assertEquals(fixture.solver.calls, 2);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("dispatched CAD without a published STEP is terminal", async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.attempts.prepare({
+      projectId: PROJECT_ID,
+      runId: RUN_ID,
+      planDigest: fixture.planDigest,
+    });
+    await fixture.attempts.markCadDispatched({
+      projectId: PROJECT_ID,
+      runId: RUN_ID,
+      phase: "base",
+      executionRunId: `${RUN_ID}:cad-base`,
+      dispatchedAt: AT,
+      sourceSha256: "c".repeat(64),
+    });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "dispatched without a published STEP",
+    );
+    assertEquals(fixture.runner.sources.length, 0);
+    assertEquals(fixture.solver.calls, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("the published study capture has no isolated STEP bytes", async () => {
+  const fixture = await createFixture();
+  try {
+    const project = await fixture.executor.execute(AGENT, fixture.command);
+    const snapshot = await fixture.snapshots.getFresh(
+      project.agentRuns[0]!.resultSnapshot!.snapshotId,
+    );
+    const artifact = snapshot?.artifacts.find((item) =>
+      item.producer.tool === "analyze.run-fea-sensitivity@1"
+    );
+    const text = await fixture.studyCaptures.read(artifact!.fingerprint);
+    const capture = await validateSensitivityStudyCapture(JSON.parse(text!));
+    assertEquals("bytes" in capture.cad.base, false);
+    assertEquals("bytes" in capture.cad.stepped, false);
+    assertEquals(Object.keys(capture.cad.base).sort(), [
+      "executionRunId",
+      "sourceSha256",
+      "stepBytes",
+      "stepSha256",
+    ]);
   } finally {
     await fixture.dispose();
   }
@@ -125,7 +225,7 @@ Deno.test(
   },
 );
 
-async function createFixture() {
+async function createFixture(options: { readonly admissionDigest?: string } = {}) {
   const directory = await Deno.makeTempDir({ prefix: "sensitivity-run-" });
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
@@ -173,9 +273,14 @@ async function createFixture() {
     id: ADMISSION_ID,
     name: "Admission",
     kind: "document" as const,
-    version: ADMISSION_DIGEST,
-    fingerprint: { algorithm: "sha256" as const, digest: ADMISSION_DIGEST },
-    uri: `casys://technical-compilation-admission-capture/sha256/${ADMISSION_DIGEST}`,
+    version: options.admissionDigest ?? ADMISSION_DIGEST,
+    fingerprint: {
+      algorithm: "sha256" as const,
+      digest: options.admissionDigest ?? ADMISSION_DIGEST,
+    },
+    uri: `casys://technical-compilation-admission-capture/sha256/${
+      options.admissionDigest ?? ADMISSION_DIGEST
+    }`,
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
@@ -332,7 +437,11 @@ async function createFixture() {
       approvalIds: [APPROVAL_ID],
       proposal: {
         summary: "Run the study",
-        parameters: [],
+        parameters: [{
+          key: "agent.source",
+          label: "Agent source",
+          value: "agent-script-XXX",
+        }],
         proposedAt: AT,
         proposedBy: { id: AGENT.actorId, origin: "agent" },
       },
@@ -358,7 +467,16 @@ async function createFixture() {
   await caseCaptures.save(caseFingerprint, deterministicJson(caseCapture));
   const studyCaptures = new MemoryCaptures();
   const runner = new FakeRunner();
+  const solver = new FakeSolver();
+  const stager = new FakeStager();
+  const attempts = new FileFeaSensitivityAttemptStore(`${directory}/wal`);
   const commands = new MemoryCommands(project);
+  const planDigest = (await sha256Fingerprint({
+    caseDigest,
+    cadSource: studyCase.cadSource,
+    step: studyCase.step,
+    executionProfile: BUILD123D_EXECUTION_PROFILE,
+  })).digest;
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project as unknown as EngineeringProjectSnapshot),
     getRevision: () =>
@@ -368,6 +486,10 @@ async function createFixture() {
   };
   return {
     runner,
+    solver,
+    attempts,
+    planDigest,
+    studyCaptures,
     snapshots,
     command: {
       commandId: "command.sensitivity",
@@ -375,6 +497,17 @@ async function createFixture() {
       expectedRevision: 1,
       issuedAt: AT,
       runId: RUN_ID,
+    },
+    resetRunToRunningOnOriginalBasis: () => {
+      const run = project.agentRuns[0] as unknown as {
+        status: string;
+        startedAt?: string;
+        claimedBy?: { id: string; origin: "agent" };
+      };
+      run.status = "running";
+      run.startedAt = AT;
+      run.claimedBy = { id: AGENT.actorId, origin: "agent" };
+      (project as { threadSnapshots: unknown }).threadSnapshots = [reviewBasis];
     },
     executor: new AnalyzeRunFeaSensitivityRunExecutor({
       projects,
@@ -406,18 +539,21 @@ async function createFixture() {
           } as unknown as ReopenedTechnicalCompilationAdmission),
       },
       profiles: {
-        initial: () => Promise.resolve(fakeProfile()),
-        resolve: () => Promise.resolve(fakeProfile()),
+        initial: () => Promise.reject(new Error("initial is latest; must resolve")),
+        resolve: (ref) => {
+          if (
+            ref.id !== BUILD123D_EXECUTION_PROFILE.id ||
+            ref.version !== BUILD123D_EXECUTION_PROFILE.version
+          ) {
+            return Promise.reject(new Error("unsealed execution profile"));
+          }
+          return Promise.resolve(fakeProfile());
+        },
       },
       runner,
-      stager: {
-        stage: (input) =>
-          Promise.resolve({
-            stagedAsset: { location: `/inputs/fea-${input.fingerprint.digest}.step` },
-          }),
-      },
-      solver: new FakeSolver() as never,
-      attempts: new FileFeaSensitivityAttemptStore(`${directory}/wal`),
+      stager,
+      solver: solver as never,
+      attempts,
       lease: { withLease: (_projectId, _scope, operation) => operation() },
     }),
     dispose: () => Deno.remove(directory, { recursive: true }),
@@ -470,16 +606,40 @@ class FakeRunner implements IsolatedCodeRunner {
   }
 }
 
+class FakeStager {
+  readonly #byDigest = new Map<string, Uint8Array>();
+  stage(input: {
+    readonly bytes: Uint8Array;
+    readonly fingerprint: ContentFingerprint;
+    readonly byteCount: number;
+  }) {
+    this.#byDigest.set(input.fingerprint.digest, input.bytes);
+    return Promise.resolve({
+      stagedAsset: { location: `/inputs/fea-${input.fingerprint.digest}.step` },
+    });
+  }
+  read(input: {
+    readonly fingerprint: ContentFingerprint;
+    readonly byteCount: number;
+  }) {
+    const bytes = this.#byDigest.get(input.fingerprint.digest);
+    if (!bytes || bytes.byteLength !== input.byteCount) {
+      return Promise.resolve(undefined);
+    }
+    return Promise.resolve(bytes);
+  }
+}
+
 class FakeSolver {
-  #calls = 0;
+  calls = 0;
   resolve(
     input: { readonly inputArtifact: { readonly fingerprint: ContentFingerprint } },
   ) {
     return { input: input.inputArtifact.fingerprint.digest };
   }
   solve(plan: { readonly input: string }) {
-    this.#calls += 1;
-    const stepped = this.#calls > 1;
+    this.calls += 1;
+    const stepped = this.calls > 1;
     const displacement = stepped ? 1.5 : 0.5;
     const stress = stepped ? 8 : 10;
     return Promise.resolve({

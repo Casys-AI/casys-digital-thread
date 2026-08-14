@@ -50,8 +50,7 @@ import {
   type SensitivityEdgesCapture,
 } from "../captures/sensitivity-edges-capture.ts";
 import {
-  SENSITIVITY_STUDY_CAPTURE_SCHEMA,
-  type SensitivityStudyCapture,
+  validateSensitivityStudyCapture,
 } from "../captures/sensitivity-study-capture.ts";
 import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
@@ -200,9 +199,21 @@ export class ModelWriteSensitivityEdgesRunExecutor {
     if (!studyText) {
       throw invalidTransition("The sensitivity-study capture is not readable.");
     }
-    const studyCapture = JSON.parse(studyText) as SensitivityStudyCapture;
-    if (studyCapture.schemaVersion !== SENSITIVITY_STUDY_CAPTURE_SCHEMA) {
-      throw invalidTransition("The bound artifact is not a sensitivity-study capture.");
+    let parsedStudy: unknown;
+    try {
+      parsedStudy = JSON.parse(studyText);
+    } catch {
+      throw invalidTransition("The sensitivity-study capture is not valid JSON.");
+    }
+    let studyCapture;
+    try {
+      studyCapture = await validateSensitivityStudyCapture(parsedStudy);
+    } catch (error) {
+      throw invalidTransition(
+        error instanceof Error
+          ? error.message
+          : "The bound artifact is not a sensitivity-study capture.",
+      );
     }
     const baseMetrics = new Map(
       studyCapture.measurements.base.map((item) => [item.metric, item]),
@@ -218,8 +229,12 @@ export class ModelWriteSensitivityEdgesRunExecutor {
     );
     const partDefName = sensitivityPartDefName(studyCapture.studyCase.id);
     const sysml = renderSensitivityEdgeSetSysml(partDefName, edges);
-    const planDigest =
-      (await sha256Fingerprint({ sysml, parent: "architecture" })).digest;
+    const context = await this.#resolveSysonContext(basisSnapshot);
+    const planDigest = (await sha256Fingerprint({
+      sysml,
+      parentElementId: context.parentElementId,
+      editingContextId: context.editingContextId,
+    })).digest;
     const wal = await this.#attempts.begin({
       projectId: command.projectId,
       runId: run.id,
@@ -227,7 +242,6 @@ export class ModelWriteSensitivityEdgesRunExecutor {
       dispatchedAt: requiredStart(run),
     });
     if (wal === "dispatch") {
-      const context = await this.#resolveSysonContext(basisSnapshot);
       await this.#syson.callTool({
         name: "syson_element_insert_sysml",
         arguments: {

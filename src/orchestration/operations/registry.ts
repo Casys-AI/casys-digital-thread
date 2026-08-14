@@ -603,8 +603,8 @@ const OPERATIONS = [
     title: "Author the reviewed sensitivity edges in the system model",
     description:
       "Re-read the sealed sensitivity-study capture, reconstruct the SensitivityEdge " +
-      "set with server-fixed SysML names, insert the rendered PartDef into the existing " +
-      "SysON architecture package, and publish the sensitivity-edges artifact after " +
+      "set with server-fixed SysML names, insert the rendered PartDef under the existing " +
+      "SysON seed root package, and publish the sensitivity-edges artifact after " +
       "re-extraction. No SysML text is supplied by the agent.",
     workItemKind: "architect",
     riskClass: "consequential",

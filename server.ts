@@ -296,6 +296,7 @@ const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempt
  * drafts are pre-approval material and must not reach a solver.
  */
 const DEFAULT_CANONICAL_ASSET_DIRECTORY = "state/local/thread-assets";
+const DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY = "state/local/sensitivity-step-cache";
 /**
  * Reviewed initial FEA execution policy (fea-execution-policy/1). These bounds
  * are a server-owned gate, not physics: below 0.5 mm target mesh a concept part
@@ -1416,7 +1417,7 @@ async function createProjectControl(
         profiles: build123dExecution.profiles,
         runner: build123dExecution.execution.runner,
         stager: new IsolatedStepSolverStager(
-          `${DEFAULT_CANONICAL_ASSET_DIRECTORY}/sensitivity-step-cache`,
+          DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY,
           new DockerVolumeAssetStager({
             service: "mcp-calculix",
             containerDirectory: "/inputs",

@@ -72,6 +72,34 @@ Deno.test(
 );
 
 Deno.test(
+  "model.write-sensitivity-edges@1 rejects a study capture with extra keys",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      const tampered = {
+        ...fixture.studyCapture,
+        cad: {
+          ...fixture.studyCapture.cad,
+          base: { ...fixture.studyCapture.cad.base, bytes: [1, 2, 3] },
+        },
+      };
+      await fixture.studyCaptures.save(
+        fixture.studyFingerprint,
+        deterministicJson(tampered),
+      );
+      await assertRejects(
+        () => fixture.executor.execute(AGENT, fixture.command),
+        EngineeringProjectCommandError,
+        "unsupported field bytes",
+      );
+      assertEquals(fixture.syson.inserted.length, 0);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
   "model.write-sensitivity-edges@1 refuses a human origin before any store access",
   async () => {
     const executor = new ModelWriteSensitivityEdgesRunExecutor({
@@ -410,6 +438,9 @@ async function createFixture() {
   const commands = new MemoryCommands(project);
   return {
     expectedSysml,
+    studyCapture,
+    studyFingerprint,
+    studyCaptures,
     syson,
     snapshots,
     edgeCaptures,

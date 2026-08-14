@@ -15,4 +15,14 @@ export interface SolverInputStager {
   }): Promise<{
     readonly stagedAsset: { readonly location: string };
   }>;
+
+  /**
+   * Re-read previously staged isolated STEP bytes by attested digest.
+   * `undefined` means the private cache has no matching object — never invent
+   * a new CAD run to fill the hole.
+   */
+  read(input: {
+    readonly fingerprint: ContentFingerprint;
+    readonly byteCount: number;
+  }): Promise<Uint8Array | undefined>;
 }

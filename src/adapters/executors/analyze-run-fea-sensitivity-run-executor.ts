@@ -7,7 +7,10 @@
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../application/ports/in/engineering-project-command-origin.ts";
-import type { Build123dExecutionProfileCatalog } from "../../application/ports/out/build123d-execution-profile-catalog.ts";
+import type {
+  Build123dExecutionProfile,
+  Build123dExecutionProfileCatalog,
+} from "../../application/ports/out/build123d-execution-profile-catalog.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { IsolatedCodeRunner } from "../../application/ports/out/isolated-code-runner.ts";
 import type { SensitivityStaticStructuralSolver } from "../../application/ports/out/sensitivity-static-structural-solver.ts";
@@ -28,6 +31,7 @@ import {
 import { substituteModuleLevelNumericLiteral } from "../../domain/analysis/sensitivity-source-substitution.ts";
 import type { SensitivityStudyCaseV2 } from "../../domain/analysis/sensitivity-study-v2.ts";
 import { parseSensitivityCadSourceUri } from "../../domain/analysis/sensitivity-study-v2.ts";
+import { BUILD123D_EXECUTION_PROFILE } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
 import {
   ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
@@ -35,7 +39,15 @@ import {
   validateIsolatedCodeExecutionRequest,
 } from "../../domain/analysis/isolated-code-execution.ts";
 import {
+  exactRecord,
+  finite,
+  literalValue,
+  nonEmptyText,
+  safeId,
+} from "../../domain/kernel/case-validation.ts";
+import {
   deterministicJson,
+  fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
@@ -63,12 +75,16 @@ import {
 } from "../captures/sensitivity-study-case-capture.ts";
 import {
   SENSITIVITY_STUDY_CAPTURE_SCHEMA,
+  type SensitivityCadPublication,
   type SensitivityStudyCapture,
+  validateSensitivityStudyCapture,
 } from "../captures/sensitivity-study-capture.ts";
 import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { assertThreadSnapshotLineageIntact } from "../stores/thread-snapshot-lineage.ts";
 import {
+  type FeaSensitivityAttempt,
+  FeaSensitivityOutcomeUnknownError,
   FileFeaSensitivityAttemptStore,
   type SensitivityPhase,
 } from "../wal/file-fea-sensitivity-attempt-store.ts";
@@ -209,15 +225,12 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     }
     const caseCapture = await validateSensitivityStudyCaseCapture(JSON.parse(caseText));
     const studyCase = caseCapture.studyCase;
-    const cadRef = parseSensitivityCadSourceUri(studyCase.cadSource.artifactUri);
-    const admissionArtifact = basisSnapshot.artifacts.find((item) =>
-      item.id === cadRef.artifactId
+    const admissionArtifact = findAdmissionArtifact(
+      basisSnapshot,
+      studyCase,
+      caseCapture.admissionArtifact,
+      command.projectId,
     );
-    if (!admissionArtifact) {
-      throw invalidTransition(
-        "cadSource admission is absent from the execution basis.",
-      );
-    }
     const reopened = await this.#admissions.read({
       projectId: command.projectId,
       basis,
@@ -257,13 +270,23 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       caseDigest: caseCapture.caseDigest,
       cadSource: studyCase.cadSource,
       step: studyCase.step,
+      executionProfile: BUILD123D_EXECUTION_PROFILE,
     })).digest;
-    await this.#attempts.prepare({
+    const attempt = await this.#attempts.prepare({
       projectId: command.projectId,
       runId: run.id,
       planDigest,
     });
+    if (attempt.status === "completed" && attempt.snapshot) {
+      return await this.#completeFromRecordedSnapshot(
+        origin,
+        command,
+        run.id,
+        attempt,
+      );
+    }
 
+    const profile = await this.#profiles.resolve(BUILD123D_EXECUTION_PROFILE);
     const baseCad = await this.#executeCad({
       projectId: command.projectId,
       runId: run.id,
@@ -271,6 +294,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       executionRunId: `${run.id}:cad-base`,
       sourceText: admitted.sourceText,
       dispatchedAt: requiredStart(run),
+      profile,
     });
     const steppedCad = await this.#executeCad({
       projectId: command.projectId,
@@ -279,9 +303,10 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       executionRunId: `${run.id}:cad-stepped`,
       sourceText: steppedText,
       dispatchedAt: requiredStart(run),
+      profile,
     });
 
-    const baseSolve = await this.#executeSolve({
+    const baseMetrics = await this.#executeSolve({
       projectId: command.projectId,
       runId: run.id,
       phase: "base",
@@ -289,7 +314,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       cad: baseCad,
       dispatchedAt: requiredStart(run),
     });
-    const steppedSolve = await this.#executeSolve({
+    const steppedMetrics = await this.#executeSolve({
       projectId: command.projectId,
       runId: run.id,
       phase: "stepped",
@@ -298,17 +323,18 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       dispatchedAt: requiredStart(run),
     });
 
-    const baseMetrics = measurementsFromSolve(studyCase, baseSolve.result);
-    const steppedMetrics = measurementsFromSolve(studyCase, steppedSolve.result);
     const derivatives = computeSensitivities(studyCase, baseMetrics, steppedMetrics);
     const capturedAt = requiredStart(run);
-    const capture: SensitivityStudyCapture = {
+    const capture = await validateSensitivityStudyCapture({
       schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
       operation: ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
       trustedRunId: run.id,
       caseDigest: caseCapture.caseDigest,
       studyCase,
-      cad: { base: baseCad, stepped: steppedCad },
+      cad: {
+        base: publicationOf(baseCad),
+        stepped: publicationOf(steppedCad),
+      },
       measurements: {
         base: [...baseMetrics.entries()].map(([metric, item]) => ({
           metric,
@@ -323,7 +349,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       },
       derivatives,
       capturedAt,
-    };
+    });
     const captureFingerprint = await sha256Fingerprint(capture);
     const captureText = deterministicJson(capture);
     await this.#studyCaptures.save(captureFingerprint, captureText);
@@ -402,6 +428,70 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     return await this.#requiredProject(command.projectId);
   }
 
+  async #completeFromRecordedSnapshot(
+    origin: EngineeringProjectCommandOrigin,
+    command: {
+      readonly commandId: string;
+      readonly projectId: string;
+      readonly expectedRevision: number;
+      readonly issuedAt: string;
+      readonly runId: string;
+    },
+    runId: string,
+    attempt: FeaSensitivityAttempt,
+  ): Promise<EngineeringProjectSnapshot> {
+    const recorded = attempt.snapshot!;
+    const snapshot = await this.#snapshots.getFresh(recorded.snapshotId);
+    if (
+      !snapshot ||
+      snapshot.id !== recorded.snapshotId ||
+      snapshot.revision !== recorded.revision ||
+      snapshot.subject.id !== recorded.subjectId
+    ) {
+      throw invalidTransition(
+        "WAL-completed sensitivity snapshot is not durably readable.",
+      );
+    }
+    const artifact = snapshot.artifacts.find((item) =>
+      item.producer.runId === runId &&
+      item.producer.tool ===
+        `${ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.id}@${ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.version}`
+    );
+    if (!artifact) {
+      throw invalidTransition(
+        "WAL-completed sensitivity snapshot does not carry this run's study artifact.",
+      );
+    }
+    let project = await this.#requiredProject(command.projectId);
+    let run = requireRun(project, runId);
+    if (run.status === "running") {
+      await this.#commands.publishRun(origin, {
+        ...command,
+        commandId: `${command.commandId}:publish`,
+        expectedRevision: project.revision,
+        summary: "Publishing the FEA sensitivity observations.",
+      });
+    }
+    project = await this.#requiredProject(command.projectId);
+    run = requireRun(project, runId);
+    if (run.status === "publishing") {
+      await this.#commands.completeRun(origin, {
+        ...command,
+        commandId: `${command.commandId}:complete`,
+        expectedRevision: project.revision,
+        summary: "Published FEA sensitivity observations without a verdict.",
+        resultSnapshot: snapshotRef(snapshot),
+        evidenceRefs: [{
+          snapshotId: snapshot.id,
+          snapshotRevision: snapshot.revision,
+          kind: "artifact",
+          id: artifact.id,
+        }],
+      });
+    }
+    return await this.#requiredProject(command.projectId);
+  }
+
   async #executeCad(input: {
     readonly projectId: string;
     readonly runId: string;
@@ -409,41 +499,71 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     readonly executionRunId: string;
     readonly sourceText: string;
     readonly dispatchedAt: string;
-  }): Promise<{
-    readonly executionRunId: string;
-    readonly sourceSha256: string;
-    readonly stepSha256: string;
-    readonly stepBytes: number;
-    readonly bytes: Uint8Array;
-  }> {
+    readonly profile: Build123dExecutionProfile;
+  }): Promise<CadPublicationWithBytes> {
     const sourceBytes = new TextEncoder().encode(input.sourceText);
     const sourceSha256 = await fingerprintResourceBytes(sourceBytes);
-    await this.#attempts.markCadDispatched({
-      projectId: input.projectId,
-      runId: input.runId,
-      phase: input.phase,
-      executionRunId: input.executionRunId,
-      dispatchedAt: input.dispatchedAt,
-      sourceSha256,
-    });
-    const profile = await this.#profiles.initial();
+    const current = await this.#attempts.read(input.projectId, input.runId);
+    const slot = current?.cad[input.phase];
+    if (slot?.status === "published") {
+      if (slot.sourceSha256 !== sourceSha256) {
+        throw invalidTransition(
+          "WAL CAD sourceSha256 does not match the admitted source.",
+        );
+      }
+      const bytes = await this.#stager.read({
+        fingerprint: { algorithm: "sha256", digest: slot.stepSha256 },
+        byteCount: slot.stepBytes,
+      });
+      if (!bytes) {
+        throw invalidTransition(
+          "Published sensitivity STEP is not readable from the private cache.",
+        );
+      }
+      return {
+        executionRunId: slot.executionRunId,
+        sourceSha256: slot.sourceSha256,
+        stepSha256: slot.stepSha256,
+        stepBytes: slot.stepBytes,
+        bytes,
+      };
+    }
+    if (slot?.status === "dispatched") {
+      throw unknownOutcome(
+        new FeaSensitivityOutcomeUnknownError(
+          `cad.${input.phase} is dispatched without a published STEP`,
+        ),
+      );
+    }
+    try {
+      await this.#attempts.markCadDispatched({
+        projectId: input.projectId,
+        runId: input.runId,
+        phase: input.phase,
+        executionRunId: input.executionRunId,
+        dispatchedAt: input.dispatchedAt,
+        sourceSha256,
+      });
+    } catch (error) {
+      throw unknownOutcome(error);
+    }
     await validateIsolatedCodeExecutionRequest({
       schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
       runId: input.executionRunId,
       producerGeneration: 0,
-      profile: profile.executionProfile,
+      profile: input.profile.executionProfile,
       source: { bytes: sourceBytes, sha256: sourceSha256 },
-      policy: profile.isolationPolicy,
-      outputs: profile.outputManifest,
-    }, profile.maximumSourceBytes);
+      policy: input.profile.isolationPolicy,
+      outputs: input.profile.outputManifest,
+    }, input.profile.maximumSourceBytes);
     const receipt = await this.#runner.run({
       schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
       runId: input.executionRunId,
       producerGeneration: 0,
-      profile: profile.executionProfile,
+      profile: input.profile.executionProfile,
       source: { bytes: sourceBytes, sha256: sourceSha256 },
-      policy: profile.isolationPolicy,
-      outputs: profile.outputManifest,
+      policy: input.profile.isolationPolicy,
+      outputs: input.profile.outputManifest,
     });
     const step = stepFromReceipt(receipt);
     await this.#attempts.markCadPublished({
@@ -467,13 +587,25 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     readonly runId: string;
     readonly phase: SensitivityPhase;
     readonly studyCase: SensitivityStudyCaseV2;
-    readonly cad: {
-      readonly stepSha256: string;
-      readonly stepBytes: number;
-      readonly bytes: Uint8Array;
-    };
+    readonly cad: CadPublicationWithBytes;
     readonly dispatchedAt: string;
-  }) {
+  }): Promise<Map<string, SensitivityMetricMeasurement>> {
+    const current = await this.#attempts.read(input.projectId, input.runId);
+    const slot = current?.solves[input.phase];
+    if (slot?.status === "solver-recorded") {
+      if (slot.stepSha256 !== input.cad.stepSha256) {
+        throw invalidTransition(
+          "WAL solver stepSha256 does not match the published CAD STEP.",
+        );
+      }
+      return await measurementsFromRecordedSolve(
+        slot.canonicalSolverCaptureText,
+        slot.captureFp,
+        input.phase,
+        input.cad.stepSha256,
+        input.studyCase,
+      );
+    }
     const fingerprint = {
       algorithm: "sha256" as const,
       digest: input.cad.stepSha256,
@@ -483,13 +615,17 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       fingerprint,
       byteCount: input.cad.stepBytes,
     });
-    await this.#attempts.markSolveDispatched({
-      projectId: input.projectId,
-      runId: input.runId,
-      phase: input.phase,
-      dispatchedAt: input.dispatchedAt,
-      stepSha256: input.cad.stepSha256,
-    });
+    try {
+      await this.#attempts.markSolveDispatched({
+        projectId: input.projectId,
+        runId: input.runId,
+        phase: input.phase,
+        dispatchedAt: input.dispatchedAt,
+        stepSha256: input.cad.stepSha256,
+      });
+    } catch (error) {
+      throw unknownOutcome(error);
+    }
     const plan = this.#solver.resolve({
       declaration: input.studyCase.solver,
       inputArtifact: {
@@ -504,12 +640,17 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         "CalculiX input attestation does not match the staged STEP sha256.",
       );
     }
+    const measurements = measurementsFromSolve(input.studyCase, execution.result);
     const envelope = deterministicJson({
-      schemaVersion: "sensitivity-solver-result/1.0",
+      schemaVersion: SENSITIVITY_SOLVER_RESULT_SCHEMA,
       phase: input.phase,
       stepSha256: input.cad.stepSha256,
       stepBytes: input.cad.stepBytes,
-      result: execution.result,
+      measurements: [...measurements.entries()].map(([metric, item]) => ({
+        metric,
+        value: item.value,
+        unit: item.unit,
+      })),
     });
     const captureFp = (await sha256Fingerprint(JSON.parse(envelope))).digest;
     await this.#attempts.markSolveRecorded({
@@ -519,7 +660,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       captureFp,
       canonicalSolverCaptureText: envelope,
     });
-    return execution;
+    return measurements;
   }
 
   async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
@@ -532,6 +673,142 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     }
     return project;
   }
+}
+
+const SENSITIVITY_SOLVER_RESULT_SCHEMA = "sensitivity-solver-result/1.0" as const;
+
+interface CadPublicationWithBytes extends SensitivityCadPublication {
+  readonly bytes: Uint8Array;
+}
+
+function publicationOf(cad: CadPublicationWithBytes): SensitivityCadPublication {
+  return {
+    executionRunId: cad.executionRunId,
+    sourceSha256: cad.sourceSha256,
+    stepSha256: cad.stepSha256,
+    stepBytes: cad.stepBytes,
+  };
+}
+
+function findAdmissionArtifact(
+  snapshot: ThreadSnapshot,
+  studyCase: SensitivityStudyCaseV2,
+  sealedAdmission: {
+    readonly id: string;
+    readonly fingerprint: ContentFingerprint;
+  },
+  projectId: string,
+): ThreadArtifact {
+  const parsed = parseSensitivityCadSourceUri(studyCase.cadSource.artifactUri);
+  if (parsed.projectId !== projectId) {
+    throw invalidTransition(
+      "cadSource artifact URI project id does not match the current project.",
+    );
+  }
+  const artifact = snapshot.artifacts.find((item) => item.id === parsed.artifactId);
+  if (!artifact) {
+    throw invalidTransition(
+      "cadSource admission is absent from the execution basis.",
+    );
+  }
+  if (artifact.fingerprint.digest !== studyCase.cadSource.sha256) {
+    throw invalidTransition(
+      "cadSource sha256 does not match the Thread artifact fingerprint.",
+    );
+  }
+  if (
+    artifact.kind !== "document" ||
+    artifact.producer.tool !== "compile.seal-admission@1"
+  ) {
+    throw invalidTransition(
+      "cadSource is not a compile.seal-admission@1 admission document.",
+    );
+  }
+  if (
+    artifact.id !== sealedAdmission.id ||
+    !fingerprintsEqual(artifact.fingerprint, sealedAdmission.fingerprint)
+  ) {
+    throw invalidTransition(
+      "cadSource identity does not match the sealed case-capture admission.",
+    );
+  }
+  return artifact;
+}
+
+async function measurementsFromRecordedSolve(
+  canonicalSolverCaptureText: string,
+  captureFp: string,
+  phase: SensitivityPhase,
+  stepSha256: string,
+  studyCase: SensitivityStudyCaseV2,
+): Promise<Map<string, SensitivityMetricMeasurement>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(canonicalSolverCaptureText);
+  } catch {
+    throw invalidTransition("WAL solver capture is not valid JSON.");
+  }
+  const observed = (await sha256Fingerprint(parsed)).digest;
+  if (observed !== captureFp) {
+    throw invalidTransition(
+      "WAL solver capture fingerprint does not match the recorded digest.",
+    );
+  }
+  const root = exactRecord(parsed, [
+    "schemaVersion",
+    "phase",
+    "stepSha256",
+    "stepBytes",
+    "measurements",
+  ], "$sensitivitySolverResult");
+  literalValue(
+    root.schemaVersion,
+    SENSITIVITY_SOLVER_RESULT_SCHEMA,
+    "$sensitivitySolverResult.schemaVersion",
+  );
+  literalValue(root.phase, phase, "$sensitivitySolverResult.phase");
+  literalValue(root.stepSha256, stepSha256, "$sensitivitySolverResult.stepSha256");
+  if (!Array.isArray(root.measurements)) {
+    throw invalidTransition("WAL solver capture measurements must be an array.");
+  }
+  const map = new Map<string, SensitivityMetricMeasurement>();
+  for (const [index, item] of root.measurements.entries()) {
+    const row = exactRecord(
+      item,
+      ["metric", "value", "unit"],
+      `$sensitivitySolverResult.measurements[${index}]`,
+    );
+    map.set(
+      safeId(row.metric, `$sensitivitySolverResult.measurements[${index}].metric`),
+      {
+        value: finite(
+          row.value,
+          `$sensitivitySolverResult.measurements[${index}].value`,
+        ),
+        unit: nonEmptyText(
+          row.unit,
+          `$sensitivitySolverResult.measurements[${index}].unit`,
+        ),
+      },
+    );
+  }
+  for (const metric of studyCase.metrics) {
+    const observedMetric = map.get(metric.id);
+    if (!observedMetric || observedMetric.unit !== metric.unit) {
+      throw invalidTransition(
+        `WAL solver capture is missing sealed metric ${metric.id}.`,
+      );
+    }
+  }
+  return map;
+}
+
+function unknownOutcome(error: unknown): EngineeringProjectCommandError {
+  if (error instanceof FeaSensitivityOutcomeUnknownError) {
+    return new EngineeringProjectCommandError("invalid_transition", error.message);
+  }
+  if (error instanceof EngineeringProjectCommandError) return error;
+  throw error;
 }
 
 function measurementsFromSolve(

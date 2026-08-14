@@ -151,12 +151,9 @@ export class FileFeaSensitivityAttemptStore {
     const slot = current.cad[input.phase];
     if (slot.status === "published") return current;
     if (slot.status === "dispatched") {
-      if (slot.executionRunId !== input.executionRunId) {
-        throw new FeaSensitivityOutcomeUnknownError(
-          `cad.${input.phase} already dispatched under a different execution run`,
-        );
-      }
-      return current;
+      throw new FeaSensitivityOutcomeUnknownError(
+        `cad.${input.phase} is dispatched without a published STEP`,
+      );
     }
     return await this.#replace(current, {
       ...current,
@@ -357,27 +354,109 @@ function parseSolvePair(value: unknown): FeaSensitivityAttempt["solves"] {
 }
 
 function parseCadSlot(value: unknown, phase: string): SensitivityCadSlot {
+  const path = `$feaSensitivityAttempt.cad.${phase}`;
   if (!value || typeof value !== "object") {
-    throw new TypeError(`$feaSensitivityAttempt.cad.${phase} must be an object.`);
+    throw new TypeError(`${path} must be an object.`);
   }
   const status = (value as { status?: unknown }).status;
-  if (status === "idle") return { status: "idle" };
-  if (status === "dispatched" || status === "published") {
-    return value as SensitivityCadSlot;
+  if (status === "idle") {
+    exactRecord(value, ["status"], path);
+    return { status: "idle" };
   }
-  throw new TypeError(`$feaSensitivityAttempt.cad.${phase}.status is unknown.`);
+  if (status === "dispatched") {
+    const slot = exactRecord(value, [
+      "status",
+      "executionRunId",
+      "dispatchedAt",
+      "sourceSha256",
+    ], path);
+    return {
+      status: "dispatched",
+      executionRunId: nonEmptyText(slot.executionRunId, `${path}.executionRunId`),
+      dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
+      sourceSha256: sha256Hex(slot.sourceSha256, `${path}.sourceSha256`),
+    };
+  }
+  if (status === "published") {
+    const slot = exactRecord(value, [
+      "status",
+      "executionRunId",
+      "dispatchedAt",
+      "sourceSha256",
+      "stepSha256",
+      "stepBytes",
+    ], path);
+    return {
+      status: "published",
+      executionRunId: nonEmptyText(slot.executionRunId, `${path}.executionRunId`),
+      dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
+      sourceSha256: sha256Hex(slot.sourceSha256, `${path}.sourceSha256`),
+      stepSha256: sha256Hex(slot.stepSha256, `${path}.stepSha256`),
+      stepBytes: positiveByteCount(slot.stepBytes, `${path}.stepBytes`),
+    };
+  }
+  throw new TypeError(`${path}.status is unknown.`);
 }
 
 function parseSolveSlot(value: unknown, phase: string): SensitivitySolveSlot {
+  const path = `$feaSensitivityAttempt.solves.${phase}`;
   if (!value || typeof value !== "object") {
-    throw new TypeError(`$feaSensitivityAttempt.solves.${phase} must be an object.`);
+    throw new TypeError(`${path} must be an object.`);
   }
   const status = (value as { status?: unknown }).status;
-  if (status === "idle") return { status: "idle" };
-  if (status === "dispatched" || status === "solver-recorded") {
-    return value as SensitivitySolveSlot;
+  if (status === "idle") {
+    exactRecord(value, ["status"], path);
+    return { status: "idle" };
   }
-  throw new TypeError(`$feaSensitivityAttempt.solves.${phase}.status is unknown.`);
+  if (status === "dispatched") {
+    const slot = exactRecord(value, [
+      "status",
+      "dispatchedAt",
+      "stepSha256",
+    ], path);
+    return {
+      status: "dispatched",
+      dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
+      stepSha256: sha256Hex(slot.stepSha256, `${path}.stepSha256`),
+    };
+  }
+  if (status === "solver-recorded") {
+    const slot = exactRecord(value, [
+      "status",
+      "dispatchedAt",
+      "stepSha256",
+      "captureFp",
+      "canonicalSolverCaptureText",
+    ], path);
+    return {
+      status: "solver-recorded",
+      dispatchedAt: nonEmptyText(slot.dispatchedAt, `${path}.dispatchedAt`),
+      stepSha256: sha256Hex(slot.stepSha256, `${path}.stepSha256`),
+      captureFp: sha256Hex(slot.captureFp, `${path}.captureFp`),
+      canonicalSolverCaptureText: nonEmptyText(
+        slot.canonicalSolverCaptureText,
+        `${path}.canonicalSolverCaptureText`,
+      ),
+    };
+  }
+  throw new TypeError(`${path}.status is unknown.`);
+}
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+function sha256Hex(value: unknown, path: string): string {
+  const digest = nonEmptyText(value, path);
+  if (!SHA256_HEX.test(digest)) {
+    throw new TypeError(`${path} must be a lowercase 64-character hex string.`);
+  }
+  return digest;
+}
+
+function positiveByteCount(value: unknown, path: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new TypeError(`${path} must be a positive integer.`);
+  }
+  return Number(value);
 }
 
 function parseSnapshot(value: unknown): NonNullable<FeaSensitivityAttempt["snapshot"]> {

@@ -4,6 +4,7 @@
  */
 
 import type { SolverInputStager } from "../../application/ports/out/solver-input-stager.ts";
+import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ContainerAssetStager } from "../executors/container-asset-stager.ts";
 
@@ -15,6 +16,9 @@ export class IsolatedStepSolverStager implements SolverInputStager {
       path: string,
       bytes: Uint8Array,
     ) => Promise<void> = (path, bytes) => Deno.writeFile(path, bytes),
+    private readonly readFile: (
+      path: string,
+    ) => Promise<Uint8Array> = (path) => Deno.readFile(path),
   ) {}
 
   async stage(input: {
@@ -39,5 +43,34 @@ export class IsolatedStepSolverStager implements SolverInputStager {
       containerFileName: fileName,
     });
     return { stagedAsset: { location: staged.containerPath } };
+  }
+
+  async read(input: {
+    readonly fingerprint: ContentFingerprint;
+    readonly byteCount: number;
+  }): Promise<Uint8Array | undefined> {
+    if (input.fingerprint.algorithm !== "sha256") {
+      throw new TypeError("Staged STEP fingerprint must use sha256.");
+    }
+    const fileName = `fea-${input.fingerprint.digest}.step`;
+    const hostPath = `${this.hostCacheDirectory.replace(/\/$/, "")}/${fileName}`;
+    let bytes: Uint8Array;
+    try {
+      bytes = await this.readFile(hostPath);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return undefined;
+      throw error;
+    }
+    if (bytes.byteLength !== input.byteCount) {
+      throw new TypeError(
+        "Cached isolated STEP byteCount does not match the WAL publication.",
+      );
+    }
+    if (await fingerprintResourceBytes(bytes) !== input.fingerprint.digest) {
+      throw new TypeError(
+        "Cached isolated STEP digest does not match the WAL publication.",
+      );
+    }
+    return bytes;
   }
 }

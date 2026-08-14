@@ -3,6 +3,11 @@
  * dispatched → completed. A dispatched entry cannot authorize a second insert.
  */
 
+import {
+  exactRecord,
+  literalValue,
+  nonEmptyText,
+} from "../../domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
   replaceAttemptFileDurably,
@@ -50,7 +55,9 @@ export class FileSensitivityEdgesAttemptStore {
     runId: string,
   ): Promise<SensitivityEdgesAttempt | undefined> {
     try {
-      return JSON.parse(await Deno.readTextFile(this.#path(projectId, runId)));
+      return parseSensitivityEdgesAttempt(
+        JSON.parse(await Deno.readTextFile(this.#path(projectId, runId))),
+      );
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return undefined;
       throw error;
@@ -116,4 +123,69 @@ export class FileSensitivityEdgesAttemptStore {
     const safe = `${projectId}__${runId}`.replaceAll(/[^A-Za-z0-9._-]/g, "_");
     return `${this.directory.replace(/\/$/, "")}/${safe}.json`;
   }
+}
+
+function parseSensitivityEdgesAttempt(value: unknown): SensitivityEdgesAttempt {
+  if (!value || typeof value !== "object") {
+    throw new TypeError("$sensitivityEdgesAttempt must be an object.");
+  }
+  const status = (value as { status?: unknown }).status;
+  if (status === "dispatched") {
+    const root = exactRecord(value, [
+      "schemaVersion",
+      "projectId",
+      "runId",
+      "planDigest",
+      "status",
+      "dispatchedAt",
+    ], "$sensitivityEdgesAttempt");
+    literalValue(
+      root.schemaVersion,
+      SENSITIVITY_EDGES_ATTEMPT_SCHEMA,
+      "$sensitivityEdgesAttempt.schemaVersion",
+    );
+    return {
+      schemaVersion: SENSITIVITY_EDGES_ATTEMPT_SCHEMA,
+      projectId: nonEmptyText(root.projectId, "$sensitivityEdgesAttempt.projectId"),
+      runId: nonEmptyText(root.runId, "$sensitivityEdgesAttempt.runId"),
+      planDigest: nonEmptyText(root.planDigest, "$sensitivityEdgesAttempt.planDigest"),
+      status: "dispatched",
+      dispatchedAt: nonEmptyText(
+        root.dispatchedAt,
+        "$sensitivityEdgesAttempt.dispatchedAt",
+      ),
+    };
+  }
+  if (status === "completed") {
+    const root = exactRecord(value, [
+      "schemaVersion",
+      "projectId",
+      "runId",
+      "planDigest",
+      "status",
+      "dispatchedAt",
+      "snapshotId",
+    ], "$sensitivityEdgesAttempt");
+    literalValue(
+      root.schemaVersion,
+      SENSITIVITY_EDGES_ATTEMPT_SCHEMA,
+      "$sensitivityEdgesAttempt.schemaVersion",
+    );
+    return {
+      schemaVersion: SENSITIVITY_EDGES_ATTEMPT_SCHEMA,
+      projectId: nonEmptyText(root.projectId, "$sensitivityEdgesAttempt.projectId"),
+      runId: nonEmptyText(root.runId, "$sensitivityEdgesAttempt.runId"),
+      planDigest: nonEmptyText(root.planDigest, "$sensitivityEdgesAttempt.planDigest"),
+      status: "completed",
+      dispatchedAt: nonEmptyText(
+        root.dispatchedAt,
+        "$sensitivityEdgesAttempt.dispatchedAt",
+      ),
+      snapshotId: nonEmptyText(
+        root.snapshotId,
+        "$sensitivityEdgesAttempt.snapshotId",
+      ),
+    };
+  }
+  throw new TypeError("$sensitivityEdgesAttempt.status is unknown.");
 }
