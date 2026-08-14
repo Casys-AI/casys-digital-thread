@@ -371,6 +371,15 @@ export const FEA_PROOF_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "FEA proof case",
 };
 
+export const SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-study-case"
+> = {
+  kind: "sensitivity-study-case",
+  directory: "state/local/sensitivity-study-case-captures",
+  uriNamespace: "sensitivity-study-case-capture",
+  label: "Sensitivity study case",
+};
+
 /**
  * Content-addressed store for `fea-solver-result-capture/1.0` envelopes
  * produced by `verify.run-fea-static-proof@1` after a successful CalculiX

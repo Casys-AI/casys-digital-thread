@@ -34,19 +34,63 @@ export function extractFiniteNumericLiteral(
   sourceText: string,
   span: SourceAnalysisSpan,
 ): number {
-  const text = extractSpannedText(sourceText, span).trim();
-  if (!NUMERIC_LITERAL.test(text)) {
+  return parseNumericLiteralText(extractSpannedText(sourceText, span).trim());
+}
+
+export interface ModuleLevelNumericBinding {
+  readonly name: string;
+  readonly value: number;
+  readonly valueSpan: SourceAnalysisSpan;
+}
+
+/**
+ * The qualified Build123d frontend spans the *name* of a parameter, not the
+ * RHS literal. Locate the following `= <finite-literal>` from that sealed
+ * name span. Expressions are refused.
+ */
+export function locateModuleLevelNumericBinding(
+  sourceText: string,
+  nameSpan: SourceAnalysisSpan,
+  expectedName: string,
+): ModuleLevelNumericBinding {
+  const name = extractSpannedText(sourceText, nameSpan);
+  if (name !== expectedName) {
     throw new TypeError(
-      `spanned text ${JSON.stringify(text)} is not a finite numeric literal.`,
+      `spanned binding name ${JSON.stringify(name)} does not equal ` +
+        `${JSON.stringify(expectedName)}.`,
     );
   }
-  const value = Number(text);
-  if (!Number.isFinite(value)) {
+  const { end: nameEnd } = sourceSpanOffsets(sourceText, nameSpan);
+  let index = nameEnd;
+  while (index < sourceText.length && isHorizontalOrNewlineSpace(sourceText[index]!)) {
+    index += 1;
+  }
+  if (sourceText[index] !== "=") {
     throw new TypeError(
-      `spanned text ${JSON.stringify(text)} is not a finite numeric literal.`,
+      `binding ${JSON.stringify(expectedName)} is not followed by '='.`,
     );
   }
-  return value;
+  index += 1;
+  while (index < sourceText.length && isHorizontalOrNewlineSpace(sourceText[index]!)) {
+    index += 1;
+  }
+  const literalStart = index;
+  if (sourceText[index] === "+" || sourceText[index] === "-") {
+    index += 1;
+  }
+  while (index < sourceText.length && /[0-9.eE]/.test(sourceText[index]!)) {
+    index += 1;
+  }
+  const literal = sourceText.slice(literalStart, index);
+  const value = parseNumericLiteralText(literal);
+  return {
+    name,
+    value,
+    valueSpan: {
+      start: locationAt(sourceText, literalStart),
+      end: locationAt(sourceText, index),
+    },
+  };
 }
 
 /**
@@ -65,6 +109,40 @@ export function substituteModuleLevelNumericLiteral(
   extractFiniteNumericLiteral(sourceText, span);
   const { start, end } = sourceSpanOffsets(sourceText, span);
   return `${sourceText.slice(0, start)}${String(nextValue)}${sourceText.slice(end)}`;
+}
+
+function parseNumericLiteralText(text: string): number {
+  if (!NUMERIC_LITERAL.test(text)) {
+    throw new TypeError(
+      `spanned text ${JSON.stringify(text)} is not a finite numeric literal.`,
+    );
+  }
+  const value = Number(text);
+  if (!Number.isFinite(value)) {
+    throw new TypeError(
+      `spanned text ${JSON.stringify(text)} is not a finite numeric literal.`,
+    );
+  }
+  return value;
+}
+
+function isHorizontalOrNewlineSpace(char: string): boolean {
+  return char === " " || char === "\t" || char === "\n" || char === "\r";
+}
+
+function locationAt(
+  sourceText: string,
+  offset: number,
+): { readonly line: number; readonly column: number } {
+  let line = 1;
+  let lineStart = 0;
+  for (let index = 0; index < offset; index++) {
+    if (sourceText[index] === "\n") {
+      line += 1;
+      lineStart = index + 1;
+    }
+  }
+  return { line, column: offset - lineStart };
 }
 
 function offsetAt(

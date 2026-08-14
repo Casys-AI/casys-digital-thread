@@ -1,6 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   extractFiniteNumericLiteral,
+  locateModuleLevelNumericBinding,
   substituteModuleLevelNumericLiteral,
 } from "./sensitivity-source-substitution.ts";
 
@@ -16,6 +17,22 @@ Deno.test(
     assertEquals(extractFiniteNumericLiteral(source, SPAN), 50);
     assertEquals(
       substituteModuleLevelNumericLiteral(source, SPAN, 51),
+      "size_z = 51\nresult = Box(size_z)\n",
+    );
+  },
+);
+
+Deno.test(
+  "locateModuleLevelNumericBinding reads the RHS literal from a sealed name span",
+  () => {
+    const source = "size_z = 50.0\nresult = Box(size_z)\n";
+    const binding = locateModuleLevelNumericBinding(source, {
+      start: { line: 1, column: 0 },
+      end: { line: 1, column: 6 },
+    }, "size_z");
+    assertEquals(binding.value, 50);
+    assertEquals(
+      substituteModuleLevelNumericLiteral(source, binding.valueSpan, 51),
       "size_z = 51\nresult = Box(size_z)\n",
     );
   },

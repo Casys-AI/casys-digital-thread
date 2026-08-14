@@ -121,6 +121,27 @@ const SELECTION_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const THREAD_ARTIFACT_URI = /^thread-artifact:\/\/[A-Za-z0-9_\-/]+$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
+export function parseSensitivityCadSourceUri(
+  artifactUri: string,
+): { readonly projectId: string; readonly artifactId: string } {
+  if (!THREAD_ARTIFACT_URI.test(artifactUri)) {
+    throw new TypeError(
+      "$case.cadSource.artifactUri must be a thread-artifact:// URI.",
+    );
+  }
+  const rest = artifactUri.slice("thread-artifact://".length);
+  const slash = rest.indexOf("/");
+  if (slash <= 0 || slash === rest.length - 1) {
+    throw new TypeError(
+      "$case.cadSource.artifactUri must be thread-artifact://<project-id>/<artifact-id>.",
+    );
+  }
+  return {
+    projectId: rest.slice(0, slash),
+    artifactId: rest.slice(slash + 1),
+  };
+}
+
 /**
  * Parse and validate an untrusted value as a sensitivity-study-case/2.0 case.
  * Fail-closed: any unknown key, missing key, or invalid value throws.
