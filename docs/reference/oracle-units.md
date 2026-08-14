@@ -68,31 +68,46 @@ never be an oracle unit — a stress requirement is expressed in `Pa`.
 Engineers state stress in `MPa`. The oracle only carries `Pa`. The gap is closed once,
 in code, at the boundary where the approved brief is compiled into MRTR parameters:
 `UNIT_NORMALISATION` in
-[`prepare-project-brief-requirements-review.ts`](../../src/application/use-cases/prepare-project-brief-requirements-review.ts)
+[`src/domain/engineering/unit-normalisation.ts`](../../src/domain/engineering/unit-normalisation.ts)
 rescales `MPa` to `Pa` (×10⁶, exact) and the provenance entry names the step as
 `transformation: "MPa-to-Pa"`.
 
 Why convert rather than refuse: refusing does not remove the conversion, it moves it
 into the agent, where nothing records that `90000000` was meant to be `90 MPa`. Doing it
-in code makes the factor exact, the step named, and both numbers visible to the signing
-human. The oracle still only ever sees `Pa`, so the domain and the verdict are
+in code makes the conversion exact, the step named, and both numbers visible to the
+signing human. The oracle still only ever sees `Pa`, so the domain and the verdict are
 unchanged.
+
+### How the table is guarded
+
+Each entry declares its transformation as a named function (`apply: (value) => number`)
+rather than a bare coefficient. This distinction matters for future affine
+transformations (see below). Two structural guards fire before any call can proceed:
+
+1. **Probe-first guard** — `declareEntry` validates that every `targetUnit` is in
+   `SUPPORTED_ORACLE_UNITS` at module load time. Adding an entry whose target the oracle
+   cannot carry throws immediately, before the server starts.
+2. **Transformation guard** — every entry carries an `apply` function whose body is
+   explicit and testable. A multiplicative `(v) => v * 1_000_000` and an affine
+   `(v) => v + 273.15` are structurally different; no silent coefficient promotes one to
+   the other.
 
 Constraints on this table, in order of importance:
 
 - **A probe must have refused the unit first.** The table is for units the oracle cannot
   carry, not a convenience layer over units it can.
-- **The factor is a single point of trust.** A wrong coefficient here is exactly the
-  silent-rescale bug the unit doctrine exists to prevent, except located in our code
-  rather than in a provider. Every entry needs a test that pins the emitted value.
+- **The `apply` function is the single point of trust.** A wrong formula here is exactly
+  the silent-rescale bug the unit doctrine exists to prevent, except located in our code
+  rather than in a provider. Every entry needs a test that pins the emitted value for a
+  typical input and a boundary case.
 - **Show the transformation to the human.** A provenance entry that is never surfaced
   turns an explicit conversion back into an invisible one.
 
 ## Known gap: temperature has no oracle unit
 
-No temperature unit is admitted — the table holds no `K` and no `degC`. Modelica
-nonetheless publishes its observations in `degC` (`temperature_final`,
-`targetTemperature: 22 degC` in
+No temperature unit is admitted — `UNIT_NORMALISATION` holds no `degC` entry and
+`SUPPORTED_ORACLE_UNITS` contains no `K`. Modelica nonetheless publishes its
+observations in `degC` (`temperature_final`, `targetTemperature: 22 degC` in
 [`modelica-isolated-execution.ts`](../../src/domain/analysis/modelica-isolated-execution.ts)).
 
 The consequence is exact: a thermal observation can be produced and captured, but **no
@@ -100,9 +115,10 @@ requirement can currently be written that SysON would evaluate it against**. The
 Modelica branch yields measurements, not verdicts, until a temperature unit is probed
 and admitted.
 
-When that is taken on, temperature is not another row in `UNIT_NORMALISATION`.
-`K = degC + 273.15` is **affine, not a scale factor**. A table mapping a unit to a
-coefficient would turn 22 °C into 0 K instead of 295.15 K — silently, and in the exact
-shape of bug this page exists to prevent. Admitting temperature therefore requires the
-normalisation entry to carry a declared function rather than a number, and the affine
-case to be tested for itself.
+When that is taken on, note that `K = degC + 273.15` is **affine, not a scale factor**.
+The normalisation table already supports the affine shape: an entry would declare
+`apply: (v) => v + 273.15` rather than a multiplier. The mandatory boundary test is
+`apply(0) === 273.15` — a multiplier-based table would return 0, which is exactly the
+wrong answer this architecture exists to prevent. The `declareEntry` guard ensures the
+`K` target is in `SUPPORTED_ORACLE_UNITS` before the entry is accepted — so the probe
+must pass first.
