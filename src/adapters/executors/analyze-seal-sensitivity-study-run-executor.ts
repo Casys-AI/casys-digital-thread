@@ -712,13 +712,13 @@ function requireClaimedShape(
   }
 }
 
-async function requireMrtrApproval(
+function requireMrtrApproval(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): Promise<{
+): {
   decision: EngineeringDecision;
   proposal: NonNullable<EngineeringDecision["proposal"]>;
-}> {
+} {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   if (!workItem) {
     throw new EngineeringProjectCommandError(

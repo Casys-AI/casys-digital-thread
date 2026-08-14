@@ -14,10 +14,7 @@ import {
   assembleSensitivityStudyCaseV2,
   validateSensitivityStudyCaseTemplate,
 } from "../../domain/analysis/sensitivity-study-template.ts";
-import {
-  deterministicJson,
-  sha256Fingerprint,
-} from "../../domain/kernel/deterministic-json.ts";
+import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
