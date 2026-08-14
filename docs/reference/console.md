@@ -44,22 +44,44 @@ projection.
 
 ### Engineering project tools
 
-| Tool                        | Authority                | Meaning                                                                                    |
-| --------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
-| `project_start`             | Agent mutation           | Create the project immediately from the reported plain-language intent                     |
-| `project_snapshot`          | Read                     | Current durable project, decisions, approvals, runs, blockers, exact refs and receipts     |
-| `project_question_propose`  | Agent mutation           | Add one adaptive framing question and recommendation inside the project                    |
-| `project_answer_record`     | Agent or human mutation  | Record a sourced answer or explicit unknown inside the project                             |
-| `project_brief_propose`     | Agent mutation           | Propose an immutable living-brief revision without replacing canonical intent              |
-| `project_brief_confirm`     | Human elicitation        | Promote only the exact accepted brief revision to canonical project intent                 |
-| `project_plan_publish`      | Agent mutation           | Publish or revise an unexecuted plan from the exact approved canonical brief               |
-| `project_change_append`     | Agent mutation           | Append a bounded next change from the exact current thread snapshot; never replace history |
-| `project_decision_propose`  | Agent mutation           | Record a concrete typed proposal                                                           |
-| `project_decision_approve`  | Human elicitation        | Ask the person in chat to approve the exact proposal; the agent cannot self-approve        |
-| `project_decision_reject`   | Human elicitation        | Ask the person in chat to reject the exact proposal                                        |
-| `project_agent_run_queue`   | Bounded agent mutation   | Queue one ready, registered work item with server-derived run identity, basis, and summary |
-| `project_agent_run_cancel`  | Human elicitation        | Cancel one exact unclaimed queued run after signed paired-chat confirmation                |
-| `project_agent_run_execute` | Bounded server execution | Dispatch that exact queued registered run; no arbitrary execution payload                  |
+| Tool                                    | Authority                | Meaning                                                                                    |
+| --------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
+| `project_start`                         | Agent mutation           | Create the project immediately from the reported plain-language intent                     |
+| `project_snapshot`                      | Read                     | Current durable project, decisions, approvals, runs, blockers, exact refs and receipts     |
+| `project_question_propose`              | Agent mutation           | Add one adaptive framing question and recommendation inside the project                    |
+| `project_answer_record`                 | Agent or human mutation  | Record a sourced answer or explicit unknown inside the project                             |
+| `project_brief_propose`                 | Agent mutation           | Propose an immutable living-brief revision without replacing canonical intent              |
+| `project_brief_confirm`                 | Human elicitation        | Promote only the exact accepted brief revision to canonical project intent                 |
+| `project_plan_publish`                  | Agent mutation           | Publish or revise an unexecuted plan from the exact approved canonical brief               |
+| `project_change_append`                 | Agent mutation           | Append a bounded next change from the exact current thread snapshot; never replace history |
+| `project_decision_propose`              | Agent mutation           | Record a concrete typed proposal                                                           |
+| `project_decision_approve`              | Human elicitation        | Ask the person in chat to approve the exact proposal; the agent cannot self-approve        |
+| `project_decision_reject`               | Human elicitation        | Ask the person in chat to reject the exact proposal                                        |
+| `project_agent_run_queue`               | Bounded agent mutation   | Queue one ready, registered work item with server-derived run identity, basis, and summary |
+| `project_agent_run_plan_get`            | Read                     | Reopen the sealed `resolved-operation-plan/2.0` on one run; never executes                 |
+| `project_agent_run_cancel`              | Human elicitation        | Cancel one exact unclaimed queued run after signed paired-chat confirmation                |
+| `project_agent_run_execute`             | Bounded server execution | Dispatch that exact queued registered run; no arbitrary execution payload                  |
+| `project_work_item_reconcile_successor` | Recovery                 | Close an orphan work item after a completed successor                                      |
+| `project_work_item_supersede_unstarted` | Recovery                 | Replace unstarted work without rewriting history                                           |
+| `project_review_intent_list`            | Read                     | Exact pending Workbench review intents                                                     |
+| `project_review_intent_acknowledge`     | Agent receipt            | Record receipt of one intent; never an approval                                            |
+
+### Architecture SysML and technical-compilation tools
+
+These tools write draft CAS or return review parameters. They do not queue a run and do
+not grant MRTR or provider authority. Full grants:
+[agent workspace](agent-workspace.md#4-surfaces-an-agent-actually-calls).
+
+| Tool                                        | Authority      | Meaning                                                                             |
+| ------------------------------------------- | -------------- | ----------------------------------------------------------------------------------- |
+| `project_architecture_sysml_source_capture` | Draft CAS      | Exact agent-authored closed-subset SysML + analysis. Not `sysml-source-capture/1.0` |
+| `project_architecture_sysml_preview`        | Diagnostic     | Tokenize/parse/analyse. `decisionParameters` only from a reopened passed capture    |
+| `project_technical_source_capture`          | Draft CAS      | Exact technical source + server-owned analysis                                      |
+| `project_technical_compilation_preview`     | Review draft   | Provider-free compilation against an exact Thread/SysML basis                       |
+| `project_admitted_geometry_export`          | Geometry draft | Export one sealed Build123d admission through the sandbox. Not isolated execution   |
+| `project_build123d_execution_review`        | Read           | MRTR parameters for `design.execute-build123d@1`. No capability                     |
+| `project_modelica_qualified_kit_run_review` | Read           | MRTR parameters for the one local Modelica kit                                      |
+| `project_geometry_preview`                  | Geometry draft | Historical sandbox preview; composed only when the sandbox fleet entry exists       |
 
 Every mutation uses a stable command ID, `expectedRevision`, and `issuedAt`. Retrying an
 identical command ID and payload returns its immutable result; changing the request

@@ -67,6 +67,10 @@ This is the **workspace, fleet observer, and engineering-project control plane**
 engineering servers still live in their own repos and run from their published container
 images — you clone only this workspace.
 
+Agents working in this repo start at [AGENTS.md](AGENTS.md) and
+[docs/reference/agent-workspace.md](docs/reference/agent-workspace.md). Those pages
+state the authority split and the lookalike operations that must not be merged.
+
 Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno + Node.js
 for rebuilding the console.
 

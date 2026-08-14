@@ -44,6 +44,8 @@ CAD change
   -> creates a named violation with evidence and a next action
 ```
 
+![Five Workbench spaces. The shell is GET and SSE only.](../assets/workbench-five-spaces.svg)
+
 The Workbench renders that topology first as a live lineage feed and second as a
 complete graph. Feed cards are meaningful canonical facts; selecting or automatically
 following a card renders every recorded ancestor and descendant as an inline scoped
@@ -85,17 +87,18 @@ native Preact SPA                           paired agent MCP client
   v                                          v
                  immutable EngineeringProject revisions
                               |
-                              | separate orchestration
+                              | registered executors (not the frozen YAML DAG)
                               v
                   Digital-thread orchestrator
-                  - workflow DAG and bindings
+                  - code-owned operation registry
                   - artifact fingerprints
                   - provenance and run state
                   - linked ThreadSnapshot
                               |
-                              | stateless tools/call
+                              | server-owned sequence
                               v
-       SysON / build123d / CalculiX / Modelica / ERPNext MCP tools
+       SysON / build123d / CalculiX / Modelica / ERPNext
+       or an independently qualified local microVM
 ```
 
 Opening or refreshing the application reads persisted project and thread snapshots. It

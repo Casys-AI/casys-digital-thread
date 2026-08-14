@@ -21,6 +21,12 @@ Pour éditer un serveur d'ingénierie, cloner son repo (`Casys-AI/mcp-syson`,
 > fallback ou les présenter comme une admission provider. Le Workbench est focus-only ;
 > `desk-lamp-dl04` est le candidat générique pour qualifier CalculiX
 > `verify.run-fea-static-proof@2`.
+>
+> **Agents.** Lire d'abord [AGENTS.md](AGENTS.md) puis
+> [docs/reference/agent-workspace.md](docs/reference/agent-workspace.md). Ces pages
+> listent les paires d'opérations qui se ressemblent (`model.write-architecture@1` ≠
+> `model.seal-architecture-sysml@1`, CAD sandbox ≠ microVM, FEA `@1`/`@2`/`@3`) et les
+> grants exacts des outils. Ne pas fusionner deux autorités.
 
 ## Commandes
 
@@ -50,19 +56,19 @@ deno task verify:evidence              # cohérence des fixtures console
 ## Principes d'implémentation
 
 - Pour le compilateur et l'exécution isolée, choisir les bibliothèques et
-  infrastructures matures sur leurs garanties réelles ; aucune contrainte
-  artificielle de taille de bundle ne justifie de réimplémenter un parseur, un
-  validateur ou une sandbox moins robuste.
-- Conserver les backends derrière des ports interchangeables : une intégration
-  Deno Sandbox, OCI ou microVM ne doit jamais devenir l'autorité du domaine ni
-  contaminer les contrats publics avec ses handles, chemins ou options.
-- Quand un changement traverse un fichier ou un dossier mal organisé, faire le
-  refactor local qui améliore réellement les frontières, la lisibilité et
-  l'expérience développeur/agent ; éviter en revanche la réorganisation sans
-  rapport causal avec le vertical en cours.
-- Pendant l'implémentation, préférer les checks ciblés et causaux. Réserver les
-  suites globales systématiques aux vrais jalons d'intégration ou de release,
-  après stabilisation des écritures concurrentes.
+  infrastructures matures sur leurs garanties réelles ; aucune contrainte artificielle
+  de taille de bundle ne justifie de réimplémenter un parseur, un validateur ou une
+  sandbox moins robuste.
+- Conserver les backends derrière des ports interchangeables : une intégration Deno
+  Sandbox, OCI ou microVM ne doit jamais devenir l'autorité du domaine ni contaminer les
+  contrats publics avec ses handles, chemins ou options.
+- Quand un changement traverse un fichier ou un dossier mal organisé, faire le refactor
+  local qui améliore réellement les frontières, la lisibilité et l'expérience
+  développeur/agent ; éviter en revanche la réorganisation sans rapport causal avec le
+  vertical en cours.
+- Pendant l'implémentation, préférer les checks ciblés et causaux. Réserver les suites
+  globales systématiques aux vrais jalons d'intégration ou de release, après
+  stabilisation des écritures concurrentes.
 
 Un seul fichier de test, ou un seul cas — les permissions doivent être reprises à la
 main, `deno task test` ne prend pas d'argument de chemin :
@@ -94,13 +100,13 @@ deno task probe:constraint-solver \
 
 **Piège `deno task check`** : la tâche énumère les fichiers un par un dans `deno.json`.
 Un nouveau module non-test qui n'y est pas ajouté n'est jamais type-checké — l'oubli est
-silencieux. La liste doit couvrir tous les modules non-test hors `src/ui/`
-(celui-ci relève de `check:ui`) ; elle est complète, et le rester demande d'y ajouter
-chaque nouveau module. Méfiance particulière envers les tâches `check:*` dédiées : deux
-d'entre elles visaient des gates de release absentes du `check` principal, ce qui
-ressemblait à une couverture sans en être une. Ne jamais rapporter une suite verte
-obtenue avec `--no-check` : c'est un résultat faux, la vérification ayant été désactivée
-plutôt que satisfaite.
+silencieux. La liste doit couvrir tous les modules non-test hors `src/ui/` (celui-ci
+relève de `check:ui`) ; elle est complète, et le rester demande d'y ajouter chaque
+nouveau module. Méfiance particulière envers les tâches `check:*` dédiées : deux d'entre
+elles visaient des gates de release absentes du `check` principal, ce qui ressemblait à
+une couverture sans en être une. Ne jamais rapporter une suite verte obtenue avec
+`--no-check` : c'est un résultat faux, la vérification ayant été désactivée plutôt que
+satisfaite.
 
 **Piège bundles** : `src/ui/dist/**` est **commité**. Toute modification de
 `src/ui/src/` exige de rebuilder les surfaces concernées (`build`, `build:thread`) et de

@@ -290,14 +290,43 @@ completion evidence from server-owned state; callers cannot submit a tool name, 
 arguments, result snapshot, or evidence payload. The generic route can record the
 approved-brief documentary baseline, create the fixed brief-bound SysON container, then
 execute the exact reviewed architecture, integer-requirements, and geometry-seal
-contracts. These operations persist and read back their closed captures and refuse an
+contracts. The provider-free `model.seal-architecture-sysml@1` slice seals
+agent-authored closed-subset SysML as a Thread document and does not appear as a SysON
+insertion. These operations persist and read back their closed captures and refuse an
 uncertain non-idempotent write instead of retrying it blindly. Generic simulation,
 measurement, requirement evaluation, manufacturing, and certification still need their
 own reviewed executors and evidence contracts.
 
 The page opens on **Project**, which answers what the focused project is trying to
 achieve, what needs attention, and where to go next. The five product sections have
-distinct jobs:
+distinct jobs.
+
+```mermaid
+flowchart LR
+  project["Project\nmission, brief, gates"]
+  activity["Activity\nlive lineage feed"]
+  product["Product\npart identities"]
+  evidence["Evidence\ngraph and verdicts"]
+  execution["Execution\nruns and tools"]
+  project --- activity --- product --- evidence --- execution
+```
+
+![Five Workbench spaces. The cockpit is GET and SSE only.](../assets/workbench-five-spaces.svg)
+
+![Project on desk-lamp-dl04: approved brief and phase-gate summary.](../assets/workbench-project-dl04.png)
+
+![Activity on desk-lamp-dl04: persisted lineage, not private reasoning.](../assets/workbench-activity-dl04.png)
+
+![Product: exact SysON / CAD / ERP facets. Missing identities stay visible.](../assets/workbench-product-dl04.png)
+
+![Evidence: counts, requirements, violations. Unresolved stays unresolved.](../assets/workbench-evidence-dl04.png)
+
+![Execution: run journal and contributing systems. Queued is not published.](../assets/workbench-execution-dl04.png)
+
+A first-time walkthrough of the same loop is
+[Follow the engineering loop](../tutorials/first-engineering-loop.md). Agents that must
+not confuse write/seal/compile paths should read
+[agent workspace](../reference/agent-workspace.md) before calling tools.
 
 - **Project** — objective, lightweight notifications, derived phase gates, current work,
   next work, blockers, and routes into the relevant context;

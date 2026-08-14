@@ -4,6 +4,17 @@ This repository uses the [Diátaxis](https://diataxis.fr/) framework: choose a p
 the job you are trying to do, rather than by the component you happen to know. The four
 categories deliberately answer different questions.
 
+Coding and project-control agents start at [AGENTS.md](../AGENTS.md) and the
+[agent workspace reference](reference/agent-workspace.md). Those pages list lookalike
+operations, exact tool grants, and code-placement rules. They are written to be parsed,
+not paraphrased.
+
+## Tutorials — learn the loop once
+
+- [Follow the engineering loop](tutorials/first-engineering-loop.md) walks a person and
+  a paired agent from plain-language intent to inspectable evidence. The cockpit
+  observes; the conversation commands.
+
 ## How-to guides — achieve a focused task
 
 - The active qualification candidate is `desk-lamp-dl04`: it holds generic sealed
@@ -25,6 +36,9 @@ categories deliberately answer different questions.
 - [Add a recorded analysis engine](how-to/add-a-recorded-analysis-engine.md) gives the
   short repeatable checklist for a qualified provider capability without giving agents a
   raw provider or plan-authoring surface.
+- [Author and seal architecture SysML](how-to/author-architecture-sysml.md) captures
+  agent-authored closed-subset SysML, previews unresolved constructs, and seals a Thread
+  document without inserting into SysON.
 
 ## Legacy and golden records — audit, not operation
 
@@ -34,6 +48,9 @@ categories deliberately answer different questions.
 
 ## Reference — look up exact contracts and locations
 
+- [Agent workspace](reference/agent-workspace.md) is the compact contract for agents:
+  authority, lookalike traps, tool and operation catalogues, frontend profiles, and
+  where to put code.
 - [MCP console reference](reference/console.md) documents the console resource, tools,
   evidence model, agent project-control tools, signed MRTR elicitation, and authority
   boundary.
@@ -43,7 +60,8 @@ categories deliberately answer different questions.
   separates native-language parsing, provider-neutral facts, human admission,
   inspectable lowering and private provider dispatch; it documents the recorded
   `resolved-operation-plan/2.0` vertical for qualified Modelica and CalculiX evidence,
-  alongside the implemented CAD, approved-brief and bounded SysML verticals.
+  alongside the implemented CAD, approved-brief, bounded renderer SysML, and
+  agent-authored architecture SysML verticals.
 - [Providers, analyses, evidence and oracles](reference/provider-analysis-oracle-taxonomy.md)
   distinguishes engines such as CalculiX, SPICE, PrusaSlicer and ERP connectors from
   analysis families, evidence normalization, DFM rules and versioned verdict authority.

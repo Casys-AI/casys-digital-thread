@@ -98,21 +98,32 @@ operation revisions and declared binding names/source kinds; it also supplies th
 durable work title, description, and classification shown to the reviewer. The generic
 entry-point registry contains:
 
-| Starting point or exact prerequisite                                          | Exact operation reference          |
-| ----------------------------------------------------------------------------- | ---------------------------------- |
-| New V3 idea or specification                                                  | `baseline.from-approved-brief@1`   |
-| Post-baseline change; exact documentary r1 required at runtime                | `architecture.seed-syson-model@2`  |
-| Human-reviewed architecture; exact generic SysON basis required               | `model.write-architecture@1`       |
-| Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`       |
-| Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`          |
-| Human-reviewed simulation case; exact thread-snapshot basis required          | `simulate.seal-simulation-case@1`  |
-| Sealed simulation-case artifact in basis; thread-entity binding required      | `simulate.run-modelica-scenario@1` |
-| Human-reviewed FEA proof case; exact geometry and requirements-tip in basis   | `verify.seal-proof-case@1`         |
-| Sealed proof-case and geometry artifacts in basis; thread-entity bindings     | `verify.run-fea-static-proof@1`    |
-| Human-reviewed `simulation-case/2.0`, qualified Modelica kit required         | `simulate.seal-simulation-case@2`  |
-| Sealed V2 case and qualified method-manifest, exact MRTR required             | `simulate.run-modelica-scenario@2` |
-| Sealed proof case and geometry, exact MRTR required                           | `verify.run-fea-static-proof@2`    |
-| Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`         |
+| Starting point or exact prerequisite                                          | Exact operation reference               |
+| ----------------------------------------------------------------------------- | --------------------------------------- |
+| New V3 idea or specification                                                  | `baseline.from-approved-brief@1`        |
+| Post-baseline change; exact documentary r1 required at runtime                | `architecture.seed-syson-model@2`       |
+| Human-reviewed architecture; exact generic SysON basis required               | `model.write-architecture@1`            |
+| Passed agent-authored closed-subset SysML capture; Thread document only       | `model.seal-architecture-sysml@1`       |
+| Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`            |
+| Ready compilation draft; exact Thread/SysML basis; no provider                | `compile.seal-admission@1`              |
+| Sealed compilation admission; local isolation runtime composed                | `design.execute-build123d@1`            |
+| Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`               |
+| Human-reviewed simulation case; exact thread-snapshot basis required          | `simulate.seal-simulation-case@1`       |
+| Sealed simulation-case artifact in basis; thread-entity binding required      | `simulate.run-modelica-scenario@1`      |
+| Human-reviewed FEA proof case; exact geometry and requirements-tip in basis   | `verify.seal-proof-case@1`              |
+| Sealed proof-case and geometry artifacts in basis; thread-entity bindings     | `verify.run-fea-static-proof@1`         |
+| Human-reviewed `simulation-case/2.0`, qualified Modelica kit required         | `simulate.seal-simulation-case@2`       |
+| Sealed V2 case and qualified method-manifest, exact MRTR required             | `simulate.run-modelica-scenario@2`      |
+| One server-owned local Modelica linear-ramp kit; qualification reread         | `simulate.run-qualified-modelica-kit@1` |
+| Sealed proof case and geometry, exact MRTR required                           | `verify.run-fea-static-proof@2`         |
+| Same bindings; isolated local CalculiX; not a reroute of `@2` plans           | `verify.run-fea-static-proof@3`         |
+| Human inspection of an uncertain provider write                               | `record.reconcile-uncertain-writer@1`   |
+| Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`              |
+
+Lookalike pairs and grants: [agent workspace](agent-workspace.md#3-lookalike-traps).
+`model.seal-architecture-sysml@1` is not `model.write-architecture@2`.
+`design.execute-build123d@1` is not canonical geometry promotion.
+`verify.run-fea-static-proof@3` must not consume a `@2` plan.
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
 `architecture.seed-syson-model@2` may be added by one append-only project change. The
@@ -196,6 +207,15 @@ inside the named parent. The server renders each definition once, journals the
 non-idempotent insertion, re-reads every parent-to-usage-to-type relationship, and
 publishes only the verified content-addressed capture. The agent cannot supply raw SysML
 or a provider call.
+
+`model.seal-architecture-sysml@1` is a separate provider-free seal. The agent first
+captures UTF-8 that matches the locked closed subset, previews the analysis, and
+proposes only the `decisionParameters` returned from a reopened passed capture. After
+human MRTR the executor reopens those CAS identities and writes one Thread document
+(`architecture-sysml-seal-capture/1.0`). It does not insert into SysON, does not reuse
+`compile.seal-admission@1`, and does not treat renderer `sysml-source-capture/1.0`
+envelopes as agent-authored authority. Procedure:
+[author architecture SysML](../how-to/author-architecture-sysml.md).
 
 `model.write-requirements@1` starts only from an exact generic architecture artifact.
 Its MRTR proposal identifies the reviewed target and declares named integer scalar

@@ -5,6 +5,23 @@ authority transition explicit and reviewable. The agent talks directly to the Ca
 Digital Thread MCP server. Provider MCP servers remain private backend dependencies;
 they are never a second, bypassable tool surface.
 
+```mermaid
+flowchart TD
+  src["Native source or semantic intent"] --> cap["Capture exact bytes"]
+  cap --> sa["source-analysis/1.0\nfacts, symbols, unresolved, diagnostics"]
+  sa --> assert["engineering-assertion/1.0\ndeclared | inferred | observed"]
+  assert --> graph["AnalysisGraph/1.0"]
+  graph --> ts["ThreadSnapshot/1.1"]
+  ts --> bff["BFF → Graphology MultiDirectedGraph\nread only, origin analysis"]
+  sa --> mrtr["Human MRTR + qualified method\nexact decision, approval, basis"]
+  mrtr --> rop["resolved-operation-plan/2.0\none server-owned action"]
+  rop --> exec["Server-fixed executor"]
+  exec --> mcp["Private provider MCP\n+ identity-bound resources/read"]
+  exec --> vm["Local OCI/microVM\nonly if independently qualified"]
+  mcp --> cas["CAS capture, recovery, Thread lineage"]
+  vm --> cas
+```
+
 ```text
 native source or semantic intent
         |
@@ -230,6 +247,43 @@ the provider readback from the renderer declaration. SysON remains a private pro
 MCP behind its own WAL, resource readback and Thread publication; it is not executed
 inside the local code-isolation backend.
 
+## Implemented agent-authored architecture SysML slice
+
+The first slice accepts agent-authored UTF-8 that matches exactly the three renderer
+write forms: a package block, a part definition that is empty or a block, and
+`part usage : Type;`. Digital Thread tokenizes that text fail-closed, parses it,
+CAS-captures the exact bytes, and analyses them under
+`sysml-architecture-closed-subset-v1`. Unresolved constructs are first-class and are
+never omitted. Bindings published by the analyzer are symbol ids, never labels.
+
+This slice is deliberately not `model.write-architecture@2`, not
+`compile.seal-admission@1`, and not `sysml-source-capture/1.0`. The renderer envelope
+remains the authority for the existing SysON insertion operation. The new
+`model.seal-architecture-sysml@1` operation writes a Thread document only and never
+calls a provider.
+
+|                | Renderer / SysON write                                | Agent-authored seal                                   |
+| -------------- | ----------------------------------------------------- | ----------------------------------------------------- |
+| Entry          | Flat MRTR `architecture.*` / `component.*` parameters | UTF-8 via `project_architecture_sysml_source_capture` |
+| Capture schema | `sysml-source-capture/1.0`                            | `architecture-sysml-source-analysis-capture/1.0`      |
+| Parser         | Server renderer + manifest-attested companion         | Lexical guard + closed-subset parser                  |
+| Operation      | `model.write-architecture@1`                          | `model.seal-architecture-sysml@1`                     |
+| SysON          | Inserts, journals, readback                           | Never called                                          |
+| Thread write   | `architecture-capture/3.0`                            | Document + `architecture-sysml-seal-capture/1.0`      |
+
+```text
+agent-authored SysML UTF-8
+  -> lexical guard
+  -> closed-subset parse (unresolved first-class)
+  -> architecture-sysml-source-analysis-capture/1.0 save + readback
+  -> preview (no Thread write)
+  -> human-signed model.seal-architecture-sysml@1
+  -> Thread document only
+```
+
+Procedure for agents:
+[author architecture SysML](../how-to/author-architecture-sysml.md).
+
 ## Product admission compiler boundary
 
 The approved brief remains a versioned, human-readable statement of intent. It may seed
@@ -290,13 +344,13 @@ they consume projections from the same compilation.
 The implementation deliberately shares control-plane contracts, not one universal solver
 protocol. The boundary is split as follows:
 
-| Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The only registered compilation profile is the qualified Build123d `Box` subset                                                                 |
-| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                       |
-| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                   |
-| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                           |
-| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                       | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist |
+| Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The only registered compilation profile is the qualified Build123d closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Pos`, `Rot`, `Compound`) |
+| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                        |
+| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                    |
+| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                            |
+| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                       | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist  |
 
 “Interchangeable” therefore applies at explicit seams. A new sandbox backend implements
 `EphemeralExecutionBackend`; a new output format supplies a code-owned manifest and
@@ -662,7 +716,9 @@ adapter-level pagination limit. These do not broaden the agent surface, but they
 part of the qualified host trust and availability envelope.
 
 The initial code-owned compilation catalogue qualifies only a parser-backed Build123d
-`Box` subset. Modelica and CalculiX compiler profiles remain absent and therefore fail
+closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Pos`, `Rot`, `Compound`; analyzer
+`build123d-qualified-lezer` 1.1.0). Previously qualified Box/Cylinder bundles stay
+bit-identical. Modelica and CalculiX compiler profiles remain absent and therefore fail
 closed.
 
 The recorded-analysis provider routes remain available for existing Modelica/CalculiX
