@@ -2,6 +2,7 @@ import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import type { ProjectAdmittedGeometryExportResult } from "../../application/ports/in/project-admitted-geometry-export.ts";
 import type { ProjectBuild123dExecutionReviewResult } from "../../application/ports/in/project-build123d-execution-review.ts";
+import type { ProjectIsolatedGeometrySealReviewResult } from "../../application/ports/in/project-isolated-geometry-seal-review.ts";
 import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../application/ports/in/project-modelica-qualified-kit-run-review.ts";
 import { registerProjectTechnicalCompilationTools } from "./technical-compilation-tools.ts";
 
@@ -15,6 +16,21 @@ const REVIEW_COMMAND = {
     subjectId: "subject.drip-tray",
   },
   artifactId: `technical-compilation-admission-${ARTIFACT_DIGEST}`,
+  artifactFingerprint: {
+    algorithm: "sha256",
+    digest: ARTIFACT_DIGEST,
+  },
+} as const;
+
+const SEAL_REVIEW_COMMAND = {
+  projectId: "project.drip-tray",
+  basis: {
+    kind: "thread-snapshot",
+    snapshotId: "snapshot.9",
+    revision: 9,
+    subjectId: "subject.drip-tray",
+  },
+  artifactId: `build123d-execution-capture-${ARTIFACT_DIGEST}`,
   artifactFingerprint: {
     algorithm: "sha256",
     digest: ARTIFACT_DIGEST,
@@ -38,6 +54,7 @@ Deno.test("Build123d execution review registration is conditional and preserves 
     {},
   );
   assertEquals(absent.hasTool("project_build123d_execution_review"), false);
+  assertEquals(absent.hasTool("project_isolated_geometry_seal_review"), false);
   assertEquals(absent.hasTool("project_admitted_geometry_export"), false);
 
   const ordered = new CapturingApp();
@@ -56,6 +73,9 @@ Deno.test("Build123d execution review registration is conditional and preserves 
       build123dExecutionReview: {
         execute: () => Promise.reject(new Error("not called")),
       },
+      isolatedGeometrySealReview: {
+        execute: () => Promise.reject(new Error("not called")),
+      },
     },
   );
 
@@ -64,6 +84,7 @@ Deno.test("Build123d execution review registration is conditional and preserves 
     "project_technical_compilation_preview",
     "project_admitted_geometry_export",
     "project_build123d_execution_review",
+    "project_isolated_geometry_seal_review",
   ]);
 });
 
@@ -280,6 +301,80 @@ Deno.test("Build123d execution review rejects unknown authority fields before th
     () => handler(nestedAuthority) as Promise<unknown>,
     TypeError,
     "basis has unsupported field(s): runtime",
+  );
+  assertEquals(calls, 0);
+});
+
+Deno.test("isolated geometry seal review forwards exact identity and stays read-only", async () => {
+  const app = new CapturingApp();
+  const calls: unknown[] = [];
+  const resultIdentity = Object.freeze({
+    admission: Object.freeze({ marker: "use-case-owned-seal-admission" }),
+    decisionParameters: Object.freeze([
+      Object.freeze({ key: "review.identity", label: "Identity", value: "exact" }),
+    ]),
+  }) as unknown as ProjectIsolatedGeometrySealReviewResult;
+
+  registerProjectTechnicalCompilationTools(
+    app as unknown as McpApp,
+    {
+      isolatedGeometrySealReview: {
+        execute(value) {
+          calls.push(value);
+          return Promise.resolve(resultIdentity);
+        },
+      },
+    },
+  );
+
+  const response = await app.handler("project_isolated_geometry_seal_review")(
+    structuredClone(SEAL_REVIEW_COMMAND),
+  ) as Record<string, unknown>;
+  assert(response.structuredContent === resultIdentity);
+  assertEquals(calls, [SEAL_REVIEW_COMMAND]);
+  assertStringIncludes(response.content as string, SEAL_REVIEW_COMMAND.artifactId);
+  assertStringIncludes(response.content as string, "no source bytes");
+  assertStringIncludes(response.content as string, "no MRTR");
+
+  const tool = app.tool("project_isolated_geometry_seal_review");
+  assertEquals(tool.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  const inputSchema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(
+    Object.keys(inputSchema.properties as Record<string, unknown>).sort(),
+    ["artifactFingerprint", "artifactId", "basis", "projectId"],
+  );
+  assertClosedObjectSchemas(inputSchema);
+});
+
+Deno.test("isolated geometry seal review rejects unknown authority fields before the use case", async () => {
+  const app = new CapturingApp();
+  let calls = 0;
+  registerProjectTechnicalCompilationTools(
+    app as unknown as McpApp,
+    {
+      isolatedGeometrySealReview: {
+        execute: () => {
+          calls += 1;
+          return Promise.reject(new Error("must not be called"));
+        },
+      },
+    },
+  );
+  const handler = app.handler("project_isolated_geometry_seal_review");
+
+  await assertRejects(
+    () =>
+      handler({
+        ...structuredClone(SEAL_REVIEW_COMMAND),
+        sourceText: "from build123d import Box",
+      }) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): sourceText",
   );
   assertEquals(calls, 0);
 });

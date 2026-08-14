@@ -16,10 +16,10 @@ import {
 
 /**
  * The only initial registration corresponds to a real parser-backed, closed
- * build123d subset (primitives, placements, Compound, solid +/−, and
- * scale(solid, scalar)). CalculiX and Modelica remain absent until
- * independently qualified frontends exist; requesting either therefore fails
- * closed.
+ * build123d subset (primitives, placements, Compound, solid +/−,
+ * scale(solid, scalar), and fillet(solid.edges(), radius=scalar)). CalculiX
+ * and Modelica remain absent until independently qualified frontends exist;
+ * requesting either therefore fails closed.
  */
 export const INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG:
   TechnicalCompilationProfileCatalog = validateTechnicalCompilationProfileCatalog({

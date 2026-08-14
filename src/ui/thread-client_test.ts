@@ -77,14 +77,27 @@ Deno.test("evidence Workbench rejects unknown fields and incomplete array entiti
       notWriteArchitecture: true,
       notCompilationAdmission: true,
       symbolsStatus: "observed",
-      symbols: [{ id: "symbol:package", kind: "artifact", label: "DroneV4" }],
+      sourceStatus: "observed",
+      sourceText: "package DroneV4 {}\n",
+      symbols: [{
+        id: "symbol:package",
+        kind: "artifact",
+        label: "DroneV4",
+        span: { start: { line: 1, column: 8 }, end: { line: 1, column: 15 } },
+      }],
       incidences: [{
         id: "dependency:usage-type",
         kind: "structural-incidence",
         fromSymbolId: "symbol:package",
         toSymbolId: "symbol:package-type",
+        span: { start: { line: 1, column: 0 }, end: { line: 1, column: 18 } },
       }],
-      unresolvedConstructs: [],
+      unresolvedConstructs: [{
+        id: "unresolved:comment",
+        kind: "comment",
+        message: "A comment is outside the architecture closed subset.",
+        span: { start: { line: 2, column: 0 }, end: { line: 2, column: 8 } },
+      }],
     },
   };
   assertEquals(isThreadWorkbenchSnapshot(sealedDocument), true);
@@ -109,6 +122,72 @@ Deno.test("evidence Workbench rejects unknown fields and incomplete array entiti
   labelledIncidence.artifacts[0]!.architectureSysmlSeal!.incidences[0]!
     .fromLabel = "must-not-be-a-join-key";
   assertEquals(isThreadWorkbenchSnapshot(labelledIncidence), false);
+
+  const missingSourceStatus = structuredClone(sealedDocument);
+  delete (missingSourceStatus.artifacts[0] as {
+    architectureSysmlSeal?: { sourceStatus?: unknown };
+  }).architectureSysmlSeal?.sourceStatus;
+  assertEquals(isThreadWorkbenchSnapshot(missingSourceStatus), false);
+
+  const observedWithoutSourceText = structuredClone(sealedDocument);
+  delete (observedWithoutSourceText.artifacts[0] as {
+    architectureSysmlSeal?: { sourceText?: unknown };
+  }).architectureSysmlSeal?.sourceText;
+  assertEquals(isThreadWorkbenchSnapshot(observedWithoutSourceText), false);
+
+  const unavailableWithSource = structuredClone(sealedDocument) as {
+    artifacts: Array<{
+      architectureSysmlSeal?: {
+        sourceStatus?: string;
+        sourceText?: string;
+        symbols: Array<Record<string, unknown>>;
+        incidences: Array<Record<string, unknown>>;
+        unresolvedConstructs: Array<Record<string, unknown>>;
+      };
+    }>;
+  };
+  unavailableWithSource.artifacts[0]!.architectureSysmlSeal!.sourceStatus =
+    "unavailable";
+  assertEquals(isThreadWorkbenchSnapshot(unavailableWithSource), false);
+
+  const unavailableCaptureOnly = structuredClone(sealedDocument) as {
+    artifacts: Array<{
+      architectureSysmlSeal?: {
+        symbolsStatus?: string;
+        sourceStatus?: string;
+        sourceText?: string;
+        symbols: unknown[];
+        incidences: unknown[];
+        unresolvedConstructs: Array<Record<string, unknown>>;
+      };
+    }>;
+  };
+  const unavailableSeal = unavailableCaptureOnly.artifacts[0]!
+    .architectureSysmlSeal!;
+  unavailableSeal.symbolsStatus = "unavailable";
+  unavailableSeal.sourceStatus = "unavailable";
+  delete unavailableSeal.sourceText;
+  unavailableSeal.symbols = [];
+  unavailableSeal.incidences = [];
+  unavailableSeal.unresolvedConstructs = [{
+    id: "unresolved:comment",
+    kind: "comment",
+  }];
+  assertEquals(isThreadWorkbenchSnapshot(unavailableCaptureOnly), true);
+
+  unavailableSeal.unresolvedConstructs[0]!.message = "must-not-invent";
+  assertEquals(isThreadWorkbenchSnapshot(unavailableCaptureOnly), false);
+
+  const extraSpanField = structuredClone(sealedDocument) as {
+    artifacts: Array<{
+      architectureSysmlSeal?: {
+        symbols: Array<{ span?: Record<string, unknown> }>;
+      };
+    }>;
+  };
+  extraSpanField.artifacts[0]!.architectureSysmlSeal!.symbols[0]!.span!.origin =
+    "invented";
+  assertEquals(isThreadWorkbenchSnapshot(extraSpanField), false);
 
   const malformedActions = structuredClone(
     GENERIC_ENGINEERING_WORKBENCH_FIXTURE,

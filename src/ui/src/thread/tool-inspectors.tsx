@@ -24,6 +24,7 @@ import type {
 import {
   type ArchitectureSysmlSealInspectorView,
   architectureSysmlSealInspectorView,
+  architectureSysmlSealSpanLabel,
   type InspectorContext,
   resolveToolFacetInventory,
   resolveToolInspectorContext,
@@ -270,6 +271,7 @@ function ArchitectureSysmlSealSummary({
       class="tool-inspector-section tool-inspector-seal"
       data-authority={view.authority}
       data-artifact-kind={view.artifactKind}
+      data-source-status={view.sourceStatus}
     >
       <header>
         <h4>Architecture SysML seal</h4>
@@ -285,6 +287,15 @@ function ArchitectureSysmlSealSummary({
           <small>producer</small>
           <strong>{view.producer}</strong>
           <span>kind {view.artifactKind}</span>
+        </div>
+        <div class="tool-inspector-row">
+          <small>source</small>
+          <strong>{view.sourceStatus}</strong>
+          <span>
+            {view.sourceStatus === "observed"
+              ? "reopened analysis"
+              : "source analysis unavailable"}
+          </span>
         </div>
         {view.fingerprint && (
           <div class="tool-inspector-row">
@@ -302,15 +313,31 @@ function ArchitectureSysmlSealSummary({
         )}
       </div>
       <InspectorSection
+        title={view.sourceStatus === "unavailable" ? "Source unavailable" : "Source"}
+        count={view.sourceText === undefined ? 0 : 1}
+      >
+        {view.sourceText === undefined ? [] : [
+          <pre
+            key="source-text"
+            class="tool-inspector-source"
+            aria-readonly="true"
+          >
+            {view.sourceText}
+          </pre>,
+        ]}
+      </InspectorSection>
+      <InspectorSection
         title={view.symbolsStatus === "unavailable" ? "Symbols unavailable" : "Symbols"}
         count={view.symbols.length}
       >
         {view.symbols.map((symbol) => (
-          <div class="tool-inspector-row" key={symbol.id}>
-            <small>{symbol.kind}</small>
-            <strong>{symbol.id}</strong>
-            <span>{symbol.label ?? "display label absent"}</span>
-          </div>
+          <SealFactRow
+            key={symbol.id}
+            kind={symbol.kind}
+            id={symbol.id}
+            detail={symbol.label ?? "display label absent"}
+            span={symbol.span}
+          />
         ))}
       </InspectorSection>
       <InspectorSection title="Incidences" count={view.incidences.length}>
@@ -322,16 +349,15 @@ function ArchitectureSysmlSealSummary({
             symbol.id === incidence.toSymbolId
           )?.label;
           return (
-            <div class="tool-inspector-row" key={incidence.id}>
-              <small>{incidence.kind}</small>
-              <strong>
-                {incidence.fromSymbolId} → {incidence.toSymbolId}
-              </strong>
-              <span>
-                {fromLabel ?? "display label absent"} →{" "}
-                {toLabel ?? "display label absent"}
-              </span>
-            </div>
+            <SealFactRow
+              key={incidence.id}
+              kind={incidence.kind}
+              id={`${incidence.fromSymbolId} → ${incidence.toSymbolId}`}
+              detail={`${fromLabel ?? "display label absent"} → ${
+                toLabel ?? "display label absent"
+              }`}
+              span={incidence.span}
+            />
           );
         })}
       </InspectorSection>
@@ -340,14 +366,38 @@ function ArchitectureSysmlSealSummary({
         count={view.unresolvedConstructs.length}
       >
         {view.unresolvedConstructs.map((construct) => (
-          <div class="tool-inspector-row" key={construct.id}>
-            <small>{construct.kind}</small>
-            <strong>{construct.id}</strong>
-            <span>unresolved</span>
-          </div>
+          <SealFactRow
+            key={construct.id}
+            kind={construct.kind}
+            id={construct.id}
+            detail={construct.message ?? "display message absent"}
+            span={construct.span}
+          />
         ))}
       </InspectorSection>
     </section>
+  );
+}
+
+function SealFactRow({
+  kind,
+  id,
+  detail,
+  span,
+}: {
+  kind: string;
+  id: string;
+  detail: string;
+  span?: ArchitectureSysmlSealInspectorView["symbols"][number]["span"];
+}): JSX.Element {
+  const spanLabel = architectureSysmlSealSpanLabel(span);
+  return (
+    <div class="tool-inspector-row">
+      <small>{kind}</small>
+      <strong>{id}</strong>
+      <span>{detail}</span>
+      {spanLabel && <b>{spanLabel}</b>}
+    </div>
   );
 }
 

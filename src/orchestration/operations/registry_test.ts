@@ -17,6 +17,7 @@ import {
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
+import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 
 Deno.test("the intake registry starts a new idea from the approved project brief", () => {
@@ -257,6 +258,68 @@ Deno.test("Build123d execution is consequential and binds one exact compilation 
     cardinality: "one",
     allowedThreadEntityKinds: ["artifact"],
   }]);
+});
+
+Deno.test("isolated geometry seal is a provider-free Thread-document seal of one execution capture", () => {
+  const operation = getRegisteredEngineeringOperation(
+    DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
+  )!;
+
+  assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(operation.workItemKind, "design");
+  assertEquals(operation.riskClass, "consequential");
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(operation.bindings, [{
+    name: "executionCapture",
+    allowedSourceKinds: ["thread-entity"],
+    cardinality: "one",
+    allowedThreadEntityKinds: ["artifact"],
+  }]);
+
+  const binding = {
+    name: "executionCapture",
+    source: {
+      kind: "thread-entity" as const,
+      reference: {
+        snapshotId: "thread.snapshot.9",
+        snapshotRevision: 9,
+        kind: "artifact" as const,
+        id: `build123d-execution-capture-${"a".repeat(64)}`,
+      },
+    },
+  };
+  const queued = validateRegisteredEngineeringOperationInput({
+    operation: {
+      ...DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
+      bindings: [binding],
+    },
+    stage: "queue",
+    basisKind: "thread-snapshot",
+  });
+  assertEquals(queued.bindings, [binding]);
+
+  const stepBinding = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
+          bindings: [{
+            ...binding,
+            source: {
+              ...binding.source,
+              reference: {
+                ...binding.source.reference,
+                kind: "requirement" as const,
+              },
+            },
+          }],
+        },
+        stage: "planning",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(stepBinding.code, "invalid_bindings");
 });
 
 Deno.test("operation declarations cannot mutate the code-owned registry", () => {

@@ -35,6 +35,7 @@ from UI copy or tool descriptions.
 - Legacy `project_geometry_preview` + `design.write-geometry@1` is the MCP sandbox path.
   `compile.seal-admission@1` + `design.execute-build123d@1` is the local microVM path. A
   successful isolated execution is **not** canonical geometry.
+  `design.seal-isolated-geometry@1` seals that execution as a Thread document only.
 - `verify.run-fea-static-proof@1`, `@2`, and `@3` are distinct authorities. Do not
   reroute one plan to another.
 - CM-01 is retired. `desk-lamp-dl04` is the generic qualification candidate. Do not

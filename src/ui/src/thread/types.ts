@@ -68,6 +68,7 @@ export type {
   ThreadAction,
   ThreadArchitectureSysmlSealIncidence,
   ThreadArchitectureSysmlSealPresentation,
+  ThreadArchitectureSysmlSealSpan,
   ThreadArchitectureSysmlSealSymbol,
   ThreadArchitectureSysmlSealUnresolved,
   ThreadArtifact,
@@ -722,6 +723,8 @@ function isArchitectureSysmlSealPresentation(value: unknown): boolean {
     "notWriteArchitecture",
     "notCompilationAdmission",
     "symbolsStatus",
+    "sourceStatus",
+    "sourceText",
     "symbols",
     "incidences",
     "unresolvedConstructs",
@@ -733,6 +736,8 @@ function isArchitectureSysmlSealPresentation(value: unknown): boolean {
     value.notCompilationAdmission === true &&
     (value.symbolsStatus === "observed" ||
       value.symbolsStatus === "unavailable") &&
+    (value.sourceStatus === "observed" ||
+      value.sourceStatus === "unavailable") &&
     Array.isArray(value.symbols) &&
     value.symbols.every(isArchitectureSysmlSealSymbol) &&
     Array.isArray(value.incidences) &&
@@ -740,34 +745,84 @@ function isArchitectureSysmlSealPresentation(value: unknown): boolean {
     Array.isArray(value.unresolvedConstructs) &&
     value.unresolvedConstructs.every(isArchitectureSysmlSealUnresolved) &&
     (value.symbolsStatus === "observed" ||
-      (value.symbols.length === 0 && value.incidences.length === 0));
+      (value.symbols.length === 0 && value.incidences.length === 0)) &&
+    (value.sourceStatus === "observed"
+      ? typeof value.sourceText === "string"
+      : value.sourceText === undefined &&
+        documentarySourceIsAbsent(value.symbols) &&
+        documentarySourceIsAbsent(value.incidences) &&
+        documentarySourceIsAbsent(value.unresolvedConstructs, ["message"]));
+}
+
+function documentarySourceIsAbsent(
+  items: readonly unknown[],
+  extraKeys: readonly string[] = [],
+): boolean {
+  return items.every((item) => {
+    if (!isRecord(item)) return false;
+    return !Object.hasOwn(item, "span") &&
+      extraKeys.every((key) => !Object.hasOwn(item, key));
+  });
 }
 
 function isArchitectureSysmlSealIncidence(value: unknown): boolean {
-  return isRecord(value) && hasExactKeys(value, [
+  return isRecord(value) && hasAllowedKeys(value, [
     "id",
     "kind",
     "fromSymbolId",
     "toSymbolId",
+    "span",
   ]) &&
     typeof value.id === "string" && value.id.length > 0 &&
     value.kind === "structural-incidence" &&
     typeof value.fromSymbolId === "string" && value.fromSymbolId.length > 0 &&
-    typeof value.toSymbolId === "string" && value.toSymbolId.length > 0;
+    typeof value.toSymbolId === "string" && value.toSymbolId.length > 0 &&
+    (value.span === undefined || isArchitectureSysmlSealSpan(value.span));
 }
 
 function isArchitectureSysmlSealSymbol(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  return hasAllowedKeys(value, ["id", "kind", "label"]) &&
+  return hasAllowedKeys(value, ["id", "kind", "label", "span"]) &&
     typeof value.id === "string" && value.id.length > 0 &&
     typeof value.kind === "string" && value.kind.length > 0 &&
-    (value.label === undefined || typeof value.label === "string");
+    (value.label === undefined || typeof value.label === "string") &&
+    (value.span === undefined || isArchitectureSysmlSealSpan(value.span));
 }
 
 function isArchitectureSysmlSealUnresolved(value: unknown): boolean {
-  return isRecord(value) && hasExactKeys(value, ["id", "kind"]) &&
+  return isRecord(value) && hasAllowedKeys(value, [
+    "id",
+    "kind",
+    "message",
+    "span",
+  ]) &&
     typeof value.id === "string" && value.id.length > 0 &&
-    typeof value.kind === "string" && value.kind.length > 0;
+    typeof value.kind === "string" && value.kind.length > 0 &&
+    (value.message === undefined ||
+      (typeof value.message === "string" && value.message.length > 0)) &&
+    (value.span === undefined || isArchitectureSysmlSealSpan(value.span));
+}
+
+function isArchitectureSysmlSealSpan(value: unknown): boolean {
+  if (!isRecord(value) || !hasExactKeys(value, ["start", "end"])) return false;
+  if (
+    !isArchitectureSysmlSealLocation(value.start) ||
+    !isArchitectureSysmlSealLocation(value.end)
+  ) {
+    return false;
+  }
+  const start = value.start;
+  const end = value.end;
+  return end.line > start.line ||
+    (end.line === start.line && end.column >= start.column);
+}
+
+function isArchitectureSysmlSealLocation(
+  value: unknown,
+): value is { line: number; column: number } {
+  return isRecord(value) && hasExactKeys(value, ["line", "column"]) &&
+    isPositiveSafeInteger(value.line) &&
+    isNonNegativeSafeInteger(value.column);
 }
 
 function isThreadArtifactAttestation(value: unknown): boolean {

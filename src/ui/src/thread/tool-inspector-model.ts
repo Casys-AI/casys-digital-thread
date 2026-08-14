@@ -395,6 +395,8 @@ export interface ArchitectureSysmlSealInspectorView {
   readonly notWriteArchitecture: true;
   readonly notCompilationAdmission: true;
   readonly symbolsStatus: ThreadArchitectureSysmlSealPresentation["symbolsStatus"];
+  readonly sourceStatus: ThreadArchitectureSysmlSealPresentation["sourceStatus"];
+  readonly sourceText?: string;
   readonly symbols: readonly ThreadArchitectureSysmlSealSymbol[];
   readonly incidences: readonly ThreadArchitectureSysmlSealIncidence[];
   readonly unresolvedConstructs: readonly ThreadArchitectureSysmlSealUnresolved[];
@@ -426,6 +428,8 @@ export function architectureSysmlSealInspectorView(
     return undefined;
   }
   const payload = artifact.architectureSysmlSeal;
+  const sourceStatus = payload?.sourceStatus ?? "unavailable";
+  const sourceObserved = sourceStatus === "observed";
   return {
     producer: ARCHITECTURE_SYSML_SEAL_PRODUCER,
     fingerprint: artifact.fingerprint,
@@ -436,11 +440,66 @@ export function architectureSysmlSealInspectorView(
     notWriteArchitecture: true,
     notCompilationAdmission: true,
     symbolsStatus: payload?.symbolsStatus ?? "unavailable",
-    symbols: payload?.symbols ?? [],
+    sourceStatus,
+    sourceText: sourceObserved && typeof payload?.sourceText === "string"
+      ? payload.sourceText
+      : undefined,
+    symbols: (payload?.symbols ?? []).map((symbol) =>
+      documentarySymbol(symbol, sourceObserved)
+    ),
     incidences: payload?.symbolsStatus === "unavailable"
       ? []
-      : payload?.incidences ?? [],
-    unresolvedConstructs: payload?.unresolvedConstructs ?? [],
+      : (payload?.incidences ?? []).map((incidence) =>
+        documentaryIncidence(incidence, sourceObserved)
+      ),
+    unresolvedConstructs: (payload?.unresolvedConstructs ?? []).map((construct) =>
+      documentaryUnresolved(construct, sourceObserved)
+    ),
+  };
+}
+
+/** Line/col label for a copied documentary span. Absent when reopen failed. */
+export function architectureSysmlSealSpanLabel(
+  span: ThreadArchitectureSysmlSealSymbol["span"],
+): string | undefined {
+  if (span === undefined) return undefined;
+  return `${span.start.line}:${span.start.column}–${span.end.line}:${span.end.column}`;
+}
+
+function documentarySymbol(
+  symbol: ThreadArchitectureSysmlSealSymbol,
+  sourceObserved: boolean,
+): ThreadArchitectureSysmlSealSymbol {
+  return {
+    id: symbol.id,
+    kind: symbol.kind,
+    ...(symbol.label === undefined ? {} : { label: symbol.label }),
+    ...(sourceObserved && symbol.span ? { span: symbol.span } : {}),
+  };
+}
+
+function documentaryIncidence(
+  incidence: ThreadArchitectureSysmlSealIncidence,
+  sourceObserved: boolean,
+): ThreadArchitectureSysmlSealIncidence {
+  return {
+    id: incidence.id,
+    kind: "structural-incidence",
+    fromSymbolId: incidence.fromSymbolId,
+    toSymbolId: incidence.toSymbolId,
+    ...(sourceObserved && incidence.span ? { span: incidence.span } : {}),
+  };
+}
+
+function documentaryUnresolved(
+  construct: ThreadArchitectureSysmlSealUnresolved,
+  sourceObserved: boolean,
+): ThreadArchitectureSysmlSealUnresolved {
+  return {
+    id: construct.id,
+    kind: construct.kind,
+    ...(sourceObserved && construct.message ? { message: construct.message } : {}),
+    ...(sourceObserved && construct.span ? { span: construct.span } : {}),
   };
 }
 

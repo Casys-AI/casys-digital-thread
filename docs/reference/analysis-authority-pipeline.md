@@ -344,13 +344,13 @@ they consume projections from the same compilation.
 The implementation deliberately shares control-plane contracts, not one universal solver
 protocol. The boundary is split as follows:
 
-| Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                           |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The only registered compilation profile is the qualified Build123d closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Pos`, `Rot`, `Compound`, `scale(solid, scalar)`) |
-| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                        |
-| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                    |
-| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                            |
-| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                       | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist  |
+| Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The only registered compilation profile is the qualified Build123d closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Pos`, `Rot`, `Compound`, `scale(solid, scalar)`, `fillet(solid.edges(), radius=scalar)`) |
+| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                                                                                                                       |
+| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                                                                                                                   |
+| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                                                                                                                           |
+| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                       | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist                                                                                                 |
 
 “Interchangeable” therefore applies at explicit seams. A new sandbox backend implements
 `EphemeralExecutionBackend`; a new output format supplies a code-owned manifest and
@@ -428,8 +428,12 @@ draft and capture both bind the producer generation and exact receipt/publicatio
 the WAL binds the persisted draft reference back to that same receipt and checks the
 link again during completed replay. The existing `design.write-geometry@1` cannot
 promote this new draft because it seals a different historical sandbox-preview contract.
-Canonical promotion requires a future, separately reviewed geometry operation and a
-second human MRTR over the exact execution document, draft and published bytes.
+`design.seal-isolated-geometry@1` is that second, distinct MRTR. It reopens the
+execution capture, draft and publication-gated STEP, rehashes the bytes, and writes
+one Thread document (`isolated-geometry-seal-capture/1.0`). It does not copy STEP into
+`thread-assets`, does not publish a `step` or `cad-model` artifact, and does not grant
+Product or FEA authority. Canonical promotion still requires a later, separately
+reviewed operation.
 
 The durable execution journal is monotone:
 `prepared -> dispatching -> output-published -> draft-persisted -> thread-persisted -> completed`.
@@ -717,11 +721,11 @@ part of the qualified host trust and availability envelope.
 
 The initial code-owned compilation catalogue qualifies only a parser-backed Build123d
 closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`,
-`Pos`, `Rot`, `Compound`, `scale(solid, scalar)`; analyzer
-`build123d-qualified-lezer` 1.1.0). Previously qualified Box/Cylinder/Pos/Compound
-bundles stay bit-identical. fillet/chamfer remain unresolved: they still need
-`MemberExpression` and keyword arguments. Modelica and CalculiX compiler profiles
-remain absent and therefore fail closed.
+`Pos`, `Rot`, `Compound`, `scale(solid, scalar)`,
+`fillet(solid.edges(), radius=scalar)`; analyzer `build123d-qualified-lezer` 1.1.0).
+Previously qualified Box/Cylinder/Pos/Compound bundles stay bit-identical. chamfer
+remains unresolved. Modelica and CalculiX compiler profiles remain absent and therefore
+fail closed.
 
 The recorded-analysis provider routes remain available for existing Modelica/CalculiX
 operations. `simulate.run-modelica-scenario@1/@2` and `verify.run-fea-static-proof@1/@2`

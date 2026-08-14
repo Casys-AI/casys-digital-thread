@@ -301,19 +301,38 @@ export interface ThreadFlowStage {
  * Browser-safe reopen of one `model.seal-architecture-sysml@1` Thread document.
  *
  * Bindings stay symbol ids. Labels, when present, are display-only and never
- * join keys. This is not Product Structure, not a SysON model, and not
+ * join keys. Source text, spans and unresolved messages are copied from a
+ * successful source-analysis reopen and are never invented from a capture
+ * id+kind. This is not Product Structure, not a SysON model, and not
  * `compile.seal-admission@1`.
  */
+export interface ThreadArchitectureSysmlSealLocation {
+  /** One-based line. */
+  line: number;
+  /** Zero-based column. */
+  column: number;
+}
+
+/** Copied source range. Absent when source analysis did not reopen. */
+export interface ThreadArchitectureSysmlSealSpan {
+  start: ThreadArchitectureSysmlSealLocation;
+  end: ThreadArchitectureSysmlSealLocation;
+}
+
 export interface ThreadArchitectureSysmlSealSymbol {
   id: string;
   kind: string;
   /** Display-only name; never used as a join key. */
   label?: string;
+  span?: ThreadArchitectureSysmlSealSpan;
 }
 
 export interface ThreadArchitectureSysmlSealUnresolved {
   id: string;
   kind: string;
+  /** Copied from the reopened analysis. Never derived from id+kind. */
+  message?: string;
+  span?: ThreadArchitectureSysmlSealSpan;
 }
 
 /**
@@ -325,6 +344,7 @@ export interface ThreadArchitectureSysmlSealIncidence {
   kind: "structural-incidence";
   fromSymbolId: string;
   toSymbolId: string;
+  span?: ThreadArchitectureSysmlSealSpan;
 }
 
 export interface ThreadArchitectureSysmlSealPresentation {
@@ -335,6 +355,10 @@ export interface ThreadArchitectureSysmlSealPresentation {
   notWriteArchitecture: true;
   notCompilationAdmission: true;
   symbolsStatus: "observed" | "unavailable";
+  /** Same fail-closed pair as `symbolsStatus`. */
+  sourceStatus: "observed" | "unavailable";
+  /** Exact UTF-8. Present only when `sourceStatus` is `observed`. */
+  sourceText?: string;
   symbols: ThreadArchitectureSysmlSealSymbol[];
   incidences: ThreadArchitectureSysmlSealIncidence[];
   unresolvedConstructs: ThreadArchitectureSysmlSealUnresolved[];

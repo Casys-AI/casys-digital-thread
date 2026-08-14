@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
   architectureSysmlSealInspectorView,
+  architectureSysmlSealSpanLabel,
   graphNodeForSelection,
   resolveSelectedGraphEdge,
   resolveToolFacetInventory,
@@ -385,8 +386,15 @@ Deno.test(
         notWriteArchitecture: true,
         notCompilationAdmission: true,
         symbolsStatus: "observed",
+        sourceStatus: "observed",
+        sourceText: "package DroneV4 {\n  part def Wing {}\n}\n",
         symbols: [
-          { id: "symbol:package", kind: "artifact", label: "DroneV4" },
+          {
+            id: "symbol:package",
+            kind: "artifact",
+            label: "DroneV4",
+            span: { start: { line: 1, column: 8 }, end: { line: 1, column: 15 } },
+          },
           { id: "symbol:wing-usage", kind: "component", label: "wing" },
           { id: "symbol:wing", kind: "component", label: "Wing" },
         ],
@@ -395,8 +403,14 @@ Deno.test(
           kind: "structural-incidence",
           fromSymbolId: "symbol:wing-usage",
           toSymbolId: "symbol:wing",
+          span: { start: { line: 2, column: 2 }, end: { line: 2, column: 18 } },
         }],
-        unresolvedConstructs: [{ id: "unresolved:comment", kind: "comment" }],
+        unresolvedConstructs: [{
+          id: "unresolved:comment",
+          kind: "comment",
+          message: "A comment is outside the architecture closed subset.",
+          span: { start: { line: 4, column: 0 }, end: { line: 4, column: 12 } },
+        }],
       },
     });
 
@@ -421,20 +435,38 @@ Deno.test(
     assertEquals(view?.notSyson, true);
     assertEquals(view?.notWriteArchitecture, true);
     assertEquals(view?.notCompilationAdmission, true);
+    assertEquals(view?.sourceStatus, "observed");
+    assertEquals(view?.sourceText, "package DroneV4 {\n  part def Wing {}\n}\n");
     assertEquals(view?.symbols.map((symbol) => symbol.id), [
       "symbol:package",
       "symbol:wing-usage",
       "symbol:wing",
     ]);
+    assertEquals(
+      architectureSysmlSealSpanLabel(view?.symbols[0]?.span),
+      "1:8–1:15",
+    );
     assertEquals(view?.incidences, [{
       id: "dependency:wing-typed-by",
       kind: "structural-incidence",
       fromSymbolId: "symbol:wing-usage",
       toSymbolId: "symbol:wing",
+      span: { start: { line: 2, column: 2 }, end: { line: 2, column: 18 } },
     }]);
-    assertEquals(view?.unresolvedConstructs.map((item) => item.id), [
-      "unresolved:comment",
-    ]);
+    assertEquals(
+      architectureSysmlSealSpanLabel(view?.incidences[0]?.span),
+      "2:2–2:18",
+    );
+    assertEquals(view?.unresolvedConstructs, [{
+      id: "unresolved:comment",
+      kind: "comment",
+      message: "A comment is outside the architecture closed subset.",
+      span: { start: { line: 4, column: 0 }, end: { line: 4, column: 12 } },
+    }]);
+    assertEquals(
+      architectureSysmlSealSpanLabel(view?.unresolvedConstructs[0]?.span),
+      "4:0–4:12",
+    );
   },
 );
 
@@ -465,14 +497,22 @@ Deno.test(
         notWriteArchitecture: true,
         notCompilationAdmission: true,
         symbolsStatus: "unavailable",
+        sourceStatus: "unavailable",
+        sourceText: "must-not-surface",
         symbols: [],
         incidences: [{
           id: "dependency:must-not-surface",
           kind: "structural-incidence",
           fromSymbolId: "symbol:from",
           toSymbolId: "symbol:to",
+          span: { start: { line: 1, column: 0 }, end: { line: 1, column: 4 } },
         }],
-        unresolvedConstructs: [{ id: "unresolved:comment", kind: "comment" }],
+        unresolvedConstructs: [{
+          id: "unresolved:comment",
+          kind: "comment",
+          message: "must-not-invent-from-kind",
+          span: { start: { line: 1, column: 0 }, end: { line: 1, column: 8 } },
+        }],
       },
     });
 
@@ -480,12 +520,18 @@ Deno.test(
       record: { kind: "artifact", id: artifactId },
     });
     assertEquals(view?.symbolsStatus, "unavailable");
+    assertEquals(view?.sourceStatus, "unavailable");
+    assertEquals(view?.sourceText, undefined);
     assertEquals(view?.symbols, []);
     assertEquals(view?.incidences, []);
     assertEquals(view?.unresolvedConstructs, [{
       id: "unresolved:comment",
       kind: "comment",
     }]);
+    assertEquals(
+      architectureSysmlSealSpanLabel(view?.unresolvedConstructs[0]?.span),
+      undefined,
+    );
   },
 );
 

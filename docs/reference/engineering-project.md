@@ -107,6 +107,7 @@ entry-point registry contains:
 | Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`            |
 | Ready compilation draft; exact Thread/SysML basis; no provider                | `compile.seal-admission@1`              |
 | Sealed compilation admission; local isolation runtime composed                | `design.execute-build123d@1`            |
+| Documentary isolated execution capture; published STEP stays gated            | `design.seal-isolated-geometry@1`       |
 | Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`               |
 | Human-reviewed simulation case; exact thread-snapshot basis required          | `simulate.seal-simulation-case@1`       |
 | Sealed simulation-case artifact in basis; thread-entity binding required      | `simulate.run-modelica-scenario@1`      |
@@ -123,7 +124,8 @@ entry-point registry contains:
 Lookalike pairs and grants: [agent workspace](agent-workspace.md#3-lookalike-traps).
 `model.seal-architecture-sysml@1` is not `model.write-architecture@2`.
 `design.execute-build123d@1` is not canonical geometry promotion.
-`verify.run-fea-static-proof@3` must not consume a `@2` plan.
+`design.seal-isolated-geometry@1` is not `design.write-geometry@1` and is not FEA
+geometry. `verify.run-fea-static-proof@3` must not consume a `@2` plan.
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
 `architecture.seed-syson-model@2` may be added by one append-only project change. The

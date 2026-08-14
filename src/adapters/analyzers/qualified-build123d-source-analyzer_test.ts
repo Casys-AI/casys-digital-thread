@@ -254,13 +254,76 @@ result = Wedge(10, 10, 10)
   assert(kinds.has("build123d-result-not-qualified"));
 });
 
-Deno.test("D4-admitted but unqualified build123d calls remain explicitly unresolved", async () => {
+Deno.test("qualified build123d frontend proves fillet of all edges by a radius", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
   const scripts = [
     `from build123d import Box, fillet
 base = Box(10, 10, 10)
 result = fillet(base.edges(), radius=2)
 `,
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+radius = 2
+result = fillet(base.edges(), radius=radius)
+`,
+    `from build123d import Box, fillet as round_edges
+result = round_edges(Box(10, 10, 10).edges(), radius=2)
+`,
+    `from build123d import Box, Cylinder, fillet
+block = Box(20, 20, 10)
+bore = Cylinder(4, 12)
+result = fillet((block - bore).edges(), radius=1)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(bundle.analyzer.version, "1.1.0");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
+
+  const named = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, fillet
+base = Box(10, 10, 10)
+radius = 2
+result = fillet(base.edges(), radius=radius)
+`,
+  });
+  assertEquals(
+    new Map(named.symbols.map((symbol) => [symbol.name, symbol.kind])),
+    new Map([
+      ["base", "variable"],
+      ["radius", "parameter"],
+      ["result", "artifact"],
+    ]),
+  );
+  assertEquals(
+    named.dependencies.map((dependency) => ({
+      kind: dependency.kind,
+      from: named.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+        ?.name,
+      to: named.symbols.find((symbol) => symbol.id === dependency.toSymbolId)
+        ?.name,
+    })).sort((left, right) =>
+      `${left.kind}:${left.from}:${left.to}`.localeCompare(
+        `${right.kind}:${right.from}:${right.to}`,
+      )
+    ),
+    [
+      { kind: "structural-incidence" as const, from: "base", to: "result" },
+      { kind: "structural-incidence" as const, from: "radius", to: "result" },
+    ],
+  );
+});
+
+Deno.test("D4-admitted but unqualified build123d calls remain explicitly unresolved", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
     `from build123d import Box, fillet
 base = Box(10, 10, 10)
 result = fillet(base, 2)
@@ -276,9 +339,68 @@ result = chamfer(base.edges(), 1)
     const kinds = new Set(
       bundle.unresolvedConstructs.map((construct) => construct.kind),
     );
-    assert(kinds.has("build123d-call-not-qualified"));
     assert(kinds.has("build123d-result-not-qualified"));
     assert(kinds.has("python-dynamic-call"));
+  }
+
+  const chamfer = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+result = chamfer(base.edges(), 1)
+`,
+  });
+  assert(
+    chamfer.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-call-not-qualified"
+    ),
+  );
+});
+
+Deno.test("fillet method, 1-arg, extra kwargs, or Scale stay unresolved", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = fillet(base.edges())
+`,
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = base.fillet(2)
+`,
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = fillet(base.edges(), radius=2, extra=1)
+`,
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = fillet(base.edges(), length=2)
+`,
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = fillet(base.faces(), radius=2)
+`,
+    `from build123d import Axis, Box, fillet
+base = Box(10, 10, 10)
+result = fillet(base.edges().filter_by(Axis.Z), radius=2)
+`,
+    `from build123d import Box
+base = Box(10, 10, 10)
+result = base.edges()
+`,
+    `from build123d import Box, Scale
+result = Scale(2) * Box(10, 20, 30)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.policy.status, "passed");
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+      `${sourceText} must not qualify result`,
+    );
   }
 });
 

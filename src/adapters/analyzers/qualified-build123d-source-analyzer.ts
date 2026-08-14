@@ -6,26 +6,25 @@
  * smaller AST subset:
  *
  * - named imports of Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge,
- *   Pos, Rot, Compound and scale (aliases allowed; two aliases for the same
- *   imported name stay ambiguous);
+ *   Pos, Rot, Compound, scale and fillet (aliases allowed; two aliases for
+ *   the same imported name stay ambiguous);
  * - unique module-level parameter assignments made only of finite decimal
  *   numbers, unary/binary arithmetic, earlier parameters, and flat lists;
  * - unique module-level solid assignments: a Box/Cylinder/Cone/Sphere/Torus/
  *   Ellipsoid/Wedge call, a Pos/Rot * solid, a solid +/− solid, a
- *   `scale(<qualified-solid>, <scalar>)`, a name of an earlier solid, or
- *   `Compound(children=[...])` over earlier solid names;
+ *   `scale(<qualified-solid>, <scalar>)`, a
+ *   `fillet(<qualified-solid>.edges(), radius=<scalar>)`, a name of an
+ *   earlier solid, or `Compound(children=[...])` over earlier solid names;
  * - one module-level `result` that is itself one of those solids.
  *
  * Anything D4 considers dangerous is rejected.  Syntax that D4 allows but
  * this frontend cannot prove is recorded as unresolved, so it can never yield
  * a fully qualified compilation by omission.
  *
- * Next AST lock (not opened here): fillet/chamfer still need MemberExpression
- * (`.edges()`) and keyword arguments (`radius=`).  The reviewed D4 repo form
- * is `fillet(base.edges(), radius=2)`; `fillet(solid, r)` is not a reviewed
- * positional solid form.  extrude still needs a 2-D sketch subset plus
- * `amount=` kwargs.  Do not open general MemberExpression, `.faces()`, or
- * `filter_by`.
+ * Next AST lock (not opened here): chamfer still needs its own reviewed form.
+ * `fillet(solid, r)` is not a reviewed positional solid form.  extrude still
+ * needs a 2-D sketch subset plus `amount=` kwargs.  Do not open general
+ * MemberExpression, `.faces()`, or `filter_by`.
  */
 
 import { parser } from "@lezer/python";
@@ -57,11 +56,12 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
   "build123d-qualified-lezer" as const;
 
 /**
- * Cone, Sphere, Rot, Torus, Ellipsoid, Wedge and algebraic
- * `scale(solid, scalar)` reuse the 1.1 positional-call and placement * solid
- * identity scheme (`build123d-ast-identity/1.0`). Previously qualified
- * Box/Cylinder/Pos/Compound bundles stay bit-identical, so the public analysis
- * identity does not change.
+ * Cone, Sphere, Rot, Torus, Ellipsoid, Wedge, algebraic
+ * `scale(solid, scalar)` and
+ * `fillet(solid.edges(), radius=scalar)` reuse the 1.1 positional-call and
+ * placement * solid identity scheme (`build123d-ast-identity/1.0`). Previously
+ * qualified Box/Cylinder/Pos/Compound bundles stay bit-identical, so the
+ * public analysis identity does not change.
  */
 export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.1.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
@@ -85,6 +85,7 @@ const QUALIFIED_BUILD123D_CALLS = new Map(
     ["Rot", { role: "placement", positionalArguments: 3 }],
     ["Compound", { role: "assembly", positionalArguments: 0 }],
     ["scale", { role: "transform", positionalArguments: 2 }],
+    ["fillet", { role: "transform", positionalArguments: 1 }],
   ] as const,
 );
 
@@ -99,10 +100,11 @@ type QualifiedBuild123dCallName =
   | "Pos"
   | "Rot"
   | "Compound"
-  | "scale";
+  | "scale"
+  | "fillet";
 type PositionalBuild123dCallName = Exclude<
   QualifiedBuild123dCallName,
-  "Compound" | "scale"
+  "Compound" | "scale" | "fillet"
 >;
 
 interface ParsedNode {
@@ -414,7 +416,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       addExpressionUnresolved(resultAssignment.rhs, addUnresolved);
       addUnresolved(
         "build123d-result-not-qualified",
-        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot * solid, solid +/− solid, scale(solid, scalar), or Compound(children=[...]).",
+        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot * solid, solid +/− solid, scale(solid, scalar), fillet(solid.edges(), radius=scalar), or Compound(children=[...]).",
         resultAssignment.rhs,
       );
     }
@@ -580,6 +582,14 @@ function parseShapeExpression(
     before,
   );
   if (scaled !== undefined) return scaled;
+  const filleted = parseFilletCall(
+    node,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+  );
+  if (filleted !== undefined) return filleted;
   if (node.name !== "BinaryExpression" || node.children.length !== 3) {
     return undefined;
   }
@@ -776,6 +786,104 @@ function parseScaleCall(
     ],
     shapeReferences: solid.shapeReferences,
   };
+}
+
+/**
+ * Only the reviewed form `fillet(<qualified-solid>.edges(), radius=<scalar>)`.
+ * Callee is the imported `fillet` (alias OK).  First argument is an empty
+ * `.edges()` call on a qualified solid; `radius=` is the only keyword.
+ * `chamfer`, positional `fillet(solid, r)`, `solid.fillet(...)`, extra
+ * kwargs, `filter_by`, and `Scale` stay unproven.  This does not qualify
+ * general MemberExpression — only this empty `.edges()` inside a reviewed
+ * fillet call.
+ */
+function parseFilletCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  before: number,
+): ShapeExpression | undefined {
+  if (node.name !== "CallExpression" || node.children.length !== 2) {
+    return undefined;
+  }
+  const [callee, argList] = node.children;
+  if (callee?.name !== "VariableName" || argList?.name !== "ArgList") {
+    return undefined;
+  }
+  const imported = importedCalls.get(currentText(callee));
+  if (imported?.imported !== "fillet" || imported.node.from >= before) {
+    return undefined;
+  }
+  if (argList.children.some((child) => ["*", "**"].includes(currentText(child)))) {
+    return undefined;
+  }
+  const expressions = argList.children.filter(isArgumentExpression);
+  if (expressions.length !== 4) return undefined;
+  const [edgesNode, keyword, assign, radiusNode] = expressions;
+  if (
+    edgesNode === undefined ||
+    keyword?.name !== "VariableName" || currentText(keyword) !== "radius" ||
+    assign?.name !== "AssignOp" || currentText(assign) !== "=" ||
+    radiusNode === undefined
+  ) {
+    return undefined;
+  }
+  const solid = parseEmptyEdgesSelector(
+    edgesNode,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+  );
+  const radius = parseStaticExpression(radiusNode, parameters);
+  if (solid === undefined || radius === undefined || radius.shape !== "scalar") {
+    return undefined;
+  }
+  return {
+    parameterReferences: [
+      ...solid.parameterReferences,
+      ...radius.references,
+    ],
+    shapeReferences: solid.shapeReferences,
+  };
+}
+
+/** Empty `.edges()` on a qualified solid. Not a general MemberExpression lock. */
+function parseEmptyEdgesSelector(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  before: number,
+): ShapeExpression | undefined {
+  if (node.name !== "CallExpression" || node.children.length !== 2) {
+    return undefined;
+  }
+  const [callee, argList] = node.children;
+  if (callee?.name !== "MemberExpression" || argList?.name !== "ArgList") {
+    return undefined;
+  }
+  if (argList.children.filter(isArgumentExpression).length !== 0) {
+    return undefined;
+  }
+  if (callee.children.length !== 3) return undefined;
+  const [object, dot, property] = callee.children;
+  if (
+    object === undefined ||
+    currentText(dot) !== "." ||
+    property?.name !== "PropertyName" ||
+    currentText(property) !== "edges"
+  ) {
+    return undefined;
+  }
+  return parseShapeExpression(
+    object,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+  );
 }
 
 function parseCompoundCall(
@@ -997,7 +1105,7 @@ function addExpressionUnresolved(
     } else if (candidate.name === "CallExpression") {
       add(
         "python-dynamic-call",
-        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Pos, Rot, Compound, or scale calls are qualified.",
+        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Pos, Rot, Compound, scale, or fillet calls are qualified.",
         candidate,
       );
     }

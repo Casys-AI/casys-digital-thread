@@ -59,6 +59,10 @@ import {
   parseBuild123dExecutionAdmissionParameters,
 } from "../../domain/analysis/build123d-execution-proposal.ts";
 import {
+  DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
+  parseIsolatedGeometrySealParameters,
+} from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
+import {
   parseModelicaQualifiedKitRunAdmissionParameters,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
 } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
@@ -91,6 +95,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(DESIGN_EXECUTE_BUILD123D_OPERATION),
     (parameters) => {
       parseBuild123dExecutionAdmissionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION),
+    (parameters) => {
+      parseIsolatedGeometrySealParameters(parameters);
     },
   ],
   [

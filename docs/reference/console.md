@@ -80,6 +80,7 @@ not grant MRTR or provider authority. Full grants:
 | `project_technical_compilation_preview`     | Review draft   | Provider-free compilation against an exact Thread/SysML basis                       |
 | `project_admitted_geometry_export`          | Geometry draft | Export one sealed Build123d admission through the sandbox. Not isolated execution   |
 | `project_build123d_execution_review`        | Read           | MRTR parameters for `design.execute-build123d@1`. No capability                     |
+| `project_isolated_geometry_seal_review`     | Read           | MRTR parameters for `design.seal-isolated-geometry@1`. No STEP bytes                |
 | `project_modelica_qualified_kit_run_review` | Read           | MRTR parameters for the one local Modelica kit                                      |
 | `project_geometry_preview`                  | Geometry draft | Historical sandbox preview; composed only when the sandbox fleet entry exists       |
 

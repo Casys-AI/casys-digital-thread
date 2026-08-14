@@ -10,10 +10,16 @@ import type { ArchitectureSysmlSealCaptureReader } from "../../application/ports
 import type {
   ThreadArchitectureSysmlSealIncidence,
   ThreadArchitectureSysmlSealPresentation,
+  ThreadArchitectureSysmlSealSpan,
+  ThreadArchitectureSysmlSealUnresolved,
   ThreadArtifact,
   ThreadWorkbenchSnapshot,
 } from "../../contracts/thread-workbench.ts";
-import type { SourceAnalysisDependency } from "../../domain/analysis/source-analysis.ts";
+import type {
+  SourceAnalysisDependency,
+  SourceAnalysisSpan,
+  SourceAnalysisUnresolvedConstruct,
+} from "../../domain/analysis/source-analysis.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
   ARCHITECTURE_SYSML_SEAL_CAPTURE_URI_PREFIX,
@@ -68,7 +74,7 @@ async function enrichSealArtifact(
   }
   if (capture.trustedRunId.length === 0) return artifact;
 
-  const unresolvedConstructs = capture.unresolvedConstructs.map((item) => ({
+  const captureUnresolved = capture.unresolvedConstructs.map((item) => ({
     id: item.id,
     kind: item.kind,
   }));
@@ -79,13 +85,19 @@ async function enrichSealArtifact(
       ...artifact,
       architectureSysmlSeal: presentation({
         symbolsStatus: "observed",
+        sourceStatus: "observed",
+        sourceText: reopened.sourceText,
         symbols: reopened.analysis.symbols.map((symbol) => ({
           id: symbol.id,
           kind: symbol.kind,
           ...(symbol.name === undefined ? {} : { label: symbol.name }),
+          ...copiedSpan(symbol.span),
         })),
         incidences: structuralIncidences(reopened.analysis.dependencies),
-        unresolvedConstructs,
+        unresolvedConstructs: documentaryUnresolved(
+          captureUnresolved,
+          reopened.analysis.unresolvedConstructs,
+        ),
       }),
     };
   } catch {
@@ -93,9 +105,10 @@ async function enrichSealArtifact(
       ...artifact,
       architectureSysmlSeal: presentation({
         symbolsStatus: "unavailable",
+        sourceStatus: "unavailable",
         symbols: [],
         incidences: [],
-        unresolvedConstructs,
+        unresolvedConstructs: captureUnresolved,
       }),
     };
   }
@@ -111,14 +124,52 @@ function structuralIncidences(
       kind: "structural-incidence",
       fromSymbolId: item.fromSymbolId,
       toSymbolId: item.toSymbolId,
+      ...copiedSpan(item.span),
     }));
 }
 
+function documentaryUnresolved(
+  captureItems: readonly { readonly id: string; readonly kind: string }[],
+  analysisItems: readonly SourceAnalysisUnresolvedConstruct[],
+): ThreadArchitectureSysmlSealUnresolved[] {
+  const byId = new Map(analysisItems.map((item) => [item.id, item]));
+  return captureItems.map((item) => {
+    const fromAnalysis = byId.get(item.id);
+    if (!fromAnalysis) return { id: item.id, kind: item.kind };
+    return {
+      id: item.id,
+      kind: item.kind,
+      message: fromAnalysis.message,
+      ...copiedSpan(fromAnalysis.span),
+    };
+  });
+}
+
+function copiedSpan(
+  span: SourceAnalysisSpan | undefined,
+): { readonly span: ThreadArchitectureSysmlSealSpan } | Record<PropertyKey, never> {
+  if (span === undefined) return {};
+  return {
+    span: {
+      start: { line: span.start.line, column: span.start.column },
+      end: { line: span.end.line, column: span.end.column },
+    },
+  };
+}
+
 function presentation(
-  value: Pick<
-    ThreadArchitectureSysmlSealPresentation,
-    "symbolsStatus" | "symbols" | "incidences" | "unresolvedConstructs"
-  >,
+  value:
+    & Pick<
+      ThreadArchitectureSysmlSealPresentation,
+      | "symbolsStatus"
+      | "sourceStatus"
+      | "symbols"
+      | "incidences"
+      | "unresolvedConstructs"
+    >
+    & {
+      readonly sourceText?: string;
+    },
 ): ThreadArchitectureSysmlSealPresentation {
   return {
     producer: PRODUCER,
@@ -128,6 +179,8 @@ function presentation(
     notWriteArchitecture: true,
     notCompilationAdmission: true,
     symbolsStatus: value.symbolsStatus,
+    sourceStatus: value.sourceStatus,
+    ...(value.sourceText === undefined ? {} : { sourceText: value.sourceText }),
     symbols: value.symbols,
     incidences: value.incidences,
     unresolvedConstructs: value.unresolvedConstructs,

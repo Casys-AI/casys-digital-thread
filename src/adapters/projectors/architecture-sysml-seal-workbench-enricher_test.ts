@@ -148,6 +148,8 @@ Deno.test(
       assertEquals(seal?.architectureSysmlSeal?.notWriteArchitecture, true);
       assertEquals(seal?.architectureSysmlSeal?.notCompilationAdmission, true);
       assertEquals(seal?.architectureSysmlSeal?.symbolsStatus, "observed");
+      assertEquals(seal?.architectureSysmlSeal?.sourceStatus, "observed");
+      assertEquals(seal?.architectureSysmlSeal?.sourceText, SOURCE_TEXT);
       const symbolIds = seal?.architectureSysmlSeal?.symbols.map((item) => item.id) ??
         [];
       assertEquals(symbolIds.length > 0, true);
@@ -181,7 +183,7 @@ Deno.test(
       );
       assertEquals(
         incidences.every((item) =>
-          Object.keys(item).join(",") === "id,kind,fromSymbolId,toSymbolId"
+          Object.keys(item).join(",") === "id,kind,fromSymbolId,toSymbolId,span"
         ),
         true,
       );
@@ -191,6 +193,16 @@ Deno.test(
         reopened.analysis.dependencies
           .filter((item) => item.kind === "structural-incidence")
           .map((item) => item.id),
+      );
+      assertEquals(
+        seal?.architectureSysmlSeal?.symbols.map((item) => item.span),
+        reopened.analysis.symbols.map((item) => item.span),
+      );
+      assertEquals(
+        incidences.map((item) => item.span),
+        reopened.analysis.dependencies
+          .filter((item) => item.kind === "structural-incidence")
+          .map((item) => item.span),
       );
       assertEquals(enriched.graph.nodes, snapshot.graph.nodes);
       assertEquals(
@@ -329,12 +341,154 @@ Deno.test(
       );
       const seal = enriched.artifacts.find((item) => item.id === artifactId);
       assertEquals(seal?.architectureSysmlSeal?.symbolsStatus, "unavailable");
+      assertEquals(seal?.architectureSysmlSeal?.sourceStatus, "unavailable");
+      assertEquals(seal?.architectureSysmlSeal?.sourceText, undefined);
       assertEquals(seal?.architectureSysmlSeal?.symbols, []);
       assertEquals(seal?.architectureSysmlSeal?.incidences, []);
       assertEquals(seal?.architectureSysmlSeal?.unresolvedConstructs, [{
         id: "unresolved:comment",
         kind: "comment",
       }]);
+      assertEquals(
+        Object.keys(seal?.architectureSysmlSeal?.unresolvedConstructs[0] ?? {}),
+        ["id", "kind"],
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "enricher copies analysis messages and spans and never invents them from capture id+kind",
+  async () => {
+    const root = await Deno.makeTempDir({
+      prefix: "architecture-sysml-seal-enricher-source-",
+    });
+    try {
+      const sources = createArchitectureSysmlSourceAnalysisCaptureService({
+        sourceCaptures: new FileByteStore({
+          kind: "architecture-sysml-source",
+          directory: `${root}/sources`,
+          uriNamespace: "architecture-sysml-source",
+          label: "architecture SysML source",
+        }),
+        analysisCaptures: new FileByteStore({
+          kind: "architecture-sysml-source-analysis",
+          directory: `${root}/analyses`,
+          uriNamespace: "architecture-sysml-source-analysis",
+          label: "architecture SysML analysis",
+        }),
+      });
+      const reference = await sources.capture({
+        profileId: QUALIFIED_ARCHITECTURE_SYSML_ANALYSIS_PROFILE,
+        sourceId: "source.architecture",
+        sourceText: SOURCE_TEXT,
+      });
+      const analysisSpan = {
+        start: { line: 1, column: 0 },
+        end: { line: 1, column: 8 },
+      };
+      const capture = validateArchitectureSysmlSealCapture({
+        schemaVersion: "architecture-sysml-seal-capture/1.0",
+        kind: "architecture-sysml-seal",
+        operation: MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
+        trustedRunId: "run.architecture-sysml",
+        decisionId: "decision.architecture-sysml",
+        sealedAt: "2026-08-14T00:00:00.000Z",
+        admission: {
+          schemaVersion: "architecture-sysml-seal-admission/1.0",
+          sourceId: reference.source.id,
+          profile: reference.profile,
+          source: {
+            sha256: reference.source.sha256,
+            byteCount: reference.source.byteCount,
+            casUri: reference.source.casUri,
+          },
+          analysis: {
+            analyzer: reference.analysis.analyzer,
+            policy: { ...reference.analysis.policy, status: "passed" },
+            sha256: reference.analysis.sha256,
+            byteCount: reference.analysis.byteCount,
+            casUri: reference.analysis.casUri,
+          },
+        },
+        sourceCapture: reference,
+        unresolvedConstructs: [
+          { id: "unresolved:comment", kind: "comment" },
+          { id: "unresolved:capture-only", kind: "attribute" },
+        ],
+      });
+      const fingerprint = await sha256Fingerprint(capture);
+      const sealStore = new FileByteStore({
+        kind: "architecture-sysml-seal-capture",
+        directory: `${root}/seals`,
+        uriNamespace: "architecture-sysml-seal-capture",
+        label: "Sealed architecture SysML analysis",
+      });
+      await sealStore.save(
+        fingerprint,
+        new TextEncoder().encode(deterministicJson(capture)),
+      );
+      const artifactId = `architecture-sysml-seal-${fingerprint.digest}`;
+      const snapshot = workbenchWithArtifact({
+        id: artifactId,
+        label: "Agent-authored architecture SysML analysis",
+        kind: "document",
+        system: "digital-thread",
+        revision: fingerprint.digest,
+        freshness: "fresh",
+        fingerprint: `sha256:${fingerprint.digest}`,
+        uri: `${ARCHITECTURE_SYSML_SEAL_CAPTURE_URI_PREFIX}${fingerprint.digest}`,
+        producedBy: "model.seal-architecture-sysml@1",
+        dependsOn: [],
+      });
+
+      const enriched = await enrichThreadWorkbenchWithArchitectureSysmlSeals(
+        snapshot,
+        {
+          seals: fileArchitectureSysmlSealCaptureReader(sealStore),
+          sources: {
+            reopen: async (value) => {
+              const reopened = await sources.reopen(value);
+              return {
+                ...reopened,
+                analysis: {
+                  ...reopened.analysis,
+                  unresolvedConstructs: [{
+                    id: "unresolved:comment",
+                    kind: "comment",
+                    message: "A comment is outside the architecture closed subset.",
+                    span: analysisSpan,
+                  }],
+                },
+              };
+            },
+          },
+        },
+      );
+      const seal = enriched.artifacts.find((item) => item.id === artifactId);
+      assertEquals(seal?.architectureSysmlSeal?.sourceStatus, "observed");
+      assertEquals(seal?.architectureSysmlSeal?.sourceText, SOURCE_TEXT);
+      assertEquals(seal?.architectureSysmlSeal?.unresolvedConstructs, [
+        {
+          id: "unresolved:comment",
+          kind: "comment",
+          message: "A comment is outside the architecture closed subset.",
+          span: analysisSpan,
+        },
+        {
+          id: "unresolved:capture-only",
+          kind: "attribute",
+        },
+      ]);
+      assertEquals(
+        Object.hasOwn(
+          seal?.architectureSysmlSeal?.unresolvedConstructs[1] ?? {},
+          "message",
+        ),
+        false,
+      );
     } finally {
       await Deno.remove(root, { recursive: true });
     }

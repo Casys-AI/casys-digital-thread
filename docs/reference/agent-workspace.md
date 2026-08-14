@@ -65,6 +65,7 @@ These pairs look related and are **not** substitutes.
 | `architecture-sysml-source-analysis-capture/1.0`          | Agent-authored closed-subset CAS                             | A renderer manifest                                                     |
 | `project_geometry_preview` + `design.write-geometry@1`    | Historical MCP sandbox preview then hash seal                | Isolated compiler execution                                             |
 | `compile.seal-admission@1` + `design.execute-build123d@1` | Provider-free admission then local microVM draft execution   | Canonical geometry promotion                                            |
+| `design.seal-isolated-geometry@1`                         | Provider-free Thread-document seal of isolated execution     | Canonical STEP, cad-model, `write-geometry`, or FEA geometry            |
 | `verify.run-fea-static-proof@1`                           | Historical generic MCP FEA                                   | The current recorded or isolated successors                             |
 | `verify.run-fea-static-proof@2`                           | Recorded CalculiX MCP plan (`resolved-operation-plan/2.0`)   | The local microVM `@3` executor                                         |
 | `verify.run-fea-static-proof@3`                           | Isolated local CalculiX + separate SysON oracle              | A reinterpretation of `@2` plans                                        |
@@ -118,6 +119,7 @@ How-to: [Author architecture SysML](../how-to/author-architecture-sysml.md).
 | `project_technical_compilation_preview`     | Review draft CAS         | `decisionParameters` for `compile.seal-admission@1` only         |
 | `project_admitted_geometry_export`          | Geometry **draft**       | Parameters for `design.write-geometry@1`. Not isolated execution |
 | `project_build123d_execution_review`        | None                     | Parameters for `design.execute-build123d@1`. No capability       |
+| `project_isolated_geometry_seal_review`     | None                     | Parameters for `design.seal-isolated-geometry@1`. No STEP bytes  |
 | `project_modelica_qualified_kit_run_review` | None                     | Parameters for the one local Modelica kit                        |
 | `project_geometry_preview`                  | Geometry draft (sandbox) | Historical MCP path; registered only if sandbox is composed      |
 
@@ -136,6 +138,7 @@ Unknown ids/versions are indistinguishable from absent.
 | `model.write-requirements@1`                        | trusted                   | SysON                        | Integer scalar requirements                          | A verdict                            |
 | `compile.seal-admission@1`                          | trusted                   | none                         | Admission capture                                    | Execution authority                  |
 | `design.execute-build123d@1`                        | trusted                   | local microVM                | Documentary capture + noncanonical draft             | Canonical STEP in Thread             |
+| `design.seal-isolated-geometry@1`                   | trusted                   | none                         | Thread document of isolated execution identities     | STEP artifact, cad-model, or FEA     |
 | `design.preview-geometry@1`                         | planning-only             | sandbox MCP                  | Draft bundle                                         | Thread write                         |
 | `design.write-geometry@1`                           | trusted                   | none (seal)                  | Canonical geometry capture                           | Re-execution of CAD                  |
 | `verify.seal-proof-case@1`                          | trusted                   | none                         | Sealed proof-case artifact                           | A solve                              |
@@ -172,25 +175,25 @@ initial `project_plan_publish`. See
 Same outer contract (`source-analysis/1.0`). Different parsers. Unresolved is
 first-class and never omitted.
 
-| Profile / analyzer                                                   | Language               | Qualifies                                                                                   | Leaves unresolved                                                    |
-| -------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `sysml-architecture-closed-subset-v1`                                | SysML v2 closed subset | `package { part def }`, empty-or-block `part def`, `part usage : Type;`                     | Comments, strings, numbers, attributes, `requirement`, anything else |
-| Rendered architecture companion                                      | Server-rendered SysML  | Manifest-attested PartUsage→target only                                                     | Arbitrary SysML                                                      |
-| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.1.0**) | Python / build123d     | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Pos`, `Rot`, `Compound`; `+`/`-` solids; `scale(solid, scalar)`; numeric params; one `result` | D4-allowed but unproven syntax; fillet/chamfer stay unresolved (need MemberExpression + kwargs) |
-| Python CAD frontend (legacy preview)                                 | Python                 | Conservative bindings into `result`                                                         | Calls, imports, branches, functions…                                 |
-| Project-brief frontend                                               | Canonical brief JSON   | Item ids + explicit V2 gate dependencies                                                    | Prose inference, V1 gates                                            |
+| Profile / analyzer                                                   | Language               | Qualifies                                                                                                                                                                                                  | Leaves unresolved                                                                                                          |
+| -------------------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `sysml-architecture-closed-subset-v1`                                | SysML v2 closed subset | `package { part def }`, empty-or-block `part def`, `part usage : Type;`                                                                                                                                    | Comments, strings, numbers, attributes, `requirement`, anything else                                                       |
+| Rendered architecture companion                                      | Server-rendered SysML  | Manifest-attested PartUsage→target only                                                                                                                                                                    | Arbitrary SysML                                                                                                            |
+| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.1.0**) | Python / build123d     | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Pos`, `Rot`, `Compound`; `+`/`-` solids; `scale(solid, scalar)`; `fillet(solid.edges(), radius=scalar)`; numeric params; one `result` | D4-allowed but unproven syntax; chamfer stays unresolved; do not open general MemberExpression, `.faces()`, or `filter_by` |
+| Python CAD frontend (legacy preview)                                 | Python                 | Conservative bindings into `result`                                                                                                                                                                        | Calls, imports, branches, functions…                                                                                       |
+| Project-brief frontend                                               | Canonical brief JSON   | Item ids + explicit V2 gate dependencies                                                                                                                                                                   | Prose inference, V1 gates                                                                                                  |
 
 Bindings published by the architecture SysML analyzer are **symbol ids**, never labels.
 Labels are display data.
 
-Qualified Build123d 1.1.0 extends the earlier Box/Cylinder/Pos/Compound subset
-with later positional 3-D solids, `Rot`, solid `+`/`-`, and algebraic
-`scale(solid, scalar)`. Previously qualified Box/Cylinder/Pos/Compound bundles
-stay bit-identical; the public analysis identity does not change.
+Qualified Build123d 1.1.0 extends the earlier Box/Cylinder/Pos/Compound subset with
+later positional 3-D solids, `Rot`, solid `+`/`-`, algebraic `scale(solid, scalar)`, and
+`fillet(solid.edges(), radius=scalar)`. Previously qualified Box/Cylinder/Pos/Compound
+bundles stay bit-identical; the public analysis identity does not change.
 
-Next AST lock: fillet/chamfer still require `MemberExpression` (`.edges()`) and
-keyword arguments (`radius=`). Do not treat `fillet(solid, r)` as reviewed.
-`extrude` still needs a 2-D sketch subset plus `amount=` kwargs.
+Next AST lock: chamfer still needs its own reviewed form. Do not treat
+`fillet(solid, r)` as reviewed. `extrude` still needs a 2-D sketch subset plus `amount=`
+kwargs.
 
 ## 7. Golden path (generic V3)
 
@@ -204,6 +207,7 @@ flowchart TD
   arch --> req["model.write-requirements@1"]
   arch --> geomA["legacy: preview + design.write-geometry@1"]
   arch --> geomB["compile.seal-admission@1 → design.execute-build123d@1 draft"]
+  geomB --> sealGeom["design.seal-isolated-geometry@1 → Thread document only"]
   geomA --> proof["verify.seal-proof-case@1"]
   proof --> fea["verify.run-fea-static-proof@2 or @3"]
   fea --> verdict["SysON oracle: pass or publishable fail"]

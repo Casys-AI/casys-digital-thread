@@ -57,6 +57,10 @@ import {
   ModelSealArchitectureSysmlRunExecutor,
 } from "./src/adapters/executors/model-seal-architecture-sysml-run-executor.ts";
 import type { Build123dExecutionServerOptions } from "./src/adapters/execution/build123d-execution-composition.ts";
+import {
+  DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
+  DesignSealIsolatedGeometryRunExecutor,
+} from "./src/adapters/executors/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/execution/modelica-isolated-execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/execution/calculix-isolated-execution-composition.ts";
 import { CodeOwnedModelicaQualifiedKitBundleFactory } from "./src/adapters/execution/code-owned-modelica-qualified-kit-bundle-factory.ts";
@@ -69,6 +73,7 @@ import { FileModelicaIsolatedExecutionCaptureStore } from "./src/adapters/captur
 import { ProjectThreadModelicaQualifiedKitReviewBasisAuthority } from "./src/adapters/stores/project-thread-modelica-qualified-kit-review-basis-authority.ts";
 import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/preview-project-technical-compilation.ts";
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/prepare-project-build123d-execution-review.ts";
+import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/prepare-project-isolated-geometry-seal-review.ts";
 import { PrepareProjectModelicaQualifiedKitRunReview } from "./src/application/use-cases/prepare-project-modelica-qualified-kit-run-review.ts";
 import { ExecuteIsolatedModelicaRun } from "./src/application/use-cases/execute-isolated-modelica-run.ts";
 import type { ProjectTechnicalSourceCaptureUseCase } from "./src/application/ports/in/project-technical-source-capture.ts";
@@ -685,8 +690,7 @@ async function createProjectControl(
         await technicalSourceAnalysis.capture(command),
       ) as unknown as Readonly<Record<string, unknown>>,
   };
-  const architectureSysmlDirectory =
-    `${recordedAnalysisDirectory}/architecture-sysml`;
+  const architectureSysmlDirectory = `${recordedAnalysisDirectory}/architecture-sysml`;
   const architectureSysmlSourceAnalysis =
     createArchitectureSysmlSourceAnalysisCaptureService({
       sourceCaptures: new FileByteStore({
@@ -702,13 +706,12 @@ async function createProjectControl(
         label: "Captured architecture SysML analysis",
       }),
     });
-  const architectureSysmlSourceCapture:
-    ProjectArchitectureSysmlSourceCaptureUseCase = {
-      capture: async (command) =>
-        structuredClone(
-          await architectureSysmlSourceAnalysis.capture(command),
-        ) as unknown as Readonly<Record<string, unknown>>,
-    };
+  const architectureSysmlSourceCapture: ProjectArchitectureSysmlSourceCaptureUseCase = {
+    capture: async (command) =>
+      structuredClone(
+        await architectureSysmlSourceAnalysis.capture(command),
+      ) as unknown as Readonly<Record<string, unknown>>,
+  };
   const architectureSysmlPreview = new PreviewProjectArchitectureSysml({
     frontend: new QualifiedArchitectureSysmlAnalyzer(),
     captures: architectureSysmlSourceAnalysis,
@@ -791,6 +794,39 @@ async function createProjectControl(
       admissions: technicalCompilationAdmissions,
       profiles: build123dExecution.profiles,
     });
+  const build123dExecutionCaptures = new FileBuild123dExecutionCaptureStore(
+    `${recordedAnalysisDirectory}/build123d/captures`,
+  );
+  const isolatedOutputPublications = build123dExecution?.execution?.publications ??
+    new FileIsolatedOutputCas(`${recordedAnalysisDirectory}/build123d/outputs`);
+  const isolatedGeometrySealBytes = new FileByteStore({
+    kind: "isolated-geometry-seal-capture",
+    directory: `${recordedAnalysisDirectory}/isolated-geometry-seals`,
+    uriNamespace: "isolated-geometry-seal-capture",
+    label: "Sealed isolated geometry document",
+  });
+  const isolatedGeometrySeals = {
+    save: (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+      canonicalText: string,
+    ) =>
+      isolatedGeometrySealBytes.save(
+        fingerprint,
+        new TextEncoder().encode(canonicalText),
+      ),
+    read: async (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+    ) => {
+      const stored = await isolatedGeometrySealBytes.read(fingerprint);
+      return stored === undefined
+        ? undefined
+        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
+    },
+  };
+  const isolatedGeometrySealReview = new PrepareProjectIsolatedGeometrySealReview({
+    snapshots: build123dThreadSnapshots,
+    captures: build123dExecutionCaptures,
+  });
   const modelicaIsolatedExecution = options.modelicaIsolatedExecution === undefined
     ? undefined
     : await (await import(
@@ -1084,11 +1120,18 @@ async function createProjectControl(
       drafts: new FileBuild123dExecutionDraftStore(
         `${recordedAnalysisDirectory}/build123d/drafts`,
       ),
-      captures: new FileBuild123dExecutionCaptureStore(
-        `${recordedAnalysisDirectory}/build123d/captures`,
-      ),
+      captures: build123dExecutionCaptures,
       lease,
     });
+  const designSealIsolatedGeometry = new DesignSealIsolatedGeometryRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: build123dThreadSnapshots,
+    executionCaptures: build123dExecutionCaptures,
+    publications: isolatedOutputPublications,
+    captures: isolatedGeometrySeals,
+    lease,
+  });
   const modelicaQualifiedKitRunReview = modelicaIsolatedExecution === undefined ||
       modelicaQualificationAuthority === undefined
     ? undefined
@@ -1488,6 +1531,7 @@ async function createProjectControl(
       architectureSysmlSourceCapture,
       architectureSysmlPreview,
       build123dExecutionReview,
+      isolatedGeometrySealReview,
       modelicaQualifiedKitRunReview,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
@@ -1525,6 +1569,10 @@ async function createProjectControl(
             executor: designExecuteBuild123d,
             unavailableMessage:
               "The server has no complete qualified Build123d isolated runtime configured for this run.",
+          },
+          {
+            operation: DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
+            executor: designSealIsolatedGeometry,
           },
           {
             operation: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,

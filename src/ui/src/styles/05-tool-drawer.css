@@ -158,6 +158,19 @@
   margin-bottom: var(--space-14);
 }
 
+.tool-inspector-source {
+  margin: 0;
+  max-height: 16rem;
+  overflow: auto;
+  padding: var(--space-10) 0;
+  border-top: 1px solid #252b29;
+  color: #c8cec9;
+  font: var(--text-3xs)/1.5 var(--mono);
+  white-space: pre;
+  tab-size: 2;
+  user-select: text;
+}
+
 .tool-inspector-metrics.mcp-view-metrics {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: var(--space-14);

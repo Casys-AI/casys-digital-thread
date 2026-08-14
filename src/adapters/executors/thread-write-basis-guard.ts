@@ -31,6 +31,7 @@ import {
 } from "../../orchestration/operations/recorded-analysis.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
+import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
 import {
@@ -53,6 +54,7 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}`,
   `${MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION.id}@${MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION.version}`,
   `${DESIGN_EXECUTE_BUILD123D_OPERATION.id}@${DESIGN_EXECUTE_BUILD123D_OPERATION.version}`,
+  `${DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.id}@${DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.version}`,
   `${SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.id}@${SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.version}`,
   `${ARCHIVE_LINEAGE_OPERATION.id}@${ARCHIVE_LINEAGE_OPERATION.version}`,
   `${SYSON_MODEL_SEED_OPERATION.id}@${SYSON_MODEL_SEED_OPERATION.version}`,
@@ -68,6 +70,7 @@ const THREAD_WRITE_OPERATIONS = new Set([
 const NON_RECONCILIABLE_THREAD_WRITE_FAILURE_CODES: ReadonlySet<string> = new Set([
   "compile-seal-admission-thread-write-outcome-unknown",
   "model-seal-architecture-sysml-thread-write-outcome-unknown",
+  "design-seal-isolated-geometry-thread-write-outcome-unknown",
 ]);
 /**
  * Exported alongside TERMINAL_THREAD_WRITE_FAILURES so the reconcile executor

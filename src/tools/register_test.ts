@@ -503,6 +503,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_decision_approve",
     "project_decision_propose",
     "project_decision_reject",
+    "project_isolated_geometry_seal_review",
     "project_plan_publish",
     "project_question_propose",
     "project_review_intent_acknowledge",
@@ -571,6 +572,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_decision_approve",
       "project_decision_propose",
       "project_decision_reject",
+      "project_isolated_geometry_seal_review",
       "project_plan_publish",
       "project_question_propose",
       "project_review_intent_acknowledge",
@@ -779,7 +781,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
         annotations.readOnlyHint,
         tool.name === "project_snapshot" ||
           tool.name === "project_agent_run_plan_get" ||
-          tool.name === "project_review_intent_list",
+          tool.name === "project_review_intent_list" ||
+          tool.name === "project_isolated_geometry_seal_review",
       );
       assertEquals(
         annotations.idempotentHint,
@@ -801,7 +804,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_technical_source_capture" ||
           tool.name === "project_work_item_supersede_unstarted" ||
           tool.name === "project_decision_approve" ||
-          tool.name === "project_decision_reject",
+          tool.name === "project_decision_reject" ||
+          tool.name === "project_isolated_geometry_seal_review",
       );
     }
     const framingTools = tools.filter((tool) =>

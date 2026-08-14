@@ -8,6 +8,10 @@ import type {
   ProjectBuild123dExecutionReviewUseCase,
 } from "../../application/ports/in/project-build123d-execution-review.ts";
 import type {
+  ProjectIsolatedGeometrySealReviewCommand,
+  ProjectIsolatedGeometrySealReviewUseCase,
+} from "../../application/ports/in/project-isolated-geometry-seal-review.ts";
+import type {
   ProjectModelicaQualifiedKitRunReviewCommand,
   ProjectModelicaQualifiedKitRunReviewUseCase,
 } from "../../application/ports/in/project-modelica-qualified-kit-run-review.ts";
@@ -37,6 +41,8 @@ export interface ProjectTechnicalCompilationToolDependencies {
   admittedGeometryExport?: ProjectAdmittedGeometryExportUseCase;
   /** Provider-free preparation of one qualified Build123d execution review. */
   build123dExecutionReview?: ProjectBuild123dExecutionReviewUseCase;
+  /** Provider-free preparation of one isolated geometry seal review. */
+  isolatedGeometrySealReview?: ProjectIsolatedGeometrySealReviewUseCase;
   /** Read-only preparation of the one code-owned qualified Modelica kit run. */
   modelicaQualifiedKitRunReview?: ProjectModelicaQualifiedKitRunReviewUseCase;
 }
@@ -100,6 +106,19 @@ export function registerProjectTechnicalCompilationTools(
           `Build123d execution review for sealed admission ${command.artifactId} was prepared from exact server-reopened facts. The returned admission and decisionParameters are review material only: they contain no source bytes or runtime capability, no code was executed, and no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority was created.`,
         // The use case owns the complete admission identity and canonical MRTR
         // sequence. The MCP surface must not derive, filter, or repair either.
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+
+  if (dependencies.isolatedGeometrySealReview) {
+    const review = dependencies.isolatedGeometrySealReview;
+    app.registerTool(projectIsolatedGeometrySealReviewTool, async (args) => {
+      const command = isolatedGeometrySealReviewCommand(args);
+      const result = await review.execute(command);
+      return {
+        content:
+          `Isolated geometry seal review for execution capture ${command.artifactId} was prepared from exact server-reopened identities. The returned admission and decisionParameters are review material only: they contain no source bytes or STEP payload, no EngineeringProject or Thread state, no MRTR decision, and no Product, FEA, or dispatch authority. The isolation receipt and the first design.execute-build123d@1 MRTR are not this approval.`,
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -366,6 +385,25 @@ const projectBuild123dExecutionReviewTool: MCPTool = {
   annotations: READ_ONLY_ANNOTATIONS,
 };
 
+const projectIsolatedGeometrySealReviewTool: MCPTool = {
+  name: "project_isolated_geometry_seal_review",
+  description:
+    "Prepare the exact human-review identity and canonical MRTR parameters for one later isolated geometry document seal by reopening a documentary design.execute-build123d@1 capture. This provider-free read performs no code execution, returns no source or STEP bytes, mutates no EngineeringProject or Thread state, and grants no MRTR, Product, FEA, or dispatch authority. The caller may name only the exact project, Thread basis, execution-capture artifact id, and artifact fingerprint. The isolation receipt and the first execute MRTR are not this approval.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+      basis: TECHNICAL_THREAD_BASIS_SCHEMA,
+      artifactId: TECHNICAL_ID_SCHEMA,
+      artifactFingerprint: FINGERPRINT_SCHEMA,
+    },
+    required: ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
 const projectModelicaQualifiedKitRunReviewTool: MCPTool = {
   name: "project_modelica_qualified_kit_run_review",
   description:
@@ -473,6 +511,26 @@ function build123dExecutionReviewCommand(
     ["projectId", "basis", "artifactId", "artifactFingerprint"],
     [],
     "build123dExecutionReview",
+  );
+  return {
+    projectId: technicalId(value.projectId, "projectId"),
+    basis: technicalThreadBasis(value.basis, "basis"),
+    artifactId: technicalId(value.artifactId, "artifactId"),
+    artifactFingerprint: fingerprintInput(
+      value.artifactFingerprint,
+      "artifactFingerprint",
+    ),
+  };
+}
+
+function isolatedGeometrySealReviewCommand(
+  value: Record<string, unknown>,
+): ProjectIsolatedGeometrySealReviewCommand {
+  exactKeys(
+    value,
+    ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    [],
+    "isolatedGeometrySealReview",
   );
   return {
     projectId: technicalId(value.projectId, "projectId"),

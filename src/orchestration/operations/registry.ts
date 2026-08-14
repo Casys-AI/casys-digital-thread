@@ -15,6 +15,7 @@ import {
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
+import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
@@ -246,6 +247,39 @@ const OPERATIONS = [
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "compilationAdmission",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Isolated geometry document seal — trusted executor
+   * `design.seal-isolated-geometry@1`.
+   *
+   * The signed proposal names one exact documentary Build123d execution
+   * capture and the published STEP identities. The executor re-reads those
+   * bytes only to verify sha256+byteCount and writes a Thread document.
+   * It never copies STEP into thread-assets, never writes a cad-model, and
+   * never grants Product or FEA authority. The isolation receipt and the
+   * first execute MRTR are not this approval.
+   */
+  {
+    id: DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.id,
+    version: DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed isolated geometry document",
+    description:
+      "Reopen one exact documentary isolated Build123d execution capture, verify the " +
+      "human-signed published STEP identities by re-reading the gated object, and " +
+      "seal one Thread document. No STEP artifact, cad-model, thread-assets copy, " +
+      "Product catalog, or FEA authority is granted.",
+    workItemKind: "design",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "executionCapture",
       allowedSourceKinds: ["thread-entity"],
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
