@@ -934,6 +934,7 @@ function validateWorkItem(
       "waiting-for-decision",
       "completed",
       "cancelled",
+      "abandoned",
     ],
     `${path}.status`,
     issues,
@@ -1414,7 +1415,7 @@ function validateDecision(
   nonEmptyString(input.question, `${path}.question`, issues);
   oneOf(
     input.status,
-    ["required", "proposed", "approved", "rejected", "superseded"],
+    ["required", "proposed", "approved", "rejected", "superseded", "abandoned"],
     `${path}.status`,
     issues,
   );
@@ -1637,6 +1638,7 @@ function validateCommandReceipt(
       "project.change-append",
       "work-item.reconcile-successor",
       "work-item.supersede-unstarted",
+      "work-item.abandon",
       "decision.propose",
       "decision.approve",
       "decision.reject",
@@ -4182,7 +4184,11 @@ function validateDecisionInvariant(
       "a required decision cannot already carry a concrete proposal binding",
     );
   }
-  if (decision.status !== "required" && !decision.proposal) {
+  if (
+    decision.status !== "required" &&
+    decision.status !== "abandoned" &&
+    !decision.proposal
+  ) {
     issue(
       issues,
       "missing_proposal",

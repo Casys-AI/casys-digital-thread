@@ -515,6 +515,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_start",
     "project_technical_compilation_preview",
     "project_technical_source_capture",
+    "project_work_item_abandon",
     "project_work_item_reconcile_successor",
     "project_work_item_supersede_unstarted",
   ]);
@@ -585,6 +586,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_start",
       "project_technical_compilation_preview",
       "project_technical_source_capture",
+      "project_work_item_abandon",
       "project_work_item_reconcile_successor",
       "project_work_item_supersede_unstarted",
     ]);
@@ -770,6 +772,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           "project_decision_approve",
           "project_decision_reject",
           "project_agent_run_cancel",
+          "project_work_item_abandon",
           "project_work_item_supersede_unstarted",
           "project_agent_run_queue",
         ]
@@ -810,6 +813,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_architecture_sysml_source_capture" ||
           tool.name === "project_technical_compilation_preview" ||
           tool.name === "project_technical_source_capture" ||
+          tool.name === "project_work_item_abandon" ||
           tool.name === "project_work_item_supersede_unstarted" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||

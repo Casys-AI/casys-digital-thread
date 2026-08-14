@@ -451,6 +451,13 @@ export function registerProjectControlTools(
     },
   );
 
+  app.registerTool(
+    projectWorkItemAbandonTool,
+    async (args, context) => {
+      return await handleWorkItemAbandonment(args, context, dependencies);
+    },
+  );
+
   /**
    * WHY CONDITIONAL — `project_geometry_preview` depends on the build123d MCP
    * provider.  When the provider is not configured (no `build123dMcpUrl` in
@@ -1208,6 +1215,48 @@ const projectWorkItemSupersedeUnstartedTool: MCPTool = {
 };
 
 /**
+ * Human-only governed abandonment for work items that never acquired a run.
+ *
+ * WHY HUMAN-ONLY — abandoning a work item and its pending decisions is an
+ * irreversible editorial act on the project plan.  The operator confirms the
+ * exact target set and rationale through MCP elicitation before the service
+ * marks each entity as `abandoned`.  No provider, agent run, or ThreadSnapshot
+ * is created: the change is project-state-only.
+ */
+const projectWorkItemAbandonTool: MCPTool = {
+  name: "project_work_item_abandon",
+  description:
+    "Ask the paired MCP host to confirm the abandonment of one or more work items and their pending decisions. " +
+    "Each work item must be in `ready` or `waiting-for-decision` status with no associated runs and no evidence refs. " +
+    "Each decision must be in `required` or `proposed` status (not `approved`). " +
+    "On confirmation the service marks each target as `abandoned` and revokes any pending approval for a proposed decision. " +
+    "No agent run, provider call, or ThreadSnapshot is created. " +
+    "Abandoned entities remain in history but are excluded from active views.",
+  inputSchema: mutationSchema({
+    workItemIds: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+      minItems: 1,
+      description: "One or more work item IDs to abandon (minimum 1).",
+    },
+    decisionIds: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+      description:
+        "Decision IDs to abandon alongside the work items. May be empty; each must be in required or proposed status.",
+    },
+    rationale: {
+      type: "string",
+      minLength: 1,
+      description:
+        "Human-recorded reason for abandoning these work items and decisions.",
+    },
+  }, ["workItemIds", "decisionIds", "rationale"]),
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: PROJECT_HUMAN_CONFIRMATION_ANNOTATIONS,
+};
+
+/**
  * Planning-only tool (D2 decision).
  *
  * WHY PLANNING-ONLY — the preview run calls build123d_export before any
@@ -1730,6 +1779,155 @@ async function handleUnstartedWorkItemSupersession(
   return projectResult(
     `The paired MCP host recorded human supersession of unstarted work item ${workItemId} at project revision ${snapshot.revision}. No agent run, provider call, or ThreadSnapshot was created.`,
     snapshot,
+  );
+}
+
+async function handleWorkItemAbandonment(
+  args: Record<string, unknown>,
+  context: ToolHandlerContext | undefined,
+  dependencies: ProjectControlToolDependencies,
+) {
+  const common = commonMutation(args);
+  const rawWorkItemIds = Array.isArray(args.workItemIds) ? args.workItemIds : [];
+  if (rawWorkItemIds.length === 0) {
+    throw new TypeError("workItemIds: at least one work item ID is required.");
+  }
+  const workItemIds = rawWorkItemIds.map((id, i) =>
+    requiredString(id, `workItemIds[${i}]`)
+  );
+  const rawDecisionIds = Array.isArray(args.decisionIds) ? args.decisionIds : [];
+  const decisionIds = rawDecisionIds.map((id: unknown, i) =>
+    requiredString(id, `decisionIds[${i}]`)
+  );
+  const rationale = requiredString(args.rationale, "rationale");
+  const current = await requiredProjectRevision(
+    dependencies.projects,
+    common.projectId,
+    common.expectedRevision,
+  );
+  const confirmation = workItemAbandonmentConfirmationResponse(context);
+  if (confirmation === undefined) {
+    return workItemAbandonmentConfirmationRequest(
+      current,
+      workItemIds,
+      decisionIds,
+      rationale,
+    );
+  }
+  if (!confirmation) {
+    return projectResult(
+      `Work item abandonment was declined. No project state changed; continue the paired conversation.`,
+      current,
+    );
+  }
+  const snapshot = await dependencies.commands.abandonWorkItems(
+    elicitedHumanOrigin(context),
+    { ...common, workItemIds, decisionIds, rationale },
+  );
+  const itemCount = workItemIds.length;
+  const decisionCount = decisionIds.length;
+  return projectResult(
+    `The paired MCP host recorded human abandonment of ${itemCount} work item${
+      itemCount === 1 ? "" : "s"
+    }` +
+      (decisionCount > 0
+        ? ` and ${decisionCount} decision${decisionCount === 1 ? "" : "s"}`
+        : "") +
+      ` at project revision ${snapshot.revision}. No agent run, provider call, or ThreadSnapshot was created.`,
+    snapshot,
+  );
+}
+
+function workItemAbandonmentConfirmationRequest(
+  snapshot: EngineeringProjectSnapshot,
+  workItemIds: readonly string[],
+  decisionIds: readonly string[],
+  rationale: string,
+) {
+  const itemTitles = workItemIds.map((id) => {
+    const item = snapshot.workItems.find((candidate) => candidate.id === id);
+    return item ? `"${item.title}" (${id})` : id;
+  }).join(", ");
+  const decisionPart = decisionIds.length > 0
+    ? ` and decision${decisionIds.length === 1 ? "" : "s"} ${
+      decisionIds.map((id) => {
+        const d = snapshot.decisions.find((candidate) => candidate.id === id);
+        return d ? `"${d.title}" (${id})` : id;
+      }).join(", ")
+    }`
+    : "";
+  return {
+    resultType: "input_required",
+    inputRequests: {
+      work_item_abandonment_confirmation: {
+        method: "elicitation/create",
+        params: {
+          mode: "form",
+          message:
+            `Abandon work item${
+              workItemIds.length === 1 ? "" : "s"
+            } ${itemTitles}${decisionPart}? ` +
+            `Each target must have no associated runs and no evidence. ` +
+            `This records only project history: no agent run, provider call, or ThreadSnapshot will be created. ` +
+            `Abandoned entities remain in history but are excluded from active views. ` +
+            `Recorded rationale: ${rationale}. Confirm this exact abandonment, or decline and continue the conversation.`,
+          requestedSchema: {
+            type: "object",
+            properties: {
+              confirmed: {
+                type: "boolean",
+                title: "Confirm work item abandonment",
+                description:
+                  "I confirm the listed work items and decisions should be marked as abandoned and excluded from active views.",
+              },
+            },
+            required: ["confirmed"],
+            additionalProperties: false,
+          },
+        },
+      },
+    },
+  };
+}
+
+function workItemAbandonmentConfirmationResponse(
+  context?: ToolHandlerContext,
+): boolean | undefined {
+  if (context?.inputResponses === undefined) return undefined;
+  if (context.retryVerified !== true) {
+    throw new TypeError(
+      "Work item abandonment requires an MCP retry with verified signed request state.",
+    );
+  }
+  const response = exactRecord(
+    context.inputResponses.work_item_abandonment_confirmation,
+    "inputResponses.work_item_abandonment_confirmation",
+  );
+  exactKeys(
+    response,
+    ["action"],
+    ["content"],
+    "inputResponses.work_item_abandonment_confirmation",
+  );
+  const action = oneOf(
+    response.action,
+    ["accept", "decline", "cancel"] as const,
+    "inputResponses.work_item_abandonment_confirmation.action",
+  );
+  if (action !== "accept") return false;
+  const content = exactRecord(
+    response.content,
+    "inputResponses.work_item_abandonment_confirmation.content",
+  );
+  exactKeys(
+    content,
+    ["confirmed"],
+    [],
+    "inputResponses.work_item_abandonment_confirmation.content",
+  );
+  return requiredBoolean(
+    content.confirmed,
+    "inputResponses.work_item_abandonment_confirmation.content.confirmed",
   );
 }
 

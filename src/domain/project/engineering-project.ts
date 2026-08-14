@@ -49,6 +49,7 @@ export type EngineeringProjectCommandName =
   | "project.change-append"
   | "work-item.reconcile-successor"
   | "work-item.supersede-unstarted"
+  | "work-item.abandon"
   | "decision.propose"
   | "decision.approve"
   | "decision.reject"
@@ -231,7 +232,15 @@ export type EngineeringWorkItemStatus =
   | "in-progress"
   | "waiting-for-decision"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  /**
+   * Human-governed terminal closeout for a work item that never acquired a
+   * provider run. Append-only: the work item remains in history but is excluded
+   * from active views. Only allowed from `ready` (no run) or
+   * `waiting-for-decision` (no run). Cannot be set on a work item that ever
+   * held a run or produced evidence.
+   */
+  | "abandoned";
 
 export type EngineeringWorkOwner = "human" | "agent" | "shared";
 
@@ -470,7 +479,14 @@ export type EngineeringDecisionStatus =
   | "proposed"
   | "approved"
   | "rejected"
-  | "superseded";
+  | "superseded"
+  /**
+   * Human-governed terminal closeout for a decision that was never approved.
+   * Append-only: the decision remains in history but is excluded from active
+   * views and does not trigger `attention-required`. Only allowed from
+   * `required` or `proposed`. An approved decision cannot be abandoned.
+   */
+  | "abandoned";
 
 export interface EngineeringDecision {
   readonly id: string;
@@ -618,14 +634,16 @@ export type EngineeringProjectStatus =
 
 /**
  * A superseded decision is terminally satisfied only when its explicit
- * successor is approved. This keeps a historical V1 decision visible without
- * making it an unresolved gate after a reviewed replacement has taken over.
+ * successor is approved. An abandoned decision is terminally satisfied:
+ * the human deliberately closed it without approval, and it must not keep
+ * its phase stuck waiting for a resolution that will never come.
  */
 export function isEngineeringDecisionSatisfied(
   snapshot: EngineeringProjectSnapshot,
   decision: EngineeringDecision,
 ): boolean {
   return decision.status === "approved" ||
+    decision.status === "abandoned" ||
     (decision.status === "superseded" &&
       snapshot.decisions.some((candidate) =>
         candidate.status === "approved" &&
@@ -659,6 +677,7 @@ export function deriveEngineeringPhaseStatus(
     workItems.length > 0 &&
     workItems.every((item) =>
       item.status === "completed" ||
+      item.status === "abandoned" ||
       (item.status === "cancelled" && item.reconciliation !== undefined)
     ) &&
     requiredDecisions.every((decision) =>
@@ -676,6 +695,7 @@ export function deriveEngineeringPhaseStatus(
   if (
     workItems.some((item) =>
       item.status === "in-progress" || item.status === "waiting-for-decision"
+      // abandoned items are deliberately excluded: they are terminal
     ) ||
     snapshot.agentRuns.some((run) =>
       workItemIds.has(run.workItemId) &&
@@ -701,6 +721,8 @@ export function deriveEngineeringProjectStatus(
     snapshot.decisions.some((decision) =>
       decision.status === "required" || decision.status === "proposed" ||
       decision.status === "rejected"
+      // abandoned decisions are intentionally terminal: they do not keep
+      // the project in attention-required
     )
   ) return "attention-required";
   if (phaseStatuses.some((status) => status === "blocked")) return "blocked";

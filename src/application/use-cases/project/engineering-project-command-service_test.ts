@@ -6,6 +6,7 @@ import {
   type EngineeringThreadSnapshotRef,
 } from "../../../domain/project/engineering-project.ts";
 import {
+  type AbandonWorkItemsCommand,
   type CancelQueuedRunCommand,
   type CompleteRunCommand,
   ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES,
@@ -2156,5 +2157,187 @@ Deno.test(
       "invalid_transition",
     );
     assertEquals((await store.get(project.project.id))?.revision, project.revision);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// abandonWorkItems — governed abandonment of orphaned work items and decisions
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "abandonWorkItems marks a waiting-for-decision work item and its required decision as abandoned",
+  async () => {
+    /** The base fixture has:
+     *  - work item "verify-current-mechanical-design": waiting-for-decision, no runs, no evidence
+     *  - decision "review-mechanical-proof-case": required
+     * This is the canonical happy-path input for governed abandonment.
+     */
+    const store = await memoryStore();
+    const service = serviceFor(store);
+    const project = (await store.get(PROJECT_ID))!;
+
+    const command: AbandonWorkItemsCommand = {
+      ...context("abandon-orphaned-work-item", project.revision),
+      workItemIds: ["verify-current-mechanical-design"],
+      decisionIds: ["review-mechanical-proof-case"],
+      rationale: "The proof-case approach was superseded; the item is orphaned.",
+    };
+    const updated = await service.abandonWorkItems(HUMAN, command);
+
+    assertEquals(
+      findWorkItem(updated, "verify-current-mechanical-design").status,
+      "abandoned",
+    );
+    assertEquals(
+      findDecision(updated, "review-mechanical-proof-case").status,
+      "abandoned",
+    );
+    // An abandoned decision must not surface as attention-required on the project.
+    const projectStatus = deriveEngineeringProjectStatus(updated);
+    assert(
+      projectStatus !== "attention-required",
+      `project status must not be attention-required after abandonment, got: ${projectStatus}`,
+    );
+    // The store revision must have advanced exactly once.
+    assertEquals(
+      (await store.get(PROJECT_ID))?.revision,
+      project.revision + 1,
+    );
+  },
+);
+
+Deno.test(
+  "abandonWorkItems rejects an agent caller with permission_denied",
+  async () => {
+    /** work-item.abandon is human-only per ENGINEERING_PROJECT_COMMAND_POLICY. */
+    const store = await memoryStore();
+    const service = serviceFor(store);
+    const project = (await store.get(PROJECT_ID))!;
+
+    await assertCommandError(
+      () =>
+        service.abandonWorkItems(AGENT, {
+          ...context("agent-abandon-rejected", project.revision),
+          workItemIds: ["verify-current-mechanical-design"],
+          decisionIds: [],
+          rationale: "An agent must not be able to govern its own abandonment.",
+        }),
+      "permission_denied",
+    );
+  },
+);
+
+Deno.test(
+  "abandonWorkItems rejects a work item that has an associated run",
+  async () => {
+    /** reconciliableProject() adds run:mechanical-r2-failed to the work item
+     *  "verify-current-mechanical-design". A work item with associated runs has
+     *  produced durable trace and cannot be silently abandoned.
+     */
+    const project = await reconciliableProject();
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+
+    await assertCommandError(
+      () =>
+        service.abandonWorkItems(HUMAN, {
+          ...context("abandon-with-run-rejected", project.revision),
+          workItemIds: ["verify-current-mechanical-design"],
+          decisionIds: [],
+          rationale: "Should be rejected: a run is already associated.",
+        }),
+      "invalid_transition",
+    );
+    // The snapshot must not have been mutated.
+    assertEquals(
+      (await store.get(PROJECT_ID))?.revision,
+      project.revision,
+    );
+  },
+);
+
+Deno.test(
+  "abandonWorkItems rejects a work item that carries evidence refs",
+  async () => {
+    /** Any persisted evidence ref is a durable claim. A work item carrying one
+     *  cannot be abandoned — its evidence must first be superseded or reconciled.
+     */
+    const base = structuredClone(await projectFixture()) as Mutable<
+      EngineeringProjectSnapshot
+    >;
+    const workItem = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design"
+    )!;
+    // Force a single evidence ref onto the work item to trip the guard.
+    // Use the fixture's only ThreadSnapshot (revision 5) so validation passes.
+    (workItem as Mutable<typeof workItem>).evidenceRefs = [{
+      snapshotId: "generic-test-system:r5:generic-baseline",
+      snapshotRevision: 5,
+      kind: "artifact",
+      id: "orphaned-artifact",
+    }];
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+
+    await assertCommandError(
+      () =>
+        service.abandonWorkItems(HUMAN, {
+          ...context("abandon-with-evidence-rejected", project.revision),
+          workItemIds: ["verify-current-mechanical-design"],
+          decisionIds: [],
+          rationale: "Should be rejected: the work item carries evidence.",
+        }),
+      "invalid_transition",
+    );
+  },
+);
+
+Deno.test(
+  "abandonWorkItems rejects a work item in a terminal status",
+  async () => {
+    /** "build-current-cad" is completed in the base fixture. Abandonment is only
+     *  valid from ready or waiting-for-decision — completed is a terminal state
+     *  and the transition must be refused.
+     */
+    const store = await memoryStore();
+    const service = serviceFor(store);
+    const project = (await store.get(PROJECT_ID))!;
+
+    await assertCommandError(
+      () =>
+        service.abandonWorkItems(HUMAN, {
+          ...context("abandon-completed-item-rejected", project.revision),
+          workItemIds: ["build-current-cad"],
+          decisionIds: [],
+          rationale: "Should be rejected: completed items cannot be abandoned.",
+        }),
+      "invalid_transition",
+    );
+  },
+);
+
+Deno.test(
+  "abandonWorkItems rejects a decision already in approved status",
+  async () => {
+    /** Once a decision is approved, it represents a committed human judgement.
+     *  Abandoning it is not a valid transition — the caller must supersede it
+     *  through the appropriate governance flow instead.
+     */
+    const store = await memoryStore();
+    const service = serviceFor(store);
+    // Advance the decision to "approved" via the standard governance path.
+    const approved = await approveAll(service, store);
+
+    await assertCommandError(
+      () =>
+        service.abandonWorkItems(HUMAN, {
+          ...context("abandon-approved-decision-rejected", approved.revision),
+          workItemIds: ["verify-current-mechanical-design"],
+          decisionIds: ["review-mechanical-proof-case"],
+          rationale: "Should be rejected: the decision is already approved.",
+        }),
+      "invalid_transition",
+    );
   },
 );
