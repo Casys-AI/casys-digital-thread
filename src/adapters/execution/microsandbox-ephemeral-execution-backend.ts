@@ -507,8 +507,12 @@ async function readVerifiedRegularFile(
   const file = await Deno.open(path, { read: true });
   try {
     const info = await file.stat();
+    // Link count is deliberately not checked here either — see the note in
+    // assertPinnedRuntimeArtifact. The bytes read below are hashed against the
+    // pinned digest, and the readback refuses truncation or growth, which is
+    // what makes this file the expected one.
     if (
-      !info.isFile || info.nlink !== 1 || !Number.isSafeInteger(info.size) ||
+      !info.isFile || !Number.isSafeInteger(info.size) ||
       info.size < 0 || info.size > maximumBytes ||
       (executable && (info.mode === null || (info.mode & 0o111) === 0))
     ) {
