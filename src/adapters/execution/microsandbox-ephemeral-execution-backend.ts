@@ -458,9 +458,17 @@ async function assertPinnedRuntimeArtifact(
      */
     if (!lexicalInfo.isFile) throw new Error("not a regular file");
     if (lexicalInfo.isSymlink) throw new Error("a symbolic link");
-    if (lexicalInfo.nlink !== 1) {
-      throw new Error(`shared by ${lexicalInfo.nlink} hard links`);
-    }
+    /**
+     * Link count is deliberately NOT checked. Every package cache — Deno's,
+     * pnpm's, npm's — materialises node_modules by hard-linking from a shared
+     * store, so a warm cache yields nlink > 1 for a perfectly correct file;
+     * that is what kept these compositions failing on CI while passing on a
+     * cold cache. A hard link is the same inode, not a redirect, so it cannot
+     * point the guard at other content: identity is established below by the
+     * pinned SHA-256 over the bytes actually read, and containment by the
+     * resolved real path. Rejecting a second link added no property those two
+     * do not already give.
+     */
     realPath = await Deno.realPath(lexicalPath);
   } catch (error) {
     const reason = error instanceof Deno.errors.NotFound
