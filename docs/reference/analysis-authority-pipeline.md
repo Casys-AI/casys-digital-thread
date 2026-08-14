@@ -429,8 +429,8 @@ the WAL binds the persisted draft reference back to that same receipt and checks
 link again during completed replay. The existing `design.write-geometry@1` cannot
 promote this new draft because it seals a different historical sandbox-preview contract.
 `design.seal-isolated-geometry@1` is that second, distinct MRTR. It reopens the
-execution capture, draft and publication-gated STEP, rehashes the bytes, and writes
-one Thread document (`isolated-geometry-seal-capture/1.0`). It does not copy STEP into
+execution capture, draft and publication-gated STEP, rehashes the bytes, and writes one
+Thread document (`isolated-geometry-seal-capture/1.0`). It does not copy STEP into
 `thread-assets`, does not publish a `step` or `cad-model` artifact, and does not grant
 Product or FEA authority. Canonical promotion still requires a later, separately
 reviewed operation.
@@ -722,9 +722,9 @@ part of the qualified host trust and availability envelope.
 The initial code-owned compilation catalogue qualifies only a parser-backed Build123d
 closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`,
 `Pos`, `Rot`, `Compound`, `scale(solid, scalar)`,
-`fillet(solid.edges(), radius=scalar)`; analyzer `build123d-qualified-lezer` 1.1.0).
-Previously qualified Box/Cylinder/Pos/Compound bundles stay bit-identical. chamfer
-remains unresolved. Modelica and CalculiX compiler profiles remain absent and therefore
+`fillet(solid.edges(), radius=scalar)`, `chamfer(solid.edges(), length)`; analyzer
+`build123d-qualified-lezer` 1.2.0). Previously qualified bundles stay bit-identical for
+existing sources. Modelica and CalculiX compiler profiles remain absent and therefore
 fail closed.
 
 The recorded-analysis provider routes remain available for existing Modelica/CalculiX

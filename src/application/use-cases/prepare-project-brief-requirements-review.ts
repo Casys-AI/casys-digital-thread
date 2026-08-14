@@ -39,6 +39,7 @@ import type {
   EngineeringDecisionProposalParameter,
 } from "../../domain/project/engineering-project.ts";
 import { parseRequirementsProposalParameters } from "../../domain/engineering/requirements-proposal.ts";
+import { normaliseThreshold } from "../../domain/engineering/unit-normalisation.ts";
 import {
   isProjectBriefGateKind,
   type ProjectBriefItem,
@@ -161,7 +162,10 @@ export class PrepareProjectBriefRequirementsReview
       collectItemDiagnostics(item, requirement.slug, diagnostics, {
         requireGate: true,
       });
-      const { transformation } = normalisedThreshold(requirement);
+      const { transformation } = normaliseThreshold(
+        requirement.threshold,
+        requirement.unit,
+      );
       for (const parameter of requirementParameters(requirement)) {
         parameters.push(parameter);
         provenance.push(
@@ -250,53 +254,18 @@ function collectItemDiagnostics(
   }
 }
 
-/**
- * Code-owned unit normalisation, one entry per unit the oracle cannot carry
- * natively. `MPa` is here because the live SysON probe
- * (`deno task probe:requirement-units --unit=MPa --type=PressureValue`,
- * 2026-08-14) returned `type_mismatch`: SysON gives back
- * `FeatureReferenceExpression` instead of the unit, so `MPa` can never enter
- * `SUPPORTED_ORACLE_UNITS`.
- *
- * WHY CONVERT HERE RATHER THAN REFUSE — refusing does not remove the
- * conversion, it moves it into the agent's head, where nothing records that
- * 90000000 was meant to be 90 MPa. Doing it in code makes the factor exact,
- * the transformation named in provenance, and both numbers visible to the
- * signing human. Adding a unit to this table without a passing probe would
- * reintroduce exactly the silent-rescale bug the oracle units exist to stop.
- */
-const UNIT_NORMALISATION: ReadonlyMap<
-  string,
-  { readonly unit: string; readonly factor: number; readonly label: "MPa-to-Pa" }
-> = new Map([
-  ["MPa", { unit: "Pa", factor: 1_000_000, label: "MPa-to-Pa" as const }],
-]);
-
-function normalisedThreshold(
-  requirement: BriefRequirementDeclaration,
-): {
-  readonly value: number;
-  readonly unit: string;
-  readonly transformation: BriefRequirementsTransformation;
-} {
-  const normalisation = UNIT_NORMALISATION.get(requirement.unit);
-  if (!normalisation) {
-    return {
-      value: requirement.threshold,
-      unit: requirement.unit,
-      transformation: "identity",
-    };
-  }
-  return {
-    value: requirement.threshold * normalisation.factor,
-    unit: normalisation.unit,
-    transformation: normalisation.label,
-  };
-}
+// Unit normalisation (MPa → Pa and future affine cases like °C → K) is handled
+// by the domain module `unit-normalisation.ts`, which validates every target
+// unit against SUPPORTED_ORACLE_UNITS at module load time.  See the module and
+// docs/reference/oracle-units.md for the rationale and probe evidence.
 
 function requirementParameters(
   requirement: BriefRequirementDeclaration,
 ): readonly EngineeringDecisionProposalParameter[] {
+  const { value: thresholdValue, unit: thresholdUnit } = normaliseThreshold(
+    requirement.threshold,
+    requirement.unit,
+  );
   return [
     {
       key: `requirement.${requirement.slug}.name`,
@@ -316,8 +285,8 @@ function requirementParameters(
     {
       key: `requirement.${requirement.slug}.threshold`,
       label: `Requirement ${requirement.slug} threshold`,
-      value: normalisedThreshold(requirement).value,
-      unit: normalisedThreshold(requirement).unit,
+      value: thresholdValue,
+      unit: thresholdUnit,
     },
   ];
 }
