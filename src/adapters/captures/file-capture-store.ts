@@ -380,6 +380,24 @@ export const SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Sensitivity study case",
 };
 
+export const SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-study"
+> = {
+  kind: "sensitivity-study",
+  directory: "state/local/sensitivity-study-captures",
+  uriNamespace: "sensitivity-study-capture",
+  label: "Sensitivity study",
+};
+
+export const SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-edges"
+> = {
+  kind: "sensitivity-edges",
+  directory: "state/local/sensitivity-edges-captures",
+  uriNamespace: "sensitivity-edges-capture",
+  label: "Sensitivity edges",
+};
+
 /**
  * Content-addressed store for `fea-solver-result-capture/1.0` envelopes
  * produced by `verify.run-fea-static-proof@1` after a successful CalculiX

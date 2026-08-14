@@ -571,15 +571,16 @@ baseline, the Modelica simulation-case seal, the CalculiX proof-case seal and re
 legacy observations. Modelica and CalculiX declaration nodes and scopes use the stable
 case/proof digest; each seal assertion keeps its run-scoped capture fingerprint only as
 evidence, so repeated seals can merge as parallel assertion occurrences without changing
-semantic identity. After its two solver runs, the sensitivity path creates one observed
-`measured-local-sensitivity` assertion per declared response metric, including the
-reviewed finite-difference case, base and stepped results, derivative, local scope and
-the one exact persisted sensitivity-capture fingerprint. The provider responses and STEP
-handoff digests are normalized inside that capture; they are not represented as
-synthetic `solver-result` artifacts or as independent evidence bytes. The case
-identifies its driver, but no component-to-driver assertion is emitted until exact
-architecture/source binding evidence exists. Consequently the global graph shows the
-qualified measurement while component facets remain empty. The snapshot extension
+semantic identity. The live producer is `analyze.run-fea-sensitivity@1` after
+`analyze.seal-sensitivity-study@1`. After its two solver runs, the sensitivity path
+creates one observed `measured-local-sensitivity` assertion per declared response
+metric, including the reviewed finite-difference case, base and stepped results,
+derivative, local scope and the one exact persisted sensitivity-capture fingerprint. The
+provider responses and STEP handoff digests are normalized inside that capture; they are
+not represented as synthetic `solver-result` artifacts or as independent evidence bytes.
+The case identifies its driver, but no component-to-driver assertion is emitted until
+exact architecture/source binding evidence exists. Consequently the global graph shows
+the qualified measurement while component facets remain empty. The snapshot extension
 publishes that graph as `ThreadSnapshot/1.1`; its browser projection is explicitly
 `origin: "analysis"`. No analysis edge grants MCP, provider, admission or decision
 authority.

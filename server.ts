@@ -164,6 +164,24 @@ import { FileCalculixRecordedStaticAttemptStore } from "./src/adapters/wal/file-
 import { McpModelicaProvider } from "./src/adapters/providers/modelica/mcp-modelica-provider.ts";
 import { McpModelicaResumableAdapter } from "./src/adapters/providers/modelica/mcp-modelica-resumable-adapter.ts";
 import { McpCalculixStaticStructuralSolver } from "./src/adapters/providers/calculix/mcp-calculix-static-structural-solver.ts";
+import { McpCalculixSensitivitySolver } from "./src/adapters/providers/calculix/mcp-calculix-sensitivity-solver.ts";
+import { IsolatedStepSolverStager } from "./src/adapters/assets/isolated-step-solver-stager.ts";
+import {
+  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  AnalyzeSealSensitivityStudyRunExecutor,
+} from "./src/adapters/executors/analyze-seal-sensitivity-study-run-executor.ts";
+import {
+  ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+  AnalyzeRunFeaSensitivityRunExecutor,
+} from "./src/adapters/executors/analyze-run-fea-sensitivity-run-executor.ts";
+import {
+  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+  ModelWriteSensitivityEdgesRunExecutor,
+} from "./src/adapters/executors/model-write-sensitivity-edges-run-executor.ts";
+import { FileFeaSensitivityAttemptStore } from "./src/adapters/wal/file-fea-sensitivity-attempt-store.ts";
+import { FileSensitivityEdgesAttemptStore } from "./src/adapters/wal/file-sensitivity-edges-attempt-store.ts";
+import { parseSysonModelSeedCapture } from "./src/domain/engineering/syson-model-seed.ts";
+import { findArchitectureArtifact } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
 import { McpCalculixRecordedStaticAdapter } from "./src/adapters/providers/calculix/mcp-calculix-recorded-static-adapter.ts";
 import { FileByteStore } from "./src/adapters/captures/file-byte-store.ts";
 import { ModelicaQualifiedSourceCaptureService } from "./src/adapters/captures/modelica-qualified-source-capture.ts";
@@ -180,6 +198,9 @@ import {
   FEA_VERDICT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SIMULATION_CASE_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/captures/file-capture-store.ts";
 import { FileRequirementsAttemptStore } from "./src/adapters/wal/file-requirements-attempt-store.ts";
@@ -1366,6 +1387,82 @@ async function createProjectControl(
     }),
     lease,
   });
+  const sensitivityCaseCaptures = new FileCaptureStore(
+    SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
+  );
+  const sensitivityStudyCaptures = new FileCaptureStore(
+    SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+  );
+  const sensitivityEdgesCaptures = new FileCaptureStore(
+    SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
+  );
+  const analyzeSealSensitivityStudy = new AnalyzeSealSensitivityStudyRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    admissions: technicalCompilationAdmissions,
+    captures: sensitivityCaseCaptures,
+    lease,
+  });
+  const analyzeRunFeaSensitivity =
+    build123dExecution?.execution !== undefined && calculixMcpUrl
+      ? new AnalyzeRunFeaSensitivityRunExecutor({
+        projects: runtime.projects,
+        commands: runtime.commands,
+        snapshots: activeThreadSnapshots,
+        caseCaptures: sensitivityCaseCaptures,
+        studyCaptures: sensitivityStudyCaptures,
+        admissions: technicalCompilationAdmissions,
+        profiles: build123dExecution.profiles,
+        runner: build123dExecution.execution.runner,
+        stager: new IsolatedStepSolverStager(
+          `${DEFAULT_CANONICAL_ASSET_DIRECTORY}/sensitivity-step-cache`,
+          new DockerVolumeAssetStager({
+            service: "mcp-calculix",
+            containerDirectory: "/inputs",
+          }),
+        ),
+        solver: new McpCalculixSensitivitySolver(
+          new HttpMcpToolClient({ mcpUrl: calculixMcpUrl, timeoutMs: 180_000 }),
+        ),
+        attempts: new FileFeaSensitivityAttemptStore(),
+        lease,
+      })
+      : undefined;
+  const modelWriteSensitivityEdges = sysonMcpUrl
+    ? new ModelWriteSensitivityEdgesRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      studyCaptures: sensitivityStudyCaptures,
+      edgeCaptures: sensitivityEdgesCaptures,
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      resolveSysonContext: async (snapshot) => {
+        if (!findArchitectureArtifact(snapshot)) {
+          throw new Error("No architecture artifact is present on the Thread basis.");
+        }
+        const seed = snapshot.artifacts.find((artifact) =>
+          artifact.kind === "sysml-model" &&
+          artifact.uri?.startsWith("casys://syson-model-seed-capture/sha256/") &&
+          artifact.producer.tool === "syson_model_create"
+        );
+        if (!seed) {
+          throw new Error("No SysON seed artifact is present on the Thread basis.");
+        }
+        const text = await sysonModelSeedCaptures.read(seed.fingerprint);
+        if (!text) {
+          throw new Error("The SysON seed capture is not readable.");
+        }
+        const parsed = parseSysonModelSeedCapture(JSON.parse(text));
+        return {
+          editingContextId: parsed.normalizedResults.project.editingContextId,
+          parentElementId: parsed.normalizedResults.rootPackage.id,
+        };
+      },
+      attempts: new FileSensitivityEdgesAttemptStore(),
+      lease,
+    })
+    : undefined;
   const genericVerifyRunFeaStaticProof = sysonMcpUrl && calculixMcpUrl
     ? new VerifyRunFeaStaticProofRunExecutor({
       projects: runtime.projects,
@@ -1715,6 +1812,24 @@ async function createProjectControl(
             executor: isolatedCalculixRun,
             unavailableMessage:
               "The server has no complete qualified local CalculiX runtime and SysON oracle configured for this run.",
+          },
+          {
+            operation: ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+            executor: analyzeSealSensitivityStudy,
+          },
+          {
+            operation: ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+            executor: analyzeRunFeaSensitivity,
+            unavailableMessage:
+              "The server has no trusted analyze.run-fea-sensitivity@1 executor " +
+              "configured for this run (isolated Build123d and CalculiX are required).",
+          },
+          {
+            operation: MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+            executor: modelWriteSensitivityEdges,
+            unavailableMessage:
+              "The server has no trusted model.write-sensitivity-edges@1 executor " +
+              "configured for this run (SysON provider is required).",
           },
         ],
       }),
