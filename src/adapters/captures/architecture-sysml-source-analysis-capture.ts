@@ -453,7 +453,12 @@ export class ArchitectureSysmlSourceAnalysisCaptureService {
       if (deterministicJson(analysis) !== analysisText) {
         throw new TypeError("analysis is not canonical JSON");
       }
-      assertExactBundleIdentity(analysis, profile, reference.source.id, sourceFingerprint);
+      assertExactBundleIdentity(
+        analysis,
+        profile,
+        reference.source.id,
+        sourceFingerprint,
+      );
       if (
         analysis.policy.profile !== reference.analysis.policy.profile ||
         analysis.policy.status !== reference.analysis.policy.status
@@ -573,12 +578,19 @@ export function validateArchitectureSysmlSourceAnalysisCaptureDocument(
       language: "sysml-v2",
       sha256: sourceSha256,
       byteCount: nonNegativeInteger(sourceInput.byteCount, `${path}.source.byteCount`),
-      casUri: canonicalCasUri(sourceInput.casUri, sourceSha256, `${path}.source.casUri`),
+      casUri: canonicalCasUri(
+        sourceInput.casUri,
+        sourceSha256,
+        `${path}.source.casUri`,
+      ),
     },
     analysis: {
       analyzer: {
         id: safeId(analyzerInput.id, `${path}.analysis.analyzer.id`),
-        version: safeVersion(analyzerInput.version, `${path}.analysis.analyzer.version`),
+        version: safeVersion(
+          analyzerInput.version,
+          `${path}.analysis.analyzer.version`,
+        ),
       },
       policy: { profile: policyProfile, status: policyStatus },
       sha256: analysisSha256,

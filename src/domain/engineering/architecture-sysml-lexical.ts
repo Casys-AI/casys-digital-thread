@@ -92,7 +92,9 @@ export function tokenizeArchitectureSysml(
       index += 1;
       continue;
     }
-    if (char === "/" && (sourceText[index + 1] === "/" || sourceText[index + 1] === "*")) {
+    if (
+      char === "/" && (sourceText[index + 1] === "/" || sourceText[index + 1] === "*")
+    ) {
       throw lexical(
         "comment_not_qualified",
         "Comments are not qualified in the architecture SysML closed subset.",
@@ -138,8 +140,10 @@ export function tokenizeArchitectureSysml(
       );
     }
     if (isDigit(char)) {
-      const end = consumeWhile(sourceText, index, (value) =>
-        isDigit(value) || value === "." || value === "_"
+      const end = consumeWhile(
+        sourceText,
+        index,
+        (value) => isDigit(value) || value === "." || value === "_",
       );
       throw lexical(
         "number_not_qualified",

@@ -35,7 +35,6 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,

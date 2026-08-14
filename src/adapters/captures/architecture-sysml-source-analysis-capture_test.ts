@@ -43,7 +43,10 @@ Deno.test("architecture SysML capture persists renderer text and reopens unresol
       sourceText,
     });
     assertEquals(reference.kind, "architecture-sysml-source-analysis");
-    assertEquals(reference.schemaVersion, "architecture-sysml-source-analysis-capture/1.0");
+    assertEquals(
+      reference.schemaVersion,
+      "architecture-sysml-source-analysis-capture/1.0",
+    );
     const reopened = await service.reopen(reference);
     assertEquals(reopened.sourceText, sourceText);
     assertEquals(reopened.analysis.unresolvedConstructs, []);

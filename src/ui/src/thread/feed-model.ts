@@ -5,8 +5,14 @@ import {
 } from "./evidence-graph-model.ts";
 import type { ProjectReviewRecord } from "../project/review-decision-model.ts";
 import { applyEssentialFilter } from "./essential-graph-filter.ts";
-import { compactSysmlPartPairs, graphRefKey } from "./sysml-composite-projection.ts";
-import type { PartAnchorageResolution, PartTarget } from "./part-anchorage-model.ts";
+import {
+  compactSysmlPartPairs,
+  graphRefKey,
+} from "./sysml-composite-projection.ts";
+import type {
+  PartAnchorageResolution,
+  PartTarget,
+} from "./part-anchorage-model.ts";
 import type {
   ThreadComponentCatalog,
   ThreadGraphEdge,
@@ -261,7 +267,8 @@ function recordedCorrectionNodes(
 }
 
 /** Server-fixed id prefix of `model.seal-architecture-sysml@1` documents. */
-export const ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX = "architecture-sysml-seal-";
+export const ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX =
+  "architecture-sysml-seal-";
 
 export function isArchitectureSysmlSealArtifactId(id: string): boolean {
   return id.startsWith(ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX);
@@ -522,7 +529,9 @@ export function filterFeedNodesByScope(
   scope: FeedScope | undefined,
 ): ThreadGraphNode[] {
   if (scope === undefined) return [...feedNodes];
-  return feedNodes.filter((node) => feedScopeForNode(node, anchorage) === scope);
+  return feedNodes.filter((node) =>
+    feedScopeForNode(node, anchorage) === scope
+  );
 }
 
 /**

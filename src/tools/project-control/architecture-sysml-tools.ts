@@ -5,10 +5,7 @@ import type {
 import type {
   ProjectArchitectureSysmlSourceCaptureUseCase,
 } from "../../application/ports/in/project-architecture-sysml-source-capture.ts";
-import {
-  FINGERPRINT_SCHEMA,
-  OBJECT_OUTPUT_SCHEMA,
-} from "./mcp-tool-schemas.ts";
+import { FINGERPRINT_SCHEMA, OBJECT_OUTPUT_SCHEMA } from "./mcp-tool-schemas.ts";
 
 export interface ProjectArchitectureSysmlToolDependencies {
   architectureSysmlSourceCapture?: ProjectArchitectureSysmlSourceCaptureUseCase;

@@ -34,8 +34,7 @@ export const INITIAL_ARCHITECTURE_SYSML_ANALYSIS_PROFILE:
     maxSourceBytes: INITIAL_ARCHITECTURE_SYSML_MAX_SOURCE_BYTES,
   });
 
-export function createArchitectureSysmlAnalysisProfileRegistry():
-  FixedArchitectureSysmlAnalysisProfileRegistry {
+export function createArchitectureSysmlAnalysisProfileRegistry(): FixedArchitectureSysmlAnalysisProfileRegistry {
   return new FixedArchitectureSysmlAnalysisProfileRegistry([{
     profile: INITIAL_ARCHITECTURE_SYSML_ANALYSIS_PROFILE,
     frontend: new QualifiedArchitectureSysmlAnalyzer(),

@@ -1,5 +1,4 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { EngineeringProjectCommandOrigin } from "../../application/ports/in/engineering-project-command-origin.ts";
 import type {
   Build123dExecutionCaptureStore,
   PersistedBuild123dExecutionCapture,

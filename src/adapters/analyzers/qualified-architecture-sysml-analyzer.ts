@@ -26,8 +26,8 @@ import {
 import {
   type ArchitectureSysmlPackageNode,
   type ArchitectureSysmlParse,
-  type ArchitectureSysmlPartDefNode,
   ArchitectureSysmlParseError,
+  type ArchitectureSysmlPartDefNode,
   type ArchitectureSysmlUnresolved,
   type ArchitectureSysmlUsageNode,
   parseArchitectureSysmlSubset,

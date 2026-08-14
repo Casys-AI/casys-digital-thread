@@ -485,7 +485,9 @@ function propagateChangeConsumption(
       if (node.entityKind === "change") {
         // A change node inherits from the artifact it "changes".
         // Edge direction: change → artifact (changes, forward).
-        const artifacts = outgoing.get(key)?.filter((e) => e.relation === "changes") ??
+        const artifacts = outgoing.get(key)?.filter((e) =>
+          e.relation === "changes"
+        ) ??
           [];
         candidates = artifacts.flatMap((artifact) =>
           stateTargets(states.get(artifact.key))
@@ -493,7 +495,9 @@ function propagateChangeConsumption(
       } else if (node.entityKind === "consumption") {
         // A consumption node inherits from the artifact it attests.
         // Edge direction: artifact → consumption (uses, reverse).
-        const artifacts = incoming.get(key)?.filter((e) => e.relation === "uses") ?? [];
+        const artifacts = incoming.get(key)?.filter((e) =>
+          e.relation === "uses"
+        ) ?? [];
         candidates = artifacts.flatMap((artifact) =>
           stateTargets(states.get(artifact.key))
         );

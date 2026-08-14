@@ -1,8 +1,4 @@
-import {
-  assertEquals,
-  assertStrictEquals,
-  assertStringIncludes,
-} from "@std/assert";
+import { assertEquals, assertStrictEquals, assertStringIncludes } from "@std/assert";
 import {
   buildVersionedGraphSelectionIndex,
   buildVersionedProvenanceProjection,
@@ -283,9 +279,7 @@ Deno.test("folded handoff selection keeps the exact rendered representative in t
     : undefined;
 
   assertStrictEquals(
-    visibleSelection?.kind === "edge"
-      ? visibleSelection.occurrence?.edge
-      : undefined,
+    visibleSelection?.kind === "edge" ? visibleSelection.occurrence?.edge : undefined,
     renderedHandoff,
   );
   assertStrictEquals(inspectorHandoff, renderedHandoff);
@@ -339,15 +333,11 @@ Deno.test("duplicate edge ids retain separate versioned histories and reproject 
   assertEquals(firstVisible?.kind, "edge");
   assertEquals(secondVisible?.kind, "edge");
   assertEquals(
-    firstVisible?.kind === "edge"
-      ? firstVisible.occurrence?.edge.to.id
-      : undefined,
+    firstVisible?.kind === "edge" ? firstVisible.occurrence?.edge.to.id : undefined,
     "requirement-one",
   );
   assertEquals(
-    secondVisible?.kind === "edge"
-      ? secondVisible.occurrence?.edge.to.id
-      : undefined,
+    secondVisible?.kind === "edge" ? secondVisible.occurrence?.edge.to.id : undefined,
     "requirement-two",
   );
   assertEquals(
@@ -381,9 +371,7 @@ Deno.test("duplicate edge ids retain separate versioned histories and reproject 
     "requirement-one",
   );
   assertEquals(
-    refreshedVisible?.kind === "edge"
-      ? refreshedVisible.occurrence?.edge
-      : undefined,
+    refreshedVisible?.kind === "edge" ? refreshedVisible.occurrence?.edge : undefined,
     refreshedFirstVisibleEdge,
   );
   const refreshedFromFoldedSelection = firstVisible?.kind === "edge"
