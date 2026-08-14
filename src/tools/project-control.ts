@@ -80,6 +80,10 @@ import {
   registerProjectArchitectureSysmlTools,
 } from "./project-control/architecture-sysml-tools.ts";
 import {
+  type ProjectBriefCompilationToolDependencies,
+  registerProjectBriefCompilationTools,
+} from "./project-control/brief-compilation-tools.ts";
+import {
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
   type ProjectApprovalMode,
@@ -103,7 +107,8 @@ export interface EngineeringProjectSnapshotReader {
 export interface ProjectControlToolDependencies
   extends
     ProjectTechnicalCompilationToolDependencies,
-    ProjectArchitectureSysmlToolDependencies {
+    ProjectArchitectureSysmlToolDependencies,
+    ProjectBriefCompilationToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional browser-to-agent outbox; it carries no project decision authority. */
@@ -188,6 +193,7 @@ export function registerProjectControlTools(
 
   registerProjectTechnicalCompilationTools(app, dependencies);
   registerProjectArchitectureSysmlTools(app, dependencies);
+  registerProjectBriefCompilationTools(app, dependencies);
 
   if (dependencies.reviewIntents) {
     app.registerTool(projectReviewIntentListTool, async (args) => {

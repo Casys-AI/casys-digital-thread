@@ -111,6 +111,38 @@ Provider MCP ports are private backend dependencies.
 
 How-to: [Author architecture SysML](../how-to/author-architecture-sysml.md).
 
+### Brief compilation (approved brief → proposal grammar)
+
+| Tool                                | Writes | Grant                                                      |
+| ----------------------------------- | ------ | ---------------------------------------------------------- |
+| `project_brief_architecture_review` | None   | `decisionParameters` for `model.write-architecture@1` only |
+| `project_brief_requirements_review` | None   | `decisionParameters` for `model.write-requirements@1` only |
+
+The server reopens the exact human-approved canonical brief itself; no brief bytes,
+parameter keys, structural admissibility or unit admissibility come from the caller.
+Every emitted parameter carries the brief item it was traced to.
+
+Provenance rules differ by what is being stated. A requirement threshold is normative,
+so it may only cite a gate item (`success-criterion` or `verification-activity`). An
+architecture element is not a gate and only has to be sourced — but it may never cite an
+`exclusion` or an `open-question`, which declare what is out of scope or still
+undecided. The requirements container component only has to be sourced.
+
+An absent, non-normative, non-committing or unsourced item, a duplicate slug, or an
+envelope the grammar refuses — unsupported unit, non-integer threshold, unknown parent,
+cycle — yields `unresolved` with diagnostics and **no** parameters, never a partially
+compiled proposal.
+
+One code-owned normalisation exists: a threshold declared in `MPa` is rescaled to `Pa`
+and the provenance entry names the transformation. SysON cannot round-trip `MPa` (probe
+`deno task probe:requirement-units --unit=MPa --type=PressureValue`, 2026-08-14,
+`type_mismatch`), and refusing outright would only move the same conversion into the
+agent's head where nothing records it.
+
+Its limit is contractual: the brief carries free-text statements, so the server never
+reads the prose and never asserts that a declared value restates its statement. It
+records where the value came from; the signing human confirms what it says.
+
 ### Technical compilation / isolated CAD
 
 | Tool                                        | Writes                   | Grant                                                            |

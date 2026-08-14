@@ -51,6 +51,8 @@ import { createInitialTechnicalSourceAnalysisCaptureService } from "./src/adapte
 import { createArchitectureSysmlSourceAnalysisCaptureService } from "./src/adapters/compilers/architecture-sysml-source-analysis-composition.ts";
 import { QualifiedArchitectureSysmlAnalyzer } from "./src/adapters/analyzers/qualified-architecture-sysml-analyzer.ts";
 import { PreviewProjectArchitectureSysml } from "./src/application/use-cases/preview-project-architecture-sysml.ts";
+import { PrepareProjectBriefArchitectureReview } from "./src/application/use-cases/prepare-project-brief-architecture-review.ts";
+import { PrepareProjectBriefRequirementsReview } from "./src/application/use-cases/prepare-project-brief-requirements-review.ts";
 import type { ProjectArchitectureSysmlSourceCaptureUseCase } from "./src/application/ports/in/project-architecture-sysml-source-capture.ts";
 import {
   MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
@@ -1039,6 +1041,12 @@ async function createProjectControl(
       },
     ),
   });
+  const briefRequirementsReview = new PrepareProjectBriefRequirementsReview({
+    projects: runtime.projects,
+  });
+  const briefArchitectureReview = new PrepareProjectBriefArchitectureReview({
+    projects: runtime.projects,
+  });
   const baseline = new ApprovedBriefBaselineRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1530,6 +1538,8 @@ async function createProjectControl(
       technicalCompilationPreview,
       architectureSysmlSourceCapture,
       architectureSysmlPreview,
+      briefArchitectureReview,
+      briefRequirementsReview,
       build123dExecutionReview,
       isolatedGeometrySealReview,
       modelicaQualifiedKitRunReview,

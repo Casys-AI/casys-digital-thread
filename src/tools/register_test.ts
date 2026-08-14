@@ -497,8 +497,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_answer_record",
     "project_architecture_sysml_preview",
     "project_architecture_sysml_source_capture",
+    "project_brief_architecture_review",
     "project_brief_confirm",
     "project_brief_propose",
+    "project_brief_requirements_review",
     "project_change_append",
     "project_decision_approve",
     "project_decision_propose",
@@ -566,8 +568,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_answer_record",
       "project_architecture_sysml_preview",
       "project_architecture_sysml_source_capture",
+      "project_brief_architecture_review",
       "project_brief_confirm",
       "project_brief_propose",
+      "project_brief_requirements_review",
       "project_change_append",
       "project_decision_approve",
       "project_decision_propose",
@@ -782,11 +786,15 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
         tool.name === "project_snapshot" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_review_intent_list" ||
-          tool.name === "project_isolated_geometry_seal_review",
+          tool.name === "project_isolated_geometry_seal_review" ||
+          tool.name === "project_brief_requirements_review" ||
+          tool.name === "project_brief_architecture_review",
       );
       assertEquals(
         annotations.idempotentHint,
         tool.name === "project_snapshot" ||
+          tool.name === "project_brief_requirements_review" ||
+          tool.name === "project_brief_architecture_review" ||
           tool.name === "project_review_intent_list" ||
           tool.name === "project_review_intent_acknowledge" ||
           tool.name === "project_start" ||

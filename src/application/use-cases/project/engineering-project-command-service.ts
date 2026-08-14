@@ -2491,7 +2491,12 @@ function planningBasisForProject(
   return approvedBriefBasisForProject(project);
 }
 
-function approvedBriefBasisForProject(
+/**
+ * Exported so read surfaces that must name the same approved brief (for
+ * example the brief-requirements review) enforce this exact rule rather than
+ * a second, drifting copy of it.
+ */
+export function approvedBriefBasisForProject(
   project: EngineeringProjectSnapshot,
 ): EngineeringApprovedBriefBasis {
   const framing = project.framing;
