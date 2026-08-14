@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import type { ProjectAdmittedGeometryExportResult } from "../../application/ports/in/project-admitted-geometry-export.ts";
 import type { ProjectBuild123dExecutionReviewResult } from "../../application/ports/in/project-build123d-execution-review.ts";
 import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../application/ports/in/project-modelica-qualified-kit-run-review.ts";
 import { registerProjectTechnicalCompilationTools } from "./technical-compilation-tools.ts";
@@ -37,6 +38,7 @@ Deno.test("Build123d execution review registration is conditional and preserves 
     {},
   );
   assertEquals(absent.hasTool("project_build123d_execution_review"), false);
+  assertEquals(absent.hasTool("project_admitted_geometry_export"), false);
 
   const ordered = new CapturingApp();
   registerProjectTechnicalCompilationTools(
@@ -48,6 +50,9 @@ Deno.test("Build123d execution review registration is conditional and preserves 
       technicalCompilationPreview: {
         execute: () => Promise.reject(new Error("not called")),
       },
+      admittedGeometryExport: {
+        execute: () => Promise.reject(new Error("not called")),
+      },
       build123dExecutionReview: {
         execute: () => Promise.reject(new Error("not called")),
       },
@@ -57,8 +62,120 @@ Deno.test("Build123d execution review registration is conditional and preserves 
   assertEquals(ordered.toolNames(), [
     "project_technical_source_capture",
     "project_technical_compilation_preview",
+    "project_admitted_geometry_export",
     "project_build123d_execution_review",
   ]);
+});
+
+Deno.test("admitted geometry export registration is conditional and rejects caller-selected source authority", async () => {
+  const absent = new CapturingApp();
+  registerProjectTechnicalCompilationTools(absent as unknown as McpApp, {});
+  assertEquals(absent.hasTool("project_admitted_geometry_export"), false);
+
+  const app = new CapturingApp();
+  const calls: unknown[] = [];
+  const resultIdentity = Object.freeze({
+    draftDigest: ARTIFACT_DIGEST,
+    assemblyFiles: Object.freeze([]),
+    partMeshes: Object.freeze([]),
+    sourceAnalysis: Object.freeze({
+      sourceId: "geometry-source:assembly",
+      selector: Object.freeze({ kind: "assembly" }),
+      sourceDigest: ARTIFACT_DIGEST,
+      sourceCaptureDigest: ARTIFACT_DIGEST,
+      analysisDigest: ARTIFACT_DIGEST,
+    }),
+    decisionParameters: Object.freeze([
+      Object.freeze({
+        key: "geometry.draft.digest",
+        label: "Draft SHA-256 digest",
+        value: ARTIFACT_DIGEST,
+      }),
+    ]),
+  }) as unknown as ProjectAdmittedGeometryExportResult;
+  registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
+    admittedGeometryExport: {
+      execute(value) {
+        calls.push(value);
+        return Promise.resolve(resultIdentity);
+      },
+    },
+  });
+
+  const response = await app.handler("project_admitted_geometry_export")(
+    structuredClone(REVIEW_COMMAND),
+  ) as Record<string, unknown>;
+  assert(response.structuredContent === resultIdentity);
+  assertEquals(calls, [REVIEW_COMMAND]);
+  assertStringIncludes(response.content as string, REVIEW_COMMAND.artifactId);
+  assertStringIncludes(response.content as string, "geometry draft");
+  assertStringIncludes(response.content as string, "no source text");
+  assertStringIncludes(response.content as string, "not Thread");
+  assertStringIncludes(response.content as string, "design.write-geometry@1");
+
+  const tool = app.tool("project_admitted_geometry_export");
+  assertEquals(tool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  assertStringIncludes(tool.description, "exact admitted source bytes");
+  assertStringIncludes(tool.description, "geometry DRAFT");
+  assertStringIncludes(tool.description, "design.write-geometry@1");
+  assertEquals(tool.description.includes("design.execute-build123d@1"), true);
+  const inputSchema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(
+    Object.keys(inputSchema.properties as Record<string, unknown>).sort(),
+    ["artifactFingerprint", "artifactId", "basis", "projectId"],
+  );
+  assertClosedObjectSchemas(inputSchema);
+  assertEquals(
+    Object.keys(inputSchema.properties as Record<string, unknown>).some((key) =>
+      [
+        "sourceText",
+        "script",
+        "provider",
+        "toolName",
+        "path",
+        "image",
+        "formats",
+      ].includes(key)
+    ),
+    false,
+  );
+
+  let rejectedCalls = 0;
+  const rejecting = new CapturingApp();
+  registerProjectTechnicalCompilationTools(rejecting as unknown as McpApp, {
+    admittedGeometryExport: {
+      execute: () => {
+        rejectedCalls += 1;
+        return Promise.reject(new Error("must not be called"));
+      },
+    },
+  });
+  const handler = rejecting.handler("project_admitted_geometry_export");
+  await assertRejects(
+    () =>
+      handler({
+        ...structuredClone(REVIEW_COMMAND),
+        sourceText: "from build123d import Box",
+      }) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): sourceText",
+  );
+  const nestedAuthority = structuredClone(REVIEW_COMMAND) as Record<
+    string,
+    unknown
+  >;
+  (nestedAuthority.basis as Record<string, unknown>).image = "caller-selected";
+  await assertRejects(
+    () => handler(nestedAuthority) as Promise<unknown>,
+    TypeError,
+    "basis has unsupported field(s): image",
+  );
+  assertEquals(rejectedCalls, 0);
 });
 
 Deno.test("Build123d execution review forwards exact identity and passes through the use-case result", async () => {

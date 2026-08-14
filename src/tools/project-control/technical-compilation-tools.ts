@@ -1,5 +1,9 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import type {
+  ProjectAdmittedGeometryExportCommand,
+  ProjectAdmittedGeometryExportUseCase,
+} from "../../application/ports/in/project-admitted-geometry-export.ts";
+import type {
   ProjectBuild123dExecutionReviewCommand,
   ProjectBuild123dExecutionReviewUseCase,
 } from "../../application/ports/in/project-build123d-execution-review.ts";
@@ -26,6 +30,11 @@ export interface ProjectTechnicalCompilationToolDependencies {
   technicalSourceCapture?: ProjectTechnicalSourceCaptureUseCase;
   /** Provider-free compilation of captured sources against an exact basis. */
   technicalCompilationPreview?: ProjectTechnicalCompilationPreviewUseCase;
+  /**
+   * Private-sandbox export of exact admitted Build123d bytes as a geometry
+   * DRAFT. Absent when the sandbox provider is not composed.
+   */
+  admittedGeometryExport?: ProjectAdmittedGeometryExportUseCase;
   /** Provider-free preparation of one qualified Build123d execution review. */
   build123dExecutionReview?: ProjectBuild123dExecutionReviewUseCase;
   /** Read-only preparation of the one code-owned qualified Modelica kit run. */
@@ -63,6 +72,19 @@ export function registerProjectTechnicalCompilationTools(
         // Preserve every use-case-owned review field verbatim, including
         // decisionParameters when the ready result provides them. The MCP
         // surface must never derive or repair MRTR parameters itself.
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+
+  if (dependencies.admittedGeometryExport) {
+    const exportAdmitted = dependencies.admittedGeometryExport;
+    app.registerTool(projectAdmittedGeometryExportTool, async (args) => {
+      const command = admittedGeometryExportCommand(args);
+      const result = await exportAdmitted.execute(command);
+      return {
+        content:
+          `Admitted geometry export for sealed admission ${command.artifactId} completed as a geometry draft ${result.draftDigest}. Exact admitted bytes were reopened from compile.seal-admission@1 and sent to the private sandbox; callers supplied no source text, provider, tool, path or image. The result is not Thread state. Construct a later design.write-geometry@1 proposal only from the returned decisionParameters.`,
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -306,6 +328,25 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
   annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
 };
 
+const projectAdmittedGeometryExportTool: MCPTool = {
+  name: "project_admitted_geometry_export",
+  description:
+    "Reopen one sealed compile.seal-admission@1 Build123d compilation and export its exact admitted source bytes through the private build123d sandbox. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; source text, provider, tool, path, image and formats remain server-owned. The result is a geometry DRAFT plus decisionParameters for a later design.write-geometry@1 proposal. This writes no Thread state, grants no MRTR decision, and does not invoke design.execute-build123d@1.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+      basis: TECHNICAL_THREAD_BASIS_SCHEMA,
+      artifactId: TECHNICAL_ID_SCHEMA,
+      artifactFingerprint: FINGERPRINT_SCHEMA,
+    },
+    required: ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
+};
+
 const projectBuild123dExecutionReviewTool: MCPTool = {
   name: "project_build123d_execution_review",
   description:
@@ -400,6 +441,26 @@ function technicalCompilationPreviewCommand(
     ),
     profileRequests: value.profileRequests.map((request, index) =>
       technicalProfileRequest(request, `profileRequests[${index}]`)
+    ),
+  };
+}
+
+function admittedGeometryExportCommand(
+  value: Record<string, unknown>,
+): ProjectAdmittedGeometryExportCommand {
+  exactKeys(
+    value,
+    ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    [],
+    "admittedGeometryExport",
+  );
+  return {
+    projectId: technicalId(value.projectId, "projectId"),
+    basis: technicalThreadBasis(value.basis, "basis"),
+    artifactId: technicalId(value.artifactId, "artifactId"),
+    artifactFingerprint: fingerprintInput(
+      value.artifactFingerprint,
+      "artifactFingerprint",
     ),
   };
 }

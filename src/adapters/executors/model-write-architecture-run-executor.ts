@@ -553,177 +553,184 @@ export class ModelWriteArchitectureRunExecutor {
           );
         }
         if (plan.toInsert.length === 0) {
-          throw new EngineeringProjectCommandError(
-            "invalid_transition",
-            "All proposed architecture components are already present and adopted. " +
-              "No insertion is needed; this transition would produce no new evidence.",
+          const attested = await this.#attestAdoptedLegacyArchitecture({
+            predecessor: previousArchitectureArtifact,
+            existing,
+            proposal: architectureProposal,
+            adopted: plan.adopted,
+            projectId: project.project.id,
+            runId: run.id,
+            capturedAt,
+          });
+          architecturePackageId = attested.architecturePackageId;
+          adopted = attested.adopted;
+          sealedSources = attested.sealedSources;
+        } else {
+          sealedSources = await this.#captureAndReopenSysmlSources(
+            architectureProposal,
+            plan.mode,
+            plan.toInsert,
+            run.id,
           );
-        }
-
-        sealedSources = await this.#captureAndReopenSysmlSources(
-          architectureProposal,
-          plan.mode,
-          plan.toInsert,
-          run.id,
-        );
-        this.#assertSourcesMatchCurrentProposal(sealedSources, architectureProposal);
-        const sourceAnalyses = sealedSources.map((source) => source.reference);
-        const planDigest = await architectureWritePlanDigest({
-          items: plan.toInsert,
-          packageName: architectureProposal.packageName,
-          sourceAnalyses,
-        });
-        const walResult = await this.#walBeginOrFail(
-          project.project.id,
-          command.runId,
-          architectureProposal.packageName,
-          plan.toInsert,
-          planDigest,
-          capturedAt,
-          sourceAnalyses,
-        );
-        if (walResult.action === "completed") {
-          // A legacy or concurrently recovered record won the race. This branch
-          // is still strictly readback-only.
-          providerAcknowledged = true;
-          const completedAttempt = await this.#runAttemptOrFail(
+          this.#assertSourcesMatchCurrentProposal(sealedSources, architectureProposal);
+          const sourceAnalyses = sealedSources.map((source) => source.reference);
+          const planDigest = await architectureWritePlanDigest({
+            items: plan.toInsert,
+            packageName: architectureProposal.packageName,
+            sourceAnalyses,
+          });
+          const walResult = await this.#walBeginOrFail(
             project.project.id,
             command.runId,
-          );
-          if (completedAttempt?.schemaVersion === "architecture-write-attempt/3.0") {
-            sealedSources = await this.#reopenSysmlSources(
-              completedAttempt.sourceAnalyses,
-            );
-            this.#assertCurrentAttemptRunBasis(
-              completedAttempt,
-              architectureProposal,
-              run.id,
-              capturedAt,
-            );
-            this.#assertSourcesMatchCurrentProposal(
-              sealedSources,
-              architectureProposal,
-            );
-          } else {
-            // The durable acknowledgement predates source analysis. Keep the
-            // historical recovery historical: it may publish only v2 capture
-            // evidence, never a newly invented v3 source-analysis binding.
-            sealedSources = [];
-          }
-          const existingForResume = await extractArchitectureStructure(
-            this.#syson,
-            editingContextId,
-            rootPackageId,
             architectureProposal.packageName,
+            plan.toInsert,
+            planDigest,
+            capturedAt,
+            sourceAnalyses,
           );
-          if (!existingForResume) {
-            throw new EngineeringProjectCommandError(
-              "invalid_transition",
-              "WAL is completed but the architecture package is absent from SysON. " +
-                "Operator inspection required.",
-            );
-          }
-          architecturePackageId = walResult.architecturePackageId;
-          if (existingForResume.packageId !== architecturePackageId) {
-            throw new EngineeringProjectCommandError(
-              "invalid_transition",
-              "WAL recovery found an architecture Package whose id does not match the exact architecturePackageId pinned after acknowledgement.",
-            );
-          }
-        } else {
-          // Dispatch: perform all insertions.
-          try {
-            if (plan.mode === "initial") {
-              const sysml = sourceTextForSelector(sealedSources, {
-                kind: "full-package",
-                packageName: architectureProposal.packageName,
-              });
-              const result = await this.#syson.callTool({
-                name: "syson_element_insert_sysml",
-                arguments: {
-                  editing_context_id: editingContextId,
-                  parent_id: rootPackageId,
-                  sysml_text: sysml,
-                },
-              });
-              verifyInsertionAck(result.structuredContent, rootPackageId);
-              // Only a structurally valid acknowledgement establishes that a
-              // remote mutation happened. From this point every later error —
-              // including a Phase-B enrichment re-read — must take the
-              // post-acknowledgement quarantine path.
-              providerAcknowledged = true;
-            } else {
-              // Enrichment: insert per-item using the architecture package as root.
-              const packageId = existing!.packageId;
-              await this.#insertEnrichmentItems(
-                editingContextId,
-                packageId,
-                plan.toInsert,
-                sealedSources,
-                () => {
-                  providerAcknowledged = true;
-                },
-              );
-            }
-          } catch (error) {
-            if (!(error instanceof EngineeringProjectCommandError)) {
-              throw new ArchitectureWriteOutcomeUnknownError();
-            }
-            throw error;
-          }
-          // Resolve and fully verify the exact provider graph before promoting
-          // the WAL from dispatched to completed. An ACK alone proves only that
-          // a mutation may have occurred; it must never authorize publication.
-          const postInsert = await extractArchitectureStructure(
-            this.#syson,
-            editingContextId,
-            rootPackageId,
-            architectureProposal.packageName,
-          );
-          if (!postInsert) {
-            throw new EngineeringProjectCommandError(
-              "invalid_transition",
-              "The architecture package is absent from SysON immediately after insertion.",
-            );
-          }
-          if (existing && postInsert.packageId !== existing.packageId) {
-            throw new EngineeringProjectCommandError(
-              "invalid_transition",
-              "The architecture Package identity changed during enrichment readback.",
-            );
-          }
-          architecturePackageId = postInsert.packageId;
-          adopted = plan.adopted;
-          verifyAllComponentsPresent(postInsert, architectureProposal, adopted);
-          await this.#assertNoUnattestedLiveArchitecture(
-            postInsert,
-            architectureProposal,
-            previousArchitectureArtifact,
-          );
-
-          try {
-            await this.#attempts.complete({
-              projectId: project.project.id,
-              runId: command.runId,
-              planDigest,
-              architecturePackageId,
-            });
+          if (walResult.action === "completed") {
+            // A legacy or concurrently recovered record won the race. This branch
+            // is still strictly readback-only.
             providerAcknowledged = true;
-          } catch {
-            // A rename can be visible before the caller observes a later fsync
-            // error. Re-read the immutable run record: only an exact completed
-            // record pinned to this readback Package may resume safely.
-            const durable = await this.#runAttemptOrFail(
+            const completedAttempt = await this.#runAttemptOrFail(
               project.project.id,
               command.runId,
             );
-            if (
-              durable?.status !== "completed" || durable.planDigest !== planDigest ||
-              durable.result.architecturePackageId !== architecturePackageId
-            ) {
-              throw new ArchitectureWriteOutcomeUnknownError();
+            if (completedAttempt?.schemaVersion === "architecture-write-attempt/3.0") {
+              sealedSources = await this.#reopenSysmlSources(
+                completedAttempt.sourceAnalyses,
+              );
+              this.#assertCurrentAttemptRunBasis(
+                completedAttempt,
+                architectureProposal,
+                run.id,
+                capturedAt,
+              );
+              this.#assertSourcesMatchCurrentProposal(
+                sealedSources,
+                architectureProposal,
+              );
+            } else {
+              // The durable acknowledgement predates source analysis. Keep the
+              // historical recovery historical: it may publish only v2 capture
+              // evidence, never a newly invented v3 source-analysis binding.
+              sealedSources = [];
             }
-            providerAcknowledged = true;
+            const existingForResume = await extractArchitectureStructure(
+              this.#syson,
+              editingContextId,
+              rootPackageId,
+              architectureProposal.packageName,
+            );
+            if (!existingForResume) {
+              throw new EngineeringProjectCommandError(
+                "invalid_transition",
+                "WAL is completed but the architecture package is absent from SysON. " +
+                  "Operator inspection required.",
+              );
+            }
+            architecturePackageId = walResult.architecturePackageId;
+            if (existingForResume.packageId !== architecturePackageId) {
+              throw new EngineeringProjectCommandError(
+                "invalid_transition",
+                "WAL recovery found an architecture Package whose id does not match the exact architecturePackageId pinned after acknowledgement.",
+              );
+            }
+          } else {
+            // Dispatch: perform all insertions.
+            try {
+              if (plan.mode === "initial") {
+                const sysml = sourceTextForSelector(sealedSources, {
+                  kind: "full-package",
+                  packageName: architectureProposal.packageName,
+                });
+                const result = await this.#syson.callTool({
+                  name: "syson_element_insert_sysml",
+                  arguments: {
+                    editing_context_id: editingContextId,
+                    parent_id: rootPackageId,
+                    sysml_text: sysml,
+                  },
+                });
+                verifyInsertionAck(result.structuredContent, rootPackageId);
+                // Only a structurally valid acknowledgement establishes that a
+                // remote mutation happened. From this point every later error —
+                // including a Phase-B enrichment re-read — must take the
+                // post-acknowledgement quarantine path.
+                providerAcknowledged = true;
+              } else {
+                // Enrichment: insert per-item using the architecture package as root.
+                const packageId = existing!.packageId;
+                await this.#insertEnrichmentItems(
+                  editingContextId,
+                  packageId,
+                  plan.toInsert,
+                  sealedSources,
+                  () => {
+                    providerAcknowledged = true;
+                  },
+                );
+              }
+            } catch (error) {
+              if (!(error instanceof EngineeringProjectCommandError)) {
+                throw new ArchitectureWriteOutcomeUnknownError();
+              }
+              throw error;
+            }
+            // Resolve and fully verify the exact provider graph before promoting
+            // the WAL from dispatched to completed. An ACK alone proves only that
+            // a mutation may have occurred; it must never authorize publication.
+            const postInsert = await extractArchitectureStructure(
+              this.#syson,
+              editingContextId,
+              rootPackageId,
+              architectureProposal.packageName,
+            );
+            if (!postInsert) {
+              throw new EngineeringProjectCommandError(
+                "invalid_transition",
+                "The architecture package is absent from SysON immediately after insertion.",
+              );
+            }
+            if (existing && postInsert.packageId !== existing.packageId) {
+              throw new EngineeringProjectCommandError(
+                "invalid_transition",
+                "The architecture Package identity changed during enrichment readback.",
+              );
+            }
+            architecturePackageId = postInsert.packageId;
+            adopted = plan.adopted;
+            verifyAllComponentsPresent(postInsert, architectureProposal, adopted);
+            await this.#assertNoUnattestedLiveArchitecture(
+              postInsert,
+              architectureProposal,
+              previousArchitectureArtifact,
+            );
+
+            try {
+              await this.#attempts.complete({
+                projectId: project.project.id,
+                runId: command.runId,
+                planDigest,
+                architecturePackageId,
+              });
+              providerAcknowledged = true;
+            } catch {
+              // A rename can be visible before the caller observes a later fsync
+              // error. Re-read the immutable run record: only an exact completed
+              // record pinned to this readback Package may resume safely.
+              const durable = await this.#runAttemptOrFail(
+                project.project.id,
+                command.runId,
+              );
+              if (
+                durable?.status !== "completed" || durable.planDigest !== planDigest ||
+                durable.result.architecturePackageId !== architecturePackageId
+              ) {
+                throw new ArchitectureWriteOutcomeUnknownError();
+              }
+              providerAcknowledged = true;
+            }
           }
         }
       }
@@ -987,6 +994,91 @@ export class ModelWriteArchitectureRunExecutor {
       }
       if (claimed) await this.#recordFailure(origin, command);
       throw error;
+    }
+  }
+
+  /**
+   * Seal parser-backed 3.0 evidence when the live graph already matches a
+   * historical 2.0 tip. No SysON mutation: WAL is created completed.
+   */
+  async #attestAdoptedLegacyArchitecture(input: {
+    readonly predecessor: ThreadArtifact | undefined;
+    readonly existing: Awaited<ReturnType<typeof extractArchitectureStructure>>;
+    readonly proposal: ArchitectureProposal;
+    readonly adopted: ReturnType<typeof planArchitectureInsertion>["adopted"];
+    readonly projectId: string;
+    readonly runId: string;
+    readonly capturedAt: string;
+  }): Promise<{
+    readonly architecturePackageId: string;
+    readonly adopted: ReturnType<typeof planArchitectureInsertion>["adopted"];
+    readonly sealedSources: readonly VerifiedSysmlSourceAnalysis[];
+  }> {
+    if (
+      !input.predecessor ||
+      !await this.#predecessorIsLegacyArchitecture(input.predecessor)
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "All proposed architecture components are already present and adopted. " +
+          "No insertion is needed; this transition would produce no new evidence.",
+      );
+    }
+    if (!input.existing) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The architecture package is absent from SysON while the Thread tip still names it.",
+      );
+    }
+    const items = [{ kind: "full-package" as const }];
+    const sealedSources = await this.#captureAndReopenSysmlSources(
+      input.proposal,
+      "initial",
+      items,
+      input.runId,
+    );
+    this.#assertSourcesMatchCurrentProposal(sealedSources, input.proposal);
+    const sourceAnalyses = sealedSources.map((source) => source.reference);
+    const planDigest = await architectureWritePlanDigest({
+      items,
+      packageName: input.proposal.packageName,
+      sourceAnalyses,
+    });
+    try {
+      await this.#attempts.attest({
+        projectId: input.projectId,
+        runId: input.runId,
+        packageName: input.proposal.packageName,
+        items,
+        planDigest,
+        dispatchedAt: input.capturedAt,
+        sourceAnalyses,
+        architecturePackageId: input.existing.packageId,
+      });
+    } catch (error) {
+      if (error instanceof ArchitectureWriteOutcomeUnknownError) throw error;
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "The adopted architecture attestation could not be sealed.",
+      );
+    }
+    return {
+      architecturePackageId: input.existing.packageId,
+      adopted: input.adopted,
+      sealedSources,
+    };
+  }
+
+  async #predecessorIsLegacyArchitecture(
+    predecessor: ThreadArtifact,
+  ): Promise<boolean> {
+    const text = await this.#captures.read(predecessor.fingerprint);
+    if (!text) return false;
+    try {
+      const capture = parseExactArchitectureCapture(JSON.parse(text));
+      return capture.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA_LEGACY;
+    } catch {
+      return false;
     }
   }
 

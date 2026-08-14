@@ -106,9 +106,10 @@ export interface CurrentProjectWork {
  * lineage) from a sysml-model owned by a strictly earlier visible phase. It
  * writes into that earlier phase's model rather than opening a new
  * engineering stage — requirement anchoring is the canonical case — so it
- * folds under the phase that owns the enriched model. A phase deriving only
- * from its own evidence (the architecture growing out of its seed) never
- * folds into itself.
+ * folds under the phase that owns the enriched model. Architecture captures
+ * are not enrichments of the seed: they are a macro gate. A later
+ * architecture-capture tip in the same BFF evidence family wraps under the
+ * phase that owns the historical member.
  *
  * It deliberately uses no labels, title fragments or loose identifiers. If a
  * future project does not provide this evidence, its phase remains visible.
@@ -120,7 +121,11 @@ export const PROJECT_PATH_PRESENTATION_POLICY = {
     "explicit correction component + supersedes lineage + versioned operation identity",
   modelEnrichment: {
     requiredLineage:
-      "every artifact evidence is a sysml-model with recorded derived_from lineage to a sysml-model of a strictly earlier visible phase",
+      "every artifact evidence is a non-architecture-capture sysml-model with recorded derived_from lineage to a sysml-model of a strictly earlier visible phase",
+  },
+  architectureVersion: {
+    requiredLineage:
+      "every artifact evidence belongs to one current architecture-capture family whose historical member is owned by a strictly earlier visible phase",
   },
   enrichmentMeasurement: {
     requiredLineage:
@@ -367,6 +372,15 @@ export function buildProjectPath(
     hiddenPhaseIds,
   );
   enrichments.forEach((attachment) => hiddenPhaseIds.add(attachment.phaseId));
+  const architectureVersions = architectureVersionAttachments(
+    snapshot,
+    thread,
+    brief,
+    hiddenPhaseIds,
+  );
+  architectureVersions.forEach((attachment) =>
+    hiddenPhaseIds.add(attachment.phaseId)
+  );
   const measurements = enrichmentMeasurementAttachments(
     thread,
     brief,
@@ -405,6 +419,13 @@ export function buildProjectPath(
     }
     mutableLifecycle(lifecycles, parentPhaseId).revisionPhaseIds.add(
       revision.phaseId,
+    );
+  }
+
+  for (const version of architectureVersions) {
+    if (!phaseById.has(version.parentPhaseId)) continue;
+    mutableLifecycle(lifecycles, version.parentPhaseId).revisionPhaseIds.add(
+      version.phaseId,
     );
   }
 
@@ -601,6 +622,9 @@ function modelEnrichmentAttachments(
     const everyEvidenceIsEnrichment = evidenceKeys.every((evidenceKey) => {
       const evidenceNode = nodesByRef.get(evidenceKey);
       if (evidenceNode?.artifactKind !== "sysml-model") return false;
+      if (isArchitectureCaptureArtifact(thread, evidenceNode.ref.id)) {
+        return false;
+      }
       const parents = (derivedFromByTarget.get(evidenceKey) ?? [])
         .filter((edge) =>
           nodesByRef.get(graphRefKey(edge.from))?.artifactKind === "sysml-model"
@@ -675,6 +699,91 @@ function phaseIdsByArtifactLineage(
     }
   }
   return phaseIds;
+}
+
+const ARCHITECTURE_CAPTURE_URI_PREFIX = "casys://architecture-capture/";
+
+function isArchitectureCaptureArtifact(
+  thread: ThreadWorkbenchSnapshot,
+  artifactId: string,
+): boolean {
+  const artifact = thread.artifacts.find((item) => item.id === artifactId);
+  return artifact?.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX) === true;
+}
+
+/**
+ * A later architecture-capture tip in one current BFF family is a wrapped
+ * revision of the earlier phase that owns the historical member — not a
+ * second project gate.
+ */
+function architectureVersionAttachments(
+  snapshot: EngineeringProjectSnapshot,
+  thread: ThreadWorkbenchSnapshot,
+  brief: ProjectBrief,
+  hiddenPhaseIds: ReadonlySet<string>,
+): readonly RevisionAttachment[] {
+  const orderByPhaseId = new Map(
+    brief.phases.map((item) => [item.phase.id, item.phase.order]),
+  );
+  const ownersByArtifactId = new Map<string, string[]>();
+  for (const view of brief.phases) {
+    const workItems = view.phase.workItemIds.flatMap((id) => {
+      const item = snapshot.workItems.find((candidate) => candidate.id === id);
+      return item ? [item] : [];
+    });
+    const refs = [
+      ...view.phase.evidenceRefs,
+      ...workItems.flatMap((item) => item.evidenceRefs),
+    ].filter((ref) => ref.kind === "artifact");
+    for (const ref of refs) {
+      const owners = ownersByArtifactId.get(ref.id) ?? [];
+      owners.push(view.phase.id);
+      ownersByArtifactId.set(ref.id, owners);
+    }
+  }
+
+  const attachments: RevisionAttachment[] = [];
+  for (const view of brief.phases) {
+    if (hiddenPhaseIds.has(view.phase.id)) continue;
+    const evidenceIds = view.phase.evidenceRefs
+      .filter((ref) => ref.kind === "artifact")
+      .map((ref) => ref.id);
+    if (evidenceIds.length === 0) continue;
+    const families = thread.evidenceFamilyGraph.families.filter((family) =>
+      family.entityKind === "artifact" &&
+      family.status === "current" &&
+      family.currentRefs.length === 1 &&
+      evidenceIds.every((id) =>
+        [...family.historicalRefs, ...family.currentRefs].some((ref) =>
+          ref.kind === "artifact" && ref.id === id
+        )
+      )
+    );
+    if (families.length !== 1) continue;
+    const family = families[0]!;
+    const candidateOrder = orderByPhaseId.get(view.phase.id);
+    if (candidateOrder === undefined) continue;
+    const parentPhaseIds = new Set<string>();
+    for (const historical of family.historicalRefs) {
+      if (historical.kind !== "artifact") continue;
+      for (const phaseId of ownersByArtifactId.get(historical.id) ?? []) {
+        if (
+          phaseId !== view.phase.id &&
+          !hiddenPhaseIds.has(phaseId) &&
+          (orderByPhaseId.get(phaseId) ?? Number.POSITIVE_INFINITY) <
+            candidateOrder
+        ) {
+          parentPhaseIds.add(phaseId);
+        }
+      }
+    }
+    if (parentPhaseIds.size !== 1) continue;
+    attachments.push({
+      phaseId: view.phase.id,
+      parentPhaseId: [...parentPhaseIds][0]!,
+    });
+  }
+  return attachments;
 }
 
 function artifactPredecessors(

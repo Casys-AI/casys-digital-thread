@@ -18,6 +18,7 @@ import {
   type ThreadComponentCatalog,
 } from "../../domain/thread/thread-component-catalog.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
+import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 import type { AnalysisGraph } from "../../domain/analysis/analysis-graph.ts";
 import type {
@@ -28,6 +29,7 @@ import type {
   ThreadAction,
   ThreadAnalysisScope,
   ThreadArtifact,
+  ThreadEvidenceFamilyGraph,
   ThreadFlowStage,
   ThreadFreshness,
   ThreadGraph,
@@ -75,6 +77,12 @@ export function projectThreadWorkbenchSnapshot(
   );
   const components = projectComponents(current, componentCatalog);
   const graph = projectGraph(current, context, components);
+  const evidenceFamilyGraph = projectEvidenceFamilyGraph(graph, {
+    snapshotId: snapshot.id,
+    revision: snapshot.revision,
+  }, {
+    architectureCaptureIds: architectureCaptureIds(snapshot),
+  });
 
   return {
     schemaVersion: "thread-workbench/0.1",
@@ -110,14 +118,17 @@ export function projectThreadWorkbenchSnapshot(
     },
     components,
     graph,
-    evidenceFamilyGraph: projectEvidenceFamilyGraph(graph, {
-      snapshotId: snapshot.id,
-      revision: snapshot.revision,
-    }),
+    evidenceFamilyGraph,
     // `current` excludes retired entities while retaining the immutable
     // changeSet, so the archive event stays visible without reviving its
-    // former evidence in the flow.
-    flow: projectFlow(current, context),
+    // former evidence in the flow. Historical family members stay in the
+    // inspector version list, not as sibling flow stages.
+    flow: projectFlow(
+      current,
+      context,
+      historicalFamilyArtifactIds(evidenceFamilyGraph),
+      currentArtifactIdByHistoricalId(evidenceFamilyGraph),
+    ),
     artifacts,
     observations,
     requirements,
@@ -1178,6 +1189,8 @@ const GRAPH_PROVENANCE_DIRECTION: Record<
 function projectFlow(
   snapshot: ThreadSnapshot,
   context: ProjectionContext,
+  historicalArtifactIds: ReadonlySet<string> = new Set(),
+  currentIdByHistoricalId: ReadonlyMap<string, string> = new Map(),
 ): ThreadFlowStage[] {
   const stages: ThreadFlowStage[] = [{
     id: `flow:${snapshot.changeSet.id}`,
@@ -1191,6 +1204,7 @@ function projectFlow(
   }];
 
   for (const artifact of topologicallySortedArtifacts(snapshot.artifacts)) {
+    if (historicalArtifactIds.has(artifact.id)) continue;
     stages.push({
       id: `flow:artifact:${artifact.id}`,
       label: artifact.name,
@@ -1199,7 +1213,12 @@ function projectFlow(
       summary: `${artifact.kind} · ${artifact.version}`,
       selection: { kind: "artifact", id: artifact.id },
       dependsOn: artifact.inputArtifactIds
-        .filter((inputId) => context.artifacts.has(inputId))
+        .map((inputId) => currentIdByHistoricalId.get(inputId) ?? inputId)
+        .filter((inputId) =>
+          inputId !== artifact.id &&
+          context.artifacts.has(inputId) &&
+          !historicalArtifactIds.has(inputId)
+        )
         .map((inputId) => flowStageId({ kind: "artifact", id: inputId }))
         .filter(isDefined)
         .filter(unique),
@@ -1215,7 +1234,11 @@ function projectFlow(
       summary: projected.display,
       selection: { kind: "observation", id: observation.id },
       dependsOn: observation.source.artifactIds
-        .filter((artifactId) => context.artifacts.has(artifactId))
+        .map((artifactId) => currentIdByHistoricalId.get(artifactId) ?? artifactId)
+        .filter((artifactId) =>
+          context.artifacts.has(artifactId) &&
+          !historicalArtifactIds.has(artifactId)
+        )
         .map((artifactId) => flowStageId({ kind: "artifact", id: artifactId }))
         .filter(isDefined)
         .filter(unique),
@@ -1253,6 +1276,7 @@ function projectFlow(
         { kind: "requirement", id: requirement.id },
         ["traces_to"],
         context,
+        currentIdByHistoricalId,
       ),
     });
   }
@@ -1270,6 +1294,7 @@ function projectFlow(
         { kind: "evaluation", id: evaluation.id },
         ["evaluates", "uses", "evidences"],
         context,
+        currentIdByHistoricalId,
       ),
     });
   }
@@ -1288,6 +1313,7 @@ function projectFlow(
         { kind: "violation", id: violation.id },
         ["caused_by", "evidences"],
         context,
+        currentIdByHistoricalId,
       ),
     });
   }
@@ -1307,10 +1333,20 @@ function linkedFlowDependencies(
   from: ThreadEntityRef,
   relations: ThreadProvenanceLink["relation"][],
   context: ProjectionContext,
+  currentIdByHistoricalId: ReadonlyMap<string, string> = new Map(),
 ): string[] {
   return (context.provenanceByFrom.get(entityKey(from)) ?? [])
     .filter((link) => relations.includes(link.relation))
-    .map((link) => flowStageId(link.to))
+    .map((link) =>
+      flowStageId(
+        link.to.kind === "artifact"
+          ? {
+            kind: "artifact",
+            id: currentIdByHistoricalId.get(link.to.id) ?? link.to.id,
+          }
+          : link.to,
+      )
+    )
     .filter(isDefined)
     .filter(unique);
 }
@@ -1483,6 +1519,40 @@ function topologicallySortedArtifacts(
 
   for (const artifact of artifacts) visit(artifact);
   return result;
+}
+
+function architectureCaptureIds(snapshot: ThreadSnapshot): ReadonlySet<string> {
+  return new Set(
+    snapshot.artifacts
+      .filter((artifact) => artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX))
+      .map((artifact) => artifact.id),
+  );
+}
+
+function historicalFamilyArtifactIds(
+  familyGraph: ThreadEvidenceFamilyGraph,
+): ReadonlySet<string> {
+  return new Set(currentArtifactIdByHistoricalId(familyGraph).keys());
+}
+
+function currentArtifactIdByHistoricalId(
+  familyGraph: ThreadEvidenceFamilyGraph,
+): ReadonlyMap<string, string> {
+  const currentByHistorical = new Map<string, string>();
+  for (const family of familyGraph.families) {
+    if (
+      family.entityKind !== "artifact" || family.status !== "current" ||
+      family.currentRefs.length !== 1 ||
+      family.currentRefs[0]?.kind !== "artifact"
+    ) continue;
+    const currentId = family.currentRefs[0].id;
+    for (const reference of family.historicalRefs) {
+      if (reference.kind === "artifact") {
+        currentByHistorical.set(reference.id, currentId);
+      }
+    }
+  }
+  return currentByHistorical;
 }
 
 function groupedBy<T>(

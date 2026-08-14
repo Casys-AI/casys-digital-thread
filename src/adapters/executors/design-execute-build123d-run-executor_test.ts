@@ -444,7 +444,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
       language: "python",
       fingerprint: sourceFingerprint,
     },
-    analyzer: { id: "build123d-qualified-lezer", version: "1.0.0" },
+    analyzer: { id: "build123d-qualified-lezer", version: "1.1.0" },
     policy: {
       profile: "build123d-closed-subset-v1",
       status: "passed",

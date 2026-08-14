@@ -434,6 +434,54 @@ Deno.test("architecture WAL fails closed for contradictory completed legacy mark
   });
 });
 
+Deno.test("architecture WAL attest writes a completed record without a dispatched mutation", async () => {
+  await withStore(async (_directory, store) => {
+    const exactInput = await input({ fingerprintDigit: "a" });
+    await store.attest({
+      ...exactInput,
+      architecturePackageId: PACKAGE_ID,
+    });
+    assertEquals(await store.readRun(ID.projectId, ID.runId), {
+      schemaVersion: "architecture-write-attempt/3.0",
+      ...ID,
+      packageName: PACKAGE_NAME,
+      items: [...FULL_PACKAGE_ITEMS],
+      sourceAnalyses: exactInput.sourceAnalyses,
+      planDigest: exactInput.planDigest,
+      status: "completed",
+      dispatchedAt: AT,
+      result: { inserted: "true", architecturePackageId: PACKAGE_ID },
+    });
+    await store.attest({
+      ...exactInput,
+      architecturePackageId: PACKAGE_ID,
+    });
+    await assertRejects(
+      () =>
+        store.attest({
+          ...exactInput,
+          architecturePackageId: "other-package",
+        }),
+      ArchitectureWriteOutcomeUnknownError,
+    );
+  });
+});
+
+Deno.test("architecture WAL attest refuses to overwrite a dispatched mutation record", async () => {
+  await withStore(async (_directory, store) => {
+    const exactInput = await input({ fingerprintDigit: "a" });
+    await store.begin(exactInput);
+    await assertRejects(
+      () =>
+        store.attest({
+          ...exactInput,
+          architecturePackageId: PACKAGE_ID,
+        }),
+      ArchitectureWriteOutcomeUnknownError,
+    );
+  });
+});
+
 Deno.test("architecture WAL gives a hash-format record priority over legacy debris", async () => {
   await withStore(async (directory, store) => {
     const exactInput = await input({ fingerprintDigit: "c" });

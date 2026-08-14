@@ -159,6 +159,65 @@ export class FileArchitectureAttemptStore {
     return actionFor(existing);
   }
 
+  /**
+   * Persist a completed v3 acknowledgement without a dispatched mutation.
+   *
+   * Used when the live SysON graph already matches the signed proposal and the
+   * only new evidence is parser-backed source analysis (historical 2.0 → 3.0).
+   * There is no provider crash window: the record is created completed.
+   */
+  async attest(input: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly packageName: string;
+    readonly items: readonly InsertionItem[];
+    readonly planDigest: string;
+    readonly dispatchedAt: string;
+    readonly sourceAnalyses: readonly SysmlSourceAnalysisReference[];
+    readonly architecturePackageId: string;
+  }): Promise<void> {
+    const architecturePackageId = nonEmpty(
+      input.architecturePackageId,
+      "architecturePackageId",
+    );
+    const fresh = await attempt(input);
+    const completed: ArchitectureWriteAttempt = {
+      ...fresh,
+      status: "completed",
+      result: { inserted: "true", architecturePackageId },
+    };
+    await Deno.mkdir(this.directory, { recursive: true });
+    let current: ArchitectureWriteAttempt | undefined;
+    try {
+      current = await this.readRun(fresh.projectId, fresh.runId);
+    } catch {
+      throw new ArchitectureWriteOutcomeUnknownError();
+    }
+    if (current) {
+      if (deterministicJson(current) !== deterministicJson(completed)) {
+        throw new ArchitectureWriteOutcomeUnknownError();
+      }
+      await syncAttemptDirectoryChain(this.directory);
+      return;
+    }
+    const path = await this.pathFor(fresh.projectId, fresh.runId);
+    try {
+      await writeNewAttemptFileDurably(
+        path,
+        `${deterministicJson(completed)}\n`,
+        this.directory,
+        NO_WRITE_PROGRESS,
+      );
+    } catch (error) {
+      if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+      const existing = await this.requiredRun(fresh.projectId, fresh.runId);
+      if (deterministicJson(existing) !== deterministicJson(completed)) {
+        throw new ArchitectureWriteOutcomeUnknownError();
+      }
+      await syncAttemptDirectoryChain(this.directory);
+    }
+  }
+
   /** Mark the run completed only after exact readback pinned the Package id. */
   async complete(input: {
     readonly projectId: string;

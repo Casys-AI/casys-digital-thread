@@ -320,6 +320,62 @@ Deno.test("the Workbench omits predecessor history for an initial snapshot", () 
   assertEquals(projection.previous, undefined);
 });
 
+Deno.test(
+  "the Workbench wraps architecture-capture predecessor and tip as one family",
+  () => {
+    const canonical = clone(linkedSnapshot());
+    const predecessorDigest = "4".repeat(64);
+    const tipDigest = "5".repeat(64);
+    const predecessorId = `architecture-${predecessorDigest}`;
+    const tipId = `architecture-${tipDigest}`;
+    canonical.artifacts.push(
+      {
+        id: predecessorId,
+        name: "Architecture: DeskLampDL04",
+        kind: "sysml-model",
+        version: predecessorDigest,
+        fingerprint: { algorithm: "sha256", digest: predecessorDigest },
+        uri: `casys://architecture-capture/sha256/${predecessorDigest}`,
+        producer: operation("syson", "syson_element_insert_sysml", "run-arch-v2"),
+        inputArtifactIds: [],
+        freshness: fresh(),
+      },
+      {
+        id: tipId,
+        name: "Architecture: DeskLampDL04",
+        kind: "sysml-model",
+        version: tipDigest,
+        fingerprint: { algorithm: "sha256", digest: tipDigest },
+        uri: `casys://architecture-capture/sha256/${tipDigest}`,
+        producer: operation("syson", "syson_element_insert_sysml", "run-arch-v3"),
+        inputArtifactIds: [predecessorId],
+        freshness: fresh(),
+      },
+    );
+    canonical.provenance.push(
+      link("derived_from", "artifact", tipId, "artifact", predecessorId),
+    );
+
+    const projection = projectThreadWorkbenchSnapshot(canonical);
+    const family = projection.evidenceFamilyGraph.families.find((candidate) =>
+      candidate.currentRefs.some((reference) => reference.id === tipId)
+    );
+
+    assertEquals(family?.status, "current");
+    assertEquals(family?.historicalRefs.map((reference) => reference.id), [
+      predecessorId,
+    ]);
+    assertEquals(
+      projection.flow.some((stage) => stage.id === `flow:artifact:${predecessorId}`),
+      false,
+    );
+    assertEquals(
+      projection.flow.some((stage) => stage.id === `flow:artifact:${tipId}`),
+      true,
+    );
+  },
+);
+
 Deno.test("the Workbench BFF projects a convergent requirement revision family", () => {
   const canonical = linkedSnapshot();
   const original = canonical.requirements[0]!;

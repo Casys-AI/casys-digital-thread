@@ -1,15 +1,18 @@
 /**
- * Parser-backed frontend for the first qualified build123d source subset.
+ * Parser-backed frontend for the qualified build123d source subset.
  *
  * This adapter never imports or executes Python/build123d.  It first applies
  * the existing D4 execution-surface validator, then proves a deliberately
  * smaller AST subset:
  *
- * - `from build123d import Box` (an explicit alias is allowed);
+ * - named imports of Box, Cylinder, Pos and Compound (aliases allowed;
+ *   two aliases for the same imported name stay ambiguous);
  * - unique module-level parameter assignments made only of finite decimal
  *   numbers, unary/binary arithmetic, earlier parameters, and flat lists;
- * - one module-level `result = Box(length, width, height)` with exactly three
- *   scalar positional arguments from the same expression subset.
+ * - unique module-level solid assignments: a Box/Cylinder call, a Pos *
+ *   solid, a solid + solid, a name of an earlier solid, or
+ *   `Compound(children=[...])` over earlier solid names;
+ * - one module-level `result` that is itself one of those solids.
  *
  * Anything D4 considers dangerous is rejected.  Syntax that D4 allows but
  * this frontend cannot prove is recorded as unresolved, so it can never yield
@@ -43,7 +46,7 @@ import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 
 export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
   "build123d-qualified-lezer" as const;
-export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.0.0" as const;
+export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.1.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
 
@@ -54,7 +57,10 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
  */
 const QUALIFIED_BUILD123D_CALLS = new Map(
   [
-    ["Box", { positionalArguments: 3 }],
+    ["Box", { role: "solid", positionalArguments: 3 }],
+    ["Cylinder", { role: "solid", positionalArguments: 2 }],
+    ["Pos", { role: "placement", positionalArguments: 3 }],
+    ["Compound", { role: "assembly", positionalArguments: 0 }],
   ] as const,
 );
 
@@ -84,6 +90,18 @@ interface SupportedParameter {
   readonly shape: "scalar" | "list";
   readonly references: readonly SupportedParameter[];
   readonly symbol: SourceAnalysisSymbol;
+}
+
+interface SupportedShape {
+  readonly assignment: SimpleAssignment;
+  readonly symbol: SourceAnalysisSymbol;
+  readonly parameterReferences: readonly SupportedParameter[];
+  readonly shapeReferences: readonly SupportedShape[];
+}
+
+interface ShapeExpression {
+  readonly parameterReferences: readonly SupportedParameter[];
+  readonly shapeReferences: readonly SupportedShape[];
 }
 
 interface StaticExpression {
@@ -156,10 +174,14 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         continue;
       }
       for (const name of imported.names) {
-        if (name.imported !== "Box") {
+        if (
+          !QUALIFIED_BUILD123D_CALLS.has(
+            name.imported as "Box" | "Cylinder" | "Pos" | "Compound",
+          )
+        ) {
           addUnresolved(
             "build123d-call-not-qualified",
-            `build123d name ${name.imported} is admitted by D4 but not qualified by the v1 frontend.`,
+            `build123d name ${name.imported} is admitted by D4 but not qualified by the v1.1 frontend.`,
             name.node,
           );
           continue;
@@ -176,14 +198,22 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         importedCalls.set(name.local, name);
       }
     }
-    if (importedCalls.size > 1) {
-      const duplicate = [...importedCalls.values()][1]!;
-      addUnresolved(
-        "build123d-import-ambiguous",
-        "Exactly one local binding for the qualified Box constructor is allowed in v1.",
-        duplicate.node,
-      );
-      importedCalls.clear();
+    const aliasesByImported = new Map<string, ImportedName[]>();
+    for (const name of importedCalls.values()) {
+      const aliases = aliasesByImported.get(name.imported) ?? [];
+      aliases.push(name);
+      aliasesByImported.set(name.imported, aliases);
+    }
+    for (const aliases of aliasesByImported.values()) {
+      if (aliases.length < 2) continue;
+      for (const alias of aliases) {
+        addUnresolved(
+          "build123d-import-ambiguous",
+          `Imported name ${alias.imported} has more than one local binding.`,
+          alias.node,
+        );
+        importedCalls.delete(alias.local);
+      }
     }
 
     const assignments = root.children
@@ -202,6 +232,8 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
 
     const parameterByName = new Map<string, SupportedParameter>();
     const parameters: SupportedParameter[] = [];
+    const shapeByName = new Map<string, SupportedShape>();
+    const shapes: SupportedShape[] = [];
     for (const node of root.children) {
       if (node.name === "ImportStatement") continue;
       if (node.name !== "AssignStatement") {
@@ -223,7 +255,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       if ((assignmentCounts.get(assignment.name) ?? 0) !== 1) {
         addUnresolved(
           "python-reassignment",
-          `Parameter ${assignment.name} is assigned more than once.`,
+          `Name ${assignment.name} is assigned more than once.`,
           node,
         );
         continue;
@@ -238,34 +270,64 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         continue;
       }
 
-      const expression = parseStaticExpression(assignment.rhs, parameterByName);
-      if (expression === undefined) {
-        addExpressionUnresolved(assignment.rhs, addUnresolved);
-        addUnresolved(
-          "python-parameter-expression-not-qualified",
-          `Parameter ${assignment.name} is not a closed v1 numeric/arithmetic/list expression.`,
-          assignment.rhs,
-        );
+      const numeric = parseStaticExpression(assignment.rhs, parameterByName);
+      if (numeric !== undefined) {
+        const symbol: SourceAnalysisSymbol = {
+          id: await astStableId(
+            "parameter",
+            input.sourceId,
+            assignment.assignment,
+          ),
+          kind: "parameter",
+          name: assignment.name,
+          span: positions.span(assignment.nameNode.from, assignment.nameNode.to),
+        };
+        const parameter: SupportedParameter = {
+          assignment,
+          shape: numeric.shape,
+          references: uniqueParameters(numeric.references),
+          symbol,
+        };
+        parameters.push(parameter);
+        parameterByName.set(assignment.name, parameter);
         continue;
       }
-      const symbol: SourceAnalysisSymbol = {
-        id: await astStableId(
-          "parameter",
-          input.sourceId,
-          assignment.assignment,
-        ),
-        kind: "parameter",
-        name: assignment.name,
-        span: positions.span(assignment.nameNode.from, assignment.nameNode.to),
-      };
-      const parameter: SupportedParameter = {
-        assignment,
-        shape: expression.shape,
-        references: uniqueParameters(expression.references),
-        symbol,
-      };
-      parameters.push(parameter);
-      parameterByName.set(assignment.name, parameter);
+
+      const solid = parseShapeExpression(
+        assignment.rhs,
+        importedCalls,
+        parameterByName,
+        shapeByName,
+        assignment.assignment.from,
+      );
+      if (solid !== undefined) {
+        const symbol: SourceAnalysisSymbol = {
+          id: await astStableId(
+            "variable",
+            input.sourceId,
+            assignment.assignment,
+          ),
+          kind: "variable",
+          name: assignment.name,
+          span: positions.span(assignment.nameNode.from, assignment.nameNode.to),
+        };
+        const shape: SupportedShape = {
+          assignment,
+          symbol,
+          parameterReferences: uniqueParameters(solid.parameterReferences),
+          shapeReferences: uniqueShapes(solid.shapeReferences),
+        };
+        shapes.push(shape);
+        shapeByName.set(assignment.name, shape);
+        continue;
+      }
+
+      addExpressionUnresolved(assignment.rhs, addUnresolved);
+      addUnresolved(
+        "python-parameter-expression-not-qualified",
+        `Assignment ${assignment.name} is not a closed v1.1 numeric expression or solid.`,
+        assignment.rhs,
+      );
     }
 
     const resultAssignments = simpleAssignments.filter((assignment) =>
@@ -292,7 +354,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       ),
     };
 
-    const resultReferences = parseQualifiedResult(
+    const resultSolid = parseShapeExpression(
       resultAssignment.rhs,
       importedCalls,
       new Map(
@@ -300,13 +362,18 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
           parameter.assignment.assignment.from < resultAssignment.assignment.from
         ),
       ),
+      new Map(
+        [...shapeByName].filter(([, shape]) =>
+          shape.assignment.assignment.from < resultAssignment.assignment.from
+        ),
+      ),
       resultAssignment.assignment.from,
     );
-    if (resultReferences === undefined) {
+    if (resultSolid === undefined) {
       addExpressionUnresolved(resultAssignment.rhs, addUnresolved);
       addUnresolved(
         "build123d-result-not-qualified",
-        "result must be one Box call with exactly three scalar positional v1 expressions.",
+        "result must be one qualified solid: Box/Cylinder, Pos * solid, solid + solid, or Compound(children=[...]).",
         resultAssignment.rhs,
       );
     }
@@ -326,8 +393,46 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         );
       }
     }
-    if (resultReferences !== undefined) {
-      for (const reference of uniqueParameters(resultReferences)) {
+    for (const shape of shapes) {
+      for (const reference of shape.parameterReferences) {
+        dependencies.push(
+          await dependency(
+            "static-value-flow",
+            input.sourceId,
+            reference.symbol.id,
+            shape.symbol.id,
+            shape.assignment.rhs,
+            positions,
+          ),
+        );
+      }
+      for (const reference of shape.shapeReferences) {
+        dependencies.push(
+          await dependency(
+            "structural-incidence",
+            input.sourceId,
+            reference.symbol.id,
+            shape.symbol.id,
+            shape.assignment.rhs,
+            positions,
+          ),
+        );
+      }
+    }
+    if (resultSolid !== undefined) {
+      for (const reference of uniqueParameters(resultSolid.parameterReferences)) {
+        dependencies.push(
+          await dependency(
+            "structural-incidence",
+            input.sourceId,
+            reference.symbol.id,
+            resultSymbol.id,
+            resultAssignment.rhs,
+            positions,
+          ),
+        );
+      }
+      for (const reference of uniqueShapes(resultSolid.shapeReferences)) {
         dependencies.push(
           await dependency(
             "structural-incidence",
@@ -382,19 +487,136 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         status: "passed",
         findings: [],
       },
-      symbols: [...parameters.map((parameter) => parameter.symbol), resultSymbol],
+      symbols: [
+        ...parameters.map((parameter) => parameter.symbol),
+        ...shapes.map((shape) => shape.symbol),
+        resultSymbol,
+      ],
       dependencies: deduplicateDependencies(dependencies),
       unresolvedConstructs: unresolved,
     });
   }
 }
 
-function parseQualifiedResult(
+function parseShapeExpression(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
-  resultStart: number,
-): readonly SupportedParameter[] | undefined {
+  shapes: ReadonlyMap<string, SupportedShape>,
+  before: number,
+): ShapeExpression | undefined {
+  if (node.name === "ParenthesizedExpression") {
+    const inner = node.children.find(isStaticExpressionNode);
+    return inner === undefined ? undefined : parseShapeExpression(
+      inner,
+      importedCalls,
+      parameters,
+      shapes,
+      before,
+    );
+  }
+  if (node.name === "VariableName") {
+    const shape = shapes.get(currentText(node));
+    if (shape === undefined || shape.assignment.assignment.from >= before) {
+      return undefined;
+    }
+    return { parameterReferences: [], shapeReferences: [shape] };
+  }
+  const positionalSolid = parsePositionalSolidCall(
+    node,
+    importedCalls,
+    parameters,
+    before,
+  );
+  if (positionalSolid !== undefined) return positionalSolid;
+  const compound = parseCompoundCall(node, importedCalls, shapes, before);
+  if (compound !== undefined) return compound;
+  if (node.name !== "BinaryExpression" || node.children.length !== 3) {
+    return undefined;
+  }
+  const [left, operator, right] = node.children;
+  if (left === undefined || right === undefined || operator?.name !== "ArithOp") {
+    return undefined;
+  }
+  const operatorText = currentText(operator);
+  if (operatorText === "*") {
+    const placement = parsePositionalCall(
+      left,
+      importedCalls,
+      parameters,
+      before,
+      "Pos",
+    );
+    const solid = parseShapeExpression(
+      right,
+      importedCalls,
+      parameters,
+      shapes,
+      before,
+    );
+    if (placement === undefined || solid === undefined) return undefined;
+    return {
+      parameterReferences: [
+        ...placement.parameterReferences,
+        ...solid.parameterReferences,
+      ],
+      shapeReferences: solid.shapeReferences,
+    };
+  }
+  if (operatorText !== "+") return undefined;
+  const leftSolid = parseShapeExpression(
+    left,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+  );
+  const rightSolid = parseShapeExpression(
+    right,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+  );
+  if (leftSolid === undefined || rightSolid === undefined) return undefined;
+  return {
+    parameterReferences: [
+      ...leftSolid.parameterReferences,
+      ...rightSolid.parameterReferences,
+    ],
+    shapeReferences: [
+      ...leftSolid.shapeReferences,
+      ...rightSolid.shapeReferences,
+    ],
+  };
+}
+
+function parsePositionalSolidCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  before: number,
+): ShapeExpression | undefined {
+  for (const imported of ["Box", "Cylinder"] as const) {
+    const parsed = parsePositionalCall(
+      node,
+      importedCalls,
+      parameters,
+      before,
+      imported,
+    );
+    if (parsed !== undefined) return parsed;
+  }
+  return undefined;
+}
+
+function parsePositionalCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  before: number,
+  importedName: "Box" | "Cylinder" | "Pos",
+): ShapeExpression | undefined {
   if (node.name !== "CallExpression" || node.children.length !== 2) {
     return undefined;
   }
@@ -403,10 +625,10 @@ function parseQualifiedResult(
     return undefined;
   }
   const imported = importedCalls.get(currentText(callee));
-  if (imported?.imported !== "Box" || imported.node.from >= resultStart) {
+  if (imported?.imported !== importedName || imported.node.from >= before) {
     return undefined;
   }
-  const policy = QUALIFIED_BUILD123D_CALLS.get("Box")!;
+  const policy = QUALIFIED_BUILD123D_CALLS.get(importedName)!;
   const expressions = argList.children.filter(isArgumentExpression);
   if (
     expressions.length !== policy.positionalArguments ||
@@ -416,13 +638,54 @@ function parseQualifiedResult(
   ) {
     return undefined;
   }
-  const references: SupportedParameter[] = [];
+  const parameterReferences: SupportedParameter[] = [];
   for (const expressionNode of expressions) {
     const expression = parseStaticExpression(expressionNode, parameters);
     if (expression === undefined || expression.shape !== "scalar") return undefined;
-    references.push(...expression.references);
+    parameterReferences.push(...expression.references);
   }
-  return references;
+  return { parameterReferences, shapeReferences: [] };
+}
+
+function parseCompoundCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  before: number,
+): ShapeExpression | undefined {
+  if (node.name !== "CallExpression" || node.children.length !== 2) {
+    return undefined;
+  }
+  const [callee, argList] = node.children;
+  if (callee?.name !== "VariableName" || argList?.name !== "ArgList") {
+    return undefined;
+  }
+  const imported = importedCalls.get(currentText(callee));
+  if (imported?.imported !== "Compound" || imported.node.from >= before) {
+    return undefined;
+  }
+  const meaningful = argList.children.filter(isArgumentExpression);
+  if (meaningful.length !== 3) return undefined;
+  const [keyword, assign, value] = meaningful;
+  if (
+    keyword?.name !== "VariableName" || currentText(keyword) !== "children" ||
+    assign?.name !== "AssignOp" || currentText(assign) !== "=" ||
+    value?.name !== "ArrayExpression"
+  ) {
+    return undefined;
+  }
+  const shapeReferences: SupportedShape[] = [];
+  for (const element of value.children.filter(isArrayElement)) {
+    if (element.name !== "VariableName") return undefined;
+    const shape = shapes.get(currentText(element));
+    if (shape === undefined || shape.assignment.assignment.from >= before) {
+      return undefined;
+    }
+    shapeReferences.push(shape);
+  }
+  return shapeReferences.length === 0
+    ? undefined
+    : { parameterReferences: [], shapeReferences };
 }
 
 function parseStaticExpression(
@@ -603,7 +866,7 @@ function addExpressionUnresolved(
     } else if (candidate.name === "CallExpression") {
       add(
         "python-dynamic-call",
-        "Only the reviewed direct Box result call is qualified in v1.",
+        "Only reviewed direct Box, Cylinder, Pos, or Compound calls are qualified.",
         candidate,
       );
     }
@@ -723,7 +986,7 @@ function bundleBase(
 }
 
 async function astStableId(
-  prefix: "parameter" | "artifact" | "dependency" | "unresolved",
+  prefix: "parameter" | "artifact" | "variable" | "dependency" | "unresolved",
   sourceId: string,
   node: ParsedNode,
   discriminator = "",
@@ -808,6 +1071,14 @@ function uniqueParameters(
 ): readonly SupportedParameter[] {
   const byId = new Map<string, SupportedParameter>();
   for (const parameter of parameters) byId.set(parameter.symbol.id, parameter);
+  return [...byId.values()];
+}
+
+function uniqueShapes(
+  shapes: readonly SupportedShape[],
+): readonly SupportedShape[] {
+  const byId = new Map<string, SupportedShape>();
+  for (const shape of shapes) byId.set(shape.symbol.id, shape);
   return [...byId.values()];
 }
 

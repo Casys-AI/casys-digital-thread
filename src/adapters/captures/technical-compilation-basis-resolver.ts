@@ -582,6 +582,11 @@ async function requirementsElements(
       );
     }
     components.add(capture.containerComponent);
+    // V2 remains readable for historical workflows, but it cannot contribute
+    // native constraint identities. After a later parser-backed architecture
+    // tip, a V2 capture still names its original architecture predecessor and
+    // must not fail-close the compilation basis.
+    if (!isExactRequirementsCaptureV3(capture)) continue;
     assertRequirementsInputs(
       snapshot,
       artifact,
@@ -619,9 +624,6 @@ async function requirementsElements(
       snapshots,
       projectThreadSnapshots,
     );
-    // V2 remains readable for historical workflows, but it cannot contribute
-    // native constraint identities to a technical compilation anchor.
-    if (!isExactRequirementsCaptureV3(capture)) continue;
 
     const provenance = elementProvenance(artifact);
     elements.push({

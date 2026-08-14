@@ -1181,6 +1181,82 @@ async function queuedArchitectureBasisSnapshot(
   return snapshot;
 }
 
+async function queueArchitectureReseal(
+  fixture: Pick<ArchFixture, "projects" | "commands" | "snapshots">,
+  completed: Awaited<ReturnType<ModelWriteArchitectureRunExecutor["execute"]>>,
+): Promise<{ readonly revision: number; readonly runId: string }> {
+  const firstRun = completed.agentRuns.find((run) => run.id === "run:architecture");
+  assertExists(firstRun?.resultSnapshot);
+  const base = await fixture.snapshots.get(firstRun.resultSnapshot.snapshotId);
+  assertExists(base);
+  let project = await fixture.commands.appendChange(AGENT, {
+    ...ctx("append-architecture-reseal", completed.revision),
+    baseSnapshot: {
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+    phases: [{
+      id: "arch-reseal",
+      name: "Architecture source attestation",
+      description: "Seal parser-backed architecture evidence for the adopted graph.",
+    }],
+    workItems: [{
+      id: "wi:architecture-reseal",
+      phaseId: "arch-reseal",
+      owner: "agent",
+      dependsOnWorkItemIds: ["wi:architecture"],
+      decisionIds: ["decision:arch-reseal"],
+      operation: {
+        ...MODEL_WRITE_ARCHITECTURE_OPERATION,
+        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+      },
+    }],
+    requiredDecisions: [{
+      id: "decision:arch-reseal",
+      phaseId: "arch-reseal",
+      title: "Architecture source attestation",
+      question: "Seal the already-adopted architecture as parser-backed 3.0 evidence?",
+    }],
+  });
+  project = await fixture.commands.proposeDecision(AGENT, {
+    ...ctx("propose-architecture-reseal", project.revision),
+    decisionId: "decision:arch-reseal",
+    baseSnapshot: {
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+    proposal: {
+      summary: "Attest the adopted DroneV4 architecture",
+      parameters: DRONE_PROPOSAL_PARAMS,
+    },
+  });
+  const approval = project.approvals.find((candidate) =>
+    candidate.decisionId === "decision:arch-reseal"
+  );
+  assertExists(approval);
+  project = await fixture.commands.approveDecision(HUMAN, {
+    ...ctx("approve-architecture-reseal", project.revision),
+    decisionId: "decision:arch-reseal",
+    rationale: "Approved source attestation.",
+    inputFingerprint: approval.inputFingerprint!,
+  });
+  const queued = await fixture.commands.queueRun(AGENT, {
+    ...ctx("queue-architecture-reseal", project.revision),
+    runId: "run:architecture-reseal",
+    workItemId: "wi:architecture-reseal",
+    summary: "Attest the adopted DroneV4 architecture.",
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: base.id,
+      revision: base.revision,
+      subjectId: base.subject.id,
+    },
+  });
+  return { revision: queued.revision, runId: "run:architecture-reseal" };
+}
+
 async function queueArchitectureEnrichment(
   fixture: Pick<ArchFixture, "projects" | "commands" | "snapshots">,
   completed: Awaited<ReturnType<ModelWriteArchitectureRunExecutor["execute"]>>,
@@ -3421,6 +3497,186 @@ Deno.test(
         () => executor.execute(AGENT, executionCommand(fixture)),
         EngineeringProjectCommandError,
         "No insertion is needed",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture attests adopted historical 2.0 as parser-backed 3.0 without SysON insertion",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-attest-legacy-v2-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const firstCommand = executionCommand(fixture);
+      const claimed = await fixture.commands.claimRun(AGENT, {
+        ...firstCommand,
+        commandId: `${firstCommand.commandId}:model-write-architecture:claim`,
+        summary: "Started the generic model-write-architecture run.",
+      });
+      const claimedRun = claimed.agentRuns.find((run) =>
+        run.id === fixture.queued.runId
+      );
+      assertExists(claimedRun?.startedAt);
+      await writeArchitectureAttemptV2Fixture(`${directory}/arch-attempts`, {
+        schemaVersion: "architecture-write-attempt/2.0",
+        projectId: PROJECT_ID,
+        runId: fixture.queued.runId,
+        planDigest: "c".repeat(64),
+        status: "completed",
+        dispatchedAt: claimedRun.startedAt,
+        result: {
+          inserted: "true",
+          architecturePackageId: "arch-pkg-001",
+        },
+      });
+
+      const firstSyson = new InitialArchSyson();
+      await firstSyson.callTool({
+        name: "syson_element_children",
+        arguments: {
+          editing_context_id: "editing-context-drone",
+          element_id: "root-pkg-drone",
+        },
+      });
+      firstSyson.calls.length = 0;
+      const first = await makeExecutor(fixture, { syson: firstSyson, directory })
+        .execute(AGENT, firstCommand);
+      const firstArtifact = findArchitectureArtifact(
+        (await fixture.snapshots.get(
+          first.agentRuns.find((run) => run.id === fixture.queued.runId)!
+            .resultSnapshot!.snapshotId,
+        ))!,
+      );
+      assertExists(firstArtifact);
+      const firstCapture = JSON.parse(
+        (await fixture.archCaptures.read(firstArtifact.fingerprint))!,
+      ) as Record<string, unknown>;
+      assertEquals(firstCapture.schemaVersion, "architecture-capture/2.0");
+
+      const reseal = await queueArchitectureReseal(fixture, first);
+      const adoptedSyson: McpToolClient = {
+        callTool: (call: McpToolCall): Promise<McpToolResult> => {
+          if (call.name === "syson_element_children") {
+            const id = call.arguments?.element_id as string;
+            if (id === "root-pkg-drone") {
+              return Promise.resolve({
+                text: "root",
+                structuredContent: {
+                  parentId: id,
+                  children: [{
+                    id: "arch-pkg-001",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=Package",
+                    label: "DroneV4",
+                  }],
+                  count: 1,
+                },
+              });
+            }
+            if (id === "arch-pkg-001") {
+              return Promise.resolve({
+                text: "package",
+                structuredContent: {
+                  parentId: id,
+                  children: [
+                    {
+                      id: "sys-def-001",
+                      kind:
+                        "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                      label: "DroneSystem",
+                    },
+                    {
+                      id: "wing-def-001",
+                      kind:
+                        "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                      label: "Wing",
+                    },
+                  ],
+                  count: 2,
+                },
+              });
+            }
+            if (id === "sys-def-001") {
+              return Promise.resolve({
+                text: "sys-usages",
+                structuredContent: {
+                  parentId: id,
+                  children: [{
+                    id: "wing-usage-001",
+                    kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+                    label: "wing",
+                  }],
+                  count: 1,
+                },
+              });
+            }
+            return Promise.resolve({
+              text: "empty",
+              structuredContent: { parentId: id, children: [], count: 0 },
+            });
+          }
+          if (call.name === "syson_query_aql") {
+            const objectId = call.arguments?.object_id as string;
+            const expression = call.arguments?.expression;
+            if (
+              objectId === "wing-usage-001" &&
+              expression === ARCHITECTURE_FEATURE_TYPING_AQL
+            ) {
+              return Promise.resolve({
+                text: "feature-typing-aql",
+                structuredContent: {
+                  objectId,
+                  expression,
+                  type: "objects",
+                  results: [{
+                    id: "wing-def-001",
+                    kind:
+                      "siriusComponents://semantic?domain=sysml&entity=PartDefinition",
+                    label: "Wing",
+                  }],
+                  count: 1,
+                },
+              });
+            }
+          }
+          return Promise.reject(
+            new Error(`Unexpected tool call in adopted reseal SysON: ${call.name}`),
+          );
+        },
+      } as unknown as McpToolClient;
+
+      const result = await makeExecutor(fixture, {
+        syson: adoptedSyson,
+        directory,
+      }).execute(AGENT, {
+        commandId: "agent-attest-architecture",
+        projectId: PROJECT_ID,
+        expectedRevision: reseal.revision,
+        issuedAt: "2026-08-08T12:20:00.000Z",
+        runId: reseal.runId,
+      });
+      const run = result.agentRuns.find((candidate) => candidate.id === reseal.runId);
+      assertExists(run?.resultSnapshot);
+      assertEquals(run.status, "completed");
+      const snapshot = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+      assertExists(snapshot);
+      const artifact = findArchitectureArtifact(snapshot);
+      assertExists(artifact);
+      const text = await fixture.archCaptures.read(artifact.fingerprint);
+      assertExists(text);
+      const capture = JSON.parse(text) as Record<string, unknown>;
+      assertEquals(capture.schemaVersion, "architecture-capture/3.0");
+      assertEquals(
+        (capture.sourceAnalyses as readonly unknown[]).length > 0,
+        true,
+      );
+      assertEquals(
+        (capture.predecessor as { artifactId: string }).artifactId,
+        firstArtifact.id,
       );
     } finally {
       await Deno.remove(directory, { recursive: true });

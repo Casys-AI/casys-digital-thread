@@ -154,7 +154,9 @@ Deno.test("Project Path reads an unfinished lifecycle as retained history, never
   (retry as unknown as { status: string }).status = "ready";
 
   const path = buildProjectPath(mutable, thread);
-  const mechanical = path.phases.find((item) => item.phase.id === "verification");
+  const mechanical = path.phases.find((item) =>
+    item.phase.id === "verification"
+  );
   assertEquals(mechanical?.lifecycle?.state, "retained");
   for (const item of path.phases) {
     if (!item.lifecycle) continue;
@@ -276,7 +278,9 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
     "a measurement feeding a folded enrichment folds with it — it is " +
       "instrumentation of the model, not an engineering gate",
   );
-  const architecture = path.phases.find((item) => item.phase.id === "architecture");
+  const architecture = path.phases.find((item) =>
+    item.phase.id === "architecture"
+  );
   assertEquals(architecture?.lifecycle, {
     affectedComponentIds: [],
     correctionCount: 0,
@@ -285,6 +289,164 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
     modelMeasurementCount: 1,
     state: "current",
   });
+});
+
+Deno.test("Project Path wraps a later architecture-capture tip under the original architecture gate", () => {
+  const { project, thread } = correctionPathFixture();
+  const wrapped = structuredClone(project);
+  const wrappedThread = structuredClone(thread);
+  const ref = (id: string) => ({
+    kind: "artifact" as const,
+    id,
+    snapshotId: "thread-correction",
+    snapshotRevision: 10,
+  });
+  const work = (id: string, phaseId: string, evidenceId: string) => ({
+    id,
+    phaseId,
+    title: id,
+    description: id,
+    kind: "architect" as const,
+    operation: {
+      id: "model.write-architecture",
+      version: "1",
+      bindings: [{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" as const },
+      }],
+    },
+    status: "completed" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [ref(evidenceId)],
+    decisionIds: [],
+    blockerIds: [],
+  });
+  (wrapped.phases as unknown as unknown[]).push({
+    id: "seed",
+    name: "SysON model seed",
+    order: 0,
+    description: "Create the model container.",
+    workItemIds: ["seed-work"],
+    requiredDecisionIds: [],
+    evidenceRefs: [ref("syson-model-seed")],
+  }, {
+    id: "architecture",
+    name: "Reviewed architecture",
+    order: 1,
+    description: "Author the system architecture.",
+    workItemIds: ["arch-v2"],
+    requiredDecisionIds: [],
+    evidenceRefs: [ref("architecture-v2")],
+  }, {
+    id: "architecture-v3",
+    name: "Parser-backed architecture attestation",
+    order: 8,
+    description: "Attest the same architecture as 3.0.",
+    workItemIds: ["arch-v3"],
+    requiredDecisionIds: [],
+    evidenceRefs: [ref("architecture-v3")],
+  });
+  (wrapped.workItems as unknown as unknown[]).push(
+    work("seed-work", "seed", "syson-model-seed"),
+    work("arch-v2", "architecture", "architecture-v2"),
+    work("arch-v3", "architecture-v3", "architecture-v3"),
+  );
+  const artifact = (
+    id: string,
+    uri: string,
+  ) => ({
+    id,
+    label: id,
+    kind: "sysml-model",
+    system: "syson",
+    revision: "1",
+    freshness: "fresh" as const,
+    uri,
+    dependsOn: [] as string[],
+  });
+  (wrappedThread.artifacts as unknown as unknown[]).push(
+    artifact("syson-model-seed", "casys://syson-model-seed-capture/sha256/aa"),
+    artifact("architecture-v2", "casys://architecture-capture/sha256/bb"),
+    artifact("architecture-v3", "casys://architecture-capture/sha256/cc"),
+  );
+  const sysmlNode = (id: string) => ({
+    id: `graph:artifact:${id}`,
+    ref: { kind: "artifact" as const, id },
+    entityKind: "artifact" as const,
+    artifactKind: "sysml-model",
+    label: "intentionally ignored presentation label",
+    system: "syson",
+    freshness: "fresh" as const,
+    summary: "test evidence",
+    recordedAt: "2026-08-03T12:00:00.000Z",
+  });
+  (wrappedThread.graph.nodes as unknown as unknown[]).push(
+    sysmlNode("syson-model-seed"),
+    sysmlNode("architecture-v2"),
+    sysmlNode("architecture-v3"),
+  );
+  (wrappedThread.graph.edges as unknown as unknown[]).push({
+    id: "graph:edge:seed-to-v2",
+    from: { kind: "artifact" as const, id: "syson-model-seed" },
+    to: { kind: "artifact" as const, id: "architecture-v2" },
+    relation: "derived_from" as const,
+    origin: "provenance" as const,
+  }, {
+    id: "graph:edge:v2-to-v3",
+    from: { kind: "artifact" as const, id: "architecture-v2" },
+    to: { kind: "artifact" as const, id: "architecture-v3" },
+    relation: "derived_from" as const,
+    origin: "provenance" as const,
+  });
+  wrappedThread.evidenceFamilyGraph = {
+    ...wrappedThread.evidenceFamilyGraph,
+    families: [{
+      id: "architecture-family",
+      entityKind: "artifact",
+      artifactKind: "sysml-model",
+      historicalRefs: [{ kind: "artifact", id: "architecture-v2" }],
+      currentRefs: [{ kind: "artifact", id: "architecture-v3" }],
+      revisionCount: 1,
+      status: "current",
+      relationship: {
+        relation: "supersedes",
+        classification: "not-recorded",
+        equivalence: "not-recorded",
+      },
+      transitions: [{
+        edgeRef: {
+          id: "graph:edge:v2-to-v3",
+          relation: "derived_from",
+          origin: "provenance",
+        },
+        historical: { kind: "artifact", id: "architecture-v2" },
+        successor: { kind: "artifact", id: "architecture-v3" },
+      }],
+    }],
+  };
+
+  const path = buildProjectPath(wrapped, wrappedThread);
+
+  assertEquals(
+    path.phases.some((item) => item.phase.id === "architecture-v3"),
+    false,
+    "the later architecture tip must wrap under the original architecture gate",
+  );
+  assertEquals(
+    path.phases.some((item) => item.phase.id === "architecture"),
+    true,
+    "architecture growing from the seed remains a macro gate",
+  );
+  assertEquals(
+    path.phases.some((item) => item.phase.id === "seed"),
+    true,
+    "the seed stays its own gate",
+  );
+  const architecture = path.phases.find((item) =>
+    item.phase.id === "architecture"
+  );
+  assertEquals(architecture?.lifecycle?.revisionAttemptCount, 1);
 });
 
 Deno.test("current project work prefers an explicit successor reconciliation", () => {
@@ -320,7 +482,8 @@ Deno.test("current project work prefers an explicit successor reconciliation", (
                 snapshotRevision: 10,
               },
             ],
-            rationale: "The recorded R3 successor closed the failed R2 attempt.",
+            rationale:
+              "The recorded R3 successor closed the failed R2 attempt.",
           },
         }
         : item
@@ -409,12 +572,14 @@ Deno.test("browser project contract accepts an approved-brief baseline and rejec
   assertEquals(isEngineeringProjectSnapshot(valid), true);
 
   const forgedBasis = structuredClone(valid) as Record<string, unknown>;
-  const forgedRun = (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const forgedRun =
+    (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
   (forgedRun.basis as Record<string, unknown>).briefId = "other-approved-brief";
   assertEquals(isEngineeringProjectSnapshot(forgedBasis), false);
 
   const v1Fallback = structuredClone(valid) as Record<string, unknown>;
-  const fallbackRun = (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const fallbackRun =
+    (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
   delete fallbackRun.basis;
   fallbackRun.baseSnapshot = (v1Fallback.threadSnapshots as unknown[])[0];
   assertEquals(isEngineeringProjectSnapshot(v1Fallback), false);
@@ -429,7 +594,8 @@ Deno.test("browser project contract accepts a V3 run anchored to its declared th
   const project = structuredClone(
     GENERIC_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
-  const reference = (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
+  const reference =
+    (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
   project.schemaVersion = "3.0";
   project.agentRuns = [{
     id: "run-v3-thread-snapshot",
@@ -678,7 +844,9 @@ Deno.test("current project focus uses the recorded phase work order as its stabl
   const snapshot = {
     ...base,
     phases: base.phases.map((phase) =>
-      phase.id === "simulate" ? { ...phase, workItemIds: [first.id, second.id] } : phase
+      phase.id === "simulate"
+        ? { ...phase, workItemIds: [first.id, second.id] }
+        : phase
     ),
     // The append-only storage order is intentionally the opposite of the plan.
     workItems: [
@@ -790,7 +958,8 @@ function v3CancelledQueuedRunEnvelope(): Record<string, unknown> {
     },
     evidenceRefs: [],
     cancellation: {
-      rationale: "The reviewed queue entry was retired before any worker claim.",
+      rationale:
+        "The reviewed queue entry was retired before any worker claim.",
       cancelledAt,
       cancelledBy: { id: "human:owner", origin: "human" },
     },

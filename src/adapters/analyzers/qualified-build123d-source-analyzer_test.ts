@@ -141,10 +141,10 @@ Deno.test("qualified build123d frontend turns forbidden imports and calls into r
 Deno.test("D4-admitted but unqualified build123d calls remain explicitly unresolved", async () => {
   const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
     ...INPUT,
-    sourceText: `from build123d import Box, Cylinder
+    sourceText: `from build123d import Box, Cone
 radius = 2
 height = 10
-result = Cylinder(radius, height)
+result = Cone(radius, height)
 `,
   });
 
@@ -155,6 +155,94 @@ result = Cylinder(radius, height)
   assert(kinds.has("build123d-call-not-qualified"));
   assert(kinds.has("build123d-result-not-qualified"));
   assert(kinds.has("python-dynamic-call"));
+});
+
+Deno.test("qualified build123d frontend proves the DL-04 part and assembly solids", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Cylinder, Pos
+result = Pos(0, 0, 10) * Cylinder(90, 20)
+`,
+    `from build123d import Box, Pos
+column = Pos(0, 0, 190) * Box(28, 28, 340)
+arm = Pos(180, 0, 346) * Box(360, 28, 28)
+result = column + arm
+`,
+    `from build123d import Box, Compound, Cylinder, Pos
+base = Pos(0, 0, 10) * Cylinder(90, 20)
+column = Pos(0, 0, 190) * Box(28, 28, 340)
+arm = Pos(180, 0, 346) * Box(360, 28, 28)
+articulated_arm = column + arm
+head = Pos(360, 0, 346) * Cylinder(34, 40)
+bulb_holder = Pos(360, 0, 318) * Cylinder(14, 16)
+result = Compound(children=[base, articulated_arm, head, bulb_holder])
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
+
+  const fused = await analyzer.analyze({
+    ...INPUT,
+    sourceText: scripts[1]!,
+  });
+  assertEquals(
+    new Map(fused.symbols.map((symbol) => [symbol.name, symbol.kind])),
+    new Map([
+      ["column", "variable"],
+      ["arm", "variable"],
+      ["result", "artifact"],
+    ]),
+  );
+  assertEquals(
+    fused.dependencies.map((dependency) => ({
+      kind: dependency.kind,
+      from: fused.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+        ?.name,
+      to: fused.symbols.find((symbol) => symbol.id === dependency.toSymbolId)
+        ?.name,
+    })).sort((left, right) =>
+      `${left.kind}:${left.from}:${left.to}`.localeCompare(
+        `${right.kind}:${right.from}:${right.to}`,
+      )
+    ),
+    [
+      { kind: "structural-incidence" as const, from: "arm", to: "result" },
+      { kind: "structural-incidence" as const, from: "column", to: "result" },
+    ],
+  );
+});
+
+Deno.test("a bare Pos or Compound without named children stays unresolved", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const barePos = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Pos
+result = Pos(0, 0, 10)
+`,
+  });
+  const emptyCompound = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Compound
+result = Compound(children=[])
+`,
+  });
+  assert(
+    barePos.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+  assert(
+    emptyCompound.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
 });
 
 Deno.test("Lezer-recovered non-decimal or malformed numbers never qualify silently", async () => {

@@ -256,6 +256,51 @@ Deno.test("quotient graph records self-loops and refuses a newly introduced cycl
   );
 });
 
+Deno.test(
+  "architecture-capture derived_from wraps predecessor and tip as one current family",
+  () => {
+    const graph: ThreadGraph = {
+      nodes: [
+        artifact("architecture-v2", "sysml-model", "fresh"),
+        artifact("architecture-v3", "sysml-model", "fresh"),
+        artifact("syson-model-seed", "sysml-model", "fresh"),
+      ],
+      edges: [
+        edge(
+          "v2-to-v3",
+          ref("artifact", "architecture-v2"),
+          ref("artifact", "architecture-v3"),
+          "derived_from",
+        ),
+        edge(
+          "seed-to-v3",
+          ref("artifact", "syson-model-seed"),
+          ref("artifact", "architecture-v3"),
+          "derived_from",
+        ),
+      ],
+    };
+
+    const projection = projectEvidenceFamilyGraph(graph, asOf(), {
+      architectureCaptureIds: new Set(["architecture-v2", "architecture-v3"]),
+    });
+    const family = familyWithCurrent(projection.families, "architecture-v3");
+
+    assertEquals(family.historicalRefs.map((ref) => ref.id), ["architecture-v2"]);
+    assertEquals(family.currentRefs.map((ref) => ref.id), ["architecture-v3"]);
+    assertEquals(family.status, "current");
+    assertEquals(family.artifactKind, "sysml-model");
+    assertEquals(
+      projection.families.some((candidate) =>
+        [...candidate.historicalRefs, ...candidate.currentRefs].some((ref) =>
+          ref.id === "syson-model-seed"
+        )
+      ),
+      false,
+    );
+  },
+);
+
 Deno.test("a direct supersession cycle stays review-required without a current claim", () => {
   const graph: ThreadGraph = {
     nodes: [artifact("one", "step"), artifact("two", "step")],

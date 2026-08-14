@@ -180,6 +180,24 @@ Deno.test("technical basis resolver reads V2 history without authorizing native 
   );
 });
 
+Deno.test(
+  "technical basis resolver ignores V2 requirements that still name a predecessor architecture tip",
+  async () => {
+    const fixture = await exactFixture({
+      requirementsCaptureVersion: "v2",
+      successorArchitecture: true,
+    });
+    const resolved = await fixture.resolver.resolve(fixture.request);
+    assertEquals(resolved?.sysmlAnchor.artifactId, fixture.architectureArtifactId);
+    assertEquals(
+      resolved?.sysmlAnchor.elements.some((element) =>
+        element.kind === "RequirementUsage" || element.kind === "ConstraintUsage"
+      ),
+      false,
+    );
+  },
+);
+
 Deno.test("technical basis resolver rejects divergent V3 provider identities", async () => {
   const fixture = await exactFixture({
     requirementsCaptureVersion: "v3",
@@ -228,6 +246,7 @@ interface FixtureOptions {
   readonly foreignRequirementsTargetId?: boolean;
   readonly staleRequirements?: boolean;
   readonly archiveRequirements?: boolean;
+  readonly successorArchitecture?: boolean;
 }
 
 async function exactFixture(options: FixtureOptions = {}) {
@@ -305,8 +324,10 @@ async function exactFixture(options: FixtureOptions = {}) {
       analysisFingerprint: fingerprint("d"),
     }],
   } as const;
-  const architectureFingerprint = await sha256Fingerprint(architectureCapture);
-  const architectureArtifactId = `architecture-${architectureFingerprint.digest}`;
+  let architectureFingerprint = await sha256Fingerprint(architectureCapture);
+  const originalArchitectureDigest = architectureFingerprint.digest;
+  let architectureArtifactId = `architecture-${architectureFingerprint.digest}`;
+  const extraArchitectureCaptures: Array<readonly [string, string]> = [];
   const architectureChangeId =
     `architecture-basis-test:created:${architectureArtifactId}`;
   const architectureArtifact = {
@@ -530,6 +551,110 @@ async function exactFixture(options: FixtureOptions = {}) {
       successorSnapshots.push(snapshot);
     }
   }
+  if (options.successorArchitecture) {
+    const successorAt = "2026-08-12T09:12:00.000Z";
+    const successorCapture = {
+      ...architectureCapture,
+      trustedRunId: "run:architecture-successor-basis-test",
+      insertedAt: successorAt,
+      predecessor: {
+        artifactId: architectureArtifact.id,
+        fingerprint: architectureArtifact.fingerprint,
+        producerRunId: architectureArtifact.producer.runId,
+      },
+      sourceAnalyses: [{
+        ...architectureCapture.sourceAnalyses[0],
+        runId: "run:architecture-successor-basis-test",
+        sourceId: "sysml-source:basis-test-successor",
+      }],
+    };
+    const successorFingerprint = await sha256Fingerprint(successorCapture);
+    const successorArtifactId = `architecture-${successorFingerprint.digest}`;
+    const successorArtifact = {
+      ...architectureArtifact,
+      id: successorArtifactId,
+      version: successorFingerprint.digest,
+      fingerprint: successorFingerprint,
+      uri: `casys://architecture-capture/sha256/${successorFingerprint.digest}`,
+      producer: {
+        serverId: "syson",
+        tool: "syson_element_insert_sysml",
+        runId: "run:architecture-successor-basis-test",
+      },
+      inputArtifactIds: [seedArtifact.id, architectureArtifact.id],
+      freshness: {
+        status: "fresh" as const,
+        changedAt: successorAt,
+        invalidatedByChangeIds: [],
+      },
+    };
+    snapshot = applyThreadSnapshotExtension(snapshot, {
+      id: "architecture-successor-basis-test",
+      name: "Capture successor architecture",
+      subjectId: SUBJECT_ID,
+      capturedAt: successorAt,
+      artifacts: [successorArtifact],
+      consumptions: [{
+        id: "consumption:architecture-successor-basis-test:seed",
+        artifactId: seedArtifact.id,
+        consumer: successorArtifact.producer,
+        observedFingerprint: seedArtifact.fingerprint,
+        verifiedAt: successorAt,
+        status: "verified",
+      }, {
+        id: "consumption:architecture-successor-basis-test:predecessor",
+        artifactId: architectureArtifact.id,
+        consumer: successorArtifact.producer,
+        observedFingerprint: architectureArtifact.fingerprint,
+        verifiedAt: successorAt,
+        status: "verified",
+      }],
+      observations: [],
+      requirements: [],
+      evaluations: [],
+      violations: [],
+      provenance: [{
+        id: "derived:architecture-successor-basis-test:seed",
+        relation: "derived_from",
+        from: { kind: "artifact", id: successorArtifact.id },
+        to: { kind: "artifact", id: seedArtifact.id },
+        rationale: "The successor architecture consumed the exact SysON seed.",
+      }, {
+        id: "derived:architecture-successor-basis-test:predecessor",
+        relation: "derived_from",
+        from: { kind: "artifact", id: successorArtifact.id },
+        to: { kind: "artifact", id: architectureArtifact.id },
+        rationale: "The successor architecture consumed the exact predecessor.",
+      }, {
+        id: "uses:architecture-successor-basis-test:seed",
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: "consumption:architecture-successor-basis-test:seed",
+        },
+        to: { kind: "artifact", id: seedArtifact.id },
+        rationale: "The consumption attests the exact SysON seed bytes.",
+      }, {
+        id: "uses:architecture-successor-basis-test:predecessor",
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: "consumption:architecture-successor-basis-test:predecessor",
+        },
+        to: { kind: "artifact", id: architectureArtifact.id },
+        rationale: "The consumption attests the exact predecessor bytes.",
+      }],
+      proposedActions: [],
+    }, { appliedAt: successorAt });
+    successorSnapshots.push(snapshot);
+    extraArchitectureCaptures.push([
+      successorFingerprint.digest,
+      deterministicJson(successorCapture),
+    ]);
+    architectureArtifactId = successorArtifactId;
+    architectureFingerprint = successorFingerprint;
+  }
+
   if (options.archiveArchitecture) {
     snapshot = applyThreadSnapshotExtension(snapshot, {
       id: "archive-architecture-basis-test",
@@ -566,7 +691,8 @@ async function exactFixture(options: FixtureOptions = {}) {
     ...successorSnapshots.map((candidate) => [candidate.id, candidate] as const),
   ]);
   const architectureCaptures = new Map([
-    [architectureFingerprint.digest, deterministicJson(architectureCapture)],
+    [originalArchitectureDigest, deterministicJson(architectureCapture)],
+    ...extraArchitectureCaptures,
   ]);
   const seedCaptures = new Map([
     [seed.sha256.digest, seed.text],

@@ -89,6 +89,8 @@ import {
   DesignWriteGeometryRunExecutor,
 } from "./src/adapters/executors/design-write-geometry-run-executor.ts";
 import { CaptureBackedProjectGeometryPreviewAdapter } from "./src/adapters/captures/capture-backed-project-geometry-preview-adapter.ts";
+import { AdmissionBackedGeometryExportAdapter } from "./src/adapters/captures/admission-backed-geometry-export-adapter.ts";
+import { ExportAdmittedProjectGeometry } from "./src/application/use-cases/export-admitted-project-geometry.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
@@ -1428,20 +1430,13 @@ async function createProjectControl(
       // the expected one. The sandbox owns a private export volume, so a proposed
       // program can never touch evidence bytes. No sandbox entry in the fleet
       // manifest ⇒ no preview tool at all, never a ghost that fails when called.
-      geometryPreview: build123dSandboxMcpUrl
-        ? new CaptureBackedProjectGeometryPreviewAdapter({
-          client: new HttpMcpToolClient({
-            mcpUrl: build123dSandboxMcpUrl,
-            timeoutMs: 120_000,
-          }),
-          draftCaptures: new FileCaptureStore({
-            ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
-            directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
-          }),
-          sourceAnalysis: geometrySourceAnalysis,
-          build123dService: "mcp-build123d-sandbox",
-        })
-        : undefined,
+      // The admitted-geometry path reuses this same private client after
+      // compile.seal-admission@1; it is not gated on --local-execution.
+      ...composePrivateBuild123dGeometrySurfaces(
+        build123dSandboxMcpUrl,
+        geometrySourceAnalysis,
+        technicalCompilationAdmissions,
+      ),
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,
         baseline,
@@ -1566,6 +1561,49 @@ function createCockpitFocus(
     projects: new FileEngineeringProjectRevisionStore(
       options.activeProjectDirectory ?? DEFAULT_ACTIVE_PROJECT_DIRECTORY,
     ),
+  };
+}
+
+function composePrivateBuild123dGeometrySurfaces(
+  build123dSandboxMcpUrl: string | undefined,
+  geometrySourceAnalysis: ConstructorParameters<
+    typeof CaptureBackedProjectGeometryPreviewAdapter
+  >[0]["sourceAnalysis"],
+  admissions: CaptureBackedTechnicalCompilationAdmissionReader,
+): Pick<
+  ProjectControlToolDependencies,
+  "geometryPreview" | "admittedGeometryExport"
+> {
+  if (!build123dSandboxMcpUrl) {
+    return {
+      geometryPreview: undefined,
+      admittedGeometryExport: undefined,
+    };
+  }
+  const client = new HttpMcpToolClient({
+    mcpUrl: build123dSandboxMcpUrl,
+    timeoutMs: 120_000,
+  });
+  const draftCaptures = new FileCaptureStore({
+    ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
+    directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+  });
+  return {
+    geometryPreview: new CaptureBackedProjectGeometryPreviewAdapter({
+      client,
+      draftCaptures,
+      sourceAnalysis: geometrySourceAnalysis,
+      build123dService: "mcp-build123d-sandbox",
+    }),
+    admittedGeometryExport: new ExportAdmittedProjectGeometry({
+      admissions,
+      exporter: new AdmissionBackedGeometryExportAdapter({
+        client,
+        draftCaptures,
+        sourceAnalysis: geometrySourceAnalysis,
+        build123dService: "mcp-build123d-sandbox",
+      }),
+    }),
   };
 }
 

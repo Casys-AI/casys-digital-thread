@@ -15,21 +15,35 @@ import type {
  * Build the compact, revision-aware quotient graph used by the Workbench.
  *
  * This is intentionally a read-only presentation transform over the already
- * projected canonical graph. It forms a family only from an explicit
- * provenance `supersedes` edge between compatible durable entities. In
- * particular, it never compares labels, fingerprints, dates, or identifier
- * fragments to decide that two facts are revisions of one another.
+ * projected canonical graph. It forms a family from an explicit provenance
+ * `supersedes` edge, or from a `derived_from` edge whose both endpoints are
+ * architecture-capture artefacts (the Thread predecessor of a later tip).
+ * Labels, fingerprints, dates and identifier fragments never decide
+ * membership.
  */
+export interface EvidenceFamilyGraphOptions {
+  /** Artifact ids whose capture URI is `casys://architecture-capture/`. */
+  readonly architectureCaptureIds?: ReadonlySet<string>;
+}
+
 export function projectEvidenceFamilyGraph(
   graph: ThreadGraph,
   asOf: ThreadEvidenceFamilyGraph["asOf"],
+  options: EvidenceFamilyGraphOptions = {},
 ): ThreadEvidenceFamilyGraph {
   const nodeByRef = new Map(
     graph.nodes.map((node) => [refKey(node.ref), node]),
   );
   const correctionDeclarations = correctionDeclarationRefs(graph, nodeByRef);
+  const architectureCaptureIds = options.architectureCaptureIds ??
+    new Set<string>();
   const candidateTransitions = graph.edges.filter((edge) =>
-    isEligibleSupersession(edge, nodeByRef, correctionDeclarations)
+    isEligibleVersionTransition(
+      edge,
+      nodeByRef,
+      correctionDeclarations,
+      architectureCaptureIds,
+    )
   );
   // A fan-out is not a single-current version family. Rather than collapse an
   // unclassified correction record with actual replacement evidence, retain
@@ -116,12 +130,19 @@ function correctionDeclarationRefs(
   return declarations;
 }
 
-function isEligibleSupersession(
+function isEligibleVersionTransition(
   edge: ThreadGraphEdge,
   nodeByRef: ReadonlyMap<string, ThreadGraphNode>,
   correctionDeclarations: ReadonlySet<string>,
+  architectureCaptureIds: ReadonlySet<string>,
 ): boolean {
-  if (edge.relation !== "supersedes" || edge.origin !== "provenance") {
+  if (edge.origin !== "provenance") return false;
+  const architecturePredecessor = edge.relation === "derived_from" &&
+    edge.from.kind === "artifact" &&
+    edge.to.kind === "artifact" &&
+    architectureCaptureIds.has(edge.from.id) &&
+    architectureCaptureIds.has(edge.to.id);
+  if (edge.relation !== "supersedes" && !architecturePredecessor) {
     return false;
   }
   const historical = nodeByRef.get(refKey(edge.from));
