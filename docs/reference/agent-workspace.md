@@ -169,6 +169,7 @@ Unknown ids/versions are indistinguishable from absent.
 | `baseline.from-approved-brief@1`                    | trusted                   | none                         | Documentary Thread r1                                | A model or proof                     |
 | `architecture.seed-syson-model@2`                   | trusted                   | SysON                        | Blank container identity (r2)                        | Architecture or requirements         |
 | `model.write-architecture@1`                        | trusted                   | SysON                        | `architecture-capture/3.0` after renderer + readback | Agent-supplied SysML                 |
+| `model.capture-part-definitions@1`                  | trusted                   | SysON                        | Read-only PartDefinition structure bundle            | Quantity, CAD, or a new design fact  |
 | `model.seal-architecture-sysml@1`                   | trusted                   | none                         | Thread document of closed-subset analysis            | SysON write or compilation admission |
 | `model.write-requirements@1`                        | trusted                   | SysON                        | Integer scalar requirements                          | A verdict                            |
 | `compile.seal-admission@1`                          | trusted                   | none                         | Admission capture                                    | Execution authority                  |
