@@ -36,13 +36,25 @@ const DENO_JSON = JSON.parse(await Deno.readTextFile(DENO_JSON_PATH)) as {
 // 1. Discover entry-point files under scripts/ (non-test, non-lib)
 // ---------------------------------------------------------------------------
 
+/**
+ * A role directory with no entry point does not exist in a fresh checkout:
+ * git does not carry empty directories, so `scripts/runners/` is present on a
+ * machine that once held runners and absent everywhere else. Treating that as
+ * "no entry points" keeps the index assertions meaningful; throwing made the
+ * suite pass locally and fail on a clean clone.
+ */
 async function collectEntryPoints(dir: string | URL): Promise<string[]> {
   const results: string[] = [];
-  for await (const entry of Deno.readDir(dir)) {
-    if (!entry.isFile) continue;
-    if (!entry.name.endsWith(".ts")) continue;
-    if (entry.name.endsWith("_test.ts")) continue;
-    results.push(entry.name);
+  try {
+    for await (const entry of Deno.readDir(dir)) {
+      if (!entry.isFile) continue;
+      if (!entry.name.endsWith(".ts")) continue;
+      if (entry.name.endsWith("_test.ts")) continue;
+      results.push(entry.name);
+    }
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return [];
+    throw error;
   }
   return results.sort();
 }
