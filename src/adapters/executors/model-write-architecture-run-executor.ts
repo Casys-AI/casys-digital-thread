@@ -1069,6 +1069,12 @@ export class ModelWriteArchitectureRunExecutor {
     };
   }
 
+  /**
+   * Defense-in-depth only: a corrupted capture cannot reach this parse —
+   * `FileCaptureStore.read` rejects any byte drift against the content
+   * digest, and `#assertPredecessorCaptureExact` (main execute path) already
+   * rejects an authentic-but-non-canonical capture as `invalid_input`.
+   */
   async #predecessorIsLegacyArchitecture(
     predecessor: ThreadArtifact,
   ): Promise<boolean> {
