@@ -125,10 +125,10 @@ const OPERATIONS = [
     allowedBasisKinds: ["thread-snapshot"],
     title: "Capture the reviewed PartDefinition structures",
     description:
-      "Re-read the exact PartDefinitions sealed by the current generic architecture capture, " +
+      "Re-read the exact PartDefinition subgraph sealed by the current generic architecture capture, " +
       "verify live SysON still matches that parent→usage→target graph, and publish a " +
-      "content-addressed read-only structure bundle. No SysML write, quantity inference, " +
-      "CAD, physics, or verdict.",
+      "content-addressed read-only bundle. Sibling PartDefinitions added after that capture are not observed. " +
+      "No SysML write, quantity inference, CAD, physics, or verdict.",
     workItemKind: "define",
     riskClass: "low",
     execution: "trusted",

@@ -18,10 +18,8 @@ import {
 export { PART_DEFINITIONS_CAPTURE_STATEMENT };
 
 export const PART_DEFINITIONS_CAPTURE_SCHEMA = "part-definitions-capture/1.0" as const;
-export const PART_DEFINITIONS_CAPTURE_URI_PREFIX =
-  "casys://part-definitions-capture/" as const;
 export const PART_DEFINITIONS_CAPTURE_KIND = "part-definitions" as const;
-export const PART_DEFINITIONS_CAPTURE_SCOPE = "read-only-product-structure" as const;
+export const PART_DEFINITIONS_CAPTURE_SCOPE = "sealed-architecture-subgraph" as const;
 
 export interface PartDefinitionsCaptureArchitectureReference {
   readonly artifactId: string;
@@ -124,8 +122,9 @@ export function parseExactPartDefinitionsCapture(
 
 /**
  * Project a live SysON PartDefinition graph onto the sealed capture shape.
- * Live semantic kinds stay on the extractor; the capture hard-codes
- * `PartDefinition` / `PartUsage` the same way `model.write-architecture@1` does.
+ * The live label (from `syson_element_get`) is transmitted so a rename is
+ * visible to `deterministicJson`. Capture kinds stay `PartDefinition` /
+ * `PartUsage`, the same vocabulary `model.write-architecture@1` seals.
  */
 export function toArchitectureCapturePartDefinitions(
   partDefs: readonly ExistingPartDef[],

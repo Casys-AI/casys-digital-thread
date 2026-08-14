@@ -11,4 +11,4 @@ export const MODEL_CAPTURE_PART_DEFINITIONS_OPERATION = {
 } as const;
 
 export const PART_DEFINITIONS_CAPTURE_STATEMENT =
-  "Read-only PartDefinition structures re-read from SysON against the exact generic architecture capture. No CAD, physics, quantity inference, manufacturing claim or verdict is recorded." as const;
+  "Read-only re-read of the exact PartDefinition subgraph sealed by the generic architecture capture. Sibling PartDefinitions added in SysON after that capture are not observed. No CAD, physics, quantity inference, manufacturing claim or verdict is recorded." as const;

@@ -41,12 +41,12 @@ import {
   PART_DEFINITIONS_CAPTURE_KIND,
   PART_DEFINITIONS_CAPTURE_SCHEMA,
   PART_DEFINITIONS_CAPTURE_SCOPE,
-  PART_DEFINITIONS_CAPTURE_URI_PREFIX,
   toArchitectureCapturePartDefinitions,
 } from "../captures/part-definitions-capture.ts";
 import {
   ARCHITECTURE_CAPTURE_URI_PREFIX,
   FileCaptureStore,
+  PART_DEFINITIONS_CAPTURE_URI_PREFIX,
 } from "../captures/file-capture-store.ts";
 import { extractPartDefinitionStructures } from "../extractors/architecture-structure-extractor.ts";
 import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
