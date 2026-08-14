@@ -59,7 +59,14 @@ export interface BriefRequirementsProvenanceEntry {
   readonly transformation: BriefRequirementsTransformation;
 }
 
-export type BriefRequirementsTransformation = "identity" | "MPa-to-Pa";
+export type BriefRequirementsTransformation =
+  | "identity"
+  | "MPa-to-Pa"
+  | "kN-to-N"
+  | "MJ-to-J"
+  | "kJ-to-J"
+  | "bar-to-Pa"
+  | "degC-to-K";
 
 export type BriefRequirementsDiagnosticCode =
   | "brief-item-absent"

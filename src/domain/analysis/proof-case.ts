@@ -186,6 +186,23 @@ const SYSML_ID = /^[A-Za-z_][A-Za-z0-9_]*$/;
  *     W  → PowerValue   (status: ok, extractedUnit: "W")
  *     V  → VoltageValue (status: ok, extractedUnit: "V")
  *
+ *   2026-08-14, probe-requirement-units (scripts/probes/probe-requirement-units.ts),
+ *   sandbox deleted after each run via syson_project_delete:
+ *     N   → ForceValue            (status: ok, extractedUnit: "N")
+ *     J   → EnergyValue           (status: ok, extractedUnit: "J")
+ *     s   → TimeValue             (status: ok, extractedUnit: "s")
+ *     m   → LengthValue           (status: ok, extractedUnit: "m")
+ *     K   → TemperatureValue      (status: ok, extractedUnit: "K")
+ *     A   → ElectricCurrentValue  (status: ok, extractedUnit: "A")
+ *     Hz  → FrequencyValue        (status: ok, extractedUnit: "Hz")
+ *     rad → AngleValue            (status: ok, extractedUnit: "rad")
+ *   Refused on the same date:
+ *     m2  → AreaValue     (type_mismatch: FeatureReferenceExpression)
+ *     N*m → TorqueValue   (extraction_failed — SysML syntax rejected)
+ *     N.m → TorqueValue   (type_mismatch: extracted "N", dot truncates name)
+ *     kPa → PressureValue (type_mismatch: prefixed variant not in SI library)
+ *     deg → AngleValue    (type_mismatch: FeatureReferenceExpression)
+ *
  * To add a unit, run a probe that confirms insertion → extraction round-trip
  * and document the evidence here before merging.
  */
@@ -197,6 +214,16 @@ const UNIT_TO_SYSML_TYPE: ReadonlyMap<string, string> = new Map([
   ["kg", "MassValue"],
   ["W", "PowerValue"],
   ["V", "VoltageValue"],
+  // Confirmed 2026-08-14 via scripts/probes/probe-requirement-units.ts against
+  // SysON on 127.0.0.1:3009 — all sandboxes deleted by syson_project_delete.
+  ["N", "ForceValue"],
+  ["J", "EnergyValue"],
+  ["s", "TimeValue"],
+  ["m", "LengthValue"],
+  ["K", "TemperatureValue"],
+  ["A", "ElectricCurrentValue"],
+  ["Hz", "FrequencyValue"],
+  ["rad", "AngleValue"],
 ]);
 
 // ---------------------------------------------------------------------------

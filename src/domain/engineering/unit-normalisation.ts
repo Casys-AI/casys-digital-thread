@@ -41,7 +41,13 @@ export type UnitNormalisationEntry<L extends string = string> = {
 };
 
 /** All normalisation labels that the compilation boundary currently declares. */
-export type UnitNormalisationLabel = "MPa-to-Pa";
+export type UnitNormalisationLabel =
+  | "MPa-to-Pa"
+  | "kN-to-N"
+  | "MJ-to-J"
+  | "kJ-to-J"
+  | "bar-to-Pa"
+  | "degC-to-K";
 
 /**
  * Validate and register a single normalisation entry, throwing if the
@@ -74,19 +80,23 @@ function declareEntry<L extends UnitNormalisationLabel>(
  * entry produces a loud startup failure rather than a silent wrong value.
  *
  * Currently declared:
- *   MPa — refused by the 2026-08-14 probe (`type_mismatch`); converted to Pa
- *          by a factor-of-10⁶ multiplication.
- *
- * NOT currently declared:
- *   degC / K — no temperature unit has a passing probe yet.  When admitting
- *   temperature, note that K = degC + 273.15 is affine: the `apply` function
- *   must add 273.15, not multiply by it.  The zero case (0 °C → 273.15 K, not
- *   0 K) is the mandatory boundary test.
+ *   MPa  — refused by the 2026-08-14 probe (`type_mismatch`); converted to Pa
+ *           by a factor-of-10⁶ multiplication.
+ *   kN   — kN is not a SysON-native unit (probe 2026-08-14); converted to N
+ *           (×1 000), which passed the probe.
+ *   MJ   — MJ is not a SysON-native unit (probe 2026-08-14); converted to J
+ *           (×1 000 000), which passed the probe.
+ *   kJ   — kJ is not a SysON-native unit (probe 2026-08-14); converted to J
+ *           (×1 000), which passed the probe.
+ *   bar  — bar is not a SysON-native unit; converted to Pa (×100 000), which
+ *           passed the 2026-08-04 probe.
+ *   degC — first affine entry: K = degC + 273.15.  K passed the 2026-08-14
+ *           probe.  The mandatory boundary test is apply(0) === 273.15 (not 0).
  */
 export const UNIT_NORMALISATION: ReadonlyMap<
   string,
   UnitNormalisationEntry<UnitNormalisationLabel>
-> = new Map([
+> = new Map<string, UnitNormalisationEntry<UnitNormalisationLabel>>([
   declareEntry("MPa", {
     targetUnit: "Pa",
     label: "MPa-to-Pa",
@@ -95,6 +105,41 @@ export const UNIT_NORMALISATION: ReadonlyMap<
      * This is NOT affine — the zero-crossing preserves zero (0 MPa → 0 Pa).
      */
     apply: (value: number) => value * 1_000_000,
+  }),
+  declareEntry("kN", {
+    targetUnit: "N",
+    label: "kN-to-N",
+    /** 1 kN = 1 000 N — multiplicative, zero-crossing preserved. */
+    apply: (value: number) => value * 1_000,
+  }),
+  declareEntry("MJ", {
+    targetUnit: "J",
+    label: "MJ-to-J",
+    /** 1 MJ = 1 000 000 J — multiplicative, zero-crossing preserved. */
+    apply: (value: number) => value * 1_000_000,
+  }),
+  declareEntry("kJ", {
+    targetUnit: "J",
+    label: "kJ-to-J",
+    /** 1 kJ = 1 000 J — multiplicative, zero-crossing preserved. */
+    apply: (value: number) => value * 1_000,
+  }),
+  declareEntry("bar", {
+    targetUnit: "Pa",
+    label: "bar-to-Pa",
+    /** 1 bar = 100 000 Pa — multiplicative, zero-crossing preserved. */
+    apply: (value: number) => value * 100_000,
+  }),
+  declareEntry("degC", {
+    targetUnit: "K",
+    label: "degC-to-K",
+    /**
+     * Affine offset: K = °C + 273.15.
+     * This is NOT multiplicative — 0 °C maps to 273.15 K, not 0 K.
+     * A table of plain coefficients would produce 0 × 273.15 = 0, which is
+     * exactly the silent-rescale bug this function shape exists to prevent.
+     */
+    apply: (value: number) => value + 273.15,
   }),
 ]);
 

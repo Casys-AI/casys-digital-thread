@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { SUPPORTED_ORACLE_UNITS } from "../analysis/proof-case.ts";
 import { normaliseThreshold, UNIT_NORMALISATION } from "./unit-normalisation.ts";
 
@@ -48,13 +48,10 @@ Deno.test("normaliseThreshold returns identity for a natively-admitted unit", ()
 Deno.test(
   "normaliseThreshold returns identity for an unknown unit rather than silently coercing",
   () => {
-    const result = normaliseThreshold(22, "degC");
-    // degC has no admitted target, so the value is passed through untouched.
-    // A requirement with unit "degC" will then be rejected by the production
-    // grammar (SUPPORTED_ORACLE_UNITS does not include degC), ensuring the
-    // caller sees the right error rather than a silently wrong Pa value.
-    assertEquals(result.value, 22);
-    assertEquals(result.unit, "degC");
+    // psi has no admitted target and no normalisation entry.
+    const result = normaliseThreshold(14.5, "psi");
+    assertEquals(result.value, 14.5);
+    assertEquals(result.unit, "psi");
     assertEquals(result.transformation, "identity");
   },
 );
@@ -98,7 +95,8 @@ Deno.test(
 Deno.test(
   "no entry in UNIT_NORMALISATION targets an unadmitted unit",
   () => {
-    const UNADMITTED_EXAMPLES = ["K", "degC", "MPa", "bar", "psi", "°C"];
+    // K is now admitted (probe 2026-08-14); only truly unadmitted examples here.
+    const UNADMITTED_EXAMPLES = ["degC", "MPa", "bar", "psi", "°C", "kPa"];
     for (const [, entry] of UNIT_NORMALISATION) {
       for (const bad of UNADMITTED_EXAMPLES) {
         if (!SUPPORTED_ORACLE_UNITS.includes(bad)) {
@@ -112,3 +110,74 @@ Deno.test(
     }
   },
 );
+
+Deno.test("kN-to-N applies exact multiplicative rescale of 1e3", () => {
+  const kn = UNIT_NORMALISATION.get("kN");
+  assertEquals(kn?.targetUnit, "N");
+  assertEquals(kn?.label, "kN-to-N");
+  // Typical load: 2.5 kN = 2 500 N.
+  assertEquals(kn?.apply(2.5), 2_500);
+  // Zero-crossing preserved (multiplicative).
+  assertEquals(kn?.apply(0), 0);
+});
+
+Deno.test("MJ-to-J applies exact multiplicative rescale of 1e6", () => {
+  const mj = UNIT_NORMALISATION.get("MJ");
+  assertEquals(mj?.targetUnit, "J");
+  assertEquals(mj?.label, "MJ-to-J");
+  assertEquals(mj?.apply(1), 1_000_000);
+  assertEquals(mj?.apply(0), 0);
+});
+
+Deno.test("kJ-to-J applies exact multiplicative rescale of 1e3", () => {
+  const kj = UNIT_NORMALISATION.get("kJ");
+  assertEquals(kj?.targetUnit, "J");
+  assertEquals(kj?.label, "kJ-to-J");
+  assertEquals(kj?.apply(100), 100_000);
+  assertEquals(kj?.apply(0), 0);
+});
+
+Deno.test("bar-to-Pa applies exact multiplicative rescale of 1e5", () => {
+  const bar = UNIT_NORMALISATION.get("bar");
+  assertEquals(bar?.targetUnit, "Pa");
+  assertEquals(bar?.label, "bar-to-Pa");
+  // Typical: 1.5 bar = 150 000 Pa.
+  assertEquals(bar?.apply(1.5), 150_000);
+  assertEquals(bar?.apply(0), 0);
+});
+
+Deno.test(
+  "degC-to-K applies affine offset +273.15 — mandatory: 0 °C → 273.15 K, not 0",
+  () => {
+    const degC = UNIT_NORMALISATION.get("degC");
+    assertEquals(degC?.targetUnit, "K");
+    assertEquals(degC?.label, "degC-to-K");
+    // Boundary: 0 °C must map to 273.15 K, never 0 K (multiplicative would give 0).
+    assertEquals(degC?.apply(0), 273.15);
+    // Typical room temperature: 22 °C → 295.15 K.
+    assertEquals(degC?.apply(22), 295.15);
+    // Negative temperatures remain valid (affine).
+    assertEquals(degC?.apply(-273.15), 0);
+  },
+);
+
+Deno.test("normaliseThreshold rescales degC to K and names the transformation", () => {
+  const result = normaliseThreshold(22, "degC");
+  assertEquals(result.value, 295.15);
+  assertEquals(result.unit, "K");
+  assertEquals(result.transformation, "degC-to-K");
+});
+
+Deno.test("normaliseThreshold rescales kN to N and names the transformation", () => {
+  const result = normaliseThreshold(2.5, "kN");
+  assertEquals(result.value, 2_500);
+  assertEquals(result.unit, "N");
+  assertEquals(result.transformation, "kN-to-N");
+});
+
+Deno.test("normaliseThreshold rescales bar to Pa and names the transformation", () => {
+  const result = normaliseThreshold(1.5, "bar");
+  assertEquals(result.value, 150_000);
+  assertEquals(result.unit, "Pa");
+  assertEquals(result.transformation, "bar-to-Pa");
+});

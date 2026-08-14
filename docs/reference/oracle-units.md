@@ -29,13 +29,21 @@ the round trip is refused fail-closed; it is never silently coerced.
 Each row exists because a live probe proved the round trip on that exact date. The
 evidence lives beside the map in `proof-case.ts` and must not be summarised away.
 
-| Unit | SysML v2 type (`private import SI::*`) | Probe evidence               |
-| ---- | -------------------------------------- | ---------------------------- |
-| `mm` | `LengthValue`                          | 2026-08-04, element d6793ccf |
-| `Pa` | `PressureValue`                        | 2026-08-04, element d6793ccf |
-| `kg` | `MassValue`                            | 2026-08-08                   |
-| `W`  | `PowerValue`                           | 2026-08-08                   |
-| `V`  | `VoltageValue`                         | 2026-08-08                   |
+| Unit  | SysML v2 type (`private import SI::*`) | Probe evidence               |
+| ----- | -------------------------------------- | ---------------------------- |
+| `mm`  | `LengthValue`                          | 2026-08-04, element d6793ccf |
+| `Pa`  | `PressureValue`                        | 2026-08-04, element d6793ccf |
+| `kg`  | `MassValue`                            | 2026-08-08                   |
+| `W`   | `PowerValue`                           | 2026-08-08                   |
+| `V`   | `VoltageValue`                         | 2026-08-08                   |
+| `N`   | `ForceValue`                           | 2026-08-14                   |
+| `J`   | `EnergyValue`                          | 2026-08-14                   |
+| `s`   | `TimeValue`                            | 2026-08-14                   |
+| `m`   | `LengthValue`                          | 2026-08-14                   |
+| `K`   | `TemperatureValue`                     | 2026-08-14                   |
+| `A`   | `ElectricCurrentValue`                 | 2026-08-14                   |
+| `Hz`  | `FrequencyValue`                       | 2026-08-14                   |
+| `rad` | `AngleValue`                           | 2026-08-14                   |
 
 ## Admitting a new unit
 
@@ -51,26 +59,52 @@ bypassing `UNIT_TO_SYSML_TYPE` so an unadmitted unit can be tested — extracts 
 and deletes the sandbox. `status: "ok"` with a matching `extractedUnit` is the only
 result that admits a unit.
 
-### Refused: `MPa`
+### Refused units (2026-08-14 campaign)
 
 ```
 deno task probe:requirement-units --unit=MPa --type=PressureValue   # 2026-08-14
 → status: "type_mismatch", extractedUnit: "FeatureReferenceExpression"
+
+deno task probe:requirement-units --unit=m2 --type=AreaValue        # 2026-08-14
+→ status: "type_mismatch", extractedUnit: "FeatureReferenceExpression"
+
+deno task probe:requirement-units --unit=N*m --type=TorqueValue     # 2026-08-14
+→ status: "extraction_failed" (SysML syntax with * rejected by constraint_extract)
+
+deno task probe:requirement-units --unit=N.m --type=TorqueValue     # 2026-08-14
+→ status: "type_mismatch", extractedUnit: "N" (dot truncates the name)
+
+deno task probe:requirement-units --unit=kPa --type=PressureValue   # 2026-08-14
+→ status: "type_mismatch", extractedUnit: "FeatureReferenceExpression"
+
+deno task probe:requirement-units --unit=deg --type=AngleValue      # 2026-08-14
+→ status: "type_mismatch", extractedUnit: "FeatureReferenceExpression"
 ```
 
-SysON did not resolve `MPa` to a unit; it left a dangling feature reference. Note that
-`mm` is also a prefixed unit and passes, so the cause is not prefixes as such but that
-this particular name is not declared in the SI library SysON loads. `MPa` can therefore
-never be an oracle unit — a stress requirement is expressed in `Pa`.
+`MPa`, `kPa`, `m2`, `deg`, `N*m`, `N.m` are not declared in the SI library SysON
+loads. Note that `mm` is a prefixed unit and passes — the cause is not prefixes as
+such but the specific declarations present in SysON's SI bundle.
+
+`MPa`, `kPa`, `bar`, `kN`, `kJ`, `MJ` are handled at the compilation boundary
+(see section below).
 
 ## Canonicalisation at the compilation boundary
 
-Engineers state stress in `MPa`. The oracle only carries `Pa`. The gap is closed once,
-in code, at the boundary where the approved brief is compiled into MRTR parameters:
-`UNIT_NORMALISATION` in
+Engineers use units the oracle cannot carry. The gap is closed once, in code, at the
+boundary where the approved brief is compiled into MRTR parameters: `UNIT_NORMALISATION`
+in
 [`src/domain/engineering/unit-normalisation.ts`](../../src/domain/engineering/unit-normalisation.ts)
-rescales `MPa` to `Pa` (×10⁶, exact) and the provenance entry names the step as
-`transformation: "MPa-to-Pa"`.
+rescales each non-native unit to its oracle-admitted target and names the step in the
+provenance entry.
+
+| Source unit | Target unit | Factor / rule       | Label          | Probe evidence |
+| ----------- | ----------- | ------------------- | -------------- | -------------- |
+| `MPa`       | `Pa`        | ×1 000 000          | `MPa-to-Pa`    | `Pa` OK 2026-08-04; `MPa` refused 2026-08-14 |
+| `kN`        | `N`         | ×1 000              | `kN-to-N`      | `N` OK 2026-08-14 |
+| `MJ`        | `J`         | ×1 000 000          | `MJ-to-J`      | `J` OK 2026-08-14 |
+| `kJ`        | `J`         | ×1 000              | `kJ-to-J`      | `J` OK 2026-08-14 |
+| `bar`       | `Pa`        | ×100 000            | `bar-to-Pa`    | `Pa` OK 2026-08-04 |
+| `degC`      | `K`         | + 273.15 (**affine**) | `degC-to-K`  | `K` OK 2026-08-14 |
 
 Why convert rather than refuse: refusing does not remove the conversion, it moves it
 into the agent, where nothing records that `90000000` was meant to be `90 MPa`. Doing it
@@ -103,22 +137,24 @@ Constraints on this table, in order of importance:
 - **Show the transformation to the human.** A provenance entry that is never surfaced
   turns an explicit conversion back into an invisible one.
 
-## Known gap: temperature has no oracle unit
+## Temperature is now verifiable
 
-No temperature unit is admitted — `UNIT_NORMALISATION` holds no `degC` entry and
-`SUPPORTED_ORACLE_UNITS` contains no `K`. Modelica nonetheless publishes its
-observations in `degC` (`temperature_final`, `targetTemperature: 22 degC` in
-[`modelica-isolated-execution.ts`](../../src/domain/analysis/modelica-isolated-execution.ts)).
+`K` passed the 2026-08-14 probe (`TemperatureValue`, `extractedUnit: "K"`). The
+normalisation entry `degC-to-K` is declared in `UNIT_NORMALISATION` as the first affine
+transformation: `apply: (v) => v + 273.15`.
 
-The consequence is exact: a thermal observation can be produced and captured, but **no
-requirement can currently be written that SysON would evaluate it against**. The
-Modelica branch yields measurements, not verdicts, until a temperature unit is probed
-and admitted.
+Modelica already publishes `degC` observations (`temperature_final`, `targetTemperature`
+in [`modelica-isolated-execution.ts`](../../src/domain/analysis/modelica-isolated-execution.ts)).
+Those observations can now be compared against a `K`-based SysON requirement via the
+compilation boundary: `normaliseThreshold(22, "degC")` → `{ value: 295.15, unit: "K" }`.
 
-When that is taken on, note that `K = degC + 273.15` is **affine, not a scale factor**.
-The normalisation table already supports the affine shape: an entry would declare
-`apply: (v) => v + 273.15` rather than a multiplier. The mandatory boundary test is
-`apply(0) === 273.15` — a multiplier-based table would return 0, which is exactly the
-wrong answer this architecture exists to prevent. The `declareEntry` guard ensures the
-`K` target is in `SUPPORTED_ORACLE_UNITS` before the entry is accepted — so the probe
-must pass first.
+**Affine safety** — the mandatory boundary test `apply(0) === 273.15` is enforced in
+`unit-normalisation_test.ts`. A multiplier-based table would return 0 for 0 °C, which
+is wrong; the function shape makes the affine semantics explicit and testable.
+
+## Known remaining gaps
+
+Units the oracle cannot carry and that have no normalisation path:
+- `m2` / `m²` (AreaValue) — `type_mismatch` 2026-08-14. No standard SysON prefix.
+- Torque (`N*m`, `N.m`) — rejected by SysON on both spellings 2026-08-14.
+- `deg` (AngleValue as degrees) — `type_mismatch` 2026-08-14. Use `rad` natively.
