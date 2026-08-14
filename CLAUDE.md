@@ -19,8 +19,7 @@ Pour éditer un serveur d'ingénierie, cloner son repo (`Casys-AI/mcp-syson`,
 > `state/fixtures/retired/cm01-v3/` et les révisions historiques immuables déjà écrites
 > sous `state/local/`. Ne jamais les enregistrer, les rejouer, les prendre comme
 > fallback ou les présenter comme une admission provider. Le Workbench est focus-only ;
-> `desk-lamp-dl04` est le candidat générique pour qualifier CalculiX
-> `verify.run-fea-static-proof@2`.
+> `desk-lamp-dl04` est le projet générique qui porte les qualifications successives.
 >
 > **Agents.** Lire d'abord [AGENTS.md](AGENTS.md) puis
 > [docs/reference/agent-workspace.md](docs/reference/agent-workspace.md). Ces pages

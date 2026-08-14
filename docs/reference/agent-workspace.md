@@ -144,6 +144,8 @@ Its limit is contractual: the brief carries free-text statements, so the server 
 reads the prose and never asserts that a declared value restates its statement. It
 records where the value came from; the signing human confirms what it says.
 
+How-to: [Compile brief parameters](../how-to/compile-brief-parameters.md).
+
 ### Technical compilation / isolated CAD
 
 | Tool                                        | Writes                   | Grant                                                            |

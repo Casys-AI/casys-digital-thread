@@ -97,6 +97,11 @@ preview → `model.seal-architecture-sysml@1`. That seal writes a Thread documen
 **does not** insert into SysON. See
 [author architecture SysML](../how-to/author-architecture-sysml.md).
 
+The first two writes need not be typed by hand. `project_brief_architecture_review` and
+`project_brief_requirements_review` compile the approved brief into their exact
+parameters and record which brief item each value came from. See
+[compile brief parameters](../how-to/compile-brief-parameters.md).
+
 Every consequential step is: append work + decision → propose → human MRTR → queue →
 execute. The agent supplies no provider name, tool, path, or SysML text on the renderer
 path.
