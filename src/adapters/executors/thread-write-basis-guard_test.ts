@@ -35,6 +35,11 @@ import {
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
 } from "../../orchestration/operations/inspection-drone-v4.ts";
+import {
+  ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+} from "../../domain/analysis/sensitivity-study-proposal.ts";
 
 const BASIS = {
   kind: "thread-snapshot" as const,
@@ -256,6 +261,43 @@ Deno.test("a durable technical-compilation admission blocks every sibling on the
 
     await assertRejects(
       () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
+      EngineeringProjectCommandError,
+      "active, completed, or uncertain durable write",
+    );
+  }
+});
+
+Deno.test("a running sensitivity writer blocks every sibling on the same Thread basis", async () => {
+  const current = run("architecture", "queued");
+  for (
+    const operation of [
+      ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+      ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+      MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+    ]
+  ) {
+    const sibling = {
+      ...run("geometry", "running"),
+      id: `run:${operation.id}`,
+      workItemId: `work:${operation.id}`,
+    };
+    const initial = project([current, sibling]);
+    const value: EngineeringProjectSnapshot = {
+      ...initial,
+      workItems: initial.workItems.map((item) =>
+        item.id === sibling.workItemId
+          ? {
+            ...item,
+            operation: {
+              ...operation,
+              bindings: item.operation?.bindings ?? [],
+            },
+          }
+          : item
+      ),
+    };
+    await assertRejects(
+      () => assertThreadWriteBasisAvailable(value, current),
       EngineeringProjectCommandError,
       "active, completed, or uncertain durable write",
     );

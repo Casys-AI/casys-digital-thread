@@ -1,0 +1,88 @@
+{
+  "schemaVersion": "sensitivity-study-case-template/2.0",
+  "id": "dl04-size-z-sensitivity",
+  "revision": 1,
+  "scope": "mechanical-structural",
+  "evidenceBoundary": "fea-static",
+  "project": {
+    "id": "desk-lamp-dl04",
+    "subjectId": "lamp-arm"
+  },
+  "target": {
+    "componentKey": "arm",
+    "semanticKey": "size_z"
+  },
+  "baseValue": {
+    "value": 50,
+    "unit": "mm"
+  },
+  "step": {
+    "value": 1,
+    "unit": "mm"
+  },
+  "metrics": [
+    {
+      "id": "assembly_max_displacement",
+      "unit": "mm"
+    },
+    {
+      "id": "assembly_max_von_mises",
+      "unit": "MPa"
+    }
+  ],
+  "solver": {
+    "provider": "calculix",
+    "tool": "calculix_solve_static",
+    "resultSchemaVersion": "2.0",
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSizeMm": 3
+    },
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "eMpa": 70000,
+      "nu": 0.33,
+      "basis": "dl04-aluminium-reviewed"
+    },
+    "supports": [
+      {
+        "id": "wall-mount",
+        "kind": "fixed",
+        "selection": {
+          "name": "Wall",
+          "box": {
+            "min": [0, 0, 0],
+            "max": [5, 5, 5],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "tip-load",
+        "kind": "force",
+        "selection": {
+          "name": "Tip",
+          "box": {
+            "min": [10, 10, 10],
+            "max": [15, 15, 15],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [0, 0, -10],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "domain": {
+    "approximationOrder": "first-order-forward",
+    "remeshingVariationIncluded": true,
+    "localValidityNote": "Valid for size_z in [50, 51] mm.",
+    "limitations": [
+      "Remeshing variation is included because each CalculiX solve remeshes independently."
+    ]
+  }
+}

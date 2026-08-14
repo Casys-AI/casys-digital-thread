@@ -20,6 +20,11 @@ import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineeri
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import {
+  ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+} from "../../domain/analysis/sensitivity-study-proposal.ts";
 
 Deno.test("the intake registry starts a new idea from the approved project brief", () => {
   const idea = engineeringOperationRegistry.getIntake("idea-or-spec")!;
@@ -215,6 +220,28 @@ Deno.test(
     }
   },
 );
+
+Deno.test("the registry lists the three sensitivity operations as trusted and not ROP 2.0", () => {
+  const seal = getRegisteredEngineeringOperation(
+    ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  )!;
+  const run = getRegisteredEngineeringOperation(
+    ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+  )!;
+  const write = getRegisteredEngineeringOperation(
+    MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+  )!;
+  for (const registered of [seal, run, write]) {
+    assertEquals(registered.execution, "trusted");
+    assertEquals(registered.resolvedOperationPlan, undefined);
+  }
+  assertEquals(seal.workItemKind, "review");
+  assertEquals(run.workItemKind, "simulate");
+  assertEquals(run.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(run.bindings.map((binding) => binding.name), ["studyCase"]);
+  assertEquals(write.workItemKind, "architect");
+  assertEquals(write.bindings.map((binding) => binding.name), ["studyCapture"]);
+});
 
 Deno.test("model.seal-architecture-sysml@1 is a provider-free Thread-document seal", () => {
   const registered = getRegisteredEngineeringOperation(

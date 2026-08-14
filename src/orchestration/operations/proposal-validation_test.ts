@@ -355,6 +355,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
   // Adding a sealed or model-writing operation without registering its grammar
   // would silently reopen the round trip this module exists to close.
   assertEquals(gatedProposalOperations(), [
+    "analyze.seal-sensitivity-study@1",
     "compile.seal-admission@1",
     "design.execute-build123d@1",
     "design.seal-isolated-geometry@1",

@@ -73,6 +73,12 @@ These pairs look related and are **not** substitutes.
 | `planning-only` operation                                 | May be queued as work; executor may be absent or draft-only  | A trusted Thread writer                                                 |
 | CM-01 / `state/fixtures/retired/`                         | Historical golden record                                     | A live project, fallback, or provider admission                         |
 | `desk-lamp-dl04`                                          | Generic qualification candidate                              | Live `@2` proof until that distinct run is persisted and reread         |
+| `analyze.seal-sensitivity-study@1`                        | Provider-free Thread-document seal of a 2.0 study case       | `verify.seal-proof-case@1` or a solve                                   |
+| `analyze.run-fea-sensitivity@1`                           | Two attested CalculiX observations, no verdict               | `verify.run-fea-static-proof@1` / `@2` / `@3`                           |
+| STEP inside a sensitivity-study capture                   | Isolated solver input for that study only                    | Canonical geometry or a proof-run `geometry` binding                    |
+| `model.write-sensitivity-edges@1`                         | Server-rendered derivative PartDef inserted into SysON       | `model.write-architecture@1`                                            |
+| `renderSensitivityEdgeSetSysml`                           | Flat PartDef renderer for measured edges                     | `renderSensitivityRelationsSysml`                                       |
+| `sensitivity-study-case/2.0` `cadSource`                  | Sealed compilation-admission artifact URI + sha256           | `recipeSource` 1.0 or a STEP artifact                                   |
 
 ## 4. Surfaces an agent actually calls
 
@@ -186,6 +192,9 @@ Unknown ids/versions are indistinguishable from absent.
 | `simulate.seal-simulation-case@2`                   | trusted                   | Modelica resources           | Planless V2 seal                                     | A simulation                         |
 | `simulate.run-modelica-scenario@2`                  | trusted                   | recorded Modelica            | Observations via ROP 2.0                             | Local kit `@1`                       |
 | `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | One fixed linear-ramp kit                            | Arbitrary Modelica                   |
+| `analyze.seal-sensitivity-study@1`                  | trusted                   | none                         | Sealed 2.0 study-case document                       | A solve or a verdict                 |
+| `analyze.run-fea-sensitivity@1`                     | trusted                   | isolated CAD + CalculiX MCP  | Dimensioned observations + study capture             | A verdict or `@2` ROP plan           |
+| `model.write-sensitivity-edges@1`                   | trusted                   | SysON                        | Server-rendered derivative PartDef                   | Architecture write or agent SysML    |
 | `design.apply-vector-correction@1`                  | planning-only             | none                         | Correction proposal                                  | A provider run                       |
 | `record.reconcile-uncertain-writer@1`               | trusted, **human origin** | none                         | Release or inspect an uncertain write                | Agent inspection of a provider       |
 | `record.archive-lineage@1`                          | trusted                   | none                         | Append-only archive change                           | SysML deletion                       |

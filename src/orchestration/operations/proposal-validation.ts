@@ -19,6 +19,10 @@ import {
   VERIFY_SEAL_PROOF_CASE_OPERATION,
 } from "../../domain/analysis/fea-proof-proposal.ts";
 import {
+  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  parseSensitivityStudyDecisionParameters,
+} from "../../domain/analysis/sensitivity-study-proposal.ts";
+import {
   parseSimulationCaseDecisionParameters,
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
   simulationCaseDecisionParametersToMap,
@@ -137,6 +141,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(VERIFY_SEAL_PROOF_CASE_OPERATION),
     (parameters) => {
       parseFeaProofDecisionParameters(feaProofDecisionParametersToMap(parameters));
+    },
+  ],
+  [
+    keyOf(ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION),
+    (parameters) => {
+      parseSensitivityStudyDecisionParameters(parameters);
     },
   ],
   [

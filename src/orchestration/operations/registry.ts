@@ -22,6 +22,11 @@ import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "./recorded-analysis.ts";
 import {
+  ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+} from "../../domain/analysis/sensitivity-study-proposal.ts";
+import {
   type EngineeringOperationBasisKind,
   type EngineeringOperationRegistry,
   EngineeringOperationRegistryError,
@@ -530,6 +535,83 @@ const OPERATIONS = [
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "simulationCase",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Provider-free seal of one reviewed sensitivity-study-case/2.0. The catalog
+   * holds the scientific template; the signed MRTR binds the exact Thread
+   * compilation admission. No provider is called and no derivative is computed.
+   */
+  {
+    id: ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.id,
+    version: ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed FEA sensitivity study case",
+    description:
+      "Resolve the reviewed sensitivity-study template through the server-owned catalog, " +
+      "bind the exact compilation-admission cadSource from the current Thread, verify the " +
+      "operator-signed digest against the assembled sensitivity-study-case/2.0 bytes, and " +
+      "publish the content-addressed case artifact. No provider is called.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Two-solve finite-difference FEA study. Consumes only the sealed case
+   * artifact. Publishes dimensioned observations and a sensitivity capture.
+   * Never a verdict, requirement, evaluation or violation.
+   */
+  {
+    id: ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.id,
+    version: ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Run the sealed FEA sensitivity study and publish observations",
+    description:
+      "Re-read the sealed sensitivity-study-case/2.0, execute the exact admitted " +
+      "Build123d source and one server-owned stepped substitution, dispatch two " +
+      "attested CalculiX static solves, compute finite-difference derivatives from " +
+      "the sealed step, and publish unit-carrying observations. No verdict is derived.",
+    workItemKind: "simulate",
+    riskClass: "low",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "studyCase",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Server-rendered SysML PartDef for the measured derivative set. Reads the
+   * sensitivity-study capture, never agent-authored SysML.
+   */
+  {
+    id: MODEL_WRITE_SENSITIVITY_EDGES_OPERATION.id,
+    version: MODEL_WRITE_SENSITIVITY_EDGES_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Author the reviewed sensitivity edges in the system model",
+    description:
+      "Re-read the sealed sensitivity-study capture, reconstruct the SensitivityEdge " +
+      "set with server-fixed SysML names, insert the rendered PartDef into the existing " +
+      "SysON architecture package, and publish the sensitivity-edges artifact after " +
+      "re-extraction. No SysML text is supplied by the agent.",
+    workItemKind: "architect",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "studyCapture",
       allowedSourceKinds: ["thread-entity"],
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],

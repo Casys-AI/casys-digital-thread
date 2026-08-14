@@ -39,6 +39,11 @@ import {
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
 } from "../../orchestration/operations/inspection-drone-v4.ts";
+import {
+  ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+} from "../../domain/analysis/sensitivity-study-proposal.ts";
 
 const THREAD_WRITE_OPERATIONS = new Set([
   `${MODEL_WRITE_ARCHITECTURE_OPERATION.id}@${MODEL_WRITE_ARCHITECTURE_OPERATION.version}`,
@@ -62,6 +67,9 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.id}@${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.version}`,
   `${INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION.id}@${INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION.version}`,
   `${MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.id}@${MODEL_CAPTURE_PART_DEFINITIONS_OPERATION.version}`,
+  `${ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.id}@${ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.version}`,
+  `${ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.id}@${ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.version}`,
+  `${MODEL_WRITE_SENSITIVITY_EDGES_OPERATION.id}@${MODEL_WRITE_SENSITIVITY_EDGES_OPERATION.version}`,
 ]);
 
 /**
@@ -73,6 +81,7 @@ const NON_RECONCILIABLE_THREAD_WRITE_FAILURE_CODES: ReadonlySet<string> = new Se
   "compile-seal-admission-thread-write-outcome-unknown",
   "model-seal-architecture-sysml-thread-write-outcome-unknown",
   "design-seal-isolated-geometry-thread-write-outcome-unknown",
+  "analyze-seal-sensitivity-study-thread-write-outcome-unknown",
 ]);
 /**
  * Exported alongside TERMINAL_THREAD_WRITE_FAILURES so the reconcile executor
