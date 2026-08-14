@@ -2,8 +2,11 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
   ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+  extractPartDefinitionsFromCapture,
+  parseArchitectureCapturePartDefinitions,
   parseExactArchitectureCapture,
 } from "./architecture-capture.ts";
+import { parseExactPartDefinitionsCapture } from "./part-definitions-capture.ts";
 
 const RUN_ID = "run:architecture";
 const PACKAGE_NAME = "DroneV4";
@@ -138,6 +141,86 @@ Deno.test("current architecture capture rejects repeated references and selector
     })
   );
 });
+
+Deno.test(
+  "parseExactArchitectureCapture remains the only reader of architecture-capture/2.0 and 3.0 keys",
+  async () => {
+    const thisFile = await Deno.readTextFile(new URL(import.meta.url));
+    const parser = await Deno.readTextFile(
+      new URL("./architecture-capture.ts", import.meta.url),
+    );
+    const sibling = await Deno.readTextFile(
+      new URL("./part-definitions-capture.ts", import.meta.url),
+    );
+    const executor = await Deno.readTextFile(
+      new URL(
+        "../executors/model-capture-part-definitions-run-executor.ts",
+        import.meta.url,
+      ),
+    );
+    assertEquals(
+      parser.includes("export function parseExactArchitectureCapture"),
+      true,
+    );
+    assertEquals(parser.includes("parseArchitectureCapturePartDefinitions("), true);
+    assertEquals(sibling.includes("parseExactArchitectureCapture("), false);
+    assertEquals(sibling.includes("parseArchitectureCapturePartDefinitions("), true);
+    assertEquals(executor.includes("parseExactArchitectureCapture("), true);
+    assertEquals(executor.includes("exactKeys("), false);
+    assertEquals(thisFile.includes("architecture-capture/2.0"), true);
+  },
+);
+
+Deno.test(
+  "extractPartDefinitionsFromCapture returns the sealed PartDefinition graph without re-reading schema keys",
+  () => {
+    const parsed = parseExactArchitectureCapture(currentCapture());
+    assertEquals(extractPartDefinitionsFromCapture(parsed), parsed.partDefinitions);
+  },
+);
+
+Deno.test(
+  "parseArchitectureCapturePartDefinitions is shared by architecture-capture and part-definitions-capture",
+  () => {
+    const shared = parseArchitectureCapturePartDefinitions(
+      baseCapture().partDefinitions,
+      "partDefinitions",
+      ["package-drone-v4"],
+    );
+    const architecture = parseExactArchitectureCapture(currentCapture());
+    assertEquals(architecture.partDefinitions, shared);
+
+    const partDefinitionsCapture = parseExactPartDefinitionsCapture({
+      schemaVersion: "part-definitions-capture/1.0",
+      kind: "part-definitions",
+      scope: "read-only-product-structure",
+      statement:
+        "Read-only PartDefinition structures re-read from SysON against the exact generic architecture capture. No CAD, physics, quantity inference, manufacturing claim or verdict is recorded.",
+      capturedAt: AT,
+      trustedRunId: "run:part-definitions",
+      operation: { id: "model.capture-part-definitions", version: "1" },
+      architecture: {
+        artifactId: "architecture-" + "e".repeat(64),
+        fingerprint: fingerprint("e"),
+        producerRunId: RUN_ID,
+        uri: `casys://architecture-capture/sha256/${"e".repeat(64)}`,
+        schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
+        packageName: PACKAGE_NAME,
+        systemName: "DroneSystem",
+        package: { id: "package-drone-v4", label: PACKAGE_NAME },
+      },
+      seed: {
+        artifactId: "artifact:seed",
+        fingerprint: fingerprint("d"),
+        producerRunId: "run:seed",
+        editingContextId: "ctx-1",
+        rootPackageId: "root-1",
+      },
+      partDefinitions: baseCapture().partDefinitions,
+    });
+    assertEquals(partDefinitionsCapture.partDefinitions, shared);
+  },
+);
 
 Deno.test("historical v2 capture cannot be retrofitted with source analyses", () => {
   assertThrows(() =>

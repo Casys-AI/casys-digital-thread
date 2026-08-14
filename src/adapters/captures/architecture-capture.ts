@@ -124,81 +124,11 @@ export function parseExactArchitectureCapture(
     )
     : undefined;
 
-  if (!Array.isArray(record.partDefinitions)) {
-    throw new Error("Architecture capture partDefinitions must be an array.");
-  }
-  const semanticIds = new Set<string>([architecturePackage.id]);
-  const definitionLabels = new Set<string>();
-  const partDefinitions = record.partDefinitions.map((rawPart, index) => {
-    const part = exactObject(rawPart, `partDefinitions[${index}]`);
-    exactKeys(part, ["id", "kind", "label", "usages"], `partDefinitions[${index}]`);
-    const id = exactNonEmpty(part.id, `partDefinitions[${index}].id`);
-    const label = exactNonEmpty(part.label, `partDefinitions[${index}].label`);
-    if (
-      part.kind !== "PartDefinition" || !Array.isArray(part.usages) ||
-      semanticIds.has(id) || definitionLabels.has(label)
-    ) {
-      throw new Error(`Architecture capture PartDefinition ${index} is ambiguous.`);
-    }
-    semanticIds.add(id);
-    definitionLabels.add(label);
-    const usageLabels = new Set<string>();
-    const usages = part.usages.map((rawUsage, usageIndex) => {
-      const usage = exactObject(
-        rawUsage,
-        `partDefinitions[${index}].usages[${usageIndex}]`,
-      );
-      exactKeys(
-        usage,
-        ["id", "kind", "label", "targetId", "targetKind", "targetLabel"],
-        `partDefinitions[${index}].usages[${usageIndex}]`,
-      );
-      const usageId = exactNonEmpty(
-        usage.id,
-        `partDefinitions[${index}].usages[${usageIndex}].id`,
-      );
-      const usageLabel = exactNonEmpty(
-        usage.label,
-        `partDefinitions[${index}].usages[${usageIndex}].label`,
-      );
-      if (
-        usage.kind !== "PartUsage" || usage.targetKind !== "PartDefinition" ||
-        semanticIds.has(usageId) || usageLabels.has(usageLabel)
-      ) {
-        throw new Error(
-          `Architecture capture PartUsage ${index}/${usageIndex} is ambiguous.`,
-        );
-      }
-      semanticIds.add(usageId);
-      usageLabels.add(usageLabel);
-      return {
-        id: usageId,
-        kind: "PartUsage" as const,
-        label: usageLabel,
-        targetId: exactNonEmpty(
-          usage.targetId,
-          `partDefinitions[${index}].usages[${usageIndex}].targetId`,
-        ),
-        targetKind: "PartDefinition" as const,
-        targetLabel: exactNonEmpty(
-          usage.targetLabel,
-          `partDefinitions[${index}].usages[${usageIndex}].targetLabel`,
-        ),
-      };
-    });
-    return { id, kind: "PartDefinition" as const, label, usages };
-  });
-
-  const definitionsById = new Map(partDefinitions.map((part) => [part.id, part]));
-  for (const part of partDefinitions) {
-    for (const usage of part.usages) {
-      if (definitionsById.get(usage.targetId)?.label !== usage.targetLabel) {
-        throw new Error(
-          `Architecture capture PartUsage "${usage.label}" has a non-exact target.`,
-        );
-      }
-    }
-  }
+  const partDefinitions = parseArchitectureCapturePartDefinitions(
+    record.partDefinitions,
+    "partDefinitions",
+    [architecturePackage.id],
+  );
   if (!partDefinitions.some((part) => part.label === systemName)) {
     throw new Error("Architecture capture systemName is not a PartDefinition.");
   }
@@ -221,6 +151,105 @@ export function parseExactArchitectureCapture(
       sourceAnalyses: sourceAnalyses!,
     }
     : { schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA_LEGACY, ...base };
+}
+
+/**
+ * Typed projection of the sealed parent→usage→target graph. This is not a
+ * parser: the capture must already have been read by
+ * `parseExactArchitectureCapture`.
+ */
+export function extractPartDefinitionsFromCapture(
+  capture: ExactArchitectureCapture,
+): readonly ArchitectureCapturePartDefinition[] {
+  return capture.partDefinitions;
+}
+
+/**
+ * Sole reader of the sealed PartDefinition graph keys (`id`/`kind`/`label`/
+ * `usages` and the inbound-target invariant). Architecture captures and
+ * part-definitions captures both call this helper.
+ */
+export function parseArchitectureCapturePartDefinitions(
+  raw: unknown,
+  path: string,
+  reservedIds: readonly string[],
+): readonly ArchitectureCapturePartDefinition[] {
+  if (!Array.isArray(raw)) {
+    throw new Error(`${path} must be an array.`);
+  }
+  const semanticIds = new Set<string>(reservedIds);
+  const definitionLabels = new Set<string>();
+  const partDefinitions = raw.map((rawPart, index) => {
+    const part = exactObject(rawPart, `${path}[${index}]`);
+    exactKeys(part, ["id", "kind", "label", "usages"], `${path}[${index}]`);
+    const id = exactNonEmpty(part.id, `${path}[${index}].id`);
+    const label = exactNonEmpty(part.label, `${path}[${index}].label`);
+    if (
+      part.kind !== "PartDefinition" || !Array.isArray(part.usages) ||
+      semanticIds.has(id) || definitionLabels.has(label)
+    ) {
+      throw new Error(`Architecture capture PartDefinition ${index} is ambiguous.`);
+    }
+    semanticIds.add(id);
+    definitionLabels.add(label);
+    const usageLabels = new Set<string>();
+    const usages = part.usages.map((rawUsage, usageIndex) => {
+      const usage = exactObject(
+        rawUsage,
+        `${path}[${index}].usages[${usageIndex}]`,
+      );
+      exactKeys(
+        usage,
+        ["id", "kind", "label", "targetId", "targetKind", "targetLabel"],
+        `${path}[${index}].usages[${usageIndex}]`,
+      );
+      const usageId = exactNonEmpty(
+        usage.id,
+        `${path}[${index}].usages[${usageIndex}].id`,
+      );
+      const usageLabel = exactNonEmpty(
+        usage.label,
+        `${path}[${index}].usages[${usageIndex}].label`,
+      );
+      if (
+        usage.kind !== "PartUsage" || usage.targetKind !== "PartDefinition" ||
+        semanticIds.has(usageId) || usageLabels.has(usageLabel)
+      ) {
+        throw new Error(
+          `Architecture capture PartUsage ${index}/${usageIndex} is ambiguous.`,
+        );
+      }
+      semanticIds.add(usageId);
+      usageLabels.add(usageLabel);
+      return {
+        id: usageId,
+        kind: "PartUsage" as const,
+        label: usageLabel,
+        targetId: exactNonEmpty(
+          usage.targetId,
+          `${path}[${index}].usages[${usageIndex}].targetId`,
+        ),
+        targetKind: "PartDefinition" as const,
+        targetLabel: exactNonEmpty(
+          usage.targetLabel,
+          `${path}[${index}].usages[${usageIndex}].targetLabel`,
+        ),
+      };
+    });
+    return { id, kind: "PartDefinition" as const, label, usages };
+  });
+
+  const definitionsById = new Map(partDefinitions.map((part) => [part.id, part]));
+  for (const part of partDefinitions) {
+    for (const usage of part.usages) {
+      if (definitionsById.get(usage.targetId)?.label !== usage.targetLabel) {
+        throw new Error(
+          `Architecture capture PartUsage "${usage.label}" has a non-exact target.`,
+        );
+      }
+    }
+  }
+  return partDefinitions;
 }
 
 function parseArtifactReference(
