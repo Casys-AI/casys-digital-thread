@@ -449,12 +449,28 @@ async function assertPinnedRuntimeArtifact(
   let realPath: string;
   try {
     const lexicalInfo = await Deno.lstat(lexicalPath);
-    if (!lexicalInfo.isFile || lexicalInfo.isSymlink || lexicalInfo.nlink !== 1) {
-      throw new Error();
+    /**
+     * Name the condition that refused the artifact. The message stays
+     * path-free and provider-free, but a bare "unavailable" made an install
+     * that never materialised indistinguishable from one whose layout the
+     * guard rejects — the two need opposite fixes, and only the operator can
+     * tell them apart from the message.
+     */
+    if (!lexicalInfo.isFile) throw new Error("not a regular file");
+    if (lexicalInfo.isSymlink) throw new Error("a symbolic link");
+    if (lexicalInfo.nlink !== 1) {
+      throw new Error(`shared by ${lexicalInfo.nlink} hard links`);
     }
     realPath = await Deno.realPath(lexicalPath);
-  } catch {
-    throw new Error("A pinned Microsandbox runtime artifact is unavailable.");
+  } catch (error) {
+    const reason = error instanceof Deno.errors.NotFound
+      ? "absent"
+      : error instanceof Error && error.message !== ""
+      ? error.message
+      : "unreadable";
+    throw new Error(
+      `A pinned Microsandbox runtime artifact is unavailable: ${relativeFilename} is ${reason}.`,
+    );
   }
   const relativePath = relative(packageRoot, realPath);
   if (
