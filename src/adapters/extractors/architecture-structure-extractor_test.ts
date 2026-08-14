@@ -14,10 +14,12 @@ import type {
 // ── Minimal MCP stub ─────────────────────────────────────────────────────────
 
 /**
- * Two-tool stub: handles both syson_element_children and syson_query_aql.
+ * Stub for syson_element_children, syson_query_aql, and syson_element_get.
  *
  * children: Map<elementId, structuredContent>
  * aql: Map<objectId, label of the typed PartDef returned by FeatureTyping AQL>
+ * elements: optional live get map. Absent → default PartDefinition whose
+ *   label is `live-<id>`. An explicit `null` is a missing element.
  *
  * WHY TWO MAPS — Phase 3b uses syson_query_aql (not syson_element_children) to
  * resolve FeatureTyping targets. The AQL response returns the typed PartDefinition
@@ -28,9 +30,34 @@ function makeStub(
   children: Map<string, unknown>,
   aql: Map<string, string> = new Map(),
   aqlObjectIdOverrides: Map<string, string> = new Map(),
+  elements?: Map<
+    string,
+    { readonly kind: string; readonly label: string } | null
+  >,
 ): McpToolClient {
   return {
     callTool: (call: McpToolCall): Promise<McpToolResult> => {
+      if (call.name === "syson_element_get") {
+        const id = (call.arguments as Record<string, unknown>).element_id as string;
+        if (elements) {
+          if (!elements.has(id) || elements.get(id) === null) {
+            return Promise.reject(new Error(`No element stub for element_id "${id}"`));
+          }
+          const live = elements.get(id)!;
+          return Promise.resolve({
+            text: "element",
+            structuredContent: { id, kind: live.kind, label: live.label },
+          });
+        }
+        return Promise.resolve({
+          text: "element",
+          structuredContent: {
+            id,
+            kind: "sysml::PartDefinition",
+            label: `live-${id}`,
+          },
+        });
+      }
       if (call.name === "syson_element_children") {
         const id = (call.arguments as Record<string, unknown>).element_id as string;
         const content = children.get(id);
@@ -391,7 +418,9 @@ Deno.test(
 
     const many: McpToolClient = {
       callTool: (call: McpToolCall): Promise<McpToolResult> => {
-        if (call.name === "syson_element_children") {
+        if (
+          call.name === "syson_element_get" || call.name === "syson_element_children"
+        ) {
           return makeStub(children).callTool(call);
         }
         return Promise.resolve({
@@ -417,6 +446,58 @@ Deno.test(
       ArchitectureStructureExtractionError,
     ) as ArchitectureStructureExtractionError;
     assertEquals(ambiguous.code, "invalid_aql_response");
+  },
+);
+
+Deno.test(
+  "extractPartDefinitionStructures uses the live syson_element_get label not the sealed one",
+  async () => {
+    const children = new Map([
+      ["sys-1", makeChildren("sys-1", [])],
+    ]);
+    const result = await extractPartDefinitionStructures(
+      makeStub(
+        children,
+        new Map(),
+        new Map(),
+        new Map([["sys-1", { kind: PART_DEF_KIND, label: "LiveLamp" }]]),
+      ),
+      "ctx-1",
+      [{ id: "sys-1", label: "SealedLamp" }],
+    );
+    assertEquals(result, [{ id: "sys-1", label: "LiveLamp", usages: [] }]);
+  },
+);
+
+Deno.test(
+  "extractPartDefinitionStructures rejects a sealed id that is not a live PartDefinition",
+  async () => {
+    const missing = await assertRejects(
+      () =>
+        extractPartDefinitionStructures(
+          makeStub(new Map(), new Map(), new Map(), new Map([["sys-1", null]])),
+          "ctx-1",
+          [{ id: "sys-1", label: "LampSystem" }],
+        ),
+      ArchitectureStructureExtractionError,
+    ) as ArchitectureStructureExtractionError;
+    assertEquals(missing.code, "extraction_failed");
+
+    const wrongKind = await assertRejects(
+      () =>
+        extractPartDefinitionStructures(
+          makeStub(
+            new Map(),
+            new Map(),
+            new Map(),
+            new Map([["sys-1", { kind: PACKAGE_KIND, label: "LampSystem" }]]),
+          ),
+          "ctx-1",
+          [{ id: "sys-1", label: "LampSystem" }],
+        ),
+      ArchitectureStructureExtractionError,
+    ) as ArchitectureStructureExtractionError;
+    assertEquals(wrongKind.code, "unexpected_element_kind");
   },
 );
 

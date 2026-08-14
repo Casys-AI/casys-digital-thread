@@ -156,25 +156,33 @@ Deno.test("no FileArchitectureAttemptStore begin occurs before the SysON read", 
 });
 
 Deno.test(
-  "live SysON parent-usage-target must equal the sealed architecture PartDefinitions",
+  "a live PartDefinition rename refuses publication",
   async () => {
-    const fixture = await productFixture();
-    const completed = await fixture.executor().execute(AGENT, fixture.command());
-    const run = completed.agentRuns[0]!;
-    const snapshot = await fixture.snapshots.get(run.resultSnapshot!.snapshotId);
-    assert(snapshot);
-    const artifact = snapshot.artifacts.find((item) =>
-      item.id.startsWith("part-definitions-")
+    const fixture = await productFixture({ renamedLabel: "LampSystemRenamed" });
+    await assertRejects(
+      () => fixture.executor().execute(AGENT, fixture.command()),
+      Error,
+      "does not match the sealed architecture PartDefinitions",
     );
-    assert(artifact);
-    assertEquals(artifact.producer.tool, "syson_element_children");
+    assertEquals(await fixture.publications.read(PROJECT_ID, RUN_ID), undefined);
+    assertEquals(fixture.project.agentRuns[0]!.status, "failed");
     assertEquals(
-      fixture.syson.calls.filter((call) => call.name === "syson_element_children")
-        .map((call) => call.arguments?.element_id),
-      [SYSTEM_ID, ARM_ID],
+      fixture.syson.calls.some((call) => call.name === "syson_element_get"),
+      true,
     );
   },
 );
+
+Deno.test("a live missing PartUsage refuses publication", async () => {
+  const fixture = await productFixture({ missingUsage: true });
+  await assertRejects(
+    () => fixture.executor().execute(AGENT, fixture.command()),
+    Error,
+    "does not match the sealed architecture PartDefinitions",
+  );
+  assertEquals(await fixture.publications.read(PROJECT_ID, RUN_ID), undefined);
+  assertEquals(fixture.project.agentRuns[0]!.status, "failed");
+});
 
 Deno.test(
   "a live extra PartUsage on a sealed PartDefinition refuses publication",
@@ -359,6 +367,8 @@ type FixtureOptions = {
   droneArchitecture?: boolean;
   extraUsage?: boolean;
   mistyped?: boolean;
+  renamedLabel?: string;
+  missingUsage?: boolean;
   failSnapshotOnce?: boolean;
   failPublishOnce?: boolean;
 };
@@ -536,6 +546,8 @@ async function productFixture(options: FixtureOptions = {}) {
   const syson = new LiveSyson({
     extraUsage: options.extraUsage === true,
     mistyped: options.mistyped === true,
+    renamedLabel: options.renamedLabel,
+    missingUsage: options.missingUsage === true,
   });
   return {
     project,
@@ -983,7 +995,12 @@ class LiveSyson {
   readonly calls: Array<McpToolCall & { arguments?: Record<string, unknown> }> = [];
   failIfCalled = false;
   constructor(
-    private readonly options: { extraUsage: boolean; mistyped: boolean },
+    private readonly options: {
+      extraUsage: boolean;
+      mistyped: boolean;
+      renamedLabel?: string;
+      missingUsage: boolean;
+    },
   ) {}
   callTool(call: McpToolCall): Promise<McpToolResult> {
     const args = call.arguments as Record<string, unknown>;
@@ -994,9 +1011,27 @@ class LiveSyson {
     if (call.name === "syson_part_structure") {
       return Promise.reject(new Error("syson_part_structure is out of contract."));
     }
+    if (call.name === "syson_element_get") {
+      const id = args.element_id as string;
+      const label = this.options.renamedLabel && id === SYSTEM_ID
+        ? this.options.renamedLabel
+        : id === SYSTEM_ID
+        ? "LampSystem"
+        : id === ARM_ID
+        ? "Arm"
+        : id;
+      return Promise.resolve({
+        text: "element",
+        structuredContent: {
+          id,
+          kind: "sysml::PartDefinition",
+          label,
+        },
+      });
+    }
     if (call.name === "syson_element_children") {
       const id = args.element_id as string;
-      const children = id === SYSTEM_ID
+      const children = id === SYSTEM_ID && !this.options.missingUsage
         ? [
           { id: USAGE_ID, kind: PART_USAGE_KIND, label: "arm" },
           ...(this.options.extraUsage

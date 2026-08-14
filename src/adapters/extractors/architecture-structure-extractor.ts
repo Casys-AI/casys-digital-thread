@@ -55,7 +55,10 @@ export type ArchitectureStructureExtractionCode =
   | "ambiguous_package"
   | "invalid_children_response"
   | "invalid_aql_response"
-  | "missing_feature_typing";
+  | "missing_feature_typing"
+  | "missing_element"
+  | "unexpected_element_kind"
+  | "invalid_element_get_response";
 
 export interface ArchitectureStructureExtractionContext {
   readonly field?: string;
@@ -171,8 +174,10 @@ export async function extractArchitectureStructure(
  * Re-read only the sealed PartDefinitions (Phase 3 + 3b). Depth is one owned
  * PartUsage generation plus FeatureTyping; it is never a call argument.
  *
- * Output order matches `partDefs` input order — the sealed architecture
- * capture order. The function never rediscovers the package or walks
+ * Each sealed id is first reopened with `syson_element_get` so the returned
+ * label is the live SysON name, not the sealed capture name. A rename or
+ * retype is then visible to the caller. Output order matches `partDefs`
+ * input order. The function never rediscovers the package or walks
  * `usage.children`.
  */
 export async function extractPartDefinitionStructures(
@@ -182,7 +187,8 @@ export async function extractPartDefinitionStructures(
 ): Promise<readonly ExistingPartDef[]> {
   const extracted: ExistingPartDef[] = [];
   for (const partDef of partDefs) {
-    const partDefChildren = await callChildren(syson, editingContextId, partDef.id);
+    const live = await callElementGet(syson, editingContextId, partDef.id);
+    const partDefChildren = await callChildren(syson, editingContextId, live.id);
     const usages: ExistingPartUsage[] = [];
     for (const usage of partDefChildren) {
       if (!semanticKind(usage.kind, "PartUsage")) continue;
@@ -190,7 +196,7 @@ export async function extractPartDefinitionStructures(
         syson,
         editingContextId,
         usage,
-        partDef.label,
+        live.label,
       );
       usages.push({
         id: usage.id,
@@ -202,8 +208,8 @@ export async function extractPartDefinitionStructures(
       });
     }
     extracted.push({
-      id: partDef.id,
-      label: partDef.label,
+      id: live.id,
+      label: live.label,
       usages,
     });
   }
@@ -216,6 +222,64 @@ interface SysonChild {
   readonly id: string;
   readonly kind: string;
   readonly label: string;
+}
+
+async function callElementGet(
+  syson: McpToolClient,
+  editingContextId: string,
+  elementId: string,
+): Promise<{ readonly id: string; readonly kind: string; readonly label: string }> {
+  let content: Record<string, unknown>;
+  try {
+    const result = await syson.callTool({
+      name: "syson_element_get",
+      arguments: { editing_context_id: editingContextId, element_id: elementId },
+    });
+    content = result.structuredContent as Record<string, unknown>;
+  } catch (error) {
+    throw new ArchitectureStructureExtractionError(
+      "extraction_failed",
+      `syson_element_get failed for element "${elementId}": ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { elementId },
+      "Inspect SysON availability and the element id before retrying.",
+    );
+  }
+
+  if (
+    !content || typeof content !== "object" || Array.isArray(content) ||
+    typeof content.id !== "string" || !content.id ||
+    typeof content.kind !== "string" || !content.kind ||
+    typeof content.label !== "string" || !content.label
+  ) {
+    throw new ArchitectureStructureExtractionError(
+      "invalid_element_get_response",
+      `syson_element_get response for "${elementId}" has an unexpected shape.`,
+      { elementId, field: "structuredContent" },
+      "The SysON tool response shape has changed. Stop for review before retrying.",
+    );
+  }
+
+  if (content.id !== elementId) {
+    throw new ArchitectureStructureExtractionError(
+      "missing_element",
+      `syson_element_get did not return sealed PartDefinition "${elementId}".`,
+      { elementId, field: "id" },
+      "The sealed PartDefinition is absent from the live SysON model.",
+    );
+  }
+
+  if (!semanticKind(content.kind, "PartDefinition")) {
+    throw new ArchitectureStructureExtractionError(
+      "unexpected_element_kind",
+      `Sealed id "${elementId}" is live kind "${content.kind}", not a PartDefinition.`,
+      { elementId, field: "kind" },
+      "The sealed PartDefinition was replaced or retyped in SysON.",
+    );
+  }
+
+  return { id: content.id, kind: content.kind, label: content.label };
 }
 
 async function callChildren(
