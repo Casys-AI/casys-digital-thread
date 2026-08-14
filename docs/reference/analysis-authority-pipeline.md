@@ -346,7 +346,7 @@ protocol. The boundary is split as follows:
 
 | Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                           |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The only registered compilation profile is the qualified Build123d closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Pos`, `Rot`, `Compound`) |
+| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The only registered compilation profile is the qualified Build123d closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Pos`, `Rot`, `Compound`, `scale(solid, scalar)`) |
 | Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                        |
 | Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                    |
 | Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                            |
@@ -716,10 +716,12 @@ adapter-level pagination limit. These do not broaden the agent surface, but they
 part of the qualified host trust and availability envelope.
 
 The initial code-owned compilation catalogue qualifies only a parser-backed Build123d
-closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Pos`, `Rot`, `Compound`; analyzer
-`build123d-qualified-lezer` 1.1.0). Previously qualified Box/Cylinder bundles stay
-bit-identical. Modelica and CalculiX compiler profiles remain absent and therefore fail
-closed.
+closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`,
+`Pos`, `Rot`, `Compound`, `scale(solid, scalar)`; analyzer
+`build123d-qualified-lezer` 1.1.0). Previously qualified Box/Cylinder/Pos/Compound
+bundles stay bit-identical. fillet/chamfer remain unresolved: they still need
+`MemberExpression` and keyword arguments. Modelica and CalculiX compiler profiles
+remain absent and therefore fail closed.
 
 The recorded-analysis provider routes remain available for existing Modelica/CalculiX
 operations. `simulate.run-modelica-scenario@1/@2` and `verify.run-fea-static-proof@1/@2`

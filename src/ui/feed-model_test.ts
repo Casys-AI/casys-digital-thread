@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import type { EngineeringThreadEntityRef } from "../domain/project/engineering-project.ts";
 import {
   activityFeedNodes,
+  activityKindLabel,
   AMBIGUOUS_FEED_SCOPE,
   buildActivityTimeline,
   buildFeedComponentCounts,
@@ -10,6 +11,7 @@ import {
   compactLineageProjection,
   filterFeedNodesByScope,
   isActivityEntryExpanded,
+  isArchitectureSysmlSealArtifactId,
   ORPHAN_FEED_SCOPE,
   traceThreadLineage,
 } from "./src/thread/feed-model.ts";
@@ -140,6 +142,44 @@ Deno.test("activity feed promotes only a change whose target explicitly supersed
     ["correction", "proof-r28"],
   );
 });
+
+Deno.test(
+  "activity feed promotes only the architecture SysML seal document, not every document",
+  () => {
+    const digest = "a".repeat(64);
+    const seal = node(
+      `architecture-sysml-seal-${digest}`,
+      "artifact",
+      "2026-08-14T08:04:00.000Z",
+      "document",
+      "digital-thread",
+    );
+    const brief = node(
+      "artifact.brief",
+      "artifact",
+      "2026-08-14T08:00:00.000Z",
+      "document",
+      "digital-thread",
+    );
+    const proof = node(
+      `fea-proof-${digest}`,
+      "artifact",
+      "2026-08-14T08:03:00.000Z",
+      "document",
+      "digital-thread",
+    );
+
+    assertEquals(
+      isArchitectureSysmlSealArtifactId(seal.ref.id),
+      true,
+    );
+    assertEquals(activityFeedNodes([seal, brief, proof]).map((item) => item.ref.id), [
+      seal.ref.id,
+    ]);
+    assertEquals(activityKindLabel(seal), "document · documentary");
+    assertEquals(activityKindLabel(brief), "document");
+  },
+);
 
 Deno.test("activity feed promotes server-declared live milestones, not generic support", () => {
   const nodes = [

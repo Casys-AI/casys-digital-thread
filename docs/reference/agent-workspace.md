@@ -176,16 +176,21 @@ first-class and never omitted.
 | -------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `sysml-architecture-closed-subset-v1`                                | SysML v2 closed subset | `package { part def }`, empty-or-block `part def`, `part usage : Type;`                     | Comments, strings, numbers, attributes, `requirement`, anything else |
 | Rendered architecture companion                                      | Server-rendered SysML  | Manifest-attested PartUsage→target only                                                     | Arbitrary SysML                                                      |
-| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.1.0**) | Python / build123d     | `Box`, `Cylinder`, `Cone`, `Sphere`, `Pos`, `Rot`, `Compound`; numeric params; one `result` | D4-allowed but unproven syntax                                       |
+| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.1.0**) | Python / build123d     | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Pos`, `Rot`, `Compound`; `+`/`-` solids; `scale(solid, scalar)`; numeric params; one `result` | D4-allowed but unproven syntax; fillet/chamfer stay unresolved (need MemberExpression + kwargs) |
 | Python CAD frontend (legacy preview)                                 | Python                 | Conservative bindings into `result`                                                         | Calls, imports, branches, functions…                                 |
 | Project-brief frontend                                               | Canonical brief JSON   | Item ids + explicit V2 gate dependencies                                                    | Prose inference, V1 gates                                            |
 
 Bindings published by the architecture SysML analyzer are **symbol ids**, never labels.
 Labels are display data.
 
-Qualified Build123d 1.1.0 extends the earlier Box/Cylinder/Pos/Compound subset.
-Previously qualified Box/Cylinder bundles stay bit-identical; the public analysis
-identity does not change.
+Qualified Build123d 1.1.0 extends the earlier Box/Cylinder/Pos/Compound subset
+with later positional 3-D solids, `Rot`, solid `+`/`-`, and algebraic
+`scale(solid, scalar)`. Previously qualified Box/Cylinder/Pos/Compound bundles
+stay bit-identical; the public analysis identity does not change.
+
+Next AST lock: fillet/chamfer still require `MemberExpression` (`.edges()`) and
+keyword arguments (`radius=`). Do not treat `fillet(solid, r)` as reviewed.
+`extrude` still needs a 2-D sketch subset plus `amount=` kwargs.
 
 ## 7. Golden path (generic V3)
 

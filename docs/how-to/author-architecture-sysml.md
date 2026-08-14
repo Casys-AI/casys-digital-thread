@@ -95,6 +95,12 @@ Only after a passed captured preview:
 The executor reopens the exact CAS identities, writes
 `architecture-sysml-seal-capture/1.0`, and adds one Thread **document**.
 
+The native Workbench treats that document as Activity evidence when its id starts with
+`architecture-sysml-seal-`. The digital-thread inspector shows producer
+`model.seal-architecture-sysml@1`, fingerprint, URI, the `documentary` label, and
+reopened symbol **ids** (labels stay display-only). It is not Product Structure and not
+a SysON model.
+
 It does **not**:
 
 - insert into SysON

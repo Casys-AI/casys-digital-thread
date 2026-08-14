@@ -66,6 +66,10 @@ import {
 
 export type {
   ThreadAction,
+  ThreadArchitectureSysmlSealIncidence,
+  ThreadArchitectureSysmlSealPresentation,
+  ThreadArchitectureSysmlSealSymbol,
+  ThreadArchitectureSysmlSealUnresolved,
   ThreadArtifact,
   ThreadChange,
   ThreadComponent,
@@ -690,6 +694,7 @@ function isThreadArtifact(value: unknown): value is ThreadArtifact {
     "producedBy",
     "dependsOn",
     "attestation",
+    "architectureSysmlSeal",
   ]) && typeof value.id === "string" && value.id.length > 0 &&
     typeof value.label === "string" && typeof value.kind === "string" &&
     typeof value.system === "string" && typeof value.revision === "string" &&
@@ -702,7 +707,67 @@ function isThreadArtifact(value: unknown): value is ThreadArtifact {
     Array.isArray(value.dependsOn) &&
     value.dependsOn.every((id) => typeof id === "string") &&
     (value.attestation === undefined ||
-      isThreadArtifactAttestation(value.attestation));
+      isThreadArtifactAttestation(value.attestation)) &&
+    (value.architectureSysmlSeal === undefined ||
+      isArchitectureSysmlSealPresentation(value.architectureSysmlSeal));
+}
+
+function isArchitectureSysmlSealPresentation(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return hasAllowedKeys(value, [
+    "producer",
+    "authority",
+    "artifactKind",
+    "notSyson",
+    "notWriteArchitecture",
+    "notCompilationAdmission",
+    "symbolsStatus",
+    "symbols",
+    "incidences",
+    "unresolvedConstructs",
+  ]) && value.producer === "model.seal-architecture-sysml@1" &&
+    value.authority === "documentary" &&
+    value.artifactKind === "document" &&
+    value.notSyson === true &&
+    value.notWriteArchitecture === true &&
+    value.notCompilationAdmission === true &&
+    (value.symbolsStatus === "observed" ||
+      value.symbolsStatus === "unavailable") &&
+    Array.isArray(value.symbols) &&
+    value.symbols.every(isArchitectureSysmlSealSymbol) &&
+    Array.isArray(value.incidences) &&
+    value.incidences.every(isArchitectureSysmlSealIncidence) &&
+    Array.isArray(value.unresolvedConstructs) &&
+    value.unresolvedConstructs.every(isArchitectureSysmlSealUnresolved) &&
+    (value.symbolsStatus === "observed" ||
+      (value.symbols.length === 0 && value.incidences.length === 0));
+}
+
+function isArchitectureSysmlSealIncidence(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "id",
+    "kind",
+    "fromSymbolId",
+    "toSymbolId",
+  ]) &&
+    typeof value.id === "string" && value.id.length > 0 &&
+    value.kind === "structural-incidence" &&
+    typeof value.fromSymbolId === "string" && value.fromSymbolId.length > 0 &&
+    typeof value.toSymbolId === "string" && value.toSymbolId.length > 0;
+}
+
+function isArchitectureSysmlSealSymbol(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return hasAllowedKeys(value, ["id", "kind", "label"]) &&
+    typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.kind === "string" && value.kind.length > 0 &&
+    (value.label === undefined || typeof value.label === "string");
+}
+
+function isArchitectureSysmlSealUnresolved(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["id", "kind"]) &&
+    typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.kind === "string" && value.kind.length > 0;
 }
 
 function isThreadArtifactAttestation(value: unknown): boolean {

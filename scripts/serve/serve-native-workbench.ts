@@ -78,6 +78,12 @@ import {
   OrderedEngineeringAssetReader,
 } from "../../src/adapters/engineering-asset-resolver.ts";
 import { projectThreadWorkbenchSnapshot } from "../../src/adapters/projectors/thread-workbench-projector.ts";
+import { FileByteStore } from "../../src/adapters/captures/file-byte-store.ts";
+import { fileArchitectureSysmlSealCaptureReader } from "../../src/adapters/captures/file-architecture-sysml-seal-capture-reader.ts";
+import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../src/adapters/compilers/architecture-sysml-source-analysis-composition.ts";
+import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "../../src/adapters/projectors/architecture-sysml-seal-workbench-enricher.ts";
+import type { ArchitectureSysmlSealCaptureReader } from "../../src/application/ports/out/architecture-sysml-seal-capture-reader.ts";
+import type { ArchitectureSysmlSourceAnalysisReader } from "../../src/application/ports/out/architecture-sysml-source-analysis-reader.ts";
 import {
   FileLiveThreadUpdateStore,
   type LiveThreadUpdate,
@@ -144,6 +150,12 @@ export interface NativeWorkbenchHandlerOptions {
   componentCatalogForSnapshot?: (
     snapshot: ThreadSnapshot,
   ) => Promise<ThreadComponentCatalog | undefined>;
+  /**
+   * Optional CAS reopen of `model.seal-architecture-sysml@1` Thread documents.
+   * The pure projector never reads these stores.
+   */
+  architectureSysmlSeals?: ArchitectureSysmlSealCaptureReader;
+  architectureSysmlSources?: ArchitectureSysmlSourceAnalysisReader;
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
@@ -898,11 +910,17 @@ async function projectThreadSnapshot(
   liveUpdates?: LiveThreadUpdate[],
 ) {
   const evidenceCatalog = await options.componentCatalogForSnapshot?.(snapshot);
-  const canonical = projectThreadWorkbenchSnapshot(
+  const projected = projectThreadWorkbenchSnapshot(
     snapshot,
     evidenceCatalog ?? componentCatalog ??
       (subjectId === options.subjectId ? options.componentCatalog : undefined),
   );
+  const canonical = options.architectureSysmlSeals && options.architectureSysmlSources
+    ? await enrichThreadWorkbenchWithArchitectureSysmlSeals(projected, {
+      seals: options.architectureSysmlSeals,
+      sources: options.architectureSysmlSources,
+    })
+    : projected;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
@@ -1074,6 +1092,30 @@ if (import.meta.main) {
     ...GEOMETRY_CAPTURE_DESCRIPTOR,
     directory: geometryCaptureDirectory,
   });
+  const architectureSysmlDirectory = cliArgs["architecture-sysml-dir"] ??
+    "state/local/recorded-analysis/architecture-sysml";
+  const architectureSysmlSources = createArchitectureSysmlSourceAnalysisCaptureService({
+    sourceCaptures: new FileByteStore({
+      kind: "architecture-sysml-source",
+      directory: `${architectureSysmlDirectory}/sources`,
+      uriNamespace: "architecture-sysml-source",
+      label: "Captured architecture SysML source",
+    }),
+    analysisCaptures: new FileByteStore({
+      kind: "architecture-sysml-source-analysis",
+      directory: `${architectureSysmlDirectory}/analyses`,
+      uriNamespace: "architecture-sysml-source-analysis",
+      label: "Captured architecture SysML analysis",
+    }),
+  });
+  const architectureSysmlSeals = fileArchitectureSysmlSealCaptureReader(
+    new FileByteStore({
+      kind: "architecture-sysml-seal-capture",
+      directory: `${architectureSysmlDirectory}/seals`,
+      uriNamespace: "architecture-sysml-seal-capture",
+      label: "Sealed architecture SysML analysis",
+    }),
+  );
   // The paired MCP owns all project commands and initialisation. The cockpit
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
@@ -1131,6 +1173,8 @@ if (import.meta.main) {
         geometryCaptures,
         sysmlSourceAnalysis,
       ),
+    architectureSysmlSeals,
+    architectureSysmlSources,
     liveUpdates,
     reviewIntents,
     reviewIntentSignal: {

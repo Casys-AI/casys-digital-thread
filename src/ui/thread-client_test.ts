@@ -58,6 +58,58 @@ Deno.test("evidence Workbench rejects unknown fields and incomplete array entiti
   malformedArtifacts.thread.artifacts = [null];
   assertEquals(isEngineeringWorkbenchSnapshot(malformedArtifacts), false);
 
+  const extraArtifactField = structuredClone(
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
+  ) as unknown as { thread: { artifacts: Array<Record<string, unknown>> } };
+  extraArtifactField.thread.artifacts[0]!.sysonElementId = "must-not-leak";
+  assertEquals(isEngineeringWorkbenchSnapshot(extraArtifactField), false);
+
+  const sealedDocument = structuredClone(GENERIC_THREAD_FIXTURE);
+  sealedDocument.artifacts[0] = {
+    ...sealedDocument.artifacts[0]!,
+    kind: "document",
+    producedBy: "model.seal-architecture-sysml@1",
+    architectureSysmlSeal: {
+      producer: "model.seal-architecture-sysml@1",
+      authority: "documentary",
+      artifactKind: "document",
+      notSyson: true,
+      notWriteArchitecture: true,
+      notCompilationAdmission: true,
+      symbolsStatus: "observed",
+      symbols: [{ id: "symbol:package", kind: "artifact", label: "DroneV4" }],
+      incidences: [{
+        id: "dependency:usage-type",
+        kind: "structural-incidence",
+        fromSymbolId: "symbol:package",
+        toSymbolId: "symbol:package-type",
+      }],
+      unresolvedConstructs: [],
+    },
+  };
+  assertEquals(isThreadWorkbenchSnapshot(sealedDocument), true);
+
+  const missingIncidences = structuredClone(sealedDocument);
+  delete (missingIncidences.artifacts[0] as {
+    architectureSysmlSeal?: {
+      incidences?: unknown;
+    };
+  }).architectureSysmlSeal?.incidences;
+  assertEquals(isThreadWorkbenchSnapshot(missingIncidences), false);
+
+  const labelledIncidence = structuredClone(sealedDocument) as {
+    artifacts: Array<{
+      architectureSysmlSeal?: {
+        incidences: Array<
+          Record<string, unknown>
+        >;
+      };
+    }>;
+  };
+  labelledIncidence.artifacts[0]!.architectureSysmlSeal!.incidences[0]!
+    .fromLabel = "must-not-be-a-join-key";
+  assertEquals(isThreadWorkbenchSnapshot(labelledIncidence), false);
+
   const malformedActions = structuredClone(
     GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
   ) as unknown as { thread: { actions: unknown[] } };
@@ -529,8 +581,7 @@ Deno.test("the Workbench contract accepts qualified analysis assertions and reje
   assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
 
   const wrongAssertionId = structuredClone(snapshot);
-  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId =
-    "other-assertion";
+  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId = "other-assertion";
   assertEquals(isThreadWorkbenchSnapshot(wrongAssertionId), false);
 
   const missingMeasurement = structuredClone(snapshot);
@@ -663,8 +714,7 @@ Deno.test("the Workbench contract requires evidence-backed component facets", ()
   partDefinition.components.components[0].bindings[0].kind = "part-definition";
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), true);
 
-  partDefinition.components.components[0].bindings[0].kind =
-    "invented" as never;
+  partDefinition.components.components[0].bindings[0].kind = "invented" as never;
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), false);
 });
 

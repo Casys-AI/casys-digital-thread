@@ -175,13 +175,59 @@ result = cone + sphere
   }
 });
 
-Deno.test("D4-admitted but unqualified build123d calls remain explicitly unresolved", async () => {
+Deno.test("qualified build123d frontend proves Torus, Ellipsoid and Wedge solids", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Torus
+result = Torus(10, 2)
+`,
+    `from build123d import Ellipsoid, Pos
+result = Pos(20, 0, 0) * Ellipsoid(4, 3, 2)
+`,
+    `from build123d import Wedge
+result = Wedge(10, 10, 10, 2, 2, 8, 8)
+`,
+    `from build123d import Compound, Ellipsoid, Pos, Rot, Torus, Wedge
+ring = Rot(0, 90, 0) * Torus(10, 2)
+blob = Pos(20, 0, 0) * Ellipsoid(4, 3, 2)
+key = Wedge(10, 10, 10, 2, 2, 8, 8)
+result = Compound(children=[ring, blob, key])
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
+});
+
+Deno.test("qualified build123d frontend proves solid minus solid", async () => {
   const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
     ...INPUT,
-    sourceText: `from build123d import Box, Torus
-major = 10
-minor = 2
-result = Torus(major, minor)
+    sourceText: `from build123d import Box, Cylinder, Pos
+block = Box(20, 20, 10)
+bore = Pos(0, 0, 0) * Cylinder(4, 12)
+result = block - bore
+`,
+  });
+
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+});
+
+Deno.test("solid division stays explicitly unresolved", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, Cylinder
+result = Box(20, 20, 10) / Cylinder(4, 12)
 `,
   });
 
@@ -189,9 +235,158 @@ result = Torus(major, minor)
   const kinds = new Set(
     bundle.unresolvedConstructs.map((construct) => construct.kind),
   );
-  assert(kinds.has("build123d-call-not-qualified"));
   assert(kinds.has("build123d-result-not-qualified"));
+});
+
+Deno.test("Wedge with fewer than seven positional arguments stays unresolved", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Wedge
+result = Wedge(10, 10, 10)
+`,
+  });
+
+  assertEquals(bundle.policy.status, "passed");
+  const kinds = new Set(
+    bundle.unresolvedConstructs.map((construct) => construct.kind),
+  );
   assert(kinds.has("python-dynamic-call"));
+  assert(kinds.has("build123d-result-not-qualified"));
+});
+
+Deno.test("D4-admitted but unqualified build123d calls remain explicitly unresolved", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = fillet(base.edges(), radius=2)
+`,
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = fillet(base, 2)
+`,
+    `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+result = chamfer(base.edges(), 1)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.policy.status, "passed");
+    const kinds = new Set(
+      bundle.unresolvedConstructs.map((construct) => construct.kind),
+    );
+    assert(kinds.has("build123d-call-not-qualified"));
+    assert(kinds.has("build123d-result-not-qualified"));
+    assert(kinds.has("python-dynamic-call"));
+  }
+});
+
+Deno.test("qualified build123d frontend proves scale of a solid by a scalar", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Box, scale
+result = scale(Box(10, 20, 30), 2)
+`,
+    `from build123d import Box, scale
+block = Box(10, 20, 30)
+factor = 2
+result = scale(block, factor)
+`,
+    `from build123d import Cylinder, Pos, scale
+bore = Pos(0, 0, 0) * Cylinder(4, 12)
+result = scale(bore, 0.5)
+`,
+    `from build123d import Box, Cylinder, scale
+block = Box(20, 20, 10)
+bore = Cylinder(4, 12)
+result = scale(block - bore, 2)
+`,
+    `from build123d import Box, scale as enlarge
+result = enlarge(Box(10, 10, 10), 3)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(bundle.analyzer.version, "1.1.0");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
+
+  const named = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, scale
+block = Box(10, 20, 30)
+factor = 2
+result = scale(block, factor)
+`,
+  });
+  assertEquals(
+    new Map(named.symbols.map((symbol) => [symbol.name, symbol.kind])),
+    new Map([
+      ["block", "variable"],
+      ["factor", "parameter"],
+      ["result", "artifact"],
+    ]),
+  );
+  assertEquals(
+    named.dependencies.map((dependency) => ({
+      kind: dependency.kind,
+      from: named.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+        ?.name,
+      to: named.symbols.find((symbol) => symbol.id === dependency.toSymbolId)
+        ?.name,
+    })).sort((left, right) =>
+      `${left.kind}:${left.from}:${left.to}`.localeCompare(
+        `${right.kind}:${right.from}:${right.to}`,
+      )
+    ),
+    [
+      { kind: "structural-incidence" as const, from: "block", to: "result" },
+      { kind: "structural-incidence" as const, from: "factor", to: "result" },
+    ],
+  );
+});
+
+Deno.test("scale kwargs, one-arg, or non-uniform factors stay unresolved", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Box, scale
+result = scale(Box(10, 20, 30))
+`,
+    `from build123d import Box, scale
+result = scale(Box(10, 20, 30), by=2)
+`,
+    `from build123d import Box, scale
+result = scale(Box(10, 20, 30), 2, about=0)
+`,
+    `from build123d import Box, scale
+result = scale(Box(10, 20, 30), mode=1)
+`,
+    `from build123d import Box, scale
+result = scale(Box(10, 20, 30), [2, 2, 2])
+`,
+    `from build123d import Box, scale
+result = scale(Box(10, 20, 30), (2, 2, 2))
+`,
+    `from build123d import Box, Scale
+result = Scale(2) * Box(10, 20, 30)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.policy.status, "passed");
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+      `${sourceText} must not qualify result`,
+    );
+  }
 });
 
 Deno.test("qualified build123d frontend proves the DL-04 part and assembly solids", async () => {

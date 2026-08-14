@@ -1,5 +1,10 @@
+import { isArchitectureSysmlSealArtifactId } from "./feed-model.ts";
 import type {
   ThreadAction,
+  ThreadArchitectureSysmlSealIncidence,
+  ThreadArchitectureSysmlSealPresentation,
+  ThreadArchitectureSysmlSealSymbol,
+  ThreadArchitectureSysmlSealUnresolved,
   ThreadArtifact,
   ThreadGraph,
   ThreadGraphEdge,
@@ -11,6 +16,9 @@ import type {
   ThreadViolation,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
+
+export const ARCHITECTURE_SYSML_SEAL_PRODUCER =
+  "model.seal-architecture-sysml@1" as const;
 
 export type WorkbenchToolId =
   | "syson"
@@ -240,9 +248,7 @@ export function resolveToolInspectorContext(
     observation.requirementIds.forEach((id) => requirementIds.add(id));
   }
 
-  const selectedArtifactId = targetRef?.kind === "artifact"
-    ? targetRef.id
-    : undefined;
+  const selectedArtifactId = targetRef?.kind === "artifact" ? targetRef.id : undefined;
   const selectedArtifact = snapshot.artifacts.find((item) =>
     item.id === selectedArtifactId
   );
@@ -273,18 +279,14 @@ export function resolveToolInspectorContext(
     }
   }
 
-  const artifacts = snapshot.artifacts.filter((item) =>
-    artifactIds.has(item.id)
-  );
+  const artifacts = snapshot.artifacts.filter((item) => artifactIds.has(item.id));
   const observations = snapshot.observations.filter((item) =>
     observationIds.has(item.id)
   );
   const requirements = snapshot.requirements.filter((item) =>
     requirementIds.has(item.id)
   );
-  const violations = snapshot.violations.filter((item) =>
-    violationIds.has(item.id)
-  );
+  const violations = snapshot.violations.filter((item) => violationIds.has(item.id));
   const relatedIds = new Set([
     ...(targetRef ? [targetRef.id] : []),
     ...artifacts.map((item) => item.id),
@@ -303,8 +305,7 @@ export function resolveToolInspectorContext(
   return {
     owner,
     target: targetRef,
-    graphOnlyNodes:
-      resolveToolFacetInventory(snapshot, owner.id).graphOnlyNodes,
+    graphOnlyNodes: resolveToolFacetInventory(snapshot, owner.id).graphOnlyNodes,
     artifacts,
     observations,
     requirements,
@@ -384,6 +385,65 @@ export function graphNodeForSelection(
   );
 }
 
+export interface ArchitectureSysmlSealInspectorView {
+  readonly producer: typeof ARCHITECTURE_SYSML_SEAL_PRODUCER;
+  readonly fingerprint?: string;
+  readonly uri?: string;
+  readonly artifactKind: "document";
+  readonly authority: "documentary";
+  readonly notSyson: true;
+  readonly notWriteArchitecture: true;
+  readonly notCompilationAdmission: true;
+  readonly symbolsStatus: ThreadArchitectureSysmlSealPresentation["symbolsStatus"];
+  readonly symbols: readonly ThreadArchitectureSysmlSealSymbol[];
+  readonly incidences: readonly ThreadArchitectureSysmlSealIncidence[];
+  readonly unresolvedConstructs: readonly ThreadArchitectureSysmlSealUnresolved[];
+}
+
+/**
+ * Digital-thread inspector for one sealed architecture SysML Thread document.
+ *
+ * Symbol rows bind on `id`. Labels stay display-only. This never promotes the
+ * artifact to `sysml-model` or invents SysON part nodes.
+ */
+export function architectureSysmlSealInspectorView(
+  snapshot: ThreadWorkbenchSnapshot,
+  target: ToolInspectorTarget,
+): ArchitectureSysmlSealInspectorView | undefined {
+  const artifactId = target.node?.ref.kind === "artifact"
+    ? target.node.ref.id
+    : target.record?.kind === "artifact"
+    ? target.record.id
+    : undefined;
+  if (!artifactId || !isArchitectureSysmlSealArtifactId(artifactId)) {
+    return undefined;
+  }
+  const artifact = snapshot.artifacts.find((item) => item.id === artifactId);
+  if (
+    !artifact || artifact.kind !== "document" ||
+    artifact.producedBy !== ARCHITECTURE_SYSML_SEAL_PRODUCER
+  ) {
+    return undefined;
+  }
+  const payload = artifact.architectureSysmlSeal;
+  return {
+    producer: ARCHITECTURE_SYSML_SEAL_PRODUCER,
+    fingerprint: artifact.fingerprint,
+    uri: artifact.uri,
+    artifactKind: "document",
+    authority: "documentary",
+    notSyson: true,
+    notWriteArchitecture: true,
+    notCompilationAdmission: true,
+    symbolsStatus: payload?.symbolsStatus ?? "unavailable",
+    symbols: payload?.symbols ?? [],
+    incidences: payload?.symbolsStatus === "unavailable"
+      ? []
+      : payload?.incidences ?? [],
+    unresolvedConstructs: payload?.unresolvedConstructs ?? [],
+  };
+}
+
 export function toolIdentity(system: string): WorkbenchToolIdentity {
   const id = toolId(system);
   if (id === "digital-thread") return THREAD_OWNER;
@@ -417,20 +477,14 @@ function ownerForTarget(
     node.selection && sameRef(node.selection, selection)
   );
   if (graphNode) return toolIdentity(graphNode.system);
-  const stage = snapshot.flow.find((item) =>
-    sameRef(item.selection, selection)
-  );
+  const stage = snapshot.flow.find((item) => sameRef(item.selection, selection));
   if (stage) return toolIdentity(stage.system);
   if (selection.kind === "artifact") {
-    const artifact = snapshot.artifacts.find((item) =>
-      item.id === selection.id
-    );
+    const artifact = snapshot.artifacts.find((item) => item.id === selection.id);
     if (artifact) return toolIdentity(artifact.system);
   }
   if (selection.kind === "observation") {
-    const observation = snapshot.observations.find((item) =>
-      item.id === selection.id
-    );
+    const observation = snapshot.observations.find((item) => item.id === selection.id);
     const artifact = snapshot.artifacts.find((item) =>
       item.id === observation?.sourceArtifactId
     );
@@ -476,7 +530,5 @@ function compareGraphOnlyNodes(
   const kindOrder = left.ref.kind.localeCompare(right.ref.kind);
   if (kindOrder !== 0) return kindOrder;
   const labelOrder = left.label.localeCompare(right.label);
-  return labelOrder !== 0
-    ? labelOrder
-    : left.ref.id.localeCompare(right.ref.id);
+  return labelOrder !== 0 ? labelOrder : left.ref.id.localeCompare(right.ref.id);
 }

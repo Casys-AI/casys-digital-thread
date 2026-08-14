@@ -154,6 +154,10 @@
   font: var(--text-3xs)/1 var(--mono);
 }
 
+.tool-inspector-seal[data-authority="documentary"] {
+  margin-bottom: var(--space-14);
+}
+
 .tool-inspector-metrics.mcp-view-metrics {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: var(--space-14);

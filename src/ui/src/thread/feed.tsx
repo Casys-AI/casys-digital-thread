@@ -17,6 +17,7 @@ import {
 import type { ThreadStreamStatus } from "./client.ts";
 import {
   activityFeedNodes,
+  activityKindLabel,
   buildActivityTimeline,
   buildFeedComponentCounts,
   buildFilterOptions,
@@ -24,6 +25,7 @@ import {
   compactLineageProjection,
   filterFeedNodesByScope,
   isActivityEntryExpanded,
+  isArchitectureSysmlSealArtifactId,
   refKey,
   traceThreadLineage,
 } from "./feed-model.ts";
@@ -303,9 +305,7 @@ export function ThreadFeed({
             transmissionState,
           );
           const active = isActivityEntryExpanded(focus, node);
-          const lineage = active
-            ? traceThreadLineage(nodes, edges, focus)
-            : undefined;
+          const lineage = active ? traceThreadLineage(nodes, edges, focus) : undefined;
           // True upstream+downstream count for the collapsed card badge:
           // uses the raw graph lineage (full depth, not bounded).
           const lineageCount = lineage
@@ -327,6 +327,11 @@ export function ThreadFeed({
               class="thread-feed-entry"
               data-active={active ? "true" : "false"}
               data-kind={node.entityKind}
+              data-authority={node.entityKind === "artifact" &&
+                  node.artifactKind === "document" &&
+                  isArchitectureSysmlSealArtifactId(node.ref.id)
+                ? "documentary"
+                : undefined}
               data-freshness={node.freshness}
               data-review-status={reviewDisplayStatus}
               data-canonical-review-status={reviewStatus}
@@ -354,7 +359,7 @@ export function ThreadFeed({
                   </span>
                   <span class="thread-feed-copy">
                     <small>
-                      {node.system} · {kindLabel(node)}
+                      {node.system} · {activityKindLabel(node)}
                     </small>
                     <strong>{node.label}</strong>
                     <span>{node.summary}</span>
@@ -405,10 +410,8 @@ export function ThreadFeed({
                         {compact
                           ? (
                             <span>
-                              {compact.total} items · depth 2 ·{" "}
-                              {compact.upstream} upstream / {compact.downstream}
-                              {" "}
-                              downstream
+                              {compact.total} items · depth 2 · {compact.upstream}{" "}
+                              upstream / {compact.downstream} downstream
                             </span>
                           )
                           : (
@@ -431,14 +434,13 @@ export function ThreadFeed({
                       nodes={nodes}
                       edges={edges}
                       focus={node.ref}
-                      onSelectNode={(related) =>
-                        onSelectNode(related, "lineage")}
+                      onSelectNode={(related) => onSelectNode(related, "lineage")}
                     />
                     {lineageCount === 0
                       ? (
                         <p class="thread-feed-unlinked">
-                          This fact is recorded, but no causal relation connects
-                          it to another fact yet.
+                          This fact is recorded, but no causal relation connects it to
+                          another fact yet.
                         </p>
                       )
                       : evidenceModel
@@ -447,8 +449,7 @@ export function ThreadFeed({
                           evidenceModel={evidenceModel}
                           focusRef={node.ref}
                           selection={selection}
-                          onSelectNode={(related) =>
-                            onSelectNode(related, "lineage")}
+                          onSelectNode={(related) => onSelectNode(related, "lineage")}
                           ariaLabel={`Complete recorded lineage for ${node.label}`}
                         />
                       )
@@ -459,7 +460,9 @@ export function ThreadFeed({
                             ...lineage.upstream.map((step) => step.node),
                             node,
                             ...lineage.feedback.map((step) => step.node),
-                            ...lineage.downstream.map((step) => step.node),
+                            ...lineage.downstream.map((step) =>
+                              step.node
+                            ),
                           ]}
                           edges={lineage.edges}
                           focus={node.ref}
@@ -568,8 +571,8 @@ function FeedLineageGraph({
   if (neighborhood.nodes.length === 0) {
     return (
       <p class="thread-feed-unlinked">
-        This fact is recorded, but it is not currently present in the evidence
-        graph (it may be a folded historical version).
+        This fact is recorded, but it is not currently present in the evidence graph (it
+        may be a folded historical version).
       </p>
     );
   }
@@ -603,12 +606,6 @@ function FeedLineageGraph({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function kindLabel(node: ThreadGraphNode): string {
-  return node.entityKind === "artifact" && node.artifactKind
-    ? node.artifactKind
-    : node.entityKind;
-}
 
 function streamLabel(
   status: ThreadStreamStatus | "snapshot",

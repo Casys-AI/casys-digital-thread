@@ -92,12 +92,16 @@ const HEX64 = "[0-9a-f]{64}";
  * re-declaring the prefix strings.
  *
  * Family → engineering-step reading:
- *   architecture | requirements → model
+ *   architecture | architecture-sysml-seal | requirements → model
  *   cad → geometry
  *   fea-proof | fea-solver-result | fea-verdict → verification
+ *
+ * `architecture-sysml-seal` is a Thread document only. It never invents
+ * part-definition or part-usage nodes.
  */
 export type AnchorFamily =
   | "architecture"
+  | "architecture-sysml-seal"
   | "cad"
   | "requirements"
   | "fea-proof"
@@ -188,6 +192,16 @@ const PREFIX_TABLE: readonly PrefixMatcher[] = [
     target: "assembly",
     family: "requirements",
     expectedArtifactKind: "sysml-model",
+  })),
+
+  // (b-7) Agent-authored architecture SysML seal document
+  //        id: architecture-sysml-seal-{HEX64}
+  //        model-seal-architecture-sysml-run-executor.ts:629
+  //        Thread document only; never a sysml-model or Product Structure node.
+  re(new RegExp(`^architecture-sysml-seal-${HEX64}$`), () => ({
+    target: "assembly",
+    family: "architecture-sysml-seal",
+    expectedArtifactKind: "document",
   })),
 ];
 
@@ -471,9 +485,7 @@ function propagateChangeConsumption(
       if (node.entityKind === "change") {
         // A change node inherits from the artifact it "changes".
         // Edge direction: change → artifact (changes, forward).
-        const artifacts = outgoing.get(key)?.filter((e) =>
-          e.relation === "changes"
-        ) ??
+        const artifacts = outgoing.get(key)?.filter((e) => e.relation === "changes") ??
           [];
         candidates = artifacts.flatMap((artifact) =>
           stateTargets(states.get(artifact.key))
@@ -481,9 +493,7 @@ function propagateChangeConsumption(
       } else if (node.entityKind === "consumption") {
         // A consumption node inherits from the artifact it attests.
         // Edge direction: artifact → consumption (uses, reverse).
-        const artifacts = incoming.get(key)?.filter((e) =>
-          e.relation === "uses"
-        ) ?? [];
+        const artifacts = incoming.get(key)?.filter((e) => e.relation === "uses") ?? [];
         candidates = artifacts.flatMap((artifact) =>
           stateTargets(states.get(artifact.key))
         );

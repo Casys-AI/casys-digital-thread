@@ -22,6 +22,8 @@ import type {
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 import {
+  type ArchitectureSysmlSealInspectorView,
+  architectureSysmlSealInspectorView,
   type InspectorContext,
   resolveToolFacetInventory,
   resolveToolInspectorContext,
@@ -30,10 +32,7 @@ import {
   type WorkbenchToolIdentity,
 } from "./tool-inspector-model.ts";
 
-export type {
-  WorkbenchToolId,
-  WorkbenchToolIdentity,
-} from "./tool-inspector-model.ts";
+export type { WorkbenchToolId, WorkbenchToolIdentity } from "./tool-inspector-model.ts";
 
 export interface ToolInspectorPanelProps {
   snapshot: ThreadWorkbenchSnapshot;
@@ -79,8 +78,8 @@ export function ToolInspectorPanel({
         actions={<Badge tone="neutral">5 facets · 1 subject</Badge>}
       >
         <p class="tool-inspector-lead">
-          Choose a node or an edge to inspect the owning tool and the evidence
-          it contributes to {snapshot.subject.label}.
+          Choose a node or an edge to inspect the owning tool and the evidence it
+          contributes to {snapshot.subject.label}.
         </p>
         <ToolFacetRail
           snapshot={snapshot}
@@ -88,8 +87,8 @@ export function ToolInspectorPanel({
           onSelectGraphNode={onSelectGraphNode}
         />
         <EmptyState>
-          No engineering tool is selected. The Workbench will not execute a tool
-          while you browse the graph.
+          No engineering tool is selected. The Workbench will not execute a tool while
+          you browse the graph.
         </EmptyState>
       </Card>
     );
@@ -101,6 +100,10 @@ export function ToolInspectorPanel({
   });
   const metrics = contextMetrics(context);
   const target = context.target;
+  const sealView = architectureSysmlSealInspectorView(snapshot, {
+    node,
+    record: selection,
+  });
 
   return (
     <Card
@@ -137,6 +140,8 @@ export function ToolInspectorPanel({
       />
 
       <MetricGrid className="tool-inspector-metrics" items={metrics} />
+
+      {sealView && <ArchitectureSysmlSealSummary view={sealView} />}
 
       <BranchState context={context} snapshot={snapshot} />
 
@@ -255,6 +260,97 @@ function GraphOnlySummary({ nodes, onSelect }: {
   );
 }
 
+function ArchitectureSysmlSealSummary({
+  view,
+}: {
+  view: ArchitectureSysmlSealInspectorView;
+}): JSX.Element {
+  return (
+    <section
+      class="tool-inspector-section tool-inspector-seal"
+      data-authority={view.authority}
+      data-artifact-kind={view.artifactKind}
+    >
+      <header>
+        <h4>Architecture SysML seal</h4>
+        <span>{view.authority}</span>
+      </header>
+      <StateMessage title="Thread document only" tone="info">
+        Producer {view.producer}. This is not a SysON model, not{" "}
+        model.write-architecture@1, and not compile.seal-admission@1. Bindings are
+        symbol ids; labels are display only.
+      </StateMessage>
+      <div class="tool-inspector-rows">
+        <div class="tool-inspector-row">
+          <small>producer</small>
+          <strong>{view.producer}</strong>
+          <span>kind {view.artifactKind}</span>
+        </div>
+        {view.fingerprint && (
+          <div class="tool-inspector-row">
+            <small>fingerprint</small>
+            <strong>{view.fingerprint}</strong>
+            <span>content-addressed capture</span>
+          </div>
+        )}
+        {view.uri && (
+          <div class="tool-inspector-row">
+            <small>uri</small>
+            <strong>{view.uri}</strong>
+            <span>architecture-sysml-seal-capture/1.0</span>
+          </div>
+        )}
+      </div>
+      <InspectorSection
+        title={view.symbolsStatus === "unavailable" ? "Symbols unavailable" : "Symbols"}
+        count={view.symbols.length}
+      >
+        {view.symbols.map((symbol) => (
+          <div class="tool-inspector-row" key={symbol.id}>
+            <small>{symbol.kind}</small>
+            <strong>{symbol.id}</strong>
+            <span>{symbol.label ?? "display label absent"}</span>
+          </div>
+        ))}
+      </InspectorSection>
+      <InspectorSection title="Incidences" count={view.incidences.length}>
+        {view.incidences.map((incidence) => {
+          const fromLabel = view.symbols.find((symbol) =>
+            symbol.id === incidence.fromSymbolId
+          )?.label;
+          const toLabel = view.symbols.find((symbol) =>
+            symbol.id === incidence.toSymbolId
+          )?.label;
+          return (
+            <div class="tool-inspector-row" key={incidence.id}>
+              <small>{incidence.kind}</small>
+              <strong>
+                {incidence.fromSymbolId} → {incidence.toSymbolId}
+              </strong>
+              <span>
+                {fromLabel ?? "display label absent"} →{" "}
+                {toLabel ?? "display label absent"}
+              </span>
+            </div>
+          );
+        })}
+      </InspectorSection>
+      <InspectorSection
+        title="Unresolved"
+        count={view.unresolvedConstructs.length}
+      >
+        {view.unresolvedConstructs.map((construct) => (
+          <div class="tool-inspector-row" key={construct.id}>
+            <small>{construct.kind}</small>
+            <strong>{construct.id}</strong>
+            <span>unresolved</span>
+          </div>
+        ))}
+      </InspectorSection>
+    </section>
+  );
+}
+
 function BranchState({ context, snapshot }: {
   context: InspectorContext;
   snapshot: ThreadWorkbenchSnapshot;
@@ -263,24 +359,22 @@ function BranchState({ context, snapshot }: {
     return (
       <StateMessage title="One engineering subject" tone="info">
         The five providers are facets of{" "}
-        {snapshot.subject.label}. Select a provider node to inspect its evidence
-        branch.
+        {snapshot.subject.label}. Select a provider node to inspect its evidence branch.
       </StateMessage>
     );
   }
   if (context.connection === "independent") {
     return (
       <StateMessage title="No causal edge recorded" tone="warning">
-        This provider shares the declared subject identity, but the snapshot
-        does not prove a dependency to another tool. Its evidence remains an
-        independent branch.
+        This provider shares the declared subject identity, but the snapshot does not
+        prove a dependency to another tool. Its evidence remains an independent branch.
       </StateMessage>
     );
   }
   return (
     <StateMessage title="Cross-tool link recorded" tone="success">
-      At least one explicit Workbench dependency connects this provider to
-      another tool. Inspect the provenance below before treating it as causal.
+      At least one explicit Workbench dependency connects this provider to another tool.
+      Inspect the provenance below before treating it as causal.
     </StateMessage>
   );
 }
@@ -450,9 +544,7 @@ function ProvenanceSummary({ artifacts, snapshot, onSelect }: {
     artifact.dependsOn.map((sourceId) => ({ artifact, sourceId }))
   );
   const attestations = artifacts.flatMap((artifact) =>
-    artifact.attestation
-      ? [{ artifact, attestation: artifact.attestation }]
-      : []
+    artifact.attestation ? [{ artifact, attestation: artifact.attestation }] : []
   );
 
   return (
@@ -471,9 +563,7 @@ function ProvenanceSummary({ artifacts, snapshot, onSelect }: {
         : (
           <div class="tool-inspector-provenance-list">
             {dependencies.map(({ artifact, sourceId }) => {
-              const source = snapshot.artifacts.find((item) =>
-                item.id === sourceId
-              );
+              const source = snapshot.artifacts.find((item) => item.id === sourceId);
               return (
                 <button
                   type="button"
@@ -620,7 +710,5 @@ function toolMonogram(tool: WorkbenchToolIdentity): string {
 
 function shortFingerprint(value: string): string {
   const normalized = value.startsWith("sha256:") ? value.slice(7) : value;
-  return `sha256:${normalized.slice(0, 12)}${
-    normalized.length > 12 ? "…" : ""
-  }`;
+  return `sha256:${normalized.slice(0, 12)}${normalized.length > 12 ? "…" : ""}`;
 }

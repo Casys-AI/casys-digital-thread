@@ -27,6 +27,7 @@
 import { assertEquals } from "@std/assert";
 import {
   anchorageCoverage,
+  anchorFamilyByPrefix,
   buildPartAnchorage,
   buildPartAnchorageResolution,
 } from "./src/thread/part-anchorage-model.ts";
@@ -872,6 +873,54 @@ Deno.test(
       "robot:articulated-arm",
       "robot:gripper",
     ]);
+  },
+);
+
+Deno.test(
+  "generic architecture SysML seal document resolves to assembly via prefix (b-7)",
+  () => {
+    const digest = "e".repeat(64);
+    const sealId = `architecture-sysml-seal-${digest}`;
+    const graph: ThreadGraph = {
+      nodes: [
+        node(sealId, "artifact", { artifactKind: "document" }),
+      ],
+      edges: [],
+    };
+    const map = buildPartAnchorage(graph, FIXTURE_CATALOG);
+    const anchor = map.get(`artifact:${sealId}`);
+    assertEquals(anchor?.target, "assembly");
+    assertEquals(anchor?.criterion, "prefix");
+    assertEquals(anchorFamilyByPrefix(sealId), "architecture-sysml-seal");
+  },
+);
+
+Deno.test(
+  "architecture SysML seal prefix never anchors a non-document or invents a part",
+  () => {
+    const digest = "f".repeat(64);
+    const sealId = `architecture-sysml-seal-${digest}`;
+    const graph: ThreadGraph = {
+      nodes: [
+        node(sealId, "artifact", { artifactKind: "script" }),
+        {
+          id: "graph:part-definition:invented",
+          ref: { kind: "part-definition", id: sealId },
+          entityKind: "part-definition",
+          label: "Invented",
+          system: "syson",
+          freshness: "fresh",
+          summary: "must stay orphan",
+        },
+      ],
+      edges: [],
+    };
+    const resolution = buildPartAnchorageResolution(graph, FIXTURE_CATALOG);
+    assertEquals(resolution.anchors.has(`artifact:${sealId}`), false);
+    assertEquals(
+      resolution.orphanRefKeys.has(`part-definition:${sealId}`),
+      true,
+    );
   },
 );
 

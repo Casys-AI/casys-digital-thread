@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
+  architectureSysmlSealInspectorView,
   graphNodeForSelection,
   resolveSelectedGraphEdge,
   resolveToolFacetInventory,
@@ -342,6 +343,188 @@ Deno.test(
     const result = graphNodeForSelection(snapshot, artifactRef);
 
     assertEquals(result?.ref, artifactRef);
+  },
+);
+
+Deno.test(
+  "digital-thread inspector shows a sealed architecture SysML document by symbol id",
+  () => {
+    const digest = "b".repeat(64);
+    const artifactId = `architecture-sysml-seal-${digest}`;
+    const snapshot: ThreadWorkbenchSnapshot = structuredClone(
+      GENERIC_THREAD_FIXTURE,
+    );
+    const node: ThreadGraphNode = {
+      id: `graph:artifact:${artifactId}`,
+      ref: { kind: "artifact", id: artifactId },
+      entityKind: "artifact",
+      artifactKind: "document",
+      label: "Agent-authored architecture SysML analysis",
+      system: "digital-thread",
+      freshness: "fresh",
+      summary: `document · ${digest}`,
+      selection: { kind: "artifact", id: artifactId },
+    };
+    snapshot.graph.nodes.push(node);
+    snapshot.artifacts.push({
+      id: artifactId,
+      label: "Agent-authored architecture SysML analysis",
+      kind: "document",
+      system: "digital-thread",
+      revision: digest,
+      freshness: "fresh",
+      fingerprint: `sha256:${digest}`,
+      uri: `casys://architecture-sysml-seal-capture/sha256/${digest}`,
+      producedBy: "model.seal-architecture-sysml@1",
+      dependsOn: [],
+      architectureSysmlSeal: {
+        producer: "model.seal-architecture-sysml@1",
+        authority: "documentary",
+        artifactKind: "document",
+        notSyson: true,
+        notWriteArchitecture: true,
+        notCompilationAdmission: true,
+        symbolsStatus: "observed",
+        symbols: [
+          { id: "symbol:package", kind: "artifact", label: "DroneV4" },
+          { id: "symbol:wing-usage", kind: "component", label: "wing" },
+          { id: "symbol:wing", kind: "component", label: "Wing" },
+        ],
+        incidences: [{
+          id: "dependency:wing-typed-by",
+          kind: "structural-incidence",
+          fromSymbolId: "symbol:wing-usage",
+          toSymbolId: "symbol:wing",
+        }],
+        unresolvedConstructs: [{ id: "unresolved:comment", kind: "comment" }],
+      },
+    });
+
+    const view = architectureSysmlSealInspectorView(snapshot, {
+      node,
+      record: node.selection,
+    });
+    const context = resolveToolInspectorContext(snapshot, {
+      node,
+      record: node.selection,
+    });
+
+    assertEquals(context.owner.id, "digital-thread");
+    assertEquals(view?.producer, "model.seal-architecture-sysml@1");
+    assertEquals(view?.authority, "documentary");
+    assertEquals(view?.artifactKind, "document");
+    assertEquals(view?.fingerprint, `sha256:${digest}`);
+    assertEquals(
+      view?.uri,
+      `casys://architecture-sysml-seal-capture/sha256/${digest}`,
+    );
+    assertEquals(view?.notSyson, true);
+    assertEquals(view?.notWriteArchitecture, true);
+    assertEquals(view?.notCompilationAdmission, true);
+    assertEquals(view?.symbols.map((symbol) => symbol.id), [
+      "symbol:package",
+      "symbol:wing-usage",
+      "symbol:wing",
+    ]);
+    assertEquals(view?.incidences, [{
+      id: "dependency:wing-typed-by",
+      kind: "structural-incidence",
+      fromSymbolId: "symbol:wing-usage",
+      toSymbolId: "symbol:wing",
+    }]);
+    assertEquals(view?.unresolvedConstructs.map((item) => item.id), [
+      "unresolved:comment",
+    ]);
+  },
+);
+
+Deno.test(
+  "architecture SysML inspector drops incidences when symbols are unavailable",
+  () => {
+    const digest = "c".repeat(64);
+    const artifactId = `architecture-sysml-seal-${digest}`;
+    const snapshot: ThreadWorkbenchSnapshot = structuredClone(
+      GENERIC_THREAD_FIXTURE,
+    );
+    snapshot.artifacts.push({
+      id: artifactId,
+      label: "Agent-authored architecture SysML analysis",
+      kind: "document",
+      system: "digital-thread",
+      revision: digest,
+      freshness: "fresh",
+      fingerprint: `sha256:${digest}`,
+      uri: `casys://architecture-sysml-seal-capture/sha256/${digest}`,
+      producedBy: "model.seal-architecture-sysml@1",
+      dependsOn: [],
+      architectureSysmlSeal: {
+        producer: "model.seal-architecture-sysml@1",
+        authority: "documentary",
+        artifactKind: "document",
+        notSyson: true,
+        notWriteArchitecture: true,
+        notCompilationAdmission: true,
+        symbolsStatus: "unavailable",
+        symbols: [],
+        incidences: [{
+          id: "dependency:must-not-surface",
+          kind: "structural-incidence",
+          fromSymbolId: "symbol:from",
+          toSymbolId: "symbol:to",
+        }],
+        unresolvedConstructs: [{ id: "unresolved:comment", kind: "comment" }],
+      },
+    });
+
+    const view = architectureSysmlSealInspectorView(snapshot, {
+      record: { kind: "artifact", id: artifactId },
+    });
+    assertEquals(view?.symbolsStatus, "unavailable");
+    assertEquals(view?.symbols, []);
+    assertEquals(view?.incidences, []);
+    assertEquals(view?.unresolvedConstructs, [{
+      id: "unresolved:comment",
+      kind: "comment",
+    }]);
+  },
+);
+
+Deno.test(
+  "architecture SysML inspector stays absent for an ordinary document",
+  () => {
+    const snapshot: ThreadWorkbenchSnapshot = structuredClone(
+      GENERIC_THREAD_FIXTURE,
+    );
+    const node: ThreadGraphNode = {
+      id: "graph:artifact:artifact.brief",
+      ref: { kind: "artifact", id: "artifact.brief" },
+      entityKind: "artifact",
+      artifactKind: "document",
+      label: "Brief",
+      system: "digital-thread",
+      freshness: "fresh",
+      summary: "document · brief",
+      selection: { kind: "artifact", id: "artifact.brief" },
+    };
+    snapshot.graph.nodes.push(node);
+    snapshot.artifacts.push({
+      id: "artifact.brief",
+      label: "Brief",
+      kind: "document",
+      system: "digital-thread",
+      revision: "1",
+      freshness: "fresh",
+      producedBy: "baseline.from-approved-brief@1",
+      dependsOn: [],
+    });
+
+    assertEquals(
+      architectureSysmlSealInspectorView(snapshot, {
+        node,
+        record: node.selection,
+      }),
+      undefined,
+    );
   },
 );
 

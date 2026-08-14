@@ -5,14 +5,8 @@ import {
 } from "./evidence-graph-model.ts";
 import type { ProjectReviewRecord } from "../project/review-decision-model.ts";
 import { applyEssentialFilter } from "./essential-graph-filter.ts";
-import {
-  compactSysmlPartPairs,
-  graphRefKey,
-} from "./sysml-composite-projection.ts";
-import type {
-  PartAnchorageResolution,
-  PartTarget,
-} from "./part-anchorage-model.ts";
+import { compactSysmlPartPairs, graphRefKey } from "./sysml-composite-projection.ts";
+import type { PartAnchorageResolution, PartTarget } from "./part-anchorage-model.ts";
 import type {
   ThreadComponentCatalog,
   ThreadGraphEdge,
@@ -144,7 +138,7 @@ export function activityFeedNodes(
     // Untagged support nodes, including generic `other` artifacts, stay in
     // lineage rather than becoming feed noise.
     node.activityRole === "milestone" ||
-    (node.entityKind === "artifact" && isPrimaryArtifact(node.artifactKind))
+    (node.entityKind === "artifact" && isPrimaryArtifact(node))
   );
   return [...primary, ...recordedCorrectionNodes(nodes, edges)]
     .filter(uniqueNode)
@@ -266,9 +260,35 @@ function recordedCorrectionNodes(
   });
 }
 
-function isPrimaryArtifact(kind: string | undefined): boolean {
+/** Server-fixed id prefix of `model.seal-architecture-sysml@1` documents. */
+export const ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX = "architecture-sysml-seal-";
+
+export function isArchitectureSysmlSealArtifactId(id: string): boolean {
+  return id.startsWith(ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX);
+}
+
+/**
+ * Activity eyebrow for a feed card. The sealed architecture SysML document
+ * keeps `kind: "document"` and surfaces the contract label `documentary`.
+ */
+export function activityKindLabel(node: ThreadGraphNode): string {
+  if (node.entityKind === "artifact" && node.artifactKind) {
+    if (
+      node.artifactKind === "document" &&
+      isArchitectureSysmlSealArtifactId(node.ref.id)
+    ) {
+      return "document · documentary";
+    }
+    return node.artifactKind;
+  }
+  return node.entityKind;
+}
+
+function isPrimaryArtifact(node: ThreadGraphNode): boolean {
+  const kind = node.artifactKind;
   return kind === "sysml-model" || kind === "cad-model" || kind === "step" ||
-    kind === "solver-result" || kind === "bom";
+    kind === "solver-result" || kind === "bom" ||
+    (kind === "document" && isArchitectureSysmlSealArtifactId(node.ref.id));
 }
 
 function steps(
@@ -502,9 +522,7 @@ export function filterFeedNodesByScope(
   scope: FeedScope | undefined,
 ): ThreadGraphNode[] {
   if (scope === undefined) return [...feedNodes];
-  return feedNodes.filter((node) =>
-    feedScopeForNode(node, anchorage) === scope
-  );
+  return feedNodes.filter((node) => feedScopeForNode(node, anchorage) === scope);
 }
 
 /**

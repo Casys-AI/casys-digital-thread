@@ -297,6 +297,49 @@ export interface ThreadFlowStage {
   dependsOn: string[];
 }
 
+/**
+ * Browser-safe reopen of one `model.seal-architecture-sysml@1` Thread document.
+ *
+ * Bindings stay symbol ids. Labels, when present, are display-only and never
+ * join keys. This is not Product Structure, not a SysON model, and not
+ * `compile.seal-admission@1`.
+ */
+export interface ThreadArchitectureSysmlSealSymbol {
+  id: string;
+  kind: string;
+  /** Display-only name; never used as a join key. */
+  label?: string;
+}
+
+export interface ThreadArchitectureSysmlSealUnresolved {
+  id: string;
+  kind: string;
+}
+
+/**
+ * Directed source-local incidence. Ends are symbol ids, never labels.
+ * Display labels, if shown, are looked up from `symbols` and stay display-only.
+ */
+export interface ThreadArchitectureSysmlSealIncidence {
+  id: string;
+  kind: "structural-incidence";
+  fromSymbolId: string;
+  toSymbolId: string;
+}
+
+export interface ThreadArchitectureSysmlSealPresentation {
+  producer: "model.seal-architecture-sysml@1";
+  authority: "documentary";
+  artifactKind: "document";
+  notSyson: true;
+  notWriteArchitecture: true;
+  notCompilationAdmission: true;
+  symbolsStatus: "observed" | "unavailable";
+  symbols: ThreadArchitectureSysmlSealSymbol[];
+  incidences: ThreadArchitectureSysmlSealIncidence[];
+  unresolvedConstructs: ThreadArchitectureSysmlSealUnresolved[];
+}
+
 export interface ThreadArtifact {
   id: string;
   label: string;
@@ -316,6 +359,11 @@ export interface ThreadArtifact {
     consumedFingerprint: string;
     checkedAt: string;
   };
+  /**
+   * Present only after the BFF reopens an `architecture-sysml-seal-capture/1.0`
+   * document. The pure projector never fills this field.
+   */
+  architectureSysmlSeal?: ThreadArchitectureSysmlSealPresentation;
 }
 
 export interface ThreadObservation {

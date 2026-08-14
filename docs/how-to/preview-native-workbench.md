@@ -291,8 +291,12 @@ arguments, result snapshot, or evidence payload. The generic route can record th
 approved-brief documentary baseline, create the fixed brief-bound SysON container, then
 execute the exact reviewed architecture, integer-requirements, and geometry-seal
 contracts. The provider-free `model.seal-architecture-sysml@1` slice seals
-agent-authored closed-subset SysML as a Thread document and does not appear as a SysON
-insertion. These operations persist and read back their closed captures and refuse an
+agent-authored closed-subset SysML as a Thread **document** and does not appear as a
+SysON insertion. In Activity, only the `architecture-sysml-seal-` document is primary;
+generic `document` artifacts stay in lineage. Selecting it opens the digital-thread
+inspector, which keeps the `documentary` label visible and lists symbol ids from the
+reopened seal. It is not the approved-brief `surface: "documentary"` and is not Product
+Structure. These operations persist and read back their closed captures and refuse an
 uncertain non-idempotent write instead of retrying it blindly. Generic simulation,
 measurement, requirement evaluation, manufacturing, and certification still need their
 own reviewed executors and evidence contracts.
