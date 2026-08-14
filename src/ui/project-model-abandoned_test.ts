@@ -1,9 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { GENERIC_PROJECT_FIXTURE } from "../testing/workbench/generic-engineering-workbench-fixture.ts";
-import {
-  buildProjectBrief,
-  selectCurrentProjectFocus,
-} from "./src/project/model.ts";
+import { buildProjectBrief, selectCurrentProjectFocus } from "./src/project/model.ts";
 import { isEngineeringProjectSnapshot } from "./src/project/contract.ts";
 
 /**
@@ -17,9 +14,7 @@ function projectWithAbandonedWorkItem() {
   return {
     ...GENERIC_PROJECT_FIXTURE,
     workItems: GENERIC_PROJECT_FIXTURE.workItems.map((item) =>
-      item.id === "work-verify"
-        ? { ...item, status: "abandoned" as const }
-        : item
+      item.id === "work-verify" ? { ...item, status: "abandoned" as const } : item
     ),
   };
 }
