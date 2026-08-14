@@ -279,7 +279,7 @@ result = fillet((block - bore).edges(), radius=1)
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.unresolvedConstructs, []);
     assertEquals(bundle.policy.status, "passed");
-    assertEquals(bundle.analyzer.version, "1.1.0");
+    assertEquals(bundle.analyzer.version, "1.2.0");
     assertEquals(
       bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
       "artifact",
@@ -323,38 +323,129 @@ result = fillet(base.edges(), radius=radius)
 
 Deno.test("D4-admitted but unqualified build123d calls remain explicitly unresolved", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
-  const scripts = [
-    `from build123d import Box, fillet
+  // fillet with positional radius (not keyword) stays unresolved.
+  const bundle = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, fillet
 base = Box(10, 10, 10)
 result = fillet(base, 2)
 `,
+  });
+  assertEquals(bundle.policy.status, "passed");
+  const kinds = new Set(
+    bundle.unresolvedConstructs.map((construct) => construct.kind),
+  );
+  assert(kinds.has("build123d-result-not-qualified"));
+  assert(kinds.has("python-dynamic-call"));
+});
+
+Deno.test("qualified build123d frontend proves chamfer of all edges by a length", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
     `from build123d import Box, chamfer
 base = Box(10, 10, 10)
-result = chamfer(base.edges(), 1)
+result = chamfer(base.edges(), 2)
+`,
+    `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+length = 2
+result = chamfer(base.edges(), length)
+`,
+    `from build123d import Box, chamfer as bevel
+result = bevel(Box(10, 10, 10).edges(), 1)
+`,
+    `from build123d import Box, Cylinder, chamfer
+block = Box(20, 20, 10)
+bore = Cylinder(4, 12)
+result = chamfer((block - bore).edges(), 1)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(bundle.analyzer.version, "1.2.0");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
+
+  // Dependency graph for chamfer with a named length parameter.
+  const named = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+length = 2
+result = chamfer(base.edges(), length)
+`,
+  });
+  assertEquals(
+    new Map(named.symbols.map((symbol) => [symbol.name, symbol.kind])),
+    new Map([
+      ["base", "variable"],
+      ["length", "parameter"],
+      ["result", "artifact"],
+    ]),
+  );
+  assertEquals(
+    named.dependencies.map((dependency) => ({
+      kind: dependency.kind,
+      from: named.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+        ?.name,
+      to: named.symbols.find((symbol) => symbol.id === dependency.toSymbolId)
+        ?.name,
+    })).sort((left, right) =>
+      `${left.kind}:${left.from}:${left.to}`.localeCompare(
+        `${right.kind}:${right.from}:${right.to}`,
+      )
+    ),
+    [
+      { kind: "structural-incidence" as const, from: "base", to: "result" },
+      { kind: "structural-incidence" as const, from: "length", to: "result" },
+    ],
+  );
+});
+
+Deno.test("chamfer keyword length, extra args, method form, or faces stay unresolved", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    // keyword length= is not the reviewed positional form
+    `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+result = chamfer(base.edges(), length=2)
+`,
+    // two lengths (length2=) are not qualified
+    `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+result = chamfer(base.edges(), 1, 2)
+`,
+    // method form is not qualified
+    `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+result = base.chamfer(2)
+`,
+    // .faces() selector is not qualified
+    `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+result = chamfer(base.faces(), 1)
+`,
+    // no length argument
+    `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+result = chamfer(base.edges())
 `,
   ];
   for (const sourceText of scripts) {
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.policy.status, "passed");
-    const kinds = new Set(
-      bundle.unresolvedConstructs.map((construct) => construct.kind),
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+      `${sourceText} must not qualify result`,
     );
-    assert(kinds.has("build123d-result-not-qualified"));
-    assert(kinds.has("python-dynamic-call"));
   }
-
-  const chamfer = await analyzer.analyze({
-    ...INPUT,
-    sourceText: `from build123d import Box, chamfer
-base = Box(10, 10, 10)
-result = chamfer(base.edges(), 1)
-`,
-  });
-  assert(
-    chamfer.unresolvedConstructs.some((item) =>
-      item.kind === "build123d-call-not-qualified"
-    ),
-  );
 });
 
 Deno.test("fillet method, 1-arg, extra kwargs, or Scale stay unresolved", async () => {
@@ -432,7 +523,7 @@ result = enlarge(Box(10, 10, 10), 3)
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.unresolvedConstructs, []);
     assertEquals(bundle.policy.status, "passed");
-    assertEquals(bundle.analyzer.version, "1.1.0");
+    assertEquals(bundle.analyzer.version, "1.2.0");
     assertEquals(
       bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
       "artifact",

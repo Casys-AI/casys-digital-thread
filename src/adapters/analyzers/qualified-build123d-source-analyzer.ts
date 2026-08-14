@@ -6,14 +6,15 @@
  * smaller AST subset:
  *
  * - named imports of Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge,
- *   Pos, Rot, Compound, scale and fillet (aliases allowed; two aliases for
- *   the same imported name stay ambiguous);
+ *   Pos, Rot, Compound, scale, fillet and chamfer (aliases allowed; two
+ *   aliases for the same imported name stay ambiguous);
  * - unique module-level parameter assignments made only of finite decimal
  *   numbers, unary/binary arithmetic, earlier parameters, and flat lists;
  * - unique module-level solid assignments: a Box/Cylinder/Cone/Sphere/Torus/
  *   Ellipsoid/Wedge call, a Pos/Rot * solid, a solid +/− solid, a
  *   `scale(<qualified-solid>, <scalar>)`, a
- *   `fillet(<qualified-solid>.edges(), radius=<scalar>)`, a name of an
+ *   `fillet(<qualified-solid>.edges(), radius=<scalar>)`, a
+ *   `chamfer(<qualified-solid>.edges(), <scalar>)`, a name of an
  *   earlier solid, or `Compound(children=[...])` over earlier solid names;
  * - one module-level `result` that is itself one of those solids.
  *
@@ -21,10 +22,11 @@
  * this frontend cannot prove is recorded as unresolved, so it can never yield
  * a fully qualified compilation by omission.
  *
- * Next AST lock (not opened here): chamfer still needs its own reviewed form.
- * `fillet(solid, r)` is not a reviewed positional solid form.  extrude still
- * needs a 2-D sketch subset plus `amount=` kwargs.  Do not open general
- * MemberExpression, `.faces()`, or `filter_by`.
+ * Next AST lock (not opened here): `fillet(solid, r)` is not a reviewed
+ * positional solid form.  extrude still needs a 2-D sketch subset plus
+ * `amount=` kwargs — do not open it until a dedicated sketch subset is
+ * reviewed.  Do not open general MemberExpression, `.faces()`, or
+ * `filter_by`.
  */
 
 import { parser } from "@lezer/python";
@@ -57,13 +59,13 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
 
 /**
  * Cone, Sphere, Rot, Torus, Ellipsoid, Wedge, algebraic
- * `scale(solid, scalar)` and
- * `fillet(solid.edges(), radius=scalar)` reuse the 1.1 positional-call and
+ * `scale(solid, scalar)`, `fillet(solid.edges(), radius=scalar)` and
+ * `chamfer(solid.edges(), length)` reuse the 1.1 positional-call and
  * placement * solid identity scheme (`build123d-ast-identity/1.0`). Previously
- * qualified Box/Cylinder/Pos/Compound bundles stay bit-identical, so the
- * public analysis identity does not change.
+ * qualified bundles stay bit-identical, so the public analysis identity does
+ * not change for existing sources.
  */
-export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.1.0" as const;
+export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.2.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
 
@@ -86,6 +88,7 @@ const QUALIFIED_BUILD123D_CALLS = new Map(
     ["Compound", { role: "assembly", positionalArguments: 0 }],
     ["scale", { role: "transform", positionalArguments: 2 }],
     ["fillet", { role: "transform", positionalArguments: 1 }],
+    ["chamfer", { role: "transform", positionalArguments: 1 }],
   ] as const,
 );
 
@@ -101,10 +104,11 @@ type QualifiedBuild123dCallName =
   | "Rot"
   | "Compound"
   | "scale"
-  | "fillet";
+  | "fillet"
+  | "chamfer";
 type PositionalBuild123dCallName = Exclude<
   QualifiedBuild123dCallName,
-  "Compound" | "scale" | "fillet"
+  "Compound" | "scale" | "fillet" | "chamfer"
 >;
 
 interface ParsedNode {
@@ -416,7 +420,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       addExpressionUnresolved(resultAssignment.rhs, addUnresolved);
       addUnresolved(
         "build123d-result-not-qualified",
-        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot * solid, solid +/− solid, scale(solid, scalar), fillet(solid.edges(), radius=scalar), or Compound(children=[...]).",
+        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot * solid, solid +/− solid, scale(solid, scalar), fillet(solid.edges(), radius=scalar), chamfer(solid.edges(), length), or Compound(children=[...]).",
         resultAssignment.rhs,
       );
     }
@@ -590,6 +594,14 @@ function parseShapeExpression(
     before,
   );
   if (filleted !== undefined) return filleted;
+  const chamfered = parseChamferCall(
+    node,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+  );
+  if (chamfered !== undefined) return chamfered;
   if (node.name !== "BinaryExpression" || node.children.length !== 3) {
     return undefined;
   }
@@ -844,6 +856,65 @@ function parseFilletCall(
     parameterReferences: [
       ...solid.parameterReferences,
       ...radius.references,
+    ],
+    shapeReferences: solid.shapeReferences,
+  };
+}
+
+/**
+ * Only the reviewed form `chamfer(<qualified-solid>.edges(), <scalar>)`.
+ * Callee is the imported `chamfer` (alias OK).  First argument is an empty
+ * `.edges()` call on a qualified solid; second is a positional scalar length.
+ * `length2=`, `face=`, `angle=`, keyword `length=`, `.faces()`, `filter_by`,
+ * extra arguments, and the method form `solid.chamfer(...)` stay unproven.
+ * This does not open general MemberExpression — only the already-qualified
+ * empty `.edges()` pattern inside a reviewed chamfer call.
+ */
+function parseChamferCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  before: number,
+): ShapeExpression | undefined {
+  if (node.name !== "CallExpression" || node.children.length !== 2) {
+    return undefined;
+  }
+  const [callee, argList] = node.children;
+  if (callee?.name !== "VariableName" || argList?.name !== "ArgList") {
+    return undefined;
+  }
+  const imported = importedCalls.get(currentText(callee));
+  if (imported?.imported !== "chamfer" || imported.node.from >= before) {
+    return undefined;
+  }
+  if (argList.children.some((child) => ["*", "**"].includes(currentText(child)))) {
+    return undefined;
+  }
+  // Keyword arguments (AssignOp in arglist) remain unproven: length2=, face=,
+  // angle=, and even keyword `length=` are not the reviewed two-positional form.
+  if (argList.children.some((child) => child.name === "AssignOp")) {
+    return undefined;
+  }
+  const expressions = argList.children.filter(isArgumentExpression);
+  if (expressions.length !== 2) return undefined;
+  const [edgesNode, lengthNode] = expressions;
+  if (edgesNode === undefined || lengthNode === undefined) return undefined;
+  const solid = parseEmptyEdgesSelector(
+    edgesNode,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+  );
+  const length = parseStaticExpression(lengthNode, parameters);
+  if (solid === undefined || length === undefined || length.shape !== "scalar") {
+    return undefined;
+  }
+  return {
+    parameterReferences: [
+      ...solid.parameterReferences,
+      ...length.references,
     ],
     shapeReferences: solid.shapeReferences,
   };
@@ -1105,7 +1176,7 @@ function addExpressionUnresolved(
     } else if (candidate.name === "CallExpression") {
       add(
         "python-dynamic-call",
-        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Pos, Rot, Compound, scale, or fillet calls are qualified.",
+        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Pos, Rot, Compound, scale, fillet, or chamfer calls are qualified.",
         candidate,
       );
     }
