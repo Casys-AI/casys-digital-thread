@@ -134,7 +134,8 @@ cycle — yields `unresolved` with diagnostics and **no** parameters, never a pa
 compiled proposal.
 
 One code-owned normalisation exists: a threshold declared in `MPa` is rescaled to `Pa`
-and the provenance entry names the transformation. SysON cannot round-trip `MPa` (probe
+and the provenance entry names the transformation (see [Oracle units](oracle-units.md)).
+SysON cannot round-trip `MPa` (probe
 `deno task probe:requirement-units --unit=MPa --type=PressureValue`, 2026-08-14,
 `type_mismatch`), and refusing outright would only move the same conversion into the
 agent's head where nothing records it.
