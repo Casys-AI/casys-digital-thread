@@ -3,6 +3,7 @@ import {
   ARCHITECTURE_FEATURE_TYPING_AQL,
   ArchitectureStructureExtractionError,
   extractArchitectureStructure,
+  extractPartDefinitionStructures,
 } from "./architecture-structure-extractor.ts";
 import type {
   McpToolCall,
@@ -293,6 +294,150 @@ Deno.test("extractArchitectureStructure: throws invalid_children_response when p
   ) as ArchitectureStructureExtractionError;
   assertEquals(error.code, "invalid_children_response");
 });
+
+Deno.test(
+  "extractPartDefinitionStructures never calls syson_element_children on the root package",
+  async () => {
+    const calls: string[] = [];
+    const children = new Map([
+      ["sys-1", makeChildren("sys-1", [])],
+      ["wing-1", makeChildren("wing-1", [])],
+      [
+        "root-1",
+        makeChildren("root-1", [{
+          id: "pkg-1",
+          kind: PACKAGE_KIND,
+          label: "ShouldNotBeSeen",
+        }]),
+      ],
+    ]);
+    const recording: McpToolClient = {
+      callTool: (call: McpToolCall): Promise<McpToolResult> => {
+        calls.push(
+          `${call.name}:${
+            (call.arguments as Record<string, unknown>).element_id ??
+              (call.arguments as Record<string, unknown>).object_id ??
+              (call.arguments as Record<string, unknown>).root_element_id
+          }`,
+        );
+        return makeStub(children).callTool(call);
+      },
+    } as unknown as McpToolClient;
+    await extractPartDefinitionStructures(recording, "ctx-1", [
+      { id: "sys-1", label: "LampSystem" },
+      { id: "wing-1", label: "Arm" },
+    ]);
+    assertEquals(calls.some((call) => call.endsWith(":root-1")), false);
+  },
+);
+
+Deno.test("extractPartDefinitionStructures never calls syson_part_structure", async () => {
+  const names: string[] = [];
+  const children = new Map([
+    ["sys-1", makeChildren("sys-1", [])],
+  ]);
+  const recording: McpToolClient = {
+    callTool: (call: McpToolCall): Promise<McpToolResult> => {
+      names.push(call.name);
+      return makeStub(children).callTool(call);
+    },
+  } as unknown as McpToolClient;
+  await extractPartDefinitionStructures(recording, "ctx-1", [
+    { id: "sys-1", label: "LampSystem" },
+  ]);
+  assertEquals(names.includes("syson_part_structure"), false);
+});
+
+Deno.test("extractPartDefinitionStructures preserves sealed PartDefinition order", async () => {
+  const children = new Map([
+    [
+      "sys-1",
+      makeChildren("sys-1", [
+        { id: "usage-1", kind: PART_USAGE_KIND, label: "arm" },
+      ]),
+    ],
+    ["arm-1", makeChildren("arm-1", [])],
+  ]);
+  const result = await extractPartDefinitionStructures(
+    makeStub(children, new Map([["usage-1", "Arm"]])),
+    "ctx-1",
+    [
+      { id: "arm-1", label: "Arm" },
+      { id: "sys-1", label: "LampSystem" },
+    ],
+  );
+  assertEquals(result.map((part) => part.id), ["arm-1", "sys-1"]);
+});
+
+Deno.test(
+  "extractPartDefinitionStructures uses ARCHITECTURE_FEATURE_TYPING_AQL and rejects zero or many FeatureTyping results",
+  async () => {
+    const children = new Map([
+      [
+        "sys-1",
+        makeChildren("sys-1", [
+          { id: "usage-1", kind: PART_USAGE_KIND, label: "arm" },
+        ]),
+      ],
+    ]);
+    const missing = await assertRejects(
+      () =>
+        extractPartDefinitionStructures(makeStub(children), "ctx-1", [
+          { id: "sys-1", label: "LampSystem" },
+        ]),
+      ArchitectureStructureExtractionError,
+    ) as ArchitectureStructureExtractionError;
+    assertEquals(missing.code, "missing_feature_typing");
+
+    const many: McpToolClient = {
+      callTool: (call: McpToolCall): Promise<McpToolResult> => {
+        if (call.name === "syson_element_children") {
+          return makeStub(children).callTool(call);
+        }
+        return Promise.resolve({
+          text: "aql-many",
+          structuredContent: {
+            objectId: "usage-1",
+            expression: ARCHITECTURE_FEATURE_TYPING_AQL,
+            type: "objects",
+            results: [
+              { id: "def-Arm", kind: "sysml::PartDefinition", label: "Arm" },
+              { id: "def-Other", kind: "sysml::PartDefinition", label: "Other" },
+            ],
+            count: 2,
+          },
+        });
+      },
+    } as unknown as McpToolClient;
+    const ambiguous = await assertRejects(
+      () =>
+        extractPartDefinitionStructures(many, "ctx-1", [
+          { id: "sys-1", label: "LampSystem" },
+        ]),
+      ArchitectureStructureExtractionError,
+    ) as ArchitectureStructureExtractionError;
+    assertEquals(ambiguous.code, "invalid_aql_response");
+  },
+);
+
+Deno.test(
+  "extractPartDefinitionStructures rejects a children response whose parentId is not the sealed PartDefinition id",
+  async () => {
+    const syson = makeStub(
+      new Map([
+        ["sys-1", { parentId: "WRONG", children: [], count: 0 }],
+      ]),
+    );
+    const error = await assertRejects(
+      () =>
+        extractPartDefinitionStructures(syson, "ctx-1", [
+          { id: "sys-1", label: "LampSystem" },
+        ]),
+      ArchitectureStructureExtractionError,
+    ) as ArchitectureStructureExtractionError;
+    assertEquals(error.code, "invalid_children_response");
+  },
+);
 
 Deno.test("extractArchitectureStructure: ignores non-Package siblings of different kind", async () => {
   const syson = makeStub(

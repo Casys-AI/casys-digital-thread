@@ -167,6 +167,49 @@ export async function extractArchitectureStructure(
   };
 }
 
+/**
+ * Re-read only the sealed PartDefinitions (Phase 3 + 3b). Depth is one owned
+ * PartUsage generation plus FeatureTyping; it is never a call argument.
+ *
+ * Output order matches `partDefs` input order — the sealed architecture
+ * capture order. The function never rediscovers the package or walks
+ * `usage.children`.
+ */
+export async function extractPartDefinitionStructures(
+  syson: McpToolClient,
+  editingContextId: string,
+  partDefs: readonly { readonly id: string; readonly label: string }[],
+): Promise<readonly ExistingPartDef[]> {
+  const extracted: ExistingPartDef[] = [];
+  for (const partDef of partDefs) {
+    const partDefChildren = await callChildren(syson, editingContextId, partDef.id);
+    const usages: ExistingPartUsage[] = [];
+    for (const usage of partDefChildren) {
+      if (!semanticKind(usage.kind, "PartUsage")) continue;
+      const target = await resolveFeatureTypingTarget(
+        syson,
+        editingContextId,
+        usage,
+        partDef.label,
+      );
+      usages.push({
+        id: usage.id,
+        kind: usage.kind,
+        label: usage.label,
+        targetId: target.id,
+        targetKind: target.kind,
+        targetLabel: target.label,
+      });
+    }
+    extracted.push({
+      id: partDef.id,
+      label: partDef.label,
+      usages,
+    });
+  }
+  return extracted;
+}
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 interface SysonChild {
