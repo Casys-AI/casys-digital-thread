@@ -24,7 +24,7 @@ import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
   ARCHITECTURE_SYSML_SEAL_CAPTURE_URI_PREFIX,
   validateArchitectureSysmlSealCapture,
-} from "../executors/model-seal-architecture-sysml-run-executor.ts";
+} from "../captures/architecture-sysml-seal-capture-schema.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
 
 const SEAL_ID = /^architecture-sysml-seal-([0-9a-f]{64})$/;
