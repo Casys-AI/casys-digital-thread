@@ -23,6 +23,7 @@
  */
 
 import {
+  type CompleteRunCommand,
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
@@ -34,12 +35,19 @@ import {
 } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   EngineeringAgentRun,
+  EngineeringApproval,
+  EngineeringDecision,
   EngineeringOperationInputBinding,
+  EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
 } from "../../domain/project/engineering-project.ts";
-import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import type {
   ThreadEntityRef,
   ThreadSnapshot,
@@ -54,7 +62,9 @@ import {
   renderArchiveCascadeSummary,
   UnknownArchiveTargetError,
 } from "../../domain/thread/thread-retirement.ts";
+import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
+import { assertThreadSnapshotLineageIntact } from "../stores/thread-snapshot-lineage.ts";
 import {
   requireBasis,
   requiredStart,
@@ -62,6 +72,10 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "./executor-run-helpers.ts";
+import {
+  assertThreadWriteBasisAvailable,
+  threadWriteBasisLeaseScope,
+} from "./thread-write-basis-guard.ts";
 
 // ---------------------------------------------------------------------------
 // Public constants — operation identity, exported so server.ts can wire it
@@ -75,10 +89,7 @@ import {
  * key from the code that owns the check eliminates any possibility of mismatch
  * between registry key and executor guard.
  */
-export const ARCHIVE_LINEAGE_OPERATION = {
-  id: "record.archive-lineage",
-  version: "1",
-} as const;
+export { ARCHIVE_LINEAGE_OPERATION };
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -94,10 +105,18 @@ export interface ArchiveLineageRunExecutorCommand {
 
 export interface ArchiveLineageRunExecutorDependencies {
   readonly projects: EngineeringProjectRevisionStore;
-  readonly commands: EngineeringProjectCommandService;
-  readonly snapshots: ThreadSnapshotStore;
+  readonly commands: Pick<
+    EngineeringProjectCommandService,
+    "claimRun" | "publishRun" | "completeRun" | "failRun"
+  >;
+  readonly snapshots: ArchiveLineageThreadSnapshotStore;
   readonly lease: EngineeringProjectRunLease;
   readonly now?: () => string;
+}
+
+/** A retirement sealing readback must bypass any convenience cache. */
+export interface ArchiveLineageThreadSnapshotStore extends ThreadSnapshotStore {
+  getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined>;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,8 +125,11 @@ export interface ArchiveLineageRunExecutorDependencies {
 
 export class ArchiveLineageRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
-  readonly #commands: EngineeringProjectCommandService;
-  readonly #snapshots: ThreadSnapshotStore;
+  readonly #commands: Pick<
+    EngineeringProjectCommandService,
+    "claimRun" | "publishRun" | "completeRun" | "failRun"
+  >;
+  readonly #snapshots: ArchiveLineageThreadSnapshotStore;
   readonly #lease: EngineeringProjectRunLease;
   readonly #now: () => string;
 
@@ -130,10 +152,11 @@ export class ArchiveLineageRunExecutor {
       );
     }
     const project = await this.requiredProject(command.projectId);
-    requireShape(project, requireRun(project, command.runId));
+    const run = requireRun(project, command.runId);
+    requireShape(project, run);
     return await this.#lease.withLease(
       command.projectId,
-      command.runId,
+      threadWriteBasisLeaseScope(run),
       () => this.executeLeased(origin, command),
     );
   }
@@ -143,160 +166,81 @@ export class ArchiveLineageRunExecutor {
     command: ArchiveLineageRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
-    let snapshotPersisted = false;
-    let resultSnapshotRef: ReturnType<typeof snapshotRef> | undefined;
-    let evidenceEntityRefs: EngineeringThreadEntityRef[] = [];
+    let exactClaimVerified = false;
+    let snapshotSaveMayHaveBeenDispatched = false;
+    let snapshotReadbackVerified = false;
     try {
-      const preClaim = await this.requiredProject(command.projectId);
-      const preClaimRun = requireRun(preClaim, command.runId);
-      requireShape(preClaim, preClaimRun);
-
-      // Idempotent replay.
-      if (preClaimRun.status === "completed") {
-        assertCompleted(preClaim, command);
-        return preClaim;
-      }
-
-      await this.#commands.claimRun(origin, {
-        ...command,
-        commandId: commandStep(command.commandId, "claim"),
-        summary: "Started the archive-lineage retirement run.",
-      });
-      claimed = true;
-
       let project = await this.requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
+      requireShape(project, run);
+      // There is no separate pre-save WAL. A resumed claimed run may have
+      // persisted its deterministic successor before the previous process
+      // disappeared, so it must remain retry-only until exact attachment.
+      snapshotSaveMayHaveBeenDispatched = run.status === "running" ||
+        run.status === "publishing";
+
+      const completed = await this.completedFor(origin, command);
+      if (completed) return completed;
+
+      await assertThreadWriteBasisAvailable(project, run);
+      const basis = requireBasis(run);
+      const base = await exactSnapshot(this.#snapshots, basis);
+      await assertThreadSnapshotLineageIntact(base, this.#snapshots);
+
+      if (run.status === "queued") {
+        await this.#commands.claimRun(origin, claimCommand(command));
+        claimed = true;
+        exactClaimVerified = true;
+      } else if (run.status === "running" || run.status === "publishing") {
+        requireClaimedShape(project, run, origin);
+        // Replaying the immutable claim receipt proves that command id, actor,
+        // issued time and original expected revision are exact. Same-agent
+        // ownership alone must not let a changed command adopt an active run.
+        await this.#commands.claimRun(origin, claimCommand(command));
+        claimed = true;
+        exactClaimVerified = true;
+      } else {
+        throw unexpectedStatus(run, "queued or this agent's running/publishing");
+      }
+
+      project = await this.requiredProject(command.projectId);
+      run = requireRun(project, command.runId);
       requireClaimedShape(project, run, origin);
 
       if (run.status === "completed") {
-        assertCompleted(project, command);
-        return project;
+        const completedAfterClaim = await this.completedFor(origin, command);
+        if (completedAfterClaim) return completedAfterClaim;
+        throw unexpectedStatus(run, "completed");
       }
       if (run.status !== "running" && run.status !== "publishing") {
         throw unexpectedStatus(run, "running");
       }
 
-      const capturedAt = requiredStart(run);
-      const basis = requireBasis(run);
-      const base = await exactSnapshot(this.#snapshots, basis);
-
-      // Resolve target entity refs from the work item's thread-entity bindings.
-      const workItem = project.workItems.find((item) => item.id === run.workItemId);
-      const targetRefs: EngineeringThreadEntityRef[] =
-        (workItem?.operation?.bindings ?? [])
-          .filter((b) => b.source.kind === "thread-entity")
-          .map((b) => {
-            const ref = (b.source as {
-              kind: "thread-entity";
-              reference: EngineeringThreadEntityRef;
-            })
-              .reference;
-            return ref;
-          });
-
-      if (targetRefs.length === 0) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          "The archive-lineage run requires at least one thread-entity binding as a target.",
-        );
-      }
-      assertExactTargetBindings(workItem?.operation?.bindings ?? [], basis);
-      requireArchiveMrtrApproval(
+      const currentBasis = requireBasis(run);
+      const currentBase = await exactSnapshot(this.#snapshots, currentBasis);
+      await assertThreadSnapshotLineageIntact(currentBase, this.#snapshots);
+      const materialization = await buildArchiveLineageMaterialization(
         project,
-        workItem?.decisionIds ?? [],
-        basis,
-        targetRefs,
+        run,
+        currentBase,
       );
-      const targets: ThreadEntityRef[] = targetRefs.map((ref) => ({
-        kind: ref.kind,
-        id: ref.id,
-      }));
-
-      // Compute the transitive cascade (fail-closed on missing targets).
-      // Default filtering keeps only the NOT-yet-archived closure: a partial
-      // overlap archives the new entries without duplicating the old ones,
-      // and a fully redundant run is refused below — the record states a
-      // fact exactly once. Same-run replays returned earlier already.
-      let cascade: ReturnType<typeof computeArchiveCascade>;
-      try {
-        cascade = computeArchiveCascade(base, targets);
-      } catch (error) {
-        if (error instanceof UnknownArchiveTargetError) {
-          throw new EngineeringProjectCommandError(
-            "invalid_input",
-            `Archive target ${error.targetRef.kind}:${error.targetRef.id} does not exist ` +
-              `in the basis snapshot ${base.id}. Check the thread-entity binding references.`,
-          );
-        }
-        throw error;
-      }
-
-      // FAIL-CLOSED: when the whole closure is already archived, there is no
-      // new fact to record. Refuse instead of minting duplicate archived
-      // changes — append-only means the record states a fact once, not once
-      // per run. The refusal lands as a first-class failed run for review.
-      if (cascade.length === 0) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "Every entity in the archive cascade is already archived in the " +
-            "basis snapshot; nothing new would be recorded. Refusing instead " +
-            "of duplicating archived changes.",
-        );
-      }
-
-      // Build the extension: each NOT-yet-archived cascade entry becomes one
-      // archived entry, guaranteeing evidenceRefs.length > 0 and
-      // result.revision > base.revision.
-      const archiveSummary = renderArchiveCascadeSummary(cascade);
-      const extensionId = `archive-lineage-${command.runId}`;
-      const extension = {
-        id: extensionId,
-        name:
-          `Record retirement of ${cascade.length} entity/entities and their production closure`,
-        subjectId: base.subject.id,
-        capturedAt,
-        artifacts: [],
-        consumptions: [],
-        observations: [],
-        requirements: [],
-        evaluations: [],
-        violations: [],
-        provenance: [],
-        proposedActions: [],
-        archived: cascade.map((entry) => ({
-          target: entry.ref,
-          summary: `Retired via archive-lineage run ${command.runId}. ` +
-            `Because: ${entry.because}. Full cascade:\n${archiveSummary}`,
-        })),
-      };
-
-      const successor = applyThreadSnapshotExtension(base, extension, {
-        appliedAt: capturedAt,
-      });
 
       // CAS readback.
-      await this.#snapshots.save(successor);
-      const savedSnapshot = await this.#snapshots.get(successor.id);
+      snapshotSaveMayHaveBeenDispatched = true;
+      await this.#snapshots.save(materialization.successor);
+      const savedSnapshot = await this.#snapshots.getFresh(
+        materialization.successor.id,
+      );
       if (
         !savedSnapshot ||
-        deterministicJson(savedSnapshot) !== deterministicJson(successor)
+        deterministicJson(savedSnapshot) !==
+          deterministicJson(materialization.successor)
       ) {
         throw new Error(
           "Archive-lineage snapshot was not durably readable after save.",
         );
       }
-      snapshotPersisted = true;
-      resultSnapshotRef = snapshotRef(successor);
-      // The archived entities themselves are unchanged; use the "archived"
-      // change records (new in the successor, absent in the base) as evidence.
-      // Their ids follow the pattern set by applyThreadSnapshotExtension:
-      //   `${extension.id}:archived:${target.kind}:${target.id}`
-      evidenceEntityRefs = cascade.map((entry) => ({
-        snapshotId: successor.id,
-        snapshotRevision: successor.revision,
-        kind: "change" as const,
-        id: `${extensionId}:archived:${entry.ref.kind}:${entry.ref.id}`,
-      }));
+      snapshotReadbackVerified = true;
 
       // Publish run.
       project = await this.requiredProject(command.projectId);
@@ -307,7 +251,7 @@ export class ArchiveLineageRunExecutor {
           commandId: commandStep(command.commandId, "publish"),
           expectedRevision: project.revision,
           summary:
-            `Publishing the archive-lineage retirement of ${cascade.length} entity/entities.`,
+            `Publishing the archive-lineage retirement of ${materialization.cascadeLength} entity/entities.`,
         });
       } else if (run.status !== "publishing" && run.status !== "completed") {
         throw unexpectedStatus(run, "publishing");
@@ -317,31 +261,32 @@ export class ArchiveLineageRunExecutor {
       project = await this.requiredProject(command.projectId);
       run = requireRun(project, command.runId);
       if (run.status === "publishing") {
-        await this.#commands.completeRun(origin, {
-          ...command,
-          commandId: commandStep(command.commandId, "complete"),
-          expectedRevision: project.revision,
-          summary: `Recorded the retirement of ${cascade.length} entity/entities ` +
-            `and their production closure.`,
-          resultSnapshot: resultSnapshotRef!,
-          evidenceRefs: evidenceEntityRefs,
-        });
+        await this.#commands.completeRun(
+          origin,
+          completionCommand(command, project.revision, materialization),
+        );
       } else if (run.status !== "completed") {
         throw unexpectedStatus(run, "completed");
       }
 
       const complete = await this.requiredProject(command.projectId);
-      assertCompleted(complete, command);
+      await this.assertCompletedEvidence(origin, complete, command);
       return complete;
     } catch (error) {
-      if (snapshotPersisted) {
-        const complete = await this.completedFor(command);
+      if (snapshotSaveMayHaveBeenDispatched) {
+        // A resumed run first has to prove the immutable claim receipt. A
+        // changed command is an authority conflict, not an attachment outage,
+        // and must remain visible as such while the original run stays active.
+        if (!exactClaimVerified) throw error;
+        const complete = await this.completedFor(origin, command);
         if (complete) return complete;
         const cause = error instanceof Error ? ` Cause: ${error.message}` : "";
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          "Archive-lineage retirement is durable but project attachment did not finish. " +
-            `Retry this exact command; it will re-use the persisted retirement revision.${cause}`,
+          "Archive-lineage retirement may be durable but project attachment did not finish. " +
+            `Retry this exact command; it will reconstruct and re-use the same deterministic retirement revision${
+              snapshotReadbackVerified ? " that was exactly read back" : ""
+            }.${cause}`,
         );
       }
       if (claimed) await this.recordFailure(origin, command);
@@ -365,15 +310,68 @@ export class ArchiveLineageRunExecutor {
   }
 
   private async completedFor(
+    origin: EngineeringProjectCommandOrigin,
     command: ArchiveLineageRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot | undefined> {
-    try {
-      const project = await this.requiredProject(command.projectId);
-      assertCompleted(project, command);
-      return project;
-    } catch {
-      return undefined;
+    const project = await this.requiredProject(command.projectId);
+    const run = requireRun(project, command.runId);
+    if (run.status !== "completed") return undefined;
+    // The command service owns the immutable claim receipt. Replaying it on a
+    // completed run rejects any changed execution command before evidence is
+    // accepted as an idempotent result.
+    await this.#commands.claimRun(origin, claimCommand(command));
+    const replayed = await this.requiredProject(command.projectId);
+    await this.assertCompletedEvidence(origin, replayed, command);
+    return replayed;
+  }
+
+  private async assertCompletedEvidence(
+    origin: EngineeringProjectCommandOrigin,
+    project: EngineeringProjectSnapshot,
+    command: ArchiveLineageRunExecutorCommand,
+  ): Promise<void> {
+    assertCompleted(project, command);
+    const run = requireRun(project, command.runId);
+    requireClaimedShape(project, run, origin);
+    const basis = requireBasis(run);
+    const result = run.resultSnapshot!;
+    const snapshot = await this.#snapshots.getFresh(result.snapshotId);
+    if (
+      !snapshot || snapshot.id !== result.snapshotId ||
+      snapshot.revision !== result.revision ||
+      snapshot.subject.id !== result.subjectId ||
+      result.subjectId !== basis.subjectId ||
+      result.revision !== basis.revision + 1 ||
+      snapshot.previous?.snapshotId !== basis.snapshotId ||
+      snapshot.previous.revision !== basis.revision
+    ) {
+      throw invalidTransition(
+        "The completed archive-lineage run does not reopen its exact direct Thread successor.",
+      );
     }
+    const validatedSnapshot = validateThreadSnapshot(snapshot);
+    await assertThreadSnapshotLineageIntact(validatedSnapshot, this.#snapshots);
+    const base = await exactSnapshot(this.#snapshots, basis);
+    await assertThreadSnapshotLineageIntact(base, this.#snapshots);
+    const expected = await buildArchiveLineageMaterialization(project, run, base);
+    assertExactCompletedEvidence(project, run, validatedSnapshot, expected);
+    if (
+      deterministicJson(validatedSnapshot) !==
+        deterministicJson(expected.successor)
+    ) {
+      throw invalidTransition(
+        "The completed archive-lineage Thread successor no longer equals the exact deterministic snapshot reconstructed from its reviewed basis.",
+      );
+    }
+    const receipt = exactCompletionReceipt(project, command, origin, run);
+    await this.#commands.completeRun(
+      origin,
+      completionCommand(
+        command,
+        receipt.resultingSnapshot.revision - 1,
+        expected,
+      ),
+    );
   }
 
   private async recordFailure(
@@ -400,6 +398,97 @@ export class ArchiveLineageRunExecutor {
       // Preserve the original cause.
     }
   }
+}
+
+interface ArchiveLineageMaterialization {
+  readonly successor: ThreadSnapshot;
+  readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
+  readonly cascadeLength: number;
+}
+
+/** Reconstruct the only successor and evidence vector authorized by the run. */
+async function buildArchiveLineageMaterialization(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+  base: ThreadSnapshot,
+): Promise<ArchiveLineageMaterialization> {
+  const capturedAt = requiredStart(run);
+  const basis = requireBasis(run);
+  const workItem = project.workItems.find((item) => item.id === run.workItemId);
+  const targetRefs: EngineeringThreadEntityRef[] = (workItem?.operation?.bindings ?? [])
+    .filter((binding) => binding.source.kind === "thread-entity")
+    .map((binding) => {
+      const source = binding.source as {
+        readonly kind: "thread-entity";
+        readonly reference: EngineeringThreadEntityRef;
+      };
+      return source.reference;
+    });
+
+  if (targetRefs.length === 0) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The archive-lineage run requires at least one thread-entity binding as a target.",
+    );
+  }
+  assertExactTargetBindings(workItem?.operation?.bindings ?? [], basis);
+  await requireArchiveMrtrApproval(project, run, targetRefs);
+  const targets: ThreadEntityRef[] = targetRefs.map((reference) => ({
+    kind: reference.kind,
+    id: reference.id,
+  }));
+
+  let cascade: ReturnType<typeof computeArchiveCascade>;
+  try {
+    cascade = computeArchiveCascade(base, targets);
+  } catch (error) {
+    if (error instanceof UnknownArchiveTargetError) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Archive target ${error.targetRef.kind}:${error.targetRef.id} does not exist ` +
+          `in the basis snapshot ${base.id}. Check the thread-entity binding references.`,
+      );
+    }
+    throw error;
+  }
+
+  if (cascade.length === 0) {
+    throw invalidTransition(
+      "Every entity in the archive cascade is already archived in the " +
+        "basis snapshot; nothing new would be recorded. Refusing instead " +
+        "of duplicating archived changes.",
+    );
+  }
+
+  const archiveSummary = renderArchiveCascadeSummary(cascade);
+  const extensionId = `archive-lineage-${run.id}`;
+  const successor = applyThreadSnapshotExtension(base, {
+    id: extensionId,
+    name:
+      `Record retirement of ${cascade.length} entity/entities and their production closure`,
+    subjectId: base.subject.id,
+    capturedAt,
+    artifacts: [],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+    archived: cascade.map((entry) => ({
+      target: entry.ref,
+      summary: `Retired via archive-lineage run ${run.id}. ` +
+        `Because: ${entry.because}. Full cascade:\n${archiveSummary}`,
+    })),
+  }, { appliedAt: capturedAt });
+  const evidenceRefs = cascade.map((entry) => ({
+    snapshotId: successor.id,
+    snapshotRevision: successor.revision,
+    kind: "change" as const,
+    id: `${extensionId}:archived:${entry.ref.kind}:${entry.ref.id}`,
+  }));
+  return { successor, evidenceRefs, cascadeLength: cascade.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -479,38 +568,107 @@ function assertExactTargetBindings(
   }
 }
 
-function requireArchiveMrtrApproval(
+async function requireArchiveMrtrApproval(
   project: EngineeringProjectSnapshot,
-  decisionIds: readonly string[],
-  basis: EngineeringThreadSnapshotBasis,
+  run: EngineeringAgentRun,
   targetRefs: readonly EngineeringThreadEntityRef[],
-): void {
-  const approved = decisionIds.some((id) => {
-    const decision = project.decisions.find((item) => item.id === id);
-    if (
-      decision?.status !== "approved" ||
-      decision.baseSnapshot?.snapshotId !== basis.snapshotId ||
-      decision.baseSnapshot.revision !== basis.revision ||
-      decision.baseSnapshot.subjectId !== basis.subjectId ||
-      !sameEvidenceRefs(decision.inputEvidenceRefs, targetRefs) ||
-      !isArchiveProposal(decision.proposal, targetRefs.length) ||
-      !decision.inputFingerprint
-    ) return false;
-    return decision.approvalIds.some((approvalId) => {
-      const approval = project.approvals.find((item) => item.id === approvalId);
-      return approval?.status === "approved" && approval.decidedByOrigin === "human" &&
-        approval.baseSnapshot?.snapshotId === basis.snapshotId &&
-        approval.baseSnapshot.revision === basis.revision &&
-        approval.baseSnapshot.subjectId === basis.subjectId &&
-        sameEvidenceRefs(approval.inputEvidenceRefs, targetRefs);
-    });
-  });
-  if (!approved) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      "archive-lineage requires a human-approved archive MRTR decision bound to the exact target entity references and run basis.",
+): Promise<{
+  readonly decision: EngineeringDecision;
+  readonly approval: EngineeringApproval;
+}> {
+  const workItem = project.workItems.find((item) => item.id === run.workItemId);
+  if (!workItem) {
+    throw invalidTransition(`Work item for run ${run.id} is absent.`);
+  }
+  const basis = requireBasis(run);
+  const decisions = workItem.decisionIds.map((id) =>
+    project.decisions.find((item) => item.id === id)
+  );
+  const approvedDecisions = decisions.filter((decision) =>
+    decision?.status === "approved"
+  );
+  if (
+    workItem.decisionIds.length !== 1 || decisions.some((decision) => !decision) ||
+    approvedDecisions.length !== 1
+  ) {
+    throw invalidTransition(
+      "archive-lineage requires exactly one approved MRTR decision on its work item.",
     );
   }
+  const decision = approvedDecisions[0]!;
+  if (
+    !decision.proposal || !decision.inputFingerprint ||
+    !sameSnapshotBasis(decision.baseSnapshot, basis) ||
+    !sameEvidenceRefs(decision.inputEvidenceRefs, targetRefs) ||
+    !isArchiveProposal(decision.proposal, targetRefs.length)
+  ) {
+    throw invalidTransition(
+      "archive-lineage requires one exact human-reviewed proposal bound to its run basis and exact target entity references.",
+    );
+  }
+
+  const currentApprovals = project.approvals.filter((approval) =>
+    approval.decisionId === decision.id && approval.status === "approved"
+  );
+  const approval = currentApprovals[0];
+  if (
+    currentApprovals.length !== 1 || !approval ||
+    !decision.approvalIds.includes(approval.id) ||
+    approval.decidedByOrigin !== "human" ||
+    typeof approval.decidedBy !== "string" ||
+    approval.decidedBy.trim().length === 0 ||
+    typeof approval.decidedAt !== "string" ||
+    Number.isNaN(Date.parse(approval.decidedAt)) ||
+    !sameSnapshotBasis(approval.baseSnapshot, basis) ||
+    deterministicJson(approval.baseSnapshot) !==
+      deterministicJson(decision.baseSnapshot) ||
+    !sameEvidenceRefs(approval.inputEvidenceRefs, decision.inputEvidenceRefs) ||
+    !fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
+  ) {
+    throw invalidTransition(
+      "archive-lineage requires exactly one current human approval equal to the decision basis, evidence, and input fingerprint.",
+    );
+  }
+
+  const expectedDecisionFingerprint = await sha256Fingerprint({
+    baseSnapshot: decision.baseSnapshot,
+    inputEvidenceRefs: decision.inputEvidenceRefs,
+    proposal: {
+      summary: decision.proposal.summary,
+      parameters: decision.proposal.parameters,
+    },
+  });
+  if (!fingerprintsEqual(expectedDecisionFingerprint, decision.inputFingerprint)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The archive-lineage decision fingerprint no longer seals its exact basis, evidence, summary, and parameters.",
+    );
+  }
+
+  const approvedDecisionBindings = workItem.decisionIds.map((id) => {
+    const item = project.decisions.find((candidate) => candidate.id === id);
+    if (item?.status !== "approved" || !item.inputFingerprint) {
+      throw invalidTransition(`Work-item decision ${id} is not exactly approved.`);
+    }
+    return { id, inputFingerprint: item.inputFingerprint };
+  });
+  const expectedRunFingerprint = await sha256Fingerprint({
+    workItemId: workItem.id,
+    basis,
+    operation: {
+      id: workItem.operation?.id,
+      version: workItem.operation?.version,
+      bindings: workItem.operation?.bindings,
+    },
+    approvedDecisions: approvedDecisionBindings,
+  });
+  if (!fingerprintsEqual(run.inputFingerprint, expectedRunFingerprint)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The archive-lineage run fingerprint no longer seals its exact MRTR decision, operation, bindings, and basis.",
+    );
+  }
+  return { decision, approval };
 }
 
 function isArchiveProposal(
@@ -523,6 +681,17 @@ function isArchiveProposal(
     parameters.get("archiveOperation") ===
       `${ARCHIVE_LINEAGE_OP.id}@${ARCHIVE_LINEAGE_OP.version}` &&
     parameters.get("archiveTargetCount") === targetCount;
+}
+
+function sameSnapshotBasis(
+  value:
+    | EngineeringDecision["baseSnapshot"]
+    | EngineeringApproval["baseSnapshot"]
+    | EngineeringAgentRun["basis"],
+  basis: EngineeringThreadSnapshotBasis,
+): boolean {
+  return !!value && "snapshotId" in value && value.snapshotId === basis.snapshotId &&
+    value.revision === basis.revision && value.subjectId === basis.subjectId;
 }
 
 function sameEvidenceRefs(
@@ -544,10 +713,10 @@ function sameEvidenceRefs(
 // ---------------------------------------------------------------------------
 
 async function exactSnapshot(
-  store: ThreadSnapshotStore,
+  store: ArchiveLineageThreadSnapshotStore,
   basis: EngineeringThreadSnapshotBasis,
 ): Promise<ThreadSnapshot> {
-  const snapshot = await store.get(basis.snapshotId);
+  const snapshot = await store.getFresh(basis.snapshotId);
   if (
     !snapshot || snapshot.id !== basis.snapshotId ||
     snapshot.revision !== basis.revision ||
@@ -565,6 +734,98 @@ async function exactSnapshot(
       "invalid_input",
       `The basis ThreadSnapshot is invalid: ${errorMessage(error)}`,
     );
+  }
+}
+
+function claimCommand(command: ArchiveLineageRunExecutorCommand) {
+  return {
+    ...command,
+    commandId: commandStep(command.commandId, "claim"),
+    summary: "Started the archive-lineage retirement run.",
+  };
+}
+
+function completionCommand(
+  command: ArchiveLineageRunExecutorCommand,
+  expectedRevision: number,
+  materialization: ArchiveLineageMaterialization,
+): CompleteRunCommand {
+  return {
+    ...command,
+    commandId: commandStep(command.commandId, "complete"),
+    expectedRevision,
+    summary:
+      `Recorded the retirement of ${materialization.cascadeLength} entity/entities ` +
+      "and their production closure.",
+    resultSnapshot: snapshotRef(materialization.successor),
+    evidenceRefs: materialization.evidenceRefs,
+  };
+}
+
+function exactCompletionReceipt(
+  project: EngineeringProjectSnapshot,
+  command: ArchiveLineageRunExecutorCommand,
+  origin: EngineeringProjectCommandOrigin,
+  run: EngineeringAgentRun,
+): EngineeringProjectCommandReceipt {
+  const completeCommandId = commandStep(command.commandId, "complete");
+  const matches =
+    project.commandReceipts?.filter((receipt) =>
+      receipt.commandId === completeCommandId
+    ) ?? [];
+  const receipt = matches[0];
+  const normalizedIssuedAt = new Date(command.issuedAt).toISOString();
+  if (
+    matches.length !== 1 || !receipt || receipt.type !== "agent-run.complete" ||
+    receipt.actor.origin !== origin.kind || receipt.actor.id !== origin.actorId ||
+    receipt.issuedAt !== normalizedIssuedAt ||
+    receipt.appliedAt !== run.completedAt ||
+    !Number.isSafeInteger(receipt.resultingSnapshot.revision) ||
+    receipt.resultingSnapshot.revision < 1
+  ) {
+    throw invalidTransition(
+      `Archive-lineage run ${command.runId} has no unique exact completion receipt for this execution command and actor.`,
+    );
+  }
+  return receipt;
+}
+
+function assertExactCompletedEvidence(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+  snapshot: ThreadSnapshot,
+  expected: ArchiveLineageMaterialization,
+): void {
+  const result = run.resultSnapshot;
+  const workItem = project.workItems.find((item) => item.id === run.workItemId);
+  const declared = project.threadSnapshots.filter((reference) =>
+    reference.snapshotId === snapshot.id &&
+    reference.revision === snapshot.revision &&
+    reference.subjectId === snapshot.subject.id
+  );
+  if (
+    !result || !workItem || declared.length !== 1 ||
+    deterministicJson(result) !== deterministicJson(snapshotRef(snapshot)) ||
+    deterministicJson(run.evidenceRefs) !==
+      deterministicJson(expected.evidenceRefs) ||
+    deterministicJson(workItem.evidenceRefs) !==
+      deterministicJson(expected.evidenceRefs)
+  ) {
+    throw invalidTransition(
+      "The completed archive-lineage run is not attached to exactly one declared successor and its exact reconstructed evidence vector.",
+    );
+  }
+  for (const evidence of expected.evidenceRefs) {
+    if (
+      evidence.kind !== "change" ||
+      snapshot.changeSet.changes.filter((change) =>
+          change.id === evidence.id && change.kind === "archived"
+        ).length !== 1
+    ) {
+      throw invalidTransition(
+        "The completed archive-lineage evidence does not name each exact archived change in its result snapshot.",
+      );
+    }
   }
 }
 
@@ -589,6 +850,10 @@ function assertCompleted(
 
 function commandStep(commandId: string, step: string): string {
   return `${commandId}:record-archive-lineage:${step}`;
+}
+
+function invalidTransition(message: string): EngineeringProjectCommandError {
+  return new EngineeringProjectCommandError("invalid_transition", message);
 }
 
 function errorMessage(error: unknown): string {

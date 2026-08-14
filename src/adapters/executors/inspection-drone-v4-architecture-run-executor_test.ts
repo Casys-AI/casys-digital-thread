@@ -1,5 +1,8 @@
 import { assertEquals, assertExists, assertRejects } from "@std/assert";
-import { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  EngineeringProjectCommandError,
+  EngineeringProjectCommandService,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import type { ContentFingerprint } from "../../domain/thread/thread-snapshot.ts";
@@ -38,6 +41,7 @@ import {
   InspectionDroneV4ArchitectureRunExecutor,
 } from "./inspection-drone-v4-architecture-run-executor.ts";
 import { SysonModelSeedRunExecutor } from "./syson-model-seed-run-executor.ts";
+import { assertThreadWriteBasisAvailable } from "./thread-write-basis-guard.ts";
 
 const PROJECT_ID = "inspection-drone-v4";
 const HUMAN = { kind: "human" as const, actorId: "human:reviewer" };
@@ -360,6 +364,167 @@ Deno.test("inspection-drone architecture never reinserts an unknown dispatched W
   }
 });
 
+Deno.test("inspection-drone architecture quarantines an unreadable WAL before provider access", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "inspection-drone-unreadable-wal-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory);
+    const command = executionCommand(fixture.queued);
+    const syson = new ArchitectureSyson();
+    const executor = architectureExecutor(fixture, syson, directory, {
+      read: () => Promise.reject(new Error("unreadable WAL")),
+    } as never);
+
+    await assertRejects(
+      () => executor.execute(AGENT, command),
+      InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+    );
+    assertEquals(syson.calls, []);
+    const quarantined = await fixture.projects.get(PROJECT_ID);
+    assertExists(quarantined);
+    assertEquals(quarantined.agentRuns.at(-1)?.status, "running");
+    await assertArchitectureSiblingBlocked(fixture, quarantined);
+
+    await assertRejects(
+      () => executor.execute(AGENT, command),
+      InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+    );
+    assertEquals(syson.calls, [], "an unreadable WAL must never permit dispatch");
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("inspection-drone architecture quarantines an invalid completed WAL acknowledgement", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "inspection-drone-invalid-completed-wal-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory);
+    const command = executionCommand(fixture.queued);
+    await fixture.attempts.begin({
+      projectId: PROJECT_ID,
+      runId: command.runId,
+      dispatchedAt: command.issuedAt,
+    });
+    await fixture.attempts.complete({
+      projectId: PROJECT_ID,
+      runId: command.runId,
+      result: { parentId: "wrong-root", textSha256: "a".repeat(64) },
+    });
+    const syson = new ArchitectureSyson();
+    const executor = architectureExecutor(fixture, syson, directory);
+
+    await assertRejects(
+      () => executor.execute(AGENT, command),
+      InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+    );
+    assertEquals(syson.calls, []);
+    const quarantined = await fixture.projects.get(PROJECT_ID);
+    assertExists(quarantined);
+    assertEquals(quarantined.agentRuns.at(-1)?.status, "running");
+    await assertArchitectureSiblingBlocked(fixture, quarantined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("inspection-drone architecture quarantines a lost WAL begin acknowledgement", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "inspection-drone-lost-wal-begin-",
+  });
+  try {
+    const fixture = await queuedArchitecture(directory);
+    const command = executionCommand(fixture.queued);
+    const syson = new ArchitectureSyson();
+    const attempts = {
+      read: fixture.attempts.read.bind(fixture.attempts),
+      begin: async (input: Parameters<typeof fixture.attempts.begin>[0]) => {
+        await fixture.attempts.begin(input);
+        throw new Error("WAL begin acknowledgement lost");
+      },
+    } as never;
+    const executor = architectureExecutor(
+      fixture,
+      syson,
+      directory,
+      attempts,
+    );
+
+    await assertRejects(
+      () => executor.execute(AGENT, command),
+      InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+    );
+    assertEquals(syson.insertCount, 0);
+    assertEquals(
+      (await fixture.attempts.read(PROJECT_ID, command.runId))?.status,
+      "dispatched",
+    );
+    const quarantined = await fixture.projects.get(PROJECT_ID);
+    assertExists(quarantined);
+    assertEquals(quarantined.agentRuns.at(-1)?.status, "running");
+    await assertArchitectureSiblingBlocked(fixture, quarantined);
+
+    await assertRejects(
+      () => architectureExecutor(fixture, syson, directory).execute(AGENT, command),
+      InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+    );
+    assertEquals(syson.insertCount, 0, "exact retry must not cross the dispatched WAL");
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+for (
+  const scenario of [
+    { failure: "transport", label: "a lost transport acknowledgement" },
+    { failure: "malformed", label: "a malformed provider acknowledgement" },
+  ] as const
+) {
+  Deno.test(`inspection-drone architecture quarantines ${scenario.label} without releasing its Thread basis`, async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: `inspection-drone-insert-${scenario.failure}-`,
+    });
+    try {
+      const fixture = await queuedArchitecture(directory);
+      const command = executionCommand(fixture.queued);
+      const syson = new ArchitectureSyson({ insertFailure: scenario.failure });
+      const executor = architectureExecutor(fixture, syson, directory);
+
+      await assertRejects(
+        () => executor.execute(AGENT, command),
+        InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+      );
+      assertEquals(syson.insertCount, 1);
+      assertEquals(
+        (await fixture.attempts.read(PROJECT_ID, command.runId))?.status,
+        "dispatched",
+      );
+      const quarantined = await fixture.projects.get(PROJECT_ID);
+      assertExists(quarantined);
+      assertEquals(quarantined.agentRuns.at(-1)?.status, "running");
+      await assertArchitectureSiblingBlocked(fixture, quarantined);
+      await assertNoR3Published(fixture);
+
+      await assertRejects(
+        () => executor.execute(AGENT, command),
+        InspectionDroneV4ArchitectureWriteOutcomeUnknownError,
+      );
+      assertEquals(
+        syson.insertCount,
+        1,
+        "an exact retry must never redispatch an uncertain insertion",
+      );
+      const retried = await fixture.projects.get(PROJECT_ID);
+      assertExists(retried);
+      assertEquals(retried.agentRuns.at(-1)?.status, "running");
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  });
+}
+
 Deno.test("inspection-drone architecture refuses a capture that does not read back exactly", async () => {
   const directory = await Deno.makeTempDir({
     prefix: "inspection-drone-capture-readback-",
@@ -611,6 +776,7 @@ function architectureExecutor(
   fixture: Awaited<ReturnType<typeof queuedArchitecture>>,
   syson: McpToolClient,
   directory: string,
+  attempts: FileInspectionDroneV4ArchitectureAttemptStore = fixture.attempts,
 ) {
   return new InspectionDroneV4ArchitectureRunExecutor({
     projects: fixture.projects,
@@ -618,7 +784,7 @@ function architectureExecutor(
     snapshots: fixture.snapshots,
     seedCaptures: fixture.seedCaptures,
     captures: fixture.captures,
-    attempts: fixture.attempts,
+    attempts,
     syson,
     lease: new FileEngineeringProjectRunLease(`${directory}/architecture-leases`),
     now: () => "2026-08-08T05:00:00.000Z",
@@ -641,6 +807,34 @@ function architectureClaimReceiptCount(
   return project.commandReceipts?.filter((receipt) =>
     receipt.commandId === `${commandId}:inspection-drone-v4-architecture:claim`
   ).length ?? 0;
+}
+
+async function assertArchitectureSiblingBlocked(
+  fixture: Awaited<ReturnType<typeof queuedArchitecture>>,
+  project: NonNullable<Awaited<ReturnType<typeof fixture.projects.get>>>,
+): Promise<void> {
+  const queuedTemplate = fixture.queued.agentRuns.at(-1)!;
+  const workItemTemplate = fixture.queued.workItems.find((item) =>
+    item.id === queuedTemplate.workItemId
+  )!;
+  const sibling = {
+    ...queuedTemplate,
+    id: "run:inspection-drone-architecture-sibling",
+    workItemId: "author-inspection-drone-architecture-sibling",
+  };
+  await assertRejects(
+    () =>
+      assertThreadWriteBasisAvailable({
+        ...project,
+        agentRuns: [...project.agentRuns, sibling],
+        workItems: [...project.workItems, {
+          ...workItemTemplate,
+          id: sibling.workItemId,
+        }],
+      }, sibling),
+    EngineeringProjectCommandError,
+    "active, completed, or uncertain durable write",
+  );
 }
 
 function executionCommand(
@@ -942,6 +1136,7 @@ interface ArchitectureSysonOptions {
   readonly aqlShapeDrift?: "featureTyping" | "documentation";
   readonly wrongUsageTypeIdentity?: string;
   readonly rootNonEmpty?: boolean;
+  readonly insertFailure?: "transport" | "malformed";
 }
 
 class ArchitectureSyson implements McpToolClient {
@@ -959,6 +1154,14 @@ class ArchitectureSyson implements McpToolClient {
     this.calls.push(structuredClone(call));
     if (call.name === "syson_element_insert_sysml") {
       this.insertCount++;
+      if (this.options.insertFailure === "transport") {
+        return Promise.reject(new Error("transport acknowledgement lost"));
+      }
+      if (this.options.insertFailure === "malformed") {
+        return Promise.resolve(
+          result({ inserted: true, parentId: "root-package-012" }),
+        );
+      }
       return Promise.resolve(result({
         inserted: true,
         parentId: call.arguments?.parent_id,

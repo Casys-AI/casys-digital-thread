@@ -1,7 +1,19 @@
-import { assert, assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
+import {
+  assert,
+  assertEquals,
+  assertRejects,
+  assertStringIncludes,
+  assertThrows,
+} from "@std/assert";
 import type { DockerObserver } from "../adapters/docker-observer.ts";
 import type { McpProbe } from "../adapters/mcp/http-mcp-probe.ts";
 import { FileProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
+import {
+  DESIGN_EXECUTE_BUILD123D_OPERATION,
+} from "../domain/analysis/build123d-execution-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION } from "../orchestration/operations/recorded-analysis.ts";
+import type { ProjectRunExecutor } from "../application/ports/in/project-run-executor.ts";
 import type {
   FleetManifest,
   ObservedContainer,
@@ -9,7 +21,18 @@ import type {
 } from "../contracts/console.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
-import { createConsoleServer, parseConsoleCli } from "../../server.ts";
+import {
+  approvalModeForBinding,
+  createConsoleServer,
+  createLocalBuild123dExecutionServerOptions,
+  createLocalCalculixIsolatedExecutionServerOptions,
+  createLocalModelicaIsolatedExecutionServerOptions,
+  LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+  LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  localExecutionForBinding,
+  parseConsoleCli,
+} from "../../server.ts";
 import { PROJECT_REVIEW_INTENTS_RESOURCE_URI } from "./project-review-intent-subscription.ts";
 import { CONSOLE_RESOURCE_URI } from "./register.ts";
 
@@ -22,11 +45,15 @@ Deno.test("console CLI binds its durable review outbox independently of MCP port
       "--port",
       "6202",
       "--review-intent-dir=/var/tmp/casys-review-outbox",
+      "--yolo",
+      "--local-execution",
     ]),
     {
       hostname: "localhost",
       port: 6202,
       projectReviewIntentDirectory: "/var/tmp/casys-review-outbox",
+      yolo: true,
+      localExecution: true,
     },
   );
   assertThrows(
@@ -34,6 +61,161 @@ Deno.test("console CLI binds its durable review outbox independently of MCP port
     TypeError,
     "requires a value",
   );
+});
+
+Deno.test("YOLO CLI activation is explicit and restricted to loopback", () => {
+  assertEquals(parseConsoleCli([]).yolo, undefined);
+  assertEquals(parseConsoleCli([]).localExecution, undefined);
+  assertEquals(parseConsoleCli(["--local-execution"]), {
+    localExecution: true,
+  });
+  assertEquals(localExecutionForBinding(false, "0.0.0.0"), false);
+  assertEquals(localExecutionForBinding(true, "127.0.0.1"), true);
+  assertThrows(
+    () => localExecutionForBinding(true, "0.0.0.0"),
+    TypeError,
+    "--local-execution is restricted to an explicit loopback",
+  );
+  assertEquals(approvalModeForBinding(false, "0.0.0.0"), {
+    kind: "interactive",
+  });
+  assertEquals(approvalModeForBinding(true, "127.0.0.1"), {
+    kind: "local-yolo",
+    origin: { kind: "human", actorId: "local-yolo:startup-opt-in" },
+  });
+  assertThrows(
+    () => approvalModeForBinding(true, "0.0.0.0"),
+    TypeError,
+    "restricted to an explicit loopback",
+  );
+  for (
+    const unknown of [
+      "--yoloo",
+      "--yolo=true",
+      "--local-execution=true",
+      "serve",
+    ]
+  ) {
+    assertThrows(
+      () => parseConsoleCli([unknown]),
+      TypeError,
+      `Unknown console argument: ${unknown}`,
+    );
+  }
+  assertThrows(
+    () => parseConsoleCli(["--hostname"]),
+    TypeError,
+    "--hostname requires a value",
+  );
+});
+
+Deno.test("local execution startup binding is code-owned and digest pinned", async () => {
+  const first = await createLocalBuild123dExecutionServerOptions();
+  const second = await createLocalBuild123dExecutionServerOptions();
+
+  assertEquals(first, second);
+  assertEquals(first.profile.imageReference, LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE);
+  assertEquals(
+    first.profile.imageReference,
+    "casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8",
+  );
+  assertEquals(first.profile.policy.id, "build123d-microsandbox-deny-all-v1");
+  assertEquals(first.profile.policy.version, "1.0.0");
+  assertEquals(first.profile.limits, {
+    maxWallTimeMs: 30_000,
+    maxCpuTimeMs: 25_000,
+    maxMemoryBytes: 1_024 * 1_048_576,
+    maxProcesses: 32,
+    maxStdoutBytes: 65_536,
+    maxStderrBytes: 65_536,
+    maxOutputFileBytes: 128 * 1_048_576,
+    maxOutputTotalBytes: 128 * 1_048_576,
+  });
+  assertEquals(first.runtime, {});
+  assertEquals(Object.keys(first).sort(), ["profile", "runtime"]);
+  assertEquals(Object.keys(first.profile).sort(), [
+    "imageReference",
+    "limits",
+    "policy",
+  ]);
+});
+
+Deno.test("local Modelica startup binding is code-owned, digest pinned, and qualification-gated", async () => {
+  const first = await createLocalModelicaIsolatedExecutionServerOptions();
+  const second = await createLocalModelicaIsolatedExecutionServerOptions();
+
+  assertEquals(first, second);
+  assertEquals(first.profile.imageReference, LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE);
+  assertEquals(
+    first.profile.imageReference,
+    "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894",
+  );
+  assertEquals(first.profile.policy, {
+    id: "modelica-microsandbox-deny-all-v1",
+    version: "1.0.0",
+    fingerprint: {
+      algorithm: "sha256",
+      digest: "a6eeca8fb305b6fecf6a5f226ddcc9dad8010147afe31d7dd4fe35853d239327",
+    },
+  });
+  assertEquals(first.profile.engine, {
+    name: "OpenModelica",
+    version: "1.27.0",
+    mslVersion: "4.1.0",
+  });
+  assertEquals(first.runtime, {});
+});
+
+Deno.test("local CalculiX startup binding is code-owned, digest pinned, and SysON-gated", async () => {
+  const first = await createLocalCalculixIsolatedExecutionServerOptions();
+  const second = await createLocalCalculixIsolatedExecutionServerOptions();
+
+  assertEquals(first, second);
+  assertEquals(first.profile.imageReference, LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE);
+  assertEquals(
+    first.profile.imageReference,
+    "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2",
+  );
+  assertEquals(
+    first.profile.wrapperSha256,
+    "507c29da72e346aa87465ce96572b19b42e96105c64b2854be73d6894592e4e2",
+  );
+  assertEquals(first.profile.policy, {
+    id: "calculix-microsandbox-deny-all-v1",
+    version: "1.0.0",
+    fingerprint: {
+      algorithm: "sha256",
+      digest: "1ccc37fbbd56b7a873f6450882038d0b5ca859e792f2b93bfdbd9efa23072834",
+    },
+  });
+  assertEquals(first.runtime, {});
+});
+
+Deno.test("local execution tasks are explicit, frozen, and capability-bounded", async () => {
+  const config = JSON.parse(await Deno.readTextFile("deno.json")) as {
+    imports: Record<string, string>;
+    tasks: Record<string, string>;
+  };
+  assertEquals(config.imports[["@deno", "sandbox"].join("/")], undefined);
+  assertEquals(config.imports.microsandbox, "npm:microsandbox@0.6.8");
+  assertEquals(config.tasks.start.includes("--local-execution"), false);
+  assertEquals(config.tasks.start.includes("--node-modules-dir"), false);
+
+  const local = config.tasks["start:local"];
+  const yolo = config.tasks["start:yolo"];
+  for (const task of [local, yolo]) {
+    assertStringIncludes(task, "--no-prompt --frozen --node-modules-dir=auto");
+    assertStringIncludes(
+      task,
+      "--allow-read=config,state,src/ui,mcp-server.yaml,node_modules",
+    );
+    assertStringIncludes(task, "--allow-write=state/local");
+    assertStringIncludes(task, "--allow-ffi=node_modules");
+    assertEquals(task.includes("--allow-ffi "), false);
+    assertEquals(task.includes("--allow-env "), false);
+  }
+  assertEquals(local.endsWith("server.ts --local-execution"), true);
+  assertEquals(yolo.endsWith("server.ts --yolo --local-execution"), true);
 });
 
 Deno.test("server composes one historical proof and requirements CAS for @1 and ROP2", async () => {
@@ -52,7 +234,7 @@ Deno.test("server composes one historical proof and requirements CAS for @1 and 
   assertStringIncludes(source, 'namespace: "requirements-capture",');
   assertStringIncludes(source, "store: requirementsCaptures,");
   assertStringIncludes(source, "captures: requirementsCaptures,");
-  assertEquals(source.match(/requirementsCaptures,/g)?.length, 4);
+  assertEquals(source.match(/requirementsCaptures,/g)?.length, 5);
   assertEquals(
     source.includes("${recordedAnalysisDirectory}/calculix/proof-cases"),
     false,
@@ -78,6 +260,205 @@ Deno.test("server starts project control without seeding any project", async () 
   } finally {
     await Deno.remove(activeProjectDirectory, { recursive: true });
   }
+});
+
+Deno.test("server exposes qualified Build123d review only from explicit profile configuration", async () => {
+  const temporaryDirectory = await Deno.makeTempDir({
+    prefix: "casys-build123d-review-composition-",
+  });
+  const { profile } = await createLocalBuild123dExecutionServerOptions();
+  try {
+    const withoutConfiguration = await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory: `${temporaryDirectory}/without/projects`,
+      recordedAnalysisDirectory: `${temporaryDirectory}/without/analysis`,
+    });
+    assertEquals(
+      withoutConfiguration.app.getToolNames().includes(
+        "project_build123d_execution_review",
+      ),
+      false,
+    );
+    assertEquals(
+      await directoryExists(`${temporaryDirectory}/without/analysis/build123d`),
+      false,
+    );
+
+    const reviewOnly = await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory: `${temporaryDirectory}/review/projects`,
+      recordedAnalysisDirectory: `${temporaryDirectory}/review/analysis`,
+      build123dExecution: { profile },
+    });
+    assertEquals(
+      reviewOnly.app.getToolNames().includes(
+        "project_build123d_execution_review",
+      ),
+      true,
+    );
+    assertEquals(
+      await directoryExists(`${temporaryDirectory}/review/analysis/build123d`),
+      false,
+    );
+  } finally {
+    await Deno.remove(temporaryDirectory, { recursive: true });
+  }
+});
+
+Deno.test("server exposes qualified Modelica review only from explicit local profile configuration", async () => {
+  const temporaryDirectory = await Deno.makeTempDir({
+    prefix: "casys-modelica-review-composition-",
+  });
+  const { profile } = await createLocalModelicaIsolatedExecutionServerOptions();
+  try {
+    const withoutConfiguration = await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory: `${temporaryDirectory}/without/projects`,
+      recordedAnalysisDirectory: `${temporaryDirectory}/without/analysis`,
+    });
+    assertEquals(
+      withoutConfiguration.app.getToolNames().includes(
+        "project_modelica_qualified_kit_run_review",
+      ),
+      false,
+    );
+
+    const reviewOnly = await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory: `${temporaryDirectory}/review/projects`,
+      recordedAnalysisDirectory: `${temporaryDirectory}/review/analysis`,
+      modelicaIsolatedExecution: { profile },
+    });
+    assertEquals(
+      reviewOnly.app.getToolNames().includes(
+        "project_modelica_qualified_kit_run_review",
+      ),
+      true,
+    );
+    assertEquals(
+      await directoryExists(
+        `${temporaryDirectory}/review/analysis/modelica/isolated-execution`,
+      ),
+      false,
+    );
+
+    const operation = SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION;
+    assertStringIncludes(
+      await Deno.readTextFile("server.ts"),
+      "The server has no complete qualified local Modelica runtime and pinned qualification configured for this run.",
+    );
+    assertEquals(operation, {
+      id: "simulate.run-qualified-modelica-kit",
+      version: "1",
+    });
+  } finally {
+    await Deno.remove(temporaryDirectory, { recursive: true });
+  }
+});
+
+Deno.test("server seals the local CalculiX profile into ROP2 but composes @3 only with runtime and SysON", async () => {
+  const temporaryDirectory = await Deno.makeTempDir({
+    prefix: "casys-calculix-local-composition-",
+  });
+  const { profile } = await createLocalCalculixIsolatedExecutionServerOptions();
+  try {
+    await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory: `${temporaryDirectory}/projects`,
+      recordedAnalysisDirectory: `${temporaryDirectory}/analysis`,
+      calculixIsolatedExecution: { profile },
+    });
+    assertEquals(
+      await directoryExists(
+        `${temporaryDirectory}/analysis/calculix/isolated-execution`,
+      ),
+      false,
+    );
+
+    const source = await Deno.readTextFile("server.ts");
+    assertStringIncludes(
+      source,
+      "...(calculixLocalProfile === undefined\n      ? {}\n      : { calculix: { localProfile: calculixLocalProfile } }),",
+    );
+    assertStringIncludes(
+      source,
+      "const isolatedCalculixRun = sysonMcpUrl && calculixIsolatedExecution?.execution",
+    );
+    assertStringIncludes(
+      source,
+      "operation: VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,",
+    );
+    assertEquals(VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION, {
+      id: "verify.run-fea-static-proof",
+      version: "3",
+    });
+  } finally {
+    await Deno.remove(temporaryDirectory, { recursive: true });
+  }
+});
+
+Deno.test("Build123d execution registration stays unavailable until the explicit runtime is complete", async () => {
+  const operation = DESIGN_EXECUTE_BUILD123D_OPERATION;
+  const project = neutralProjectFixture() as unknown as EngineeringProjectSnapshot;
+  const withOperation = {
+    ...project,
+    schemaVersion: "3.0",
+    workItems: [{
+      ...project.workItems[0]!,
+      status: "in-progress",
+      operation: { ...operation, bindings: [] },
+    }],
+    agentRuns: [{
+      id: "run-build123d-unavailable",
+      workItemId: project.workItems[0]!.id,
+      status: "queued",
+      summary: "Execute reviewed Build123d source",
+      queuedAt: project.generatedAt,
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: project.threadSnapshots[0]!.snapshotId,
+        revision: project.threadSnapshots[0]!.revision,
+        subjectId: project.threadSnapshots[0]!.subjectId,
+      },
+      evidenceRefs: [],
+    }],
+  } as EngineeringProjectSnapshot;
+  const baseline: ProjectRunExecutor = {
+    execute: () => Promise.resolve(withOperation),
+  };
+  const unavailable = new (await import(
+    "../application/use-cases/registered-project-run-executor.ts"
+  )).RegisteredProjectRunExecutor({
+    projects: { get: () => Promise.resolve(withOperation) },
+    baseline,
+    additional: [{
+      operation,
+      unavailableMessage: "qualified Build123d runtime is absent",
+    }],
+  });
+
+  await assertRejects(
+    () =>
+      unavailable.execute({ kind: "agent", actorId: "agent:test" }, {
+        commandId: "execute-build123d",
+        projectId: withOperation.project.id,
+        expectedRevision: withOperation.revision,
+        issuedAt: "2026-08-13T00:00:00.000Z",
+        runId: "run-build123d-unavailable",
+      }),
+    Error,
+    "qualified Build123d runtime is absent",
+  );
 });
 
 Deno.test("control-plane MCP tools are namespaced, read-only, and return structured roots", async () => {
@@ -127,6 +508,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_review_intent_signal",
     "project_snapshot",
     "project_start",
+    "project_technical_compilation_preview",
+    "project_technical_source_capture",
     "project_work_item_reconcile_successor",
     "project_work_item_supersede_unstarted",
   ]);
@@ -190,6 +573,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_review_intent_list",
       "project_snapshot",
       "project_start",
+      "project_technical_compilation_preview",
+      "project_technical_source_capture",
       "project_work_item_reconcile_successor",
       "project_work_item_supersede_unstarted",
     ]);
@@ -406,6 +791,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_execute" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_agent_run_queue" ||
+          tool.name === "project_technical_compilation_preview" ||
+          tool.name === "project_technical_source_capture" ||
           tool.name === "project_work_item_supersede_unstarted" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject",
@@ -754,6 +1141,15 @@ function neutralProjectFixture(): EngineeringProjectSnapshot {
       decisionIds: [decisionId],
     }],
   };
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    return (await Deno.stat(path)).isDirectory;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return false;
+    throw error;
+  }
 }
 
 function manifestFixture(): FleetManifest {

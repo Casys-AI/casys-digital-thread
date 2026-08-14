@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import { createConsoleServer } from "../../server.ts";
 import { FileEngineeringProjectRevisionStore } from "../adapters/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../application/use-cases/project/project-brief-command-service.ts";
+import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
 
 Deno.test("project MCP framing uses one project identity from intent through approved brief", async () => {
   const directory = await Deno.makeTempDir({ prefix: "project-brief-tools-" });
@@ -233,6 +234,93 @@ Deno.test(
     }
   },
 );
+
+Deno.test("local YOLO confirms the exact brief directly with a persisted human startup origin", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "project-brief-yolo-" });
+  const projects = new FileEngineeringProjectRevisionStore(directory);
+  let tick = 0;
+  const commands = new ProjectBriefCommandService(
+    projects,
+    () =>
+      new Date(Date.parse("2026-08-03T09:00:00.000Z") + ++tick * 1_000)
+        .toISOString(),
+  );
+  const { app } = await createConsoleServer({
+    manifest: { version: 1, servers: [] },
+    runs: [],
+    projectControl: false,
+    projectBrief: { projects, commands },
+    approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
+    logger: () => {},
+  });
+  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+  const port = (listener.addr as Deno.NetAddr).port;
+  listener.close();
+  const http = await app.startHttp({
+    port,
+    hostname: "127.0.0.1",
+    onListen: () => {},
+  });
+  try {
+    const client = new TestMcpClient(`http://127.0.0.1:${port}/mcp`);
+    await client.tool("project_start", {
+      commandId: "start-yolo",
+      projectId: "project-v3",
+      projectName: "YOLO test project",
+      issuedAt: "2026-08-03T08:59:00.000Z",
+      intent: "Build a reviewable engineering system.",
+      intentSource: { kind: "human", reference: "conversation:turn-1" },
+    });
+    const proposed = await client.tool("project_brief_propose", {
+      ...common("propose-brief-yolo", 1),
+      items: [{
+        id: "objective",
+        kind: "objective",
+        statement: "Demonstrate a reviewable system safely.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      }, {
+        id: "mission",
+        kind: "mission-scenario",
+        statement: "Demonstrate one bounded operating scenario.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+      }, {
+        id: "success",
+        kind: "success-criterion",
+        statement: "Complete the scenario with a traceable record.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        dependsOnItemIds: [],
+      }],
+    });
+    const framing = (proposed.structuredContent as Record<string, unknown>)
+      .framing as Record<string, unknown>;
+    const proposal = framing.proposedBrief as Record<string, unknown>;
+    const review = framing.proposalReview as Record<string, unknown>;
+    const result = await client.tool("project_brief_confirm", {
+      ...common("confirm-brief-yolo", 2),
+      briefSnapshotId: proposal.id,
+      briefRevision: proposal.revision,
+      inputFingerprint: review.inputFingerprint,
+      rationale: "Proceed locally.",
+    });
+    assertEquals(result.resultType, "complete");
+    const approval = (
+      (result.structuredContent as Record<string, unknown>)
+        .framing as Record<string, unknown>
+    ).currentBriefApproval as Record<string, unknown>;
+    assertEquals(approval.status, "approved");
+    assertEquals(approval.decidedBy, {
+      id: "local-yolo:startup-opt-in",
+      origin: "human",
+    });
+    assertEquals(
+      approval.rationale,
+      `YOLO local startup opt-in auto-approved positive confirmation of brief ${proposal.id}@${proposal.revision} without MCP elicitation. Caller rationale: Proceed locally.`,
+    );
+  } finally {
+    await http.shutdown();
+    await Deno.remove(directory, { recursive: true });
+  }
+});
 
 Deno.test(
   "project_brief_confirm uses generic fallback rationale when rationale is absent",

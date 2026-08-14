@@ -1,6 +1,18 @@
 import type { OracleRequirement } from "../../domain/analysis/proof-case.ts";
 import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 
+export interface VerifiedConstraintUsageIdentity {
+  readonly requirementId: string;
+  readonly id: string;
+  readonly kind: "ConstraintUsage";
+  readonly sourceId: string;
+}
+
+export interface VerifiedOracleRequirementsReadback {
+  readonly requirements: readonly OracleRequirement[];
+  readonly constraintUsages: readonly VerifiedConstraintUsageIdentity[];
+}
+
 /**
  * Machine-readable error codes for extraction and fidelity failures (AX #4).
  *
@@ -103,7 +115,7 @@ export async function extractAndVerifyOracleRequirements(
   editingContextId: string,
   requirementsElementId: string,
   canonical: readonly OracleRequirement[],
-): Promise<readonly OracleRequirement[]> {
+): Promise<VerifiedOracleRequirementsReadback> {
   // --- 1. Call syson_constraint_extract ----------------------------------------
   let content: Readonly<Record<string, unknown>>;
   try {
@@ -128,10 +140,14 @@ export async function extractAndVerifyOracleRequirements(
   }
 
   // --- 2. Parse the constraints array ------------------------------------------
-  if (!Array.isArray(content.constraints)) {
+  if (
+    Object.keys(content).length !== 1 ||
+    !Object.hasOwn(content, "constraints") ||
+    !Array.isArray(content.constraints)
+  ) {
     throw new RequirementExtractionError(
       "requirement_extraction_failed",
-      "syson_constraint_extract: structuredContent.constraints must be an array.",
+      "syson_constraint_extract: structuredContent must be the exact successful constraints response.",
       { field: "constraints", actual: typeof content.constraints },
       "The SysON tool response shape has changed. Stop for review before retrying.",
     );
@@ -157,8 +173,43 @@ export async function extractAndVerifyOracleRequirements(
   // stable join is the semantic one: the feature path names the metric the
   // constraint bounds, and verifyExtractedConstraint still checks operator,
   // value and unit behind it.
-  const byMetric = new Map<string, unknown>();
-  for (const row of extracted) {
+  const byMetric = new Map<
+    string,
+    { readonly row: unknown; readonly id: string; readonly sourceId: string }
+  >();
+  const nativeIds = new Set<string>();
+  const sourceIds = new Set<string>();
+  for (const [index, row] of extracted.entries()) {
+    const item = asRecord(row, `$constraint[${index}]`);
+    assertExactKeys(
+      item,
+      ["id", "name", "sourceId", "expression"],
+      `$constraint[${index}]`,
+    );
+    const id = exactProviderId(item.id, `$constraint[${index}].id`);
+    exactProviderId(item.name, `$constraint[${index}].name`);
+    const sourceId = exactProviderId(
+      item.sourceId,
+      `$constraint[${index}].sourceId`,
+    );
+    if (id !== sourceId) {
+      throw new RequirementExtractionError(
+        "requirement_extraction_failed",
+        "syson_constraint_extract: ConstraintUsage id and sourceId diverge.",
+        { field: "sourceId", expected: id, actual: sourceId },
+        "The provider identity contract changed. Stop for review before retrying.",
+      );
+    }
+    if (nativeIds.has(id) || sourceIds.has(sourceId)) {
+      throw new RequirementExtractionError(
+        "requirement_extraction_failed",
+        "syson_constraint_extract: duplicate native ConstraintUsage identity.",
+        { field: "id", actual: id },
+        "Duplicate provider identities make the readback ambiguous. Stop for review.",
+      );
+    }
+    nativeIds.add(id);
+    sourceIds.add(sourceId);
     const metric = extractedMetric(row);
     if (metric === undefined) {
       throw new RequirementExtractionError(
@@ -177,13 +228,14 @@ export async function extractAndVerifyOracleRequirements(
           "Inspect the model before retrying.",
       );
     }
-    byMetric.set(metric, row);
+    byMetric.set(metric, { row, id, sourceId });
   }
 
   // --- 5. Verify each canonical requirement against the extracted row ----------
+  const constraintUsages: VerifiedConstraintUsageIdentity[] = [];
   for (const req of canonical) {
-    const row = byMetric.get(req.metric);
-    if (row === undefined) {
+    const extractedConstraint = byMetric.get(req.metric);
+    if (extractedConstraint === undefined) {
       throw new RequirementExtractionError(
         "requirement_missing",
         `syson_constraint_extract: no constraint bounds the metric "${req.metric}".`,
@@ -192,11 +244,20 @@ export async function extractAndVerifyOracleRequirements(
           "been altered. Stop for review; do not retry automatically.",
       );
     }
-    verifyExtractedConstraint(row, req);
+    verifyExtractedConstraint(extractedConstraint.row, req);
+    constraintUsages.push({
+      requirementId: req.id,
+      id: extractedConstraint.id,
+      kind: "ConstraintUsage",
+      sourceId: extractedConstraint.sourceId,
+    });
   }
 
-  // --- 6. Return canonical (verified) ------------------------------------------
-  return canonical;
+  // --- 6. Return canonical values plus exact native identities ----------------
+  return Object.freeze({
+    requirements: canonical,
+    constraintUsages: Object.freeze(constraintUsages),
+  });
 }
 
 /**
@@ -360,12 +421,6 @@ export function verifyExtractedConstraint(row: unknown, req: OracleRequirement):
 // Private helpers
 // ---------------------------------------------------------------------------
 
-function _extractedId(row: unknown): string | undefined {
-  if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
-  const item = row as Record<string, unknown>;
-  return typeof item.id === "string" && item.id.length > 0 ? item.id : undefined;
-}
-
 /** The metric a constraint bounds: expression.left.featurePath[0]. */
 function extractedMetric(row: unknown): string | undefined {
   if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
@@ -389,4 +444,36 @@ function asRecord(value: unknown, path: string): Record<string, unknown> {
     );
   }
   return value as Record<string, unknown>;
+}
+
+function assertExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  path: string,
+): void {
+  const actual = Object.keys(value).sort();
+  const required = [...expected].sort();
+  if (
+    actual.length !== required.length ||
+    actual.some((key, index) => key !== required[index])
+  ) {
+    throw new RequirementExtractionError(
+      "requirement_extraction_failed",
+      `syson_constraint_extract: ${path} has non-exact fields.`,
+      { field: path, expected: required, actual },
+      "The SysON tool response shape changed. Stop for review before retrying.",
+    );
+  }
+}
+
+function exactProviderId(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
+    throw new RequirementExtractionError(
+      "requirement_extraction_failed",
+      `syson_constraint_extract: ${path} must be an exact non-empty string.`,
+      { field: path, actual: value },
+      "The SysON identity response changed. Stop for review before retrying.",
+    );
+  }
+  return value;
 }

@@ -18,6 +18,12 @@ import {
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
 } from "../../domain/analysis/simulation-case-proposal.ts";
 import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "./recorded-analysis.ts";
+import {
+  COMPILE_SEAL_ADMISSION_OPERATION,
+  encodeTechnicalCompilationAdmissionParameters,
+  TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
+} from "../../domain/analysis/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
 
 const VALID_ARCHITECTURE = [
   { key: "architecture.package", label: "Package", value: "DemoArchitecture" },
@@ -26,6 +32,74 @@ const VALID_ARCHITECTURE = [
   { key: "component.part.usage", label: "Usage", value: "demoPart" },
   { key: "component.part.parent", label: "Parent", value: "DemoSystem" },
 ];
+
+function fingerprint(character: string) {
+  return { algorithm: "sha256", digest: character.repeat(64) } as const;
+}
+
+function validTechnicalCompilationAdmissionParameters() {
+  const projectId = "project.technical-compilation";
+  const documentFingerprint = fingerprint("a");
+  return encodeTechnicalCompilationAdmissionParameters({
+    schemaVersion: TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
+    draft: {
+      draftId: `technical-compilation:${projectId}:${documentFingerprint.digest}`,
+      projectId,
+      documentFingerprint,
+      envelopeFingerprint: fingerprint("b"),
+    },
+    basis: {
+      fingerprint: fingerprint("c"),
+      thread: {
+        projectId,
+        subjectId: "subject.technical-compilation",
+        snapshotId: "thread.snapshot.7",
+        revision: 7,
+        fingerprint: fingerprint("d"),
+      },
+      sysml: {
+        artifactId: "artifact.sysml.model.4",
+        artifactFingerprint: fingerprint("e"),
+        captureId: "capture.sysml.model.4",
+        editingContextId: "editing-context.sysml.model.4",
+        rootElementId: "sysml.package.4",
+        rootElementKind: "Package",
+        anchorFingerprint: fingerprint("f"),
+      },
+    },
+    sources: [{
+      id: "source.cad",
+      role: "cad-script",
+      language: "python",
+      profileId: "source-profile.build123d",
+      profileVersion: "1.0.0",
+      profileFingerprint: fingerprint("1"),
+      analyzer: { id: "analyzer.python-cad", version: "1.0.0" },
+      sourceFingerprint: fingerprint("2"),
+      captureFingerprint: fingerprint("3"),
+      analysisFingerprint: fingerprint("4"),
+    }],
+    bindings: [{
+      id: "binding.cad-result-to-sysml-part",
+      sourceId: "source.cad",
+      sourceSymbolId: "cad.result",
+      sysmlElementId: "sysml.part-definition.4",
+      sysmlElementKind: "PartDefinition",
+      relation: "represents",
+    }],
+    compilationProfileRequests: [{
+      profileId: "compilation-profile.build123d",
+      profileVersion: "1.0.0",
+      target: "build123d-source",
+      sourceIds: ["source.cad"],
+      profileFingerprint: fingerprint("5"),
+    }],
+    compilation: {
+      fingerprint: documentFingerprint,
+      status: "ready-for-review",
+    },
+  });
+}
 
 Deno.test("a proposal the authorising operation cannot parse is refused before it is recorded", () => {
   const misspelledSlug = VALID_ARCHITECTURE.map((parameter) =>
@@ -45,6 +119,18 @@ Deno.test("a proposal the authorising operation cannot parse is refused before i
   // The underlying grammar message is carried verbatim: the agent needs the
   // offending key, not a generic rejection.
   assert(error.message.includes("component.demo-part.name"));
+});
+
+Deno.test("Build123d execution cannot enter human review without its closed admission grammar", () => {
+  const error = assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        DESIGN_EXECUTE_BUILD123D_OPERATION,
+        [],
+      ),
+    ProposalGrammarError,
+  );
+  assertEquals(error.operationKey, "design.execute-build123d@1");
 });
 
 Deno.test("a proposal naming an unknown parent is refused with the offending component", () => {
@@ -69,6 +155,38 @@ Deno.test("a proposal the operation can parse passes the gate untouched", () => 
     MODEL_WRITE_ARCHITECTURE_OPERATION,
     VALID_ARCHITECTURE,
   );
+});
+
+Deno.test("technical compilation admission rejects malformed or extra fields before human review", () => {
+  const valid = validTechnicalCompilationAdmissionParameters();
+  assertProposalMatchesOperationGrammar(
+    COMPILE_SEAL_ADMISSION_OPERATION,
+    valid,
+  );
+
+  const malformed = valid.map((parameter) =>
+    parameter.key === "compile.admission.compilation.status"
+      ? { ...parameter, value: "unresolved" }
+      : { ...parameter }
+  );
+  const extra = [...valid, {
+    key: "compile.admission.provider",
+    label: "Provider",
+    value: "caller-selected-provider",
+  }];
+
+  for (const parameters of [malformed, extra]) {
+    const error = assertThrows(
+      () =>
+        assertProposalMatchesOperationGrammar(
+          COMPILE_SEAL_ADMISSION_OPERATION,
+          parameters,
+        ),
+      ProposalGrammarError,
+    );
+    assertEquals(error.operationKey, "compile.seal-admission@1");
+    assert(error.message.includes("nothing was recorded"));
+  }
 });
 
 Deno.test("a decision bound to no operation is never gated", () => {
@@ -237,10 +355,13 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
   // Adding a sealed or model-writing operation without registering its grammar
   // would silently reopen the round trip this module exists to close.
   assertEquals(gatedProposalOperations(), [
+    "compile.seal-admission@1",
+    "design.execute-build123d@1",
     "design.write-geometry@1",
     "model.write-architecture@1",
     "model.write-requirements@1",
     "record.reconcile-uncertain-writer@1",
+    "simulate.run-qualified-modelica-kit@1",
     "simulate.seal-simulation-case@1",
     "simulate.seal-simulation-case@2",
     "verify.seal-proof-case@1",

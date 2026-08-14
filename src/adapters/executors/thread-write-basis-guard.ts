@@ -10,6 +10,7 @@ import {
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/engineering/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import {
   EngineeringProjectCommandError,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
@@ -25,7 +26,16 @@ import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../orchestration/operations/recorded-analysis.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
+import {
+  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+} from "../../orchestration/operations/inspection-drone-v4.ts";
 
 const THREAD_WRITE_OPERATIONS = new Set([
   `${MODEL_WRITE_ARCHITECTURE_OPERATION.id}@${MODEL_WRITE_ARCHITECTURE_OPERATION.version}`,
@@ -38,6 +48,23 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION.version}`,
   `${SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION.id}@${SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION.version}`,
   `${VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION.version}`,
+  `${VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION.version}`,
+  `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}`,
+  `${DESIGN_EXECUTE_BUILD123D_OPERATION.id}@${DESIGN_EXECUTE_BUILD123D_OPERATION.version}`,
+  `${SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.id}@${SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.version}`,
+  `${ARCHIVE_LINEAGE_OPERATION.id}@${ARCHIVE_LINEAGE_OPERATION.version}`,
+  `${SYSON_MODEL_SEED_OPERATION.id}@${SYSON_MODEL_SEED_OPERATION.version}`,
+  `${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.id}@${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.version}`,
+  `${INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION.id}@${INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION.version}`,
+]);
+
+/**
+ * Provider-free Thread writes cannot use the generic provider reconciliation.
+ * A dispatched local snapshot may already be durable and must be reopened and
+ * attached as the exact successor before this basis can ever be released.
+ */
+const NON_RECONCILIABLE_THREAD_WRITE_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "compile-seal-admission-thread-write-outcome-unknown",
 ]);
 /**
  * Exported alongside TERMINAL_THREAD_WRITE_FAILURES so the reconcile executor
@@ -121,6 +148,14 @@ export async function assertThreadWriteBasisAvailable(
     ) {
       throw unavailableBasis(
         `sibling run ${sibling.id} has an active, completed, or uncertain durable write`,
+      );
+    }
+    const isNonReconciliableThreadWriteFailure = sibling.status === "failed" &&
+      !!sibling.failure &&
+      NON_RECONCILIABLE_THREAD_WRITE_FAILURE_CODES.has(sibling.failure.code);
+    if (isNonReconciliableThreadWriteFailure) {
+      throw unavailableBasis(
+        `sibling run ${sibling.id} has a local ThreadSnapshot write whose outcome requires exact recovery attachment`,
       );
     }
     const isTerminalUncertainFailure = sibling.status === "failed" &&

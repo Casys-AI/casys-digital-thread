@@ -28,7 +28,10 @@ import {
   type EngineeringProjectCompletionEvidenceValidator,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
-import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
@@ -556,6 +559,9 @@ class InitialReqsSyson implements McpToolClient {
         text: "constraints",
         structuredContent: {
           constraints: [{
+            id: "wing-reqs-constraint-001",
+            name: "max_mass_limit",
+            sourceId: "wing-reqs-constraint-001",
             expression: {
               kind: "binary",
               op: "<=",
@@ -570,6 +576,32 @@ class InitialReqsSyson implements McpToolClient {
     return Promise.reject(
       new Error(`Unexpected tool in InitialReqsSyson: ${call.name}`),
     );
+  }
+}
+
+/** Same semantic predicate, but the specialized extractor names a foreign child. */
+class ForeignExtractedConstraintIdentitySyson extends InitialReqsSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (call.name === "syson_constraint_extract") {
+      this.calls.push(structuredClone(call));
+      return Promise.resolve({
+        text: "foreign constraint identity",
+        structuredContent: {
+          constraints: [{
+            id: "foreign-constraint-001",
+            name: "max_mass_limit",
+            sourceId: "foreign-constraint-001",
+            expression: {
+              kind: "binary",
+              op: "<=",
+              left: { kind: "ref", featurePath: ["maxMass"] },
+              right: { kind: "literal", value: 5, unit: "kg" },
+            },
+          }],
+        },
+      });
+    }
+    return super.callTool(call);
   }
 }
 
@@ -634,7 +666,7 @@ class EnrichmentReqsSyson implements McpToolClient {
                 label: "maxMass",
               },
               {
-                id: "wing-reqs-constraint-mass-001",
+                id: "wing-reqs-constraint-001",
                 kind: "siriusComponents://semantic?domain=sysml&entity=ConstraintUsage",
                 label: "max_mass_limit",
               },
@@ -749,6 +781,9 @@ class EnrichmentReqsSyson implements McpToolClient {
           text: "prior constraints",
           structuredContent: {
             constraints: [{
+              id: "wing-reqs-constraint-001",
+              name: "max_mass_limit",
+              sourceId: "wing-reqs-constraint-001",
               expression: {
                 kind: "binary",
                 op: "<=",
@@ -765,6 +800,9 @@ class EnrichmentReqsSyson implements McpToolClient {
         structuredContent: {
           constraints: [
             {
+              id: "wing-reqs-constraint-force-002",
+              name: "max_force_limit",
+              sourceId: "wing-reqs-constraint-force-002",
               expression: {
                 kind: "binary",
                 op: "<=",
@@ -773,6 +811,9 @@ class EnrichmentReqsSyson implements McpToolClient {
               },
             },
             {
+              id: "wing-reqs-constraint-mass-002",
+              name: "max_mass_limit",
+              sourceId: "wing-reqs-constraint-mass-002",
               expression: {
                 kind: "binary",
                 op: "<=",
@@ -959,11 +1000,77 @@ class StaleThresholdEnrichmentSyson extends EnrichmentReqsSyson {
         text: "divergent prior constraint",
         structuredContent: {
           constraints: [{
+            id: "wing-reqs-constraint-001",
+            name: "max_mass_limit",
+            sourceId: "wing-reqs-constraint-001",
             expression: {
               kind: "binary",
               op: "<=",
               left: { kind: "ref", featurePath: ["maxMass"] },
               right: { kind: "literal", value: 6, unit: "kg" },
+            },
+          }],
+        },
+      });
+    }
+    return super.callTool(call);
+  }
+}
+
+/**
+ * The live RequirementUsage keeps its captured identity and semantics, while
+ * both provider readbacks consistently replace its captured ConstraintUsage
+ * UUID. This must fail against the V3 predecessor before WAL or deletion.
+ */
+class ReplacedPriorConstraintIdentityEnrichmentSyson extends EnrichmentReqsSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (
+      call.name === "syson_element_children" &&
+      call.arguments?.element_id === "wing-reqs-elem-001"
+    ) {
+      this.calls.push(structuredClone(call));
+      return Promise.resolve({
+        text: "prior members with replaced constraint identity",
+        structuredContent: {
+          parentId: "wing-reqs-elem-001",
+          children: [
+            {
+              id: "wing-reqs-subject-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=ReferenceUsage",
+              label: "target",
+            },
+            {
+              id: "wing-reqs-attribute-mass-001",
+              kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+              label: "maxMass",
+            },
+            {
+              id: "wing-reqs-constraint-mass-REPLACED",
+              kind: "siriusComponents://semantic?domain=sysml&entity=ConstraintUsage",
+              label: "max_mass_limit",
+            },
+          ],
+          count: 3,
+        },
+      });
+    }
+    if (
+      call.name === "syson_constraint_extract" &&
+      call.arguments?.element_id === "wing-reqs-elem-001"
+    ) {
+      this.calls.push(structuredClone(call));
+      return Promise.resolve({
+        text: "prior constraint with replaced identity",
+        structuredContent: {
+          constraints: [{
+            id: "wing-reqs-constraint-mass-REPLACED",
+            name: "max_mass_limit",
+            sourceId: "wing-reqs-constraint-mass-REPLACED",
+            expression: {
+              kind: "binary",
+              op: "<=",
+              left: { kind: "ref", featurePath: ["maxMass"] },
+              right: { kind: "literal", value: 5, unit: "kg" },
             },
           }],
         },
@@ -2657,7 +2764,7 @@ Deno.test(
       const captureText = await fixture.reqsCaptures.read(reqsArtifact.fingerprint);
       assertExists(captureText, "requirements capture must be readable");
       const capture = JSON.parse(captureText) as Record<string, unknown>;
-      assertEquals(capture.schemaVersion, "requirements-capture/2.0");
+      assertEquals(capture.schemaVersion, "requirements-capture/3.0");
       assertEquals(capture.containerComponent, "Wing");
       assertEquals(capture.partDefName, "WingRequirements");
       assertEquals(capture.target, {
@@ -2665,6 +2772,16 @@ Deno.test(
         label: "Wing",
         elementId: "wing-def-001",
       });
+      assertEquals(capture.requirementUsage, {
+        id: "wing-reqs-elem-001",
+        kind: "RequirementUsage",
+      });
+      assertEquals(capture.constraintUsages, [{
+        requirementId: "maxMass",
+        id: "wing-reqs-constraint-001",
+        kind: "ConstraintUsage",
+        sourceId: "wing-reqs-constraint-001",
+      }]);
 
       // The canonical Thread carries one real TracedRequirement, whose source
       // is the requirements artifact and whose target is the architecture
@@ -3160,6 +3277,85 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "post-insert constraint identities must bijectively match native children before WAL completion or publication",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-constraint-identity-readback-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const command = executionCommand(fixture);
+      const attempts = new FileRequirementsAttemptStore(
+        `${directory}/identity-readback-attempts`,
+      );
+      const syson = new ForeignExtractedConstraintIdentitySyson();
+      let captureWrites = 0;
+      let snapshotWrites = 0;
+      const captures = {
+        read: fixture.reqsCaptures.read.bind(fixture.reqsCaptures),
+        save(fingerprint: ThreadArtifact["fingerprint"], text: string) {
+          captureWrites += 1;
+          return fixture.reqsCaptures.save(fingerprint, text);
+        },
+      } as unknown as FileCaptureStore<"requirements-capture">;
+      const snapshots = {
+        get: fixture.snapshots.get.bind(fixture.snapshots),
+        latest: fixture.snapshots.latest.bind(fixture.snapshots),
+        save(snapshot: ThreadSnapshot) {
+          snapshotWrites += 1;
+          return fixture.snapshots.save(snapshot);
+        },
+      } as unknown as FileThreadSnapshotStore;
+
+      await assertRejects(
+        () =>
+          makeExecutor({ ...fixture, reqsCaptures: captures, snapshots }, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "identity-readback-leases",
+          }).execute(AGENT, command),
+        EngineeringProjectCommandError,
+        "are not bijective",
+      );
+
+      assertEquals(
+        (await attempts.readRun(PROJECT_ID, fixture.queued.runId))?.status,
+        "dispatched",
+        "identity divergence must not complete the WAL",
+      );
+      assertEquals(
+        await attempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        true,
+      );
+      assertEquals(
+        syson.calls.some((call) => call.name === "syson_element_delete"),
+        false,
+      );
+      assertEquals(captureWrites, 0, "no V3 capture may seal a foreign child identity");
+      assertEquals(snapshotWrites, 0, "no Thread snapshot may publish the mismatch");
+      const project = await fixture.projects.get(PROJECT_ID);
+      const failedRun = project?.agentRuns.find((run) =>
+        run.id === fixture.queued.runId
+      );
+      assertEquals(failedRun?.status, "failed");
+      assertEquals(failedRun?.resultSnapshot, undefined);
+      assertEquals(
+        project?.commandReceipts?.some((receipt) =>
+          receipt.commandId ===
+            `${command.commandId}:model-write-requirements:publish` ||
+          receipt.commandId ===
+            `${command.commandId}:model-write-requirements:complete`
+        ),
+        false,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ── Enrichment mode ───────────────────────────────────────────────────────────
 
 Deno.test(
@@ -3263,6 +3459,96 @@ Deno.test(
       );
       assertEquals(syson.calls, []);
       assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "requirements-capture V2 remains readable history but cannot authorize enrichment",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-v2-non-authority-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const first = await executeInitialRequirementsRun(fixture, directory);
+      const queued = await queueEnrichmentRun(fixture, first);
+      const command = {
+        commandId: "agent-v2-non-authority",
+        projectId: PROJECT_ID,
+        expectedRevision: queued.revision,
+        issuedAt: "2026-08-08T12:25:00.000Z",
+        runId: queued.runId,
+      };
+      let captureReads = 0;
+      let captureWrites = 0;
+      let snapshotWrites = 0;
+      const v2Captures = {
+        async read(fingerprint: ThreadArtifact["fingerprint"]) {
+          const text = await fixture.reqsCaptures.read(fingerprint);
+          if (!text) return undefined;
+          const record = JSON.parse(text) as Record<string, unknown>;
+          record.schemaVersion = "requirements-capture/2.0";
+          delete record.requirementUsage;
+          delete record.constraintUsages;
+          captureReads += 1;
+          return deterministicJson(record);
+        },
+        save(fingerprint: ThreadArtifact["fingerprint"], text: string) {
+          captureWrites += 1;
+          return fixture.reqsCaptures.save(fingerprint, text);
+        },
+      } as unknown as FileCaptureStore<"requirements-capture">;
+      const snapshots = {
+        get: fixture.snapshots.get.bind(fixture.snapshots),
+        latest: fixture.snapshots.latest.bind(fixture.snapshots),
+        save(snapshot: ThreadSnapshot) {
+          snapshotWrites += 1;
+          return fixture.snapshots.save(snapshot);
+        },
+      } as unknown as FileThreadSnapshotStore;
+      const attempts = new FileRequirementsAttemptStore(
+        `${directory}/v2-non-authority-attempts`,
+      );
+      const syson = new EnrichmentReqsSyson();
+
+      await assertRejects(
+        () =>
+          makeExecutor({
+            ...fixture,
+            queued,
+            reqsCaptures: v2Captures,
+            snapshots,
+          }, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "v2-non-authority-leases",
+          }).execute(AGENT, command),
+        EngineeringProjectCommandError,
+        "prior_requirements_v2_non_authoritative",
+      );
+
+      assertEquals(captureReads, 1, "the exact V2 schema must remain readable");
+      assertEquals(syson.calls, [], "V2 cannot authorize any provider operation");
+      assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
+      assertEquals(captureWrites, 0);
+      assertEquals(snapshotWrites, 0);
+      const project = await fixture.projects.get(PROJECT_ID);
+      const failedRun = project?.agentRuns.find((run) => run.id === queued.runId);
+      assertEquals(failedRun?.status, "failed");
+      assertEquals(failedRun?.resultSnapshot, undefined);
+      assertEquals(
+        project?.commandReceipts?.some((receipt) =>
+          receipt.commandId ===
+            `${command.commandId}:model-write-requirements:publish` ||
+          receipt.commandId ===
+            `${command.commandId}:model-write-requirements:complete`
+        ),
+        false,
+      );
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -3883,6 +4169,94 @@ Deno.test(
 );
 
 Deno.test(
+  "enrichment refuses a silently replaced V3 ConstraintUsage before WAL, delete, or publication",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-prior-constraint-identity-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const first = await executeInitialRequirementsRun(fixture, directory);
+      const queued = await queueEnrichmentRun(fixture, first);
+      const command = {
+        commandId: "agent-replaced-prior-constraint",
+        projectId: PROJECT_ID,
+        expectedRevision: queued.revision,
+        issuedAt: "2026-08-08T12:25:00.000Z",
+        runId: queued.runId,
+      };
+      const attempts = new FileRequirementsAttemptStore(
+        `${directory}/prior-constraint-identity-attempts`,
+      );
+      const syson = new ReplacedPriorConstraintIdentityEnrichmentSyson();
+      let captureWrites = 0;
+      let snapshotWrites = 0;
+      const captures = {
+        read: fixture.reqsCaptures.read.bind(fixture.reqsCaptures),
+        save(fingerprint: ThreadArtifact["fingerprint"], text: string) {
+          captureWrites += 1;
+          return fixture.reqsCaptures.save(fingerprint, text);
+        },
+      } as unknown as FileCaptureStore<"requirements-capture">;
+      const snapshots = {
+        get: fixture.snapshots.get.bind(fixture.snapshots),
+        latest: fixture.snapshots.latest.bind(fixture.snapshots),
+        save(snapshot: ThreadSnapshot) {
+          snapshotWrites += 1;
+          return fixture.snapshots.save(snapshot);
+        },
+      } as unknown as FileThreadSnapshotStore;
+
+      await assertRejects(
+        () =>
+          makeExecutor({ ...fixture, queued, reqsCaptures: captures, snapshots }, {
+            syson,
+            directory,
+            attempts,
+            leaseSubdir: "prior-constraint-identity-leases",
+          }).execute(AGENT, command),
+        EngineeringProjectCommandError,
+        "Prior V3 ConstraintUsage identity mismatch",
+      );
+
+      assertEquals(
+        syson.calls.some((call) =>
+          call.name === "syson_constraint_extract" &&
+          call.arguments?.element_id === "wing-reqs-elem-001"
+        ),
+        true,
+        "the live predecessor must be semantically and structurally re-read",
+      );
+      assertEquals(
+        syson.calls.some((call) =>
+          call.name === "syson_element_delete" ||
+          call.name === "syson_element_insert_sysml"
+        ),
+        false,
+      );
+      assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
+      assertEquals(captureWrites, 0);
+      assertEquals(snapshotWrites, 0);
+      const project = await fixture.projects.get(PROJECT_ID);
+      const failedRun = project?.agentRuns.find((run) => run.id === queued.runId);
+      assertEquals(failedRun?.status, "failed");
+      assertEquals(failedRun?.resultSnapshot, undefined);
+      assertEquals(
+        project?.commandReceipts?.some((receipt) =>
+          receipt.commandId ===
+            `${command.commandId}:model-write-requirements:publish` ||
+          receipt.commandId ===
+            `${command.commandId}:model-write-requirements:complete`
+        ),
+        false,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
   "same-basis target siblings serialize and only one run may write a requirements WAL",
   async () => {
     class BarrierInitialReqsSyson extends InitialReqsSyson {
@@ -4303,6 +4677,19 @@ Deno.test(
           const basis = record.architectureBasis as Record<string, unknown>;
           basis.revision = (basis.revision as number) + 1;
         }],
+        ["ConstraintUsage identity", (record) => {
+          const constraints = record.constraintUsages as Array<
+            Record<string, unknown>
+          >;
+          constraints[0]!.id = "constraint-usage:rewritten";
+          constraints[0]!.sourceId = "constraint-usage:rewritten";
+        }],
+        ["ConstraintUsage source identity", (record) => {
+          const constraints = record.constraintUsages as Array<
+            Record<string, unknown>
+          >;
+          constraints[0]!.sourceId = "constraint-usage:foreign";
+        }],
       ];
 
       for (const [name, mutate] of mutations) {
@@ -4448,7 +4835,7 @@ Deno.test(
           `${directory}/prior-exact-attempts`,
         );
         const syson = new EnrichmentReqsSyson();
-        await assertRejects(
+        const error = await assertRejects(
           () =>
             makeExecutor({ ...fixture, queued, reqsCaptures: captures }, {
               syson,
@@ -4462,8 +4849,21 @@ Deno.test(
               issuedAt: "2026-08-08T12:25:00.000Z",
               runId: queued.runId,
             }),
-          Error,
+          EngineeringProjectCommandError,
         );
+        assertEquals(
+          Object.getPrototypeOf(error),
+          EngineeringProjectCommandError.prototype,
+          name,
+        );
+        assertEquals(error.code, "invalid_input", name);
+        if (name === "extra root field") {
+          assertEquals(
+            error.message,
+            "The prior requirements capture is not exact schema-v2/v3 evidence: " +
+              "Requirements capture has non-exact fields.",
+          );
+        }
         assertEquals(syson.calls, [], name);
         assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
       } finally {

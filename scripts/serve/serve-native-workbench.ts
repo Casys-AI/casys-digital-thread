@@ -54,6 +54,24 @@ import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/engineering
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/engineering/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/engineering/requirements-proposal.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/engineering/syson-model-seed.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/analysis/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/analysis/build123d-execution-proposal.ts";
+import {
+  VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
+  VERIFY_SEAL_PROOF_CASE_OPERATION,
+} from "../../src/domain/analysis/fea-proof-proposal.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+} from "../../src/domain/analysis/simulation-case-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../src/domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { ARCHIVE_LINEAGE_OPERATION } from "../../src/domain/thread/thread-retirement.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+} from "../../src/orchestration/operations/recorded-analysis.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
@@ -773,14 +791,14 @@ async function resolveCurrentThreadSnapshot(
     );
   }
   if (active.revision <= declared.revision) return declared;
-  // A known provider-durable operation can make a next ThreadSnapshot durable before
+  // A known durable-writer operation can make a next ThreadSnapshot durable before
   // completeRun attaches that exact reference to the project. A crash in that
   // narrow interval must not let an undeclared descendant become canonical in
   // the browser. Keep the declared head on screen; projectWorkbenchSnapshot
   // still overlays the bounded live journal onto it. The durable result
   // becomes eligible only after completeRun records its exact reference in
   // immutable project state.
-  if (hasUnattachedProviderDurableProjectOperation(project)) return declared;
+  if (hasUnattachedDurableProjectOperation(project)) return declared;
   const lineageSnapshots = new OrderedExactThreadSnapshotReader([
     options.store,
     ...(options.projectSnapshots ? [options.projectSnapshots] : []),
@@ -795,44 +813,63 @@ async function resolveCurrentThreadSnapshot(
 }
 
 /**
- * These exact server-owned operations persist a provider-derived snapshot
- * before completeRun attaches its reference to immutable project state. A
+ * These exact server-owned operations persist a Thread successor before
+ * completeRun attaches its reference to immutable project state. A
  * forward head is therefore not browser-canonical while one is still active.
  * Additions are intentionally explicit: a registered operation alone does
  * not establish this persistence ordering.
  */
-const PROVIDER_DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
+const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   SYSON_MODEL_SEED_OPERATION,
   INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
+  VERIFY_SEAL_PROOF_CASE_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
+  COMPILE_SEAL_ADMISSION_OPERATION,
+  DESIGN_EXECUTE_BUILD123D_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+  SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+  ARCHIVE_LINEAGE_OPERATION,
 ] as const;
 
-function hasUnattachedProviderDurableProjectOperation(
+function hasUnattachedDurableProjectOperation(
   project: EngineeringProjectSnapshot,
 ): boolean {
   const workItems = new Map(project.workItems.map((item) => [item.id, item]));
   return project.agentRuns.some((run) => {
-    if (!isAwaitingProviderDurableProjectAttachment(run.status)) {
+    if (!isAwaitingDurableProjectAttachment(run.status)) {
       return false;
     }
     const operation = workItems.get(run.workItemId)?.operation;
-    return PROVIDER_DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS.some((candidate) =>
+    return DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS.some((candidate) =>
       operation?.id === candidate.id && operation.version === candidate.version
     );
   });
 }
 
-function isAwaitingProviderDurableProjectAttachment(
+/** Test seam for the explicit durable-writer allowlist used by the browser. */
+export function hasUnattachedDurableProjectOperationForTest(
+  project: EngineeringProjectSnapshot,
+): boolean {
+  return hasUnattachedDurableProjectOperation(project);
+}
+
+function isAwaitingDurableProjectAttachment(
   status: EngineeringProjectSnapshot["agentRuns"][number]["status"],
 ): boolean {
   return status === "queued" || status === "running" ||
     status === "waiting-for-decision" || status === "publishing" ||
     // Defensive legacy/recovery guard: older executors could mark a run
     // failed after save(snapshot) succeeded but before readback. A failed
-    // provider-durable operation never authorizes an unattached descendant.
+    // durable-writer operation never authorizes an unattached descendant.
     status === "failed";
 }
 

@@ -46,6 +46,7 @@ import { ExactInitialBaselineEvidenceValidator } from "../adapters/validators/en
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
 import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "../orchestration/operations/recorded-analysis.ts";
 import { approvedBriefSourceAnalysisFixture } from "./approved-brief-source-analysis-fixture.ts";
+import type { CalculixIsolatedExecutionProfile } from "../application/ports/out/calculix-isolated-execution-profile.ts";
 
 export const RECORDED_CALCULIX_V2_FIXTURE_AGENT = {
   kind: "agent" as const,
@@ -84,12 +85,36 @@ export interface RecordedCalculixV2Fixture {
   readonly proofCase: ReturnType<typeof validateMechanicalProofCase>;
 }
 
+export type RecordedCalculixV3Fixture = RecordedCalculixV2Fixture;
+
 /**
  * Build a queued, fully sealed ROP2 CalculiX run.  The fixture plan is
  * intentionally code-owned by the plan sealer, never supplied by a caller.
  */
 export async function createRecordedCalculixV2Fixture(
   directory: string,
+): Promise<RecordedCalculixV2Fixture> {
+  return await createRecordedCalculixFixture(directory, { operationVersion: "2" });
+}
+
+export async function createRecordedCalculixV3Fixture(
+  directory: string,
+  localProfile: CalculixIsolatedExecutionProfile,
+): Promise<RecordedCalculixV3Fixture> {
+  return await createRecordedCalculixFixture(directory, {
+    operationVersion: "3",
+    localProfile,
+  });
+}
+
+async function createRecordedCalculixFixture(
+  directory: string,
+  options:
+    | { readonly operationVersion: "2" }
+    | {
+      readonly operationVersion: "3";
+      readonly localProfile: CalculixIsolatedExecutionProfile;
+    },
 ): Promise<RecordedCalculixV2Fixture> {
   let tick = 0;
   const now = () =>
@@ -317,7 +342,13 @@ export async function createRecordedCalculixV2Fixture(
         ),
     },
     stepAssets: { read: () => Promise.resolve(Uint8Array.from(prepared.stepBytes)) },
-    calculix: { elementOrder: 1, timeoutMs: 60_000 },
+    calculix: {
+      elementOrder: 1,
+      timeoutMs: 60_000,
+      ...(options.operationVersion === "3"
+        ? { localProfile: options.localProfile }
+        : {}),
+    },
   });
   project = await commands.appendChange(RECORDED_CALCULIX_V2_FIXTURE_AGENT, {
     ...context("fixture:append-recorded", project.revision, now()),
@@ -335,7 +366,7 @@ export async function createRecordedCalculixV2Fixture(
       decisionIds: ["recorded-fea-decision"],
       operation: {
         id: "verify.run-fea-static-proof",
-        version: "2",
+        version: options.operationVersion,
         bindings: [
           threadBinding("proofCase", prepared.proofArtifact, prepared.basis),
           threadBinding("geometry", prepared.stepArtifact, prepared.basis),
@@ -408,7 +439,7 @@ export async function createRecordedCalculixV2Fixture(
 async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
   const subjectId = ancestor.subject.id;
   const stepBytes = new TextEncoder().encode(
-    "ISO-10303-21; recorded-calculix-fixture-step",
+    "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n",
   );
   const stepFingerprint = await fingerprint(stepBytes);
   const geometryFingerprint = await fingerprint("fixture geometry capture");

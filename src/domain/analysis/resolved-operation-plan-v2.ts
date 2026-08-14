@@ -72,6 +72,15 @@ export const CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE = deepFreeze(
   } as const,
 );
 
+/** Closed output profile for the provider-free local Microsandbox route. */
+export const CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE = deepFreeze(
+  {
+    id: "calculix-isolated.static-artifacts",
+    version: "1.0",
+    resources: CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE.resources,
+  } as const,
+);
+
 export interface ResolvedOperationPlanRef {
   readonly schemaVersion: typeof RESOLVED_OPERATION_PLAN_REF_SCHEMA;
   readonly planId: string;
@@ -131,7 +140,8 @@ export interface ResolvedOperationPlanV2 {
   readonly sources: readonly ResolvedOperationPlanSource[];
   readonly action:
     | ResolvedModelicaSimulationAction
-    | ResolvedCalculixStaticStructuralAction;
+    | ResolvedCalculixStaticStructuralAction
+    | ResolvedCalculixIsolatedStaticStructuralAction;
   /** Resource roles expected from the provider ledger/capture boundary. */
   readonly expectedProviderResources: ResolvedOperationPlanExpectedResources;
   /** Names a code-owned recovery policy; it does not define a state machine. */
@@ -173,6 +183,14 @@ export type ResolvedOperationPlanExpectedResources =
       readonly id: "mcp-calculix.recorded-static-artifacts";
       readonly version: "1.0";
     };
+  }
+  | {
+    readonly receiptSchema: "isolated-code-execution-receipt-record/1.0";
+    readonly evidenceSchema: "calculix-isolated-static-evidence/1.0";
+    readonly resourceProfile: {
+      readonly id: "calculix-isolated.static-artifacts";
+      readonly version: "1.0";
+    };
   };
 
 export type ResolvedOperationPlanRecovery =
@@ -185,6 +203,7 @@ export type ResolvedOperationPlanRecovery =
   & (
     | { readonly policy: "mcp-modelica.resumable-recovery@2.1" }
     | { readonly policy: "mcp-calculix.recorded-static-recovery@1.0" }
+    | { readonly policy: "calculix-isolated-generation-recovery@1.0" }
   );
 
 export interface ResolvedModelicaSimulationAction {
@@ -248,6 +267,29 @@ export interface ResolvedCalculixStaticStructuralAction {
     readonly effectiveElementOrder: 1 | 2;
     readonly effectiveTimeoutMs: number;
   };
+}
+
+/**
+ * Local execution authority. It deliberately has no provider/tool identity:
+ * the exact server-owned profile, OCI digest and isolation policy are bound by
+ * profileFingerprint and re-opened by the registered @3 executor.
+ */
+export interface ResolvedCalculixIsolatedStaticStructuralAction {
+  readonly kind: "isolated-static-structural-analysis";
+  readonly executor: {
+    readonly id: "casys-local-microsandbox";
+    readonly contract: {
+      readonly id: "calculix-static-proof-v1";
+      readonly version: "1.0.0";
+    };
+    readonly profileFingerprint: ContentFingerprint;
+  };
+  readonly lowering: {
+    readonly id: "calculix.static.abaqus-deck";
+    readonly version: "1.0";
+  };
+  readonly requestId: string;
+  readonly input: ResolvedCalculixStaticStructuralAction["input"];
 }
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
@@ -661,42 +703,83 @@ function parseAction(value: unknown, path: string): ResolvedOperationPlanV2["act
       },
     };
   }
-  if (root.kind === "static-structural-analysis") {
+  if (
+    root.kind === "static-structural-analysis" ||
+    root.kind === "isolated-static-structural-analysis"
+  ) {
+    const isolated = root.kind === "isolated-static-structural-analysis";
     const input = strictRecord(
       value,
-      ["kind", "provider", "lowering", "requestId", "input"],
+      isolated
+        ? ["kind", "executor", "lowering", "requestId", "input"]
+        : ["kind", "provider", "lowering", "requestId", "input"],
       path,
     );
-    const provider = strictRecord(
-      input.provider,
-      [
-        "id",
-        "contract",
-        "executionIdentitySchema",
-        "runSchema",
-        "resultSchema",
-      ],
-      `${path}.provider`,
-    );
-    literal(provider.id, "mcp-calculix", `${path}.provider.id`);
-    const contract = strictRecord(
-      provider.contract,
-      ["id", "version"],
-      `${path}.provider.contract`,
-    );
-    literal(
-      contract.id,
-      "calculix_solve_static_recorded",
-      `${path}.provider.contract.id`,
-    );
-    literal(contract.version, "1.0", `${path}.provider.contract.version`);
-    literal(
-      provider.executionIdentitySchema,
-      "1.0",
-      `${path}.provider.executionIdentitySchema`,
-    );
-    literal(provider.runSchema, "2.0", `${path}.provider.runSchema`);
-    literal(provider.resultSchema, "2.0", `${path}.provider.resultSchema`);
+    let localExecutor:
+      | ResolvedCalculixIsolatedStaticStructuralAction["executor"]
+      | undefined;
+    if (isolated) {
+      const executor = strictRecord(
+        input.executor,
+        ["id", "contract", "profileFingerprint"],
+        `${path}.executor`,
+      );
+      literal(
+        executor.id,
+        "casys-local-microsandbox",
+        `${path}.executor.id`,
+      );
+      const contract = strictRecord(
+        executor.contract,
+        ["id", "version"],
+        `${path}.executor.contract`,
+      );
+      literal(
+        contract.id,
+        "calculix-static-proof-v1",
+        `${path}.executor.contract.id`,
+      );
+      literal(contract.version, "1.0.0", `${path}.executor.contract.version`);
+      localExecutor = {
+        id: "casys-local-microsandbox",
+        contract: { id: "calculix-static-proof-v1", version: "1.0.0" },
+        profileFingerprint: parseFingerprint(
+          executor.profileFingerprint,
+          `${path}.executor.profileFingerprint`,
+        ),
+      };
+    } else {
+      const provider = strictRecord(
+        input.provider,
+        [
+          "id",
+          "contract",
+          "executionIdentitySchema",
+          "runSchema",
+          "resultSchema",
+        ],
+        `${path}.provider`,
+      );
+      literal(provider.id, "mcp-calculix", `${path}.provider.id`);
+      const contract = strictRecord(
+        provider.contract,
+        ["id", "version"],
+        `${path}.provider.contract`,
+      );
+      literal(
+        contract.id,
+        "calculix_solve_static_recorded",
+        `${path}.provider.contract.id`,
+      );
+      literal(contract.version, "1.0", `${path}.provider.contract.version`);
+      literal(
+        provider.executionIdentitySchema,
+        "1.0",
+        `${path}.provider.executionIdentitySchema`,
+      );
+      literal(provider.runSchema, "2.0", `${path}.provider.runSchema`);
+      literal(provider.resultSchema, "2.0", `${path}.provider.resultSchema`);
+    }
     const lowering = strictRecord(
       input.lowering,
       ["id", "version"],
@@ -723,21 +806,13 @@ function parseAction(value: unknown, path: string): ResolvedOperationPlanV2["act
     ) {
       throw new TypeError(`${path}.input.effectiveElementOrder must equal 1 or 2.`);
     }
-    return {
-      kind: "static-structural-analysis",
-      provider: {
-        id: "mcp-calculix",
-        contract: { id: "calculix_solve_static_recorded", version: "1.0" },
-        executionIdentitySchema: "1.0",
-        runSchema: "2.0",
-        resultSchema: "2.0",
-      },
+    const common = {
       lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
       requestId: providerRequestId(
         input.requestId,
         CALCULIX_REQUEST_ID,
         `${path}.requestId`,
-        "mcp-calculix",
+        isolated ? "local CalculiX" : "mcp-calculix",
       ),
       input: {
         proofCase: sourceBoundCaseIdentity(
@@ -754,10 +829,27 @@ function parseAction(value: unknown, path: string): ResolvedOperationPlanV2["act
           `${path}.input.effectiveTimeoutMs`,
         ),
       },
-    };
+    } as const;
+    return isolated
+      ? {
+        kind: "isolated-static-structural-analysis",
+        executor: localExecutor!,
+        ...common,
+      }
+      : {
+        kind: "static-structural-analysis",
+        provider: {
+          id: "mcp-calculix",
+          contract: { id: "calculix_solve_static_recorded", version: "1.0" },
+          executionIdentitySchema: "1.0",
+          runSchema: "2.0",
+          resultSchema: "2.0",
+        },
+        ...common,
+      };
   }
   throw new TypeError(
-    `${path}.kind must be dynamic-system-simulation or static-structural-analysis.`,
+    `${path}.kind is not a registered resolved action.`,
   );
 }
 
@@ -822,6 +914,36 @@ function parseExpectedResources(
       },
     };
   }
+  if (profile.id === CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.id) {
+    const input = strictRecord(
+      value,
+      ["receiptSchema", "evidenceSchema", "resourceProfile"],
+      path,
+    );
+    literal(
+      input.receiptSchema,
+      "isolated-code-execution-receipt-record/1.0",
+      `${path}.receiptSchema`,
+    );
+    literal(
+      input.evidenceSchema,
+      "calculix-isolated-static-evidence/1.0",
+      `${path}.evidenceSchema`,
+    );
+    literal(
+      profile.version,
+      CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.version,
+      `${path}.resourceProfile.version`,
+    );
+    return {
+      receiptSchema: "isolated-code-execution-receipt-record/1.0",
+      evidenceSchema: "calculix-isolated-static-evidence/1.0",
+      resourceProfile: {
+        id: "calculix-isolated.static-artifacts",
+        version: "1.0",
+      },
+    };
+  }
   throw new TypeError(`${path}.resourceProfile.id is not a code-owned profile.`);
 }
 
@@ -852,7 +974,8 @@ function parseRecovery(
   );
   if (
     input.policy !== "mcp-modelica.resumable-recovery@2.1" &&
-    input.policy !== "mcp-calculix.recorded-static-recovery@1.0"
+    input.policy !== "mcp-calculix.recorded-static-recovery@1.0" &&
+    input.policy !== "calculix-isolated-generation-recovery@1.0"
   ) {
     throw new TypeError(`${path}.policy is not a code-owned recovery policy.`);
   }
@@ -908,6 +1031,14 @@ function assertActionMatchesOperation(
   ) {
     throw new TypeError(
       `${path}.kind static-structural-analysis requires verify.run-fea-static-proof@2.`,
+    );
+  }
+  if (
+    action.kind === "isolated-static-structural-analysis" &&
+    (operation.id !== "verify.run-fea-static-proof" || operation.version !== "3")
+  ) {
+    throw new TypeError(
+      `${path}.kind isolated-static-structural-analysis requires verify.run-fea-static-proof@3.`,
     );
   }
 }
@@ -1082,6 +1213,39 @@ function assertProviderEvidenceMatchesAction(
         `${path}.authorization.methodQualification.fingerprint must equal the exact qualification authority artifact.`,
       );
     }
+    return;
+  }
+  if (action.kind === "isolated-static-structural-analysis") {
+    if (
+      expected.resourceProfile.id !== CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.id ||
+      !("receiptSchema" in expected) ||
+      recovery.policy !== "calculix-isolated-generation-recovery@1.0"
+    ) {
+      throw new TypeError(
+        `${path} local CalculiX action requires its exact output and generation-recovery profiles.`,
+      );
+    }
+    if (
+      authorization.methodQualification.id !==
+        "qualified-calculix-isolated-static-proof" ||
+      authorization.methodQualification.version !== "1.0" ||
+      !fingerprintsEqual(
+        authorization.methodQualification.fingerprint,
+        action.executor.profileFingerprint,
+      )
+    ) {
+      throw new TypeError(
+        `${path} local CalculiX action requires the exact qualified isolated profile.`,
+      );
+    }
+    assertClosedSourceProfile(
+      sources,
+      [
+        ["proofCase", "proof-case", "application/json"],
+        ["geometry", "geometry-source", "model/step"],
+      ],
+      `${path}.sources`,
+    );
     return;
   }
   if (

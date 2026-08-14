@@ -39,6 +39,10 @@ import {
 import { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../stores/live-thread-update-store.ts";
 import { createSysonModelSeedLiveProjector } from "../projectors/syson-model-seed-live-projector.ts";
+import {
+  assertThreadWriteBasisAvailable,
+  threadWriteBasisLeaseScope,
+} from "./thread-write-basis-guard.ts";
 
 type ExactSnapshotPresence = "exact" | "absent" | "unknown";
 
@@ -130,10 +134,11 @@ export class SysonModelSeedRunExecutor {
       );
     }
     const preflight = await this.requiredProject(command.projectId);
-    requireSysonModelSeedShape(preflight, requireRun(preflight, command.runId));
+    const preflightRun = requireRun(preflight, command.runId);
+    requireSysonModelSeedShape(preflight, preflightRun);
     return await this.#lease.withLease(
       command.projectId,
-      command.runId,
+      threadWriteBasisLeaseScope(preflightRun),
       () => this.executeLeased(origin, command),
     );
   }
@@ -153,6 +158,9 @@ export class SysonModelSeedRunExecutor {
       const beforeClaim = await this.requiredProject(command.projectId);
       const beforeClaimRun = requireRun(beforeClaim, command.runId);
       requireSysonModelSeedShape(beforeClaim, beforeClaimRun);
+      if (beforeClaimRun.status !== "completed") {
+        await assertThreadWriteBasisAvailable(beforeClaim, beforeClaimRun);
+      }
       const beforeClaimBasis = requireThreadBasis(beforeClaimRun);
       const beforeClaimBase = await this.requiredExactBase(beforeClaimBasis);
       const beforeClaimLineage = await this.requiredPlanningLineage(

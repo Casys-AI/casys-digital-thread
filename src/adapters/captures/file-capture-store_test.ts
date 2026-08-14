@@ -9,9 +9,57 @@ import {
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
+  syncCaptureDirectoryChain,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./file-capture-store.ts";
+
+Deno.test("capture directory syncing stops at an explicit temporary boundary", async () => {
+  const synced: string[] = [];
+  const fileSystem = {
+    open(path: string) {
+      return Promise.resolve({
+        sync: () => {
+          synced.push(path);
+          return Promise.resolve();
+        },
+        close: () => undefined,
+      });
+    },
+  };
+
+  await syncCaptureDirectoryChain(
+    "/private/tmp/casys-run/evidence",
+    "/private/tmp/casys-run",
+    fileSystem,
+  );
+  assertEquals(synced, [
+    "/private/tmp/casys-run/evidence",
+    "/private/tmp/casys-run",
+  ]);
+});
+
+Deno.test("capture directory syncing rejects a non-ancestor boundary", async () => {
+  const synced: string[] = [];
+  const fileSystem = {
+    open(path: string) {
+      synced.push(path);
+      return Promise.reject(new Error("must not open"));
+    },
+  };
+
+  await assertRejects(
+    () =>
+      syncCaptureDirectoryChain(
+        "/private/tmp/casys-run/evidence",
+        "/private/tmp/foreign-run",
+        fileSystem,
+      ),
+    TypeError,
+    "must contain",
+  );
+  assertEquals(synced, []);
+});
 
 // ── Compile-time nominal typing ──────────────────────────────────────────────
 //

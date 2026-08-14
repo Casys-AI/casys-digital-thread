@@ -38,7 +38,10 @@ facts, symbols, local dependencies, diagnostics|
              one server-owned action, sealed when the run is queued
                          |
                          v
-             server-fixed executor -> private MCP tools + identity-bound resources/read
+             server-fixed executor
+                    |                    |
+                    |                    +-> private provider MCP + identity-bound resources/read
+                    +-> local OCI/microVM runner, only for an independently qualified vertical
                          |
                          v
              CAS capture, recovery and thread lineage
@@ -116,17 +119,21 @@ project-control tools validate MCP input and call inward-facing use cases; they 
 own provider clients or CAS stores. `ProjectGeometryPreviewUseCase` lives under
 `src/application/ports/in/`, while exact operation dispatch lives under
 `src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
-contract in `src/application/ports/in/project-run-executor.ts`. The capture-backed
-geometry adapter owns source capture, analysis and the private build123d dispatch.
-Concrete registered executors remain the only components allowed to call private
-provider MCP clients for admitted project runs.
+contract in `src/application/ports/in/project-run-executor.ts`. The legacy
+capture-backed geometry adapter owns source capture, analysis and its private build123d
+MCP dispatch. Concrete registered executors remain the only components allowed to call
+private provider MCP clients for admitted project runs.
 
-## Implemented CAD vertical
+## Implemented legacy CAD preview and promotion vertical
 
-The sandboxed CAD path is the first production consumer of this architecture. The agent
-still calls the single `project_geometry_preview` Digital Thread tool with native
-Python/build123d text. There is no parser tool to call and no intermediate DSL to
-author. The backend performs this exact order:
+The following MCP-backed CAD path remains the historical preview and canonical-promotion
+route. Its tools, schemas and persisted project state have not yet been migrated or
+removed, so they remain supported and readable. It is not the newer local microVM
+execution path and must not be used as evidence that the isolated compiler route
+produced or promoted canonical geometry. The agent calls the single
+`project_geometry_preview` Digital Thread tool with native Python/build123d text. There
+is no parser tool to call and no intermediate DSL to author. The backend performs this
+exact order:
 
 ```text
 validate the bounded execution surface (D4)
@@ -219,7 +226,222 @@ rejected analysis blocks authoritative writers; the read-only catalog returns
 `unavailable`. Historical architecture capture/WAL v2 remains readable as historical
 provider structure but cannot be promoted, rewritten or decorated with a fictional
 source analysis. This vertical still does not claim to parse arbitrary SysML or derive
-the provider readback from the renderer declaration.
+the provider readback from the renderer declaration. SysON remains a private provider
+MCP behind its own WAL, resource readback and Thread publication; it is not executed
+inside the local code-isolation backend.
+
+## Product admission compiler boundary
+
+The approved brief remains a versioned, human-readable statement of intent. It may seed
+explicit proposals, but the compiler never parses its prose or treats wording as a
+technical binding. Once technical modelling starts, the exact reread SysON identities
+from the supported SysML subset are the technical truth. Every technical binding—parts,
+RequirementUsages and ConstraintUsages—must therefore cite exact semantic identifiers
+and the exact project and thread basis; labels are display data and never join keys.
+
+That basis is deliberately not advertised as a full SysON model AST. Compilation V1
+reopens the parser-backed `architecture-capture/3.0` Package, PartDefinitions and
+PartUsages. It also admits exact RequirementUsage and ConstraintUsage identities from an
+active `requirements-capture/3.0` only after the capture bytes, provider identities,
+architecture basis and Thread artifact lineage have all been reread. Each anchor element
+carries the exact capture artifact fingerprint that attests it. Historical requirements
+capture V2 remains readable but contributes no individual constraint identity; a
+container, label or capture id is never expanded into fictional per-requirement anchors.
+
+The compiler consumes only closed, fingerprinted inputs: the reread SysML basis, exact
+native source bytes with their analysis, explicit source-symbol-to-SysML bindings and a
+server-owned method profile. It is a pure deterministic transformation. It performs no
+MCP call, filesystem or network I/O, chooses no provider or tool, accepts no raw
+provider arguments and never repairs a missing binding by matching names. Unsupported,
+ambiguous or cross-basis input remains explicit as `unresolved` or `rejected`; it cannot
+dispatch a provider.
+
+```text
+exact reread SysML basis + captured native source + explicit bindings
+                              + server-owned method profile
+                                      |
+                                      v
+                         pure compilation draft
+                                      |
+                                      v
+                         human MRTR over exact digest
+                                      |
+                                      v
+                    provider-free sealed compilation
+                                      |
+                                      v
+              separate execution review + human MRTR
+                                      |
+                                      v
+         registered specialized executor, when explicitly composed
+                                      |
+                                      v
+       isolated run -> validated non-canonical output publication
+```
+
+The sealed compilation is reviewed engineering input, not a transport envelope. A
+specialized, code-owned backend adapter remains responsible for lowering it immediately
+before execution and for capturing what the provider actually observed. Build123d,
+Modelica and CalculiX consequently keep distinct method and evidence contracts even when
+they consume projections from the same compilation.
+
+### Reusable substrate versus first vertical
+
+The implementation deliberately shares control-plane contracts, not one universal solver
+protocol. The boundary is split as follows:
+
+| Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The only registered compilation profile is the qualified Build123d `Box` subset                                                                 |
+| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                       |
+| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                   |
+| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                           |
+| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                       | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist |
+
+“Interchangeable” therefore applies at explicit seams. A new sandbox backend implements
+`EphemeralExecutionBackend`; a new output format supplies a code-owned manifest and
+validator; and a new engineering vertical supplies its own qualified compilation and
+execution profiles, WAL, evidence schema and promotion operation. None can be selected
+or registered by caller input. The generic broker suite proves this seam with a second
+registered `equation-language-fixture` profile and a JSON output, without pretending
+that fixture is a production engineering profile. The deployed composition registers one
+local backend, not a runtime menu: interchangeability is an inward port property, not a
+caller or agent capability.
+
+The compiler also does not execute agent-authored code. Such execution crosses a
+separate isolated-runner port with a server-owned policy and a declared-output broker.
+The port, broker and evidence contracts do not name a sandbox technology. The sole
+registered isolation-backend technology is local Microsandbox 0.6.8 with an attached,
+digest-pinned OCI microVM lifecycle; all three isolated product profiles bind through
+that backend. This route uses neither Deno Deploy nor `@deno/sandbox`; it has no remote
+control plane, sandbox credential or remote snapshot. A conforming deployment gives the
+microVM neither repository access, secrets, Docker socket nor canonical evidence
+volumes.
+
+The adapter accepts only the exact OCI reference and digest owned by the reviewed
+profile, uses pull policy `Never`, and checks the observed manifest, architecture, OS,
+image user, entrypoint, command and environment before execution. Native runtime binary
+overrides are rejected before the SDK is loaded; the code-owned empty Microsandbox
+configuration, native module, `msb` executable and `libkrunfw` file are resolved inside
+the pinned platform package and verified by SHA-256. Unsupported host/architecture
+combinations fail closed. The post-create configuration must still match the fixed
+policy: restricted security, attached recovery lifecycle, one ephemeral `/tmp` mount,
+exact run labels, no patches, and network disabled with deny-all ingress and egress, no
+ports, nameservers, secrets or host CA trust.
+
+The agent is not given a shell surface. The adapter directly executes
+`/usr/local/bin/python3 -I -B /opt/casys/bin/run-build123d.py`; it writes the admitted
+source bytes unchanged only to `/input/source.py`, uses `/work`, and can inventory only
+the declared `/out/geometry.step` candidate plus code-owned quiescence and log records.
+No path, command, argument, environment variable, volume, socket or backend selection
+comes from agent input. Requested resource ceilings are explicit. The runtime attests
+wall time and memory, the broker observes log and output byte caps, and CPU time and
+process-count ceilings remain explicitly unattested rather than being promoted into
+facts.
+
+The sole qualified V1 output is `geometry.step` with media type `model/step` and format
+`step-ap214`. Its code-owned validator identity is part of the execution-profile
+fingerprint. Outside the sandbox, a bounded Part 21 header check establishes the
+declared AP214 family, then `occt-import-js` must parse the complete bytes and expose
+referenced, non-degenerate triangulated geometry. A plausible header, another
+application protocol, truncated bytes or an empty shape is therefore rejected before
+publication. Returned bytes otherwise stay untrusted until the broker validates their
+declared identity and size and recomputes their digest outside the isolation boundary.
+
+Only cleanup meeting the code-owned `proven` threshold permits release. The adapter
+removes the named microVM, lists by exact run labels and requires zero remaining
+sandboxes before emitting its run-scoped destruction proof. This is concrete backend
+cleanup evidence, not a claim of cryptographic erasure. After cleanup, the broker stages
+and rereads the complete output batch. The filesystem CAS makes the blobs and a complete
+byte-free receipt durable before publishing one run-and-producer-generation marker. A
+lost commit acknowledgement is resolved from that exact marker under the run lock;
+resolution is tri-state: `published`, `not-published` or `outcome-unknown`. An unknown
+outcome remains fail-closed and blocks every redispatch. Run-scoped abort refuses a
+published or ambiguous generation, durably fences an absent one, then removes only that
+generation's staging. Even `not-published` cannot authorize another execution until
+run-scoped staging and environment cleanup have also succeeded. Orphaned blobs remain
+invisible because reads require both the publication reference and exact receipt
+membership. An isolation receipt records the boundary and its assurance; it is neither
+MRTR approval nor engineering evidence by itself.
+
+`design.execute-build123d@1` is intentionally draft-only. A successful execution is
+modelled as one private `build123d-execution-draft/1.0` whose STEP bytes remain behind
+the publication-gated output CAS, plus one `build123d-execution-capture/1.0` JSON
+artifact of kind `document` in a successor Thread snapshot. The Thread addition records
+the reviewed execution and its exact admission consumption; it adds no STEP artifact,
+canonical geometry, observation, requirement, evaluation, violation or verdict. The
+draft and capture both bind the producer generation and exact receipt/publication, while
+the WAL binds the persisted draft reference back to that same receipt and checks the
+link again during completed replay. The existing `design.write-geometry@1` cannot
+promote this new draft because it seals a different historical sandbox-preview contract.
+Canonical promotion requires a future, separately reviewed geometry operation and a
+second human MRTR over the exact execution document, draft and published bytes.
+
+The durable execution journal is monotone:
+`prepared -> dispatching -> output-published -> draft-persisted -> thread-persisted -> completed`.
+After `dispatching`, the executor resolves the publication by its server-derived run id
+and current producer generation before considering another call. Only an exact
+`not-published` result followed by successful run-scoped CAS and environment cleanup can
+authorize one second dispatch. The same logical `executionRunId` is retained, but
+producer generation 0 is first fenced durably and an exact canonical `0 -> 1` generation
+advance is persisted. Authorization then moves through the durable
+`authorized -> consumed` substate within `dispatching`, and only the fresh
+`consumed-now` transition can invoke the runner with `dispatchCount: 2` and producer
+generation 1. Replaying a consumed authorization cannot invoke the runner again. If
+consumed generation 1 resolves `not-published`, the executor proves generation-1 cleanup
+and enters terminal quarantine; an unknown outcome also blocks dispatch. Generation 2
+does not exist, so a third dispatch is impossible. From `output-published` onward,
+recovery is CAS/WAL-only and reopens the same draft, capture and Thread evidence instead
+of executing source again.
+
+Modelica has now passed one deliberately narrow real Microsandbox qualification against
+`casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894`.
+The gate ran OpenModelica 1.27.0 with MSL 4.1.0 in the local microVM at producer
+generation 0, externally validated `temperature_final = 22 degC`, proved destruction,
+reread the publication after recreating the CAS adapter and persisted qualification
+capture `d6aee5fe375daa55cec29a32acf27181dd4bb8ea8e5c3f90f848cc718c149428`. That
+authority is exact, not general: it covers only `linear-thermal-ramp-v1@0.1.0` /
+`linear-ramp-nominal` and accepts no arbitrary Modelica. The separate local product
+operation descriptor and fail-closed dispatcher entry for
+`simulate.run-qualified-modelica-kit@1` remain registered independently of runtime
+availability. Its read-only review and concrete executor become available only when
+`--local-execution` composes the exact profile, runtime and pinned qualification. The
+review accepts only the exact project and current Thread basis; its MRTR has no ROP,
+provider or caller-selected source. A completed run adds the execution capture,
+normalized `evidence.json`, retained `result.csv` and the one `22 degC` observation,
+never an implicit requirement verdict, evaluation, violation or action. Replay reopens
+the durable claim, inner WAL, evidence and Thread successor without another solver call.
+
+CalculiX has also crossed a real generation-0 local microVM gate against
+`casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2`.
+The bounded gate reopened all nine publication-gated CAS objects, validated a 5,713-node
+/ 22,362-element mesh and observed maximum displacement `0.0761 mm <= 5 mm` and maximum
+von Mises stress `0.723 MPa <= 90 MPa`; it then replayed the exact evidence, proved
+destruction and removed its temporary state. The post-lease rerun also proved one
+run-scoped claimant across concurrent calls, with one worker dispatch and identical
+evidence replay. This qualifies the worker/profile and its standalone local use case
+only. The new product operation descriptor and fail-closed dispatcher entry for
+`verify.run-fea-static-proof@3` remain registered independently of runtime availability.
+Its concrete executor becomes available only when `--local-execution` composes the exact
+local profile/runtime and a SysON oracle is available. It consumes a newly sealed local
+ROP2 that names `@3`; the executor refuses an `@2` plan before either solve or SysON.
+Its outer WAL separates local evidence capture from the journaled SysON evaluation,
+quarantines an ambiguous oracle outcome without a retry, and on replay reopens both CAS
+captures before reconstructing the same Thread successor. That successor contains the
+nine local output artifacts, one isolated execution-evidence artifact, one SysON
+evaluation capture, observations and evaluations; it never claims `mcp-calculix`
+provenance for local execution. CalculiX never accepts an agent-authored `.inp` deck:
+the local use case constructs the worker bundle from exact reviewed proof and STEP
+bytes, and the fixed wrapper owns mesh/deck lowering and declared outputs.
+
+SysON is deliberately different. Its bounded architecture, requirements and evaluation
+operations remain provider MCP calls outside the microVM, with operation-specific WAL,
+readback and Thread evidence. Local code isolation neither replaces that provider path
+nor grants it execution or decision authority.
+
+This is the reusable product boundary, not a claim that every language frontend or
+backend route is already activated. A route without a qualified profile, exact bindings,
+review or executor remains non-dispatchable.
 
 ## Declaration, source, lowering and runtime evidence
 
@@ -335,7 +557,122 @@ qualified assertions with exact evidence; Graphology remains a read-only project
 
 ## Implementation status
 
-This reference follows the current code for the recorded-analysis `@2` vertical. It does
-not turn provider availability, an approved MRTR or a queued run into proof of a
-successful provider execution. That success exists only when the recorded runtime
-resources and resulting thread evidence have been captured and reread.
+The pure technical compiler, exact source-analysis capture boundary, provider-free
+preview use case, canonical `compile.seal-admission@1` MRTR grammar, isolated-execution
+contracts and broker are present as product foundations. Only `ready-for-review` output
+is persisted as a content-addressed draft that retains the exact source-capture
+references. The source-capture and preview tools are composed on the MCP project
+surface. The operation, proposal validator and provider-free sealer are also composed
+through the existing MRTR, queue and registered-run tools: after exact replay, the
+sealer publishes a `technical-compilation-admission-capture/1.0` document artifact into
+the Thread.
+
+That artifact still grants no execution authority. The concrete local Microsandbox
+adapter implements the disposable-backend port for the qualified Build123d profile. It
+binds one digest-pinned OCI microVM, fixed direct execution without a shell, deny-all
+networking, bounded streamed logs and output reads, and label-based cleanup recovery. A
+filesystem output CAS implements receipt-before-marker publication, tri-state
+reconciliation and publication-gated reads. The AP214 validator performs a real OCCT
+import and meaningful-mesh check before the broker can publish the candidate.
+
+Composition is explicit. At the Build123d seam, without configuration neither review nor
+execution is exposed; a `profile` exposes only the provider-free review; and the exact
+empty `runtime` marker adds the adapter, validator, broker, CAS, WAL, evidence stores
+and registered executor. Ordinary startup supplies no local runtime, while explicit
+local execution supplies fixed Build123d, Modelica and CalculiX profile/runtime pairs.
+Modelica must additionally reopen the pinned qualification before exposing review or
+execution; CalculiX `@3` also requires the separate SysON oracle. Profiles—not markers
+or callers— own images, policies, limits, commands and paths. Composition performs no
+microVM I/O and never falls back to a provider operation.
+
+The executable bootstrap adds another explicit boundary. Ordinary `deno task start`
+passes no local execution configuration. `server.ts --local-execution` is the sole CLI
+trigger that supplies all three fixed code-owned profile/runtime pairs; it is effective
+only on the loopback project surface and accepts no value or runtime choices.
+`deno task start:local` provides its bounded native package read, environment and FFI
+permissions while keeping interactive MRTR. `deno task start:yolo` adds the separate
+loopback-only `--yolo` approval convenience to that same local runtime. Both use
+`--no-prompt --frozen --node-modules-dir=auto`; neither flag can change an image digest,
+policy, limit, command, path, network rule or backend.
+
+The bootstrap profile fixes policy `build123d-microsandbox-deny-all-v1@1.0.0`,
+supervisor `0:0`, untrusted child `65532:65532`, 30 s wall time, 25 s requested CPU, 1
+GiB memory, 32 requested processes, 64 KiB per log stream and 128 MiB per-file and total
+output. These are ceilings, not all equally attested: CPU and process count remain
+explicitly unattested.
+
+The evidence at this point is deliberately targeted: domain and adapter tests cover the
+closed contracts, CAS reconciliation and a real repository AP214 fixture, while
+composition/register tests exercise all three configuration states and malformed or
+truncated STEP inputs are rejected. The executor, evidence/WAL and composition/register
+suites, targeted lint/format checks and `deno task check:build123d-execution` are green.
+The final producer-generation integration slice is 103/103 green and its independent
+review reports no remaining P0/P1; the underlying CAS/generation slice is 74/74 green,
+including inter-process reproduction on fresh and existing roots. The stable generic
+gate is deliberately independent of the Microsandbox/Build123d runtime:
+
+```bash
+deno task verify:generic:core
+```
+
+It covers the closed multi-target compiler/proposal contracts, isolated-execution
+domain, broker, filesystem output CAS, a non-Build123d broker profile and production
+import boundaries. The local backend, composition, validator, executor, evidence and WAL
+remain a separate targeted slice. The real Build123d vertical is exercised explicitly:
+
+```bash
+deno task check:build123d-execution
+deno task verify:build123d:microsandbox:vertical
+```
+
+The final gate passed against
+`casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8`.
+It exercised the real local microVM at producer generation 0, produced a 15,430-byte
+STEP file, validated AP214 through OCCT, proved broker destruction, resolved the output
+as `published` and reread the publication-gated CAS. The published path correctly did
+not invoke recovery abort. This qualifies that exact local Build123d worker vertical; it
+is not evidence of a different image, host architecture, method or generation-1 crash
+recovery.
+
+The two additional real worker verticals have their own explicit tasks; neither task is
+a product HTTP-run gate or permission to reroute a historical provider plan:
+
+```bash
+deno task verify:modelica:microsandbox:vertical
+deno task verify:calculix:microsandbox:vertical
+```
+
+The separately reviewed product executors are green on their targeted recovery and
+concurrency suites. Those tests qualify the registered control flow; they are not a
+second microVM execution beyond the exact worker gates described above.
+
+The remaining limits are explicit. The smoke did not execute a persisted project
+`design.execute-build123d@1` run, activate a production deployment or promote canonical
+geometry. CPU-time and process-count ceilings remain requested but unattested. The
+Thread receives only the documentary JSON capture; STEP stays private and noncanonical.
+The historical MCP preview/promotion tools and their persisted items/state still exist,
+so no legacy removal or migration is claimed. A global release suite would not replace
+these method-specific runtime and migration proofs.
+
+The backend also retains bounded host/runtime limitations. A deadline cannot cancel an
+already entered native N-API call; a privileged same-host actor could race a verified
+native artifact after hashing and before import; and the SDK materializes a guest
+directory listing whose availability ceiling is the protocol frame rather than an
+adapter-level pagination limit. These do not broaden the agent surface, but they remain
+part of the qualified host trust and availability envelope.
+
+The initial code-owned compilation catalogue qualifies only a parser-backed Build123d
+`Box` subset. Modelica and CalculiX compiler profiles remain absent and therefore fail
+closed.
+
+The recorded-analysis provider routes remain available for existing Modelica/CalculiX
+operations. `simulate.run-modelica-scenario@1/@2` and `verify.run-fea-static-proof@1/@2`
+retain their own provider capability ports, MCP adapters, plans and operation-specific
+WALs. They are not fallbacks for `simulate.run-qualified-modelica-kit@1` or
+`verify.run-fea-static-proof@3`, and old ROP2 plans are never redirected to a local
+executor. Conversely, the local Modelica operation remains the one fixed linear-ramp
+conformance kit rather than a replacement for historical arbitrary approved provider
+scenarios. Provider availability, an approved MRTR, a queued run or an isolated-worker
+smoke is never proof of a product execution; that requires the exact registered
+executor, runtime resources and resulting Thread evidence to be composed, captured and
+reread.

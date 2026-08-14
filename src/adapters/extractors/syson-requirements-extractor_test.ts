@@ -36,8 +36,9 @@ const CANONICAL: readonly OracleRequirement[] = Object.freeze([
 function faithfulConstraint(index: 0 | 1): Record<string, unknown> {
   const req = CANONICAL[index]!;
   return {
-    id: req.id,
+    id: `constraint-usage-${index}`,
     name: req.name,
+    sourceId: `constraint-usage-${index}`,
     expression: {
       kind: "binary",
       op: req.operator,
@@ -91,7 +92,18 @@ Deno.test(
       "requirements-element-id",
       CANONICAL,
     );
-    assertEquals(result, CANONICAL);
+    assertEquals(result.requirements, CANONICAL);
+    assertEquals(result.constraintUsages, [{
+      requirementId: "assembly_max_displacement",
+      id: "constraint-usage-0",
+      kind: "ConstraintUsage",
+      sourceId: "constraint-usage-0",
+    }, {
+      requirementId: "assembly_max_von_mises",
+      id: "constraint-usage-1",
+      kind: "ConstraintUsage",
+      sourceId: "constraint-usage-1",
+    }]);
   },
 );
 
@@ -120,7 +132,7 @@ Deno.test(
     const error = await assertRejects(
       () => extractAndVerifyOracleRequirements(client, "ctx", "elem", CANONICAL),
       RequirementExtractionError,
-      "must be an array",
+      "exact successful constraints response",
     );
     assertEquals(error.code, "requirement_extraction_failed");
     assertEquals(error.context.field, "constraints");
@@ -153,8 +165,72 @@ Deno.test(
     // faithful expression must still verify.
     const constraints = faithfulConstraints();
     (constraints[0] as Record<string, unknown>).id = "e20363c3-uuid-from-syson";
+    (constraints[0] as Record<string, unknown>).sourceId = "e20363c3-uuid-from-syson";
     const client = new SysonExtractClient({ constraints });
     await extractAndVerifyOracleRequirements(client, "ctx", "elem", CANONICAL);
+  },
+);
+
+Deno.test(
+  "a ConstraintUsage whose sourceId differs from its native id is rejected",
+  async () => {
+    const constraints = faithfulConstraints();
+    (constraints[0] as Record<string, unknown>).sourceId = "foreign-source";
+    const error = await assertRejects(
+      () =>
+        extractAndVerifyOracleRequirements(
+          new SysonExtractClient({ constraints }),
+          "ctx",
+          "elem",
+          CANONICAL,
+        ),
+      RequirementExtractionError,
+      "id and sourceId diverge",
+    );
+    assertEquals(error.code, "requirement_extraction_failed");
+  },
+);
+
+Deno.test(
+  "a successful response without exact ConstraintUsage identities is rejected",
+  async () => {
+    const constraints = faithfulConstraints();
+    delete (constraints[0] as Record<string, unknown>).sourceId;
+    const error = await assertRejects(
+      () =>
+        extractAndVerifyOracleRequirements(
+          new SysonExtractClient({ constraints }),
+          "ctx",
+          "elem",
+          CANONICAL,
+        ),
+      RequirementExtractionError,
+      "non-exact fields",
+    );
+    assertEquals(error.code, "requirement_extraction_failed");
+  },
+);
+
+Deno.test(
+  "duplicate native ConstraintUsage identities cannot satisfy two requirements",
+  async () => {
+    const constraints = faithfulConstraints();
+    const first = constraints[0] as Record<string, unknown>;
+    const second = constraints[1] as Record<string, unknown>;
+    second.id = first.id;
+    second.sourceId = first.sourceId;
+    const error = await assertRejects(
+      () =>
+        extractAndVerifyOracleRequirements(
+          new SysonExtractClient({ constraints }),
+          "ctx",
+          "elem",
+          CANONICAL,
+        ),
+      RequirementExtractionError,
+      "duplicate native ConstraintUsage identity",
+    );
+    assertEquals(error.code, "requirement_extraction_failed");
   },
 );
 

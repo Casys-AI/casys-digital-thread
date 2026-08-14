@@ -30,12 +30,13 @@ export async function writeNewAttemptFileDurably(
   directory: string,
   noProgressMessage: string,
   fileSystem: DurableAttemptWriteFileSystem = DENO_DURABLE_ATTEMPT_WRITE_FILE_SYSTEM,
+  syncBoundary?: string,
 ): Promise<void> {
   const temporary = temporaryPath(directory);
   try {
     await writeTemporaryDurably(temporary, text, noProgressMessage, fileSystem);
     await fileSystem.link(temporary, path);
-    await syncAttemptDirectoryChain(directory, fileSystem);
+    await syncAttemptDirectoryChain(directory, fileSystem, syncBoundary);
   } finally {
     await removeTemporaryIfPresent(temporary, fileSystem);
   }
@@ -48,12 +49,13 @@ export async function replaceAttemptFileDurably(
   directory: string,
   noProgressMessage: string,
   fileSystem: DurableAttemptWriteFileSystem = DENO_DURABLE_ATTEMPT_WRITE_FILE_SYSTEM,
+  syncBoundary?: string,
 ): Promise<void> {
   const temporary = temporaryPath(directory);
   try {
     await writeTemporaryDurably(temporary, text, noProgressMessage, fileSystem);
     await fileSystem.rename(temporary, path);
-    await syncAttemptDirectoryChain(directory, fileSystem);
+    await syncAttemptDirectoryChain(directory, fileSystem, syncBoundary);
   } finally {
     await removeTemporaryIfPresent(temporary, fileSystem);
   }
@@ -66,8 +68,15 @@ export async function replaceAttemptFileDurably(
 export async function syncAttemptDirectoryChain(
   path: string,
   fileSystem: DurableAttemptWriteFileSystem = DENO_DURABLE_ATTEMPT_WRITE_FILE_SYSTEM,
+  syncBoundary?: string,
 ): Promise<void> {
   let current = withoutTrailingSlash(path) || ".";
+  const boundary = syncBoundary === undefined
+    ? undefined
+    : withoutTrailingSlash(syncBoundary) || ".";
+  if (boundary !== undefined && !containsPath(boundary, current)) {
+    throw new TypeError("WAL sync boundary must contain the attempt directory.");
+  }
   while (current !== "/") {
     const directory = await fileSystem.open(current, { read: true });
     try {
@@ -75,10 +84,17 @@ export async function syncAttemptDirectoryChain(
     } finally {
       directory.close();
     }
-    if (current === "state" || current.endsWith("/state") || current === ".") return;
+    if (
+      current === boundary || current === "state" ||
+      current.endsWith("/state") || current === "."
+    ) return;
     const slash = current.lastIndexOf("/");
     current = slash < 0 ? "." : slash === 0 ? "/" : current.slice(0, slash);
   }
+}
+
+function containsPath(boundary: string, path: string): boolean {
+  return path === boundary || path.startsWith(`${boundary}/`);
 }
 
 async function writeTemporaryDurably(

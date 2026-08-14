@@ -13,6 +13,11 @@ import type {
   ProjectBriefSourceKind,
 } from "../domain/project/project-brief.ts";
 import type { ContentFingerprint } from "../domain/thread/thread-snapshot.ts";
+import {
+  INTERACTIVE_PROJECT_APPROVAL_MODE,
+  localYoloRationale,
+  type ProjectApprovalMode,
+} from "./project-approval-mode.ts";
 
 const MUTATION = {
   readOnlyHint: false,
@@ -87,6 +92,8 @@ export interface ProjectBriefToolDependencies {
     "get" | "getRevision"
   >;
   readonly commands: ProjectBriefCommandService;
+  /** Explicit startup policy; omission preserves signed MRTR elicitation. */
+  readonly approvalMode?: ProjectApprovalMode;
 }
 
 /** Conversation-first project framing. No separate Discovery aggregate exists. */
@@ -164,6 +171,30 @@ export function registerProjectBriefTools(
       briefRevision,
       inputFingerprint,
     );
+    const approvalMode = dependencies.approvalMode ??
+      INTERACTIVE_PROJECT_APPROVAL_MODE;
+    if (approvalMode.kind === "local-yolo") {
+      const suppliedRationale = typeof args.rationale === "string"
+        ? args.rationale
+        : undefined;
+      const snapshot = await dependencies.commands.approveBrief(
+        approvalMode.origin,
+        {
+          ...common,
+          briefSnapshotId,
+          briefRevision,
+          inputFingerprint,
+          rationale: localYoloRationale(
+            `positive confirmation of brief ${briefSnapshotId}@${briefRevision}`,
+            suppliedRationale,
+          ),
+        },
+      );
+      return projectResult(
+        `YOLO local startup opt-in auto-confirmed the exact brief at project revision ${snapshot.revision}. No inputResponses or retryVerified value was fabricated.`,
+        snapshot,
+      );
+    }
     const confirmation = briefConfirmationResponse(context);
     if (confirmation === undefined) return briefConfirmationRequest(current);
     if (!confirmation) {
@@ -357,7 +388,7 @@ const projectBriefProposeTool: MCPTool = {
 const projectBriefConfirmTool: MCPTool = {
   name: "project_brief_confirm",
   description:
-    "Ask the paired MCP host to present the exact pending brief. Only a verified signed retry carrying an accepted human confirmation can promote it to canonical project intent.",
+    "Ask the paired MCP host to present the exact pending brief. In the default interactive mode, only a verified signed retry carrying an accepted human confirmation can promote it to canonical project intent. An explicit loopback-only --yolo startup opt-in instead records the positive confirmation through the same command service with the persisted local-yolo human origin; it never fabricates elicitation responses.",
   inputSchema: mutationSchema({
     briefSnapshotId: STRING,
     briefRevision: { type: "integer", minimum: 1 },

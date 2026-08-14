@@ -12,6 +12,7 @@
  */
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/;
 
 /**
  * Assert that value is a plain object with exactly the declared keys.
@@ -74,6 +75,21 @@ export function safeId(value: unknown, path: string): string {
     );
   }
   return s;
+}
+
+/**
+ * Assert a bounded ASCII version token. Unlike ordinary stable identifiers,
+ * versions may carry build metadata such as `1.0.0+occt`; the separate helper
+ * keeps `+` unavailable to every non-version identifier.
+ */
+export function safeVersion(value: unknown, path: string): string {
+  const version = nonEmptyText(value, path);
+  if (!SAFE_VERSION.test(version)) {
+    throw new TypeError(
+      `${path} must be a safe ASCII version (letters, digits, ._:+-; at most 128 characters).`,
+    );
+  }
+  return version;
 }
 
 /** Assert that value is a finite number. */

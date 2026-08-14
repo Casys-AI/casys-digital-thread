@@ -16,12 +16,31 @@ import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/project/cockpit-f
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/engineering/architecture-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/engineering/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/engineering/requirements-proposal.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/analysis/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/analysis/build123d-execution-proposal.ts";
+import {
+  VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
+  VERIFY_SEAL_PROOF_CASE_OPERATION,
+} from "../../src/domain/analysis/fea-proof-proposal.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+} from "../../src/domain/analysis/simulation-case-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../src/domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { ARCHIVE_LINEAGE_OPERATION } from "../../src/domain/thread/thread-retirement.ts";
+import {
+  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+} from "../../src/orchestration/operations/recorded-analysis.ts";
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";
 import {
   createFocusedWorkspaceHandler,
   createNativeWorkbenchHandler,
+  hasUnattachedDurableProjectOperationForTest,
   resolveNativeWorkbenchProjectId,
   resolveNativeWorkbenchStartupTarget,
   resolveNativeWorkbenchSubjectId,
@@ -251,6 +270,83 @@ Deno.test("native Workbench hides durable unattached generic requirements and ge
       projectWithOperation(genericArchitectureProject("completed", r2, r3), operation),
     );
     assertEquals(await previewThreadId(handler), r3.id, operation.id);
+  }
+});
+
+Deno.test("native Workbench hides an unattached technical compilation seal until project completion", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const projects = new ProjectStore([
+    projectWithOperation(
+      genericArchitectureProject("running", r2, r3),
+      COMPILE_SEAL_ADMISSION_OPERATION,
+    ),
+  ]);
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: projects,
+    projectId: "generic-architecture-project",
+    subjectId: r2.subject.id,
+    html: "unused",
+  });
+
+  for (const status of ["running", "publishing", "failed"] as const) {
+    projects.replace(
+      projectWithOperation(
+        genericArchitectureProject(status, r2, r3),
+        COMPILE_SEAL_ADMISSION_OPERATION,
+      ),
+    );
+    assertEquals(await previewThreadId(handler), r2.id, status);
+  }
+
+  projects.replace(
+    projectWithOperation(
+      genericArchitectureProject("completed", r2, r3),
+      COMPILE_SEAL_ADMISSION_OPERATION,
+    ),
+  );
+  assertEquals(await previewThreadId(handler), r3.id);
+});
+
+Deno.test("native Workbench classifies every known durable writer before attachment", () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const operations = [
+    VERIFY_SEAL_PROOF_CASE_OPERATION,
+    VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
+    SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
+    SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
+    COMPILE_SEAL_ADMISSION_OPERATION,
+    DESIGN_EXECUTE_BUILD123D_OPERATION,
+    SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+    SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+    VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+    SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+    VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+    ARCHIVE_LINEAGE_OPERATION,
+  ] as const;
+  for (const operation of operations) {
+    for (const status of ["running", "publishing", "failed"] as const) {
+      const project = projectWithOperation(
+        genericArchitectureProject(status, r2, r3),
+        operation,
+      );
+      assertEquals(
+        hasUnattachedDurableProjectOperationForTest(project),
+        true,
+        `${operation.id}@${operation.version} ${status}`,
+      );
+    }
+    const completed = projectWithOperation(
+      genericArchitectureProject("completed", r2, r3),
+      operation,
+    );
+    assertEquals(
+      hasUnattachedDurableProjectOperationForTest(completed),
+      false,
+      `${operation.id}@${operation.version} completed`,
+    );
   }
 });
 

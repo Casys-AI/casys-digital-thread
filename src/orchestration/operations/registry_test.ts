@@ -12,7 +12,11 @@ import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./recorded-analysis.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 
 Deno.test("the intake registry starts a new idea from the approved project brief", () => {
   const idea = engineeringOperationRegistry.getIntake("idea-or-spec")!;
@@ -76,6 +80,172 @@ Deno.test("recorded-analysis @2 operations are reviewed registry entries with th
     assertEquals(registered.resolvedOperationPlan, "2.0");
     assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
   }
+});
+
+Deno.test("the local CalculiX @3 successor retains the exact ROP2 and artifact-binding boundary", () => {
+  const operation = getRegisteredEngineeringOperation(
+    VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+  )!;
+
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.resolvedOperationPlan, "2.0");
+  assertEquals(operation.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(operation.bindings.map((binding) => binding.name), [
+    "proofCase",
+    "geometry",
+  ]);
+});
+
+Deno.test("the qualified local Modelica kit is a consequential zero-binding operation", () => {
+  const registered = getRegisteredEngineeringOperation(
+    SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+  )!;
+
+  assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(registered.workItemKind, "simulate");
+  assertEquals(registered.riskClass, "consequential");
+  assertEquals(registered.execution, "trusted");
+  assertEquals(registered.resolvedOperationPlan, undefined);
+  assertEquals(registered.bindings, []);
+
+  const queued = validateRegisteredEngineeringOperationInput({
+    operation: {
+      ...SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+      bindings: [],
+    },
+    stage: "queue",
+    basisKind: "thread-snapshot",
+  });
+  assertEquals(queued.bindings, []);
+
+  const extraBinding = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+          bindings: [{
+            name: "modelicaSource",
+            source: {
+              kind: "thread-entity",
+              reference: {
+                snapshotId: "thread.snapshot.7",
+                snapshotRevision: 7,
+                kind: "artifact",
+                id: "artifact.caller-selected-modelica",
+              },
+            },
+          }],
+        },
+        stage: "planning",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(extraBinding.code, "invalid_bindings");
+});
+
+Deno.test("technical compilation admission is one consequential trusted Thread operation", () => {
+  const operation = getRegisteredEngineeringOperation(
+    COMPILE_SEAL_ADMISSION_OPERATION,
+  )!;
+
+  assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(operation.workItemKind, "review");
+  assertEquals(operation.riskClass, "consequential");
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(operation.bindings, [{
+    name: "sysmlModel",
+    allowedSourceKinds: ["thread-entity"],
+    cardinality: "one",
+    allowedThreadEntityKinds: ["artifact"],
+  }]);
+});
+
+Deno.test("technical compilation admission requires its exact SysML artifact and Thread basis", () => {
+  const binding = {
+    name: "sysmlModel",
+    source: {
+      kind: "thread-entity" as const,
+      reference: {
+        snapshotId: "thread.snapshot.7",
+        snapshotRevision: 7,
+        kind: "artifact" as const,
+        id: "artifact.sysml.model.4",
+      },
+    },
+  };
+  const queued = validateRegisteredEngineeringOperationInput({
+    operation: {
+      ...COMPILE_SEAL_ADMISSION_OPERATION,
+      bindings: [binding],
+    },
+    stage: "queue",
+    basisKind: "thread-snapshot",
+  });
+  assertEquals(queued.operation.id, COMPILE_SEAL_ADMISSION_OPERATION.id);
+  assertEquals(queued.bindings, [binding]);
+
+  const wrongBasis = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...COMPILE_SEAL_ADMISSION_OPERATION,
+          bindings: [binding],
+        },
+        stage: "queue",
+        basisKind: "approved-brief",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(wrongBasis.code, "unsupported_basis");
+
+  for (
+    const bindings of [
+      [],
+      [{
+        ...binding,
+        source: {
+          ...binding.source,
+          reference: {
+            ...binding.source.reference,
+            kind: "requirement" as const,
+          },
+        },
+      }],
+      [binding, structuredClone(binding)],
+    ]
+  ) {
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...COMPILE_SEAL_ADMISSION_OPERATION,
+            bindings,
+          },
+          stage: "planning",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "invalid_bindings");
+  }
+});
+
+Deno.test("Build123d execution is consequential and binds one exact compilation admission artifact", () => {
+  const operation = getRegisteredEngineeringOperation(
+    DESIGN_EXECUTE_BUILD123D_OPERATION,
+  )!;
+
+  assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(operation.workItemKind, "design");
+  assertEquals(operation.riskClass, "consequential");
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(operation.bindings, [{
+    name: "compilationAdmission",
+    allowedSourceKinds: ["thread-entity"],
+    cardinality: "one",
+    allowedThreadEntityKinds: ["artifact"],
+  }]);
 });
 
 Deno.test("operation declarations cannot mutate the code-owned registry", () => {

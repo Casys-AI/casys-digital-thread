@@ -104,6 +104,37 @@ Deno.test("directory syncing stops at the repository-owned state boundary", asyn
   ]);
 });
 
+Deno.test("directory syncing stops at an explicit absolute temporary boundary", async () => {
+  const fileSystem = new RecordingFileSystem(4);
+
+  await syncAttemptDirectoryChain(
+    "/private/tmp/casys-run/attempts",
+    fileSystem,
+    "/private/tmp/casys-run",
+  );
+
+  assertEquals(fileSystem.syncedDirectories, [
+    "/private/tmp/casys-run/attempts",
+    "/private/tmp/casys-run",
+  ]);
+});
+
+Deno.test("directory syncing rejects a boundary outside the attempt directory", async () => {
+  const fileSystem = new RecordingFileSystem(4);
+
+  await assertRejects(
+    () =>
+      syncAttemptDirectoryChain(
+        "/private/tmp/casys-run/attempts",
+        fileSystem,
+        "/private/tmp/foreign-run",
+      ),
+    TypeError,
+    "must contain",
+  );
+  assertEquals(fileSystem.syncedDirectories, []);
+});
+
 class RecordingFileSystem implements DurableAttemptWriteFileSystem {
   readonly files = new Map<string, Uint8Array>();
   readonly operations: string[] = [];

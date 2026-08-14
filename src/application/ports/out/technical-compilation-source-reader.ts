@@ -1,0 +1,45 @@
+import type { TechnicalCompilationSource } from "../../../domain/analysis/technical-compilation.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import type { EngineeringThreadSnapshotBasis } from "../../../domain/project/engineering-project.ts";
+
+export interface TechnicalCompilationSourceReadRequest {
+  readonly projectId: string;
+  readonly basis: EngineeringThreadSnapshotBasis;
+  /** Treated only as a capture-store locator, never as source facts. */
+  readonly reference: Readonly<Record<string, unknown>>;
+  readonly referenceFingerprint: ContentFingerprint;
+}
+
+export interface ReopenedTechnicalCompilationSource {
+  /** Fingerprint of the exact normalized reference the reader resolved. */
+  readonly referenceFingerprint: ContentFingerprint;
+  readonly source: TechnicalCompilationSource;
+  /**
+   * Evidence identities attested by replay of the registered source-capture
+   * profile. None of these fields may be supplied directly to the preview.
+   */
+  readonly provenance: TechnicalCompilationSourceProvenance;
+}
+
+export interface TechnicalCompilationSourceProvenance {
+  readonly profile: {
+    readonly id: string;
+    readonly version: string;
+    readonly fingerprint: ContentFingerprint;
+  };
+  readonly analyzer: {
+    readonly id: string;
+    readonly version: string;
+  };
+  readonly sourceFingerprint: ContentFingerprint;
+  /** Fingerprint of the complete opaque capture reference. */
+  readonly captureFingerprint: ContentFingerprint;
+  readonly analysisFingerprint: ContentFingerprint;
+}
+
+/** Reopens source bytes and parser facts from their immutable captures. */
+export interface TechnicalCompilationSourceReader {
+  read(
+    request: TechnicalCompilationSourceReadRequest,
+  ): Promise<ReopenedTechnicalCompilationSource | undefined>;
+}

@@ -10,6 +10,7 @@ import type {
 } from "../../domain/project/engineering-project.ts";
 import {
   assertThreadWriteBasisAvailable,
+  TERMINAL_THREAD_WRITE_FAILURES,
   threadWriteBasisLeaseScope,
 } from "./thread-write-basis-guard.ts";
 import {
@@ -22,7 +23,17 @@ import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../orchestration/operations/recorded-analysis.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
+import {
+  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
+  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+} from "../../orchestration/operations/inspection-drone-v4.ts";
 
 const BASIS = {
   kind: "thread-snapshot" as const,
@@ -36,6 +47,8 @@ Deno.test("all generic Thread writers share one lease for an exact basis", () =>
     run("architecture", "queued"),
     run("requirements", "queued"),
     run("geometry", "queued"),
+    run("admission", "queued"),
+    run("build123d-execution", "queued"),
   ].map(threadWriteBasisLeaseScope);
 
   assertEquals(new Set(scopes).size, 1);
@@ -126,6 +139,181 @@ Deno.test("recorded @2 writers participate in the same basis exclusion", async (
       "active, completed, or uncertain durable write",
     );
   }
+});
+
+Deno.test("local Modelica and CalculiX @3 writers share the same Thread-basis exclusion", async () => {
+  const current = run("geometry", "queued");
+  for (
+    const [index, operation] of [
+      SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+      VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+    ].entries()
+  ) {
+    const sibling = {
+      ...run("geometry", "running"),
+      id: `local-isolated-writer-${index}`,
+      workItemId: `work-local-isolated-writer-${index}`,
+    };
+    const initial = project([current, sibling]);
+    const value: EngineeringProjectSnapshot = {
+      ...initial,
+      workItems: initial.workItems.map((item) =>
+        item.id === sibling.workItemId
+          ? {
+            ...item,
+            operation: {
+              ...operation,
+              bindings: item.operation?.bindings ?? [],
+            },
+          }
+          : item
+      ),
+    };
+
+    assertEquals(
+      threadWriteBasisLeaseScope(current),
+      threadWriteBasisLeaseScope(sibling),
+    );
+    await assertRejects(
+      () => assertThreadWriteBasisAvailable(value, current),
+      EngineeringProjectCommandError,
+      "active, completed, or uncertain durable write",
+    );
+  }
+});
+
+Deno.test("SysON seed and inspection writers share the technical-compilation basis exclusion", async () => {
+  const current = run("admission", "queued");
+  for (
+    const [index, operation] of [
+      SYSON_MODEL_SEED_OPERATION,
+      INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
+      INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+    ].entries()
+  ) {
+    const sibling = {
+      ...run("geometry", "running"),
+      id: `provider-writer-${index}`,
+      workItemId: `work-provider-writer-${index}`,
+    };
+    const initial = project([current, sibling]);
+    const value: EngineeringProjectSnapshot = {
+      ...initial,
+      workItems: initial.workItems.map((item) =>
+        item.id === sibling.workItemId
+          ? {
+            ...item,
+            operation: {
+              ...operation,
+              bindings: item.operation?.bindings ?? [],
+            },
+          }
+          : item
+      ),
+    };
+    assertEquals(
+      threadWriteBasisLeaseScope(current),
+      threadWriteBasisLeaseScope(sibling),
+    );
+    await assertRejects(
+      () => assertThreadWriteBasisAvailable(value, current),
+      EngineeringProjectCommandError,
+      "active, completed, or uncertain durable write",
+    );
+  }
+});
+
+Deno.test("a durable technical-compilation admission blocks every sibling on the same basis", async () => {
+  for (const status of ["running", "publishing", "completed"] as const) {
+    const current = run("geometry", "queued");
+    const sibling = run("admission", status);
+
+    await assertRejects(
+      () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
+      EngineeringProjectCommandError,
+      "active, completed, or uncertain durable write",
+    );
+  }
+});
+
+Deno.test("archive-lineage shares the basis exclusion with technical compilation", async () => {
+  const current = run("admission", "queued");
+  const sibling = {
+    ...run("geometry", "publishing"),
+    id: "run:archive",
+    workItemId: "work:archive",
+  };
+  const initial = project([current, sibling]);
+  const value: EngineeringProjectSnapshot = {
+    ...initial,
+    workItems: initial.workItems.map((item) =>
+      item.id === sibling.workItemId
+        ? {
+          ...item,
+          operation: {
+            ...ARCHIVE_LINEAGE_OPERATION,
+            bindings: item.operation?.bindings ?? [],
+          },
+        }
+        : item
+    ),
+  };
+  assertEquals(
+    threadWriteBasisLeaseScope(current),
+    threadWriteBasisLeaseScope(sibling),
+  );
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(value, current),
+    EngineeringProjectCommandError,
+    "active, completed, or uncertain durable write",
+  );
+});
+
+Deno.test("an uncertain technical-compilation Thread write remains quarantined after failure", async () => {
+  const current = run("requirements", "queued");
+  const sibling = {
+    ...run("admission", "failed"),
+    failure: {
+      code: "compile-seal-admission-thread-write-outcome-unknown",
+      message: "ThreadSnapshot publication outcome is unknown.",
+    },
+  };
+
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
+    EngineeringProjectCommandError,
+    "requires exact recovery attachment",
+  );
+  assertEquals(
+    TERMINAL_THREAD_WRITE_FAILURES.has(sibling.failure.code),
+    false,
+    "a local ThreadSnapshot outcome must not enter generic provider reconciliation",
+  );
+});
+
+Deno.test("a forged generic reconciliation cannot release an uncertain technical-compilation Thread write", async () => {
+  const current = run("requirements", "queued");
+  const sibling = {
+    ...run("admission", "failed"),
+    failure: {
+      code: "compile-seal-admission-thread-write-outcome-unknown",
+      message: "ThreadSnapshot publication outcome is unknown.",
+    },
+    uncertainWriterReconciliation: {
+      kind: "uncertain-writer-resolved" as const,
+      outcome: "provider-did-not-write" as const,
+      reconciledAt: "2026-08-10T00:00:00.000Z",
+      reconciledBy: { id: "op-1", origin: "human" as const },
+      decisionId: "decision-reconcile-forged",
+      providerInspectionAttestation: "No provider exists for this local Thread write.",
+    },
+  };
+
+  await assertRejects(
+    () => assertThreadWriteBasisAvailable(project([current, sibling]), current),
+    EngineeringProjectCommandError,
+    "requires exact recovery attachment",
+  );
 });
 
 Deno.test("a terminal uncertain provider sibling blocks after its lease is released", async () => {
@@ -350,14 +538,23 @@ Deno.test("a failed geometry sibling is conservatively treated as durable", asyn
   );
 });
 
-type OperationName = "architecture" | "requirements" | "geometry";
+type OperationName =
+  | "architecture"
+  | "requirements"
+  | "geometry"
+  | "admission"
+  | "build123d-execution";
 
 function operation(name: OperationName): EngineeringOperationRef {
   const identity = name === "architecture"
     ? MODEL_WRITE_ARCHITECTURE_OPERATION
     : name === "requirements"
     ? MODEL_WRITE_REQUIREMENTS_OPERATION
-    : DESIGN_WRITE_GEOMETRY_OPERATION;
+    : name === "geometry"
+    ? DESIGN_WRITE_GEOMETRY_OPERATION
+    : name === "admission"
+    ? COMPILE_SEAL_ADMISSION_OPERATION
+    : DESIGN_EXECUTE_BUILD123D_OPERATION;
   return { ...identity, bindings: [] };
 }
 

@@ -3884,7 +3884,7 @@ function validateRunInvariant(
 
 /**
  * Resolved-operation-plan/2.0 is a closed persisted contract, not a marker
- * that can be dropped from a stored snapshot. The two exact @2 operation
+ * that can be dropped from a stored snapshot. The exact plan-bearing operation
  * identities require the server-stamped run and queue-receipt references;
  * every other operation, including immutable @1 history, must remain planless.
  */
@@ -3911,7 +3911,7 @@ function validateResolvedOperationPlanRunInvariant(
         issues,
         "unexpected_resolved_operation_plan",
         `${path}.resolvedOperationPlan`,
-        "is allowed only for the two closed recorded @2 operation identities",
+        "is allowed only for a closed plan-bearing operation identity",
       );
     }
     if (receiptPlan !== undefined) {
@@ -3919,7 +3919,7 @@ function validateResolvedOperationPlanRunInvariant(
         issues,
         "unexpected_resolved_operation_plan",
         "$.commandReceipts",
-        "a queue receipt may carry a resolved operation plan only for a closed recorded @2 run",
+        "a queue receipt may carry a resolved operation plan only for a closed plan-bearing run",
       );
     }
     return;
@@ -3930,7 +3930,7 @@ function validateResolvedOperationPlanRunInvariant(
       issues,
       "missing_resolved_operation_plan",
       `${path}.resolvedOperationPlan`,
-      "is required for a closed recorded @2 operation",
+      "is required for a closed plan-bearing operation",
     );
   } else if (run.resolvedOperationPlan.planId !== run.id) {
     issue(
@@ -3945,7 +3945,7 @@ function validateResolvedOperationPlanRunInvariant(
       issues,
       "missing_resolved_operation_plan_receipt",
       `${path}.statusHistory[0]`,
-      "a closed recorded @2 operation requires its exact queue receipt binding",
+      "a closed plan-bearing operation requires its exact queue receipt binding",
     );
     return;
   }
@@ -3965,9 +3965,12 @@ function validateResolvedOperationPlanRunInvariant(
 function isResolvedOperationPlanV2Operation(
   operation: EngineeringWorkItem["operation"],
 ): boolean {
-  return operation?.version === "2" && (
-    operation.id === "simulate.run-modelica-scenario" ||
-    operation.id === "verify.run-fea-static-proof"
+  return (
+    operation?.id === "simulate.run-modelica-scenario" &&
+    operation.version === "2"
+  ) || (
+    operation?.id === "verify.run-fea-static-proof" &&
+    (operation.version === "2" || operation.version === "3")
   );
 }
 

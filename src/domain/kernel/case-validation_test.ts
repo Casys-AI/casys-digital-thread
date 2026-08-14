@@ -9,6 +9,7 @@ import {
   positiveInteger,
   rejectDuplicates,
   safeId,
+  safeVersion,
 } from "./case-validation.ts";
 
 // ---------------------------------------------------------------------------
@@ -133,6 +134,23 @@ Deno.test("case-validation safeId accepts a hyphenated identifier", () => {
 
 Deno.test("case-validation safeId accepts an alphanumeric identifier", () => {
   assertEquals(safeId("req1", "$x"), "req1");
+});
+
+Deno.test("case-validation safeVersion accepts bounded build metadata without widening safeId", () => {
+  assertEquals(safeVersion("1.0.0+occt", "$version"), "1.0.0+occt");
+  assertThrows(() => safeId("1.0.0+occt", "$id"), TypeError);
+});
+
+Deno.test("case-validation safeVersion rejects unsafe or overlong versions", () => {
+  for (
+    const version of ["version with space", "1.0.0/occt", "é.1", `v${"1".repeat(128)}`]
+  ) {
+    assertThrows(
+      () => safeVersion(version, "$version"),
+      TypeError,
+      "safe ASCII version",
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------

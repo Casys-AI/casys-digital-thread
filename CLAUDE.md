@@ -47,6 +47,23 @@ deno task verify:thread:presentation   # gate de release : frontière mcp-view d
 deno task verify:evidence              # cohérence des fixtures console
 ```
 
+## Principes d'implémentation
+
+- Pour le compilateur et l'exécution isolée, choisir les bibliothèques et
+  infrastructures matures sur leurs garanties réelles ; aucune contrainte
+  artificielle de taille de bundle ne justifie de réimplémenter un parseur, un
+  validateur ou une sandbox moins robuste.
+- Conserver les backends derrière des ports interchangeables : une intégration
+  Deno Sandbox, OCI ou microVM ne doit jamais devenir l'autorité du domaine ni
+  contaminer les contrats publics avec ses handles, chemins ou options.
+- Quand un changement traverse un fichier ou un dossier mal organisé, faire le
+  refactor local qui améliore réellement les frontières, la lisibilité et
+  l'expérience développeur/agent ; éviter en revanche la réorganisation sans
+  rapport causal avec le vertical en cours.
+- Pendant l'implémentation, préférer les checks ciblés et causaux. Réserver les
+  suites globales systématiques aux vrais jalons d'intégration ou de release,
+  après stabilisation des écritures concurrentes.
+
 Un seul fichier de test, ou un seul cas — les permissions doivent être reprises à la
 main, `deno task test` ne prend pas d'argument de chemin :
 
@@ -77,7 +94,7 @@ deno task probe:constraint-solver \
 
 **Piège `deno task check`** : la tâche énumère les fichiers un par un dans `deno.json`.
 Un nouveau module non-test qui n'y est pas ajouté n'est jamais type-checké — l'oubli est
-silencieux. La liste couvre aujourd'hui les 191 modules non-test hors `src/ui/`
+silencieux. La liste doit couvrir tous les modules non-test hors `src/ui/`
 (celui-ci relève de `check:ui`) ; elle est complète, et le rester demande d'y ajouter
 chaque nouveau module. Méfiance particulière envers les tâches `check:*` dédiées : deux
 d'entre elles visaient des gates de release absentes du `check` principal, ce qui

@@ -53,6 +53,10 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "./executor-run-helpers.ts";
+import {
+  assertThreadWriteBasisAvailable,
+  threadWriteBasisLeaseScope,
+} from "./thread-write-basis-guard.ts";
 
 type Element = InspectionDroneV4Element;
 type Structure = Readonly<
@@ -111,157 +115,165 @@ export class InspectionDroneV4PartDefinitionsRunExecutor {
       );
     }
     const initial = await this.project(command.projectId);
-    shape(initial, requireRun(initial, command.runId));
-    return await this.d.lease.withLease(command.projectId, command.runId, async () => {
-      let claimed = false;
-      // Once save(r4) returned, failure to read it back is an outcome-unknown
-      // durability boundary: leave the run active for exact recovery rather
-      // than falsely recording a failed run beside an unattached r4.
-      let persisted = false;
-      let publicationPersisted = false;
-      let publicationAttempted = false;
-      try {
-        let project = await this.project(command.projectId);
-        let run = requireRun(project, command.runId);
-        if (run.status === "completed") {
-          const durable = await this.d.publications.read(project.project.id, run.id);
-          if (!durable) {
-            throw denied(
-              "A completed inspection-drone PartDefinitions run has no durable publication record to verify or repair.",
-            );
-          }
-          return await this.resumePublication(origin, command, project, run);
-        }
-        if (run.status === "publishing" || run.status === "running") {
-          const durable = await this.d.publications.read(project.project.id, run.id);
-          if (durable) {
+    const initialRun = requireRun(initial, command.runId);
+    shape(initial, initialRun);
+    return await this.d.lease.withLease(
+      command.projectId,
+      threadWriteBasisLeaseScope(initialRun),
+      async () => {
+        let claimed = false;
+        // Once save(r4) returned, failure to read it back is an outcome-unknown
+        // durability boundary: leave the run active for exact recovery rather
+        // than falsely recording a failed run beside an unattached r4.
+        let persisted = false;
+        let publicationPersisted = false;
+        let publicationAttempted = false;
+        try {
+          let project = await this.project(command.projectId);
+          let run = requireRun(project, command.runId);
+          if (run.status === "completed") {
+            const durable = await this.d.publications.read(project.project.id, run.id);
+            if (!durable) {
+              throw denied(
+                "A completed inspection-drone PartDefinitions run has no durable publication record to verify or repair.",
+              );
+            }
             return await this.resumePublication(origin, command, project, run);
           }
-        }
-        if (run.status === "publishing") {
-          return await this.resumePublication(origin, command, project, run);
-        }
-        await this.inputs(project, run);
-        await this.d.commands.claimRun(origin, {
-          ...command,
-          commandId: step(command.commandId, "claim"),
-          summary: "Started the read-only inspection-drone PartDefinitions capture.",
-        });
-        claimed = true;
-        project = await this.project(command.projectId);
-        run = requireRun(project, command.runId);
-        claim(project, run, origin);
-        const input = await this.inputs(project, run);
-        const structures: Array<{ definition: Element; structure: Structure }> = [];
-        for (const label of INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT) {
-          const definition = input.architecture.declarationByLabel.get(label)!;
-          structures.push({
-            definition,
-            structure: await this.structure(
-              input.architecture.editingContextId,
+          await assertThreadWriteBasisAvailable(project, run);
+          if (run.status === "publishing" || run.status === "running") {
+            const durable = await this.d.publications.read(project.project.id, run.id);
+            if (durable) {
+              return await this.resumePublication(origin, command, project, run);
+            }
+          }
+          if (run.status === "publishing") {
+            return await this.resumePublication(origin, command, project, run);
+          }
+          await this.inputs(project, run);
+          await this.d.commands.claimRun(origin, {
+            ...command,
+            commandId: step(command.commandId, "claim"),
+            summary: "Started the read-only inspection-drone PartDefinitions capture.",
+          });
+          claimed = true;
+          project = await this.project(command.projectId);
+          run = requireRun(project, command.runId);
+          claim(project, run, origin);
+          const input = await this.inputs(project, run);
+          const structures: Array<{ definition: Element; structure: Structure }> = [];
+          for (const label of INSPECTION_DRONE_V4_PART_DEFINITION_CONTRACT) {
+            const definition = input.architecture.declarationByLabel.get(label)!;
+            structures.push({
               definition,
-            ),
-          });
-        }
-        verifyStructures(structures, input.architecture);
-        const capturedAt = requiredStart(run);
-        const record = {
-          schemaVersion: INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA,
-          kind: "inspection-drone-v4-part-definitions",
-          scope: "read-only-product-structure",
-          statement: INSPECTION_DRONE_V4_PART_DEFINITIONS_STATEMENT,
-          capturedAt,
-          trustedRunId: run.id,
-          operation: INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
-          architecture: {
-            artifactId: input.artifact.id,
-            fingerprint: input.artifact.fingerprint,
-            uri: input.artifact.uri,
-            editingContextId: input.architecture.editingContextId,
-            architecturePackage: input.architecture.package,
-            recipe: { textSha256: input.architecture.recipeDigest },
-            rootUsageTypes: input.architecture.rootUsages,
-          },
-          definitions: structures,
-        } as const;
-        const text = deterministicJson(record);
-        const fingerprint = await sha256Fingerprint(record);
-        await this.d.captures.save(fingerprint, text);
-        if (await this.d.captures.read(fingerprint) !== text) {
-          throw new Error(
-            "The persisted inspection-drone PartDefinitions capture did not read back exactly.",
+              structure: await this.structure(
+                input.architecture.editingContextId,
+                definition,
+              ),
+            });
+          }
+          verifyStructures(structures, input.architecture);
+          const capturedAt = requiredStart(run);
+          const record = {
+            schemaVersion: INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_SCHEMA,
+            kind: "inspection-drone-v4-part-definitions",
+            scope: "read-only-product-structure",
+            statement: INSPECTION_DRONE_V4_PART_DEFINITIONS_STATEMENT,
+            capturedAt,
+            trustedRunId: run.id,
+            operation: INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+            architecture: {
+              artifactId: input.artifact.id,
+              fingerprint: input.artifact.fingerprint,
+              uri: input.artifact.uri,
+              editingContextId: input.architecture.editingContextId,
+              architecturePackage: input.architecture.package,
+              recipe: { textSha256: input.architecture.recipeDigest },
+              rootUsageTypes: input.architecture.rootUsages,
+            },
+            definitions: structures,
+          } as const;
+          const text = deterministicJson(record);
+          const fingerprint = await sha256Fingerprint(record);
+          await this.d.captures.save(fingerprint, text);
+          if (await this.d.captures.read(fingerprint) !== text) {
+            throw new Error(
+              "The persisted inspection-drone PartDefinitions capture did not read back exactly.",
+            );
+          }
+          const artifact = partDefinitionArtifact(
+            fingerprint,
+            run.id,
+            capturedAt,
+            input.artifact.id,
+            this.d.captures.uriFor(fingerprint),
           );
-        }
-        const artifact = partDefinitionArtifact(
-          fingerprint,
-          run.id,
-          capturedAt,
-          input.artifact.id,
-          this.d.captures.uriFor(fingerprint),
-        );
-        const snapshot = materialize(
-          input.base,
-          artifact,
-          input.artifact,
-          capturedAt,
-          input.architecture.package.id,
-        );
-        publicationAttempted = true;
-        await this.d.publications.save({
-          schemaVersion: "inspection-drone-v4-part-definitions-publication/1.0",
-          projectId: command.projectId,
-          runId: run.id,
-          fingerprint,
-          snapshot,
-        });
-        publicationPersisted = true;
-        // The WAL must exist before r4 can become durable: a crash after the
-        // snapshot write is then recoverable without re-reading SysON.
-        await this.d.snapshots.save(snapshot);
-        persisted = true;
-        const readback = await freshSnapshot(this.d.snapshots, snapshot.id);
-        if (!readback || deterministicJson(readback) !== deterministicJson(snapshot)) {
-          throw new Error(
-            "The persisted inspection-drone PartDefinitions snapshot did not read back exactly.",
+          const snapshot = materialize(
+            input.base,
+            artifact,
+            input.artifact,
+            capturedAt,
+            input.architecture.package.id,
           );
-        }
-        project = await this.project(command.projectId);
-        run = requireRun(project, command.runId);
-        if (run.status === "running") {
-          await this.d.commands.publishRun(origin, {
-            ...command,
-            commandId: step(command.commandId, "publish"),
-            expectedRevision: project.revision,
-            summary:
-              "Publishing the verified inspection-drone PartDefinitions capture.",
+          publicationAttempted = true;
+          await this.d.publications.save({
+            schemaVersion: "inspection-drone-v4-part-definitions-publication/1.0",
+            projectId: command.projectId,
+            runId: run.id,
+            fingerprint,
+            snapshot,
           });
+          publicationPersisted = true;
+          // The WAL must exist before r4 can become durable: a crash after the
+          // snapshot write is then recoverable without re-reading SysON.
+          await this.d.snapshots.save(snapshot);
+          persisted = true;
+          const readback = await freshSnapshot(this.d.snapshots, snapshot.id);
+          if (
+            !readback || deterministicJson(readback) !== deterministicJson(snapshot)
+          ) {
+            throw new Error(
+              "The persisted inspection-drone PartDefinitions snapshot did not read back exactly.",
+            );
+          }
+          project = await this.project(command.projectId);
+          run = requireRun(project, command.runId);
+          if (run.status === "running") {
+            await this.d.commands.publishRun(origin, {
+              ...command,
+              commandId: step(command.commandId, "publish"),
+              expectedRevision: project.revision,
+              summary:
+                "Publishing the verified inspection-drone PartDefinitions capture.",
+            });
+          }
+          project = await this.project(command.projectId);
+          run = requireRun(project, command.runId);
+          if (run.status === "publishing") {
+            await this.d.commands.completeRun(origin, {
+              ...command,
+              commandId: step(command.commandId, "complete"),
+              expectedRevision: project.revision,
+              summary:
+                "Recorded the exact inspection-drone PartDefinitions product-structure capture.",
+              resultSnapshot: snapshotRef(snapshot),
+              evidenceRefs: [artifactRef(snapshot)],
+            });
+          }
+          return complete(await this.project(command.projectId), command);
+        } catch (error) {
+          const recoveredPublication = publicationAttempted && !publicationPersisted
+            ? await this.d.publications.read(command.projectId, command.runId).catch(
+              () => undefined,
+            )
+            : undefined;
+          if (claimed && !persisted && !publicationPersisted && !recoveredPublication) {
+            await this.fail(origin, command);
+          }
+          throw error;
         }
-        project = await this.project(command.projectId);
-        run = requireRun(project, command.runId);
-        if (run.status === "publishing") {
-          await this.d.commands.completeRun(origin, {
-            ...command,
-            commandId: step(command.commandId, "complete"),
-            expectedRevision: project.revision,
-            summary:
-              "Recorded the exact inspection-drone PartDefinitions product-structure capture.",
-            resultSnapshot: snapshotRef(snapshot),
-            evidenceRefs: [artifactRef(snapshot)],
-          });
-        }
-        return complete(await this.project(command.projectId), command);
-      } catch (error) {
-        const recoveredPublication = publicationAttempted && !publicationPersisted
-          ? await this.d.publications.read(command.projectId, command.runId).catch(() =>
-            undefined
-          )
-          : undefined;
-        if (claimed && !persisted && !publicationPersisted && !recoveredPublication) {
-          await this.fail(origin, command);
-        }
-        throw error;
-      }
-    });
+      },
+    );
   }
 
   private async resumePublication(

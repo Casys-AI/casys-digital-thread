@@ -71,6 +71,15 @@ import {
   THREAD_ENTITY_REFERENCE_SCHEMA,
   THREAD_SNAPSHOT_REF_SCHEMA,
 } from "./project-control/mcp-tool-schemas.ts";
+import {
+  type ProjectTechnicalCompilationToolDependencies,
+  registerProjectTechnicalCompilationTools,
+} from "./project-control/technical-compilation-tools.ts";
+import {
+  INTERACTIVE_PROJECT_APPROVAL_MODE,
+  localYoloRationale,
+  type ProjectApprovalMode,
+} from "./project-approval-mode.ts";
 
 const REVIEW_INTENT_NO_COMMENT_RATIONALE =
   "Workbench review requested validation without an additional reviewer comment.";
@@ -87,7 +96,8 @@ export interface EngineeringProjectSnapshotReader {
   ): Promise<EngineeringProjectSnapshot | undefined>;
 }
 
-export interface ProjectControlToolDependencies {
+export interface ProjectControlToolDependencies
+  extends ProjectTechnicalCompilationToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional browser-to-agent outbox; it carries no project decision authority. */
@@ -102,6 +112,8 @@ export interface ProjectControlToolDependencies {
    * that case (D2 — drafts never appear in ThreadSnapshot).
    */
   geometryPreview?: ProjectGeometryPreviewUseCase;
+  /** Explicit startup policy; omission preserves signed MRTR elicitation. */
+  approvalMode?: ProjectApprovalMode;
 }
 
 export function registerProjectControlTools(
@@ -167,6 +179,8 @@ export function registerProjectControlTools(
       };
     });
   }
+
+  registerProjectTechnicalCompilationTools(app, dependencies);
 
   if (dependencies.reviewIntents) {
     app.registerTool(projectReviewIntentListTool, async (args) => {
@@ -1021,7 +1035,7 @@ const projectDecisionProposeTool: MCPTool = {
 const projectDecisionApproveTool: MCPTool = {
   name: "project_decision_approve",
   description:
-    "Ask the paired MCP host to present one exact proposed decision for confirmation. The first call requests elicitation; only a signed retry whose request state verifies and whose response is accepted records approval. The signature protects retry integrity, not user identity; the host is responsible for presenting the request to the person. The agent cannot call the underlying human-authority mutation directly.",
+    "Ask the paired MCP host to present one exact proposed decision for confirmation. In the default interactive mode, the first call requests elicitation and only a signed accepted retry records approval. An explicit loopback-only --yolo startup opt-in instead records the positive approval through the same command service with the persisted local-yolo human origin; it never fabricates elicitation responses. Rejection and all other human-only actions remain interactive.",
   inputSchema: mutationSchema({
     decisionId: { type: "string", minLength: 1 },
     inputFingerprint: FINGERPRINT_SCHEMA,
@@ -1396,6 +1410,26 @@ async function handleDecisionElicitation(
   );
   if (isUncertainWriterBasisReleaseDecision(current, decisionId)) {
     await assertUncertainWriterBasisReleaseDecisionSeal(current, decisionId);
+  }
+  const approvalMode = dependencies.approvalMode ??
+    INTERACTIVE_PROJECT_APPROVAL_MODE;
+  if (action === "approve" && approvalMode.kind === "local-yolo") {
+    const snapshot = await dependencies.commands.approveDecision(
+      approvalMode.origin,
+      {
+        ...common,
+        decisionId,
+        inputFingerprint,
+        rationale: localYoloRationale(
+          `positive MRTR decision ${decisionId}`,
+          rationale,
+        ),
+      },
+    );
+    return projectResult(
+      `YOLO local startup opt-in auto-approved decision ${decisionId} at project revision ${snapshot.revision}. No inputResponses or retryVerified value was fabricated.`,
+      snapshot,
+    );
   }
   const confirmation = decisionConfirmationResponse(context);
   if (confirmation === undefined) {

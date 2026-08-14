@@ -40,6 +40,7 @@ import {
   RecordedOperationPlanResolver,
   type RecordedPlanArtifactReader,
 } from "./recorded-operation-plan-resolver.ts";
+import { FixedCalculixIsolatedExecutionProfileCatalog } from "../execution-profiles/fixed-calculix-isolated-execution-profile.ts";
 
 const AT = "2026-08-12T00:00:00.000Z";
 
@@ -303,6 +304,47 @@ Deno.test("RecordedOperationPlanResolver resolves the public CalculiX STEP route
     decisionId: "seal-decision-fea",
   });
   assertEquals(plan.authorization.mrtr.decisionId, "decision-fea");
+});
+
+Deno.test("RecordedOperationPlanResolver seals only @3 with the exact local CalculiX profile", async () => {
+  const profile = await new FixedCalculixIsolatedExecutionProfileCatalog({
+    imageReference: `casys/calculix@sha256:${"a".repeat(64)}`,
+    wrapperSha256: "b".repeat(64),
+    policy: {
+      id: "calculix-local-test",
+      version: "1.0.0",
+      fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+    },
+    limits: {
+      maxWallTimeMs: 120_000,
+      maxCpuTimeMs: 100_000,
+      maxMemoryBytes: 1_073_741_824,
+      maxProcesses: 32,
+      maxStdoutBytes: 65_536,
+      maxStderrBytes: 65_536,
+      maxOutputFileBytes: 134_217_728,
+      maxOutputTotalBytes: 268_435_456,
+    },
+  }).initial();
+  const fixture = await calculixFixture({ operationVersion: "3" });
+  const plan = await new RecordedOperationPlanResolver({
+    ...fixture.dependencies,
+    calculix: { localProfile: profile },
+  }).resolve(fixture.input);
+  assertEquals(plan.action.kind, "isolated-static-structural-analysis");
+  if (plan.action.kind !== "isolated-static-structural-analysis") throw new Error();
+  assertEquals(plan.action.executor.profileFingerprint, profile.profileFingerprint);
+  assertEquals(Object.hasOwn(plan.action, "provider"), false);
+  assertEquals(plan.workItem.operation.version, "3");
+  assertEquals(plan.recovery.policy, "calculix-isolated-generation-recovery@1.0");
+
+  const missing = await calculixFixture({ operationVersion: "3" });
+  await assertRejects(
+    () =>
+      new RecordedOperationPlanResolver(missing.dependencies).resolve(missing.input),
+    TypeError,
+    "requires an exact server-composed isolated profile",
+  );
 });
 
 Deno.test("RecordedOperationPlanResolver rejects a transplanted CalculiX proof authority", async () => {
@@ -975,6 +1017,7 @@ async function calculixFixture(
     stepUri?: (digest: string) => string;
     stepKind?: ThreadArtifact["kind"];
     stepMediaType?: string;
+    operationVersion?: "2" | "3";
   } = {},
 ) {
   const rawProof = JSON.parse(
@@ -1208,6 +1251,7 @@ async function calculixFixture(
     workItemId: "work-fea",
     decisionId: "decision-fea",
     operationId: "verify.run-fea-static-proof",
+    operationVersion: options.operationVersion,
     bindings: [
       binding("proofCase", basis, proofArtifact.id),
       binding("geometry", basis, stepArtifact.id),
@@ -1334,6 +1378,7 @@ async function planInput(options: {
   workItemId: string;
   decisionId: string;
   operationId: string;
+  operationVersion?: string;
   bindings: unknown[];
   history?: {
     workItem: Record<string, unknown>;
@@ -1354,7 +1399,7 @@ async function planInput(options: {
   const evidence: never[] = [];
   const operation = {
     id: options.operationId,
-    version: "2",
+    version: options.operationVersion ?? "2",
     bindings: options.bindings,
   };
   const workItem = {

@@ -34,6 +34,7 @@ import {
   uncertainWriterBasisReleaseIds,
   uncertainWriterBasisReleaseText,
 } from "../domain/project/uncertain-writer-basis-release.ts";
+import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 
@@ -55,6 +56,55 @@ const GEOMETRY_PREVIEW_ARGS = {
   architectureArtifactDigest: "b".repeat(64),
   exportFormats: ["gltf"],
 };
+
+const TECHNICAL_SOURCE_REFERENCE = {
+  schemaVersion: "technical-source-analysis-capture/1.0",
+  kind: "technical-source-analysis",
+  profile: {
+    id: "profile.build123d",
+    version: "1.0.0",
+    fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+  },
+  source: {
+    id: "source.cad",
+    role: "cad-script",
+    language: "python",
+    sha256: "2".repeat(64),
+    byteCount: 54,
+    casUri: `casys://technical-source/sha256/${"2".repeat(64)}`,
+  },
+  analysis: {
+    analyzer: { id: "python-cad-lezer", version: "1.0.0" },
+    policy: { profile: "profile.build123d", status: "passed" },
+    sha256: "3".repeat(64),
+    byteCount: 412,
+    casUri: `casys://technical-source-analysis/sha256/${"3".repeat(64)}`,
+  },
+} as const;
+
+const TECHNICAL_COMPILATION_ARGS = {
+  projectId: "project.drip-tray",
+  basis: {
+    kind: "thread-snapshot",
+    snapshotId: "snapshot.7",
+    revision: 7,
+    subjectId: "subject.drip-tray",
+  },
+  sourceRefs: [TECHNICAL_SOURCE_REFERENCE],
+  bindings: [{
+    id: "binding.cad.thickness",
+    sourceId: "source.cad",
+    sourceSymbolId: "cad.thickness",
+    sysmlElementId: "sysml.thickness",
+    sysmlElementKind: "AttributeUsage",
+    relation: "parameterizes",
+  }],
+  profileRequests: [{
+    profileId: "profile.build123d",
+    profileVersion: "1.0.0",
+    sourceIds: ["source.cad"],
+  }],
+} as const;
 
 function sourceAnalysisFor(directory: string) {
   return {
@@ -370,6 +420,214 @@ Deno.test("project_geometry_preview rejects a duplicate provider element before 
   } finally {
     await Deno.remove(draftDirectory, { recursive: true });
   }
+});
+
+Deno.test("technical source capture is conditional, exact, and has no project authority", async () => {
+  const withoutCapture = new CapturingApp();
+  registerProjectControlTools(
+    withoutCapture as unknown as McpApp,
+    dependencies(projectSnapshot()),
+  );
+  assertEquals(withoutCapture.hasTool("project_technical_source_capture"), false);
+
+  const app = new CapturingApp();
+  const calls: unknown[] = [];
+  let projectReads = 0;
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    {
+      ...dependencies(projectSnapshot()),
+      projects: {
+        get: () => {
+          projectReads++;
+          return Promise.resolve(projectSnapshot());
+        },
+        getRevision: () => {
+          projectReads++;
+          return Promise.resolve(projectSnapshot());
+        },
+      },
+      technicalSourceCapture: {
+        capture(command) {
+          calls.push(command);
+          return Promise.resolve(TECHNICAL_SOURCE_REFERENCE);
+        },
+      },
+    },
+  );
+
+  assertEquals(app.hasTool("project_technical_source_capture"), true);
+  assertEquals(app.hasTool("project_technical_compilation_preview"), false);
+  const sourceText = "\nfrom build123d import Box\nresult = Box(1, 2, 3)\n";
+  const result = await app.handler("project_technical_source_capture")({
+    profileId: "profile.build123d",
+    sourceId: "source.cad",
+    sourceText,
+  }) as Record<string, unknown>;
+  assert(result.structuredContent === TECHNICAL_SOURCE_REFERENCE);
+  assertEquals(calls, [{
+    profileId: "profile.build123d",
+    sourceId: "source.cad",
+    sourceText,
+  }]);
+  assertEquals(projectReads, 0);
+  assertStringIncludes(
+    result.content as string,
+    "no EngineeringProject or Thread state",
+  );
+  assertStringIncludes(result.content as string, "no MRTR decision");
+  assertStringIncludes(result.content as string, "no execution authority");
+
+  const tool = app.tool("project_technical_source_capture");
+  assertEquals(tool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  assertClosedTechnicalInputSchema(tool.outputSchema as Record<string, unknown>);
+  const schema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
+    "profileId",
+    "sourceId",
+    "sourceText",
+  ]);
+  assertEquals(schema.additionalProperties, false);
+  assertNoTechnicalAuthorityFields(schema);
+
+  await assertRejects(
+    () =>
+      app.handler("project_technical_source_capture")({
+        profileId: "profile.build123d",
+        sourceId: "source.cad",
+        sourceText,
+        provider: "mcp-build123d",
+      }) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): provider",
+  );
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("technical compilation preview forwards exact closed facts and passes through the ready review result", async () => {
+  const withoutPreview = new CapturingApp();
+  registerProjectControlTools(
+    withoutPreview as unknown as McpApp,
+    dependencies(projectSnapshot()),
+  );
+  assertEquals(
+    withoutPreview.hasTool("project_technical_compilation_preview"),
+    false,
+  );
+
+  const app = new CapturingApp();
+  const calls: unknown[] = [];
+  let projectReads = 0;
+  const readyResult = {
+    status: "ready-for-review",
+    document: {
+      schemaVersion: "technical-compilation/1.0",
+      status: "ready-for-review",
+      projections: [],
+    },
+    fingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
+    draft: {
+      schemaVersion: "technical-compilation-draft-reference/1.0",
+      draftId: `technical-compilation:project.drip-tray:${"4".repeat(64)}`,
+      projectId: "project.drip-tray",
+      documentFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
+      envelopeFingerprint: { algorithm: "sha256", digest: "5".repeat(64) },
+    },
+    decisionParameters: [{
+      key: "technicalCompilation.draftId",
+      label: "Technical compilation draft",
+      value: `technical-compilation:project.drip-tray:${"4".repeat(64)}`,
+    }],
+  } as const;
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    {
+      ...dependencies(projectSnapshot()),
+      projects: {
+        get: () => {
+          projectReads++;
+          return Promise.resolve(projectSnapshot());
+        },
+        getRevision: () => {
+          projectReads++;
+          return Promise.resolve(projectSnapshot());
+        },
+      },
+      technicalCompilationPreview: {
+        execute(command) {
+          calls.push(command);
+          return Promise.resolve(readyResult) as never;
+        },
+      },
+    },
+  );
+
+  const result = await app.handler("project_technical_compilation_preview")(
+    structuredClone(TECHNICAL_COMPILATION_ARGS),
+  ) as Record<string, unknown>;
+  assert(result.structuredContent === readyResult);
+  assertEquals(calls, [TECHNICAL_COMPILATION_ARGS]);
+  assertEquals(projectReads, 0);
+  assertStringIncludes(result.content as string, "ready for review");
+  assertStringIncludes(result.content as string, "only from decisionParameters");
+  assertStringIncludes(result.content as string, "do not invent them");
+
+  const tool = app.tool("project_technical_compilation_preview");
+  assertEquals(tool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  const schema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
+    "basis",
+    "bindings",
+    "profileRequests",
+    "projectId",
+    "sourceRefs",
+  ]);
+  assertEquals(schema.additionalProperties, false);
+  assertClosedTechnicalInputSchema(schema);
+  assertNoTechnicalAuthorityFields(schema);
+
+  await assertRejects(
+    () =>
+      app.handler("project_technical_compilation_preview")({
+        ...structuredClone(TECHNICAL_COMPILATION_ARGS),
+        toolName: "build123d_export",
+      }) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): toolName",
+  );
+  const foreignBinding = structuredClone(TECHNICAL_COMPILATION_ARGS);
+  (foreignBinding.bindings[0] as Record<string, unknown>).arguments = {
+    timeout_ms: 120_000,
+  };
+  await assertRejects(
+    () =>
+      app.handler("project_technical_compilation_preview")(
+        foreignBinding,
+      ) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): arguments",
+  );
+  const foreignReference = structuredClone(TECHNICAL_COMPILATION_ARGS);
+  (foreignReference.sourceRefs[0] as Record<string, unknown>).path = "/tmp/code.py";
+  await assertRejects(
+    () =>
+      app.handler("project_technical_compilation_preview")(
+        foreignReference,
+      ) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): path",
+  );
+  assertEquals(calls.length, 1);
 });
 
 Deno.test("project_agent_run_plan_get is absent without a reader and follows only a stamped run reference", async () => {
@@ -777,6 +1035,118 @@ Deno.test("project decision approval and rejection require a verified human elic
       inputFingerprint: FINGERPRINT,
     },
   }]);
+});
+
+Deno.test("local YOLO auto-approves only positive MRTR decisions through the canonical command service", async () => {
+  const snapshot = projectSnapshot({ withDecision: true });
+  const approved: Array<{ origin: unknown; command: Record<string, unknown> }> = [];
+  const rejected: unknown[] = [];
+  const app = new CapturingApp();
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    {
+      ...dependencies(snapshot, {
+        approveDecision: (origin, command) => {
+          approved.push({
+            origin,
+            command: command as unknown as Record<string, unknown>,
+          });
+          return Promise.resolve(snapshot);
+        },
+        rejectDecision: (origin, command) => {
+          rejected.push({ origin, command });
+          return Promise.resolve(snapshot);
+        },
+      }),
+      approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
+    },
+  );
+  const args = {
+    ...COMMON,
+    decisionId: "airframe-material",
+    inputFingerprint: FINGERPRINT,
+    rationale: "Use the reviewed carbon composite proposal.",
+  };
+
+  const accepted = await app.handler("project_decision_approve")(
+    args,
+    clientContext(),
+  ) as Record<string, unknown>;
+  assertStringIncludes(accepted.content as string, "YOLO local startup opt-in");
+  assertEquals(approved, [{
+    origin: { kind: "human", actorId: "local-yolo:startup-opt-in" },
+    command: {
+      ...args,
+      inputFingerprint: FINGERPRINT,
+      rationale:
+        "YOLO local startup opt-in auto-approved positive MRTR decision airframe-material without MCP elicitation. Caller rationale: Use the reviewed carbon composite proposal.",
+    },
+  }]);
+
+  const rejectResult = await app.handler("project_decision_reject")(
+    args,
+    clientContext(),
+  ) as Record<string, unknown>;
+  assertEquals(rejectResult.resultType, "input_required");
+  assertEquals(rejected, []);
+});
+
+Deno.test("local YOLO leaves cancellation, supersession and human-only execution interactive", async () => {
+  const cancellationApp = new CapturingApp();
+  const queued = queuedRunSnapshot();
+  registerProjectControlTools(cancellationApp as unknown as McpApp, {
+    ...dependencies(queued),
+    approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
+  });
+  const cancellation = await cancellationApp.handler("project_agent_run_cancel")({
+    ...COMMON,
+    runId: "run:queued-before-cancellation",
+    rationale: "Cancel this queued run.",
+  }, clientContext()) as Record<string, unknown>;
+  assertEquals(cancellation.resultType, "input_required");
+
+  const supersessionApp = new CapturingApp();
+  const supersession = unstartedSupersessionSnapshot();
+  registerProjectControlTools(supersessionApp as unknown as McpApp, {
+    ...dependencies(supersession),
+    approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
+  });
+  const supersede = await supersessionApp.handler(
+    "project_work_item_supersede_unstarted",
+  )({
+    ...COMMON,
+    workItemId: "seal-v1",
+    predecessorDecisionId: "seal-v1-decision",
+    successorWorkItemId: "seal-v2",
+    successorDecisionId: "seal-v2-decision",
+    rationale: "Use the reviewed V2 replacement.",
+  }, clientContext()) as Record<string, unknown>;
+  assertEquals(supersede.resultType, "input_required");
+
+  const humanOnly = structuredClone(queued) as Mutable<EngineeringProjectSnapshot>;
+  humanOnly.workItems[0]!.operation = {
+    id: "record.reconcile-uncertain-writer",
+    version: "1",
+    bindings: [],
+  };
+  let executions = 0;
+  const humanOnlyApp = new CapturingApp();
+  registerProjectControlTools(humanOnlyApp as unknown as McpApp, {
+    ...dependencies(humanOnly),
+    approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
+    runExecutor: {
+      execute: () => {
+        executions++;
+        return Promise.resolve(humanOnly);
+      },
+    },
+  });
+  const execution = await humanOnlyApp.handler("project_agent_run_execute")({
+    ...COMMON,
+    runId: "run:queued-before-cancellation",
+  }, clientContext()) as Record<string, unknown>;
+  assertEquals(execution.resultType, "input_required");
+  assertEquals(executions, 0);
 });
 
 Deno.test("decision elicitation renders the complete parameter array as injective canonical JSON", async () => {
@@ -1669,6 +2039,64 @@ Deno.test("project review intent tools keep readable legacy 1.0 records non-acti
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+function assertClosedTechnicalInputSchema(schema: Record<string, unknown>): void {
+  if (schema.type === "object") {
+    assertEquals(
+      schema.additionalProperties,
+      false,
+      "Every technical MCP object schema must reject unknown fields.",
+    );
+  }
+  const properties = schema.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    for (const value of Object.values(properties)) {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        assertClosedTechnicalInputSchema(value as Record<string, unknown>);
+      }
+    }
+  }
+  const items = schema.items;
+  if (items && typeof items === "object" && !Array.isArray(items)) {
+    assertClosedTechnicalInputSchema(items as Record<string, unknown>);
+  }
+  for (const keyword of ["oneOf", "anyOf", "allOf"] as const) {
+    const candidates = schema[keyword];
+    if (!Array.isArray(candidates)) continue;
+    for (const candidate of candidates) {
+      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+        assertClosedTechnicalInputSchema(candidate as Record<string, unknown>);
+      }
+    }
+  }
+}
+
+function assertNoTechnicalAuthorityFields(schema: Record<string, unknown>): void {
+  const forbidden = new Set([
+    "provider",
+    "tool",
+    "toolName",
+    "arguments",
+    "args",
+    "path",
+    "mcpUrl",
+    "endpoint",
+    "credentials",
+  ]);
+  const properties = schema.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    for (const [name, value] of Object.entries(properties)) {
+      assert(!forbidden.has(name), `${name} must remain server-owned`);
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        assertNoTechnicalAuthorityFields(value as Record<string, unknown>);
+      }
+    }
+  }
+  const items = schema.items;
+  if (items && typeof items === "object" && !Array.isArray(items)) {
+    assertNoTechnicalAuthorityFields(items as Record<string, unknown>);
+  }
+}
 
 class CapturingApp {
   readonly #tools = new Map<string, MCPTool>();

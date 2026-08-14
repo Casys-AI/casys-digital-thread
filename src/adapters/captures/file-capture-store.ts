@@ -21,7 +21,20 @@ export interface CaptureStoreDescriptor<Kind extends string> {
   readonly uriNamespace: string;
   /** Short human-readable label used in error messages, e.g. "Architecture". */
   readonly label: string;
+  /** Explicit fsync ceiling for an absolute temporary store. */
+  readonly syncBoundary?: string;
 }
+
+export interface CaptureDirectorySyncFileSystem {
+  open(
+    path: string,
+    options: Deno.OpenOptions,
+  ): Promise<Pick<Deno.FsFile, "sync" | "close">>;
+}
+
+const DENO_CAPTURE_DIRECTORY_SYNC_FILE_SYSTEM: CaptureDirectorySyncFileSystem = {
+  open: (path, options) => Deno.open(path, options),
+};
 
 /**
  * Generic content-addressed capture store parameterised by a nominal `Kind`.
@@ -44,7 +57,24 @@ export class FileCaptureStore<Kind extends string> {
    */
   declare private readonly _kind: Kind;
 
-  constructor(private readonly descriptor: CaptureStoreDescriptor<Kind>) {}
+  private readonly descriptor: CaptureStoreDescriptor<Kind>;
+
+  constructor(descriptor: CaptureStoreDescriptor<Kind>) {
+    const directory = withoutTrailingSlash(descriptor.directory) || ".";
+    const syncBoundary = descriptor.syncBoundary === undefined
+      ? undefined
+      : withoutTrailingSlash(descriptor.syncBoundary) || ".";
+    if (syncBoundary !== undefined && !containsPath(syncBoundary, directory)) {
+      throw new TypeError(
+        "Capture sync boundary must contain the capture directory.",
+      );
+    }
+    this.descriptor = Object.freeze({
+      ...descriptor,
+      directory,
+      ...(syncBoundary === undefined ? {} : { syncBoundary }),
+    });
+  }
 
   uriFor(fingerprint: ContentFingerprint): string {
     const d = sha256Digest(fingerprint);
@@ -82,7 +112,10 @@ export class FileCaptureStore<Kind extends string> {
     await Deno.mkdir(this.descriptor.directory, { recursive: true });
     try {
       await writeNewDurably(path, bytes, this.descriptor.label);
-      await syncDirectoryChain(this.descriptor.directory);
+      await syncCaptureDirectoryChain(
+        this.descriptor.directory,
+        this.descriptor.syncBoundary,
+      );
     } catch (error) {
       if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
       const existing = await Deno.readTextFile(path);
@@ -94,7 +127,10 @@ export class FileCaptureStore<Kind extends string> {
       // A concurrent writer may have linked the identical final just before
       // its own directory fsync. The idempotent loser owns the same success
       // guarantee and therefore closes that durability window before return.
-      await syncDirectoryChain(this.descriptor.directory);
+      await syncCaptureDirectoryChain(
+        this.descriptor.directory,
+        this.descriptor.syncBoundary,
+      );
     }
     return { uri: this.uriFor(fingerprint), path };
   }
@@ -482,20 +518,40 @@ async function writeNewDurably(
  * returns. Derived from the original per-family store implementations, now
  * consolidated into FileCaptureStore.
  */
-async function syncDirectoryChain(path: string): Promise<void> {
-  let current = path.replace(/\/+$/, "") || ".";
+export async function syncCaptureDirectoryChain(
+  path: string,
+  syncBoundary?: string,
+  fileSystem: CaptureDirectorySyncFileSystem = DENO_CAPTURE_DIRECTORY_SYNC_FILE_SYSTEM,
+): Promise<void> {
+  let current = withoutTrailingSlash(path) || ".";
+  const boundary = syncBoundary === undefined
+    ? undefined
+    : withoutTrailingSlash(syncBoundary) || ".";
+  if (boundary !== undefined && !containsPath(boundary, current)) {
+    throw new TypeError("Capture sync boundary must contain the capture directory.");
+  }
   while (current !== "/") {
-    const directory = await Deno.open(current, { read: true });
+    const directory = await fileSystem.open(current, { read: true });
     try {
       await directory.sync();
     } finally {
       directory.close();
     }
-    if (current === "state" || current.endsWith("/state")) return;
+    if (
+      current === boundary || current === "state" || current.endsWith("/state")
+    ) return;
     // A relative custom root is created in `.`. Persist that parent entry too,
     // then stop after its single sync rather than looping on `.` forever.
     if (current === ".") return;
     const parent = current.lastIndexOf("/");
     current = parent < 0 ? "." : parent === 0 ? "/" : current.slice(0, parent);
   }
+}
+
+function containsPath(boundary: string, path: string): boolean {
+  return path === boundary || path.startsWith(`${boundary}/`);
+}
+
+function withoutTrailingSlash(path: string): string {
+  return path.replace(/\/+$/, "");
 }

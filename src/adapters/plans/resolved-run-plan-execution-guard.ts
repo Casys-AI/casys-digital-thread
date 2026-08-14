@@ -597,7 +597,8 @@ function sourceArtifactUriMatches(
   artifact: ThreadArtifact,
 ): boolean {
   if (
-    plan.action.kind !== "static-structural-analysis" ||
+    (plan.action.kind !== "static-structural-analysis" &&
+      plan.action.kind !== "isolated-static-structural-analysis") ||
     source.bindingName !== plan.action.input.geometrySourceBinding
   ) {
     return artifact.uri === source.artifact.casUri;

@@ -68,10 +68,8 @@ import {
   type RequirementsTarget,
 } from "../../domain/engineering/requirements-proposal.ts";
 import {
-  ORACLE_REQUIREMENT_OPERATORS,
   type OracleRequirement,
   renderTargetedOracleRequirementsSysml,
-  SUPPORTED_ORACLE_UNITS,
 } from "../../domain/analysis/proof-case.ts";
 import type {
   ContentFingerprint,
@@ -112,6 +110,7 @@ import {
 import {
   extractAndVerifyOracleRequirements,
   RequirementExtractionError,
+  type VerifiedConstraintUsageIdentity,
 } from "../extractors/syson-requirements-extractor.ts";
 import {
   findArchitectureArtifact,
@@ -128,6 +127,16 @@ import {
   type SysmlSourceAnalysisReader,
 } from "../captures/sysml-source-analysis-capture.ts";
 import {
+  type ExactRequirementsCapture,
+  type ExactRequirementsCaptureV2,
+  type ExactRequirementsCaptureV3,
+  isExactRequirementsCaptureV3,
+  parseExactRequirementsCapture,
+  REQUIREMENTS_CAPTURE_SCHEMA,
+  REQUIREMENTS_CAPTURE_V2_SCHEMA,
+  type RequirementsCaptureConstraintUsage,
+} from "../captures/requirements-capture.ts";
+import {
   requireBasis,
   requiredStart,
   requireRun,
@@ -141,10 +150,7 @@ import {
 
 // ── Public re-exports ────────────────────────────────────────────────────────
 
-export { MODEL_WRITE_REQUIREMENTS_OPERATION };
-
-/** Stable schema version for every requirements capture record. */
-export const REQUIREMENTS_CAPTURE_SCHEMA = "requirements-capture/2.0" as const;
+export { MODEL_WRITE_REQUIREMENTS_OPERATION, REQUIREMENTS_CAPTURE_SCHEMA };
 
 // ── Cliquet: requirements artifact removed ───────────────────────────────────
 
@@ -594,6 +600,19 @@ export class ModelWriteRequirementsRunExecutor {
       if (existingAttempt?.status === "completed" && !recoveryElementId) {
         throw new RequirementsWriteOutcomeUnknownError();
       }
+      if (
+        priorCapture !== undefined &&
+        priorCapture.authoritativeConstraintUsages === undefined &&
+        recoveryElementId === undefined
+      ) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "prior_requirements_v2_non_authoritative: requirements-capture/2.0 is " +
+            "readable history, but it does not capture provider-native " +
+            "ConstraintUsage identities and cannot authorize enrichment deletion. " +
+            "Re-author the requirements through a reviewed V3 transition.",
+        );
+      }
 
       // Pre-WAL lookup runs in every mode. An initial/re-authoring run may not
       // silently create a homonym, while enrichment must prove the exact live
@@ -642,20 +661,32 @@ export class ModelWriteRequirementsRunExecutor {
               "same name must not be deleted without provenance. Manual inspection required.",
           );
         }
-        priorRequirementsElementId = liveRequirementsElementId;
         try {
-          await this.#verifyTargetedRequirementUsage(
-            editingContextId,
-            liveRequirementsElementId,
-            proposal.partDefName,
-            target,
-          );
-          await extractAndVerifyOracleRequirements(
+          const priorTargetedConstraintUsageIds = await this
+            .#verifyTargetedRequirementUsage(
+              editingContextId,
+              liveRequirementsElementId,
+              proposal.partDefName,
+              target,
+            );
+          const priorLiveReadback = await extractAndVerifyOracleRequirements(
             this.#syson,
             editingContextId,
             liveRequirementsElementId,
             priorCapture.requirements,
           );
+          assertConstraintUsageChildBijection(
+            priorTargetedConstraintUsageIds,
+            priorLiveReadback.constraintUsages,
+            "live predecessor",
+          );
+          if (priorCapture.authoritativeConstraintUsages !== undefined) {
+            assertCapturedConstraintUsageBijection(
+              priorCapture.authoritativeConstraintUsages,
+              priorLiveReadback.constraintUsages,
+            );
+          }
+          priorRequirementsElementId = liveRequirementsElementId;
         } catch (error) {
           if (error instanceof RequirementsWriteOutcomeUnknownError) throw error;
           throw new EngineeringProjectCommandError(
@@ -749,21 +780,30 @@ export class ModelWriteRequirementsRunExecutor {
         }
       }
 
-      await this.#verifyTargetedRequirementUsage(
-        editingContextId,
-        requirementsElementId,
-        proposal.partDefName,
-        target,
-      );
+      const targetedConstraintUsageIds = await this
+        .#verifyTargetedRequirementUsage(
+          editingContextId,
+          requirementsElementId,
+          proposal.partDefName,
+          target,
+        );
 
       // Step 21: extractAndVerifyOracleRequirements — fail-closed fidelity check.
       let verifiedRequirements: readonly OracleRequirement[];
+      let verifiedConstraintUsages: readonly VerifiedConstraintUsageIdentity[];
       try {
-        verifiedRequirements = await extractAndVerifyOracleRequirements(
+        const verifiedReadback = await extractAndVerifyOracleRequirements(
           this.#syson,
           editingContextId,
           requirementsElementId,
           oracleRequirements,
+        );
+        verifiedRequirements = verifiedReadback.requirements;
+        verifiedConstraintUsages = verifiedReadback.constraintUsages;
+        assertConstraintUsageChildBijection(
+          targetedConstraintUsageIds,
+          verifiedConstraintUsages,
+          "inserted RequirementUsage",
         );
       } catch (error) {
         if (error instanceof RequirementExtractionError) {
@@ -812,6 +852,7 @@ export class ModelWriteRequirementsRunExecutor {
         seedProducerRunId: archCapture.seed.producerRunId,
         requirementsElementId,
         requirements: verifiedRequirements,
+        constraintUsages: verifiedConstraintUsages,
         runId: run.id,
         capturedAt,
       });
@@ -1204,6 +1245,9 @@ export class ModelWriteRequirementsRunExecutor {
   ): Promise<{
     readonly requirements: readonly OracleRequirement[];
     readonly requirementsElementId: string;
+    /** V2 is readable history but carries no individual native authority. */
+    readonly authoritativeConstraintUsages?:
+      readonly RequirementsCaptureConstraintUsage[];
   }> {
     const text = await this.#captures.read(priorArtifact.fingerprint);
     if (!text) {
@@ -1232,13 +1276,15 @@ export class ModelWriteRequirementsRunExecutor {
           "an occurrence hint and a package-level helper PartDefinition, not a native " +
           "RequirementUsage owned by an explicit target PartDefinition. Retire the " +
           "legacy artifact through a reviewed archive transition, then re-author the " +
-          "requirements to establish a 2.0 capture.",
+          "requirements to establish a 3.0 capture.",
       );
     }
     if (
       !record || typeof record !== "object" || Array.isArray(record) ||
-      (record as Record<string, unknown>).schemaVersion !==
-        REQUIREMENTS_CAPTURE_SCHEMA ||
+      ((record as Record<string, unknown>).schemaVersion !==
+          REQUIREMENTS_CAPTURE_V2_SCHEMA &&
+        (record as Record<string, unknown>).schemaVersion !==
+          REQUIREMENTS_CAPTURE_SCHEMA) ||
       (record as Record<string, unknown>).containerComponent !==
         proposal.containerComponent ||
       (record as Record<string, unknown>).partDefName !== proposal.partDefName ||
@@ -1249,36 +1295,22 @@ export class ModelWriteRequirementsRunExecutor {
         "The prior requirements capture does not match the expected schema or target component.",
       );
     }
-    const priorRecord = record as Record<string, unknown>;
-    assertExactKeys(
-      priorRecord,
-      [
-        "schemaVersion",
-        "operation",
-        "trustedRunId",
-        "containerComponent",
-        "partDefName",
-        "target",
-        "architectureBasis",
-        "requirements",
-        "seed",
-        "architecture",
-        "requirementsElementId",
-        "insertedAt",
-      ],
-      "Prior requirements capture",
-    );
-    const operation = priorRecord.operation as Record<string, unknown> | undefined;
-    if (operation) {
-      assertExactKeys(operation, ["id", "version"], "Prior requirements operation");
+    let priorRecord: ExactRequirementsCapture;
+    try {
+      priorRecord = parseExactRequirementsCapture(record);
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `The prior requirements capture is not exact schema-v2/v3 evidence: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
-    const architecture = priorRecord.architecture as
-      | Record<string, unknown>
-      | undefined;
-    const historicalArchitecture = architecture &&
-        typeof architecture.artifactId === "string"
-      ? base.artifacts.find((artifact) => artifact.id === architecture.artifactId)
-      : undefined;
+    const operation = priorRecord.operation;
+    const architecture = priorRecord.architecture;
+    const historicalArchitecture = base.artifacts.find((artifact) =>
+      artifact.id === architecture.artifactId
+    );
     const requirementsInputs = priorArtifact.inputArtifactIds.flatMap((id) => {
       const artifact = base.artifacts.find((candidate) => candidate.id === id);
       return artifact?.uri?.startsWith(
@@ -1290,45 +1322,8 @@ export class ModelWriteRequirementsRunExecutor {
     const predecessorRequirementsArtifact = requirementsInputs.length === 1
       ? requirementsInputs[0]
       : undefined;
-    const architectureBasis = priorRecord.architectureBasis as
-      | Record<string, unknown>
-      | undefined;
-    const priorSeed = priorRecord.seed as Record<string, unknown> | undefined;
-    if (architecture) {
-      assertExactKeys(
-        architecture,
-        ["artifactId", "fingerprint", "producerRunId"],
-        "Prior requirements architecture anchor",
-      );
-      if (isContentFingerprint(architecture.fingerprint)) {
-        assertExactKeys(
-          architecture.fingerprint as unknown as Record<string, unknown>,
-          ["algorithm", "digest"],
-          "Prior requirements architecture fingerprint",
-        );
-      }
-    }
-    if (architectureBasis) {
-      assertExactKeys(
-        architectureBasis,
-        ["snapshotId", "revision", "fingerprint"],
-        "Prior requirements architecture basis",
-      );
-    }
-    if (priorSeed) {
-      assertExactKeys(
-        priorSeed,
-        ["artifactId", "fingerprint", "producerRunId"],
-        "Prior requirements seed anchor",
-      );
-      if (isContentFingerprint(priorSeed.fingerprint)) {
-        assertExactKeys(
-          priorSeed.fingerprint as unknown as Record<string, unknown>,
-          ["algorithm", "digest"],
-          "Prior requirements seed fingerprint",
-        );
-      }
-    }
+    const architectureBasis = priorRecord.architectureBasis;
+    const priorSeed = priorRecord.seed;
     if (
       priorArtifact.id !==
         `requirements-${proposal.containerComponent}-${priorArtifact.fingerprint.digest}` ||
@@ -1381,7 +1376,7 @@ export class ModelWriteRequirementsRunExecutor {
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The prior requirements artifact/capture pair is not exact schema-v2 evidence " +
+        "The prior requirements artifact/capture pair is not exact schema-v2/v3 evidence " +
           "anchored to its historical architecture artifact.",
       );
     }
@@ -1532,18 +1527,9 @@ export class ModelWriteRequirementsRunExecutor {
       );
     }
     const rawTarget = priorRecord.target;
-    if (rawTarget && typeof rawTarget === "object" && !Array.isArray(rawTarget)) {
-      assertExactKeys(
-        rawTarget as Record<string, unknown>,
-        ["kind", "label", "elementId"],
-        "Prior requirements target",
-      );
-    }
     if (
-      !rawTarget || typeof rawTarget !== "object" || Array.isArray(rawTarget) ||
-      (rawTarget as Record<string, unknown>).kind !== target.kind ||
-      (rawTarget as Record<string, unknown>).label !== target.label ||
-      (rawTarget as Record<string, unknown>).elementId !== target.elementId
+      rawTarget.kind !== target.kind || rawTarget.label !== target.label ||
+      rawTarget.elementId !== target.elementId
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
@@ -1556,108 +1542,7 @@ export class ModelWriteRequirementsRunExecutor {
     // inserted. The enrichment path uses this to verify the element found by
     // label is the same one — a homonyme must be refused, not silently deleted.
     const rawReqsElementId = priorRecord.requirementsElementId;
-    if (typeof rawReqsElementId !== "string" || !rawReqsElementId.trim()) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        "The prior requirements capture is missing a valid requirementsElementId.",
-      );
-    }
-    // F4 — fail-closed validation of each prior requirement. An unsafe cast here
-    // would allow a malformed capture to produce a silent enrichment plan error
-    // (wrong metric compared, wrong unit bypassed). Every element is validated
-    // against the same invariants that the proposal parser enforces on new input.
-    // RÉSERVE 3: derive operator set from the domain constant so that adding an
-    // operator to ORACLE_REQUIREMENT_OPERATORS automatically extends this check.
-    const raw = priorRecord.requirements as unknown[];
-    if (raw.length === 0) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        "The prior requirements capture contains no requirement.",
-      );
-    }
-    const validated: OracleRequirement[] = [];
-    const ids = new Set<string>();
-    const metrics = new Set<string>();
-    const allowedOperators: ReadonlySet<string> = new Set<string>(
-      ORACLE_REQUIREMENT_OPERATORS,
-    );
-    for (let index = 0; index < raw.length; index++) {
-      const req = raw[index];
-      if (!req || typeof req !== "object" || Array.isArray(req)) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          `Prior requirements capture requirements[${index}] is not an object.`,
-        );
-      }
-      const r = req as Record<string, unknown>;
-      assertExactKeys(
-        r,
-        ["id", "name", "metric", "operator", "limit"],
-        `Prior requirements capture requirements[${index}]`,
-      );
-      if (
-        typeof r.id !== "string" || !r.id.trim() ||
-        typeof r.name !== "string" || !r.name.trim() ||
-        typeof r.metric !== "string" || !r.metric.trim()
-      ) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          `Prior requirements capture requirements[${index}] missing required string fields (id, name, metric).`,
-        );
-      }
-      if (typeof r.operator !== "string" || !allowedOperators.has(r.operator)) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          `Prior requirements capture requirements[${index}].operator "${
-            String(r.operator)
-          }" is not a valid comparison operator.`,
-        );
-      }
-      const limit = r.limit;
-      if (limit && typeof limit === "object" && !Array.isArray(limit)) {
-        assertExactKeys(
-          limit as Record<string, unknown>,
-          ["value", "unit"],
-          `Prior requirements capture requirements[${index}].limit`,
-        );
-      }
-      if (
-        !limit || typeof limit !== "object" || Array.isArray(limit) ||
-        typeof (limit as Record<string, unknown>).value !== "number" ||
-        !Number.isSafeInteger((limit as Record<string, unknown>).value) ||
-        typeof (limit as Record<string, unknown>).unit !== "string"
-      ) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          `Prior requirements capture requirements[${index}].limit is missing or has wrong types.`,
-        );
-      }
-      const unit = (limit as Record<string, unknown>).unit as string;
-      if (!SUPPORTED_ORACLE_UNITS.includes(unit)) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          `Prior requirements capture requirements[${index}].limit.unit "${unit}" is not in the supported vocabulary.`,
-        );
-      }
-      if (ids.has(r.id as string) || metrics.has(r.metric as string)) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          "The prior requirements capture repeats a requirement id or metric.",
-        );
-      }
-      ids.add(r.id as string);
-      metrics.add(r.metric as string);
-      validated.push({
-        id: r.id as string,
-        name: r.name as string,
-        metric: r.metric as string,
-        operator: r.operator as OracleRequirement["operator"],
-        limit: {
-          value: (limit as Record<string, unknown>).value as number,
-          unit,
-        },
-      });
-    }
+    const validated = priorRecord.requirements;
 
     // The capture and active Thread projection are one indivisible predecessor
     // proof. A valid JSON capture is insufficient if its TracedRequirement set
@@ -1829,7 +1714,13 @@ export class ModelWriteRequirementsRunExecutor {
         "The prior requirements uses provenance is not exact.",
       );
     }
-    return { requirements: validated, requirementsElementId: rawReqsElementId };
+    return {
+      requirements: validated,
+      requirementsElementId: rawReqsElementId,
+      ...(isExactRequirementsCaptureV3(priorRecord)
+        ? { authoritativeConstraintUsages: priorRecord.constraintUsages }
+        : {}),
+    };
   }
 
   // ── Private: D5 identification by label ──────────────────────────────────
@@ -1949,7 +1840,7 @@ export class ModelWriteRequirementsRunExecutor {
     requirementsElementId: string,
     requirementName: string,
     target: RequirementsTarget,
-  ): Promise<void> {
+  ): Promise<readonly string[]> {
     const element = await this.#syson.callTool({
       name: "syson_element_get",
       arguments: {
@@ -2001,6 +1892,19 @@ export class ModelWriteRequirementsRunExecutor {
         "Requirements target binding failed: the subject has no provider identity.",
       );
     }
+    const constraintUsageIds = constraints.map((constraint) =>
+      (constraint as Record<string, unknown>).id as string
+    );
+    if (
+      new Set(constraintUsageIds).size !== constraintUsageIds.length ||
+      constraintUsageIds.includes(subjectId)
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Requirements target binding failed: native child identities are not " +
+          "a unique ConstraintUsage set disjoint from the subject.",
+      );
+    }
 
     const typing = await this.#syson.callTool({
       name: "syson_query_aql",
@@ -2025,6 +1929,7 @@ export class ModelWriteRequirementsRunExecutor {
           `exact PartDefinition "${target.label}" (${target.elementId}).`,
       );
     }
+    return Object.freeze(constraintUsageIds);
   }
 
   // ── Private: WAL helpers ──────────────────────────────────────────────────
@@ -2182,7 +2087,69 @@ export class ModelWriteRequirementsRunExecutor {
     }
     const requirementsElementId = attempt.result.requirementsElementId;
     const capturedAt = requiredStart(run);
-    const expectedCapture = buildCaptureRecord({
+
+    // ConstraintUsage UUIDs are provider readback facts, not values that can be
+    // recomputed from the signed proposal or the insertion WAL. On completed
+    // replay, reopen them only through the single evidence artifact already
+    // attached to the immutable result snapshot, then rebuild the whole capture
+    // and extension around those identities before accepting the result.
+    if (run.evidenceRefs.length !== 1) {
+      throw completedRequirementsIntegrityError(
+        "the run does not have exactly one requirements evidence reference",
+      );
+    }
+    const evidence = run.evidenceRefs[0]!;
+    if (
+      evidence.kind !== "artifact" || evidence.snapshotId !== snapshot.id ||
+      evidence.snapshotRevision !== snapshot.revision
+    ) {
+      throw completedRequirementsIntegrityError(
+        "the evidence reference is not exactly bound to the result snapshot",
+      );
+    }
+    const matchingArtifacts = snapshot.artifacts.filter((candidate) =>
+      candidate.id === evidence.id
+    );
+    if (matchingArtifacts.length !== 1) {
+      throw completedRequirementsIntegrityError(
+        "the requirements evidence artifact is not present exactly once",
+      );
+    }
+    const artifact = matchingArtifacts[0]!;
+    let text: string | undefined;
+    try {
+      text = await this.#captures.read(artifact.fingerprint);
+    } catch (error) {
+      throw completedRequirementsIntegrityError(
+        `the capture failed content-addressed readback: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    if (!text) {
+      throw completedRequirementsIntegrityError(
+        "the requirements capture is not durably readable",
+      );
+    }
+    let record: unknown;
+    try {
+      record = JSON.parse(text);
+    } catch {
+      throw completedRequirementsIntegrityError(
+        "the requirements capture is invalid JSON",
+      );
+    }
+    let recordedCapture: ExactRequirementsCapture;
+    try {
+      recordedCapture = parseExactRequirementsCapture(record);
+    } catch (error) {
+      throw completedRequirementsIntegrityError(
+        `the requirements capture is not exact schema-v2/v3 evidence: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    const captureOptions = {
       proposal,
       target,
       architectureArtifact,
@@ -2195,7 +2162,14 @@ export class ModelWriteRequirementsRunExecutor {
       requirements,
       runId: run.id,
       capturedAt,
-    });
+    };
+    const expectedCapture = recordedCapture.schemaVersion ===
+        REQUIREMENTS_CAPTURE_SCHEMA
+      ? buildCaptureRecord({
+        ...captureOptions,
+        constraintUsages: recordedCapture.constraintUsages,
+      })
+      : buildHistoricalV2CaptureRecord(captureOptions);
     const captureFp = await sha256Fingerprint(expectedCapture);
     const captureUri = requirementsUriFor(
       proposal.containerComponent,
@@ -2224,12 +2198,6 @@ export class ModelWriteRequirementsRunExecutor {
       );
     }
 
-    if (run.evidenceRefs.length !== 1) {
-      throw completedRequirementsIntegrityError(
-        "the run does not have exactly one requirements evidence reference",
-      );
-    }
-    const evidence = run.evidenceRefs[0]!;
     const expectedArtifactId =
       `requirements-${proposal.containerComponent}-${captureFp.digest}`;
     if (
@@ -2241,36 +2209,12 @@ export class ModelWriteRequirementsRunExecutor {
         "the evidence reference is not exactly bound to the reconstructed result",
       );
     }
-    const artifact = snapshot.artifacts.find((candidate) =>
-      candidate.id === expectedArtifactId
-    );
-    if (!artifact) {
+    if (
+      artifact.id !== expectedArtifactId ||
+      !fingerprintsEqual(artifact.fingerprint, captureFp)
+    ) {
       throw completedRequirementsIntegrityError(
-        "the reconstructed requirements artifact is absent",
-      );
-    }
-
-    let text: string | undefined;
-    try {
-      text = await this.#captures.read(captureFp);
-    } catch (error) {
-      throw completedRequirementsIntegrityError(
-        `the capture failed content-addressed readback: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-    if (!text) {
-      throw completedRequirementsIntegrityError(
-        "the requirements capture is not durably readable",
-      );
-    }
-    let record: unknown;
-    try {
-      record = JSON.parse(text);
-    } catch {
-      throw completedRequirementsIntegrityError(
-        "the requirements capture is invalid JSON",
+        "the reconstructed requirements artifact identity is absent",
       );
     }
     if (
@@ -2372,18 +2316,6 @@ function parseArchCapture(text: string): ParsedArchCapture {
   return parseExactArchitectureCapture(value);
 }
 
-function assertExactKeys(
-  record: Record<string, unknown>,
-  allowed: readonly string[],
-  path: string,
-): void {
-  const allowedKeys = new Set(allowed);
-  const unexpected = Object.keys(record).filter((key) => !allowedKeys.has(key));
-  if (unexpected.length > 0) {
-    throw new Error(`${path} has unexpected field(s): ${unexpected.join(", ")}.`);
-  }
-}
-
 function isExactIsoTimestamp(value: string): boolean {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
@@ -2391,7 +2323,7 @@ function isExactIsoTimestamp(value: string): boolean {
 
 // ── Private: capture record builder ──────────────────────────────────────────
 
-function buildCaptureRecord(options: {
+interface RequirementsCaptureBuildOptions {
   proposal: RequirementsProposal;
   target: RequirementsTarget;
   architectureArtifact: ThreadArtifact;
@@ -2404,9 +2336,62 @@ function buildCaptureRecord(options: {
   requirements: readonly OracleRequirement[];
   runId: string;
   capturedAt: string;
-}) {
-  return {
+}
+
+function buildCaptureRecord(
+  options: RequirementsCaptureBuildOptions & {
+    constraintUsages: readonly VerifiedConstraintUsageIdentity[];
+  },
+): ExactRequirementsCaptureV3 {
+  const record = {
     schemaVersion: REQUIREMENTS_CAPTURE_SCHEMA,
+    ...buildCaptureRecordBase(options),
+    requirementUsage: {
+      id: options.requirementsElementId,
+      kind: "RequirementUsage",
+    },
+    constraintUsages: options.constraintUsages
+      .map((constraint) => ({
+        requirementId: constraint.requirementId,
+        id: constraint.id,
+        kind: constraint.kind,
+        sourceId: constraint.sourceId,
+      }))
+      .sort((left, right) =>
+        left.requirementId < right.requirementId
+          ? -1
+          : left.requirementId > right.requirementId
+          ? 1
+          : 0
+      ),
+  };
+  const parsed = parseExactRequirementsCapture(record);
+  if (parsed.schemaVersion !== REQUIREMENTS_CAPTURE_SCHEMA) {
+    throw new Error(
+      "The current requirements capture builder did not produce schema V3.",
+    );
+  }
+  return parsed;
+}
+
+function buildHistoricalV2CaptureRecord(
+  options: RequirementsCaptureBuildOptions,
+): ExactRequirementsCaptureV2 {
+  const record = {
+    schemaVersion: REQUIREMENTS_CAPTURE_V2_SCHEMA,
+    ...buildCaptureRecordBase(options),
+  };
+  const parsed = parseExactRequirementsCapture(record);
+  if (parsed.schemaVersion !== REQUIREMENTS_CAPTURE_V2_SCHEMA) {
+    throw new Error(
+      "The historical requirements capture builder did not produce schema V2.",
+    );
+  }
+  return parsed;
+}
+
+function buildCaptureRecordBase(options: RequirementsCaptureBuildOptions) {
+  return {
     operation: MODEL_WRITE_REQUIREMENTS_OPERATION,
     trustedRunId: options.runId,
     containerComponent: options.proposal.containerComponent,
@@ -3057,6 +3042,60 @@ function isExactProviderTarget(
   const candidate = value as Record<string, unknown>;
   return candidate.id === target.elementId && candidate.label === target.label &&
     isSysmlEntityKind(candidate.kind, "PartDefinition");
+}
+
+/**
+ * Bind the structural child readback to the specialized constraint extractor.
+ * Neither response may authorize an identity absent from the other one.
+ */
+function assertConstraintUsageChildBijection(
+  childIds: readonly string[],
+  extracted: readonly VerifiedConstraintUsageIdentity[],
+  context: string,
+): void {
+  const childIdSet = new Set(childIds);
+  const extractedIdSet = new Set(extracted.map((item) => item.id));
+  const extractedSourceIdSet = new Set(extracted.map((item) => item.sourceId));
+  if (
+    childIds.length !== extracted.length ||
+    childIdSet.size !== childIds.length ||
+    extractedIdSet.size !== extracted.length ||
+    extractedSourceIdSet.size !== extracted.length ||
+    childIds.some((id) => !extractedIdSet.has(id) || !extractedSourceIdSet.has(id)) ||
+    extracted.some((item) => item.id !== item.sourceId)
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Requirements identity readback failed: ${context} child ConstraintUsage ` +
+        "identities and syson_constraint_extract id/sourceId identities are not bijective.",
+    );
+  }
+}
+
+/** A V3 predecessor authorizes only the exact native identities it captured. */
+function assertCapturedConstraintUsageBijection(
+  captured: readonly RequirementsCaptureConstraintUsage[],
+  live: readonly VerifiedConstraintUsageIdentity[],
+): void {
+  const liveByRequirementId = new Map(
+    live.map((item) => [item.requirementId, item] as const),
+  );
+  if (
+    captured.length !== live.length ||
+    liveByRequirementId.size !== live.length ||
+    captured.some((expected) => {
+      const observed = liveByRequirementId.get(expected.requirementId);
+      return observed === undefined || observed.id !== expected.id ||
+        observed.kind !== expected.kind ||
+        observed.sourceId !== expected.sourceId;
+    })
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "Prior V3 ConstraintUsage identity mismatch: the verified live predecessor " +
+        "does not bijectively match its captured native identities.",
+    );
+  }
 }
 
 // ── Private: URI helpers ──────────────────────────────────────────────────────

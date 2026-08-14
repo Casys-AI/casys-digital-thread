@@ -159,6 +159,9 @@ function buildConstraintRow(
   req: { operator: string; feature: string; limit: { value: number; unit: string } },
 ): unknown {
   return {
+    id: `constraint:${req.feature}`,
+    name: `${req.feature}_limit`,
+    sourceId: `constraint:${req.feature}`,
     expression: {
       kind: "binary",
       op: req.operator,

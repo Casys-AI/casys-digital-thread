@@ -12,6 +12,9 @@ import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
 } from "../../domain/engineering/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "./recorded-analysis.ts";
@@ -163,6 +166,91 @@ const OPERATIONS = [
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
     }],
+  },
+  /**
+   * Technical-compilation admission seal — trusted boundary
+   * `compile.seal-admission@1`.
+   *
+   * The MRTR proposal seals the exact ready-for-review compilation draft,
+   * source analyses, semantic bindings, compiler profiles and SysML basis. The
+   * sole state binding identifies that SysML model as one exact Thread
+   * artifact; it is consequently included in the signed evidence scope. This
+   * operation grants no provider execution and accepts no provider arguments.
+   */
+  {
+    id: COMPILE_SEAL_ADMISSION_OPERATION.id,
+    version: COMPILE_SEAL_ADMISSION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed technical compilation admission",
+    description:
+      "Reopen the exact ready-for-review compilation draft and its captured sources, " +
+      "verify every operator-signed identity against the current Thread and SysML basis, " +
+      "then seal the provider-free admission into the evidence thread. No technical " +
+      "provider is called and no execution authority is granted.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "sysmlModel",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Qualified Build123d execution — trusted executor
+   * `design.execute-build123d@1`.
+   *
+   * The signed proposal names one exact provider-free compilation admission
+   * and one server-owned isolation profile. Execution publishes only a
+   * document capture plus a non-canonical geometry-review draft: STEP bytes
+   * never become canonical Thread geometry through this operation.
+   */
+  {
+    id: DESIGN_EXECUTE_BUILD123D_OPERATION.id,
+    version: DESIGN_EXECUTE_BUILD123D_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Execute the reviewed Build123d compilation in isolation",
+    description:
+      "Reopen one exact sealed technical-compilation admission, verify the human-signed " +
+      "server-owned execution and isolation contract, execute its qualified Build123d source, " +
+      "validate the declared STEP output, and publish only a documentary execution capture " +
+      "with a non-canonical geometry-review draft.",
+    workItemKind: "design",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "compilationAdmission",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * One closed local Modelica solver-conformance kit. This operation is
+   * deliberately distinct from the historical generic MCP-backed Modelica
+   * operations: it has no provider plan, no caller-selected source, and no
+   * Thread entity binding. Its exact basis, kit, profile and durable runtime
+   * qualification are carried by the one human-approved MRTR proposal.
+   */
+  {
+    id: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.id,
+    version: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Run the qualified local Modelica conformance kit",
+    description:
+      "Reopen the exact current Thread basis and the server-owned linear thermal ramp kit, " +
+      "verify its pinned local Microsandbox qualification, execute it without shell or " +
+      "caller-selected Modelica, and publish documentary solver-conformance evidence only.",
+    workItemKind: "simulate",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [],
   },
   {
     id: "design.apply-vector-correction",

@@ -53,6 +53,10 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "./executor-run-helpers.ts";
+import {
+  assertThreadWriteBasisAvailable,
+  threadWriteBasisLeaseScope,
+} from "./thread-write-basis-guard.ts";
 
 /** Fixed server-owned SysML; it intentionally has no numeric technical claim. */
 export const INSPECTION_DRONE_V4_ARCHITECTURE_SYSML = [
@@ -172,10 +176,11 @@ export class InspectionDroneV4ArchitectureRunExecutor {
       );
     }
     const project = await this.requiredProject(command.projectId);
-    requireShape(project, requireRun(project, command.runId));
+    const run = requireRun(project, command.runId);
+    requireShape(project, run);
     return await this.dependencies.lease.withLease(
       command.projectId,
-      command.runId,
+      threadWriteBasisLeaseScope(run),
       () => this.executeLeased(origin, command),
     );
   }
@@ -185,6 +190,7 @@ export class InspectionDroneV4ArchitectureRunExecutor {
     command: InspectionDroneV4ArchitectureRunExecutorCommand,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
+    let dispatchReserved = false;
     let providerAcknowledged = false;
     let persisted = false;
     try {
@@ -192,6 +198,9 @@ export class InspectionDroneV4ArchitectureRunExecutor {
       const beforeRun = requireRun(before, command.runId);
       requireShape(before, beforeRun);
       await this.inputs(before, beforeRun);
+      if (beforeRun.status !== "completed") {
+        await assertThreadWriteBasisAvailable(before, beforeRun);
+      }
       await this.dependencies.commands.claimRun(origin, {
         ...command,
         commandId: step(command.commandId, "claim"),
@@ -207,10 +216,23 @@ export class InspectionDroneV4ArchitectureRunExecutor {
 
       const inputs = await this.inputs(project, run);
       const rootId = inputs.seed.normalizedResults.rootPackage.id;
-      const existing = await this.dependencies.attempts.read(
-        project.project.id,
-        run.id,
-      );
+      let existing: Awaited<
+        ReturnType<FileInspectionDroneV4ArchitectureAttemptStore["read"]>
+      >;
+      try {
+        existing = await this.dependencies.attempts.read(
+          project.project.id,
+          run.id,
+        );
+      } catch {
+        // An unreadable journal can conceal either a dispatched or completed
+        // insertion. Its absence is not proven, so the basis stays quarantined.
+        dispatchReserved = true;
+        throw new InspectionDroneV4ArchitectureWriteOutcomeUnknownError();
+      }
+      // Validate every existing WAL under quarantine. In particular, a forged
+      // or corrupt completed acknowledgement must never release this basis.
+      if (existing) dispatchReserved = true;
       let acknowledgement: { parentId: string; textSha256: string };
       if (existing?.status === "completed" && existing.result) {
         acknowledgement = existing.result;
@@ -218,6 +240,7 @@ export class InspectionDroneV4ArchitectureRunExecutor {
         providerAcknowledged = true;
       } else {
         if (existing?.status === "dispatched") {
+          dispatchReserved = true;
           throw new InspectionDroneV4ArchitectureWriteOutcomeUnknownError();
         }
         const rootBefore = await this.children(
@@ -229,32 +252,52 @@ export class InspectionDroneV4ArchitectureRunExecutor {
             "The exact SysON seed root must be empty before the bounded architecture insertion.",
           );
         }
-        const began = await this.dependencies.attempts.begin({
-          projectId: project.project.id,
-          runId: run.id,
-          dispatchedAt: requiredStart(run),
-        });
+        // Reserve conservatively before `begin`: if its acknowledgement is
+        // lost, the durable file may nevertheless exist and prohibit retry.
+        dispatchReserved = true;
+        let began: Awaited<
+          ReturnType<FileInspectionDroneV4ArchitectureAttemptStore["begin"]>
+        >;
+        try {
+          began = await this.dependencies.attempts.begin({
+            projectId: project.project.id,
+            runId: run.id,
+            dispatchedAt: requiredStart(run),
+          });
+        } catch {
+          throw new InspectionDroneV4ArchitectureWriteOutcomeUnknownError();
+        }
         if (began.action === "completed") {
           acknowledgement = began.result;
         } else {
-          const response = await this.dependencies.syson.callTool({
-            name: "syson_element_insert_sysml",
-            arguments: {
-              editing_context_id:
-                inputs.seed.normalizedResults.project.editingContextId,
-              parent_id: rootId,
-              sysml_text: INSPECTION_DRONE_V4_ARCHITECTURE_SYSML,
-            },
-          });
-          acknowledgement = await normalizeInsertion(
-            response.structuredContent,
-            rootId,
-          );
-          await this.dependencies.attempts.complete({
-            projectId: project.project.id,
-            runId: run.id,
-            result: acknowledgement,
-          });
+          // From the durable dispatch marker onward, transport failure, an
+          // unreadable acknowledgement, or WAL completion failure can all hide
+          // a successful non-idempotent insertion. Keep the run active and the
+          // basis quarantined; an exact retry will reopen this dispatched WAL
+          // and must never call SysON again.
+          dispatchReserved = true;
+          try {
+            const response = await this.dependencies.syson.callTool({
+              name: "syson_element_insert_sysml",
+              arguments: {
+                editing_context_id:
+                  inputs.seed.normalizedResults.project.editingContextId,
+                parent_id: rootId,
+                sysml_text: INSPECTION_DRONE_V4_ARCHITECTURE_SYSML,
+              },
+            });
+            acknowledgement = await normalizeInsertion(
+              response.structuredContent,
+              rootId,
+            );
+            await this.dependencies.attempts.complete({
+              projectId: project.project.id,
+              runId: run.id,
+              result: acknowledgement,
+            });
+          } catch {
+            throw new InspectionDroneV4ArchitectureWriteOutcomeUnknownError();
+          }
         }
         requireAcknowledgement(acknowledgement, rootId);
         providerAcknowledged = true;
@@ -339,7 +382,7 @@ export class InspectionDroneV4ArchitectureRunExecutor {
       } else if (run.status !== "completed") throw unexpectedStatus(run, "completed");
       return this.completed(await this.requiredProject(command.projectId), command);
     } catch (error) {
-      if (claimed && !providerAcknowledged && !persisted) {
+      if (claimed && !dispatchReserved && !providerAcknowledged && !persisted) {
         await this.recordFailure(origin, command);
       }
       throw error;

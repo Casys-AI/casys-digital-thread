@@ -46,6 +46,18 @@ import {
   parseReconcileUncertainWriterProposal,
   RECONCILE_UNCERTAIN_WRITER_OPERATION,
 } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
+import {
+  COMPILE_SEAL_ADMISSION_OPERATION,
+  parseTechnicalCompilationAdmissionParameters,
+} from "../../domain/analysis/technical-compilation-proposal.ts";
+import {
+  DESIGN_EXECUTE_BUILD123D_OPERATION,
+  parseBuild123dExecutionAdmissionParameters,
+} from "../../domain/analysis/build123d-execution-proposal.ts";
+import {
+  parseModelicaQualifiedKitRunAdmissionParameters,
+  SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+} from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 
 /** Operation identity as `id@version`, the key used across the registry. */
 export type OperationKey = string;
@@ -65,6 +77,24 @@ const PROPOSAL_VALIDATORS = new Map<
   OperationKey,
   (parameters: readonly EngineeringDecisionProposalParameter[]) => void
 >([
+  [
+    keyOf(COMPILE_SEAL_ADMISSION_OPERATION),
+    (parameters) => {
+      parseTechnicalCompilationAdmissionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(DESIGN_EXECUTE_BUILD123D_OPERATION),
+    (parameters) => {
+      parseBuild123dExecutionAdmissionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION),
+    (parameters) => {
+      parseModelicaQualifiedKitRunAdmissionParameters(parameters);
+    },
+  ],
   [
     keyOf(MODEL_WRITE_ARCHITECTURE_OPERATION),
     (parameters) => {

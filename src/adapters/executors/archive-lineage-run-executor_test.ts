@@ -12,6 +12,7 @@
  *  - Happy path: retires one artifact and its cascade; publishes a valid snapshot
  *  - Fail-closed: a fully already-retired cascade is refused, never duplicated
  *  - CAS readback: result snapshot readable after save
+ *  - Lost save ACK: exact retry reuses one byte-identical successor
  *  - Idempotent replay: same command on a completed run returns same project revision
  */
 
@@ -21,7 +22,12 @@ import {
   EngineeringProjectCommandService,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
-import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import {
+  archivedRefKeys,
+  type ThreadSnapshot,
+} from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../orchestration/operations/registry.ts";
 import {
@@ -38,6 +44,7 @@ import { approvedBriefSourceAnalysisFixture } from "../../testing/approved-brief
 import {
   ARCHIVE_LINEAGE_OPERATION,
   ArchiveLineageRunExecutor,
+  type ArchiveLineageThreadSnapshotStore,
 } from "./archive-lineage-run-executor.ts";
 
 // ---------------------------------------------------------------------------
@@ -194,6 +201,127 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "archive-lineage executor rejects mutated MRTR and run fingerprints before snapshot save",
+  async () => {
+    const mutations: ReadonlyArray<{
+      readonly label: string;
+      readonly mutate: (project: DeepMutable<EngineeringProjectSnapshot>) => void;
+    }> = [{
+      label: "decision fingerprint",
+      mutate(project) {
+        const decision = requiredArchiveDecision(project);
+        const approval = requiredArchiveApproval(project, decision.approvalIds[0]!);
+        decision.inputFingerprint!.digest = "f".repeat(64);
+        approval.inputFingerprint!.digest = "f".repeat(64);
+      },
+    }, {
+      label: "proposal",
+      mutate(project) {
+        requiredArchiveDecision(project).proposal!.summary =
+          "Mutated after human approval.";
+      },
+    }, {
+      label: "approval evidence",
+      mutate(project) {
+        const decision = requiredArchiveDecision(project);
+        const approval = requiredArchiveApproval(project, decision.approvalIds[0]!);
+        approval.inputEvidenceRefs[0]!.id = "foreign-artifact";
+      },
+    }, {
+      label: "duplicate current approval",
+      mutate(project) {
+        const decision = requiredArchiveDecision(project);
+        const approval = requiredArchiveApproval(project, decision.approvalIds[0]!);
+        const duplicate = mutableClone(approval);
+        duplicate.id = "approval:archive-duplicate";
+        project.approvals.push(duplicate);
+        decision.approvalIds.push(duplicate.id);
+      },
+    }, {
+      label: "duplicate approved decision",
+      mutate(project) {
+        const decision = requiredArchiveDecision(project);
+        const approval = requiredArchiveApproval(project, decision.approvalIds[0]!);
+        const duplicateDecision = mutableClone(decision);
+        duplicateDecision.id = "archive-decision-duplicate";
+        duplicateDecision.approvalIds = ["approval:archive-decision-duplicate"];
+        const duplicateApproval = mutableClone(approval);
+        duplicateApproval.id = duplicateDecision.approvalIds[0]!;
+        duplicateApproval.decisionId = duplicateDecision.id;
+        project.decisions.push(duplicateDecision);
+        project.approvals.push(duplicateApproval);
+        const workItem = project.workItems.find((item) =>
+          item.id === "archive-work-item"
+        )!;
+        workItem.decisionIds.push(duplicateDecision.id);
+      },
+    }, {
+      label: "run fingerprint",
+      mutate(project) {
+        const run = project.agentRuns.find((item) =>
+          item.id === "run:archive-lineage"
+        )!;
+        run.inputFingerprint!.digest = "e".repeat(64);
+      },
+    }];
+
+    for (const mutation of mutations) {
+      const directory = await Deno.makeTempDir({
+        prefix: `casys-generic-archive-mrtr-${mutation.label.replaceAll(" ", "-")}-`,
+      });
+      try {
+        const fixture = await queuedArchiveLineage(directory);
+        let snapshotSaves = 0;
+        const projects = {
+          async get(projectId: string) {
+            const project = await fixture.projects.get(projectId);
+            if (!project) return undefined;
+            const mutated = mutableClone(project);
+            mutation.mutate(mutated);
+            return mutated;
+          },
+        } as never;
+        const snapshots: ArchiveLineageThreadSnapshotStore = {
+          get: (snapshotId) => fixture.snapshots.get(snapshotId),
+          getFresh: (snapshotId) => fixture.snapshots.getFresh(snapshotId),
+          latest: (subjectId) => fixture.snapshots.latest(subjectId),
+          async save(snapshot) {
+            snapshotSaves += 1;
+            await fixture.snapshots.save(snapshot);
+          },
+        };
+        const executor = new ArchiveLineageRunExecutor({
+          projects,
+          commands: fixture.commands,
+          snapshots,
+          lease: new FileEngineeringProjectRunLease(`${directory}/archive-leases`),
+          now: () => "2026-08-09T10:30:00.000Z",
+        });
+
+        await assertRejects(
+          () =>
+            executor.execute(AGENT, {
+              commandId: `agent-archive-mutated-${mutation.label}`,
+              projectId: PROJECT_ID,
+              expectedRevision: fixture.queued.revision,
+              issuedAt: "2026-08-09T10:30:00.000Z",
+              runId: fixture.runId,
+            }),
+          EngineeringProjectCommandError,
+        );
+        assertEquals(
+          snapshotSaves,
+          0,
+          `${mutation.label} must be rejected before any ThreadSnapshot save.`,
+        );
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Happy path + CAS readback + idempotent replay
 // ---------------------------------------------------------------------------
@@ -215,13 +343,14 @@ Deno.test(
         now: () => "2026-08-09T10:30:00.000Z",
       });
 
-      const completed = await executor.execute(AGENT, {
+      const command = {
         commandId: "agent-archive-cmd",
         projectId: PROJECT_ID,
         expectedRevision: fixture.queued.revision,
         issuedAt: "2026-08-09T10:30:00.000Z",
         runId: fixture.runId,
-      });
+      };
+      const completed = await executor.execute(AGENT, command);
 
       const run = completed.agentRuns.at(-1)!;
       assertEquals(run.status, "completed");
@@ -241,17 +370,307 @@ Deno.test(
 
       // Idempotent replay: same command, same revision returned, no new snapshot.
       const revisionBefore = completed.revision;
-      const replay = await executor.execute(AGENT, {
-        commandId: "agent-archive-cmd",
-        projectId: PROJECT_ID,
-        expectedRevision: completed.revision,
-        issuedAt: "2026-08-09T10:31:00.000Z",
-        runId: fixture.runId,
-      });
+      const replay = await executor.execute(AGENT, command);
       assertEquals(
         replay.revision,
         revisionBefore,
         "Idempotent replay must not advance the project revision.",
+      );
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            ...command,
+            issuedAt: "2026-08-09T10:31:00.000Z",
+          }),
+        EngineeringProjectCommandError,
+        "already used for a different request",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "archive-lineage executor recovers a lost save ACK on one byte-identical successor",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-generic-archive-lost-ack-",
+    });
+    try {
+      const fixture = await queuedArchiveLineage(directory);
+      const saveAttempts: ThreadSnapshot[] = [];
+      let loseFirstSaveAck = true;
+      const snapshots: ArchiveLineageThreadSnapshotStore = {
+        get: (snapshotId) => fixture.snapshots.get(snapshotId),
+        latest: (subjectId) => fixture.snapshots.latest(subjectId),
+        async save(snapshot) {
+          saveAttempts.push(structuredClone(snapshot));
+          await fixture.snapshots.save(snapshot);
+          if (loseFirstSaveAck) {
+            loseFirstSaveAck = false;
+            throw new Error("snapshot ACK lost after durable commit");
+          }
+        },
+        getFresh: (snapshotId) => fixture.snapshots.getFresh(snapshotId),
+      };
+      const executor = new ArchiveLineageRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots,
+        lease: new FileEngineeringProjectRunLease(`${directory}/archive-leases`),
+        now: () => "2026-08-09T10:30:00.000Z",
+      });
+      const command = {
+        commandId: "agent-archive-lost-ack",
+        projectId: PROJECT_ID,
+        expectedRevision: fixture.queued.revision,
+        issuedAt: "2026-08-09T10:30:00.000Z",
+        runId: fixture.runId,
+      };
+
+      await assertRejects(
+        () => executor.execute(AGENT, command),
+        EngineeringProjectCommandError,
+        "may be durable",
+      );
+
+      const afterLostAck = await fixture.projects.get(PROJECT_ID);
+      assertExists(afterLostAck);
+      const activeRun = afterLostAck.agentRuns.find((run) => run.id === fixture.runId);
+      assertExists(activeRun);
+      assertEquals(
+        activeRun.status === "running" || activeRun.status === "publishing",
+        true,
+        "A post-save uncertainty must remain retryable, never become failed.",
+      );
+      assertEquals(saveAttempts.length, 1);
+      const durablySaved = await fixture.snapshots.get(saveAttempts[0]!.id);
+      assertExists(durablySaved, "The lost ACK follows a durable snapshot save.");
+      assertEquals(deterministicJson(durablySaved), deterministicJson(saveAttempts[0]));
+
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            ...command,
+            issuedAt: "2026-08-09T10:30:01.000Z",
+          }),
+        EngineeringProjectCommandError,
+        "already used for a different request",
+      );
+      const afterAlteredRetry = await fixture.projects.get(PROJECT_ID);
+      assertExists(afterAlteredRetry);
+      assertEquals(
+        afterAlteredRetry.agentRuns.find((run) => run.id === fixture.runId)?.status,
+        "running",
+      );
+
+      const completed = await executor.execute(AGENT, command);
+      const completedRun = completed.agentRuns.find((run) => run.id === fixture.runId);
+      assertExists(completedRun);
+      assertEquals(completedRun.status, "completed");
+      assertExists(completedRun.resultSnapshot);
+      assertEquals(completedRun.resultSnapshot.snapshotId, saveAttempts[0]!.id);
+      assertEquals(
+        completed.threadSnapshots.filter((snapshot) =>
+          snapshot.snapshotId === saveAttempts[0]!.id
+        ).length,
+        1,
+        "The recovered project must attach the deterministic successor once.",
+      );
+      assertEquals(saveAttempts.length, 2);
+      assertEquals(
+        new Set(saveAttempts.map((snapshot) => snapshot.id)).size,
+        1,
+        "Exact retry must not mint a second successor id.",
+      );
+      assertEquals(
+        new Set(saveAttempts.map((snapshot) => deterministicJson(snapshot))).size,
+        1,
+        "Every retry must submit byte-identical snapshot content.",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "archive-lineage executor recovers publish and completion ACK loss after durable commit",
+  async () => {
+    for (const lostAck of ["publish", "complete"] as const) {
+      const directory = await Deno.makeTempDir({
+        prefix: `casys-generic-archive-${lostAck}-ack-`,
+      });
+      try {
+        const fixture = await queuedArchiveLineage(directory);
+        let loseAck = true;
+        let publishCalls = 0;
+        let completeCalls = 0;
+        const commands: Pick<
+          EngineeringProjectCommandService,
+          "claimRun" | "publishRun" | "completeRun" | "failRun"
+        > = {
+          claimRun: (origin, command) => fixture.commands.claimRun(origin, command),
+          failRun: (origin, command) => fixture.commands.failRun(origin, command),
+          publishRun: async (origin, command) => {
+            publishCalls += 1;
+            const published = await fixture.commands.publishRun(origin, command);
+            if (lostAck === "publish" && loseAck) {
+              loseAck = false;
+              throw new Error("publish ACK lost after durable commit");
+            }
+            return published;
+          },
+          completeRun: async (origin, command) => {
+            completeCalls += 1;
+            const completed = await fixture.commands.completeRun(origin, command);
+            if (lostAck === "complete" && loseAck) {
+              loseAck = false;
+              throw new Error("complete ACK lost after durable commit");
+            }
+            return completed;
+          },
+        };
+        const saveAttempts: ThreadSnapshot[] = [];
+        const snapshots: ArchiveLineageThreadSnapshotStore = {
+          get: (snapshotId) => fixture.snapshots.get(snapshotId),
+          getFresh: (snapshotId) => fixture.snapshots.getFresh(snapshotId),
+          latest: (subjectId) => fixture.snapshots.latest(subjectId),
+          async save(snapshot) {
+            saveAttempts.push(structuredClone(snapshot));
+            await fixture.snapshots.save(snapshot);
+          },
+        };
+        const executor = new ArchiveLineageRunExecutor({
+          projects: fixture.projects,
+          commands,
+          snapshots,
+          lease: new FileEngineeringProjectRunLease(`${directory}/archive-leases`),
+          now: () => "2026-08-09T10:30:00.000Z",
+        });
+        const command = {
+          commandId: `agent-archive-${lostAck}-ack`,
+          projectId: PROJECT_ID,
+          expectedRevision: fixture.queued.revision,
+          issuedAt: "2026-08-09T10:30:00.000Z",
+          runId: fixture.runId,
+        };
+
+        let completed;
+        if (lostAck === "publish") {
+          await assertRejects(
+            () => executor.execute(AGENT, command),
+            EngineeringProjectCommandError,
+            "may be durable",
+          );
+          const publishing = await fixture.projects.get(PROJECT_ID);
+          assertExists(publishing);
+          assertEquals(
+            publishing.agentRuns.find((run) => run.id === fixture.runId)?.status,
+            "publishing",
+          );
+          completed = await executor.execute(AGENT, command);
+        } else {
+          completed = await executor.execute(AGENT, command);
+        }
+
+        const run = completed.agentRuns.find((candidate) =>
+          candidate.id === fixture.runId
+        );
+        assertExists(run);
+        assertEquals(run.status, "completed");
+        assertExists(run.resultSnapshot);
+        assertEquals(
+          completed.threadSnapshots.filter((reference) =>
+            reference.snapshotId === run.resultSnapshot!.snapshotId
+          ).length,
+          1,
+        );
+        assertEquals(
+          completed.commandReceipts?.filter((receipt) =>
+            receipt.commandId ===
+              `${command.commandId}:record-archive-lineage:complete`
+          ).length,
+          1,
+          "Lost completion ACK recovery must reuse the immutable receipt.",
+        );
+        assertEquals(
+          new Set(saveAttempts.map((snapshot) => snapshot.id)).size,
+          1,
+        );
+        assertEquals(
+          new Set(saveAttempts.map((snapshot) => deterministicJson(snapshot))).size,
+          1,
+        );
+        assertEquals(publishCalls >= 1, true);
+        assertEquals(completeCalls >= 1, true);
+        if (lostAck === "complete") {
+          assertEquals(
+            completeCalls,
+            2,
+            "A lost completion ACK must be proven by exact completeRun replay.",
+          );
+        }
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
+Deno.test(
+  "completed archive-lineage replay rejects drift in its persisted successor",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-generic-archive-completed-drift-",
+    });
+    try {
+      const fixture = await queuedArchiveLineage(directory);
+      let driftSuccessor = false;
+      const snapshots: ArchiveLineageThreadSnapshotStore = {
+        get: (snapshotId) => fixture.snapshots.get(snapshotId),
+        latest: (subjectId) => fixture.snapshots.latest(subjectId),
+        save: (snapshot) => fixture.snapshots.save(snapshot),
+        async getFresh(snapshotId) {
+          const snapshot = await fixture.snapshots.getFresh(snapshotId);
+          if (!snapshot || !driftSuccessor || snapshot.revision === 1) {
+            return snapshot;
+          }
+          return {
+            ...structuredClone(snapshot),
+            changeSet: {
+              ...structuredClone(snapshot.changeSet),
+              name: "Tampered archive lineage",
+            },
+          };
+        },
+      };
+      const executor = new ArchiveLineageRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots,
+        lease: new FileEngineeringProjectRunLease(`${directory}/archive-leases`),
+        now: () => "2026-08-09T10:30:00.000Z",
+      });
+      const command = {
+        commandId: "agent-archive-completed-drift",
+        projectId: PROJECT_ID,
+        expectedRevision: fixture.queued.revision,
+        issuedAt: "2026-08-09T10:30:00.000Z",
+        runId: fixture.runId,
+      };
+      const completed = await executor.execute(AGENT, command);
+      assertEquals(
+        completed.agentRuns.find((run) => run.id === fixture.runId)?.status,
+        "completed",
+      );
+
+      driftSuccessor = true;
+      await assertRejects(
+        () => executor.execute(AGENT, command),
+        EngineeringProjectCommandError,
+        "no longer equals the exact deterministic snapshot",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -466,6 +885,30 @@ interface ArchiveLineageFixture {
   };
   /** The actual ID of the brief artifact produced by the baseline run. */
   briefArtifactId: string;
+}
+
+type DeepMutable<T> = T extends (...args: never[]) => unknown ? T
+  : T extends readonly (infer Item)[] ? DeepMutable<Item>[]
+  : T extends object ? { -readonly [Key in keyof T]: DeepMutable<T[Key]> }
+  : T;
+
+function mutableClone<T>(value: T): DeepMutable<T> {
+  return structuredClone(value) as DeepMutable<T>;
+}
+
+function requiredArchiveDecision(project: DeepMutable<EngineeringProjectSnapshot>) {
+  const decision = project.decisions.find((item) => item.id === "archive-decision");
+  if (!decision) throw new Error("archive decision fixture is absent");
+  return decision;
+}
+
+function requiredArchiveApproval(
+  project: DeepMutable<EngineeringProjectSnapshot>,
+  approvalId: string,
+) {
+  const approval = project.approvals.find((item) => item.id === approvalId);
+  if (!approval) throw new Error("archive approval fixture is absent");
+  return approval;
 }
 
 /**

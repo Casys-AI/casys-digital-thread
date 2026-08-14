@@ -295,3 +295,8 @@ export function renderArchiveCascadeSummary(
     .map((entry) => `  ${entry.ref.kind}:${entry.ref.id}  (because: ${entry.because})`)
     .join("\n");
 }
+/** Exact identity of the provider-free Thread lineage retirement writer. */
+export const ARCHIVE_LINEAGE_OPERATION = {
+  id: "record.archive-lineage",
+  version: "1",
+} as const;

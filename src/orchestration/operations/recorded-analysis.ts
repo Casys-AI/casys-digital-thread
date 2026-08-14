@@ -23,6 +23,12 @@ export const VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION = {
   version: "2",
 } as const;
 
+/** Provider-free successor; @2 remains the immutable MCP-plan identity. */
+export const VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION = {
+  id: "verify.run-fea-static-proof",
+  version: "3",
+} as const;
+
 export const RECORDED_ANALYSIS_OPERATION_DESCRIPTORS = [
   {
     ...SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
@@ -84,6 +90,37 @@ export const RECORDED_ANALYSIS_OPERATION_DESCRIPTORS = [
       "STEP through the private input boundary, recover only by the durable request id, " +
       "capture the nine recorded solver resources, then apply the separately qualified " +
       "evaluation method.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    resolvedOperationPlan: "2.0",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [
+      {
+        name: "proofCase",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+      {
+        name: "geometry",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+    ],
+  },
+  {
+    ...VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Run the planned isolated local CalculiX static proof",
+    description:
+      "Execute exactly the server-sealed resolved-operation-plan/2.0 with the " +
+      "digest-pinned local Microsandbox profile, bind the reviewed STEP and proof " +
+      "case into one immutable bundle, publish the nine output objects and isolated " +
+      "execution evidence through CAS, then apply the separately qualified SysON " +
+      "evaluation method. Historical MCP plans are never routed to this executor.",
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",

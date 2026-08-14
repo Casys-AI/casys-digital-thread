@@ -1,0 +1,63 @@
+/**
+ * One code-owned composition for technical-source capture frontends.
+ *
+ * Keeping the registration here prevents a server composition root from
+ * accidentally pairing the qualified compilation profile with a different
+ * parser, version, role, or policy identity.
+ */
+
+import {
+  QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+  QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID,
+  QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
+  QualifiedBuild123dSourceAnalyzer,
+} from "../analyzers/qualified-build123d-source-analyzer.ts";
+import {
+  FixedTechnicalSourceAnalysisProfileRegistry,
+  TechnicalSourceAnalysisCaptureService,
+  type TechnicalSourceAnalysisProfile,
+  validateTechnicalSourceAnalysisProfile,
+} from "../captures/technical-source-analysis-capture.ts";
+import type { FileByteStore } from "../captures/file-byte-store.ts";
+
+export const INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES = 262_144;
+
+export const INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE:
+  TechnicalSourceAnalysisProfile = validateTechnicalSourceAnalysisProfile({
+    id: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+    version: "1.0.0",
+    role: "cad-script",
+    language: "python",
+    analyzer: {
+      id: QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID,
+      version: QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
+    },
+    maxSourceBytes: INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES,
+  });
+
+/** Closed registry: no Modelica or generic Python frontend is silently added. */
+export function createInitialTechnicalSourceAnalysisProfileRegistry(): FixedTechnicalSourceAnalysisProfileRegistry {
+  return new FixedTechnicalSourceAnalysisProfileRegistry([{
+    profile: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE,
+    frontend: new QualifiedBuild123dSourceAnalyzer(),
+  }]);
+}
+
+export interface InitialTechnicalSourceAnalysisCaptureStores {
+  readonly sourceCaptures: FileByteStore<"technical-source">;
+  readonly analysisCaptures: FileByteStore<"technical-source-analysis">;
+}
+
+/**
+ * Construct the capture service with the closed registry above. Callers own
+ * only the two CAS stores; they cannot substitute analyzer identities.
+ */
+export function createInitialTechnicalSourceAnalysisCaptureService(
+  stores: InitialTechnicalSourceAnalysisCaptureStores,
+): TechnicalSourceAnalysisCaptureService {
+  return new TechnicalSourceAnalysisCaptureService({
+    sourceCaptures: stores.sourceCaptures,
+    analysisCaptures: stores.analysisCaptures,
+    profiles: createInitialTechnicalSourceAnalysisProfileRegistry(),
+  });
+}

@@ -1,5 +1,6 @@
 import { assertEquals, assertNotEquals, assertThrows } from "@std/assert";
 import {
+  CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE,
   CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE,
   canonicalResolvedOperationPlanV2Text,
   fingerprintResolvedOperationPlanV2,
@@ -284,6 +285,77 @@ function validCalculixPlan(): Record<string, unknown> {
   };
   return plan;
 }
+
+function validLocalCalculixPlan(): Record<string, unknown> {
+  const plan = validCalculixPlan();
+  (plan.workItem as Record<string, Record<string, unknown>>).operation.version = "3";
+  (plan.authorization as Record<string, Record<string, unknown>>)
+    .methodQualification = {
+      id: "qualified-calculix-isolated-static-proof",
+      version: "1.0",
+      fingerprint: fingerprint("e"),
+    };
+  plan.action = {
+    kind: "isolated-static-structural-analysis",
+    executor: {
+      id: "casys-local-microsandbox",
+      contract: { id: "calculix-static-proof-v1", version: "1.0.0" },
+      profileFingerprint: fingerprint("e"),
+    },
+    lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
+    requestId: "request.calculix.local.1",
+    input: {
+      proofCase: {
+        id: "drip-tray-static",
+        fingerprint: fingerprint("c"),
+        sourceBinding: "proofCase",
+      },
+      geometrySourceBinding: "geometry",
+      effectiveElementOrder: 2,
+      effectiveTimeoutMs: 60_000,
+    },
+  };
+  plan.expectedProviderResources = {
+    receiptSchema: "isolated-code-execution-receipt-record/1.0",
+    evidenceSchema: "calculix-isolated-static-evidence/1.0",
+    resourceProfile: {
+      id: CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.id,
+      version: CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.version,
+    },
+  };
+  plan.recovery = {
+    policy: "calculix-isolated-generation-recovery@1.0",
+    requestId: "request.calculix.local.1",
+    mode: "same-request-readback-no-blind-redispatch",
+    ambiguousOutcome: "quarantine-for-human-review",
+    capturedOutcome: "cas-only-recovery",
+  };
+  return plan;
+}
+
+Deno.test("ResolvedOperationPlan keeps MCP @2 and local @3 CalculiX identities disjoint", async () => {
+  const historical = validateResolvedOperationPlanV2(validCalculixPlan());
+  const historicalText = canonicalResolvedOperationPlanV2Text(historical);
+  const local = validateResolvedOperationPlanV2(validLocalCalculixPlan());
+  assertEquals(historical.action.kind, "static-structural-analysis");
+  assertEquals(local.action.kind, "isolated-static-structural-analysis");
+  if (local.action.kind !== "isolated-static-structural-analysis") throw new Error();
+  assertEquals(Object.hasOwn(local.action, "provider"), false);
+  assertEquals(Object.hasOwn(local.action, "tool"), false);
+  assertEquals(local.action.executor.profileFingerprint, fingerprint("e"));
+  assertEquals(
+    canonicalResolvedOperationPlanV2Text(validCalculixPlan()),
+    historicalText,
+  );
+  assertNotEquals(
+    await fingerprintResolvedOperationPlanV2(local),
+    await fingerprintResolvedOperationPlanV2(historical),
+  );
+
+  const transplanted = validLocalCalculixPlan();
+  (transplanted.action as Record<string, unknown>).kind = "static-structural-analysis";
+  assertThrows(() => validateResolvedOperationPlanV2(transplanted), TypeError);
+});
 
 Deno.test("ResolvedOperationPlan 2.0 canonicalizes unordered evidence and freezes the closed Modelica action", async () => {
   const plan = validateResolvedOperationPlanV2(validPlan());

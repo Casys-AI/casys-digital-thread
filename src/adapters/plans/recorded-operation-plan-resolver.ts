@@ -5,6 +5,7 @@
  */
 
 import {
+  CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE,
   CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE,
   MODELICA_RESUMABLE_RESOURCE_PROFILE,
   RESOLVED_OPERATION_PLAN_V2_SCHEMA,
@@ -12,6 +13,7 @@ import {
   type ResolvedOperationPlanSource,
   type ResolvedOperationPlanV2,
 } from "../../domain/analysis/resolved-operation-plan-v2.ts";
+import type { CalculixIsolatedExecutionProfile } from "../../application/ports/out/calculix-isolated-execution-profile.ts";
 import { canonicalCalculixStepAssetCasUri } from "../../domain/analysis/calculix-step-asset-uri.ts";
 import {
   canonicalModelicaQualifiedManifestDocumentText,
@@ -81,6 +83,10 @@ const CALCULIX_OPERATION = {
   id: "verify.run-fea-static-proof",
   version: "2",
 } as const;
+const CALCULIX_LOCAL_OPERATION = {
+  id: "verify.run-fea-static-proof",
+  version: "3",
+} as const;
 const SHA256 = /^[a-f0-9]{64}$/;
 const CANONICAL_CAS_URI =
   /^casys:\/\/[a-z0-9][a-z0-9.-]{0,62}\/sha256\/([a-f0-9]{64})$/;
@@ -101,6 +107,8 @@ export interface RecordedOperationPlanResolverOptions {
   readonly calculix?: {
     readonly elementOrder?: 1 | 2;
     readonly timeoutMs?: number;
+    /** Exact server-composed profile required to seal the provider-free @3 plan. */
+    readonly localProfile?: CalculixIsolatedExecutionProfile;
   };
 }
 
@@ -172,7 +180,10 @@ export class RecordedOperationPlanResolver {
     if (sameOperation(operation.id, operation.version, MODELICA_OPERATION)) {
       return await this.#modelicaPlan(input, snapshot, common);
     }
-    if (sameOperation(operation.id, operation.version, CALCULIX_OPERATION)) {
+    if (
+      sameOperation(operation.id, operation.version, CALCULIX_OPERATION) ||
+      sameOperation(operation.id, operation.version, CALCULIX_LOCAL_OPERATION)
+    ) {
       return await this.#calculixPlan(input, snapshot, common);
     }
     throw new TypeError(
@@ -392,6 +403,17 @@ export class RecordedOperationPlanResolver {
     snapshot: ThreadSnapshot,
     common: PlanCommon,
   ): Promise<ResolvedOperationPlanV2> {
+    const local = sameOperation(
+      input.workItem.operation!.id,
+      input.workItem.operation!.version,
+      CALCULIX_LOCAL_OPERATION,
+    );
+    const localProfile = this.options.calculix?.localProfile;
+    if (local && localProfile === undefined) {
+      throw new TypeError(
+        "The local CalculiX operation requires an exact server-composed isolated profile.",
+      );
+    }
     const bindings = exactBindings(input.workItem.operation!.bindings, [
       "proofCase",
       "geometry",
@@ -468,15 +490,21 @@ export class RecordedOperationPlanResolver {
       );
     }
     const requestId = await requestIdFor(input.run.id, "calculix");
-    return {
+    const commonPlan = {
       ...common,
       authorization: {
         ...common.authorization,
-        methodQualification: {
-          id: "qualified-static-structural-proof-case",
-          version: "1.0",
-          fingerprint: proofArtifact.fingerprint,
-        },
+        methodQualification: local
+          ? {
+            id: "qualified-calculix-isolated-static-proof",
+            version: "1.0",
+            fingerprint: localProfile!.profileFingerprint,
+          }
+          : {
+            id: "qualified-static-structural-proof-case",
+            version: "1.0",
+            fingerprint: proofArtifact.fingerprint,
+          },
       },
       sources: [
         await this.#artifactSource(snapshot, "proofCase", "proof-case", proofArtifact),
@@ -489,6 +517,50 @@ export class RecordedOperationPlanResolver {
           geometryCasUri,
         ),
       ],
+    };
+    const actionInput = {
+      proofCase: {
+        id: proof.case.id,
+        fingerprint: proofArtifact.fingerprint,
+        sourceBinding: "proofCase",
+      },
+      geometrySourceBinding: "geometry",
+      effectiveElementOrder: this.#elementOrder,
+      effectiveTimeoutMs: this.#calculixTimeoutMs,
+    } as const;
+    if (local) {
+      return {
+        ...commonPlan,
+        action: {
+          kind: "isolated-static-structural-analysis",
+          executor: {
+            id: "casys-local-microsandbox",
+            contract: { id: "calculix-static-proof-v1", version: "1.0.0" },
+            profileFingerprint: localProfile!.profileFingerprint,
+          },
+          lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
+          requestId,
+          input: actionInput,
+        },
+        expectedProviderResources: {
+          receiptSchema: "isolated-code-execution-receipt-record/1.0",
+          evidenceSchema: "calculix-isolated-static-evidence/1.0",
+          resourceProfile: {
+            id: CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.id,
+            version: CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.version,
+          },
+        },
+        recovery: {
+          policy: "calculix-isolated-generation-recovery@1.0",
+          requestId,
+          mode: "same-request-readback-no-blind-redispatch",
+          ambiguousOutcome: "quarantine-for-human-review",
+          capturedOutcome: "cas-only-recovery",
+        },
+      };
+    }
+    return {
+      ...commonPlan,
       action: {
         kind: "static-structural-analysis",
         provider: {
@@ -500,16 +572,7 @@ export class RecordedOperationPlanResolver {
         },
         lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
         requestId,
-        input: {
-          proofCase: {
-            id: proof.case.id,
-            fingerprint: proofArtifact.fingerprint,
-            sourceBinding: "proofCase",
-          },
-          geometrySourceBinding: "geometry",
-          effectiveElementOrder: this.#elementOrder,
-          effectiveTimeoutMs: this.#calculixTimeoutMs,
-        },
+        input: actionInput,
       },
       expectedProviderResources: {
         ledgerSchema: "provider-resource-acquisition-ledger/1.0",
