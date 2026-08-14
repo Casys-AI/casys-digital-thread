@@ -16,9 +16,10 @@ import {
 
 /**
  * The only initial registration corresponds to a real parser-backed, closed
- * build123d subset (primitives, placements, Compound, solid +/−,
- * scale(solid, scalar), fillet(solid.edges(), radius=scalar), and
- * chamfer(solid.edges(), length)). CalculiX and Modelica remain absent until
+ * build123d subset (3-D primitives, Rectangle/Circle sketches, placements,
+ * Compound, same-kind +/−, scale(solid, scalar),
+ * fillet(solid.edges(), radius=scalar), chamfer(solid.edges(), length), and
+ * extrude(sketch, amount=scalar)). CalculiX and Modelica remain absent until
  * independently qualified frontends exist; requesting either therefore fails
  * closed.
  */

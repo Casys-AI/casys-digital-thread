@@ -6,27 +6,34 @@
  * smaller AST subset:
  *
  * - named imports of Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge,
- *   Pos, Rot, Compound, scale, fillet and chamfer (aliases allowed; two
- *   aliases for the same imported name stay ambiguous);
+ *   Rectangle, Circle, Pos, Rot, Compound, scale, fillet, chamfer and
+ *   extrude (aliases allowed; two aliases for the same imported name stay
+ *   ambiguous);
  * - unique module-level parameter assignments made only of finite decimal
  *   numbers, unary/binary arithmetic, earlier parameters, and flat lists;
- * - unique module-level solid assignments: a Box/Cylinder/Cone/Sphere/Torus/
- *   Ellipsoid/Wedge call, a Pos/Rot * solid, a solid +/− solid, a
+ * - unique module-level shape assignments, each carrying an explicit
+ *   geometry kind `solid` or `sketch`: a Box/Cylinder/Cone/Sphere/Torus/
+ *   Ellipsoid/Wedge call, a Rectangle/Circle call, a Pos * solid or
+ *   Pos * sketch, a Rot * solid, a same-kind +/−, a
  *   `scale(<qualified-solid>, <scalar>)`, a
  *   `fillet(<qualified-solid>.edges(), radius=<scalar>)`, a
- *   `chamfer(<qualified-solid>.edges(), <scalar>)`, a name of an
- *   earlier solid, or `Compound(children=[...])` over earlier solid names;
- * - one module-level `result` that is itself one of those solids.
+ *   `chamfer(<qualified-solid>.edges(), <scalar>)`, an
+ *   `extrude(<qualified-sketch>, amount=<scalar>)`, a name of an
+ *   earlier same-kind shape, or `Compound(children=[...])` over earlier
+ *   solid names;
+ * - one module-level `result` that is itself one of those solids.  A sketch
+ *   is never a valid result.
  *
  * Anything D4 considers dangerous is rejected.  Syntax that D4 allows but
  * this frontend cannot prove is recorded as unresolved, so it can never yield
- * a fully qualified compilation by omission.
+ * a fully qualified compilation by omission.  Every geometry-kind mix is
+ * labelled with the expected kind and the received kind.
  *
- * Next AST lock (not opened here): `fillet(solid, r)` is not a reviewed
- * positional solid form.  extrude still needs a 2-D sketch subset plus
- * `amount=` kwargs — do not open it until a dedicated sketch subset is
- * reviewed.  Do not open general MemberExpression, `.faces()`, or
- * `filter_by`.
+ * Next AST lock (not opened here): Ellipse, Polygon, RegularPolygon and
+ * Plane placements; Rot * sketch; extrude `taper=`/`both=`/`dir=`/`until=`
+ * and a positional amount; `fillet(solid, r)` and `chamfer(solid, l)`
+ * positional solid forms.  Do not open general MemberExpression, `.faces()`,
+ * or `filter_by`.
  */
 
 import { parser } from "@lezer/python";
@@ -58,14 +65,14 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
   "build123d-qualified-lezer" as const;
 
 /**
- * Cone, Sphere, Rot, Torus, Ellipsoid, Wedge, algebraic
- * `scale(solid, scalar)`, `fillet(solid.edges(), radius=scalar)` and
- * `chamfer(solid.edges(), length)` reuse the 1.1 positional-call and
- * placement * solid identity scheme (`build123d-ast-identity/1.0`). Previously
- * qualified bundles stay bit-identical, so the public analysis identity does
- * not change for existing sources.
+ * Rectangle, Circle, sketch +/− sketch, Pos * sketch and
+ * `extrude(sketch, amount=scalar)` reuse the 1.2 positional-call,
+ * keyword-transform and placement * shape identity scheme
+ * (`build123d-ast-identity/1.0`). Previously qualified bundles stay
+ * bit-identical, so the public analysis identity does not change for
+ * existing sources.
  */
-export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.2.0" as const;
+export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.3.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
 
@@ -83,15 +90,19 @@ const QUALIFIED_BUILD123D_CALLS = new Map(
     ["Torus", { role: "solid", positionalArguments: 2 }],
     ["Ellipsoid", { role: "solid", positionalArguments: 3 }],
     ["Wedge", { role: "solid", positionalArguments: 7 }],
+    ["Rectangle", { role: "sketch", positionalArguments: 2 }],
+    ["Circle", { role: "sketch", positionalArguments: 1 }],
     ["Pos", { role: "placement", positionalArguments: 3 }],
     ["Rot", { role: "placement", positionalArguments: 3 }],
     ["Compound", { role: "assembly", positionalArguments: 0 }],
     ["scale", { role: "transform", positionalArguments: 2 }],
     ["fillet", { role: "transform", positionalArguments: 1 }],
     ["chamfer", { role: "transform", positionalArguments: 1 }],
+    ["extrude", { role: "transform", positionalArguments: 1 }],
   ] as const,
 );
 
+type GeometryKind = "solid" | "sketch";
 type QualifiedBuild123dCallName =
   | "Box"
   | "Cylinder"
@@ -100,15 +111,18 @@ type QualifiedBuild123dCallName =
   | "Torus"
   | "Ellipsoid"
   | "Wedge"
+  | "Rectangle"
+  | "Circle"
   | "Pos"
   | "Rot"
   | "Compound"
   | "scale"
   | "fillet"
-  | "chamfer";
+  | "chamfer"
+  | "extrude";
 type PositionalBuild123dCallName = Exclude<
   QualifiedBuild123dCallName,
-  "Compound" | "scale" | "fillet" | "chamfer"
+  "Compound" | "scale" | "fillet" | "chamfer" | "extrude"
 >;
 
 interface ParsedNode {
@@ -118,6 +132,12 @@ interface ParsedNode {
   readonly isError: boolean;
   readonly children: readonly ParsedNode[];
 }
+
+type AddUnresolved = (
+  kind: string,
+  message: string,
+  node: ParsedNode,
+) => void;
 
 interface SimpleAssignment {
   readonly name: string;
@@ -142,13 +162,19 @@ interface SupportedParameter {
 interface SupportedShape {
   readonly assignment: SimpleAssignment;
   readonly symbol: SourceAnalysisSymbol;
+  readonly geometry: GeometryKind;
   readonly parameterReferences: readonly SupportedParameter[];
   readonly shapeReferences: readonly SupportedShape[];
 }
 
 interface ShapeExpression {
+  readonly geometry: GeometryKind;
   readonly parameterReferences: readonly SupportedParameter[];
   readonly shapeReferences: readonly SupportedShape[];
+}
+
+interface PlacementExpression {
+  readonly parameterReferences: readonly SupportedParameter[];
 }
 
 interface StaticExpression {
@@ -340,14 +366,15 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         continue;
       }
 
-      const solid = parseShapeExpression(
+      const shapeExpression = parseShapeExpression(
         assignment.rhs,
         importedCalls,
         parameterByName,
         shapeByName,
         assignment.assignment.from,
+        addUnresolved,
       );
-      if (solid !== undefined) {
+      if (shapeExpression !== undefined) {
         const symbol: SourceAnalysisSymbol = {
           id: await astStableId(
             "variable",
@@ -361,8 +388,9 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         const shape: SupportedShape = {
           assignment,
           symbol,
-          parameterReferences: uniqueParameters(solid.parameterReferences),
-          shapeReferences: uniqueShapes(solid.shapeReferences),
+          geometry: shapeExpression.geometry,
+          parameterReferences: uniqueParameters(shapeExpression.parameterReferences),
+          shapeReferences: uniqueShapes(shapeExpression.shapeReferences),
         };
         shapes.push(shape);
         shapeByName.set(assignment.name, shape);
@@ -372,7 +400,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       addExpressionUnresolved(assignment.rhs, addUnresolved);
       addUnresolved(
         "python-parameter-expression-not-qualified",
-        `Assignment ${assignment.name} is not a closed qualified numeric expression or solid.`,
+        `Assignment ${assignment.name} is not a closed qualified numeric expression, solid, or sketch.`,
         assignment.rhs,
       );
     }
@@ -401,7 +429,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       ),
     };
 
-    const resultSolid = parseShapeExpression(
+    const resultShape = parseShapeExpression(
       resultAssignment.rhs,
       importedCalls,
       new Map(
@@ -415,12 +443,24 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         ),
       ),
       resultAssignment.assignment.from,
+      addUnresolved,
     );
+    const resultSolid = resultShape?.geometry === "solid" ? resultShape : undefined;
     if (resultSolid === undefined) {
-      addExpressionUnresolved(resultAssignment.rhs, addUnresolved);
+      if (resultShape !== undefined) {
+        addGeometryKindMismatch(
+          addUnresolved,
+          "result",
+          "solid",
+          resultShape.geometry,
+          resultAssignment.rhs,
+        );
+      } else {
+        addExpressionUnresolved(resultAssignment.rhs, addUnresolved);
+      }
       addUnresolved(
         "build123d-result-not-qualified",
-        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot * solid, solid +/− solid, scale(solid, scalar), fillet(solid.edges(), radius=scalar), chamfer(solid.edges(), length), or Compound(children=[...]).",
+        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot * solid, Pos * sketch then extrude, solid +/− solid, scale(solid, scalar), fillet(solid.edges(), radius=scalar), chamfer(solid.edges(), length), extrude(sketch, amount=scalar), or Compound(children=[...]). A sketch is never a valid result.",
         resultAssignment.rhs,
       );
     }
@@ -551,6 +591,7 @@ function parseShapeExpression(
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
   before: number,
+  addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
   if (node.name === "ParenthesizedExpression") {
     const inner = node.children.find(isStaticExpressionNode);
@@ -560,6 +601,7 @@ function parseShapeExpression(
       parameters,
       shapes,
       before,
+      addUnresolved,
     );
   }
   if (node.name === "VariableName") {
@@ -567,7 +609,11 @@ function parseShapeExpression(
     if (shape === undefined || shape.assignment.assignment.from >= before) {
       return undefined;
     }
-    return { parameterReferences: [], shapeReferences: [shape] };
+    return {
+      geometry: shape.geometry,
+      parameterReferences: [],
+      shapeReferences: [shape],
+    };
   }
   const positionalSolid = parsePositionalSolidCall(
     node,
@@ -576,7 +622,20 @@ function parseShapeExpression(
     before,
   );
   if (positionalSolid !== undefined) return positionalSolid;
-  const compound = parseCompoundCall(node, importedCalls, shapes, before);
+  const positionalSketch = parsePositionalSketchCall(
+    node,
+    importedCalls,
+    parameters,
+    before,
+  );
+  if (positionalSketch !== undefined) return positionalSketch;
+  const compound = parseCompoundCall(
+    node,
+    importedCalls,
+    shapes,
+    before,
+    addUnresolved,
+  );
   if (compound !== undefined) return compound;
   const scaled = parseScaleCall(
     node,
@@ -584,6 +643,7 @@ function parseShapeExpression(
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
   if (scaled !== undefined) return scaled;
   const filleted = parseFilletCall(
@@ -592,6 +652,7 @@ function parseShapeExpression(
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
   if (filleted !== undefined) return filleted;
   const chamfered = parseChamferCall(
@@ -600,8 +661,18 @@ function parseShapeExpression(
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
   if (chamfered !== undefined) return chamfered;
+  const extruded = parseExtrudeCall(
+    node,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+    addUnresolved,
+  );
+  if (extruded !== undefined) return extruded;
   if (node.name !== "BinaryExpression" || node.children.length !== 3) {
     return undefined;
   }
@@ -611,53 +682,119 @@ function parseShapeExpression(
   }
   const operatorText = currentText(operator);
   if (operatorText === "*") {
-    const placement = parsePlacementCall(
+    return parsePlacementTimesShape(
+      node,
       left,
-      importedCalls,
-      parameters,
-      before,
-    );
-    const solid = parseShapeExpression(
       right,
       importedCalls,
       parameters,
       shapes,
       before,
+      addUnresolved,
     );
-    if (placement === undefined || solid === undefined) return undefined;
-    return {
-      parameterReferences: [
-        ...placement.parameterReferences,
-        ...solid.parameterReferences,
-      ],
-      shapeReferences: solid.shapeReferences,
-    };
   }
   if (operatorText !== "+" && operatorText !== "-") return undefined;
-  const leftSolid = parseShapeExpression(
+  const leftShape = parseShapeExpression(
     left,
     importedCalls,
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
-  const rightSolid = parseShapeExpression(
+  const rightShape = parseShapeExpression(
     right,
     importedCalls,
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
-  if (leftSolid === undefined || rightSolid === undefined) return undefined;
+  if (leftShape === undefined || rightShape === undefined) return undefined;
+  if (leftShape.geometry !== rightShape.geometry) {
+    addGeometryKindMismatch(
+      addUnresolved,
+      operatorText,
+      leftShape.geometry,
+      rightShape.geometry,
+      right,
+    );
+    return undefined;
+  }
   return {
+    geometry: leftShape.geometry,
     parameterReferences: [
-      ...leftSolid.parameterReferences,
-      ...rightSolid.parameterReferences,
+      ...leftShape.parameterReferences,
+      ...rightShape.parameterReferences,
     ],
     shapeReferences: [
-      ...leftSolid.shapeReferences,
-      ...rightSolid.shapeReferences,
+      ...leftShape.shapeReferences,
+      ...rightShape.shapeReferences,
     ],
+  };
+}
+
+function parsePlacementTimesShape(
+  node: ParsedNode,
+  left: ParsedNode,
+  right: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  before: number,
+  addUnresolved: AddUnresolved,
+): ShapeExpression | undefined {
+  const shape = parseShapeExpression(
+    right,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+    addUnresolved,
+  );
+  if (shape === undefined) return undefined;
+  const pos = parsePositionalCall(
+    left,
+    importedCalls,
+    parameters,
+    before,
+    "Pos",
+  );
+  if (pos !== undefined) {
+    return {
+      geometry: shape.geometry,
+      parameterReferences: [
+        ...pos.parameterReferences,
+        ...shape.parameterReferences,
+      ],
+      shapeReferences: shape.shapeReferences,
+    };
+  }
+  const rot = parsePositionalCall(
+    left,
+    importedCalls,
+    parameters,
+    before,
+    "Rot",
+  );
+  if (rot === undefined) return undefined;
+  if (shape.geometry !== "solid") {
+    addGeometryKindMismatch(
+      addUnresolved,
+      "Rot *",
+      "solid",
+      shape.geometry,
+      node,
+    );
+    return undefined;
+  }
+  return {
+    geometry: "solid",
+    parameterReferences: [
+      ...rot.parameterReferences,
+      ...shape.parameterReferences,
+    ],
+    shapeReferences: shape.shapeReferences,
   };
 }
 
@@ -685,18 +822,20 @@ function parsePositionalSolidCall(
       before,
       imported,
     );
-    if (parsed !== undefined) return parsed;
+    if (parsed !== undefined) {
+      return { ...parsed, geometry: "solid", shapeReferences: [] };
+    }
   }
   return undefined;
 }
 
-function parsePlacementCall(
+function parsePositionalSketchCall(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   before: number,
 ): ShapeExpression | undefined {
-  for (const imported of ["Pos", "Rot"] as const) {
+  for (const imported of ["Rectangle", "Circle"] as const) {
     const parsed = parsePositionalCall(
       node,
       importedCalls,
@@ -704,7 +843,9 @@ function parsePlacementCall(
       before,
       imported,
     );
-    if (parsed !== undefined) return parsed;
+    if (parsed !== undefined) {
+      return { ...parsed, geometry: "sketch", shapeReferences: [] };
+    }
   }
   return undefined;
 }
@@ -715,7 +856,7 @@ function parsePositionalCall(
   parameters: ReadonlyMap<string, SupportedParameter>,
   before: number,
   importedName: PositionalBuild123dCallName,
-): ShapeExpression | undefined {
+): PlacementExpression | undefined {
   if (node.name !== "CallExpression" || node.children.length !== 2) {
     return undefined;
   }
@@ -743,7 +884,7 @@ function parsePositionalCall(
     if (expression === undefined || expression.shape !== "scalar") return undefined;
     parameterReferences.push(...expression.references);
   }
-  return { parameterReferences, shapeReferences: [] };
+  return { parameterReferences };
 }
 
 /**
@@ -757,6 +898,7 @@ function parseScaleCall(
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
   before: number,
+  addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
   if (node.name !== "CallExpression" || node.children.length !== 2) {
     return undefined;
@@ -786,12 +928,24 @@ function parseScaleCall(
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
   const factor = parseStaticExpression(factorNode, parameters);
   if (solid === undefined || factor === undefined || factor.shape !== "scalar") {
     return undefined;
   }
+  if (solid.geometry !== "solid") {
+    addGeometryKindMismatch(
+      addUnresolved,
+      "scale",
+      "solid",
+      solid.geometry,
+      solidNode,
+    );
+    return undefined;
+  }
   return {
+    geometry: "solid",
     parameterReferences: [
       ...solid.parameterReferences,
       ...factor.references,
@@ -815,6 +969,7 @@ function parseFilletCall(
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
   before: number,
+  addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
   if (node.name !== "CallExpression" || node.children.length !== 2) {
     return undefined;
@@ -847,12 +1002,24 @@ function parseFilletCall(
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
   const radius = parseStaticExpression(radiusNode, parameters);
   if (solid === undefined || radius === undefined || radius.shape !== "scalar") {
     return undefined;
   }
+  if (solid.geometry !== "solid") {
+    addGeometryKindMismatch(
+      addUnresolved,
+      "fillet",
+      "solid",
+      solid.geometry,
+      edgesNode,
+    );
+    return undefined;
+  }
   return {
+    geometry: "solid",
     parameterReferences: [
       ...solid.parameterReferences,
       ...radius.references,
@@ -876,6 +1043,7 @@ function parseChamferCall(
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
   before: number,
+  addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
   if (node.name !== "CallExpression" || node.children.length !== 2) {
     return undefined;
@@ -906,12 +1074,24 @@ function parseChamferCall(
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
   const length = parseStaticExpression(lengthNode, parameters);
   if (solid === undefined || length === undefined || length.shape !== "scalar") {
     return undefined;
   }
+  if (solid.geometry !== "solid") {
+    addGeometryKindMismatch(
+      addUnresolved,
+      "chamfer",
+      "solid",
+      solid.geometry,
+      edgesNode,
+    );
+    return undefined;
+  }
   return {
+    geometry: "solid",
     parameterReferences: [
       ...solid.parameterReferences,
       ...length.references,
@@ -920,13 +1100,14 @@ function parseChamferCall(
   };
 }
 
-/** Empty `.edges()` on a qualified solid. Not a general MemberExpression lock. */
+/** Empty `.edges()` on a qualified shape. Not a general MemberExpression lock. */
 function parseEmptyEdgesSelector(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
   before: number,
+  addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
   if (node.name !== "CallExpression" || node.children.length !== 2) {
     return undefined;
@@ -954,7 +1135,113 @@ function parseEmptyEdgesSelector(
     parameters,
     shapes,
     before,
+    addUnresolved,
   );
+}
+
+/**
+ * Only the reviewed form `extrude(<qualified-sketch>, amount=<scalar>)`.
+ * Callee is the imported `extrude` (alias OK).  First argument is a
+ * qualified sketch; `amount=` is the only keyword.  Positional amount,
+ * `both=`, `taper=`, `dir=`, `until=`, extra arguments, splat, and extrude
+ * of a solid stay unproven.
+ */
+function parseExtrudeCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  before: number,
+  addUnresolved: AddUnresolved,
+): ShapeExpression | undefined {
+  if (node.name !== "CallExpression" || node.children.length !== 2) {
+    return undefined;
+  }
+  const [callee, argList] = node.children;
+  if (callee?.name !== "VariableName" || argList?.name !== "ArgList") {
+    return undefined;
+  }
+  const imported = importedCalls.get(currentText(callee));
+  if (imported?.imported !== "extrude" || imported.node.from >= before) {
+    return undefined;
+  }
+  if (argList.children.some((child) => ["*", "**"].includes(currentText(child)))) {
+    return undefined;
+  }
+  const keywordNames = extrudeKeywordNames(argList);
+  for (const keyword of keywordNames) {
+    if (keyword === "amount") continue;
+    addUnresolved(
+      "build123d-extrude-argument-not-qualified",
+      `extrude keyword ${keyword}= is not qualified; only amount= is reviewed.`,
+      node,
+    );
+  }
+  const expressions = argList.children.filter(isArgumentExpression);
+  if (
+    expressions.length === 2 &&
+    keywordNames.length === 0 &&
+    !argList.children.some((child) => child.name === "AssignOp")
+  ) {
+    addUnresolved(
+      "build123d-extrude-argument-not-qualified",
+      "extrude requires the amount keyword; a positional amount is not qualified.",
+      node,
+    );
+    return undefined;
+  }
+  if (expressions.length !== 4) return undefined;
+  const [sketchNode, keyword, assign, amountNode] = expressions;
+  if (
+    sketchNode === undefined ||
+    keyword?.name !== "VariableName" || currentText(keyword) !== "amount" ||
+    assign?.name !== "AssignOp" || currentText(assign) !== "=" ||
+    amountNode === undefined
+  ) {
+    return undefined;
+  }
+  const sketch = parseShapeExpression(
+    sketchNode,
+    importedCalls,
+    parameters,
+    shapes,
+    before,
+    addUnresolved,
+  );
+  const amount = parseStaticExpression(amountNode, parameters);
+  if (sketch === undefined || amount === undefined || amount.shape !== "scalar") {
+    return undefined;
+  }
+  if (sketch.geometry !== "sketch") {
+    addGeometryKindMismatch(
+      addUnresolved,
+      "extrude",
+      "sketch",
+      sketch.geometry,
+      sketchNode,
+    );
+    return undefined;
+  }
+  return {
+    geometry: "solid",
+    parameterReferences: [
+      ...sketch.parameterReferences,
+      ...amount.references,
+    ],
+    shapeReferences: sketch.shapeReferences,
+  };
+}
+
+function extrudeKeywordNames(argList: ParsedNode): readonly string[] {
+  const names: string[] = [];
+  for (let index = 0; index < argList.children.length - 1; index++) {
+    const child = argList.children[index];
+    const next = argList.children[index + 1];
+    if (child?.name === "VariableName" && next?.name === "AssignOp") {
+      names.push(currentText(child));
+    }
+  }
+  return names;
 }
 
 function parseCompoundCall(
@@ -962,6 +1249,7 @@ function parseCompoundCall(
   importedCalls: ReadonlyMap<string, ImportedName>,
   shapes: ReadonlyMap<string, SupportedShape>,
   before: number,
+  addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
   if (node.name !== "CallExpression" || node.children.length !== 2) {
     return undefined;
@@ -985,17 +1273,28 @@ function parseCompoundCall(
     return undefined;
   }
   const shapeReferences: SupportedShape[] = [];
+  let mismatched = false;
   for (const element of value.children.filter(isArrayElement)) {
     if (element.name !== "VariableName") return undefined;
     const shape = shapes.get(currentText(element));
     if (shape === undefined || shape.assignment.assignment.from >= before) {
       return undefined;
     }
+    if (shape.geometry !== "solid") {
+      addGeometryKindMismatch(
+        addUnresolved,
+        "Compound",
+        "solid",
+        shape.geometry,
+        element,
+      );
+      mismatched = true;
+      continue;
+    }
     shapeReferences.push(shape);
   }
-  return shapeReferences.length === 0
-    ? undefined
-    : { parameterReferences: [], shapeReferences };
+  if (mismatched || shapeReferences.length === 0) return undefined;
+  return { geometry: "solid", parameterReferences: [], shapeReferences };
 }
 
 function parseStaticExpression(
@@ -1176,7 +1475,7 @@ function addExpressionUnresolved(
     } else if (candidate.name === "CallExpression") {
       add(
         "python-dynamic-call",
-        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Pos, Rot, Compound, scale, fillet, or chamfer calls are qualified.",
+        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Rectangle, Circle, Pos, Rot, Compound, scale, fillet, chamfer, or extrude calls are qualified.",
         candidate,
       );
     }
@@ -1374,6 +1673,20 @@ function isArrayElement(node: ParsedNode): boolean {
 function isStaticExpressionNode(node: ParsedNode): boolean {
   return !["(", ")"].includes(node.name) &&
     !["(", ")"].includes(currentText(node));
+}
+
+function addGeometryKindMismatch(
+  addUnresolved: AddUnresolved,
+  operation: string,
+  expected: GeometryKind,
+  received: GeometryKind,
+  node: ParsedNode,
+): void {
+  addUnresolved(
+    "build123d-geometry-kind-mismatch",
+    `${operation} expects a ${expected}, received a ${received}.`,
+    node,
+  );
 }
 
 function uniqueParameters(

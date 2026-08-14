@@ -279,7 +279,7 @@ result = fillet((block - bore).edges(), radius=1)
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.unresolvedConstructs, []);
     assertEquals(bundle.policy.status, "passed");
-    assertEquals(bundle.analyzer.version, "1.2.0");
+    assertEquals(bundle.analyzer.version, "1.3.0");
     assertEquals(
       bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
       "artifact",
@@ -364,7 +364,7 @@ result = chamfer((block - bore).edges(), 1)
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.unresolvedConstructs, []);
     assertEquals(bundle.policy.status, "passed");
-    assertEquals(bundle.analyzer.version, "1.2.0");
+    assertEquals(bundle.analyzer.version, "1.3.0");
     assertEquals(
       bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
       "artifact",
@@ -523,7 +523,7 @@ result = enlarge(Box(10, 10, 10), 3)
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.unresolvedConstructs, []);
     assertEquals(bundle.policy.status, "passed");
-    assertEquals(bundle.analyzer.version, "1.2.0");
+    assertEquals(bundle.analyzer.version, "1.3.0");
     assertEquals(
       bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
       "artifact",
@@ -876,6 +876,843 @@ Deno.test("qualified build123d frontend performs no network fetch", async () => 
     assertEquals(fetchCount, 0);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+function identityView(bundle: {
+  readonly symbols: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly name: string;
+  }[];
+  readonly dependencies: readonly {
+    readonly id: string;
+    readonly kind: string;
+    readonly fromSymbolId: string;
+    readonly toSymbolId: string;
+  }[];
+  readonly unresolvedConstructs: readonly unknown[];
+}) {
+  return {
+    unresolved: bundle.unresolvedConstructs,
+    symbols: bundle.symbols
+      .map((symbol) => ({ id: symbol.id, kind: symbol.kind, name: symbol.name }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+    dependencies: bundle.dependencies
+      .map((dependency) => ({
+        id: dependency.id,
+        kind: dependency.kind,
+        from: bundle.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+          ?.name,
+        to: bundle.symbols.find((symbol) => symbol.id === dependency.toSymbolId)
+          ?.name,
+      }))
+      .sort((left, right) => left.id.localeCompare(right.id)),
+  };
+}
+
+function mismatchMessages(
+  bundle: { readonly unresolvedConstructs: readonly { readonly message: string }[] },
+): string[] {
+  return bundle.unresolvedConstructs
+    .filter((item) => item.message.includes("expects a"))
+    .map((item) => item.message);
+}
+
+Deno.test("a sketch is never a valid result", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Rectangle
+result = Rectangle(10, 20)
+`,
+    `from build123d import Circle
+result = Circle(3)
+`,
+    `from build123d import Rectangle
+face = Rectangle(10, 20)
+result = face
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.policy.status, "passed");
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+      `${sourceText} must not qualify result`,
+    );
+    assert(
+      mismatchMessages(bundle).some((message) =>
+        message === "result expects a solid, received a sketch."
+      ),
+      `${sourceText} must label the sketch result`,
+    );
+  }
+});
+
+Deno.test("extrude requires the amount keyword on a qualified sketch", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const qualified = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Rectangle, extrude
+result = extrude(Rectangle(10, 20), amount=5)
+`,
+  });
+  assertEquals(qualified.unresolvedConstructs, []);
+  assertEquals(qualified.policy.status, "passed");
+  assertEquals(qualified.analyzer.version, "1.3.0");
+
+  const positional = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Rectangle, extrude
+result = extrude(Rectangle(10, 20), 5)
+`,
+  });
+  assertEquals(positional.policy.status, "passed");
+  assert(
+    positional.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+  assert(
+    positional.unresolvedConstructs.some((item) =>
+      item.message ===
+        "extrude requires the amount keyword; a positional amount is not qualified."
+    ),
+  );
+});
+
+Deno.test("a solid can never be extruded", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, extrude
+result = extrude(Box(10, 20, 30), amount=5)
+`,
+  });
+  assertEquals(bundle.policy.status, "passed");
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+  assert(
+    mismatchMessages(bundle).includes(
+      "extrude expects a sketch, received a solid.",
+    ),
+  );
+});
+
+Deno.test("a sketch can never be filleted, chamfered, scaled, or compounded", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const cases = [
+    {
+      sourceText: `from build123d import Rectangle, fillet
+result = fillet(Rectangle(10, 20).edges(), radius=1)
+`,
+      message: "fillet expects a solid, received a sketch.",
+    },
+    {
+      sourceText: `from build123d import Rectangle, chamfer
+result = chamfer(Rectangle(10, 20).edges(), 1)
+`,
+      message: "chamfer expects a solid, received a sketch.",
+    },
+    {
+      sourceText: `from build123d import Rectangle, scale
+result = scale(Rectangle(10, 20), 2)
+`,
+      message: "scale expects a solid, received a sketch.",
+    },
+    {
+      sourceText: `from build123d import Compound, Rectangle
+face = Rectangle(10, 20)
+result = Compound(children=[face])
+`,
+      message: "Compound expects a solid, received a sketch.",
+    },
+  ];
+  for (const { sourceText, message } of cases) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.policy.status, "passed");
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+      `${sourceText} must not qualify result`,
+    );
+    assert(
+      mismatchMessages(bundle).includes(message),
+      `${sourceText} must label ${message}`,
+    );
+  }
+});
+
+Deno.test("sketch plus or minus sketch stays a sketch and sketch plus solid is unresolved", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const sameKind = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Circle, Rectangle, extrude
+face = Rectangle(20, 20) - Circle(4)
+union = Rectangle(10, 10) + Circle(2)
+result = extrude(face, amount=5)
+`,
+  });
+  assertEquals(sameKind.unresolvedConstructs, []);
+  assertEquals(sameKind.policy.status, "passed");
+  assertEquals(
+    new Map(sameKind.symbols.map((symbol) => [symbol.name, symbol.kind])),
+    new Map([
+      ["face", "variable"],
+      ["union", "variable"],
+      ["result", "artifact"],
+    ]),
+  );
+
+  const mixed = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, Rectangle
+mixed = Rectangle(20, 20) + Box(10, 10, 10)
+result = Box(1, 2, 3)
+`,
+  });
+  assertEquals(mixed.policy.status, "passed");
+  assert(
+    mismatchMessages(mixed).includes(
+      "+ expects a sketch, received a solid.",
+    ),
+  );
+  assert(
+    mixed.unresolvedConstructs.some((item) =>
+      item.kind === "python-parameter-expression-not-qualified"
+    ),
+  );
+  assertEquals(
+    mixed.symbols.some((symbol) => symbol.name === "mixed"),
+    false,
+  );
+});
+
+Deno.test("Pos times sketch is qualified and Rot times sketch is not", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const placed = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Pos, Rectangle, extrude
+result = extrude(Pos(1, 2, 3) * Rectangle(10, 20), amount=5)
+`,
+  });
+  assertEquals(placed.unresolvedConstructs, []);
+  assertEquals(placed.policy.status, "passed");
+
+  const rotated = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Rot, Rectangle, extrude
+result = extrude(Rot(0, 0, 45) * Rectangle(10, 20), amount=5)
+`,
+  });
+  assertEquals(rotated.policy.status, "passed");
+  assert(
+    mismatchMessages(rotated).includes(
+      "Rot * expects a solid, received a sketch.",
+    ),
+  );
+  assert(
+    rotated.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+});
+
+Deno.test("Rectangle and Circle reject extra, keyword, or splat arguments", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Rectangle, extrude
+result = extrude(Rectangle(10, 20, 30), amount=5)
+`,
+    `from build123d import Rectangle, extrude
+result = extrude(Rectangle(width=10, height=20), amount=5)
+`,
+    `from build123d import Rectangle, extrude
+dims = [10, 20]
+result = extrude(Rectangle(*dims), amount=5)
+`,
+    `from build123d import Circle, extrude
+result = extrude(Circle(3, 4), amount=5)
+`,
+    `from build123d import Circle, extrude
+result = extrude(Circle(radius=3), amount=5)
+`,
+    `from build123d import Circle, extrude
+radii = [3]
+result = extrude(Circle(*radii), amount=5)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.policy.status, "passed");
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+      `${sourceText} must not qualify result`,
+    );
+  }
+});
+
+Deno.test("extrude rejects taper, both, dir, until, and positional amount", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const frontendRejected = [
+    `from build123d import Rectangle, extrude
+result = extrude(Rectangle(10, 20), amount=5, taper=1)
+`,
+    `from build123d import Rectangle, extrude
+result = extrude(Rectangle(10, 20), amount=5, both=1)
+`,
+    `from build123d import Rectangle, extrude
+result = extrude(Rectangle(10, 20), amount=5, until=1)
+`,
+    `from build123d import Rectangle, extrude
+result = extrude(Rectangle(10, 20), 5)
+`,
+  ];
+  for (const sourceText of frontendRejected) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.policy.status, "passed");
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+      `${sourceText} must not qualify result`,
+    );
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-extrude-argument-not-qualified"
+      ),
+      `${sourceText} must label the extrude argument`,
+    );
+  }
+
+  // `dir` is a D4-forbidden builtin identifier, so `dir=` never reaches the
+  // frontend as an unresolved construct.  The call is still not qualified.
+  const dirKwarg = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Rectangle, extrude
+result = extrude(Rectangle(10, 20), amount=5, dir=1)
+`,
+  });
+  assertEquals(dirKwarg.policy.status, "rejected");
+  assertEquals(dirKwarg.unresolvedConstructs, []);
+  assertEquals(dirKwarg.symbols, []);
+  assert(
+    dirKwarg.policy.findings.some((finding) =>
+      finding.code === "geometry-script-forbidden-name"
+    ),
+  );
+});
+
+Deno.test("an extruded sketch composes with fillet and boolean solids", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, Circle, Rectangle, extrude, fillet
+plate = extrude(Rectangle(20, 20) - Circle(4), amount=5)
+block = Box(10, 10, 10)
+result = fillet((plate + block).edges(), radius=1)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(bundle.analyzer.version, "1.3.0");
+  assertEquals(
+    new Map(bundle.symbols.map((symbol) => [symbol.name, symbol.kind])),
+    new Map([
+      ["plate", "variable"],
+      ["block", "variable"],
+      ["result", "artifact"],
+    ]),
+  );
+  assertEquals(
+    bundle.dependencies.map((dependency) => ({
+      kind: dependency.kind,
+      from: bundle.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+        ?.name,
+      to: bundle.symbols.find((symbol) => symbol.id === dependency.toSymbolId)
+        ?.name,
+    })).sort((left, right) =>
+      `${left.kind}:${left.from}:${left.to}`.localeCompare(
+        `${right.kind}:${right.from}:${right.to}`,
+      )
+    ),
+    [
+      { kind: "structural-incidence" as const, from: "block", to: "result" },
+      { kind: "structural-incidence" as const, from: "plate", to: "result" },
+    ],
+  );
+});
+
+Deno.test("existing qualified bundles stay bit-identical under 1.3.0", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = {
+    box: `from build123d import Box
+width = 10
+height = width * 2
+depth = 3
+labels = [1, 2 + 3, -4]
+result = Box(width, height, depth)
+`,
+    fillet: `from build123d import Box, fillet
+base = Box(10, 10, 10)
+radius = 2
+result = fillet(base.edges(), radius=radius)
+`,
+    chamfer: `from build123d import Box, chamfer
+base = Box(10, 10, 10)
+length = 2
+result = chamfer(base.edges(), length)
+`,
+    scale: `from build123d import Box, scale
+block = Box(10, 20, 30)
+factor = 2
+result = scale(block, factor)
+`,
+    minus: `from build123d import Box, Cylinder, Pos
+block = Box(20, 20, 10)
+bore = Pos(0, 0, 0) * Cylinder(4, 12)
+result = block - bore
+`,
+    compound: `from build123d import Box, Compound, Cylinder, Pos
+base = Pos(0, 0, 10) * Cylinder(90, 20)
+column = Pos(0, 0, 190) * Box(28, 28, 340)
+arm = Pos(180, 0, 346) * Box(360, 28, 28)
+articulated_arm = column + arm
+head = Pos(360, 0, 346) * Cylinder(34, 40)
+bulb_holder = Pos(360, 0, 318) * Cylinder(14, 16)
+result = Compound(children=[base, articulated_arm, head, bulb_holder])
+`,
+    rotCone: `from build123d import Cone, Rot, Sphere
+bottom = 10
+top = 0
+height = 20
+radius = 5
+cone = Cone(bottom, top, height)
+sphere = Rot(90, 0, 0) * Sphere(radius)
+result = cone + sphere
+`,
+  } as const;
+  const expected = {
+    box: {
+      unresolved: [],
+      symbols: [
+        {
+          id:
+            "artifact:2b0ee0f8de6dd18a46aff61265d26cbaf8734f611a73dd5b3ee1061e312ff4c0",
+          kind: "artifact",
+          name: "result",
+        },
+        {
+          id:
+            "parameter:89b8bfff308aee24e6e9c3e1dcd116deee101be3e6b000e2a7b3d8c1b68b8c09",
+          kind: "parameter",
+          name: "width",
+        },
+        {
+          id:
+            "parameter:93fdfbdb08ceb1de8d8d74a3bf06928c573c40eb53b94c07b6e2b5eda1b75201",
+          kind: "parameter",
+          name: "height",
+        },
+        {
+          id:
+            "parameter:99f2a2e4e79c28e0e3d830365b8c73f00458d4d959e651cd7c1b2fa7991fdd9a",
+          kind: "parameter",
+          name: "labels",
+        },
+        {
+          id:
+            "parameter:be9185eb60c8511cde66371841f915d2b4b17c4fd63206e6cab0836a70fcf79c",
+          kind: "parameter",
+          name: "depth",
+        },
+      ],
+      dependencies: [
+        {
+          id:
+            "dependency:46f774ca4845f4029e82a6dc9810962a717b73bb378fc9bcc86b99de54d2f917",
+          kind: "structural-incidence",
+          from: "width",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:7ca48cbdeb975f4776460f99d5c5c8debd8c10de05e88da7542fa1a2d43c306f",
+          kind: "structural-incidence",
+          from: "depth",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:982f72e4f78521373d7240df4b1ab8a83085f55b994d6e9c8e9a20b32ef3647a",
+          kind: "static-value-flow",
+          from: "width",
+          to: "height",
+        },
+        {
+          id:
+            "dependency:baab08c9f0a479f082757f71f8d71cb8cdfdebc3f5bef84c82e8b26557c878e3",
+          kind: "structural-incidence",
+          from: "height",
+          to: "result",
+        },
+      ],
+    },
+    fillet: {
+      unresolved: [],
+      symbols: [
+        {
+          id:
+            "artifact:a12e2e80130688d62beeb47dceb1955c2fe736ecf52365e0524bc66f1ca56b46",
+          kind: "artifact",
+          name: "result",
+        },
+        {
+          id:
+            "parameter:93dbe668a75d273606393a24368fc4cc5ba17dadb3eadb16ba6577eb89ed38ba",
+          kind: "parameter",
+          name: "radius",
+        },
+        {
+          id:
+            "variable:7979c1a95b01bc5180cd0873400665dda7aaa1771ea44b19ca3b95cfdfb501be",
+          kind: "variable",
+          name: "base",
+        },
+      ],
+      dependencies: [
+        {
+          id:
+            "dependency:67eedff270fd9ec153d6a8f985cafe12688ea76404b1f8b0e6e1fe504ab2d172",
+          kind: "structural-incidence",
+          from: "radius",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:b7462806043ed2832ac7ac589c0d2f1c3a744d4ee17eb7cd0e61121a2ae18936",
+          kind: "structural-incidence",
+          from: "base",
+          to: "result",
+        },
+      ],
+    },
+    chamfer: {
+      unresolved: [],
+      symbols: [
+        {
+          id:
+            "artifact:12928c02620878f30725ccbb2640d286408748ccf26a330a32ed9fee2f0d464c",
+          kind: "artifact",
+          name: "result",
+        },
+        {
+          id:
+            "parameter:e66ad04d21eeafca96557c425717ba08a7877c093e83064bd306375982ff4fcb",
+          kind: "parameter",
+          name: "length",
+        },
+        {
+          id:
+            "variable:7979c1a95b01bc5180cd0873400665dda7aaa1771ea44b19ca3b95cfdfb501be",
+          kind: "variable",
+          name: "base",
+        },
+      ],
+      dependencies: [
+        {
+          id:
+            "dependency:23361f1b6054179e24d59b08012de0c3d03848fca027bb9e4f7383217b1a0c8f",
+          kind: "structural-incidence",
+          from: "length",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:8b5bfd0401293b44e8f21997c03d10f3f37c322fe47cd2c71f521ed3f6545a5d",
+          kind: "structural-incidence",
+          from: "base",
+          to: "result",
+        },
+      ],
+    },
+    scale: {
+      unresolved: [],
+      symbols: [
+        {
+          id:
+            "artifact:8cdf9d454b4f953e769c5e230d21033ef682edbc221ac125d2c85564c255417a",
+          kind: "artifact",
+          name: "result",
+        },
+        {
+          id:
+            "parameter:a237077858f9215a5493f70a0471bb17349cd86c185f687641c0df5f2b56a859",
+          kind: "parameter",
+          name: "factor",
+        },
+        {
+          id:
+            "variable:61b97e3ca6d578199ec03c8fe1997da6d14ce1e7b4973d3e2ddbf946a52bc23c",
+          kind: "variable",
+          name: "block",
+        },
+      ],
+      dependencies: [
+        {
+          id:
+            "dependency:e9faa4e218750aff53a474319f860b5cf3524c53c02ea9da9f52e47af50aafe7",
+          kind: "structural-incidence",
+          from: "factor",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:f279caad6b76cab370a8b6b8db13246d58e337a2fd904401668774b1216cd2d7",
+          kind: "structural-incidence",
+          from: "block",
+          to: "result",
+        },
+      ],
+    },
+    minus: {
+      unresolved: [],
+      symbols: [
+        {
+          id:
+            "artifact:b914b95ab912fe8360421e06e6681a42ee9e3f195af631edec695ddcf8b096cc",
+          kind: "artifact",
+          name: "result",
+        },
+        {
+          id:
+            "variable:184ffc700ecf850acda270c788a6e86616866c1004256603041ea7adda796100",
+          kind: "variable",
+          name: "block",
+        },
+        {
+          id:
+            "variable:8d7f07b8bb8e308881e7f675f5a5a08d31bc886d6361cc5ef965551c23a32022",
+          kind: "variable",
+          name: "bore",
+        },
+      ],
+      dependencies: [
+        {
+          id:
+            "dependency:0e0a2dd8cdddee25814f6197d34c2f2ceb58502ec6cd8119f6e3e0cdd22177e5",
+          kind: "structural-incidence",
+          from: "bore",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:8cde9d3d06490c61905dca6d3307a060c29e7f872b35902d42fb86ffc177ad2a",
+          kind: "structural-incidence",
+          from: "block",
+          to: "result",
+        },
+      ],
+    },
+    compound: {
+      unresolved: [],
+      symbols: [
+        {
+          id:
+            "artifact:741f7b945e8057faafb9fa5e3dfae2ed381d34d63b47c8897017cbe881a8d66e",
+          kind: "artifact",
+          name: "result",
+        },
+        {
+          id:
+            "variable:0d9fa148ad56f08631ef80add0f77120ff249549a6f1d4fdb6430a448351e4e9",
+          kind: "variable",
+          name: "bulb_holder",
+        },
+        {
+          id:
+            "variable:17d089ded51d97bd00f8bb56184ff505cd09b1c6346ab01f3e7592fedcff23c0",
+          kind: "variable",
+          name: "head",
+        },
+        {
+          id:
+            "variable:3d6dfc206b64df3d2b47a4242d7b18c305746058b087688e43633ce86d1dbbf4",
+          kind: "variable",
+          name: "articulated_arm",
+        },
+        {
+          id:
+            "variable:508b5b238a3a975f1f40a8d9918d50bbb87eacc3751056729015a59bb9577475",
+          kind: "variable",
+          name: "column",
+        },
+        {
+          id:
+            "variable:e58d96e37abe1e4ab70f67df2d4584563306b051513559a2d29aca3a480c31fa",
+          kind: "variable",
+          name: "arm",
+        },
+        {
+          id:
+            "variable:e9e46f3493c4ad4c1f9c1aa287d22528f59a8f20311ec92ede6e62c853e52081",
+          kind: "variable",
+          name: "base",
+        },
+      ],
+      dependencies: [
+        {
+          id:
+            "dependency:4cf5ac3765825662d5ac3b52b0e928574efe5091bd40dff26b1487d2616e9083",
+          kind: "structural-incidence",
+          from: "arm",
+          to: "articulated_arm",
+        },
+        {
+          id:
+            "dependency:6ad726908edd85d4c00d0ca19b611074eb70a9807d18a469b8d32caee0d25694",
+          kind: "structural-incidence",
+          from: "articulated_arm",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:9aaf48b07205e425aeb1a0d6ad99a19b61c39a31495e5d65d8773a14c3eb535d",
+          kind: "structural-incidence",
+          from: "head",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:acfe2ccc893cd0315ac05913cb911127df72ccaac19495151dda97ab77e21786",
+          kind: "structural-incidence",
+          from: "column",
+          to: "articulated_arm",
+        },
+        {
+          id:
+            "dependency:db3f48d94e910e7341276e1bacbc04d5e98a5a7512afc2852870105b6eb82d18",
+          kind: "structural-incidence",
+          from: "bulb_holder",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:dc265fcebd9d6c71fa987891996b9cf39421c9bfbd53d06ad89cc877f1e5103e",
+          kind: "structural-incidence",
+          from: "base",
+          to: "result",
+        },
+      ],
+    },
+    rotCone: {
+      unresolved: [],
+      symbols: [
+        {
+          id:
+            "artifact:0fe2459a719b98ad103f8ee2f9e9036f8314b0f2fd4c00bb0de87979df3c8667",
+          kind: "artifact",
+          name: "result",
+        },
+        {
+          id:
+            "parameter:1f53634d45b256357befca782a36b5667b466580fdd62676a1f56e8b4dd6fc5c",
+          kind: "parameter",
+          name: "top",
+        },
+        {
+          id:
+            "parameter:39b13cba92917d4284ef760793d4a69cc69a3a3a9a14cca916d10d2e5788ed12",
+          kind: "parameter",
+          name: "height",
+        },
+        {
+          id:
+            "parameter:3b9f2552ab2a511ef9042563a55efc6a0ae033a1d5f39b334f519c90ca5b249a",
+          kind: "parameter",
+          name: "bottom",
+        },
+        {
+          id:
+            "parameter:ddde2fb75141a09bbf83795e9a9dff4af8b27fce960125f594116e178cfd364c",
+          kind: "parameter",
+          name: "radius",
+        },
+        {
+          id:
+            "variable:7aa6433fb57a50c146420c5db8e56641ef6d6b96c6d1670548f5b88fb28f1590",
+          kind: "variable",
+          name: "sphere",
+        },
+        {
+          id:
+            "variable:cb21c696cd7b4c42435683c3bd5f3ea59078a95a399d41917419ea4a92be61f9",
+          kind: "variable",
+          name: "cone",
+        },
+      ],
+      dependencies: [
+        {
+          id:
+            "dependency:12d4aa668c8c1e507492bab4d4056cea14eff132bbc374f829a74f545b7168c1",
+          kind: "structural-incidence",
+          from: "sphere",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:50139bf0b286c15342270ed7272dc26660ac480d2138aef7f923358f6a9decce",
+          kind: "static-value-flow",
+          from: "height",
+          to: "cone",
+        },
+        {
+          id:
+            "dependency:845701a34d07bdb8dbbcc7321e28a7c66cd312db117845bbd1d207698b749d58",
+          kind: "static-value-flow",
+          from: "radius",
+          to: "sphere",
+        },
+        {
+          id:
+            "dependency:9ca9001a67678293aaa4fea454a8992eb2318fde4f7229a97f2d5d2b9796c495",
+          kind: "structural-incidence",
+          from: "cone",
+          to: "result",
+        },
+        {
+          id:
+            "dependency:ae8dcfc26ebe252943335d52f3deddf62fd5772bd4438c2e96fd20f50e842f6f",
+          kind: "static-value-flow",
+          from: "bottom",
+          to: "cone",
+        },
+        {
+          id:
+            "dependency:cbd98241582dd89a98cae806d48ead8a2ccf20a407337d5c1af4683b48430bea",
+          kind: "static-value-flow",
+          from: "top",
+          to: "cone",
+        },
+      ],
+    },
+  };
+
+  for (const [name, sourceText] of Object.entries(scripts)) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.analyzer.version, "1.3.0");
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      identityView(bundle),
+      expected[name as keyof typeof expected],
+      `${name} must keep its 1.2.0 analysis identity`,
+    );
   }
 });
 
