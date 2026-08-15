@@ -203,6 +203,15 @@ import {
 } from "./src/adapters/executors/industrialize-observe-print-estimate-run-executor.ts";
 import { FilePrintabilityAttemptStore } from "./src/adapters/wal/file-printability-attempt-store.ts";
 import { FilePrintEstimateAttemptStore } from "./src/adapters/wal/file-print-estimate-attempt-store.ts";
+import {
+  INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+  IndustrializeSealDfmCaseRunExecutor,
+} from "./src/adapters/executors/industrialize-seal-dfm-case-run-executor.ts";
+import {
+  INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
+  IndustrializeRunDfmChecksRunExecutor,
+} from "./src/adapters/executors/industrialize-run-dfm-checks-run-executor.ts";
+import { FileDfmCheckAttemptStore } from "./src/adapters/wal/file-dfm-check-attempt-store.ts";
 import { FileSensitivityEdgesAttemptStore } from "./src/adapters/wal/file-sensitivity-edges-attempt-store.ts";
 import { parseSysonModelSeedCapture } from "./src/domain/engineering/syson-model-seed.ts";
 import { findArchitectureArtifact } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
@@ -218,6 +227,8 @@ import {
 import { RecordedOperationPlanResolver } from "./src/adapters/plans/recorded-operation-plan-resolver.ts";
 import {
   CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
+  DFM_CASE_CAPTURE_DESCRIPTOR,
+  DFM_CHECK_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR,
   FEA_VERDICT_CAPTURE_DESCRIPTOR,
@@ -332,6 +343,10 @@ const DEFAULT_PRINTABILITY_ATTEMPT_DIRECTORY = "state/local/printability-attempt
 const DEFAULT_PRINTABILITY_OBSERVATION_CAPTURE_DIRECTORY =
   "state/local/printability-observation-captures";
 const DEFAULT_PRINTABILITY_EXPORT_DIRECTORY = "state/local/printability-exports";
+const DEFAULT_DFM_CASE_CAPTURE_DIRECTORY = "state/local/dfm-case-captures";
+const DEFAULT_DFM_CHECK_CAPTURE_DIRECTORY = "state/local/dfm-check-captures";
+const DEFAULT_DFM_CHECK_ATTEMPT_DIRECTORY = "state/local/dfm-check-attempts";
+const DEFAULT_DFM_EXPORT_DIRECTORY = "state/local/dfm-exports";
 const DEFAULT_PRINT_ESTIMATE_CASE_CAPTURE_DIRECTORY =
   "state/local/print-estimate-case-captures";
 const DEFAULT_PRINT_ESTIMATE_ATTEMPT_DIRECTORY = "state/local/print-estimate-attempts";
@@ -526,6 +541,9 @@ export interface CreateConsoleServerOptions {
   printEstimateCaseCaptureDirectory?: string;
   printEstimateAttemptDirectory?: string;
   printEstimateObservationCaptureDirectory?: string;
+  dfmCaseCaptureDirectory?: string;
+  dfmCheckCaptureDirectory?: string;
+  dfmCheckAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
   /** Root of the closed CAS/WAL layout used by recorded-analysis @2 operations. */
@@ -1552,6 +1570,39 @@ async function createProjectControl(
       captures: printEstimateCaseCaptures,
       lease,
     });
+  const dfmCaseCaptures = new FileCaptureStore({
+    ...DFM_CASE_CAPTURE_DESCRIPTOR,
+    directory: options.dfmCaseCaptureDirectory ?? DEFAULT_DFM_CASE_CAPTURE_DIRECTORY,
+  });
+  const dfmCheckCaptures = new FileCaptureStore({
+    ...DFM_CHECK_CAPTURE_DESCRIPTOR,
+    directory: options.dfmCheckCaptureDirectory ?? DEFAULT_DFM_CHECK_CAPTURE_DIRECTORY,
+  });
+  const industrializeSealDfmCase = new IndustrializeSealDfmCaseRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    captures: dfmCaseCaptures,
+    lease,
+  });
+  const industrializeRunDfmChecks = dfmMcpUrl
+    ? new IndustrializeRunDfmChecksRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      caseCaptures: dfmCaseCaptures,
+      checkCaptures: dfmCheckCaptures,
+      geometryAssets: new FileCanonicalAssetReader({
+        directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      }),
+      stager: new ExportVolumeGeometryStager(DEFAULT_DFM_EXPORT_DIRECTORY),
+      dfm: new HttpMcpToolClient({ mcpUrl: dfmMcpUrl, timeoutMs: 120_000 }),
+      attempts: new FileDfmCheckAttemptStore(
+        options.dfmCheckAttemptDirectory ?? DEFAULT_DFM_CHECK_ATTEMPT_DIRECTORY,
+      ),
+      lease,
+    })
+    : undefined;
   const industrializeObservePrintEstimate = prusaslicerMcpUrl
     ? new IndustrializeObservePrintEstimateRunExecutor({
       projects: runtime.projects,
@@ -1999,6 +2050,17 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted industrialize.observe-print-estimate@1 executor " +
               "configured for this run (prusaslicer provider is required).",
+          },
+          {
+            operation: INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+            executor: industrializeSealDfmCase,
+          },
+          {
+            operation: INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
+            executor: industrializeRunDfmChecks,
+            unavailableMessage:
+              "The server has no trusted industrialize.run-dfm-checks@1 executor " +
+              "configured for this run (dfm provider is required).",
           },
           {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,

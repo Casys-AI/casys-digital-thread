@@ -37,6 +37,10 @@ import {
   INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION,
   INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
 } from "../../domain/analysis/print-estimate-proposal.ts";
+import {
+  INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
+  INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+} from "../../domain/analysis/dfm-proposal.ts";
 
 Deno.test("the intake registry starts a new idea from the approved project brief", () => {
   const idea = engineeringOperationRegistry.getIntake("idea-or-spec")!;
@@ -745,6 +749,33 @@ Deno.test("generic DFM seal and observe operations are registered with the revie
     "printEstimateCase",
     "geometry",
   ]);
+});
+
+Deno.test("measured DFM seal and run operations are registered without replacing printability", () => {
+  const seal = getRegisteredEngineeringOperation(
+    INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+  )!;
+  assertEquals(seal.execution, "trusted");
+  assertEquals(seal.riskClass, "consequential");
+  assertEquals(seal.workItemKind, "industrialize");
+  assertEquals(seal.bindings, [{
+    name: "approvedBrief",
+    allowedSourceKinds: ["approved-brief"],
+  }]);
+
+  const run = getRegisteredEngineeringOperation(
+    INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
+  )!;
+  assertEquals(run.execution, "trusted");
+  assertEquals(run.riskClass, "consequential");
+  assertEquals(run.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(run.bindings.map((binding) => binding.name), ["dfmCase", "geometry"]);
+
+  const documentary = getRegisteredEngineeringOperation(
+    INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
+  )!;
+  assertEquals(documentary.id, "industrialize.observe-printability");
+  assertEquals(documentary.riskClass, "low");
 });
 
 Deno.test("a human-only operation declares its origin so a human can reach it", () => {

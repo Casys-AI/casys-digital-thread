@@ -36,6 +36,10 @@ import {
   INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
 } from "../../domain/analysis/print-estimate-proposal.ts";
 import {
+  INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
+  INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+} from "../../domain/analysis/dfm-proposal.ts";
+import {
   type EngineeringOperationBasisKind,
   type EngineeringOperationRegistry,
   EngineeringOperationRegistryError,
@@ -729,6 +733,65 @@ const OPERATIONS = [
     bindings: [
       {
         name: "printEstimateCase",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+      {
+        name: "geometry",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+    ],
+  },
+  /**
+   * Provider-free seal of one reviewed dfm-check-case/1.0. The signed case
+   * names an attested STEP artefact, a build volume object, thickness and
+   * overhang limits, and an explicit Z-min filter. No provider is called.
+   */
+  {
+    id: INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION.id,
+    version: INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed measured DFM case",
+    description:
+      "Reconstruct the reviewed dfm-check-case/1.0 from the signed MRTR, verify " +
+      "the attested STEP identity against the basis snapshot, and publish the " +
+      "content-addressed case artifact. No provider is called.",
+    workItemKind: "industrialize",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Measured DFM run. Consumes the sealed case and one canonical
+   * write-geometry STEP. Calls the three mcp-dfm tools with sha256
+   * attestation and publishes measured observations plus fail-closed
+   * evaluations. A fail is publishable with named violations.
+   */
+  {
+    id: INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.id,
+    version: INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Run measured DFM checks on sealed canonical geometry",
+    description:
+      "Re-read the sealed DFM case and the bound canonical STEP, dispatch the " +
+      "locked envelope, thickness and overhang checks with expected_step_sha256, " +
+      "apply the declared Z-min filter, and publish measured observations plus " +
+      "fail-closed evaluations. A fail is a named violation, not an omitted result.",
+    workItemKind: "industrialize",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [
+      {
+        name: "dfmCase",
         allowedSourceKinds: ["thread-entity"],
         cardinality: "one",
         allowedThreadEntityKinds: ["artifact"],

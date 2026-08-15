@@ -78,6 +78,12 @@ import {
   parseModelicaQualifiedKitRunAdmissionParameters,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
 } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import {
+  INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
+  INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+  parseDfmDecisionParameters,
+  parseDfmRunDecisionParameters,
+} from "../../domain/analysis/dfm-proposal.ts";
 
 /** Operation identity as `id@version`, the key used across the registry. */
 export type OperationKey = string;
@@ -188,6 +194,18 @@ const PROPOSAL_VALIDATORS = new Map<
   [
     keyOf(RECONCILE_UNCERTAIN_WRITER_OPERATION),
     parseReconcileUncertainWriterProposal,
+  ],
+  [
+    keyOf(INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION),
+    (parameters) => {
+      parseDfmDecisionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION),
+    (parameters) => {
+      parseDfmRunDecisionParameters(parameters);
+    },
   ],
 ]);
 
