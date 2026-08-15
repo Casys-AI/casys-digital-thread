@@ -27,7 +27,8 @@ export const PRINTABILITY_OBSERVATION_CAPTURE_URI_PREFIX =
   "casys://printability-observation-capture/sha256/" as const;
 
 export interface DfmViolationZone {
-  readonly [key: string]: unknown;
+  readonly area_mm2: number;
+  readonly centroid_mm: readonly [number, number, number];
 }
 
 export interface DfmThicknessResult {
@@ -68,7 +69,7 @@ export interface PrintabilityObservationCapture {
     readonly artifactId: string;
     readonly sha256: string;
     readonly byteCount: number;
-    readonly mediaType: "model/step" | "model/stl";
+    readonly mediaType: "model/step";
     readonly stagedPath: string;
   };
   readonly providerCallParams: {
@@ -106,18 +107,9 @@ export function parseDfmThicknessResult(
   if (!Array.isArray(root.violations)) {
     throw new Error("dfm_check_min_thickness violations must be an array.");
   }
-  const violations = root.violations.map((item, i) => {
-    const zone = requireObject(item, `dfm_check_min_thickness violations[${i}]`);
-    requireNonNegative(
-      zone.area_mm2,
-      `dfm_check_min_thickness violations[${i}].area_mm2`,
-    );
-    requireFiniteTriple(
-      zone.centroid_mm,
-      `dfm_check_min_thickness violations[${i}].centroid_mm`,
-    );
-    return zone;
-  });
+  const violations = root.violations.map((item, i) =>
+    persistDfmViolationZone(item, `dfm_check_min_thickness violations[${i}]`)
+  );
   const measuredRoot = requireObject(root.measured, "dfm_check_min_thickness measured");
   const rawPos = measuredRoot.min_position_mm;
   if (!Array.isArray(rawPos) || rawPos.length !== 3) {
@@ -198,15 +190,9 @@ export function parseDfmOverhangResult(
   if (!Array.isArray(root.violations)) {
     throw new Error("dfm_check_overhangs violations must be an array.");
   }
-  const violations = root.violations.map((item, i) => {
-    const zone = requireObject(item, `dfm_check_overhangs violations[${i}]`);
-    requireNonNegative(zone.area_mm2, `dfm_check_overhangs violations[${i}].area_mm2`);
-    requireFiniteTriple(
-      zone.centroid_mm,
-      `dfm_check_overhangs violations[${i}].centroid_mm`,
-    );
-    return zone;
-  });
+  const violations = root.violations.map((item, i) =>
+    persistDfmViolationZone(item, `dfm_check_overhangs violations[${i}]`)
+  );
   const measuredRoot = requireObject(root.measured, "dfm_check_overhangs measured");
   const totalSurfaceAreaMm2 = requireNonNegative(
     measuredRoot.total_surface_area_mm2,
@@ -318,11 +304,11 @@ export function validatePrintabilityObservationCapture(
     ["artifactId", "sha256", "byteCount", "mediaType", "stagedPath"],
     "$printabilityObservationCapture.geometry",
   );
-  if (geometry.mediaType !== "model/step" && geometry.mediaType !== "model/stl") {
-    throw new TypeError(
-      "$printabilityObservationCapture.geometry.mediaType must be model/step or model/stl.",
-    );
-  }
+  literalValue(
+    geometry.mediaType,
+    "model/step",
+    "$printabilityObservationCapture.geometry.mediaType",
+  );
   const params = exactRecord(
     root.providerCallParams,
     ["meshSizeMm", "buildDirection", "minWallThicknessMm", "maxOverhangAngleDeg"],
@@ -351,6 +337,21 @@ export function validatePrintabilityObservationCapture(
   ).map((item, i) =>
     nonEmptyText(item, `$printabilityObservationCapture.limitations[${i}]`)
   );
+  const geometrySha256 = requireSha256Hex(geometry.sha256, "$geometry.sha256");
+  const thicknessSha256 = requireSha256Hex(
+    thickness.inputArtifactSha256,
+    "$thickness.inputArtifactSha256",
+  );
+  const overhangSha256 = requireSha256Hex(
+    overhang.inputArtifactSha256,
+    "$overhang.inputArtifactSha256",
+  );
+  if (thicknessSha256 !== geometrySha256) {
+    throw new TypeError("$thickness.inputArtifactSha256 must match geometry.sha256.");
+  }
+  if (overhangSha256 !== geometrySha256) {
+    throw new TypeError("$overhang.inputArtifactSha256 must match geometry.sha256.");
+  }
   return {
     schemaVersion: PRINTABILITY_OBSERVATION_CAPTURE_SCHEMA,
     operation: INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
@@ -372,9 +373,9 @@ export function validatePrintabilityObservationCapture(
     ),
     geometry: {
       artifactId: safeId(geometry.artifactId, "$geometry.artifactId"),
-      sha256: requireSha256Hex(geometry.sha256, "$geometry.sha256"),
+      sha256: geometrySha256,
       byteCount: requirePositiveInt(geometry.byteCount, "$geometry.byteCount"),
-      mediaType: geometry.mediaType,
+      mediaType: "model/step",
       stagedPath: nonEmptyText(geometry.stagedPath, "$geometry.stagedPath"),
     },
     providerCallParams: {
@@ -400,23 +401,35 @@ export function validatePrintabilityObservationCapture(
     },
     thickness: {
       tool: "dfm_check_min_thickness",
-      measured: thickness.measured as DfmThicknessResult["measured"],
-      violations: thickness.violations as readonly DfmViolationZone[],
-      notChecked: thickness.notChecked as readonly string[],
-      inputArtifactSha256: requireSha256Hex(
-        thickness.inputArtifactSha256,
-        "$thickness.inputArtifactSha256",
+      measured: parsePersistedThicknessMeasured(
+        thickness.measured,
+        "$thickness.measured",
       ),
+      violations: parsePersistedViolations(
+        thickness.violations,
+        "$thickness.violations",
+      ),
+      notChecked: parsePersistedNotChecked(
+        thickness.notChecked,
+        "$thickness.notChecked",
+      ),
+      inputArtifactSha256: thicknessSha256,
     },
     overhang: {
       tool: "dfm_check_overhangs",
-      measured: overhang.measured as DfmOverhangResult["measured"],
-      violations: overhang.violations as readonly DfmViolationZone[],
-      notChecked: overhang.notChecked as readonly string[],
-      inputArtifactSha256: requireSha256Hex(
-        overhang.inputArtifactSha256,
-        "$overhang.inputArtifactSha256",
+      measured: parsePersistedOverhangMeasured(
+        overhang.measured,
+        "$overhang.measured",
       ),
+      violations: parsePersistedViolations(
+        overhang.violations,
+        "$overhang.violations",
+      ),
+      notChecked: parsePersistedNotChecked(
+        overhang.notChecked,
+        "$overhang.notChecked",
+      ),
+      inputArtifactSha256: overhangSha256,
     },
     limitations,
   };
@@ -432,6 +445,121 @@ export function canonicalPrintabilityObservationText(
   capture: PrintabilityObservationCapture,
 ): string {
   return deterministicJson(capture);
+}
+
+function persistDfmViolationZone(value: unknown, path: string): DfmViolationZone {
+  const zone = requireObject(value, path);
+  return {
+    area_mm2: requireNonNegative(zone.area_mm2, `${path}.area_mm2`),
+    centroid_mm: requireFiniteTriple(zone.centroid_mm, `${path}.centroid_mm`),
+  };
+}
+
+function parsePersistedViolations(
+  value: unknown,
+  path: string,
+): readonly DfmViolationZone[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${path} must be an array.`);
+  }
+  return value.map((item, i) => parsePersistedViolationZone(item, `${path}[${i}]`));
+}
+
+function parsePersistedViolationZone(
+  value: unknown,
+  path: string,
+): DfmViolationZone {
+  const zone = exactRecord(value, ["area_mm2", "centroid_mm"], path);
+  return {
+    area_mm2: requireNonNegative(zone.area_mm2, `${path}.area_mm2`),
+    centroid_mm: requireFiniteTriple(zone.centroid_mm, `${path}.centroid_mm`),
+  };
+}
+
+function parsePersistedNotChecked(value: unknown, path: string): readonly string[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${path} must be an array.`);
+  }
+  return value.map((item, i) => {
+    if (typeof item !== "string") {
+      throw new TypeError(`${path}[${i}] must be a string.`);
+    }
+    return item;
+  });
+}
+
+function parsePersistedThicknessMeasured(
+  value: unknown,
+  path: string,
+): DfmThicknessResult["measured"] {
+  const measured = exactRecord(value, [
+    "minThicknessMm",
+    "minPositionMm",
+    "sampleCount",
+    "validRayCount",
+  ], path);
+  const sampleCount = requireNonNegativeInt(
+    measured.sampleCount,
+    `${path}.sampleCount`,
+  );
+  const validRayCount = requireNonNegativeInt(
+    measured.validRayCount,
+    `${path}.validRayCount`,
+  );
+  if (validRayCount > sampleCount) {
+    throw new Error("capture thickness validRayCount must not exceed sampleCount.");
+  }
+  return {
+    minThicknessMm: requireNonNegative(
+      measured.minThicknessMm,
+      `${path}.minThicknessMm`,
+    ),
+    minPositionMm: requireFiniteTriple(measured.minPositionMm, `${path}.minPositionMm`),
+    sampleCount,
+    validRayCount,
+  };
+}
+
+function parsePersistedOverhangMeasured(
+  value: unknown,
+  path: string,
+): DfmOverhangResult["measured"] {
+  const measured = exactRecord(value, [
+    "totalSurfaceAreaMm2",
+    "overhangAreaMm2",
+    "overhangTriangleCount",
+    "totalTriangleCount",
+  ], path);
+  const totalSurfaceAreaMm2 = requireNonNegative(
+    measured.totalSurfaceAreaMm2,
+    `${path}.totalSurfaceAreaMm2`,
+  );
+  const overhangAreaMm2 = requireNonNegative(
+    measured.overhangAreaMm2,
+    `${path}.overhangAreaMm2`,
+  );
+  if (overhangAreaMm2 > totalSurfaceAreaMm2) {
+    throw new Error("capture overhangAreaMm2 must not exceed totalSurfaceAreaMm2.");
+  }
+  const overhangTriangleCount = requireNonNegativeInt(
+    measured.overhangTriangleCount,
+    `${path}.overhangTriangleCount`,
+  );
+  const totalTriangleCount = requireNonNegativeInt(
+    measured.totalTriangleCount,
+    `${path}.totalTriangleCount`,
+  );
+  if (overhangTriangleCount > totalTriangleCount) {
+    throw new Error(
+      "capture overhangTriangleCount must not exceed totalTriangleCount.",
+    );
+  }
+  return {
+    totalSurfaceAreaMm2,
+    overhangAreaMm2,
+    overhangTriangleCount,
+    totalTriangleCount,
+  };
 }
 
 function requireObject(value: unknown, path: string): Record<string, unknown> {

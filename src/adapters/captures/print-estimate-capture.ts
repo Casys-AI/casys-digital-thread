@@ -54,7 +54,7 @@ export interface PrintEstimateObservationCapture {
     readonly artifactId: string;
     readonly sha256: string;
     readonly byteCount: number;
-    readonly mediaType: "model/step" | "model/stl";
+    readonly mediaType: "model/stl";
     readonly stagedPath: string;
   };
   readonly profile: {
@@ -213,57 +213,70 @@ export function validatePrintEstimateObservationCapture(
     ["artifactId", "sha256", "byteCount", "mediaType", "stagedPath"],
     "$printEstimateObservationCapture.geometry",
   );
-  if (geometry.mediaType !== "model/step" && geometry.mediaType !== "model/stl") {
-    throw new TypeError(
-      "$printEstimateObservationCapture.geometry.mediaType must be model/step or model/stl.",
-    );
-  }
+  literalValue(
+    geometry.mediaType,
+    "model/stl",
+    "$printEstimateObservationCapture.geometry.mediaType",
+  );
   const profile = exactRecord(
     root.profile,
     ["repoPath", "exportName", "sha256", "stagedPath"],
     "$printEstimateObservationCapture.profile",
   );
   const estimateRoot = requireObject(root.estimate, "$estimate");
+  const estimateKeys = Object.hasOwn(estimateRoot, "filamentMassG")
+    ? PRINT_ESTIMATE_KEYS_WITH_MASS
+    : PRINT_ESTIMATE_KEYS_WITHOUT_MASS;
+  const estimateRecord = exactRecord(estimateRoot, estimateKeys, "$estimate");
+  const printTimeS = requireNonNegative(
+    estimateRecord.printTimeS,
+    "$estimate.printTimeS",
+  );
+  const filamentLengthMm = requireNonNegative(
+    estimateRecord.filamentLengthMm,
+    "$estimate.filamentLengthMm",
+  );
+  const filamentVolumeMm3 = requireNonNegative(
+    estimateRecord.filamentVolumeMm3,
+    "$estimate.filamentVolumeMm3",
+  );
   const estimate: PrusaslicerEstimateResult = {
-    printTimeS: finite(estimateRoot.printTimeS, "$estimate.printTimeS"),
+    printTimeS,
     printTimeNormalMode: nonEmptyText(
-      estimateRoot.printTimeNormalMode,
+      estimateRecord.printTimeNormalMode,
       "$estimate.printTimeNormalMode",
     ),
-    printTimeSilentMode: estimateRoot.printTimeSilentMode === null
+    printTimeSilentMode: estimateRecord.printTimeSilentMode === null
       ? null
-      : nonEmptyText(estimateRoot.printTimeSilentMode, "$estimate.printTimeSilentMode"),
-    filamentLengthMm: finite(
-      estimateRoot.filamentLengthMm,
-      "$estimate.filamentLengthMm",
-    ),
-    filamentVolumeMm3: finite(
-      estimateRoot.filamentVolumeMm3,
-      "$estimate.filamentVolumeMm3",
-    ),
-    ...(Object.hasOwn(estimateRoot, "filamentMassG")
+      : nonEmptyText(
+        estimateRecord.printTimeSilentMode,
+        "$estimate.printTimeSilentMode",
+      ),
+    filamentLengthMm,
+    filamentVolumeMm3,
+    ...(Object.hasOwn(estimateRecord, "filamentMassG")
       ? {
-        filamentMassG: finite(estimateRoot.filamentMassG, "$estimate.filamentMassG"),
+        filamentMassG: requireNonNegative(
+          estimateRecord.filamentMassG,
+          "$estimate.filamentMassG",
+        ),
       }
       : {}),
-    gcodeSha256: requireSha256Hex(estimateRoot.gcodeSha256, "$estimate.gcodeSha256"),
-    notChecked: Array.isArray(estimateRoot.notChecked)
-      ? estimateRoot.notChecked.map((item, i) =>
-        nonEmptyText(item, `$estimate.notChecked[${i}]`)
-      )
-      : (() => {
-        throw new TypeError("$estimate.notChecked must be an array.");
-      })(),
+    gcodeSha256: requireSha256Hex(estimateRecord.gcodeSha256, "$estimate.gcodeSha256"),
+    notChecked: parsePersistedNotChecked(
+      estimateRecord.notChecked,
+      "$estimate.notChecked",
+    ),
     stlArtifactSha256: requireSha256Hex(
-      estimateRoot.stlArtifactSha256,
+      estimateRecord.stlArtifactSha256,
       "$estimate.stlArtifactSha256",
     ),
     profileArtifactSha256: requireSha256Hex(
-      estimateRoot.profileArtifactSha256,
+      estimateRecord.profileArtifactSha256,
       "$estimate.profileArtifactSha256",
     ),
     profileArtifactBytes: requirePositiveInt(
-      estimateRoot.profileArtifactBytes,
+      estimateRecord.profileArtifactBytes,
       "$estimate.profileArtifactBytes",
     ),
   };
@@ -289,7 +302,7 @@ export function validatePrintEstimateObservationCapture(
       artifactId: safeId(geometry.artifactId, "$geometry.artifactId"),
       sha256: requireSha256Hex(geometry.sha256, "$geometry.sha256"),
       byteCount: requirePositiveInt(geometry.byteCount, "$geometry.byteCount"),
-      mediaType: geometry.mediaType,
+      mediaType: "model/stl",
       stagedPath: nonEmptyText(geometry.stagedPath, "$geometry.stagedPath"),
     },
     profile: {
@@ -315,6 +328,37 @@ export function canonicalPrintEstimateObservationText(
   capture: PrintEstimateObservationCapture,
 ): string {
   return deterministicJson(capture);
+}
+
+const PRINT_ESTIMATE_KEYS_WITHOUT_MASS = [
+  "printTimeS",
+  "printTimeNormalMode",
+  "printTimeSilentMode",
+  "filamentLengthMm",
+  "filamentVolumeMm3",
+  "gcodeSha256",
+  "notChecked",
+  "stlArtifactSha256",
+  "profileArtifactSha256",
+  "profileArtifactBytes",
+] as const;
+
+const PRINT_ESTIMATE_KEYS_WITH_MASS = [
+  ...PRINT_ESTIMATE_KEYS_WITHOUT_MASS,
+  "filamentMassG",
+] as const;
+
+function parsePersistedNotChecked(value: unknown, path: string): readonly string[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`${path} must be an array.`);
+  }
+  return value.map((item, i) => nonEmptyText(item, `${path}[${i}]`));
+}
+
+function requireNonNegative(value: unknown, path: string): number {
+  const n = finite(value, path);
+  if (n < 0) throw new TypeError(`${path} must be non-negative.`);
+  return n;
 }
 
 function requireObject(value: unknown, path: string): Record<string, unknown> {

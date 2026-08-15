@@ -7,6 +7,11 @@
  * have run and must not be retried automatically.
  */
 
+import {
+  exactRecord,
+  literalValue,
+  nonEmptyText,
+} from "../../domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
@@ -279,18 +284,130 @@ function parseAttempt(value: unknown): PrintabilityRunAttempt {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("printability attempt must be an object.");
   }
-  const rec = value as Record<string, unknown>;
-  if (rec.schemaVersion !== PRINTABILITY_RUN_ATTEMPT_SCHEMA) {
-    throw new TypeError("printability attempt schema is unsupported.");
+  const status = (value as { status?: unknown }).status;
+  if (status === "dispatched") {
+    const root = exactRecord(value, [
+      "schemaVersion",
+      "status",
+      "projectId",
+      "runId",
+      "planDigest",
+      "dispatchedAt",
+    ], "$printabilityAttempt");
+    literalValue(
+      root.schemaVersion,
+      PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+      "$printabilityAttempt.schemaVersion",
+    );
+    return {
+      schemaVersion: PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+      status: "dispatched",
+      projectId: nonEmptyText(root.projectId, "$printabilityAttempt.projectId"),
+      runId: nonEmptyText(root.runId, "$printabilityAttempt.runId"),
+      planDigest: hexDigest(root.planDigest, "$printabilityAttempt.planDigest"),
+      dispatchedAt: nonEmptyText(
+        root.dispatchedAt,
+        "$printabilityAttempt.dispatchedAt",
+      ),
+    };
   }
-  if (
-    rec.status !== "dispatched" &&
-    rec.status !== "capture-recorded" &&
-    rec.status !== "completed"
-  ) {
-    throw new TypeError("printability attempt status is unsupported.");
+  if (status === "capture-recorded") {
+    const root = exactRecord(value, [
+      "schemaVersion",
+      "status",
+      "projectId",
+      "runId",
+      "planDigest",
+      "dispatchedAt",
+      "recordedAt",
+      "captureFingerprint",
+      "canonicalCaptureText",
+    ], "$printabilityAttempt");
+    literalValue(
+      root.schemaVersion,
+      PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+      "$printabilityAttempt.schemaVersion",
+    );
+    return {
+      schemaVersion: PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+      status: "capture-recorded",
+      projectId: nonEmptyText(root.projectId, "$printabilityAttempt.projectId"),
+      runId: nonEmptyText(root.runId, "$printabilityAttempt.runId"),
+      planDigest: hexDigest(root.planDigest, "$printabilityAttempt.planDigest"),
+      dispatchedAt: nonEmptyText(
+        root.dispatchedAt,
+        "$printabilityAttempt.dispatchedAt",
+      ),
+      recordedAt: nonEmptyText(root.recordedAt, "$printabilityAttempt.recordedAt"),
+      captureFingerprint: parseCaptureFingerprint(
+        root.captureFingerprint,
+        "$printabilityAttempt.captureFingerprint",
+      ),
+      canonicalCaptureText: nonEmptyText(
+        root.canonicalCaptureText,
+        "$printabilityAttempt.canonicalCaptureText",
+      ),
+    };
   }
-  return rec as PrintabilityRunAttempt;
+  if (status === "completed") {
+    const root = exactRecord(value, [
+      "schemaVersion",
+      "status",
+      "projectId",
+      "runId",
+      "planDigest",
+      "dispatchedAt",
+      "recordedAt",
+      "completedAt",
+      "captureFingerprint",
+      "canonicalCaptureText",
+    ], "$printabilityAttempt");
+    literalValue(
+      root.schemaVersion,
+      PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+      "$printabilityAttempt.schemaVersion",
+    );
+    return {
+      schemaVersion: PRINTABILITY_RUN_ATTEMPT_SCHEMA,
+      status: "completed",
+      projectId: nonEmptyText(root.projectId, "$printabilityAttempt.projectId"),
+      runId: nonEmptyText(root.runId, "$printabilityAttempt.runId"),
+      planDigest: hexDigest(root.planDigest, "$printabilityAttempt.planDigest"),
+      dispatchedAt: nonEmptyText(
+        root.dispatchedAt,
+        "$printabilityAttempt.dispatchedAt",
+      ),
+      recordedAt: nonEmptyText(root.recordedAt, "$printabilityAttempt.recordedAt"),
+      completedAt: nonEmptyText(root.completedAt, "$printabilityAttempt.completedAt"),
+      captureFingerprint: parseCaptureFingerprint(
+        root.captureFingerprint,
+        "$printabilityAttempt.captureFingerprint",
+      ),
+      canonicalCaptureText: nonEmptyText(
+        root.canonicalCaptureText,
+        "$printabilityAttempt.canonicalCaptureText",
+      ),
+    };
+  }
+  throw new TypeError("printability attempt status is unsupported.");
+}
+
+function parseCaptureFingerprint(
+  value: unknown,
+  path: string,
+): ContentFingerprint {
+  const rec = exactRecord(value, ["algorithm", "digest"], path);
+  literalValue(rec.algorithm, "sha256", `${path}.algorithm`);
+  return {
+    algorithm: "sha256",
+    digest: hexDigest(rec.digest, `${path}.digest`),
+  };
+}
+
+function hexDigest(value: unknown, path: string): string {
+  const text = nonEmptyText(value, path);
+  hex64(text, path);
+  return text;
 }
 
 function validateBasis(input: {

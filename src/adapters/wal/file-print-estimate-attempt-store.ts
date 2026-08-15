@@ -7,6 +7,11 @@
  * have run and must not be retried automatically.
  */
 
+import {
+  exactRecord,
+  literalValue,
+  nonEmptyText,
+} from "../../domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
@@ -282,18 +287,130 @@ function parseAttempt(value: unknown): PrintEstimateRunAttempt {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("print-estimate attempt must be an object.");
   }
-  const rec = value as Record<string, unknown>;
-  if (rec.schemaVersion !== PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA) {
-    throw new TypeError("print-estimate attempt schema is unsupported.");
+  const status = (value as { status?: unknown }).status;
+  if (status === "dispatched") {
+    const root = exactRecord(value, [
+      "schemaVersion",
+      "status",
+      "projectId",
+      "runId",
+      "planDigest",
+      "dispatchedAt",
+    ], "$printEstimateAttempt");
+    literalValue(
+      root.schemaVersion,
+      PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
+      "$printEstimateAttempt.schemaVersion",
+    );
+    return {
+      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
+      status: "dispatched",
+      projectId: nonEmptyText(root.projectId, "$printEstimateAttempt.projectId"),
+      runId: nonEmptyText(root.runId, "$printEstimateAttempt.runId"),
+      planDigest: hexDigest(root.planDigest, "$printEstimateAttempt.planDigest"),
+      dispatchedAt: nonEmptyText(
+        root.dispatchedAt,
+        "$printEstimateAttempt.dispatchedAt",
+      ),
+    };
   }
-  if (
-    rec.status !== "dispatched" &&
-    rec.status !== "capture-recorded" &&
-    rec.status !== "completed"
-  ) {
-    throw new TypeError("print-estimate attempt status is unsupported.");
+  if (status === "capture-recorded") {
+    const root = exactRecord(value, [
+      "schemaVersion",
+      "status",
+      "projectId",
+      "runId",
+      "planDigest",
+      "dispatchedAt",
+      "recordedAt",
+      "captureFingerprint",
+      "canonicalCaptureText",
+    ], "$printEstimateAttempt");
+    literalValue(
+      root.schemaVersion,
+      PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
+      "$printEstimateAttempt.schemaVersion",
+    );
+    return {
+      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
+      status: "capture-recorded",
+      projectId: nonEmptyText(root.projectId, "$printEstimateAttempt.projectId"),
+      runId: nonEmptyText(root.runId, "$printEstimateAttempt.runId"),
+      planDigest: hexDigest(root.planDigest, "$printEstimateAttempt.planDigest"),
+      dispatchedAt: nonEmptyText(
+        root.dispatchedAt,
+        "$printEstimateAttempt.dispatchedAt",
+      ),
+      recordedAt: nonEmptyText(root.recordedAt, "$printEstimateAttempt.recordedAt"),
+      captureFingerprint: parseCaptureFingerprint(
+        root.captureFingerprint,
+        "$printEstimateAttempt.captureFingerprint",
+      ),
+      canonicalCaptureText: nonEmptyText(
+        root.canonicalCaptureText,
+        "$printEstimateAttempt.canonicalCaptureText",
+      ),
+    };
   }
-  return rec as PrintEstimateRunAttempt;
+  if (status === "completed") {
+    const root = exactRecord(value, [
+      "schemaVersion",
+      "status",
+      "projectId",
+      "runId",
+      "planDigest",
+      "dispatchedAt",
+      "recordedAt",
+      "completedAt",
+      "captureFingerprint",
+      "canonicalCaptureText",
+    ], "$printEstimateAttempt");
+    literalValue(
+      root.schemaVersion,
+      PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
+      "$printEstimateAttempt.schemaVersion",
+    );
+    return {
+      schemaVersion: PRINT_ESTIMATE_RUN_ATTEMPT_SCHEMA,
+      status: "completed",
+      projectId: nonEmptyText(root.projectId, "$printEstimateAttempt.projectId"),
+      runId: nonEmptyText(root.runId, "$printEstimateAttempt.runId"),
+      planDigest: hexDigest(root.planDigest, "$printEstimateAttempt.planDigest"),
+      dispatchedAt: nonEmptyText(
+        root.dispatchedAt,
+        "$printEstimateAttempt.dispatchedAt",
+      ),
+      recordedAt: nonEmptyText(root.recordedAt, "$printEstimateAttempt.recordedAt"),
+      completedAt: nonEmptyText(root.completedAt, "$printEstimateAttempt.completedAt"),
+      captureFingerprint: parseCaptureFingerprint(
+        root.captureFingerprint,
+        "$printEstimateAttempt.captureFingerprint",
+      ),
+      canonicalCaptureText: nonEmptyText(
+        root.canonicalCaptureText,
+        "$printEstimateAttempt.canonicalCaptureText",
+      ),
+    };
+  }
+  throw new TypeError("print-estimate attempt status is unsupported.");
+}
+
+function parseCaptureFingerprint(
+  value: unknown,
+  path: string,
+): ContentFingerprint {
+  const rec = exactRecord(value, ["algorithm", "digest"], path);
+  literalValue(rec.algorithm, "sha256", `${path}.algorithm`);
+  return {
+    algorithm: "sha256",
+    digest: hexDigest(rec.digest, `${path}.digest`),
+  };
+}
+
+function hexDigest(value: unknown, path: string): string {
+  const text = nonEmptyText(value, path);
+  hex64(text, path);
+  return text;
 }
 
 function validateBasis(input: {
