@@ -585,6 +585,15 @@ publishes that graph as `ThreadSnapshot/1.1`; its browser projection is explicit
 `origin: "analysis"`. No analysis edge grants MCP, provider, admission or decision
 authority.
 
+`design.apply-vector-correction@1` seals a Thread document of one bounded first-order
+proposal. The capture declares `grants: none`. It is not a CAD admission, a SysON write,
+or a mandate for a successor execution. The AnalysisGraph edge
+`measured-local-sensitivity` remains an inspectable fact, not an execution gate.
+Thread-entity bindings are identities only: `assertPlanBindingsResolve` does not resolve
+them at plan publication, so the executor fail-closes if the named evaluation or study
+capture is absent. `UNIT_NORMALISATION` remains a brief-compilation-boundary table and
+is not a derivative rescale.
+
 The CAD integration still stops at passive source facts and sealed provenance. It does
 not invent source-level CAD assertions from the parser. The Workbench does not infer
 component sensitivity from historical observation labels; such labels can neither create

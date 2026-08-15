@@ -106,6 +106,10 @@ Every consequential step is: append work + decision → propose → human MRTR �
 execute. The agent supplies no provider name, tool, path, or SysML text on the renderer
 path.
 
+After a sealed sensitivity study, `project_vector_correction_review` can prepare a
+bounded correction document for `design.apply-vector-correction@1`. That seal is not a
+CAD loop and does not rewrite a Build123d literal.
+
 ## 5. Read the cockpit, do not command it
 
 On **Project**, read the brief and the phase gates. “Gate satisfied” means that work

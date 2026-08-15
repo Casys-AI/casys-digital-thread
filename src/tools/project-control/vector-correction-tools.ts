@@ -1,9 +1,6 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import type { ProjectVectorCorrectionReviewUseCase } from "../../application/ports/in/project-vector-correction-review.ts";
-import {
-  OBJECT_OUTPUT_SCHEMA,
-  READ_ONLY_ANNOTATIONS,
-} from "./mcp-tool-schemas.ts";
+import { OBJECT_OUTPUT_SCHEMA, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
 
 export interface ProjectVectorCorrectionToolDependencies {
   /** Provider-free preparation of one vector-correction document review. */

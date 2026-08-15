@@ -8,8 +8,8 @@ import {
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { assembleVectorCorrectionDecision } from "../../domain/analysis/vector-correction-assembly.ts";
 import {
-  encodeVectorCorrectionDecisionParameters,
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+  encodeVectorCorrectionDecisionParameters,
 } from "../../domain/analysis/vector-correction-proposal.ts";
 import {
   assembleSensitivityStudyCaseV2,
@@ -180,18 +180,16 @@ async function createFixture(options: {
   if (assembled.status !== "proposed") {
     throw new Error(`fixture assemble failed: ${assembled.reason}`);
   }
-  const decision = options.driverCurrent === undefined
-    ? assembled.decision
-    : {
-      ...assembled.decision,
-      driver: {
-        ...assembled.decision.driver,
-        current: {
-          value: options.driverCurrent,
-          unit: assembled.decision.driver.current.unit,
-        },
+  const decision = options.driverCurrent === undefined ? assembled.decision : {
+    ...assembled.decision,
+    driver: {
+      ...assembled.decision.driver,
+      current: {
+        value: options.driverCurrent,
+        unit: assembled.decision.driver.current.unit,
       },
-    };
+    },
+  };
   const parameters = encodeVectorCorrectionDecisionParameters(decision);
   const reviewBasis = {
     snapshotId: world.snapshot.id,
@@ -439,7 +437,10 @@ async function buildWorld() {
       createdAt: AT,
       appliedAt: AT,
       changes: [
-        change("change.brief", briefId, { algorithm: "sha256", digest: "1".repeat(64) }),
+        change("change.brief", briefId, {
+          algorithm: "sha256",
+          digest: "1".repeat(64),
+        }),
         change("change.study", artifactId, fingerprint),
       ],
     },
@@ -551,7 +552,13 @@ async function buildWorld() {
     provenance: [
       link("changes", "change", "change.brief", "artifact", briefId),
       link("changes", "change", "change.study", "artifact", artifactId),
-      link("uses", "consumption", `consume-${briefId}-by-${artifactId}`, "artifact", briefId),
+      link(
+        "uses",
+        "consumption",
+        `consume-${briefId}-by-${artifactId}`,
+        "artifact",
+        briefId,
+      ),
       link("derived_from", "artifact", artifactId, "artifact", briefId),
       link("derived_from", "observation", observationId, "artifact", artifactId),
       link("traces_to", "requirement", requirementId, "artifact", briefId),
@@ -672,7 +679,10 @@ class MemoryCorrectionCaptures {
   save(fingerprint: ContentFingerprint, text: string) {
     this.saved.push(fingerprint);
     this.#byDigest.set(fingerprint.digest, text);
-    return Promise.resolve({ uri: this.uriFor(fingerprint), path: `${fingerprint.digest}.json` });
+    return Promise.resolve({
+      uri: this.uriFor(fingerprint),
+      path: `${fingerprint.digest}.json`,
+    });
   }
   read(fingerprint: ContentFingerprint) {
     return Promise.resolve(this.#byDigest.get(fingerprint.digest));
