@@ -566,6 +566,14 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       outputs: input.profile.outputManifest,
     });
     const step = stepFromReceipt(receipt);
+    // Persist the STEP into the private cache BEFORE journalling "published":
+    // a published WAL slot must always be re-readable on resume, or the run
+    // dead-ends fail-closed with no recovery path (observed live on dl05).
+    await this.#stager.stage({
+      bytes: step.bytes,
+      fingerprint: { algorithm: "sha256", digest: step.sha256 },
+      byteCount: step.byteCount,
+    });
     await this.#attempts.markCadPublished({
       projectId: input.projectId,
       runId: input.runId,
