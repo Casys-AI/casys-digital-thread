@@ -4,6 +4,10 @@ import {
   QualifiedBuild123dSourceAnalyzer,
 } from "../analyzers/qualified-build123d-source-analyzer.ts";
 import {
+  QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
+  QualifiedModelicaSourceAnalyzer,
+} from "../analyzers/qualified-modelica-source-analyzer.ts";
+import {
   TechnicalSourceAnalysisProfileNotRegisteredError,
 } from "../captures/technical-source-analysis-capture.ts";
 import { FileByteStore } from "../captures/file-byte-store.ts";
@@ -16,6 +20,10 @@ import {
   INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES,
   INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE,
 } from "./initial-technical-source-analysis-composition.ts";
+import {
+  QUALIFIED_MODELICA_MAX_SOURCE_BYTES,
+  QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE,
+} from "./modelica-source-analysis-composition.ts";
 
 const SOURCE_TEXT = [
   "from build123d import Box",
@@ -33,8 +41,14 @@ Deno.test("initial source-analysis registration exactly matches compilation qual
     version: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.version,
   });
   const compilation = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0];
+  const modelicaCompilation = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles
+    .find((profile) => profile.id === QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE);
+  const modelica = registry.requireExact({
+    id: QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE.id,
+    version: QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE.version,
+  });
 
-  assertEquals(INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles.length, 1);
+  assertEquals(INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles.length, 2);
   assertEquals(registration.profile, {
     id: compilation.id,
     version: compilation.version,
@@ -46,6 +60,15 @@ Deno.test("initial source-analysis registration exactly matches compilation qual
   assertEquals(compilation.analysisPolicyProfile, registration.profile.id);
   assertInstanceOf(registration.frontend, QualifiedBuild123dSourceAnalyzer);
   assertEquals(Object.isFrozen(registration.profile), true);
+  assertEquals(modelica.profile, {
+    id: modelicaCompilation?.id,
+    version: modelicaCompilation?.version,
+    role: modelicaCompilation?.sourceRole,
+    language: modelicaCompilation?.language,
+    analyzer: modelicaCompilation?.analyzer,
+    maxSourceBytes: QUALIFIED_MODELICA_MAX_SOURCE_BYTES,
+  });
+  assertInstanceOf(modelica.frontend, QualifiedModelicaSourceAnalyzer);
 
   assertThrows(
     () => registry.requireForCapture("modelica-unqualified"),

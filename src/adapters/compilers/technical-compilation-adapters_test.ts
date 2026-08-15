@@ -187,12 +187,14 @@ Deno.test("fixed catalogue exposes only the real qualified build123d frontend", 
   const second = await provider.get();
   assertNotStrictEquals(first, second);
   assertEquals(first, INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG);
-  assertEquals(first.profiles.length, 1);
+  assertEquals(first.profiles.length, 2);
   assertEquals(first.profiles[0].target, "build123d-source");
   assertEquals(first.profiles[0].analyzer, {
     id: QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID,
     version: QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
   });
+  assertEquals(first.profiles[1].target, "modelica-source-qualification");
+  assertEquals(first.profiles[1].id, "modelica-closed-subset-v1");
   assertEquals(Object.isFrozen(first), true);
   assertEquals(Object.isFrozen(first.profiles[0]), true);
   assertThrows(

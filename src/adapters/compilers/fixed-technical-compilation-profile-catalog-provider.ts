@@ -13,15 +13,17 @@ import {
   QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID,
   QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
 } from "../analyzers/qualified-build123d-source-analyzer.ts";
+import {
+  QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
+  QUALIFIED_MODELICA_SOURCE_ANALYZER_ID,
+  QUALIFIED_MODELICA_SOURCE_ANALYZER_VERSION,
+} from "../analyzers/qualified-modelica-source-analyzer.ts";
 
 /**
- * The only initial registration corresponds to a real parser-backed, closed
- * build123d subset (3-D primitives, Rectangle/Circle sketches, placements,
- * Compound, same-kind +/−, scale(solid, scalar),
- * fillet(solid.edges(), radius=scalar), chamfer(solid.edges(), length), and
- * extrude(sketch, amount=scalar)). CalculiX and Modelica remain absent until
- * independently qualified frontends exist; requesting either therefore fails
- * closed.
+ * Registrations correspond to real parser-backed closed subsets: the
+ * build123d geometry subset and the Modelica LinearThermalRamp kit form.
+ * CalculiX remains absent until an independently qualified frontend exists;
+ * requesting it therefore fails closed.
  */
 export const INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG:
   TechnicalCompilationProfileCatalog = validateTechnicalCompilationProfileCatalog({
@@ -37,6 +39,18 @@ export const INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG:
         version: QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
       },
       analysisPolicyProfile: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      requiredBindingSymbolKinds: ["artifact", "parameter"],
+    }, {
+      id: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
+      version: "1.0.0",
+      target: "modelica-source-qualification",
+      sourceRole: "modelica-model",
+      language: "modelica",
+      analyzer: {
+        id: QUALIFIED_MODELICA_SOURCE_ANALYZER_ID,
+        version: QUALIFIED_MODELICA_SOURCE_ANALYZER_VERSION,
+      },
+      analysisPolicyProfile: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
       requiredBindingSymbolKinds: ["artifact", "parameter"],
     }],
   });

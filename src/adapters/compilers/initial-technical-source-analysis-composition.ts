@@ -19,6 +19,7 @@ import {
   validateTechnicalSourceAnalysisProfile,
 } from "../captures/technical-source-analysis-capture.ts";
 import type { FileByteStore } from "../captures/file-byte-store.ts";
+import { qualifiedModelicaSourceAnalysisRegistration } from "./modelica-source-analysis-composition.ts";
 
 export const INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES = 262_144;
 
@@ -35,12 +36,15 @@ export const INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE:
     maxSourceBytes: INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES,
   });
 
-/** Closed registry: no Modelica or generic Python frontend is silently added. */
+/** Closed registry: Build123d and Modelica only. CalculiX stays absent. */
 export function createInitialTechnicalSourceAnalysisProfileRegistry(): FixedTechnicalSourceAnalysisProfileRegistry {
-  return new FixedTechnicalSourceAnalysisProfileRegistry([{
-    profile: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE,
-    frontend: new QualifiedBuild123dSourceAnalyzer(),
-  }]);
+  return new FixedTechnicalSourceAnalysisProfileRegistry([
+    {
+      profile: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE,
+      frontend: new QualifiedBuild123dSourceAnalyzer(),
+    },
+    qualifiedModelicaSourceAnalysisRegistration(),
+  ]);
 }
 
 export interface InitialTechnicalSourceAnalysisCaptureStores {
