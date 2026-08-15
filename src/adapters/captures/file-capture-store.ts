@@ -398,6 +398,42 @@ export const SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Sensitivity edges",
 };
 
+export const PRINTABILITY_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "printability-case"
+> = {
+  kind: "printability-case",
+  directory: "state/local/printability-case-captures",
+  uriNamespace: "printability-case-capture",
+  label: "Printability case",
+};
+
+export const PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "printability-observation"
+> = {
+  kind: "printability-observation",
+  directory: "state/local/printability-observation-captures",
+  uriNamespace: "printability-observation-capture",
+  label: "Printability observation",
+};
+
+export const PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "print-estimate-case"
+> = {
+  kind: "print-estimate-case",
+  directory: "state/local/print-estimate-case-captures",
+  uriNamespace: "print-estimate-case-capture",
+  label: "Print-estimate case",
+};
+
+export const PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "print-estimate-observation"
+> = {
+  kind: "print-estimate-observation",
+  directory: "state/local/print-estimate-observation-captures",
+  uriNamespace: "print-estimate-observation-capture",
+  label: "Print-estimate observation",
+};
+
 /**
  * Content-addressed store for `fea-solver-result-capture/1.0` envelopes
  * produced by `verify.run-fea-static-proof@1` after a successful CalculiX
