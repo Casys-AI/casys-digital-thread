@@ -27,6 +27,23 @@ Deno.test("engineering Workbench composes project intent and observed proof with
     projectThreadRevision: 1,
     currentThreadRevision: 1,
   });
+  assertEquals(result.unresolvedEvidenceReferences, []);
+});
+
+Deno.test("engineering Workbench labels a dangling evidence reference instead of hiding the projection", () => {
+  const thread = threadFixture();
+  const project = projectFixture(thread.subject.id, thread.id);
+  const issue = {
+    path: "$.decisions[15].inputEvidenceRefs[0]",
+    message: "does not resolve to a artifact in the exact ThreadSnapshot revision",
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(project, thread, 1, [], [issue]);
+
+  if (result.surface !== "evidence") {
+    throw new Error("Expected observed proof to remain an evidence surface.");
+  }
+  assertEquals(result.unresolvedEvidenceReferences, [issue]);
 });
 
 Deno.test("planning Workbench exposes intent without inventing a technical thread", () => {

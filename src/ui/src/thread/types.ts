@@ -183,10 +183,12 @@ function isEvidenceWorkbenchSnapshot(
       "project",
       "thread",
       "alignment",
+      "unresolvedEvidenceReferences",
     ]) ||
     !isEngineeringProjectSnapshot(candidate.project) ||
     !isLiveThreadWorkbenchSnapshot(candidate.thread) ||
-    !isWorkbenchAlignment(candidate.alignment)
+    !isWorkbenchAlignment(candidate.alignment) ||
+    !isUnresolvedEvidenceReferenceList(candidate.unresolvedEvidenceReferences)
   ) {
     return false;
   }
@@ -215,6 +217,19 @@ function isEvidenceWorkbenchSnapshot(
       (alignment.currentThreadRevision === projectThreadRevision
         ? "aligned"
         : "thread-ahead");
+}
+
+function isUnresolvedEvidenceReferenceList(
+  value: unknown,
+): value is EngineeringEvidenceWorkbenchSnapshot[
+  "unresolvedEvidenceReferences"
+] {
+  return Array.isArray(value) && value.every((entry) =>
+    isRecord(entry) &&
+    hasExactKeys(entry, ["path", "message"]) &&
+    typeof entry.path === "string" &&
+    typeof entry.message === "string"
+  );
 }
 
 function isWorkbenchAlignment(

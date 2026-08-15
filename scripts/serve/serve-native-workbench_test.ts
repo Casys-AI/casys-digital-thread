@@ -244,6 +244,54 @@ Deno.test("native Workbench keeps a durable unattached generic architecture snap
   assertEquals(await previewThreadId(handler), r3.id);
 });
 
+Deno.test("native Workbench labels a dangling decision evidence reference instead of failing the projection", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  const withDanglingDecision: EngineeringProjectSnapshot = {
+    ...project,
+    decisions: [{
+      id: "decision:abandoned-work",
+      phaseId: "architecture",
+      title: "Approve work that was later abandoned",
+      question: "Should the abandoned binding be executed?",
+      status: "required",
+      requestedAt: "2026-08-08T05:10:00.000Z",
+      inputEvidenceRefs: [{
+        snapshotId: r3.id,
+        snapshotRevision: r3.revision,
+        kind: "artifact",
+        id: "artifact-that-never-existed",
+      }],
+      approvalIds: [],
+    }],
+  };
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: new ProjectStore([withDanglingDecision]),
+    projectId: "generic-architecture-project",
+    subjectId: r2.subject.id,
+    html: "unused",
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.surface, "evidence");
+  assertEquals(body.unresolvedEvidenceReferences.length, 1);
+  assertEquals(
+    body.unresolvedEvidenceReferences[0].path,
+    "$.decisions[0].inputEvidenceRefs[0]",
+  );
+  assertEquals(
+    Object.keys(body.unresolvedEvidenceReferences[0]).toSorted(),
+    ["message", "path"],
+  );
+});
+
 Deno.test("native Workbench hides durable unattached generic requirements and geometry snapshots", async () => {
   for (
     const operation of [

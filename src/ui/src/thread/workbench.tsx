@@ -1237,6 +1237,30 @@ export function ThreadWorkbench({
         </div>
       )}
 
+      {workbench.unresolvedEvidenceReferences.length > 0 && (
+        <div class="project-alignment-notice" role="status">
+          <span aria-hidden="true">!</span>
+          <div>
+            <strong>
+              {workbench.unresolvedEvidenceReferences.length} evidence{" "}
+              {workbench.unresolvedEvidenceReferences.length === 1
+                ? "reference does"
+                : "references do"} not resolve in this thread revision
+            </strong>
+            <small>
+              These project records cite thread entities or snapshots that the
+              exact revision cannot resolve (usually residues of abandoned
+              work). The rest of this page resolved.{" "}
+              {workbench.unresolvedEvidenceReferences
+                .map((issue) =>
+                  issue.path
+                )
+                .join(", ")}
+            </small>
+          </div>
+        </div>
+      )}
+
       {activeView === "overview"
         ? (
           <ProjectOverview

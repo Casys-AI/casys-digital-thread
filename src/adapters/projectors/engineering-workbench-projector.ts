@@ -16,6 +16,7 @@ import {
   type EngineeringPlanningBaselineRun,
   type EngineeringPlanningWorkbenchSnapshot,
   type EngineeringTechnicalBaselineStatus,
+  type EngineeringWorkbenchUnresolvedEvidenceReference,
   type LiveThreadWorkbenchSnapshot,
 } from "../../contracts/engineering-workbench.ts";
 import type { LiveThreadUpdate } from "../stores/live-thread-update-store.ts";
@@ -48,6 +49,8 @@ export function projectEngineeringWorkbenchSnapshot(
   thread: LiveThreadWorkbenchSnapshot,
   currentThreadRevision: number,
   liveUpdates: readonly LiveThreadUpdate[] = [],
+  unresolvedEvidenceReferences:
+    readonly EngineeringWorkbenchUnresolvedEvidenceReference[] = [],
 ): EngineeringEvidenceWorkbenchSnapshot | EngineeringDocumentaryWorkbenchSnapshot {
   if (project.project.subjectId !== thread.subject.id) {
     throw new Error(
@@ -122,6 +125,12 @@ export function projectEngineeringWorkbenchSnapshot(
       projectThreadRevision,
       currentThreadRevision,
     },
+    // Project the two published fields only: a spread would leak future
+    // domain-issue fields past the exact-keys browser guard.
+    unresolvedEvidenceReferences: unresolvedEvidenceReferences.map((issue) => ({
+      path: issue.path,
+      message: issue.message,
+    })),
   };
 }
 

@@ -118,7 +118,7 @@ The JSON document is one atomic browser read model:
 
 ```json
 {
-  "schemaVersion": "engineering-workbench/0.2",
+  "schemaVersion": "engineering-workbench/0.3",
   "surface": "evidence",
   "project": {
     "schemaVersion": "1.0",
@@ -186,7 +186,7 @@ The live read path is:
 curl -N http://127.0.0.1:5173/api/thread/workbench/events
 ```
 
-It emits a complete `engineering-workbench/0.2` replacement as
+It emits a complete `engineering-workbench/0.3` replacement as
 `event: workbench-snapshot`. Event IDs include the relevant immutable revision and live
 activity version, but are opaque to clients: use `Last-Event-ID` only for reconnection,
 not as a technical lineage identifier.

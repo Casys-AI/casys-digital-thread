@@ -31,7 +31,7 @@ missing decision or engineering input.
 | **Live**    | Append-only progress and result notifications used to refresh the activity feed while work is occurring                                                                                              | Canonical evidence, completion, approval, or a pass/fail verdict      |
 
 The BFF composes these boundaries for presentation. Its browser contract is an
-`engineering-workbench/0.2` object with an explicit surface: `planning` contains the
+`engineering-workbench/0.3` object with an explicit surface: `planning` contains the
 durable project plus the status of the first documentary baseline and redacted live
 milestones; `evidence` contains the project, projected `thread` (whose `live` field
 contains current activity), `alignment`, and explicit capabilities. `GET` and SSE create
@@ -416,10 +416,15 @@ Evidence references add the entity kind and ID inside that exact revision:
 
 `latest`, filenames, display labels, and provider names are not evidence references. The
 project validator first requires every entity reference to use a declared snapshot
-revision. At the BFF boundary,
-`validateEngineeringProjectThreadReferences(project, snapshots)` additionally resolves
-each reference against the supplied canonical `ThreadSnapshot`; a newer local snapshot
-does not satisfy a reference to an older revision.
+revision. At the BFF boundary, structural validation stays fail-fast
+(`validateEngineeringProjectSnapshot`) while
+`collectEngineeringProjectThreadReferenceIssues(project, snapshots)` resolves each
+reference against the supplied canonical `ThreadSnapshot`s; a newer local snapshot does
+not satisfy a reference to an older revision. Dangling references (for example a
+decision left behind by abandoned work) do not hide the read-only projection: the
+`evidence` surface publishes them as `unresolvedEvidenceReferences` and the cockpit
+labels them. The `documentary` surface carries no such field by design — it exists only
+for the single-artifact brief baseline, before any evidence reference can dangle.
 
 Runs carry an exact `basis` plus an `inputFingerprint`. The queue fingerprint covers
 that basis, work-item ID, reviewed operation ID and version, approved-decision

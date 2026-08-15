@@ -3,7 +3,10 @@ import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapsho
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../../src/application/ports/out/engineering-project-revision-store.ts";
-import { validateEngineeringProjectThreadReferences } from "../../src/domain/project/engineering-project-validation.ts";
+import {
+  collectEngineeringProjectThreadReferenceIssues,
+  validateEngineeringProjectSnapshot,
+} from "../../src/domain/project/engineering-project-validation.ts";
 import { fingerprintsEqual } from "../../src/domain/kernel/deterministic-json.ts";
 import {
   type ProjectReviewIntent,
@@ -745,12 +748,16 @@ async function projectWorkbenchSnapshot(
         : (options.projectSnapshots ?? options.store).get(reference.snapshotId)
     ),
   );
-  const validatedProject = validateEngineeringProjectThreadReferences(
-    project,
+  // Structural corruption stays fail-fast, but a dangling evidence link (for
+  // example a decision left behind by an abandoned work item) must not hide
+  // the whole read-only projection: label it on the snapshot instead.
+  const validatedProject = validateEngineeringProjectSnapshot(project);
+  const unresolvedEvidenceReferences = collectEngineeringProjectThreadReferenceIssues(
+    validatedProject,
     declaredSnapshots.filter(
       (candidate): candidate is ThreadSnapshot => candidate !== undefined,
     ),
-  );
+  ).map((issue) => ({ path: issue.path, message: issue.message }));
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return projectEngineeringWorkbenchSnapshot(
@@ -764,6 +771,7 @@ async function projectWorkbenchSnapshot(
     ),
     snapshot.revision,
     updates,
+    unresolvedEvidenceReferences,
   );
 }
 

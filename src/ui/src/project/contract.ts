@@ -313,21 +313,48 @@ function briefBasisMatchesFraming(
 ): boolean {
   if (!isRecord(project.project) || !isRecord(project.framing)) return false;
   const brief = project.framing.currentBrief;
-  const approval = project.framing.currentBriefApproval;
+  if (!isRecord(brief)) return false;
   if (
-    !isRecord(brief) || !isRecord(approval) ||
-    !isSha256Fingerprint(approval.inputFingerprint)
+    basis.projectId !== project.project.id ||
+    basis.briefId !== brief.briefId
   ) return false;
-  const fingerprint = approval.inputFingerprint as {
-    algorithm: "sha256";
-    digest: string;
-  };
-  return basis.projectId === project.project.id &&
-    basis.briefId === brief.briefId && basis.briefSnapshotId === brief.id &&
-    basis.briefRevision === brief.revision &&
-    basis.approvedBriefFingerprint.algorithm ===
-      fingerprint.algorithm &&
-    basis.approvedBriefFingerprint.digest === fingerprint.digest;
+  // The durable rule anchors the plan to one exact HISTORICAL human brief
+  // approval, never to the current brief: a later brief revision legitimately
+  // leaves plan.basis behind while the plan stays authorized.
+  const receipts = project.commandReceipts;
+  if (Array.isArray(receipts)) {
+    return receipts.some((item) =>
+      isRecord(item) && item.type === "project.brief-approve" &&
+      isRecord(item.actor) && item.actor.origin === "human" &&
+      isRecord(item.resultingSnapshot) &&
+      item.resultingSnapshot.snapshotId === basis.projectSnapshotId &&
+      item.resultingSnapshot.revision === basis.projectRevision &&
+      isRecord(item.approvedBriefBasis) &&
+      sameApprovedBriefBasisShape(item.approvedBriefBasis, basis)
+    );
+  }
+  // Redacted pre-technical surfaces publish no receipts, so only the
+  // structural anchor is checkable in the browser: same brief family, and a
+  // basis revision that does not postdate the current brief.
+  return typeof brief.revision === "number" &&
+    basis.briefRevision <= brief.revision;
+}
+
+function sameApprovedBriefBasisShape(
+  retained: Record<string, unknown>,
+  basis: EngineeringApprovedBriefBasis,
+): boolean {
+  const fingerprint = retained.approvedBriefFingerprint;
+  return retained.kind === basis.kind &&
+    retained.projectId === basis.projectId &&
+    retained.projectSnapshotId === basis.projectSnapshotId &&
+    retained.projectRevision === basis.projectRevision &&
+    retained.briefId === basis.briefId &&
+    retained.briefSnapshotId === basis.briefSnapshotId &&
+    retained.briefRevision === basis.briefRevision &&
+    isRecord(fingerprint) &&
+    fingerprint.algorithm === basis.approvedBriefFingerprint.algorithm &&
+    fingerprint.digest === basis.approvedBriefFingerprint.digest;
 }
 
 function isProjectFraming(

@@ -6,7 +6,7 @@ import type {
 import type { ThreadWorkbenchSnapshot } from "./thread-workbench.ts";
 
 /** Browser-safe schema served by the native Engineering Workbench BFF. */
-export const ENGINEERING_WORKBENCH_SCHEMA = "engineering-workbench/0.2" as const;
+export const ENGINEERING_WORKBENCH_SCHEMA = "engineering-workbench/0.3" as const;
 
 /** Browser-safe schema for provisional activity over a canonical thread. */
 export const LIVE_THREAD_OVERLAY_SCHEMA = "live-thread-overlay/1.0" as const;
@@ -50,6 +50,19 @@ export interface EngineeringEvidenceWorkbenchSnapshot
   readonly surface: "evidence";
   readonly thread: LiveThreadWorkbenchSnapshot;
   readonly alignment: EngineeringWorkbenchAlignment;
+  /**
+   * Project evidence links that do not resolve in the exact declared thread
+   * snapshots. The read-only cockpit must label such residues, never hide the
+   * whole project behind them; an empty list means every link resolved.
+   */
+  readonly unresolvedEvidenceReferences:
+    readonly EngineeringWorkbenchUnresolvedEvidenceReference[];
+}
+
+export interface EngineeringWorkbenchUnresolvedEvidenceReference {
+  /** JSONPath-like location of the dangling link inside the project snapshot. */
+  readonly path: string;
+  readonly message: string;
 }
 
 export interface EngineeringWorkbenchAlignment {

@@ -151,7 +151,7 @@ export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
 
 export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
   EngineeringEvidenceWorkbenchSnapshot = {
-    schemaVersion: "engineering-workbench/0.2",
+    schemaVersion: "engineering-workbench/0.3",
     surface: "evidence",
     project: GENERIC_PROJECT_FIXTURE,
     thread: {
@@ -167,6 +167,7 @@ export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
       projectThreadRevision: 1,
       currentThreadRevision: 1,
     },
+    unresolvedEvidenceReferences: [],
   };
 
 function phase(
