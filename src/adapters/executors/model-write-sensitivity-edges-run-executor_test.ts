@@ -100,6 +100,65 @@ Deno.test(
 );
 
 Deno.test(
+  "a dispatched same-plan attempt resumes by verifying, never by a second insert",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      // Simulate a prior crash between the provider insert and completion:
+      // the WAL already holds the exact plan the executor will recompute.
+      const planDigest = (await sha256Fingerprint({
+        sysml: fixture.expectedSysml,
+        parentElementId: "pkg-1",
+        editingContextId: "ctx-1",
+      })).digest;
+      assertEquals(
+        await fixture.attempts.begin({
+          projectId: PROJECT_ID,
+          runId: RUN_ID,
+          planDigest,
+          dispatchedAt: AT,
+        }),
+        "dispatch",
+      );
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]!.status, "completed");
+      assertEquals(fixture.syson.inserted.length, 0);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
+  "a verify resume with an empty extraction fails labelled instead of publishing",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      const planDigest = (await sha256Fingerprint({
+        sysml: fixture.expectedSysml,
+        parentElementId: "pkg-1",
+        editingContextId: "ctx-1",
+      })).digest;
+      await fixture.attempts.begin({
+        projectId: PROJECT_ID,
+        runId: RUN_ID,
+        planDigest,
+        dispatchedAt: AT,
+      });
+      fixture.syson.extractResult = { constraints: [] };
+      await assertRejects(
+        () => fixture.executor.execute(AGENT, fixture.command),
+        EngineeringProjectCommandError,
+        "Re-extraction does not include",
+      );
+      assertEquals(fixture.syson.inserted.length, 0);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
   "model.write-sensitivity-edges@1 refuses a human origin before any store access",
   async () => {
     const executor = new ModelWriteSensitivityEdgesRunExecutor({
@@ -436,6 +495,7 @@ async function createFixture() {
   const edgeCaptures = new MemoryCaptures();
   const syson = new FakeSyson(expectedSysml);
   const commands = new MemoryCommands(project);
+  const attempts = new FileSensitivityEdgesAttemptStore(`${directory}/wal`);
   return {
     expectedSysml,
     studyCapture,
@@ -469,9 +529,10 @@ async function createFixture() {
           editingContextId: "ctx-1",
           parentElementId: "pkg-1",
         }),
-      attempts: new FileSensitivityEdgesAttemptStore(`${directory}/wal`),
+      attempts,
       lease: { withLease: (_projectId, _scope, operation) => operation() },
     }),
+    attempts,
     dispose: () => Deno.remove(directory, { recursive: true }),
   };
 }
@@ -482,6 +543,7 @@ function fresh(changedAt: string) {
 
 class FakeSyson {
   readonly inserted: string[] = [];
+  extractResult: Record<string, unknown> | undefined;
   constructor(private readonly sysml: string) {}
   callTool(
     input: { readonly name: string; readonly arguments: Record<string, unknown> },
@@ -490,8 +552,17 @@ class FakeSyson {
       this.inserted.push(String(input.arguments.sysml_text));
       return Promise.resolve({ structuredContent: { ok: true } });
     }
+    // The live provider rejects an extract without element_id; keep the fake
+    // exactly as strict so a missing argument fails in unit tests first.
+    if (typeof input.arguments.element_id !== "string") {
+      return Promise.reject(
+        new Error(
+          "Invalid arguments for syson_constraint_extract: Missing required property: element_id",
+        ),
+      );
+    }
     return Promise.resolve({
-      structuredContent: {
+      structuredContent: this.extractResult ?? {
         featurePath: [
           "sizeZ_for_assembly_max_displacement",
           "sizeZ_for_assembly_max_von_mises",

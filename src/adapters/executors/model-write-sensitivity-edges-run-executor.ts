@@ -251,9 +251,17 @@ export class ModelWriteSensitivityEdgesRunExecutor {
           sysml_text: sysml,
         },
       });
+    }
+    if (wal !== "completed") {
+      // On "verify" the insert was already dispatched once: never re-insert
+      // (that would duplicate the PartDef); re-extract and require the exact
+      // attributes instead, failing labelled if they are not observable.
       const extracted = await this.#syson.callTool({
         name: "syson_constraint_extract",
-        arguments: { editing_context_id: context.editingContextId },
+        arguments: {
+          editing_context_id: context.editingContextId,
+          element_id: context.parentElementId,
+        },
       });
       assertExtractedFeaturePaths(extracted.structuredContent, edges);
     }

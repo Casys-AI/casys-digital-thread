@@ -47,3 +47,21 @@ Deno.test("edges WAL begin returns completed only for a well-formed completed at
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+Deno.test("edges WAL resumes a dispatched same-plan attempt as verify, never as a second insert", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "sensitivity-edges-wal-" });
+  try {
+    const store = new FileSensitivityEdgesAttemptStore(directory);
+    const input = {
+      projectId: "p",
+      runId: "r",
+      planDigest: "d".repeat(64),
+      dispatchedAt: "2026-08-14T00:00:00.000Z",
+    };
+    assertEquals(await store.begin(input), "dispatch");
+    assertEquals(await store.begin(input), "verify");
+    await assertRejects(() => store.begin({ ...input, planDigest: "e".repeat(64) }));
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});

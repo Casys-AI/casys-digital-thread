@@ -1,6 +1,8 @@
 /**
  * Two-state WAL for model.write-sensitivity-edges@1.
- * dispatched → completed. A dispatched entry cannot authorize a second insert.
+ * dispatched → completed. A dispatched entry never authorizes a second insert:
+ * resuming the same plan returns "verify", which re-extracts and requires the
+ * inserted attributes to be observable before publishing.
  */
 
 import {
@@ -69,14 +71,17 @@ export class FileSensitivityEdgesAttemptStore {
     readonly runId: string;
     readonly planDigest: string;
     readonly dispatchedAt: string;
-  }): Promise<"dispatch" | "completed"> {
+  }): Promise<"dispatch" | "verify" | "completed"> {
     const existing = await this.read(input.projectId, input.runId);
     if (existing) {
       if (existing.planDigest !== input.planDigest) {
         throw new SensitivityEdgesOutcomeUnknownError();
       }
       if (existing.status === "completed") return "completed";
-      throw new SensitivityEdgesOutcomeUnknownError();
+      // Same plan, insert dispatched once, outcome not yet published: the
+      // caller must verify the model observably carries the plan instead of
+      // re-inserting a duplicate.
+      return "verify";
     }
     const attempt: SensitivityEdgesAttempt = {
       schemaVersion: SENSITIVITY_EDGES_ATTEMPT_SCHEMA,
