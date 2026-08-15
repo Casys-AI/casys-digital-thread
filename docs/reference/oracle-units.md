@@ -59,9 +59,15 @@ bypassing `UNIT_TO_SYSML_TYPE` so an unadmitted unit can be tested — extracts 
 and deletes the sandbox. `status: "ok"` with a matching `extractedUnit` is the only
 result that admits a unit.
 
-### Refused units (2026-08-14 campaign)
+### Refused units (2026-08-14 campaign, extended 2026-08-15)
 
 ```
+deno task probe:requirement-units --unit=1 --type=DimensionOneValue # 2026-08-15
+→ status: "extraction_failed" (syson_constraint_extract returned no constraints)
+  Dimensionless quantities are NOT oracle-admissible yet. A buckling
+  load-factor requirement therefore cannot produce a verdict: the proof path
+  must publish not_evaluated until a green probe closes this gap.
+
 deno task probe:requirement-units --unit=MPa --type=PressureValue   # 2026-08-14
 → status: "type_mismatch", extractedUnit: "FeatureReferenceExpression"
 
@@ -81,12 +87,12 @@ deno task probe:requirement-units --unit=deg --type=AngleValue      # 2026-08-14
 → status: "type_mismatch", extractedUnit: "FeatureReferenceExpression"
 ```
 
-`MPa`, `kPa`, `m2`, `deg`, `N*m`, `N.m` are not declared in the SI library SysON
-loads. Note that `mm` is a prefixed unit and passes — the cause is not prefixes as
-such but the specific declarations present in SysON's SI bundle.
+`MPa`, `kPa`, `m2`, `deg`, `N*m`, `N.m` are not declared in the SI library SysON loads.
+Note that `mm` is a prefixed unit and passes — the cause is not prefixes as such but the
+specific declarations present in SysON's SI bundle.
 
-`MPa`, `kPa`, `bar`, `kN`, `kJ`, `MJ` are handled at the compilation boundary
-(see section below).
+`MPa`, `kPa`, `bar`, `kN`, `kJ`, `MJ` are handled at the compilation boundary (see
+section below).
 
 ## Canonicalisation at the compilation boundary
 
@@ -97,14 +103,14 @@ in
 rescales each non-native unit to its oracle-admitted target and names the step in the
 provenance entry.
 
-| Source unit | Target unit | Factor / rule       | Label          | Probe evidence |
-| ----------- | ----------- | ------------------- | -------------- | -------------- |
-| `MPa`       | `Pa`        | ×1 000 000          | `MPa-to-Pa`    | `Pa` OK 2026-08-04; `MPa` refused 2026-08-14 |
-| `kN`        | `N`         | ×1 000              | `kN-to-N`      | `N` OK 2026-08-14 |
-| `MJ`        | `J`         | ×1 000 000          | `MJ-to-J`      | `J` OK 2026-08-14 |
-| `kJ`        | `J`         | ×1 000              | `kJ-to-J`      | `J` OK 2026-08-14 |
-| `bar`       | `Pa`        | ×100 000            | `bar-to-Pa`    | `Pa` OK 2026-08-04 |
-| `degC`      | `K`         | + 273.15 (**affine**) | `degC-to-K`  | `K` OK 2026-08-14 |
+| Source unit | Target unit | Factor / rule         | Label       | Probe evidence                               |
+| ----------- | ----------- | --------------------- | ----------- | -------------------------------------------- |
+| `MPa`       | `Pa`        | ×1 000 000            | `MPa-to-Pa` | `Pa` OK 2026-08-04; `MPa` refused 2026-08-14 |
+| `kN`        | `N`         | ×1 000                | `kN-to-N`   | `N` OK 2026-08-14                            |
+| `MJ`        | `J`         | ×1 000 000            | `MJ-to-J`   | `J` OK 2026-08-14                            |
+| `kJ`        | `J`         | ×1 000                | `kJ-to-J`   | `J` OK 2026-08-14                            |
+| `bar`       | `Pa`        | ×100 000              | `bar-to-Pa` | `Pa` OK 2026-08-04                           |
+| `degC`      | `K`         | + 273.15 (**affine**) | `degC-to-K` | `K` OK 2026-08-14                            |
 
 Why convert rather than refuse: refusing does not remove the conversion, it moves it
 into the agent, where nothing records that `90000000` was meant to be `90 MPa`. Doing it
@@ -144,17 +150,19 @@ normalisation entry `degC-to-K` is declared in `UNIT_NORMALISATION` as the first
 transformation: `apply: (v) => v + 273.15`.
 
 Modelica already publishes `degC` observations (`temperature_final`, `targetTemperature`
-in [`modelica-isolated-execution.ts`](../../src/domain/analysis/modelica-isolated-execution.ts)).
+in
+[`modelica-isolated-execution.ts`](../../src/domain/analysis/modelica-isolated-execution.ts)).
 Those observations can now be compared against a `K`-based SysON requirement via the
 compilation boundary: `normaliseThreshold(22, "degC")` → `{ value: 295.15, unit: "K" }`.
 
 **Affine safety** — the mandatory boundary test `apply(0) === 273.15` is enforced in
-`unit-normalisation_test.ts`. A multiplier-based table would return 0 for 0 °C, which
-is wrong; the function shape makes the affine semantics explicit and testable.
+`unit-normalisation_test.ts`. A multiplier-based table would return 0 for 0 °C, which is
+wrong; the function shape makes the affine semantics explicit and testable.
 
 ## Known remaining gaps
 
 Units the oracle cannot carry and that have no normalisation path:
+
 - `m2` / `m²` (AreaValue) — `type_mismatch` 2026-08-14. No standard SysON prefix.
 - Torque (`N*m`, `N.m`) — rejected by SysON on both spellings 2026-08-14.
 - `deg` (AngleValue as degrees) — `type_mismatch` 2026-08-14. Use `rad` natively.

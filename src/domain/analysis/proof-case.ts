@@ -202,6 +202,11 @@ const SYSML_ID = /^[A-Za-z_][A-Za-z0-9_]*$/;
  *     N.m → TorqueValue   (type_mismatch: extracted "N", dot truncates name)
  *     kPa → PressureValue (type_mismatch: prefixed variant not in SI library)
  *     deg → AngleValue    (type_mismatch: FeatureReferenceExpression)
+ *   2026-08-15, same probe runner:
+ *     1   → DimensionOneValue (extraction_failed: syson_constraint_extract
+ *           returned no constraints) — dimensionless quantities are therefore
+ *           NOT oracle-admissible yet; a buckling load-factor verdict must
+ *           stay not_evaluated until a green probe closes this gap.
  *
  * To add a unit, run a probe that confirms insertion → extraction round-trip
  * and document the evidence here before merging.
