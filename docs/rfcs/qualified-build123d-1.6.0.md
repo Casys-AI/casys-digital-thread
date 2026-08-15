@@ -998,12 +998,13 @@ deno task lint
 deno fmt src/adapters/analyzers/qualified-build123d-source-analyzer.ts \
   src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts \
   docs/reference/agent-workspace.md \
-  docs/reference/workspace-map.md \
   docs/reference/analysis-authority-pipeline.md \
   docs/rfcs/qualified-build123d-1.6.0.md
 ```
 
-`deno task fmt` is check-only at repo scale; write with `deno fmt <path>`.
+`deno task fmt` is check-only at repo scale; write with `deno fmt <path>`. Do **not**
+run `deno fmt` on `docs/reference/workspace-map.md`: the table is width-aligned, and a
+longer 1.6.0 cell reflows every row. Edit only the analyzer and catalogue sentences.
 
 No provider call, no Docker, no `git add` / commit unless the human asks.
 
