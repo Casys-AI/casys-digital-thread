@@ -34,13 +34,11 @@ import type {
 } from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
-import {
-  reconstructSensitivityEdgesFromStudyCapture,
-} from "../../adapters/captures/vector-correction-capture.ts";
+import { reconstructSensitivityEdgesFromStudyCapture } from "../../domain/analysis/sensitivity-edge-from-study.ts";
 import {
   type SensitivityStudyCapture,
   validateSensitivityStudyCapture,
-} from "../../adapters/captures/sensitivity-study-capture.ts";
+} from "../../domain/analysis/sensitivity-study-capture.ts";
 
 export type ProjectVectorCorrectionReviewErrorCode =
   | "invalid_request"

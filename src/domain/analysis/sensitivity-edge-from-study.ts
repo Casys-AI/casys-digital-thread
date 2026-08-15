@@ -6,6 +6,7 @@
  * replay retired CM-01 evidence.
  */
 
+import type { SensitivityStudyCapture } from "./sensitivity-study-capture.ts";
 import {
   SENSITIVITY_EDGE_SCHEMA,
   type SensitivityEdge,
@@ -106,4 +107,20 @@ function splitIdent(value: string): readonly string[] {
 
 function capitalize(value: string): string {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
+}
+
+/**
+ * Deterministically rebuild the sealed edge set from a study capture — the
+ * same reconstruction the executor performs, exposed for review surfaces so
+ * no adapter import is needed above the application layer.
+ */
+export function reconstructSensitivityEdgesFromStudyCapture(
+  capture: SensitivityStudyCapture,
+): readonly SensitivityEdge[] {
+  return sensitivityEdgesFromStudy(
+    capture.studyCase,
+    new Map(capture.measurements.base.map((item) => [item.metric, item])),
+    new Map(capture.measurements.stepped.map((item) => [item.metric, item])),
+    { runId: capture.trustedRunId, capturedAt: capture.capturedAt },
+  );
 }

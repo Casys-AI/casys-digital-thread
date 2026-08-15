@@ -24,7 +24,7 @@ import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
-import { SENSITIVITY_STUDY_CAPTURE_SCHEMA } from "../captures/sensitivity-study-capture.ts";
+import { SENSITIVITY_STUDY_CAPTURE_SCHEMA } from "../../domain/analysis/sensitivity-study-capture.ts";
 import { FileSensitivityEdgesAttemptStore } from "../wal/file-sensitivity-edges-attempt-store.ts";
 import {
   ModelWriteSensitivityEdgesRunExecutor,

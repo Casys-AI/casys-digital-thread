@@ -61,14 +61,14 @@ import {
 import {
   CORRECTION_PROPOSAL_CAPTURE_SCHEMA,
   CORRECTION_PROPOSAL_CAPTURE_URI_PREFIX,
-  reconstructSensitivityEdgesFromStudyCapture,
   validateVectorCorrectionCapture,
   type VectorCorrectionCapture,
 } from "../captures/vector-correction-capture.ts";
+import { reconstructSensitivityEdgesFromStudyCapture } from "../../domain/analysis/sensitivity-edge-from-study.ts";
 import {
   type SensitivityStudyCapture,
   validateSensitivityStudyCapture,
-} from "../captures/sensitivity-study-capture.ts";
+} from "../../domain/analysis/sensitivity-study-capture.ts";
 
 export { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION };
 

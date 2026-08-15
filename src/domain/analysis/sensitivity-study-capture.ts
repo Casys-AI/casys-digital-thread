@@ -5,15 +5,15 @@
  * It is data, never a verdict.
  */
 
-import { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION } from "../../domain/analysis/sensitivity-study-proposal.ts";
+import { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION } from "./sensitivity-study-proposal.ts";
 import {
   computeSensitivities,
   type SensitivityDerivatives,
-} from "../../domain/analysis/sensitivity-study.ts";
+} from "./sensitivity-study.ts";
 import {
   type SensitivityStudyCaseV2,
   validateSensitivityStudyCaseV2,
-} from "../../domain/analysis/sensitivity-study-v2.ts";
+} from "./sensitivity-study-v2.ts";
 import {
   arrayOf,
   exactRecord,
@@ -23,12 +23,9 @@ import {
   positiveInteger,
   rejectDuplicates,
   safeId,
-} from "../../domain/kernel/case-validation.ts";
-import {
-  deterministicJson,
-  sha256Fingerprint,
-} from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+} from "../kernel/case-validation.ts";
+import { deterministicJson, sha256Fingerprint } from "../kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 
 export const SENSITIVITY_STUDY_CAPTURE_SCHEMA =
   "sensitivity-study-capture/1.0" as const;

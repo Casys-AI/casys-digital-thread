@@ -52,7 +52,7 @@ import {
 } from "../captures/sensitivity-edges-capture.ts";
 import {
   validateSensitivityStudyCapture,
-} from "../captures/sensitivity-study-capture.ts";
+} from "../../domain/analysis/sensitivity-study-capture.ts";
 import type { FileCaptureStore } from "../captures/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
 import { assertThreadSnapshotLineageIntact } from "../stores/thread-snapshot-lineage.ts";

@@ -17,9 +17,6 @@ import {
 } from "../../domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
-import type { SensitivityStudyCapture } from "./sensitivity-study-capture.ts";
-import { sensitivityEdgesFromStudy } from "../../domain/analysis/sensitivity-edge-from-study.ts";
-import type { SensitivityEdge } from "../../domain/analysis/sensitivity-edge.ts";
 
 export const CORRECTION_PROPOSAL_CAPTURE_SCHEMA =
   "correction-proposal-capture/1.0" as const;
@@ -42,17 +39,6 @@ export interface VectorCorrectionCapture {
     readonly uri: string;
   };
   readonly evaluation: { readonly id: string };
-}
-
-export function reconstructSensitivityEdgesFromStudyCapture(
-  capture: SensitivityStudyCapture,
-): readonly SensitivityEdge[] {
-  return sensitivityEdgesFromStudy(
-    capture.studyCase,
-    new Map(capture.measurements.base.map((item) => [item.metric, item])),
-    new Map(capture.measurements.stepped.map((item) => [item.metric, item])),
-    { runId: capture.trustedRunId, capturedAt: capture.capturedAt },
-  );
 }
 
 export function validateVectorCorrectionCapture(

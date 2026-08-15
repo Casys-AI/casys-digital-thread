@@ -27,8 +27,8 @@ import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-vali
 import {
   SENSITIVITY_STUDY_CAPTURE_SCHEMA,
   type SensitivityStudyCapture,
-} from "../captures/sensitivity-study-capture.ts";
-import { reconstructSensitivityEdgesFromStudyCapture } from "../captures/vector-correction-capture.ts";
+} from "../../domain/analysis/sensitivity-study-capture.ts";
+import { reconstructSensitivityEdgesFromStudyCapture } from "../../domain/analysis/sensitivity-edge-from-study.ts";
 import {
   DesignApplyVectorCorrectionRunExecutor,
 } from "./design-apply-vector-correction-run-executor.ts";

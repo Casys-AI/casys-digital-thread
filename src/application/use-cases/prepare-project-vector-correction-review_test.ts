@@ -17,7 +17,7 @@ import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-vali
 import {
   SENSITIVITY_STUDY_CAPTURE_SCHEMA,
   type SensitivityStudyCapture,
-} from "../../adapters/captures/sensitivity-study-capture.ts";
+} from "../../domain/analysis/sensitivity-study-capture.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl04";

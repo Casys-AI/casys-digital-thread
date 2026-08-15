@@ -2,9 +2,9 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   assembleSensitivityStudyCaseV2,
   validateSensitivityStudyCaseTemplate,
-} from "../../domain/analysis/sensitivity-study-template.ts";
-import { computeSensitivities } from "../../domain/analysis/sensitivity-study.ts";
-import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+} from "./sensitivity-study-template.ts";
+import { computeSensitivities } from "./sensitivity-study.ts";
+import { sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import {
   SENSITIVITY_STUDY_CAPTURE_SCHEMA,
   validateSensitivityStudyCapture,

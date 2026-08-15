@@ -19,7 +19,7 @@ import {
 import {
   SENSITIVITY_STUDY_CASE_CAPTURE_SCHEMA,
 } from "../captures/sensitivity-study-case-capture.ts";
-import { validateSensitivityStudyCapture } from "../captures/sensitivity-study-capture.ts";
+import { validateSensitivityStudyCapture } from "../../domain/analysis/sensitivity-study-capture.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
