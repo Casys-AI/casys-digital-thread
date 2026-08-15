@@ -23,7 +23,7 @@
     "start:agent": "deno run --allow-run=deno --allow-net=127.0.0.1:5175 scripts/serve/supervise-agent-stack.ts",
     "dev": "deno run --watch=server.ts,src,config --allow-read=config,state,src/ui,mcp-server.yaml --allow-write=state/local --allow-net --allow-run=docker --allow-env server.ts",
     "preview:browser": "deno run --allow-net=127.0.0.1 scripts/serve/console-browser-harness.ts",
-    "thread:capture-syson-inventory": "deno run --allow-net=127.0.0.1:3009 --allow-write=state/local scripts/probes/capture-syson-model-inventory.ts",
+    "thread:capture-syson-inventory": "deno run --allow-net=127.0.0.1:3009 --allow-write=state/local scripts/probes/capture-build123d-api-inventory.ts scripts/probes/capture-syson-model-inventory.ts",
     "preview:thread": "npm --prefix src/ui run build:thread && deno run --allow-read=state/local,src/ui/dist/thread,config/projects,config/thread-subjects --allow-write=state/local --allow-net=127.0.0.1 scripts/serve/serve-native-workbench.ts --workspace-id=primary --no-seed",
     "preview:cockpit": "npm --prefix src/ui run build:thread && deno run --allow-read=state/local,src/ui/dist/thread,config/projects,config/thread-subjects --allow-write=state/local --allow-net=127.0.0.1 scripts/serve/serve-native-workbench.ts --workspace-id=primary --no-seed",
     "verify:thread:presentation": "npm --prefix src/ui run build:thread && deno run --allow-read=src/ui scripts/gates/verify-native-workbench-presentation.ts",
