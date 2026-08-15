@@ -166,6 +166,7 @@ import { McpModelicaResumableAdapter } from "./src/adapters/providers/modelica/m
 import { McpCalculixStaticStructuralSolver } from "./src/adapters/providers/calculix/mcp-calculix-static-structural-solver.ts";
 import { McpCalculixSensitivitySolver } from "./src/adapters/providers/calculix/mcp-calculix-sensitivity-solver.ts";
 import { IsolatedStepSolverStager } from "./src/adapters/assets/isolated-step-solver-stager.ts";
+import { ExportVolumeGeometryStager } from "./src/adapters/assets/export-volume-geometry-stager.ts";
 import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   AnalyzeSealSensitivityStudyRunExecutor,
@@ -179,6 +180,24 @@ import {
   ModelWriteSensitivityEdgesRunExecutor,
 } from "./src/adapters/executors/model-write-sensitivity-edges-run-executor.ts";
 import { FileFeaSensitivityAttemptStore } from "./src/adapters/wal/file-fea-sensitivity-attempt-store.ts";
+import {
+  INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
+  IndustrializeSealPrintabilityCaseRunExecutor,
+} from "./src/adapters/executors/industrialize-seal-printability-case-run-executor.ts";
+import {
+  INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
+  IndustrializeObservePrintabilityRunExecutor,
+} from "./src/adapters/executors/industrialize-observe-printability-run-executor.ts";
+import {
+  INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
+  IndustrializeSealPrintEstimateCaseRunExecutor,
+} from "./src/adapters/executors/industrialize-seal-print-estimate-case-run-executor.ts";
+import {
+  INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION,
+  IndustrializeObservePrintEstimateRunExecutor,
+} from "./src/adapters/executors/industrialize-observe-print-estimate-run-executor.ts";
+import { FilePrintabilityAttemptStore } from "./src/adapters/wal/file-printability-attempt-store.ts";
+import { FilePrintEstimateAttemptStore } from "./src/adapters/wal/file-print-estimate-attempt-store.ts";
 import { FileSensitivityEdgesAttemptStore } from "./src/adapters/wal/file-sensitivity-edges-attempt-store.ts";
 import { parseSysonModelSeedCapture } from "./src/domain/engineering/syson-model-seed.ts";
 import { findArchitectureArtifact } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
@@ -198,6 +217,10 @@ import {
   FEA_VERDICT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR,
+  PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
+  PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
+  PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
+  PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
@@ -297,6 +320,18 @@ const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempt
  */
 const DEFAULT_CANONICAL_ASSET_DIRECTORY = "state/local/thread-assets";
 const DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY = "state/local/sensitivity-step-cache";
+const DEFAULT_PRINTABILITY_CASE_CAPTURE_DIRECTORY =
+  "state/local/printability-case-captures";
+const DEFAULT_PRINTABILITY_ATTEMPT_DIRECTORY = "state/local/printability-attempts";
+const DEFAULT_PRINTABILITY_OBSERVATION_CAPTURE_DIRECTORY =
+  "state/local/printability-observation-captures";
+const DEFAULT_PRINTABILITY_EXPORT_DIRECTORY = "state/local/printability-exports";
+const DEFAULT_PRINT_ESTIMATE_CASE_CAPTURE_DIRECTORY =
+  "state/local/print-estimate-case-captures";
+const DEFAULT_PRINT_ESTIMATE_ATTEMPT_DIRECTORY = "state/local/print-estimate-attempts";
+const DEFAULT_PRINT_ESTIMATE_OBSERVATION_CAPTURE_DIRECTORY =
+  "state/local/print-estimate-observation-captures";
+const DEFAULT_PRINT_ESTIMATE_EXPORT_DIRECTORY = "state/local/print-estimate-exports";
 /**
  * Reviewed initial FEA execution policy (fea-execution-policy/1). These bounds
  * are a server-owned gate, not physics: below 0.5 mm target mesh a concept part
@@ -479,6 +514,12 @@ export interface CreateConsoleServerOptions {
   inspectionDroneV4ArchitectureAttemptDirectory?: string;
   inspectionDroneV4PartDefinitionsCaptureDirectory?: string;
   inspectionDroneV4PartDefinitionsPublicationDirectory?: string;
+  printabilityCaseCaptureDirectory?: string;
+  printabilityAttemptDirectory?: string;
+  printabilityObservationCaptureDirectory?: string;
+  printEstimateCaseCaptureDirectory?: string;
+  printEstimateAttemptDirectory?: string;
+  printEstimateObservationCaptureDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
   /** Root of the closed CAS/WAL layout used by recorded-analysis @2 operations. */
@@ -518,6 +559,8 @@ export async function createConsoleServer(
     server.id === "build123d-sandbox"
   );
   const calculix = manifest.servers.find((server) => server.id === "calculix");
+  const dfm = manifest.servers.find((server) => server.id === "dfm");
+  const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
   const observedRuns = options.observedRuns ??
     createObservedRunCatalog(modelica?.mcpUrl);
   const controlPlane = new ControlPlane({
@@ -538,6 +581,8 @@ export async function createConsoleServer(
       modelica?.mcpUrl,
       build123dSandbox?.mcpUrl,
       calculix?.mcpUrl,
+      dfm?.mcpUrl,
+      prusaslicer?.mcpUrl,
     )
     : undefined;
   const projectControl = options.projectControl === false
@@ -618,6 +663,8 @@ async function createProjectControl(
   modelicaMcpUrl?: string,
   build123dSandboxMcpUrl?: string,
   calculixMcpUrl?: string,
+  dfmMcpUrl?: string,
+  prusaslicerMcpUrl?: string,
 ): Promise<{
   readonly control: ProjectControlToolDependencies;
   readonly brief: ProjectBriefToolDependencies;
@@ -1430,6 +1477,82 @@ async function createProjectControl(
         lease,
       })
       : undefined;
+  const printabilityCaseCaptures = new FileCaptureStore({
+    ...PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
+    directory: options.printabilityCaseCaptureDirectory ??
+      DEFAULT_PRINTABILITY_CASE_CAPTURE_DIRECTORY,
+  });
+  const printabilityObservationCaptures = new FileCaptureStore({
+    ...PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR,
+    directory: options.printabilityObservationCaptureDirectory ??
+      DEFAULT_PRINTABILITY_OBSERVATION_CAPTURE_DIRECTORY,
+  });
+  const printEstimateCaseCaptures = new FileCaptureStore({
+    ...PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
+    directory: options.printEstimateCaseCaptureDirectory ??
+      DEFAULT_PRINT_ESTIMATE_CASE_CAPTURE_DIRECTORY,
+  });
+  const printEstimateObservationCaptures = new FileCaptureStore({
+    ...PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
+    directory: options.printEstimateObservationCaptureDirectory ??
+      DEFAULT_PRINT_ESTIMATE_OBSERVATION_CAPTURE_DIRECTORY,
+  });
+  const industrializeSealPrintabilityCase =
+    new IndustrializeSealPrintabilityCaseRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      captures: printabilityCaseCaptures,
+      lease,
+    });
+  const industrializeObservePrintability = dfmMcpUrl
+    ? new IndustrializeObservePrintabilityRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      caseCaptures: printabilityCaseCaptures,
+      observationCaptures: printabilityObservationCaptures,
+      geometryAssets: new FileCanonicalAssetReader({
+        directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      }),
+      stager: new ExportVolumeGeometryStager(DEFAULT_PRINTABILITY_EXPORT_DIRECTORY),
+      dfm: new HttpMcpToolClient({ mcpUrl: dfmMcpUrl, timeoutMs: 120_000 }),
+      attempts: new FilePrintabilityAttemptStore(
+        options.printabilityAttemptDirectory ?? DEFAULT_PRINTABILITY_ATTEMPT_DIRECTORY,
+      ),
+      lease,
+    })
+    : undefined;
+  const industrializeSealPrintEstimateCase =
+    new IndustrializeSealPrintEstimateCaseRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      captures: printEstimateCaseCaptures,
+      lease,
+    });
+  const industrializeObservePrintEstimate = prusaslicerMcpUrl
+    ? new IndustrializeObservePrintEstimateRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      caseCaptures: printEstimateCaseCaptures,
+      observationCaptures: printEstimateObservationCaptures,
+      geometryAssets: new FileCanonicalAssetReader({
+        directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+      }),
+      stager: new ExportVolumeGeometryStager(DEFAULT_PRINT_ESTIMATE_EXPORT_DIRECTORY),
+      prusaslicer: new HttpMcpToolClient({
+        mcpUrl: prusaslicerMcpUrl,
+        timeoutMs: 180_000,
+      }),
+      attempts: new FilePrintEstimateAttemptStore(
+        options.printEstimateAttemptDirectory ??
+          DEFAULT_PRINT_ESTIMATE_ATTEMPT_DIRECTORY,
+      ),
+      lease,
+    })
+    : undefined;
   const modelWriteSensitivityEdges = sysonMcpUrl
     ? new ModelWriteSensitivityEdgesRunExecutor({
       projects: runtime.projects,
@@ -1831,6 +1954,28 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted model.write-sensitivity-edges@1 executor " +
               "configured for this run (SysON provider is required).",
+          },
+          {
+            operation: INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
+            executor: industrializeSealPrintabilityCase,
+          },
+          {
+            operation: INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
+            executor: industrializeObservePrintability,
+            unavailableMessage:
+              "The server has no trusted industrialize.observe-printability@1 executor " +
+              "configured for this run (dfm provider is required).",
+          },
+          {
+            operation: INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
+            executor: industrializeSealPrintEstimateCase,
+          },
+          {
+            operation: INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION,
+            executor: industrializeObservePrintEstimate,
+            unavailableMessage:
+              "The server has no trusted industrialize.observe-print-estimate@1 executor " +
+              "configured for this run (prusaslicer provider is required).",
           },
         ],
       }),
