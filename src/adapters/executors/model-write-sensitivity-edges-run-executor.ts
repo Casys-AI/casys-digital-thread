@@ -48,6 +48,7 @@ import {
   SENSITIVITY_EDGES_CAPTURE_SCHEMA,
   SENSITIVITY_EDGES_CAPTURE_URI_PREFIX,
   type SensitivityEdgesCapture,
+  validateSensitivityEdgesCapture,
 } from "../captures/sensitivity-edges-capture.ts";
 import {
   validateSensitivityStudyCapture,
@@ -267,6 +268,9 @@ export class ModelWriteSensitivityEdgesRunExecutor {
       edges,
       capturedAt,
     };
+    // Fail-closed self-check before hashing: the persisted bytes must satisfy
+    // the same exactRecord contract any future reader will re-validate with.
+    validateSensitivityEdgesCapture(capture);
     const captureFingerprint = await sha256Fingerprint(capture);
     const captureText = deterministicJson(capture);
     await this.#edgeCaptures.save(captureFingerprint, captureText);

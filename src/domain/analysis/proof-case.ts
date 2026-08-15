@@ -245,7 +245,8 @@ const UNIT_TO_SYSML_TYPE: ReadonlyMap<string, string> = new Map([
  * GUARD — partDefName, every requirement.id, and every requirement.metric
  * must be valid SysML identifiers (letters, digits, underscores; no hyphens
  * or dots). Each requirement.limit.unit must have a confirmed SysML attribute
- * type mapping (currently: mm, Pa, kg, W, V). All
+ * type mapping — the authoritative list is UNIT_TO_SYSML_TYPE below; never a
+ * hand-maintained copy here, which is how this comment went stale once. All
  * constraints are validated fail-closed before the first character is written.
  *
  * The trusted executor derives the declaration name and renders reviewed
@@ -345,6 +346,11 @@ function renderOracleRequirementMembers(
  *   kg — 2026-08-08, scripts/probes/probe-requirement-units.ts, status ok
  *   W  — 2026-08-08, scripts/probes/probe-requirement-units.ts, status ok
  *   V  — 2026-08-08, scripts/probes/probe-requirement-units.ts, status ok
+ *   N, J, s, m, K, A, Hz, rad — 2026-08-14 campaign,
+ *     scripts/probes/probe-requirement-units.ts, status ok for all eight;
+ *     per-unit dates and the refused candidates (m2, N*m, N.m, kPa, deg)
+ *     are recorded inline in UNIT_TO_SYSML_TYPE and in
+ *     docs/reference/oracle-units.md.
  */
 export const SUPPORTED_ORACLE_UNITS: readonly string[] = [
   ...UNIT_TO_SYSML_TYPE.keys(),
