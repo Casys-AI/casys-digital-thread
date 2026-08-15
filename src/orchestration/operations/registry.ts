@@ -17,7 +17,6 @@ import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/req
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
-import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/analysis/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
@@ -175,6 +174,20 @@ const OPERATIONS = [
     bindings: [],
   },
   /**
+   * Generic model-driven correction.  Planning-only until a server-owned
+   * executor is promoted here.
+   *
+   * The operation takes two state-reference bindings from the current thread:
+   *   - failingEvaluation  — the RequirementEvaluation entity whose status is
+   *     "fail"; locates the comparison (actual, limit, normalizedUnit).
+   *   - sensitivityEdges   — the artifact entity that carries the
+   *     SensitivityEdge set for the relevant metric and driver.
+   *
+   * The server reads those references, calls proposeVectorCorrection, and
+   * presents the resulting CorrectionProposal as an EngineeringDecisionProposal
+   * for human MRTR consent.  No provider I/O is dispatched at this stage.
+   */
+  /**
    * Generic requirements authoring — inserts a native RequirementUsage from
    * an MRTR-approved decision below an exact SysON PartDefinition. The server
    * derives the RequirementUsage name from containerComponent, renders all
@@ -330,40 +343,25 @@ const OPERATIONS = [
     execution: "trusted",
     bindings: [],
   },
-  /**
-   * Provider-free documentary seal of one bounded vector-correction proposal.
-   * The human signs recomputed scalars and the study-capture digest. The
-   * published document declares grants: none and is not a CAD admission,
-   * SysON write, or provider run. Bindings are identities only; the executor
-   * fail-closes if they do not resolve on the named basis.
-   */
   {
-    id: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION.id,
-    version: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION.version,
+    id: "design.apply-vector-correction",
+    version: "1",
     startingPoint: "idea-or-spec",
     allowedBasisKinds: ["thread-snapshot"],
-    title: "Seal the reviewed vector-correction document",
+    title: "Propose a linearized design-variable correction",
     description:
-      "Reopen one exact failing evaluation and one sensitivity-study capture, reconstruct " +
-      "the unique measured edge, invert the first-order slope only inside the declared " +
-      "validity neighborhood, and seal a Thread document. No CAD, SysON, or provider " +
-      "authority is granted.",
+      "Read a failing requirement evaluation and the associated sensitivity edges from the thread, compute the first-order correction delta (z* = z + (limit − actual) / k), and present a bounded correction proposal for human MRTR consent before any provider run.",
     workItemKind: "design",
     riskClass: "low",
-    execution: "trusted",
-    decisionEvidenceScope: "thread-entity-bindings",
+    execution: "planning-only",
     bindings: [
       {
         name: "failingEvaluation",
         allowedSourceKinds: ["thread-entity"],
-        cardinality: "one",
-        allowedThreadEntityKinds: ["evaluation"],
       },
       {
-        name: "studyCapture",
+        name: "sensitivityEdges",
         allowedSourceKinds: ["thread-entity"],
-        cardinality: "one",
-        allowedThreadEntityKinds: ["artifact"],
       },
     ],
   },

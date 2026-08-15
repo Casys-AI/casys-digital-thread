@@ -434,15 +434,6 @@ export const PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR: CaptureStoreDescript
   label: "Print-estimate observation",
 };
 
-export const CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
-  "correction-proposal"
-> = {
-  kind: "correction-proposal",
-  directory: "state/local/correction-proposal-captures",
-  uriNamespace: "correction-proposal-capture",
-  label: "Correction proposal",
-};
-
 /**
  * Content-addressed store for `fea-solver-result-capture/1.0` envelopes
  * produced by `verify.run-fea-static-proof@1` after a successful CalculiX
