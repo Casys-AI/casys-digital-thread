@@ -160,6 +160,77 @@ Deno.test("Une équation when produit un unresolved modelica-unsupported-equatio
   );
 });
 
+Deno.test("Un défaut de paramètre non scalaire reste unresolved passed et ne produit pas modelica-end-mismatch", async () => {
+  const bundle = await analyze(withModel([
+    "  parameter Real x = 1 + 2;",
+    "  output Real y;",
+    "equation",
+    "  der(y) = x;",
+  ].join("\n")));
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(bundle.policy.findings, []);
+  assertEquals(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "modelica-expression-not-qualified"
+    ),
+    true,
+  );
+  assertEquals(
+    bundle.policy.findings.some((item) => item.code === "modelica-end-mismatch"),
+    false,
+  );
+});
+
+Deno.test("Une annotation après un paramètre reste unresolved passed et ne produit pas modelica-end-mismatch", async () => {
+  const bundle = await analyze(withModel([
+    "  parameter Real x = 1 annotation(Evaluate=true);",
+    "  output Real y;",
+    "equation",
+    "  der(y) = x;",
+  ].join("\n")));
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(bundle.policy.findings, []);
+  assertEquals(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "modelica-unsupported-section"
+    ),
+    true,
+  );
+  assertEquals(
+    bundle.policy.findings.some((item) => item.code === "modelica-end-mismatch"),
+    false,
+  );
+});
+
+Deno.test("Deux paramètres de même nom produisent un bundle passed avec des ids distincts", async () => {
+  const bundle = await analyze(withModel([
+    "  parameter Real x = 1;",
+    "  parameter Real x = 2;",
+    "  output Real y;",
+    "equation",
+    "  der(y) = x;",
+  ].join("\n")));
+  const parameters = bundle.symbols.filter((symbol) => symbol.kind === "parameter");
+  const firstId = await modelicaAstSymbolId(SOURCE_ID, {
+    kind: "parameter",
+    name: "x",
+  });
+  const secondId = await modelicaAstSymbolId(SOURCE_ID, {
+    kind: "parameter",
+    name: "x",
+    ordinal: 1,
+  });
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(parameters.length, 2);
+  assertEquals(new Set(parameters.map((symbol) => symbol.id)), new Set([firstId, secondId]));
+  assertEquals(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "modelica-duplicate-declaration"
+    ),
+    true,
+  );
+});
+
 Deno.test("Un end mal apparié produit status rejected", async () => {
   const bundle = await analyze(
     withModel([

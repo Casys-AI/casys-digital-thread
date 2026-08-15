@@ -89,11 +89,18 @@ export class QualifiedModelicaSourceAnalyzer implements SourceAnalysisFrontend {
     }
 
     const artifact = await modelSymbol(input.sourceId, parsed.model);
-    const parameters = await Promise.all(
-      parsed.model.parameters.map((node) => parameterSymbol(input.sourceId, node)),
+    const unresolvedCandidates = [...parsed.unresolved];
+    const parameters = await namedSymbols(
+      input.sourceId,
+      "parameter",
+      parsed.model.parameters,
+      unresolvedCandidates,
     );
-    const variables = await Promise.all(
-      parsed.model.variables.map((node) => variableSymbol(input.sourceId, node)),
+    const variables = await namedSymbols(
+      input.sourceId,
+      "variable",
+      parsed.model.variables,
+      unresolvedCandidates,
     );
     const equations = await Promise.all(
       parsed.model.equations.map((node) => equationSymbol(input.sourceId, node)),
@@ -126,7 +133,7 @@ export class QualifiedModelicaSourceAnalyzer implements SourceAnalysisFrontend {
     ];
 
     const unresolved = await Promise.all(
-      parsed.unresolved.map((candidate, ordinal) =>
+      unresolvedCandidates.map((candidate, ordinal) =>
         unresolvedConstruct(input.sourceId, candidate, ordinal)
       ),
     );
@@ -184,34 +191,36 @@ async function modelSymbol(
   };
 }
 
-async function parameterSymbol(
+async function namedSymbols(
   sourceId: string,
-  node: ModelicaParameterNode,
-): Promise<SourceAnalysisSymbol> {
-  return {
-    id: await modelicaAstSymbolId(sourceId, {
-      kind: "parameter",
+  kind: "parameter" | "variable",
+  nodes: readonly (ModelicaParameterNode | ModelicaVariableNode)[],
+  unresolved: ModelicaUnresolved[],
+): Promise<SourceAnalysisSymbol[]> {
+  const seen = new Map<string, number>();
+  const symbols: SourceAnalysisSymbol[] = [];
+  for (const node of nodes) {
+    const occurrence = seen.get(node.name) ?? 0;
+    seen.set(node.name, occurrence + 1);
+    if (occurrence > 0) {
+      unresolved.push({
+        kind: "modelica-duplicate-declaration",
+        message: `The ${kind} ${node.name} is declared more than once in this source.`,
+        span: node.nameSpan,
+      });
+    }
+    symbols.push({
+      id: await modelicaAstSymbolId(sourceId, {
+        kind,
+        name: node.name,
+        ...(occurrence === 0 ? {} : { ordinal: occurrence }),
+      }),
+      kind,
       name: node.name,
-    }),
-    kind: "parameter",
-    name: node.name,
-    span: node.nameSpan,
-  };
-}
-
-async function variableSymbol(
-  sourceId: string,
-  node: ModelicaVariableNode,
-): Promise<SourceAnalysisSymbol> {
-  return {
-    id: await modelicaAstSymbolId(sourceId, {
-      kind: "variable",
-      name: node.name,
-    }),
-    kind: "variable",
-    name: node.name,
-    span: node.nameSpan,
-  };
+      span: node.nameSpan,
+    });
+  }
+  return symbols;
 }
 
 async function equationSymbol(
@@ -403,20 +412,20 @@ function findingFor(
       ...(error.span === undefined ? {} : { span: error.span }),
     };
   }
-  if (error.code === "missing_model_block") {
+  if (error.code === "end_mismatch" || error.code === "unclosed_block") {
     return {
-      id: "finding:modelica-missing-model-block",
-      code: "modelica-missing-model-block",
+      id: "finding:modelica-end-mismatch",
+      code: "modelica-end-mismatch",
       severity: "error",
-      message: "The Modelica closed subset requires exactly one root model block.",
+      message: "The Modelica model end name does not match the opening model name.",
       ...(error.span === undefined ? {} : { span: error.span }),
     };
   }
   return {
-    id: "finding:modelica-end-mismatch",
-    code: "modelica-end-mismatch",
+    id: "finding:modelica-missing-model-block",
+    code: "modelica-missing-model-block",
     severity: "error",
-    message: "The Modelica model end name does not match the opening model name.",
+    message: "The Modelica closed subset requires exactly one root model block.",
     ...(error.span === undefined ? {} : { span: error.span }),
   };
 }
