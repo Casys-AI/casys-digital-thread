@@ -218,7 +218,6 @@ import {
 import { RecordedOperationPlanResolver } from "./src/adapters/plans/recorded-operation-plan-resolver.ts";
 import {
   CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
-  CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR,
   FEA_VERDICT_CAPTURE_DESCRIPTOR,
@@ -2000,6 +1999,8 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted industrialize.observe-print-estimate@1 executor " +
               "configured for this run (prusaslicer provider is required).",
+          },
+          {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
             executor: designApplyVectorCorrection,
           },

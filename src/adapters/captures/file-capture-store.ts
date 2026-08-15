@@ -432,6 +432,8 @@ export const PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR: CaptureStoreDescript
   directory: "state/local/print-estimate-observation-captures",
   uriNamespace: "print-estimate-observation-capture",
   label: "Print-estimate observation",
+};
+
 export const CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "correction-proposal"
 > = {
