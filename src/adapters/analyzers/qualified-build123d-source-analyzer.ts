@@ -6,23 +6,27 @@
  * smaller AST subset:
  *
  * - named imports of Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge,
- *   Rectangle, Circle, Pos, Rot, Compound, scale, fillet, chamfer and
- *   extrude (aliases allowed; two aliases for the same imported name stay
- *   ambiguous);
+ *   Rectangle, Circle, Ellipse, RegularPolygon, Pos, Rot, Compound, scale,
+ *   fillet, chamfer and extrude (aliases allowed; two aliases for the same
+ *   imported name stay ambiguous);
  * - unique module-level parameter assignments made only of finite decimal
- *   numbers, unary/binary arithmetic, earlier parameters, and flat lists;
+ *   numbers, unary/binary arithmetic, earlier parameters, the imported math
+ *   scalars `pi` / `e` / `tau`, and flat lists;
  * - unique module-level shape assignments, each carrying an explicit
  *   geometry kind `solid` or `sketch`: a Box/Cylinder/Cone/Sphere/Torus/
- *   Ellipsoid/Wedge call, a Rectangle/Circle call, a Pos/Rot call or a
- *   product of those placements times a qualified solid or sketch (kind
- *   preserved; Pos * sketch and Rot * sketch are both sketches), a
- *   same-kind +/−, a
+ *   Ellipsoid/Wedge call, a Rectangle/Circle/Ellipse/RegularPolygon call,
+ *   a Pos/Rot call or a product of those placements times a qualified solid
+ *   or sketch (kind preserved; Pos * sketch and Rot * sketch are both
+ *   sketches), a same-kind +/−, a
  *   `scale(<qualified-solid>, <scalar>)`, a
- *   `fillet(<qualified-solid>.edges(), radius=<scalar>)`, a
+ *   `fillet(<qualified-solid>, <scalar>)` or
+ *   `fillet(<qualified-solid>.edges(), radius=<scalar> or positional
+ *   <scalar>)`, a
+ *   `chamfer(<qualified-solid>, <scalar>)` or
  *   `chamfer(<qualified-solid>.edges(), <scalar>)`, an
- *   `extrude(<qualified-sketch>, amount=<scalar>)`, a name of an
- *   earlier same-kind shape, or `Compound(children=[...])` over earlier
- *   solid names;
+ *   `extrude(<qualified-sketch>, amount=<scalar> or positional <scalar>)`,
+ *   a name of an earlier same-kind shape, or `Compound(children=[...])`
+ *   over earlier solid names;
  * - one module-level `result` that is itself one of those solids.  A sketch
  *   is never a valid result.
  *
@@ -31,11 +35,11 @@
  * a fully qualified compilation by omission.  Every geometry-kind mix is
  * labelled with the expected kind and the received kind.
  *
- * Next AST lock (not opened here): Ellipse, Polygon, RegularPolygon and
- * Plane placements; named Pos/Rot bindings; extrude `taper=`/`both=`/
- * `dir=`/`until=` and a positional amount; `fillet(solid, r)` and
- * `chamfer(solid, l)` positional solid forms.  Do not open general
- * MemberExpression, `.faces()`, or `filter_by`.
+ * Next AST lock (not opened here): Polygon; Plane placements; named
+ * Pos/Rot bindings; extrude `taper=`/`both=`/`dir=`/`until=`; fillet /
+ * chamfer method forms; general MemberExpression, `.faces()`, `filter_by`;
+ * math `sin`/`cos` and every other D4 math name; `&` / `|` (D4
+ * ALLOWED_OPS rejects them before this frontend runs).
  */
 
 import { parser } from "@lezer/python";
@@ -67,12 +71,13 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
   "build123d-qualified-lezer" as const;
 
 /**
- * Placement chains Pos * Rot * shape, parenthesized placement products and
- * Rot * sketch reuse the 1.2/1.3 positional-call and placement * shape
- * identity scheme (build123d-ast-identity/1.0). Previously qualified
- * bundles stay bit-identical.
+ * Ellipse/RegularPolygon sketches, positional extrude amount, short
+ * fillet/chamfer solids, fillet(edges(), positional radius), and math
+ * scalars pi/e/tau reuse the 1.2/1.3/1.4 identity scheme
+ * (build123d-ast-identity/1.0). Previously qualified bundles stay
+ * bit-identical. Same-kind `&` is parsed here but D4 rejects the token.
  */
-export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.4.0" as const;
+export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.5.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
 
@@ -92,6 +97,8 @@ const QUALIFIED_BUILD123D_CALLS = new Map(
     ["Wedge", { role: "solid", positionalArguments: 7 }],
     ["Rectangle", { role: "sketch", positionalArguments: 2 }],
     ["Circle", { role: "sketch", positionalArguments: 1 }],
+    ["Ellipse", { role: "sketch", positionalArguments: 2 }],
+    ["RegularPolygon", { role: "sketch", positionalArguments: 2 }],
     ["Pos", { role: "placement", positionalArguments: 3 }],
     ["Rot", { role: "placement", positionalArguments: 3 }],
     ["Compound", { role: "assembly", positionalArguments: 0 }],
@@ -101,6 +108,11 @@ const QUALIFIED_BUILD123D_CALLS = new Map(
     ["extrude", { role: "transform", positionalArguments: 1 }],
   ] as const,
 );
+
+const QUALIFIED_MATH_SCALARS = new Set(["pi", "e", "tau"]);
+
+const QUALIFIED_IMPORT_SENTENCE =
+  "Only an explicit named import from build123d, or from math of pi, e, or tau, is qualified in v1.";
 
 type GeometryKind = "solid" | "sketch";
 type QualifiedBuild123dCallName =
@@ -113,6 +125,8 @@ type QualifiedBuild123dCallName =
   | "Wedge"
   | "Rectangle"
   | "Circle"
+  | "Ellipse"
+  | "RegularPolygon"
   | "Pos"
   | "Rot"
   | "Compound"
@@ -234,42 +248,76 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
     };
 
     const importedCalls = new Map<string, ImportedName>();
+    const mathScalars = new Map<string, ImportedName>();
     for (
       const node of root.children.filter((child) => child.name === "ImportStatement")
     ) {
       const imported = parseNamedImport(node);
-      if (imported === undefined || imported.module !== "build123d") {
+      if (imported === undefined) {
         addUnresolved(
           "python-import-not-qualified",
-          "Only an explicit named import from build123d is qualified in v1.",
+          QUALIFIED_IMPORT_SENTENCE,
           node,
         );
         continue;
       }
-      for (const name of imported.names) {
-        if (
-          !QUALIFIED_BUILD123D_CALLS.has(
-            name.imported as QualifiedBuild123dCallName,
-          )
-        ) {
-          addUnresolved(
-            "build123d-call-not-qualified",
-            `build123d name ${name.imported} is admitted by D4 but not qualified by this frontend version.`,
-            name.node,
-          );
-          continue;
+      if (imported.module === "build123d") {
+        for (const name of imported.names) {
+          if (
+            !QUALIFIED_BUILD123D_CALLS.has(
+              name.imported as QualifiedBuild123dCallName,
+            )
+          ) {
+            addUnresolved(
+              "build123d-call-not-qualified",
+              `build123d name ${name.imported} is admitted by D4 but not qualified by this frontend version.`,
+              name.node,
+            );
+            continue;
+          }
+          if (importedCalls.has(name.local) || mathScalars.has(name.local)) {
+            addUnresolved(
+              "python-import-alias-ambiguous",
+              `Import alias ${name.local} is declared more than once.`,
+              node,
+            );
+            importedCalls.delete(name.local);
+            mathScalars.delete(name.local);
+            continue;
+          }
+          importedCalls.set(name.local, name);
         }
-        if (importedCalls.has(name.local)) {
-          addUnresolved(
-            "python-import-alias-ambiguous",
-            `Import alias ${name.local} is declared more than once.`,
-            node,
-          );
-          importedCalls.delete(name.local);
-          continue;
-        }
-        importedCalls.set(name.local, name);
+        continue;
       }
+      if (imported.module === "math") {
+        for (const name of imported.names) {
+          if (!QUALIFIED_MATH_SCALARS.has(name.imported)) {
+            addUnresolved(
+              "math-name-not-qualified",
+              `math name ${name.imported} is admitted by D4 but not qualified by this frontend version.`,
+              name.node,
+            );
+            continue;
+          }
+          if (importedCalls.has(name.local) || mathScalars.has(name.local)) {
+            addUnresolved(
+              "python-import-alias-ambiguous",
+              `Import alias ${name.local} is declared more than once.`,
+              node,
+            );
+            importedCalls.delete(name.local);
+            mathScalars.delete(name.local);
+            continue;
+          }
+          mathScalars.set(name.local, name);
+        }
+        continue;
+      }
+      addUnresolved(
+        "python-import-not-qualified",
+        QUALIFIED_IMPORT_SENTENCE,
+        node,
+      );
     }
     const aliasesByImported = new Map<string, ImportedName[]>();
     for (const name of importedCalls.values()) {
@@ -286,6 +334,23 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
           alias.node,
         );
         importedCalls.delete(alias.local);
+      }
+    }
+    const mathAliasesByImported = new Map<string, ImportedName[]>();
+    for (const name of mathScalars.values()) {
+      const aliases = mathAliasesByImported.get(name.imported) ?? [];
+      aliases.push(name);
+      mathAliasesByImported.set(name.imported, aliases);
+    }
+    for (const aliases of mathAliasesByImported.values()) {
+      if (aliases.length < 2) continue;
+      for (const alias of aliases) {
+        addUnresolved(
+          "math-import-ambiguous",
+          `Imported name ${alias.imported} has more than one local binding.`,
+          alias.node,
+        );
+        mathScalars.delete(alias.local);
       }
     }
 
@@ -342,8 +407,21 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         );
         continue;
       }
+      if (mathScalars.has(assignment.name)) {
+        mathScalars.delete(assignment.name);
+        addUnresolved(
+          "python-import-shadowing",
+          `Assignment ${assignment.name} shadows a qualified math import.`,
+          node,
+        );
+        continue;
+      }
 
-      const numeric = parseStaticExpression(assignment.rhs, parameterByName);
+      const numeric = parseStaticExpression(
+        assignment.rhs,
+        parameterByName,
+        mathScalars,
+      );
       if (numeric !== undefined) {
         const symbol: SourceAnalysisSymbol = {
           id: await astStableId(
@@ -371,6 +449,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         importedCalls,
         parameterByName,
         shapeByName,
+        mathScalars,
         assignment.assignment.from,
         addUnresolved,
       );
@@ -442,6 +521,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
           shape.assignment.assignment.from < resultAssignment.assignment.from
         ),
       ),
+      mathScalars,
       resultAssignment.assignment.from,
       addUnresolved,
     );
@@ -460,7 +540,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       }
       addUnresolved(
         "build123d-result-not-qualified",
-        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot placement chain * solid or sketch then extrude, solid +/− solid, scale(solid, scalar), fillet(solid.edges(), radius=scalar), chamfer(solid.edges(), length), extrude(sketch, amount=scalar), or Compound(children=[...]). A sketch is never a valid result.",
+        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot placement chain * solid or sketch then extrude, solid +/− solid, scale(solid, scalar), fillet(solid, scalar) or fillet(solid.edges(), radius=scalar or positional scalar), chamfer(solid, scalar) or chamfer(solid.edges(), scalar), extrude(sketch, amount=scalar or positional scalar), or Compound(children=[...]). A sketch is never a valid result.",
         resultAssignment.rhs,
       );
     }
@@ -590,6 +670,7 @@ function parseShapeExpression(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
@@ -600,6 +681,7 @@ function parseShapeExpression(
       importedCalls,
       parameters,
       shapes,
+      mathScalars,
       before,
       addUnresolved,
     );
@@ -619,6 +701,7 @@ function parseShapeExpression(
     node,
     importedCalls,
     parameters,
+    mathScalars,
     before,
   );
   if (positionalSolid !== undefined) return positionalSolid;
@@ -626,6 +709,7 @@ function parseShapeExpression(
     node,
     importedCalls,
     parameters,
+    mathScalars,
     before,
   );
   if (positionalSketch !== undefined) return positionalSketch;
@@ -642,6 +726,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
@@ -651,6 +736,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
@@ -660,6 +746,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
@@ -669,6 +756,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
@@ -677,11 +765,11 @@ function parseShapeExpression(
     return undefined;
   }
   const [left, operator, right] = node.children;
-  if (left === undefined || right === undefined || operator?.name !== "ArithOp") {
+  if (left === undefined || right === undefined) {
     return undefined;
   }
   const operatorText = currentText(operator);
-  if (operatorText === "*") {
+  if (operator?.name === "ArithOp" && operatorText === "*") {
     return parsePlacementTimesShape(
       node,
       left,
@@ -689,16 +777,29 @@ function parseShapeExpression(
       importedCalls,
       parameters,
       shapes,
+      mathScalars,
       before,
       addUnresolved,
     );
   }
-  if (operatorText !== "+" && operatorText !== "-") return undefined;
+  // BitOp "&" is parsed so a later D4 ALLOWED_OPS admission does not need
+  // a second frontend pass. Today D4 rejects "&" as unrecognized_token
+  // before analyze() reaches this branch.
+  if (
+    !(
+      (operator?.name === "ArithOp" &&
+        (operatorText === "+" || operatorText === "-")) ||
+      (operator?.name === "BitOp" && operatorText === "&")
+    )
+  ) {
+    return undefined;
+  }
   const leftShape = parseShapeExpression(
     left,
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
@@ -707,6 +808,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
@@ -738,6 +840,7 @@ function parsePlacementExpression(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
 ): PlacementExpression | undefined {
   if (node.name === "ParenthesizedExpression") {
@@ -746,6 +849,7 @@ function parsePlacementExpression(
       inner,
       importedCalls,
       parameters,
+      mathScalars,
       before,
     );
   }
@@ -753,6 +857,7 @@ function parsePlacementExpression(
     node,
     importedCalls,
     parameters,
+    mathScalars,
     before,
     "Pos",
   );
@@ -761,6 +866,7 @@ function parsePlacementExpression(
     node,
     importedCalls,
     parameters,
+    mathScalars,
     before,
     "Rot",
   );
@@ -777,12 +883,14 @@ function parsePlacementExpression(
     left,
     importedCalls,
     parameters,
+    mathScalars,
     before,
   );
   const rightPlacement = parsePlacementExpression(
     right,
     importedCalls,
     parameters,
+    mathScalars,
     before,
   );
   if (leftPlacement === undefined || rightPlacement === undefined) {
@@ -803,6 +911,7 @@ function parsePlacementTimesShape(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
@@ -811,6 +920,7 @@ function parsePlacementTimesShape(
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
@@ -819,6 +929,7 @@ function parsePlacementTimesShape(
     left,
     importedCalls,
     parameters,
+    mathScalars,
     before,
   );
   if (place === undefined) {
@@ -843,6 +954,7 @@ function parsePositionalSolidCall(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
 ): ShapeExpression | undefined {
   for (
@@ -860,6 +972,7 @@ function parsePositionalSolidCall(
       node,
       importedCalls,
       parameters,
+      mathScalars,
       before,
       imported,
     );
@@ -874,13 +987,17 @@ function parsePositionalSketchCall(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
 ): ShapeExpression | undefined {
-  for (const imported of ["Rectangle", "Circle"] as const) {
+  for (
+    const imported of ["Rectangle", "Circle", "Ellipse", "RegularPolygon"] as const
+  ) {
     const parsed = parsePositionalCall(
       node,
       importedCalls,
       parameters,
+      mathScalars,
       before,
       imported,
     );
@@ -895,6 +1012,7 @@ function parsePositionalCall(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   importedName: PositionalBuild123dCallName,
 ): PlacementExpression | undefined {
@@ -921,7 +1039,11 @@ function parsePositionalCall(
   }
   const parameterReferences: SupportedParameter[] = [];
   for (const expressionNode of expressions) {
-    const expression = parseStaticExpression(expressionNode, parameters);
+    const expression = parseStaticExpression(
+      expressionNode,
+      parameters,
+      mathScalars,
+    );
     if (expression === undefined || expression.shape !== "scalar") return undefined;
     parameterReferences.push(...expression.references);
   }
@@ -938,6 +1060,7 @@ function parseScaleCall(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
@@ -968,10 +1091,11 @@ function parseScaleCall(
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
-  const factor = parseStaticExpression(factorNode, parameters);
+  const factor = parseStaticExpression(factorNode, parameters, mathScalars);
   if (solid === undefined || factor === undefined || factor.shape !== "scalar") {
     return undefined;
   }
@@ -996,19 +1120,18 @@ function parseScaleCall(
 }
 
 /**
- * Only the reviewed form `fillet(<qualified-solid>.edges(), radius=<scalar>)`.
- * Callee is the imported `fillet` (alias OK).  First argument is an empty
- * `.edges()` call on a qualified solid; `radius=` is the only keyword.
- * `chamfer`, positional `fillet(solid, r)`, `solid.fillet(...)`, extra
- * kwargs, `filter_by`, and `Scale` stay unproven.  This does not qualify
- * general MemberExpression — only this empty `.edges()` inside a reviewed
- * fillet call.
+ * Reviewed forms: `fillet(solid, scalar)`, `fillet(solid.edges(), scalar)`,
+ * and `fillet(solid.edges(), radius=scalar)`.  Method form, `.faces()`,
+ * `filter_by`, extra kwargs, and `fillet(solid, radius=scalar)` stay
+ * unproven.  This does not qualify general MemberExpression — only the
+ * empty `.edges()` pattern inside a reviewed fillet call.
  */
 function parseFilletCall(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
@@ -1026,55 +1149,107 @@ function parseFilletCall(
   if (argList.children.some((child) => ["*", "**"].includes(currentText(child)))) {
     return undefined;
   }
+  const keywordNames = extrudeKeywordNames(argList);
   const expressions = argList.children.filter(isArgumentExpression);
-  if (expressions.length !== 4) return undefined;
-  const [edgesNode, keyword, assign, radiusNode] = expressions;
-  if (
-    edgesNode === undefined ||
-    keyword?.name !== "VariableName" || currentText(keyword) !== "radius" ||
-    assign?.name !== "AssignOp" || currentText(assign) !== "=" ||
-    radiusNode === undefined
-  ) {
+  const hasAssign = argList.children.some((child) => child.name === "AssignOp");
+
+  if (expressions.length === 4) {
+    const [edgesNode, keyword, assign, radiusNode] = expressions;
+    if (
+      edgesNode !== undefined &&
+      keyword?.name === "VariableName" && currentText(keyword) === "radius" &&
+      assign?.name === "AssignOp" && currentText(assign) === "=" &&
+      radiusNode !== undefined
+    ) {
+      const solid = parseEmptyEdgesSelector(
+        edgesNode,
+        importedCalls,
+        parameters,
+        shapes,
+        mathScalars,
+        before,
+        addUnresolved,
+      );
+      const radius = parseStaticExpression(radiusNode, parameters, mathScalars);
+      if (solid !== undefined && radius !== undefined && radius.shape === "scalar") {
+        return qualifyFilletOrChamferSolid(
+          "fillet",
+          solid,
+          radius,
+          edgesNode,
+          addUnresolved,
+        );
+      }
+    }
+  }
+
+  if (expressions.length === 2 && !hasAssign) {
+    const [first, radiusNode] = expressions;
+    if (first !== undefined && radiusNode !== undefined) {
+      const radius = parseStaticExpression(radiusNode, parameters, mathScalars);
+      if (radius !== undefined && radius.shape === "scalar") {
+        const edges = parseEmptyEdgesSelector(
+          first,
+          importedCalls,
+          parameters,
+          shapes,
+          mathScalars,
+          before,
+          addUnresolved,
+        );
+        if (edges !== undefined) {
+          return qualifyFilletOrChamferSolid(
+            "fillet",
+            edges,
+            radius,
+            first,
+            addUnresolved,
+          );
+        }
+        const solid = parseShapeExpression(
+          first,
+          importedCalls,
+          parameters,
+          shapes,
+          mathScalars,
+          before,
+          addUnresolved,
+        );
+        if (solid !== undefined) {
+          return qualifyFilletOrChamferSolid(
+            "fillet",
+            solid,
+            radius,
+            first,
+            addUnresolved,
+          );
+        }
+      }
+    }
+  }
+
+  if (keywordNames.length > 0) {
+    for (const keyword of keywordNames) {
+      addUnresolved(
+        "build123d-fillet-argument-not-qualified",
+        `fillet keyword ${keyword}= is not qualified; reviewed forms are fillet(solid, scalar), fillet(solid.edges(), scalar), and fillet(solid.edges(), radius=scalar).`,
+        node,
+      );
+    }
     return undefined;
   }
-  const solid = parseEmptyEdgesSelector(
-    edgesNode,
-    importedCalls,
-    parameters,
-    shapes,
-    before,
-    addUnresolved,
+  addUnresolved(
+    "build123d-fillet-argument-not-qualified",
+    "fillet arguments are not a reviewed form; reviewed forms are fillet(solid, scalar), fillet(solid.edges(), scalar), and fillet(solid.edges(), radius=scalar).",
+    node,
   );
-  const radius = parseStaticExpression(radiusNode, parameters);
-  if (solid === undefined || radius === undefined || radius.shape !== "scalar") {
-    return undefined;
-  }
-  if (solid.geometry !== "solid") {
-    addGeometryKindMismatch(
-      addUnresolved,
-      "fillet",
-      "solid",
-      solid.geometry,
-      edgesNode,
-    );
-    return undefined;
-  }
-  return {
-    geometry: "solid",
-    parameterReferences: [
-      ...solid.parameterReferences,
-      ...radius.references,
-    ],
-    shapeReferences: solid.shapeReferences,
-  };
+  return undefined;
 }
 
 /**
- * Only the reviewed form `chamfer(<qualified-solid>.edges(), <scalar>)`.
- * Callee is the imported `chamfer` (alias OK).  First argument is an empty
- * `.edges()` call on a qualified solid; second is a positional scalar length.
- * `length2=`, `face=`, `angle=`, keyword `length=`, `.faces()`, `filter_by`,
- * extra arguments, and the method form `solid.chamfer(...)` stay unproven.
+ * Reviewed forms: `chamfer(solid, scalar)` and
+ * `chamfer(solid.edges(), scalar)`.  Keyword `length=`, `length2=`, `face=`,
+ * `angle=`, `.faces()`, extra arguments, and the method form stay unproven.
  * This does not open general MemberExpression — only the already-qualified
  * empty `.edges()` pattern inside a reviewed chamfer call.
  */
@@ -1083,6 +1258,7 @@ function parseChamferCall(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
@@ -1100,34 +1276,87 @@ function parseChamferCall(
   if (argList.children.some((child) => ["*", "**"].includes(currentText(child)))) {
     return undefined;
   }
-  // Keyword arguments (AssignOp in arglist) remain unproven: length2=, face=,
-  // angle=, and even keyword `length=` are not the reviewed two-positional form.
-  if (argList.children.some((child) => child.name === "AssignOp")) {
-    return undefined;
-  }
+  const keywordNames = extrudeKeywordNames(argList);
   const expressions = argList.children.filter(isArgumentExpression);
-  if (expressions.length !== 2) return undefined;
-  const [edgesNode, lengthNode] = expressions;
-  if (edgesNode === undefined || lengthNode === undefined) return undefined;
-  const solid = parseEmptyEdgesSelector(
-    edgesNode,
-    importedCalls,
-    parameters,
-    shapes,
-    before,
-    addUnresolved,
-  );
-  const length = parseStaticExpression(lengthNode, parameters);
-  if (solid === undefined || length === undefined || length.shape !== "scalar") {
+  const hasAssign = argList.children.some((child) => child.name === "AssignOp");
+
+  if (expressions.length === 2 && !hasAssign) {
+    const [first, lengthNode] = expressions;
+    if (first !== undefined && lengthNode !== undefined) {
+      const length = parseStaticExpression(lengthNode, parameters, mathScalars);
+      if (length !== undefined && length.shape === "scalar") {
+        const edges = parseEmptyEdgesSelector(
+          first,
+          importedCalls,
+          parameters,
+          shapes,
+          mathScalars,
+          before,
+          addUnresolved,
+        );
+        if (edges !== undefined) {
+          return qualifyFilletOrChamferSolid(
+            "chamfer",
+            edges,
+            length,
+            first,
+            addUnresolved,
+          );
+        }
+        const solid = parseShapeExpression(
+          first,
+          importedCalls,
+          parameters,
+          shapes,
+          mathScalars,
+          before,
+          addUnresolved,
+        );
+        if (solid !== undefined) {
+          return qualifyFilletOrChamferSolid(
+            "chamfer",
+            solid,
+            length,
+            first,
+            addUnresolved,
+          );
+        }
+      }
+    }
+  }
+
+  if (keywordNames.length > 0) {
+    for (const keyword of keywordNames) {
+      addUnresolved(
+        "build123d-chamfer-argument-not-qualified",
+        `chamfer keyword ${keyword}= is not qualified; reviewed forms are chamfer(solid, scalar) and chamfer(solid.edges(), scalar).`,
+        node,
+      );
+    }
     return undefined;
   }
+  addUnresolved(
+    "build123d-chamfer-argument-not-qualified",
+    "chamfer arguments are not a reviewed form; reviewed forms are chamfer(solid, scalar) and chamfer(solid.edges(), scalar).",
+    node,
+  );
+  return undefined;
+}
+
+function qualifyFilletOrChamferSolid(
+  operation: "fillet" | "chamfer",
+  solid: ShapeExpression,
+  scalar: StaticExpression,
+  spanNode: ParsedNode,
+  addUnresolved: AddUnresolved,
+): ShapeExpression | undefined {
   if (solid.geometry !== "solid") {
     addGeometryKindMismatch(
       addUnresolved,
-      "chamfer",
+      operation,
       "solid",
       solid.geometry,
-      edgesNode,
+      spanNode,
     );
     return undefined;
   }
@@ -1135,7 +1364,7 @@ function parseChamferCall(
     geometry: "solid",
     parameterReferences: [
       ...solid.parameterReferences,
-      ...length.references,
+      ...scalar.references,
     ],
     shapeReferences: solid.shapeReferences,
   };
@@ -1147,6 +1376,7 @@ function parseEmptyEdgesSelector(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
@@ -1175,23 +1405,23 @@ function parseEmptyEdgesSelector(
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
 }
 
 /**
- * Only the reviewed form `extrude(<qualified-sketch>, amount=<scalar>)`.
- * Callee is the imported `extrude` (alias OK).  First argument is a
- * qualified sketch; `amount=` is the only keyword.  Positional amount,
- * `both=`, `taper=`, `dir=`, `until=`, extra arguments, splat, and extrude
- * of a solid stay unproven.
+ * Reviewed forms: `extrude(<qualified-sketch>, amount=<scalar>)` and
+ * `extrude(<qualified-sketch>, <scalar>)`.  `both=`, `taper=`, `dir=`,
+ * `until=`, extra arguments, splat, and extrude of a solid stay unproven.
  */
 function parseExtrudeCall(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
 ): ShapeExpression | undefined {
@@ -1219,37 +1449,72 @@ function parseExtrudeCall(
     );
   }
   const expressions = argList.children.filter(isArgumentExpression);
-  if (
-    expressions.length === 2 &&
-    keywordNames.length === 0 &&
-    !argList.children.some((child) => child.name === "AssignOp")
-  ) {
+  const hasAssign = argList.children.some((child) => child.name === "AssignOp");
+  if (expressions.length === 4) {
+    const [sketchNode, keyword, assign, amountNode] = expressions;
+    if (
+      sketchNode !== undefined &&
+      keyword?.name === "VariableName" && currentText(keyword) === "amount" &&
+      assign?.name === "AssignOp" && currentText(assign) === "=" &&
+      amountNode !== undefined
+    ) {
+      return qualifyExtrude(
+        sketchNode,
+        amountNode,
+        importedCalls,
+        parameters,
+        shapes,
+        mathScalars,
+        before,
+        addUnresolved,
+      );
+    }
+  }
+  if (expressions.length === 2 && keywordNames.length === 0 && !hasAssign) {
+    const [sketchNode, amountNode] = expressions;
+    if (sketchNode !== undefined && amountNode !== undefined) {
+      return qualifyExtrude(
+        sketchNode,
+        amountNode,
+        importedCalls,
+        parameters,
+        shapes,
+        mathScalars,
+        before,
+        addUnresolved,
+      );
+    }
+  }
+  if (expressions.length === 1 && keywordNames.length === 0 && !hasAssign) {
     addUnresolved(
       "build123d-extrude-argument-not-qualified",
-      "extrude requires the amount keyword; a positional amount is not qualified.",
+      "extrude requires amount= or a positional amount.",
       node,
     );
-    return undefined;
   }
-  if (expressions.length !== 4) return undefined;
-  const [sketchNode, keyword, assign, amountNode] = expressions;
-  if (
-    sketchNode === undefined ||
-    keyword?.name !== "VariableName" || currentText(keyword) !== "amount" ||
-    assign?.name !== "AssignOp" || currentText(assign) !== "=" ||
-    amountNode === undefined
-  ) {
-    return undefined;
-  }
+  return undefined;
+}
+
+function qualifyExtrude(
+  sketchNode: ParsedNode,
+  amountNode: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
+  before: number,
+  addUnresolved: AddUnresolved,
+): ShapeExpression | undefined {
   const sketch = parseShapeExpression(
     sketchNode,
     importedCalls,
     parameters,
     shapes,
+    mathScalars,
     before,
     addUnresolved,
   );
-  const amount = parseStaticExpression(amountNode, parameters);
+  const amount = parseStaticExpression(amountNode, parameters, mathScalars);
   if (sketch === undefined || amount === undefined || amount.shape !== "scalar") {
     return undefined;
   }
@@ -1341,6 +1606,7 @@ function parseCompoundCall(
 function parseStaticExpression(
   node: ParsedNode,
   parameters: ReadonlyMap<string, SupportedParameter>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
 ): StaticExpression | undefined {
   if (node.name === "Number") {
     return isQualifiedDecimalLiteral(currentText(node))
@@ -1348,14 +1614,18 @@ function parseStaticExpression(
       : undefined;
   }
   if (node.name === "VariableName") {
-    const parameter = parameters.get(currentText(node));
-    return parameter === undefined
-      ? undefined
-      : { shape: parameter.shape, references: [parameter] };
+    const name = currentText(node);
+    const parameter = parameters.get(name);
+    if (parameter !== undefined) {
+      return { shape: parameter.shape, references: [parameter] };
+    }
+    return mathScalars.has(name) ? { shape: "scalar", references: [] } : undefined;
   }
   if (node.name === "ParenthesizedExpression") {
     const inner = node.children.find(isStaticExpressionNode);
-    return inner === undefined ? undefined : parseStaticExpression(inner, parameters);
+    return inner === undefined
+      ? undefined
+      : parseStaticExpression(inner, parameters, mathScalars);
   }
   if (node.name === "UnaryExpression") {
     const [operator, operand] = node.children;
@@ -1363,7 +1633,7 @@ function parseStaticExpression(
       operator?.name !== "ArithOp" ||
       !["+", "-"].includes(currentText(operator)) || operand === undefined
     ) return undefined;
-    const parsed = parseStaticExpression(operand, parameters);
+    const parsed = parseStaticExpression(operand, parameters, mathScalars);
     return parsed?.shape === "scalar" ? parsed : undefined;
   }
   if (node.name === "BinaryExpression") {
@@ -1372,8 +1642,8 @@ function parseStaticExpression(
       left === undefined || right === undefined || operator?.name !== "ArithOp" ||
       !["+", "-", "*", "/", "//", "**", "%"].includes(currentText(operator))
     ) return undefined;
-    const leftValue = parseStaticExpression(left, parameters);
-    const rightValue = parseStaticExpression(right, parameters);
+    const leftValue = parseStaticExpression(left, parameters, mathScalars);
+    const rightValue = parseStaticExpression(right, parameters, mathScalars);
     if (leftValue?.shape !== "scalar" || rightValue?.shape !== "scalar") {
       return undefined;
     }
@@ -1386,7 +1656,7 @@ function parseStaticExpression(
     const elements = node.children.filter(isArrayElement);
     const references: SupportedParameter[] = [];
     for (const element of elements) {
-      const value = parseStaticExpression(element, parameters);
+      const value = parseStaticExpression(element, parameters, mathScalars);
       if (value?.shape !== "scalar") return undefined;
       references.push(...value.references);
     }
@@ -1516,7 +1786,7 @@ function addExpressionUnresolved(
     } else if (candidate.name === "CallExpression") {
       add(
         "python-dynamic-call",
-        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Rectangle, Circle, Pos, Rot, Compound, scale, fillet, chamfer, or extrude calls are qualified.",
+        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Rectangle, Circle, Ellipse, RegularPolygon, Pos, Rot, Compound, scale, fillet, chamfer, or extrude calls are qualified.",
         candidate,
       );
     }

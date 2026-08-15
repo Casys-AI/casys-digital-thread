@@ -323,18 +323,17 @@ result = fillet(base.edges(), radius=radius)
 
 Deno.test("D4-admitted but unqualified build123d calls remain explicitly unresolved", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
-  // fillet with positional radius (not keyword) stays unresolved.
   const bundle = await analyzer.analyze({
     ...INPUT,
-    sourceText: `from build123d import Box, fillet
-base = Box(10, 10, 10)
-result = fillet(base, 2)
+    sourceText: `from build123d import Polygon
+result = Polygon([(0, 0), (1, 0), (0, 1)])
 `,
   });
   assertEquals(bundle.policy.status, "passed");
   const kinds = new Set(
     bundle.unresolvedConstructs.map((construct) => construct.kind),
   );
+  assert(kinds.has("build123d-call-not-qualified"));
   assert(kinds.has("build123d-result-not-qualified"));
   assert(kinds.has("python-dynamic-call"));
 });
@@ -445,19 +444,23 @@ result = chamfer(base.edges())
       ),
       `${sourceText} must not qualify result`,
     );
+    const methodForm = sourceText.includes("base.chamfer(");
+    assertEquals(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-chamfer-argument-not-qualified"
+      ),
+      !methodForm,
+      `${sourceText} must ${methodForm ? "not " : ""}label chamfer arguments`,
+    );
   }
 });
 
 Deno.test("fillet method, 1-arg, extra kwargs, or Scale stay unresolved", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
-  const scripts = [
+  const expectFilletArgument = [
     `from build123d import Box, fillet
 base = Box(10, 10, 10)
 result = fillet(base.edges())
-`,
-    `from build123d import Box, fillet
-base = Box(10, 10, 10)
-result = base.fillet(2)
 `,
     `from build123d import Box, fillet
 base = Box(10, 10, 10)
@@ -475,6 +478,12 @@ result = fillet(base.faces(), radius=2)
 base = Box(10, 10, 10)
 result = fillet(base.edges().filter_by(Axis.Z), radius=2)
 `,
+  ];
+  const noFilletArgument = [
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = base.fillet(2)
+`,
     `from build123d import Box
 base = Box(10, 10, 10)
 result = base.edges()
@@ -483,7 +492,7 @@ result = base.edges()
 result = Scale(2) * Box(10, 20, 30)
 `,
   ];
-  for (const sourceText of scripts) {
+  for (const sourceText of [...expectFilletArgument, ...noFilletArgument]) {
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.policy.status, "passed");
     assert(
@@ -491,6 +500,25 @@ result = Scale(2) * Box(10, 20, 30)
         item.kind === "build123d-result-not-qualified"
       ),
       `${sourceText} must not qualify result`,
+    );
+  }
+  for (const sourceText of expectFilletArgument) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-fillet-argument-not-qualified"
+      ),
+      `${sourceText} must label fillet arguments`,
+    );
+  }
+  for (const sourceText of noFilletArgument) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-fillet-argument-not-qualified"
+      ),
+      false,
+      `${sourceText} must not label fillet arguments`,
     );
   }
 });
@@ -940,6 +968,12 @@ result = Circle(3)
 face = Rectangle(10, 20)
 result = face
 `,
+    `from build123d import Ellipse
+result = Ellipse(4, 2)
+`,
+    `from build123d import RegularPolygon
+result = RegularPolygon(10, 6)
+`,
   ];
   for (const sourceText of scripts) {
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
@@ -959,36 +993,25 @@ result = face
   }
 });
 
-Deno.test("extrude requires the amount keyword on a qualified sketch", async () => {
+Deno.test("extrude accepts amount= or a positional amount on a qualified sketch", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
-  const qualified = await analyzer.analyze({
-    ...INPUT,
-    sourceText: `from build123d import Rectangle, extrude
+  const scripts = [
+    `from build123d import Rectangle, extrude
 result = extrude(Rectangle(10, 20), amount=5)
 `,
-  });
-  assertEquals(qualified.unresolvedConstructs, []);
-  assertEquals(qualified.policy.status, "passed");
-  assertEquals(qualified.analyzer.version, QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION);
-
-  const positional = await analyzer.analyze({
-    ...INPUT,
-    sourceText: `from build123d import Rectangle, extrude
+    `from build123d import Rectangle, extrude
 result = extrude(Rectangle(10, 20), 5)
 `,
-  });
-  assertEquals(positional.policy.status, "passed");
-  assert(
-    positional.unresolvedConstructs.some((item) =>
-      item.kind === "build123d-result-not-qualified"
-    ),
-  );
-  assert(
-    positional.unresolvedConstructs.some((item) =>
-      item.message ===
-        "extrude requires the amount keyword; a positional amount is not qualified."
-    ),
-  );
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
 });
 
 Deno.test("a solid can never be extruded", async () => {
@@ -1337,6 +1360,18 @@ result = extrude(Circle(radius=3), amount=5)
 radii = [3]
 result = extrude(Circle(*radii), amount=5)
 `,
+    `from build123d import Ellipse, extrude
+result = extrude(Ellipse(4, 2, 1), 5)
+`,
+    `from build123d import Ellipse, extrude
+result = extrude(Ellipse(x_radius=4, y_radius=2), 5)
+`,
+    `from build123d import RegularPolygon, extrude
+result = extrude(RegularPolygon(10), 5)
+`,
+    `from build123d import RegularPolygon, extrude
+result = extrude(RegularPolygon(radius=10, side_count=6), 5)
+`,
   ];
   for (const sourceText of scripts) {
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
@@ -1350,7 +1385,7 @@ result = extrude(Circle(*radii), amount=5)
   }
 });
 
-Deno.test("extrude rejects taper, both, dir, until, and positional amount", async () => {
+Deno.test("extrude rejects taper, both, dir, and until", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
   const frontendRejected = [
     `from build123d import Rectangle, extrude
@@ -1361,9 +1396,6 @@ result = extrude(Rectangle(10, 20), amount=5, both=1)
 `,
     `from build123d import Rectangle, extrude
 result = extrude(Rectangle(10, 20), amount=5, until=1)
-`,
-    `from build123d import Rectangle, extrude
-result = extrude(Rectangle(10, 20), 5)
 `,
   ];
   for (const sourceText of frontendRejected) {
@@ -1440,7 +1472,392 @@ result = fillet((plate + block).edges(), radius=1)
   );
 });
 
-Deno.test("existing qualified bundles stay bit-identical under 1.4.0", async () => {
+Deno.test("Ellipse and RegularPolygon extrude to a qualified solid", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Ellipse, extrude
+result = extrude(Ellipse(4, 2), amount=5)
+`,
+    `from build123d import RegularPolygon, extrude
+result = extrude(RegularPolygon(10, 6), 5)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
+});
+
+Deno.test(
+  "a left-associative placement chain times an Ellipse then extrude is a qualified solid",
+  async () => {
+    const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+      ...INPUT,
+      sourceText: `from build123d import Ellipse, Pos, Rot, extrude
+result = extrude(Pos(1, 2, 3) * Rot(0, 0, 45) * Ellipse(4, 2), 5)
+`,
+    });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  },
+);
+
+Deno.test("fillet of a solid by a positional radius is qualified", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Box, fillet
+result = fillet(Box(10, 10, 10), 2)
+`,
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+radius = 2
+result = fillet(base, radius)
+`,
+    `from build123d import Box, fillet
+base = Box(10, 10, 10)
+result = fillet(base.edges(), 2)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  }
+
+  const named = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, fillet
+base = Box(10, 10, 10)
+radius = 2
+result = fillet(base, radius)
+`,
+  });
+  assertEquals(
+    new Map(named.symbols.map((symbol) => [symbol.name, symbol.kind])),
+    new Map([
+      ["base", "variable"],
+      ["radius", "parameter"],
+      ["result", "artifact"],
+    ]),
+  );
+  assertEquals(
+    named.dependencies.map((dependency) => ({
+      kind: dependency.kind,
+      from: named.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+        ?.name,
+      to: named.symbols.find((symbol) => symbol.id === dependency.toSymbolId)
+        ?.name,
+    })).sort((left, right) =>
+      `${left.kind}:${left.from}:${left.to}`.localeCompare(
+        `${right.kind}:${right.from}:${right.to}`,
+      )
+    ),
+    [
+      { kind: "structural-incidence" as const, from: "base", to: "result" },
+      { kind: "structural-incidence" as const, from: "radius", to: "result" },
+    ],
+  );
+});
+
+Deno.test("chamfer of a solid by a positional length is qualified", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, chamfer
+result = chamfer(Box(10, 10, 10), 2)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+});
+
+Deno.test("ampersand intersection is rejected by D4 before the frontend", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Box, Cylinder
+result = Box(10, 20, 30) & Cylinder(4, 12)
+`,
+    `from build123d import Circle, Rectangle, extrude
+result = extrude(Rectangle(20, 20) & Circle(4), 5)
+`,
+    `from build123d import Box, Rectangle
+mixed = Rectangle(20, 20) & Box(10, 10, 10)
+result = Box(1, 2, 3)
+`,
+    `from build123d import Circle, Rectangle
+result = Rectangle(20, 20) & Circle(4)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assertEquals(bundle.policy.status, "rejected");
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.symbols, []);
+    assert(
+      bundle.policy.findings.some((finding) =>
+        finding.code === "geometry-script-unrecognized-token"
+      ),
+      `${sourceText} must stay a D4 unrecognized-token rejection`,
+    );
+  }
+});
+
+Deno.test("solid bitwise or is rejected by D4 before the frontend", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, Cylinder
+result = Box(10, 20, 30) | Cylinder(4, 12)
+`,
+  });
+  assertEquals(bundle.policy.status, "rejected");
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.symbols, []);
+  assert(
+    bundle.policy.findings.some((finding) =>
+      finding.code === "geometry-script-unrecognized-token"
+    ),
+  );
+});
+
+Deno.test("from math import pi qualifies a Circle radius", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Circle, extrude
+from math import pi
+result = extrude(Circle(pi), 5)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+  assertEquals(
+    bundle.symbols.some((symbol) => symbol.name === "pi"),
+    false,
+  );
+  assertEquals(
+    bundle.dependencies.some((dependency) =>
+      bundle.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+        ?.name === "pi"
+    ),
+    false,
+  );
+});
+
+Deno.test("from math import e and tau are closed scalars", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box
+from math import e, tau
+result = Box(e, tau, 1)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.some((symbol) => symbol.name === "e" || symbol.name === "tau"),
+    false,
+  );
+});
+
+Deno.test("from math import pi as P qualifies an aliased scalar", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Circle, extrude
+from math import pi as P
+result = extrude(Circle(P), amount=5)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.some((symbol) => symbol.name === "P" || symbol.name === "pi"),
+    false,
+  );
+});
+
+Deno.test("a math scalar assigned to a parameter carries no math symbol", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Sphere
+from math import pi
+radius = pi * 2
+result = Sphere(radius)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(
+    new Map(bundle.symbols.map((symbol) => [symbol.name, symbol.kind])),
+    new Map([
+      ["radius", "parameter"],
+      ["result", "artifact"],
+    ]),
+  );
+  assertEquals(
+    bundle.dependencies.map((dependency) => ({
+      kind: dependency.kind,
+      from: bundle.symbols.find((symbol) => symbol.id === dependency.fromSymbolId)
+        ?.name,
+      to: bundle.symbols.find((symbol) => symbol.id === dependency.toSymbolId)
+        ?.name,
+    })),
+    [
+      { kind: "structural-incidence" as const, from: "radius", to: "result" },
+    ],
+  );
+});
+
+Deno.test("Circle of pi and Circle of e do not share an artifact identity", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const pi = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Circle, extrude
+from math import pi
+result = extrude(Circle(pi), 5)
+`,
+  });
+  const e = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Circle, extrude
+from math import e
+result = extrude(Circle(e), 5)
+`,
+  });
+  assertNotEquals(
+    pi.symbols.find((symbol) => symbol.name === "result")?.id,
+    e.symbols.find((symbol) => symbol.name === "result")?.id,
+  );
+});
+
+Deno.test("from math import sin stays an explicit math gap", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box
+from math import sin
+result = Box(1, 2, 3)
+`,
+  });
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "math-name-not-qualified" &&
+      item.message ===
+        "math name sin is admitted by D4 but not qualified by this frontend version."
+    ),
+  );
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+  assertEquals(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+    false,
+  );
+});
+
+Deno.test("from math import sqrt stays an explicit math gap", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box
+from math import sqrt
+result = Box(1, 2, 3)
+`,
+  });
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "math-name-not-qualified" &&
+      item.message ===
+        "math name sqrt is admitted by D4 but not qualified by this frontend version."
+    ),
+  );
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+});
+
+Deno.test("a parenthesized math import stays unqualified", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box
+from math import (
+pi
+)
+result = Box(1, 2, 3)
+`,
+  });
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "python-import-not-qualified" &&
+      item.message ===
+        "Only an explicit named import from build123d, or from math of pi, e, or tau, is qualified in v1."
+    ),
+  );
+});
+
+Deno.test("assignment of pi after importing it is shadowing", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Sphere
+from math import pi
+pi = 3
+result = Sphere(pi)
+`,
+  });
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "python-import-shadowing" &&
+      item.message === "Assignment pi shadows a qualified math import."
+    ),
+  );
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+});
+
+Deno.test("fillet keyword on a solid stays an explicit fillet gap", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, fillet
+result = fillet(Box(10, 10, 10), radius=2)
+`,
+  });
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-fillet-argument-not-qualified" &&
+      item.message ===
+        "fillet keyword radius= is not qualified; reviewed forms are fillet(solid, scalar), fillet(solid.edges(), scalar), and fillet(solid.edges(), radius=scalar)."
+    ),
+  );
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+});
+
+Deno.test("existing qualified bundles stay bit-identical under 1.5.0", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
   const scripts = {
     box: `from build123d import Box
