@@ -77,6 +77,11 @@ import { ProjectThreadModelicaQualifiedKitReviewBasisAuthority } from "./src/ada
 import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/preview-project-technical-compilation.ts";
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/prepare-project-isolated-geometry-seal-review.ts";
+import { PrepareProjectVectorCorrectionReview } from "./src/application/use-cases/prepare-project-vector-correction-review.ts";
+import {
+  DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+  DesignApplyVectorCorrectionRunExecutor,
+} from "./src/adapters/executors/design-apply-vector-correction-run-executor.ts";
 import { PrepareProjectModelicaQualifiedKitRunReview } from "./src/application/use-cases/prepare-project-modelica-qualified-kit-run-review.ts";
 import { ExecuteIsolatedModelicaRun } from "./src/application/use-cases/execute-isolated-modelica-run.ts";
 import type { ProjectTechnicalSourceCaptureUseCase } from "./src/application/ports/in/project-technical-source-capture.ts";
@@ -217,6 +222,7 @@ import {
   FEA_VERDICT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR,
+  CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
@@ -1444,6 +1450,21 @@ async function createProjectControl(
   const sensitivityEdgesCaptures = new FileCaptureStore(
     SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
   );
+  const vectorCorrectionCaptures = new FileCaptureStore(
+    CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
+  );
+  const vectorCorrectionReview = new PrepareProjectVectorCorrectionReview({
+    snapshots: activeThreadSnapshots,
+    studyCaptures: sensitivityStudyCaptures,
+  });
+  const designApplyVectorCorrection = new DesignApplyVectorCorrectionRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    studyCaptures: sensitivityStudyCaptures,
+    captures: vectorCorrectionCaptures,
+    lease,
+  });
   const analyzeSealSensitivityStudy = new AnalyzeSealSensitivityStudyRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1795,6 +1816,7 @@ async function createProjectControl(
       briefRequirementsReview,
       build123dExecutionReview,
       isolatedGeometrySealReview,
+      vectorCorrectionReview,
       modelicaQualifiedKitRunReview,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
@@ -1976,6 +1998,10 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted industrialize.observe-print-estimate@1 executor " +
               "configured for this run (prusaslicer provider is required).",
+          },
+          {
+            operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+            executor: designApplyVectorCorrection,
           },
         ],
       }),

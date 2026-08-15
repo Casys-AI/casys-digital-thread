@@ -67,6 +67,10 @@ import {
   parseIsolatedGeometrySealParameters,
 } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
 import {
+  DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+  parseVectorCorrectionDecisionParameters,
+} from "../../domain/analysis/vector-correction-proposal.ts";
+import {
   parseModelicaQualifiedKitRunAdmissionParameters,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
 } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
@@ -105,6 +109,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION),
     (parameters) => {
       parseIsolatedGeometrySealParameters(parameters);
+    },
+  ],
+  [
+    keyOf(DESIGN_APPLY_VECTOR_CORRECTION_OPERATION),
+    (parameters) => {
+      parseVectorCorrectionDecisionParameters(parameters);
     },
   ],
   [

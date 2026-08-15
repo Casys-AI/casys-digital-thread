@@ -19,6 +19,10 @@ import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineerin
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineering/part-definitions-capture.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
+import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/analysis/vector-correction-proposal.ts";
+import {
+  DESIGN_PREVIEW_GEOMETRY_OPERATION,
+} from "../../domain/engineering/geometry-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
@@ -473,6 +477,146 @@ Deno.test("isolated geometry seal is a provider-free Thread-document seal of one
     EngineeringOperationRegistryError,
   );
   assertEquals(stepBinding.code, "invalid_bindings");
+});
+
+Deno.test(
+  "design.apply-vector-correction@1 is a trusted low-risk documentary seal of one evaluation and one study capture",
+  () => {
+    const registered = getRegisteredEngineeringOperation(
+      DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+    )!;
+    assertEquals(registered.execution, "trusted");
+    assertEquals(registered.riskClass, "low");
+    assertEquals(registered.workItemKind, "design");
+    assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
+    assertEquals(registered.resolvedOperationPlan, undefined);
+    assertEquals(registered.bindings, [
+      {
+        name: "failingEvaluation",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["evaluation"],
+      },
+      {
+        name: "studyCapture",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+    ]);
+    assertEquals(
+      registered.bindings.some((binding) => binding.name === "sensitivityEdges"),
+      false,
+    );
+  },
+);
+
+Deno.test(
+  "the registry refuses a failingEvaluation that is not kind: evaluation and a studyCapture that is not kind: artifact",
+  () => {
+    const evaluationBinding = {
+      name: "failingEvaluation",
+      source: {
+        kind: "thread-entity" as const,
+        reference: {
+          snapshotId: "thread.snapshot.4",
+          snapshotRevision: 4,
+          kind: "evaluation" as const,
+          id: "eval.fail",
+        },
+      },
+    };
+    const studyBinding = {
+      name: "studyCapture",
+      source: {
+        kind: "thread-entity" as const,
+        reference: {
+          snapshotId: "thread.snapshot.4",
+          snapshotRevision: 4,
+          kind: "artifact" as const,
+          id: `sensitivity-study-${"a".repeat(64)}`,
+        },
+      },
+    };
+    const queued = validateRegisteredEngineeringOperationInput({
+      operation: {
+        ...DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+        bindings: [evaluationBinding, studyBinding],
+      },
+      stage: "queue",
+      basisKind: "thread-snapshot",
+    });
+    assertEquals(queued.bindings, [evaluationBinding, studyBinding]);
+
+    const wrongEvaluationKind = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+            bindings: [{
+              ...evaluationBinding,
+              source: {
+                ...evaluationBinding.source,
+                reference: {
+                  ...evaluationBinding.source.reference,
+                  kind: "artifact" as const,
+                },
+              },
+            }, studyBinding],
+          },
+          stage: "planning",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(wrongEvaluationKind.code, "invalid_bindings");
+
+    const wrongStudyKind = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+            bindings: [evaluationBinding, {
+              ...studyBinding,
+              source: {
+                ...studyBinding.source,
+                reference: {
+                  ...studyBinding.source.reference,
+                  kind: "evaluation" as const,
+                },
+              },
+            }],
+          },
+          stage: "planning",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(wrongStudyKind.code, "invalid_bindings");
+
+    const extraEvaluation = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
+            bindings: [
+              evaluationBinding,
+              structuredClone(evaluationBinding),
+              studyBinding,
+            ],
+          },
+          stage: "planning",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(extraEvaluation.code, "invalid_bindings");
+  },
+);
+
+Deno.test("design.preview-geometry@1 remains planning-only and is not a trusted executor", () => {
+  const registered = getRegisteredEngineeringOperation(
+    DESIGN_PREVIEW_GEOMETRY_OPERATION,
+  )!;
+  assertEquals(registered.execution, "planning-only");
+  assertEquals(registered.riskClass, "low");
 });
 
 Deno.test("operation declarations cannot mutate the code-owned registry", () => {

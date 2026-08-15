@@ -515,6 +515,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_start",
     "project_technical_compilation_preview",
     "project_technical_source_capture",
+    "project_vector_correction_review",
     "project_work_item_abandon",
     "project_work_item_reconcile_successor",
     "project_work_item_supersede_unstarted",
@@ -586,6 +587,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_start",
       "project_technical_compilation_preview",
       "project_technical_source_capture",
+      "project_vector_correction_review",
       "project_work_item_abandon",
       "project_work_item_reconcile_successor",
       "project_work_item_supersede_unstarted",
@@ -790,6 +792,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_review_intent_list" ||
           tool.name === "project_isolated_geometry_seal_review" ||
+          tool.name === "project_vector_correction_review" ||
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review",
       );
@@ -817,7 +820,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_work_item_supersede_unstarted" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||
-          tool.name === "project_isolated_geometry_seal_review",
+          tool.name === "project_isolated_geometry_seal_review" ||
+          tool.name === "project_vector_correction_review",
       );
     }
     const framingTools = tools.filter((tool) =>
