@@ -41,12 +41,13 @@ exercise that complete local microVM path end to end.
 
 ## probes/ — read-only diagnostic; `thread:capture-syson-inventory` writes a capture
 
-| Script                                    | Task                             | Risk  |
-| ----------------------------------------- | -------------------------------- | ----- |
-| `probes/capture-syson-model-inventory.ts` | `thread:capture-syson-inventory` | write |
-| `probes/probe-constraint-solver.ts`       | `probe:constraint-solver`        | read  |
-| `probes/probe-archive-cascade.ts`         | `probe:archive-cascade`          | read  |
-| `probes/probe-requirement-units.ts`       | `probe:requirement-units`        | write |
+| Script                                      | Task                             | Risk  |
+| ------------------------------------------- | -------------------------------- | ----- |
+| `probes/capture-build123d-api-inventory.ts` | (direct `deno run`)              | write |
+| `probes/capture-syson-model-inventory.ts`   | `thread:capture-syson-inventory` | write |
+| `probes/probe-constraint-solver.ts`         | `probe:constraint-solver`        | read  |
+| `probes/probe-archive-cascade.ts`           | `probe:archive-cascade`          | read  |
+| `probes/probe-requirement-units.ts`         | `probe:requirement-units`        | write |
 
 ## serve/ — serve local preview; preview:thread and preview:cockpit start focus-first
 

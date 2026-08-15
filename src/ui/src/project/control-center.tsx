@@ -10,9 +10,7 @@ import type {
 } from "../../../domain/project/engineering-project.ts";
 import type { ProjectReviewIntentAction } from "../../../domain/project/project-review-intent.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
-import {
-  type GeometryDecisionValid,
-} from "../thread/geometry-decision-model.ts";
+import { type GeometryDecisionValid } from "../thread/geometry-decision-model.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
 import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
 import {
@@ -1016,7 +1014,8 @@ function GeometryDecisionDetails(
                       </strong>
                       <small>
                         T [{occurrence.translationMm.join(", ")}] mm · R
-                        [{occurrence.rotationDeg.join(", ")}]°
+                        [{occurrence
+                          .rotationDeg.join(", ")}]°
                       </small>
                     </span>
                   </div>
@@ -1139,7 +1138,8 @@ function PartDefinitionGlbReview(
   const selected =
     previews.find(({ definition }) =>
       definition.elementId === selectedDefinitionId
-    ) ?? previews[0];
+    ) ??
+      previews[0];
   if (!selected) return null;
   const copy = partDefinitionPreviewCopy(mode);
 
