@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "sensitivity-study-case-template/2.0",
+  "id": "dl05-arm-thickness-sensitivity",
+  "revision": 1,
+  "scope": "mechanical-structural",
+  "evidenceBoundary": "fea-static",
+  "project": {
+    "id": "desk-lamp-dl05",
+    "subjectId": "project:desk-lamp-dl05"
+  },
+  "target": {
+    "componentKey": "arm",
+    "semanticKey": "arm_thickness"
+  },
+  "baseValue": {
+    "value": 10,
+    "unit": "mm"
+  },
+  "step": {
+    "value": 1,
+    "unit": "mm"
+  },
+  "metrics": [
+    {
+      "id": "assembly_max_displacement",
+      "unit": "mm"
+    },
+    {
+      "id": "assembly_max_von_mises",
+      "unit": "MPa"
+    }
+  ],
+  "solver": {
+    "provider": "calculix",
+    "tool": "calculix_solve_static",
+    "resultSchemaVersion": "2.0",
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSizeMm": 3
+    },
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "eMpa": 69000,
+      "nu": 0.33,
+      "basis": "Aluminium 6061 as declared in the approved dl05 brief (assume-material); assumption pending a selected material certificate."
+    },
+    "supports": [
+      {
+        "id": "base-underside-fixed",
+        "kind": "fixed",
+        "selection": {
+          "name": "FIXED",
+          "box": {
+            "min": [-71, -71, -1],
+            "max": [71, 71, 1],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "head-top-load",
+        "kind": "force",
+        "selection": {
+          "name": "LOADED",
+          "box": {
+            "min": [187, -26, 375],
+            "max": [239, 26, 380],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [0, 0, -10],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "domain": {
+    "approximationOrder": "first-order-forward",
+    "remeshingVariationIncluded": true,
+    "localValidityNote": "Valid for arm_thickness in [10, 11] mm on the assembled Heron lamp.",
+    "limitations": [
+      "Remeshing variation is included because each CalculiX solve remeshes independently.",
+      "The measured deltas describe the assembled lamp loaded at the head, not the isolated arm of the sealed proof case."
+    ]
+  }
+}

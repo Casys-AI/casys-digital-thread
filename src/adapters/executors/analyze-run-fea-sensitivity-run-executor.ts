@@ -857,7 +857,7 @@ function stepFromReceipt(
   return {
     sha256: output.sha256,
     byteCount: output.byteCount,
-    bytes: output.bytes as unknown as Uint8Array,
+    bytes: output.bytes.copy(),
   };
 }
 

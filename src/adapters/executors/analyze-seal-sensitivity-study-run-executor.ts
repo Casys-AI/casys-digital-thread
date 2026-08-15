@@ -90,6 +90,10 @@ export const SENSITIVITY_STUDY_CASE_SOURCES: ReadonlyMap<string, string> = new M
     "dl04-size-z-sensitivity",
     "config/sensitivity-study-cases/dl04-size-z-sensitivity.json",
   ],
+  [
+    "dl05-arm-thickness-sensitivity",
+    "config/sensitivity-study-cases/dl05-arm-thickness-sensitivity.json",
+  ],
 ]);
 
 export const SENSITIVITY_SEAL_THREAD_WRITE_OUTCOME_UNKNOWN =

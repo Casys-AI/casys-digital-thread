@@ -10,7 +10,10 @@ import type {
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { EngineeringProjectCommandError } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { BUILD123D_EXECUTION_PROFILE } from "../../domain/analysis/build123d-execution-proposal.ts";
-import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
+import {
+  fingerprintResourceBytes,
+  immutableBytes,
+} from "../../domain/analysis/provider-resource-reader.ts";
 import type { IsolatedCodeExecutionReceipt } from "../../domain/analysis/isolated-code-execution.ts";
 import {
   assembleSensitivityStudyCaseV2,
@@ -600,7 +603,7 @@ class FakeRunner implements IsolatedCodeRunner {
         byteCount: step.byteLength,
         sha256,
         casUri: `casys://isolated-output/sha256/${sha256}`,
-        bytes: step,
+        bytes: immutableBytes(step),
       }],
     } as unknown as IsolatedCodeExecutionReceipt;
   }
