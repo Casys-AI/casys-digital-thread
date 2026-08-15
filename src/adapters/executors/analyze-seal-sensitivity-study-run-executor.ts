@@ -237,7 +237,9 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
       const basis = requireBasis(preClaimRun);
       const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
       await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
-      assertSensitivityCaseArtifactNotRemoved(basisSnapshot, caseDigest);
+      // No bespoke "was my case removed" scan here: the canonical snapshot
+      // validator already fails any snapshot whose created-change target is
+      // gone, and sibling sensitivity cases sealed earlier are legitimate.
 
       if (preClaimRun.status === "queued") {
         await this.#commands.claimRun(origin, {
@@ -572,28 +574,6 @@ function assertAdmittedParameterMatchesCase(
     throw invalidTransition(
       "The admitted source parameter does not equal the sealed case baseValue.",
     );
-  }
-}
-
-function assertSensitivityCaseArtifactNotRemoved(
-  snapshot: ThreadSnapshot,
-  caseDigest: string,
-): void {
-  const expectedId = `sensitivity-case-${caseDigest}`;
-  const present = snapshot.artifacts.some((artifact) =>
-    artifact.id === expectedId || artifact.version === caseDigest &&
-      artifact.uri?.startsWith(SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX)
-  );
-  if (!present && snapshot.revision > 0) {
-    const ancestorHad = snapshot.changeSet.changes.some((change) =>
-      change.summary.includes("sensitivity-case-") ||
-      change.summary.includes("sensitivity study")
-    );
-    if (ancestorHad) {
-      throw invalidTransition(
-        `A sealed sensitivity-case artifact for digest ${caseDigest} was removed from the successor basis.`,
-      );
-    }
   }
 }
 

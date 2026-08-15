@@ -130,6 +130,18 @@ Deno.test(
   },
 );
 
+Deno.test("a sibling sensitivity case sealed earlier never blocks a new digest", async () => {
+  const fixture = await createFixture({ siblingCaseDigest: "b".repeat(64) });
+  const project = await fixture.executor.execute(AGENT, fixture.command);
+  const run = project.agentRuns[0]!;
+  assertEquals(run.status, "completed");
+  const snapshot = await fixture.snapshots.getFresh(run.resultSnapshot!.snapshotId);
+  const sealed = snapshot?.artifacts.filter((item) =>
+    item.producer.tool === "analyze.seal-sensitivity-study@1"
+  );
+  assertEquals(sealed?.length, 2);
+});
+
 Deno.test("a completed run replays the capture without a second provider call", async () => {
   const fixture = await createFixture();
   await fixture.executor.execute(AGENT, fixture.command);
@@ -143,6 +155,8 @@ async function createFixture(options: {
   readonly caseId?: string;
   readonly admissionDigest?: string;
   readonly admissionTool?: string;
+  /** Seal a sibling sensitivity case (different digest) into the basis. */
+  readonly siblingCaseDigest?: string;
 } = {}) {
   const templateText = await Deno.readTextFile(
     "config/sensitivity-study-cases/dl04-size-z-sensitivity.json",
@@ -181,6 +195,40 @@ async function createFixture(options: {
     inputArtifactIds: [],
     freshness: fresh(AT),
   };
+  const siblingFingerprint = {
+    algorithm: "sha256" as const,
+    digest: options.siblingCaseDigest ?? "",
+  };
+  const siblingArtifacts = options.siblingCaseDigest === undefined ? [] : [{
+    id: `sensitivity-case-${options.siblingCaseDigest}`,
+    name: "Sensitivity study case sibling",
+    kind: "document" as const,
+    version: options.siblingCaseDigest,
+    fingerprint: siblingFingerprint,
+    uri: `${SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX}${options.siblingCaseDigest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "analyze.seal-sensitivity-study@1",
+      runId: "run.sibling-seal",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(AT),
+  }];
+  const siblingChanges = siblingArtifacts.map((artifact) => ({
+    id: `change.${artifact.id}`,
+    kind: "created" as const,
+    target: { kind: "artifact" as const, id: artifact.id },
+    summary: `Seal the reviewed FEA sensitivity study case: captured ${artifact.name}.`,
+    afterFingerprint: siblingFingerprint,
+  }));
+  const siblingProvenance = siblingChanges.map((change) => ({
+    id: `provenance.${change.id}`,
+    relation: "changes" as const,
+    from: { kind: "change" as const, id: change.id },
+    to: change.target,
+    rationale: "The applied change introduced the sibling sensitivity case.",
+  }));
   const basisSnapshot = validateThreadSnapshot({
     schemaVersion: "1.0",
     id: "snapshot.sensitivity.r1",
@@ -206,22 +254,26 @@ async function createFixture(options: {
         target: { kind: "artifact", id: admissionArtifact.id },
         summary: "Sealed the compilation admission.",
         afterFingerprint: admissionFingerprint,
-      }],
+      }, ...siblingChanges],
     },
-    artifacts: [{
-      id: "artifact.brief",
-      name: "Brief",
-      kind: "document",
-      version: "1",
-      fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-      producer: {
-        serverId: "digital-thread",
-        tool: "baseline.from-approved-brief@1",
-        runId: "run.brief",
+    artifacts: [
+      {
+        id: "artifact.brief",
+        name: "Brief",
+        kind: "document",
+        version: "1",
+        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+        producer: {
+          serverId: "digital-thread",
+          tool: "baseline.from-approved-brief@1",
+          runId: "run.brief",
+        },
+        inputArtifactIds: [],
+        freshness: fresh(AT),
       },
-      inputArtifactIds: [],
-      freshness: fresh(AT),
-    }, admissionArtifact],
+      admissionArtifact,
+      ...siblingArtifacts,
+    ],
     consumptions: [],
     observations: [],
     requirements: [],
@@ -233,7 +285,7 @@ async function createFixture(options: {
       from: { kind: "change", id: "change.admission" },
       to: { kind: "artifact", id: admissionArtifact.id },
       rationale: "The applied change introduced the admission.",
-    }],
+    }, ...siblingProvenance],
     proposedActions: [],
   });
   const reviewBasis = {
