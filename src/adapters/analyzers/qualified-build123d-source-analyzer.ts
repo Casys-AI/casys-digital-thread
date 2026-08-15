@@ -13,8 +13,10 @@
  *   numbers, unary/binary arithmetic, earlier parameters, and flat lists;
  * - unique module-level shape assignments, each carrying an explicit
  *   geometry kind `solid` or `sketch`: a Box/Cylinder/Cone/Sphere/Torus/
- *   Ellipsoid/Wedge call, a Rectangle/Circle call, a Pos * solid or
- *   Pos * sketch, a Rot * solid, a same-kind +/−, a
+ *   Ellipsoid/Wedge call, a Rectangle/Circle call, a Pos/Rot call or a
+ *   product of those placements times a qualified solid or sketch (kind
+ *   preserved; Pos * sketch and Rot * sketch are both sketches), a
+ *   same-kind +/−, a
  *   `scale(<qualified-solid>, <scalar>)`, a
  *   `fillet(<qualified-solid>.edges(), radius=<scalar>)`, a
  *   `chamfer(<qualified-solid>.edges(), <scalar>)`, an
@@ -30,10 +32,10 @@
  * labelled with the expected kind and the received kind.
  *
  * Next AST lock (not opened here): Ellipse, Polygon, RegularPolygon and
- * Plane placements; Rot * sketch; extrude `taper=`/`both=`/`dir=`/`until=`
- * and a positional amount; `fillet(solid, r)` and `chamfer(solid, l)`
- * positional solid forms.  Do not open general MemberExpression, `.faces()`,
- * or `filter_by`.
+ * Plane placements; named Pos/Rot bindings; extrude `taper=`/`both=`/
+ * `dir=`/`until=` and a positional amount; `fillet(solid, r)` and
+ * `chamfer(solid, l)` positional solid forms.  Do not open general
+ * MemberExpression, `.faces()`, or `filter_by`.
  */
 
 import { parser } from "@lezer/python";
@@ -65,14 +67,12 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
   "build123d-qualified-lezer" as const;
 
 /**
- * Rectangle, Circle, sketch +/− sketch, Pos * sketch and
- * `extrude(sketch, amount=scalar)` reuse the 1.2 positional-call,
- * keyword-transform and placement * shape identity scheme
- * (`build123d-ast-identity/1.0`). Previously qualified bundles stay
- * bit-identical, so the public analysis identity does not change for
- * existing sources.
+ * Placement chains Pos * Rot * shape, parenthesized placement products and
+ * Rot * sketch reuse the 1.2/1.3 positional-call and placement * shape
+ * identity scheme (build123d-ast-identity/1.0). Previously qualified
+ * bundles stay bit-identical.
  */
-export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.3.0" as const;
+export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.4.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
 
@@ -460,7 +460,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       }
       addUnresolved(
         "build123d-result-not-qualified",
-        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot * solid, Pos * sketch then extrude, solid +/− solid, scale(solid, scalar), fillet(solid.edges(), radius=scalar), chamfer(solid.edges(), length), extrude(sketch, amount=scalar), or Compound(children=[...]). A sketch is never a valid result.",
+        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot placement chain * solid or sketch then extrude, solid +/− solid, scale(solid, scalar), fillet(solid.edges(), radius=scalar), chamfer(solid.edges(), length), extrude(sketch, amount=scalar), or Compound(children=[...]). A sketch is never a valid result.",
         resultAssignment.rhs,
       );
     }
@@ -734,8 +734,70 @@ function parseShapeExpression(
   };
 }
 
-function parsePlacementTimesShape(
+function parsePlacementExpression(
   node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  before: number,
+): PlacementExpression | undefined {
+  if (node.name === "ParenthesizedExpression") {
+    const inner = node.children.find(isStaticExpressionNode);
+    return inner === undefined ? undefined : parsePlacementExpression(
+      inner,
+      importedCalls,
+      parameters,
+      before,
+    );
+  }
+  const pos = parsePositionalCall(
+    node,
+    importedCalls,
+    parameters,
+    before,
+    "Pos",
+  );
+  if (pos !== undefined) return pos;
+  const rot = parsePositionalCall(
+    node,
+    importedCalls,
+    parameters,
+    before,
+    "Rot",
+  );
+  if (rot !== undefined) return rot;
+  if (node.name !== "BinaryExpression" || node.children.length !== 3) {
+    return undefined;
+  }
+  const [left, operator, right] = node.children;
+  if (left === undefined || right === undefined || operator?.name !== "ArithOp") {
+    return undefined;
+  }
+  if (currentText(operator) !== "*") return undefined;
+  const leftPlacement = parsePlacementExpression(
+    left,
+    importedCalls,
+    parameters,
+    before,
+  );
+  const rightPlacement = parsePlacementExpression(
+    right,
+    importedCalls,
+    parameters,
+    before,
+  );
+  if (leftPlacement === undefined || rightPlacement === undefined) {
+    return undefined;
+  }
+  return {
+    parameterReferences: [
+      ...leftPlacement.parameterReferences,
+      ...rightPlacement.parameterReferences,
+    ],
+  };
+}
+
+function parsePlacementTimesShape(
+  _node: ParsedNode,
   left: ParsedNode,
   right: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
@@ -753,45 +815,24 @@ function parsePlacementTimesShape(
     addUnresolved,
   );
   if (shape === undefined) return undefined;
-  const pos = parsePositionalCall(
+  const place = parsePlacementExpression(
     left,
     importedCalls,
     parameters,
     before,
-    "Pos",
   );
-  if (pos !== undefined) {
-    return {
-      geometry: shape.geometry,
-      parameterReferences: [
-        ...pos.parameterReferences,
-        ...shape.parameterReferences,
-      ],
-      shapeReferences: shape.shapeReferences,
-    };
-  }
-  const rot = parsePositionalCall(
-    left,
-    importedCalls,
-    parameters,
-    before,
-    "Rot",
-  );
-  if (rot === undefined) return undefined;
-  if (shape.geometry !== "solid") {
-    addGeometryKindMismatch(
-      addUnresolved,
-      "Rot *",
-      "solid",
-      shape.geometry,
-      node,
+  if (place === undefined) {
+    addUnresolved(
+      "build123d-placement-not-qualified",
+      "The left operand of * must be a Pos or Rot call, or a product of those placements.",
+      left,
     );
     return undefined;
   }
   return {
-    geometry: "solid",
+    geometry: shape.geometry,
     parameterReferences: [
-      ...rot.parameterReferences,
+      ...place.parameterReferences,
       ...shape.parameterReferences,
     ],
     shapeReferences: shape.shapeReferences,

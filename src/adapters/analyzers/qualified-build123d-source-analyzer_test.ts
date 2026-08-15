@@ -279,7 +279,7 @@ result = fillet((block - bore).edges(), radius=1)
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.unresolvedConstructs, []);
     assertEquals(bundle.policy.status, "passed");
-    assertEquals(bundle.analyzer.version, "1.3.0");
+    assertEquals(bundle.analyzer.version, QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION);
     assertEquals(
       bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
       "artifact",
@@ -364,7 +364,7 @@ result = chamfer((block - bore).edges(), 1)
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.unresolvedConstructs, []);
     assertEquals(bundle.policy.status, "passed");
-    assertEquals(bundle.analyzer.version, "1.3.0");
+    assertEquals(bundle.analyzer.version, QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION);
     assertEquals(
       bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
       "artifact",
@@ -523,7 +523,7 @@ result = enlarge(Box(10, 10, 10), 3)
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
     assertEquals(bundle.unresolvedConstructs, []);
     assertEquals(bundle.policy.status, "passed");
-    assertEquals(bundle.analyzer.version, "1.3.0");
+    assertEquals(bundle.analyzer.version, QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION);
     assertEquals(
       bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
       "artifact",
@@ -599,6 +599,14 @@ result = Scale(2) * Box(10, 20, 30)
       ),
       `${sourceText} must not qualify result`,
     );
+    if (sourceText.includes("from build123d import Box, Scale")) {
+      assert(
+        bundle.unresolvedConstructs.some((item) =>
+          item.kind === "build123d-placement-not-qualified"
+        ),
+        `${sourceText} must also label the unqualified Scale placement`,
+      );
+    }
   }
 });
 
@@ -961,7 +969,7 @@ result = extrude(Rectangle(10, 20), amount=5)
   });
   assertEquals(qualified.unresolvedConstructs, []);
   assertEquals(qualified.policy.status, "passed");
-  assertEquals(qualified.analyzer.version, "1.3.0");
+  assertEquals(qualified.analyzer.version, QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION);
 
   const positional = await analyzer.analyze({
     ...INPUT,
@@ -1093,33 +1101,216 @@ result = Box(1, 2, 3)
   );
 });
 
-Deno.test("Pos times sketch is qualified and Rot times sketch is not", async () => {
-  const analyzer = new QualifiedBuild123dSourceAnalyzer();
-  const placed = await analyzer.analyze({
+Deno.test("Pos times a sketch then extrude stays a qualified solid", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
     ...INPUT,
     sourceText: `from build123d import Pos, Rectangle, extrude
 result = extrude(Pos(1, 2, 3) * Rectangle(10, 20), amount=5)
 `,
   });
-  assertEquals(placed.unresolvedConstructs, []);
-  assertEquals(placed.policy.status, "passed");
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+});
 
-  const rotated = await analyzer.analyze({
+Deno.test("Rot times a sketch then extrude is a qualified solid", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
     ...INPUT,
     sourceText: `from build123d import Rot, Rectangle, extrude
 result = extrude(Rot(0, 0, 45) * Rectangle(10, 20), amount=5)
 `,
   });
-  assertEquals(rotated.policy.status, "passed");
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+});
+
+Deno.test("a left-associative Pos times Rot times solid is qualified", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, Pos, Rot
+result = Pos(1, 2, 3) * Rot(0, 0, 45) * Box(10, 20, 30)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+});
+
+Deno.test("a parenthesized Pos times Rot product times a solid is qualified", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, Pos, Rot
+result = (Pos(1, 2, 3) * Rot(0, 0, 45)) * Box(10, 20, 30)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+});
+
+Deno.test("a longer Pos and Rot placement chain times a solid is qualified", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Cylinder, Pos, Rot
+result = Rot(0, 90, 0) * Pos(0, 0, 10) * Rot(0, 0, 45) * Cylinder(4, 12)
+`,
+  });
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.status, "passed");
+  assertEquals(
+    bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+    "artifact",
+  );
+});
+
+Deno.test(
+  "a left-associative placement chain times a sketch then extrude is a qualified solid",
+  async () => {
+    const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+      ...INPUT,
+      sourceText: `from build123d import Circle, Pos, Rot, extrude
+result = extrude(Pos(1, 2, 3) * Rot(0, 0, 45) * Circle(3), amount=5)
+`,
+    });
+    assertEquals(bundle.unresolvedConstructs, []);
+    assertEquals(bundle.policy.status, "passed");
+    assertEquals(
+      bundle.symbols.find((symbol) => symbol.name === "result")?.kind,
+      "artifact",
+    );
+  },
+);
+
+Deno.test("Rot times a sketch is still not a valid result", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Rectangle, Rot
+result = Rot(0, 0, 45) * Rectangle(10, 20)
+`,
+  });
+  assertEquals(bundle.policy.status, "passed");
   assert(
-    mismatchMessages(rotated).includes(
-      "Rot * expects a solid, received a sketch.",
+    mismatchMessages(bundle).includes(
+      "result expects a solid, received a sketch.",
     ),
   );
   assert(
-    rotated.unresolvedConstructs.some((item) =>
+    bundle.unresolvedConstructs.some((item) =>
       item.kind === "build123d-result-not-qualified"
     ),
+  );
+  assertEquals(
+    bundle.unresolvedConstructs.some((item) =>
+      item.message.includes("Rot * expects a solid")
+    ),
+    false,
+  );
+});
+
+Deno.test("a named Pos applied to a solid stays an explicit placement gap", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, Pos
+p = Pos(1, 2, 3)
+result = p * Box(10, 20, 30)
+`,
+  });
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-placement-not-qualified" &&
+      item.message ===
+        "The left operand of * must be a Pos or Rot call, or a product of those placements."
+    ),
+  );
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+});
+
+Deno.test("Location or Scale times a solid stays an explicit placement gap", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Box, Location
+result = Location(1, 2, 3) * Box(10, 20, 30)
+`,
+    `from build123d import Box, Scale
+result = Scale(2) * Box(10, 20, 30)
+`,
+  ];
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-placement-not-qualified"
+      ),
+      `${sourceText} must label the left operand as an unqualified placement`,
+    );
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-call-not-qualified"
+      ),
+      `${sourceText} must keep the D4-admitted import unresolved`,
+    );
+    assert(
+      bundle.unresolvedConstructs.some((item) =>
+        item.kind === "build123d-result-not-qualified"
+      ),
+      `${sourceText} must not qualify result`,
+    );
+  }
+});
+
+Deno.test("a solid times a solid is not a placement product", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box, Cylinder
+result = Box(10, 20, 30) * Cylinder(4, 12)
+`,
+  });
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-placement-not-qualified"
+    ),
+  );
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+});
+
+Deno.test("a bare Pos times Rot product is not a solid", async () => {
+  const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
+    ...INPUT,
+    sourceText: `from build123d import Pos, Rot
+result = Pos(1, 2, 3) * Rot(0, 0, 45)
+`,
+  });
+  assert(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-result-not-qualified"
+    ),
+  );
+  assertEquals(
+    bundle.unresolvedConstructs.some((item) =>
+      item.kind === "build123d-placement-not-qualified"
+    ),
+    false,
   );
 });
 
@@ -1221,7 +1412,7 @@ result = fillet((plate + block).edges(), radius=1)
   });
   assertEquals(bundle.unresolvedConstructs, []);
   assertEquals(bundle.policy.status, "passed");
-  assertEquals(bundle.analyzer.version, "1.3.0");
+  assertEquals(bundle.analyzer.version, QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION);
   assertEquals(
     new Map(bundle.symbols.map((symbol) => [symbol.name, symbol.kind])),
     new Map([
@@ -1249,7 +1440,7 @@ result = fillet((plate + block).edges(), radius=1)
   );
 });
 
-Deno.test("existing qualified bundles stay bit-identical under 1.3.0", async () => {
+Deno.test("existing qualified bundles stay bit-identical under 1.4.0", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
   const scripts = {
     box: `from build123d import Box
@@ -1706,7 +1897,7 @@ result = cone + sphere
 
   for (const [name, sourceText] of Object.entries(scripts)) {
     const bundle = await analyzer.analyze({ ...INPUT, sourceText });
-    assertEquals(bundle.analyzer.version, "1.3.0");
+    assertEquals(bundle.analyzer.version, QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION);
     assertEquals(bundle.policy.status, "passed");
     assertEquals(
       identityView(bundle),

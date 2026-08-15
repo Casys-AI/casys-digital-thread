@@ -731,12 +731,12 @@ part of the qualified host trust and availability envelope.
 
 The initial code-owned compilation catalogue qualifies only a parser-backed Build123d
 closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`,
-`Rectangle`, `Circle`, `Pos`, `Rot`, `Compound`, `scale(solid, scalar)`,
-`fillet(solid.edges(), radius=scalar)`, `chamfer(solid.edges(), length)`,
-`extrude(sketch, amount=scalar)`; analyzer `build123d-qualified-lezer` 1.3.0).
-Previously qualified bundles stay bit-identical for existing sources. A sketch is never
-a valid `result`. Modelica and CalculiX compiler profiles remain absent and therefore
-fail closed.
+`Rectangle`, `Circle`, `Pos`, `Rot`, `Compound`, left-associative `Pos`/`Rot` placement
+chains, `Rot *` sketch, `scale(solid, scalar)`, `fillet(solid.edges(), radius=scalar)`,
+`chamfer(solid.edges(), length)`, `extrude(sketch, amount=scalar)`; analyzer
+`build123d-qualified-lezer` 1.4.0). Previously qualified bundles stay bit-identical for
+existing sources. A sketch is never a valid `result`. Modelica and CalculiX compiler
+profiles remain absent and therefore fail closed.
 
 The recorded-analysis provider routes remain available for existing Modelica/CalculiX
 operations. `simulate.run-modelica-scenario@1/@2` and `verify.run-fea-static-proof@1/@2`
