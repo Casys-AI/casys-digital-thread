@@ -7,15 +7,19 @@
  *
  * - named imports of Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge,
  *   Rectangle, Circle, Ellipse, RegularPolygon, Pos, Rot, Compound, scale,
- *   fillet, chamfer and extrude (aliases allowed; two aliases for the same
- *   imported name stay ambiguous);
+ *   fillet, chamfer, extrude, offset and revolve (aliases allowed; two
+ *   aliases for the same imported name stay ambiguous); plus named imports
+ *   of Plane and Axis used only by the reviewed member tables;
  * - unique module-level parameter assignments made only of finite decimal
  *   numbers, unary/binary arithmetic, earlier parameters, the imported math
  *   scalars `pi` / `e` / `tau`, and flat lists;
+ * - unique module-level placement assignments: a Pos/Rot call, a product of
+ *   those placements, a name of an earlier placement, or
+ *   Plane.XY|XZ|YZ|YX|ZX|ZY;
  * - unique module-level shape assignments, each carrying an explicit
  *   geometry kind `solid` or `sketch`: a Box/Cylinder/Cone/Sphere/Torus/
  *   Ellipsoid/Wedge call, a Rectangle/Circle/Ellipse/RegularPolygon call,
- *   a Pos/Rot call or a product of those placements times a qualified solid
+ *   a Pos/Rot/named-placement/named-Plane product times a qualified solid
  *   or sketch (kind preserved; Pos * sketch and Rot * sketch are both
  *   sketches), a same-kind +/−, a
  *   `scale(<qualified-solid>, <scalar>)`, a
@@ -24,7 +28,10 @@
  *   <scalar>)`, a
  *   `chamfer(<qualified-solid>, <scalar>)` or
  *   `chamfer(<qualified-solid>.edges(), <scalar>)`, an
- *   `extrude(<qualified-sketch>, amount=<scalar> or positional <scalar>)`,
+ *   `extrude(<qualified-sketch>, amount=<scalar> or positional <scalar>,
+ *   optional taper=<scalar>)`, an
+ *   `offset(<qualified-solid>, amount=<scalar> or positional <scalar>)`, a
+ *   `revolve(<qualified-sketch>, Axis.X|Y|Z or axis=Axis.X|Y|Z)`,
  *   a name of an earlier same-kind shape, or `Compound(children=[...])`
  *   over earlier solid names;
  * - one module-level `result` that is itself one of those solids.  A sketch
@@ -35,11 +42,14 @@
  * a fully qualified compilation by omission.  Every geometry-kind mix is
  * labelled with the expected kind and the received kind.
  *
- * Next AST lock (not opened here): Polygon; Plane placements; named
- * Pos/Rot bindings; extrude `taper=`/`both=`/`dir=`/`until=`; fillet /
- * chamfer method forms; general MemberExpression, `.faces()`, `filter_by`;
- * math `sin`/`cos` and every other D4 math name; `&` / `|` (D4
- * ALLOWED_OPS rejects them before this frontend runs).
+ * Next AST lock (not opened here): Polygon; `shell` (not a 0.11.1 algebra
+ * function); `Plane()` / `Axis()` constructors; Location / Vector / class
+ * Scale; extrude `both=`/`dir=`/`until=`; offset `openings=` / `kind=` /
+ * `side=` / `closed=` / `min_edge_length=` / `mode=`; revolve
+ * `revolution_arc=`; named Axis bindings; fillet / chamfer method forms;
+ * general MemberExpression, `.faces()`, `filter_by`; math `sin`/`cos` and
+ * every other D4 math name; `&` / `|` (D4 ALLOWED_OPS rejects them before
+ * this frontend runs); loft / sweep / Align / mirror.
  */
 
 import { parser } from "@lezer/python";
@@ -71,13 +81,15 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
   "build123d-qualified-lezer" as const;
 
 /**
- * Ellipse/RegularPolygon sketches, positional extrude amount, short
- * fillet/chamfer solids, fillet(edges(), positional radius), and math
- * scalars pi/e/tau reuse the 1.2/1.3/1.4 identity scheme
+ * Named Pos/Rot placement bindings, Plane.XY|XZ|YZ|YX|ZX|ZY * shape,
+ * offset(solid, amount), revolve(sketch, Axis.X|Y|Z), and extrude
+ * taper=scalar reuse the 1.2/1.3/1.4/1.5 identity scheme
  * (build123d-ast-identity/1.0). Previously qualified bundles stay
- * bit-identical. Same-kind `&` is parsed here but D4 rejects the token.
+ * bit-identical. shell is not a 0.11.1 algebra function; D4 still
+ * admits the import name. Same-kind & is parsed here but D4 rejects
+ * the token.
  */
-export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.5.0" as const;
+export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.6.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
 
@@ -106,10 +118,17 @@ const QUALIFIED_BUILD123D_CALLS = new Map(
     ["fillet", { role: "transform", positionalArguments: 1 }],
     ["chamfer", { role: "transform", positionalArguments: 1 }],
     ["extrude", { role: "transform", positionalArguments: 1 }],
+    ["offset", { role: "transform", positionalArguments: 1 }],
+    ["revolve", { role: "transform", positionalArguments: 1 }],
   ] as const,
 );
 
 const QUALIFIED_MATH_SCALARS = new Set(["pi", "e", "tau"]);
+const QUALIFIED_BUILD123D_ENUMS = new Set(["Plane", "Axis"]);
+const QUALIFIED_PLANE_NAMES = new Set(["XY", "XZ", "YZ", "YX", "ZX", "ZY"]);
+const QUALIFIED_AXIS_NAMES = new Set(["X", "Y", "Z"]);
+const PLACEMENT_LEFT_OPERAND_SENTENCE =
+  "The left operand of * must be a Pos or Rot call, a product of those placements, a name bound to one of those placements, or Plane.XY|XZ|YZ|YX|ZX|ZY.";
 
 const QUALIFIED_IMPORT_SENTENCE =
   "Only an explicit named import from build123d, or from math of pi, e, or tau, is qualified in v1.";
@@ -133,10 +152,12 @@ type QualifiedBuild123dCallName =
   | "scale"
   | "fillet"
   | "chamfer"
-  | "extrude";
+  | "extrude"
+  | "offset"
+  | "revolve";
 type PositionalBuild123dCallName = Exclude<
   QualifiedBuild123dCallName,
-  "Compound" | "scale" | "fillet" | "chamfer" | "extrude"
+  "Compound" | "scale" | "fillet" | "chamfer" | "extrude" | "offset" | "revolve"
 >;
 
 interface ParsedNode {
@@ -179,16 +200,26 @@ interface SupportedShape {
   readonly geometry: GeometryKind;
   readonly parameterReferences: readonly SupportedParameter[];
   readonly shapeReferences: readonly SupportedShape[];
+  readonly placementReferences: readonly SupportedPlacement[];
+}
+
+interface SupportedPlacement {
+  readonly assignment: SimpleAssignment;
+  readonly symbol: SourceAnalysisSymbol;
+  readonly parameterReferences: readonly SupportedParameter[];
+  readonly placementReferences: readonly SupportedPlacement[];
 }
 
 interface ShapeExpression {
   readonly geometry: GeometryKind;
   readonly parameterReferences: readonly SupportedParameter[];
   readonly shapeReferences: readonly SupportedShape[];
+  readonly placementReferences: readonly SupportedPlacement[];
 }
 
 interface PlacementExpression {
   readonly parameterReferences: readonly SupportedParameter[];
+  readonly placementReferences: readonly SupportedPlacement[];
 }
 
 interface StaticExpression {
@@ -266,7 +297,8 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
           if (
             !QUALIFIED_BUILD123D_CALLS.has(
               name.imported as QualifiedBuild123dCallName,
-            )
+            ) &&
+            !QUALIFIED_BUILD123D_ENUMS.has(name.imported)
           ) {
             addUnresolved(
               "build123d-call-not-qualified",
@@ -370,6 +402,8 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
 
     const parameterByName = new Map<string, SupportedParameter>();
     const parameters: SupportedParameter[] = [];
+    const placementByName = new Map<string, SupportedPlacement>();
+    const placements: SupportedPlacement[] = [];
     const shapeByName = new Map<string, SupportedShape>();
     const shapes: SupportedShape[] = [];
     for (const node of root.children) {
@@ -449,6 +483,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         importedCalls,
         parameterByName,
         shapeByName,
+        placementByName,
         mathScalars,
         assignment.assignment.from,
         addUnresolved,
@@ -470,16 +505,51 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
           geometry: shapeExpression.geometry,
           parameterReferences: uniqueParameters(shapeExpression.parameterReferences),
           shapeReferences: uniqueShapes(shapeExpression.shapeReferences),
+          placementReferences: uniquePlacements(shapeExpression.placementReferences),
         };
         shapes.push(shape);
         shapeByName.set(assignment.name, shape);
         continue;
       }
 
+      const placementExpression = parsePlacementExpression(
+        assignment.rhs,
+        importedCalls,
+        parameterByName,
+        placementByName,
+        mathScalars,
+        assignment.assignment.from,
+      );
+      if (placementExpression !== undefined) {
+        const symbol: SourceAnalysisSymbol = {
+          id: await astStableId(
+            "variable",
+            input.sourceId,
+            assignment.assignment,
+          ),
+          kind: "variable",
+          name: assignment.name,
+          span: positions.span(assignment.nameNode.from, assignment.nameNode.to),
+        };
+        const placement: SupportedPlacement = {
+          assignment,
+          symbol,
+          parameterReferences: uniqueParameters(
+            placementExpression.parameterReferences,
+          ),
+          placementReferences: uniquePlacements(
+            placementExpression.placementReferences,
+          ),
+        };
+        placements.push(placement);
+        placementByName.set(assignment.name, placement);
+        continue;
+      }
+
       addExpressionUnresolved(assignment.rhs, addUnresolved);
       addUnresolved(
         "python-parameter-expression-not-qualified",
-        `Assignment ${assignment.name} is not a closed qualified numeric expression, solid, or sketch.`,
+        `Assignment ${assignment.name} is not a closed qualified numeric expression, solid, sketch, or placement.`,
         assignment.rhs,
       );
     }
@@ -521,6 +591,11 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
           shape.assignment.assignment.from < resultAssignment.assignment.from
         ),
       ),
+      new Map(
+        [...placementByName].filter(([, placement]) =>
+          placement.assignment.assignment.from < resultAssignment.assignment.from
+        ),
+      ),
       mathScalars,
       resultAssignment.assignment.from,
       addUnresolved,
@@ -540,7 +615,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       }
       addUnresolved(
         "build123d-result-not-qualified",
-        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot placement chain * solid or sketch then extrude, solid +/− solid, scale(solid, scalar), fillet(solid, scalar) or fillet(solid.edges(), radius=scalar or positional scalar), chamfer(solid, scalar) or chamfer(solid.edges(), scalar), extrude(sketch, amount=scalar or positional scalar), or Compound(children=[...]). A sketch is never a valid result.",
+        "result must be one qualified solid: Box/Cylinder/Cone/Sphere/Torus/Ellipsoid/Wedge, Pos/Rot/named-placement/Plane.XY|XZ|YZ|YX|ZX|ZY * solid or sketch then extrude or revolve, solid +/− solid, scale(solid, scalar), fillet(solid, scalar) or fillet(solid.edges(), radius=scalar or positional scalar), chamfer(solid, scalar) or chamfer(solid.edges(), scalar), extrude(sketch, amount=scalar or positional scalar, optional taper=scalar), offset(solid, amount=scalar or positional scalar), revolve(sketch, Axis.X|Y|Z), or Compound(children=[...]). A sketch is never a valid result.",
         resultAssignment.rhs,
       );
     }
@@ -555,6 +630,32 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
             reference.symbol.id,
             parameter.symbol.id,
             parameter.assignment.rhs,
+            positions,
+          ),
+        );
+      }
+    }
+    for (const placement of placements) {
+      for (const reference of placement.parameterReferences) {
+        dependencies.push(
+          await dependency(
+            "static-value-flow",
+            input.sourceId,
+            reference.symbol.id,
+            placement.symbol.id,
+            placement.assignment.rhs,
+            positions,
+          ),
+        );
+      }
+      for (const reference of placement.placementReferences) {
+        dependencies.push(
+          await dependency(
+            "structural-incidence",
+            input.sourceId,
+            reference.symbol.id,
+            placement.symbol.id,
+            placement.assignment.rhs,
             positions,
           ),
         );
@@ -585,6 +686,18 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
           ),
         );
       }
+      for (const reference of shape.placementReferences) {
+        dependencies.push(
+          await dependency(
+            "structural-incidence",
+            input.sourceId,
+            reference.symbol.id,
+            shape.symbol.id,
+            shape.assignment.rhs,
+            positions,
+          ),
+        );
+      }
     }
     if (resultSolid !== undefined) {
       for (const reference of uniqueParameters(resultSolid.parameterReferences)) {
@@ -600,6 +713,18 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
         );
       }
       for (const reference of uniqueShapes(resultSolid.shapeReferences)) {
+        dependencies.push(
+          await dependency(
+            "structural-incidence",
+            input.sourceId,
+            reference.symbol.id,
+            resultSymbol.id,
+            resultAssignment.rhs,
+            positions,
+          ),
+        );
+      }
+      for (const reference of uniquePlacements(resultSolid.placementReferences)) {
         dependencies.push(
           await dependency(
             "structural-incidence",
@@ -656,6 +781,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
       },
       symbols: [
         ...parameters.map((parameter) => parameter.symbol),
+        ...placements.map((placement) => placement.symbol),
         ...shapes.map((shape) => shape.symbol),
         resultSymbol,
       ],
@@ -670,6 +796,7 @@ function parseShapeExpression(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
@@ -681,6 +808,7 @@ function parseShapeExpression(
       importedCalls,
       parameters,
       shapes,
+      placements,
       mathScalars,
       before,
       addUnresolved,
@@ -695,6 +823,7 @@ function parseShapeExpression(
       geometry: shape.geometry,
       parameterReferences: [],
       shapeReferences: [shape],
+      placementReferences: [],
     };
   }
   const positionalSolid = parsePositionalSolidCall(
@@ -726,6 +855,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
@@ -736,6 +866,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
@@ -746,6 +877,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
@@ -756,11 +888,34 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
   );
   if (extruded !== undefined) return extruded;
+  const offset = parseOffsetCall(
+    node,
+    importedCalls,
+    parameters,
+    shapes,
+    placements,
+    mathScalars,
+    before,
+    addUnresolved,
+  );
+  if (offset !== undefined) return offset;
+  const revolved = parseRevolveCall(
+    node,
+    importedCalls,
+    parameters,
+    shapes,
+    placements,
+    mathScalars,
+    before,
+    addUnresolved,
+  );
+  if (revolved !== undefined) return revolved;
   if (node.name !== "BinaryExpression" || node.children.length !== 3) {
     return undefined;
   }
@@ -777,6 +932,7 @@ function parseShapeExpression(
       importedCalls,
       parameters,
       shapes,
+      placements,
       mathScalars,
       before,
       addUnresolved,
@@ -799,6 +955,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
@@ -808,6 +965,7 @@ function parseShapeExpression(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
@@ -833,6 +991,10 @@ function parseShapeExpression(
       ...leftShape.shapeReferences,
       ...rightShape.shapeReferences,
     ],
+    placementReferences: [
+      ...leftShape.placementReferences,
+      ...rightShape.placementReferences,
+    ],
   };
 }
 
@@ -840,6 +1002,7 @@ function parsePlacementExpression(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
 ): PlacementExpression | undefined {
@@ -849,10 +1012,23 @@ function parsePlacementExpression(
       inner,
       importedCalls,
       parameters,
+      placements,
       mathScalars,
       before,
     );
   }
+  if (node.name === "VariableName") {
+    const placement = placements.get(currentText(node));
+    if (placement === undefined || placement.assignment.assignment.from >= before) {
+      return undefined;
+    }
+    return {
+      parameterReferences: [],
+      placementReferences: [placement],
+    };
+  }
+  const plane = parseNamedPlane(node, importedCalls);
+  if (plane !== undefined) return plane;
   const pos = parsePositionalCall(
     node,
     importedCalls,
@@ -883,6 +1059,7 @@ function parsePlacementExpression(
     left,
     importedCalls,
     parameters,
+    placements,
     mathScalars,
     before,
   );
@@ -890,6 +1067,7 @@ function parsePlacementExpression(
     right,
     importedCalls,
     parameters,
+    placements,
     mathScalars,
     before,
   );
@@ -901,7 +1079,96 @@ function parsePlacementExpression(
       ...leftPlacement.parameterReferences,
       ...rightPlacement.parameterReferences,
     ],
+    placementReferences: [
+      ...leftPlacement.placementReferences,
+      ...rightPlacement.placementReferences,
+    ],
   };
+}
+
+function parseNamedPlane(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+): PlacementExpression | undefined {
+  if (node.name !== "MemberExpression" || node.children.length !== 3) {
+    return undefined;
+  }
+  const [object, dot, property] = node.children;
+  if (
+    object?.name !== "VariableName" ||
+    importedCalls.get(currentText(object))?.imported !== "Plane" ||
+    currentText(dot) !== "." ||
+    property?.name !== "PropertyName" ||
+    !QUALIFIED_PLANE_NAMES.has(currentText(property))
+  ) {
+    return undefined;
+  }
+  return { parameterReferences: [], placementReferences: [] };
+}
+
+function parseNamedAxis(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+): boolean {
+  if (node.name === "ParenthesizedExpression") {
+    const inner = node.children.find(isStaticExpressionNode);
+    return inner === undefined ? false : parseNamedAxis(inner, importedCalls);
+  }
+  if (node.name !== "MemberExpression" || node.children.length !== 3) {
+    return false;
+  }
+  const [object, dot, property] = node.children;
+  return object?.name === "VariableName" &&
+    importedCalls.get(currentText(object))?.imported === "Axis" &&
+    currentText(dot) === "." &&
+    property?.name === "PropertyName" &&
+    QUALIFIED_AXIS_NAMES.has(currentText(property));
+}
+
+function unreviewedPlaneProperty(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+): string | undefined {
+  if (node.name !== "MemberExpression" || node.children.length !== 3) {
+    return undefined;
+  }
+  const [object, dot, property] = node.children;
+  if (
+    object?.name !== "VariableName" ||
+    importedCalls.get(currentText(object))?.imported !== "Plane" ||
+    currentText(dot) !== "." ||
+    property?.name !== "PropertyName"
+  ) {
+    return undefined;
+  }
+  const name = currentText(property);
+  return QUALIFIED_PLANE_NAMES.has(name) ? undefined : name;
+}
+
+function unreviewedAxisProperty(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+): string | undefined {
+  if (node.name === "ParenthesizedExpression") {
+    const inner = node.children.find(isStaticExpressionNode);
+    return inner === undefined
+      ? undefined
+      : unreviewedAxisProperty(inner, importedCalls);
+  }
+  if (node.name !== "MemberExpression" || node.children.length !== 3) {
+    return undefined;
+  }
+  const [object, dot, property] = node.children;
+  if (
+    object?.name !== "VariableName" ||
+    importedCalls.get(currentText(object))?.imported !== "Axis" ||
+    currentText(dot) !== "." ||
+    property?.name !== "PropertyName"
+  ) {
+    return undefined;
+  }
+  const name = currentText(property);
+  return QUALIFIED_AXIS_NAMES.has(name) ? undefined : name;
 }
 
 function parsePlacementTimesShape(
@@ -911,6 +1178,7 @@ function parsePlacementTimesShape(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
@@ -920,6 +1188,7 @@ function parsePlacementTimesShape(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
@@ -929,13 +1198,22 @@ function parsePlacementTimesShape(
     left,
     importedCalls,
     parameters,
+    placements,
     mathScalars,
     before,
   );
   if (place === undefined) {
+    const planeName = unreviewedPlaneProperty(left, importedCalls);
+    if (planeName !== undefined) {
+      addUnresolved(
+        "build123d-plane-not-qualified",
+        `Plane.${planeName} is not a reviewed plane; reviewed planes are Plane.XY, Plane.XZ, Plane.YZ, Plane.YX, Plane.ZX, and Plane.ZY.`,
+        left,
+      );
+    }
     addUnresolved(
       "build123d-placement-not-qualified",
-      "The left operand of * must be a Pos or Rot call, or a product of those placements.",
+      PLACEMENT_LEFT_OPERAND_SENTENCE,
       left,
     );
     return undefined;
@@ -947,6 +1225,10 @@ function parsePlacementTimesShape(
       ...shape.parameterReferences,
     ],
     shapeReferences: shape.shapeReferences,
+    placementReferences: [
+      ...place.placementReferences,
+      ...shape.placementReferences,
+    ],
   };
 }
 
@@ -977,7 +1259,12 @@ function parsePositionalSolidCall(
       imported,
     );
     if (parsed !== undefined) {
-      return { ...parsed, geometry: "solid", shapeReferences: [] };
+      return {
+        ...parsed,
+        geometry: "solid",
+        shapeReferences: [],
+        placementReferences: parsed.placementReferences,
+      };
     }
   }
   return undefined;
@@ -1002,7 +1289,12 @@ function parsePositionalSketchCall(
       imported,
     );
     if (parsed !== undefined) {
-      return { ...parsed, geometry: "sketch", shapeReferences: [] };
+      return {
+        ...parsed,
+        geometry: "sketch",
+        shapeReferences: [],
+        placementReferences: parsed.placementReferences,
+      };
     }
   }
   return undefined;
@@ -1047,7 +1339,7 @@ function parsePositionalCall(
     if (expression === undefined || expression.shape !== "scalar") return undefined;
     parameterReferences.push(...expression.references);
   }
-  return { parameterReferences };
+  return { parameterReferences, placementReferences: [] };
 }
 
 /**
@@ -1060,6 +1352,7 @@ function parseScaleCall(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
@@ -1091,6 +1384,7 @@ function parseScaleCall(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
@@ -1116,6 +1410,7 @@ function parseScaleCall(
       ...factor.references,
     ],
     shapeReferences: solid.shapeReferences,
+    placementReferences: solid.placementReferences,
   };
 }
 
@@ -1131,6 +1426,7 @@ function parseFilletCall(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
@@ -1166,6 +1462,7 @@ function parseFilletCall(
         importedCalls,
         parameters,
         shapes,
+        placements,
         mathScalars,
         before,
         addUnresolved,
@@ -1193,6 +1490,7 @@ function parseFilletCall(
           importedCalls,
           parameters,
           shapes,
+          placements,
           mathScalars,
           before,
           addUnresolved,
@@ -1211,6 +1509,7 @@ function parseFilletCall(
           importedCalls,
           parameters,
           shapes,
+          placements,
           mathScalars,
           before,
           addUnresolved,
@@ -1258,6 +1557,7 @@ function parseChamferCall(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
@@ -1290,6 +1590,7 @@ function parseChamferCall(
           importedCalls,
           parameters,
           shapes,
+          placements,
           mathScalars,
           before,
           addUnresolved,
@@ -1308,6 +1609,7 @@ function parseChamferCall(
           importedCalls,
           parameters,
           shapes,
+          placements,
           mathScalars,
           before,
           addUnresolved,
@@ -1367,6 +1669,7 @@ function qualifyFilletOrChamferSolid(
       ...scalar.references,
     ],
     shapeReferences: solid.shapeReferences,
+    placementReferences: solid.placementReferences,
   };
 }
 
@@ -1376,6 +1679,7 @@ function parseEmptyEdgesSelector(
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
@@ -1405,6 +1709,7 @@ function parseEmptyEdgesSelector(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
@@ -1412,15 +1717,17 @@ function parseEmptyEdgesSelector(
 }
 
 /**
- * Reviewed forms: `extrude(<qualified-sketch>, amount=<scalar>)` and
- * `extrude(<qualified-sketch>, <scalar>)`.  `both=`, `taper=`, `dir=`,
- * `until=`, extra arguments, splat, and extrude of a solid stay unproven.
+ * Reviewed forms: `extrude(<qualified-sketch>, amount=<scalar>)`,
+ * `extrude(<qualified-sketch>, <scalar>)`, and the same with optional
+ * `taper=<scalar>`.  `both=`, `dir=`, `until=`, extra arguments, splat,
+ * and extrude of a solid stay unproven.
  */
 function parseExtrudeCall(
   node: ParsedNode,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
@@ -1440,67 +1747,63 @@ function parseExtrudeCall(
     return undefined;
   }
   const keywordNames = extrudeKeywordNames(argList);
+  let hasUnreviewedKeyword = false;
   for (const keyword of keywordNames) {
-    if (keyword === "amount") continue;
+    if (keyword === "amount" || keyword === "taper") continue;
+    hasUnreviewedKeyword = true;
     addUnresolved(
       "build123d-extrude-argument-not-qualified",
-      `extrude keyword ${keyword}= is not qualified; only amount= is reviewed.`,
+      `extrude keyword ${keyword}= is not qualified; only amount= and taper= are reviewed.`,
       node,
     );
   }
-  const expressions = argList.children.filter(isArgumentExpression);
-  const hasAssign = argList.children.some((child) => child.name === "AssignOp");
-  if (expressions.length === 4) {
-    const [sketchNode, keyword, assign, amountNode] = expressions;
-    if (
-      sketchNode !== undefined &&
-      keyword?.name === "VariableName" && currentText(keyword) === "amount" &&
-      assign?.name === "AssignOp" && currentText(assign) === "=" &&
-      amountNode !== undefined
-    ) {
-      return qualifyExtrude(
-        sketchNode,
-        amountNode,
-        importedCalls,
-        parameters,
-        shapes,
-        mathScalars,
-        before,
-        addUnresolved,
-      );
-    }
+  if (hasUnreviewedKeyword) return undefined;
+
+  const keywordValues = keywordValueNodes(argList);
+  const positionals = positionalArgumentNodes(argList);
+  const amountKeyword = keywordValues.get("amount");
+  const taperNode = keywordValues.get("taper");
+  const sketchNode = positionals[0];
+  const positionalAmount = positionals.length === 2 ? positionals[1] : undefined;
+  const amountNode = amountKeyword ?? positionalAmount;
+
+  if (
+    sketchNode === undefined ||
+    positionals.length > 2 ||
+    (positionals.length === 2 && amountKeyword !== undefined)
+  ) {
+    return undefined;
   }
-  if (expressions.length === 2 && keywordNames.length === 0 && !hasAssign) {
-    const [sketchNode, amountNode] = expressions;
-    if (sketchNode !== undefined && amountNode !== undefined) {
-      return qualifyExtrude(
-        sketchNode,
-        amountNode,
-        importedCalls,
-        parameters,
-        shapes,
-        mathScalars,
-        before,
-        addUnresolved,
-      );
-    }
-  }
-  if (expressions.length === 1 && keywordNames.length === 0 && !hasAssign) {
+  if (amountNode === undefined) {
     addUnresolved(
       "build123d-extrude-argument-not-qualified",
       "extrude requires amount= or a positional amount.",
       node,
     );
+    return undefined;
   }
-  return undefined;
+  return qualifyExtrude(
+    sketchNode,
+    amountNode,
+    taperNode,
+    importedCalls,
+    parameters,
+    shapes,
+    placements,
+    mathScalars,
+    before,
+    addUnresolved,
+  );
 }
 
 function qualifyExtrude(
   sketchNode: ParsedNode,
   amountNode: ParsedNode,
+  taperNode: ParsedNode | undefined,
   importedCalls: ReadonlyMap<string, ImportedName>,
   parameters: ReadonlyMap<string, SupportedParameter>,
   shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
   mathScalars: ReadonlyMap<string, ImportedName>,
   before: number,
   addUnresolved: AddUnresolved,
@@ -1510,12 +1813,19 @@ function qualifyExtrude(
     importedCalls,
     parameters,
     shapes,
+    placements,
     mathScalars,
     before,
     addUnresolved,
   );
   const amount = parseStaticExpression(amountNode, parameters, mathScalars);
-  if (sketch === undefined || amount === undefined || amount.shape !== "scalar") {
+  const taper = taperNode === undefined
+    ? undefined
+    : parseStaticExpression(taperNode, parameters, mathScalars);
+  if (
+    sketch === undefined || amount === undefined || amount.shape !== "scalar" ||
+    (taperNode !== undefined && (taper === undefined || taper.shape !== "scalar"))
+  ) {
     return undefined;
   }
   if (sketch.geometry !== "sketch") {
@@ -1533,8 +1843,10 @@ function qualifyExtrude(
     parameterReferences: [
       ...sketch.parameterReferences,
       ...amount.references,
+      ...(taper?.references ?? []),
     ],
     shapeReferences: sketch.shapeReferences,
+    placementReferences: sketch.placementReferences,
   };
 }
 
@@ -1548,6 +1860,329 @@ function extrudeKeywordNames(argList: ParsedNode): readonly string[] {
     }
   }
   return names;
+}
+
+function keywordValueNodes(argList: ParsedNode): ReadonlyMap<string, ParsedNode> {
+  const values = new Map<string, ParsedNode>();
+  for (let index = 0; index < argList.children.length - 2; index++) {
+    const name = argList.children[index];
+    const assign = argList.children[index + 1];
+    const value = argList.children[index + 2];
+    if (
+      name?.name === "VariableName" &&
+      assign?.name === "AssignOp" &&
+      value !== undefined &&
+      isArgumentExpression(value)
+    ) {
+      values.set(currentText(name), value);
+    }
+  }
+  return values;
+}
+
+function positionalArgumentNodes(argList: ParsedNode): readonly ParsedNode[] {
+  const owned = new Set<ParsedNode>();
+  for (let index = 0; index < argList.children.length - 2; index++) {
+    const name = argList.children[index];
+    const assign = argList.children[index + 1];
+    const value = argList.children[index + 2];
+    if (name?.name === "VariableName" && assign?.name === "AssignOp") {
+      owned.add(name);
+      owned.add(assign);
+      if (value !== undefined) owned.add(value);
+    }
+  }
+  return argList.children.filter((child) =>
+    isArgumentExpression(child) && !owned.has(child)
+  );
+}
+
+/**
+ * Reviewed forms: `offset(solid, scalar)` and `offset(solid, amount=scalar)`.
+ * `openings=`, `kind=`, `side=`, a lone argument, sketch offset, and the
+ * method form stay unproven.
+ */
+function parseOffsetCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
+  before: number,
+  addUnresolved: AddUnresolved,
+): ShapeExpression | undefined {
+  if (node.name !== "CallExpression" || node.children.length !== 2) {
+    return undefined;
+  }
+  const [callee, argList] = node.children;
+  if (callee?.name !== "VariableName" || argList?.name !== "ArgList") {
+    return undefined;
+  }
+  const imported = importedCalls.get(currentText(callee));
+  if (imported?.imported !== "offset" || imported.node.from >= before) {
+    return undefined;
+  }
+  if (argList.children.some((child) => ["*", "**"].includes(currentText(child)))) {
+    return undefined;
+  }
+  const keywordNames = extrudeKeywordNames(argList);
+  const expressions = argList.children.filter(isArgumentExpression);
+  const hasAssign = argList.children.some((child) => child.name === "AssignOp");
+
+  if (expressions.length === 2 && !hasAssign) {
+    const [solidNode, amountNode] = expressions;
+    if (solidNode !== undefined && amountNode !== undefined) {
+      const qualified = qualifyOffset(
+        solidNode,
+        amountNode,
+        importedCalls,
+        parameters,
+        shapes,
+        placements,
+        mathScalars,
+        before,
+        addUnresolved,
+      );
+      if (qualified !== undefined) return qualified;
+    }
+  }
+
+  if (expressions.length === 4) {
+    const [solidNode, keyword, assign, amountNode] = expressions;
+    if (
+      solidNode !== undefined &&
+      keyword?.name === "VariableName" && currentText(keyword) === "amount" &&
+      assign?.name === "AssignOp" && currentText(assign) === "=" &&
+      amountNode !== undefined
+    ) {
+      const qualified = qualifyOffset(
+        solidNode,
+        amountNode,
+        importedCalls,
+        parameters,
+        shapes,
+        placements,
+        mathScalars,
+        before,
+        addUnresolved,
+      );
+      if (qualified !== undefined) return qualified;
+    }
+  }
+
+  if (keywordNames.length > 0) {
+    for (const keyword of keywordNames) {
+      addUnresolved(
+        "build123d-offset-argument-not-qualified",
+        `offset keyword ${keyword}= is not qualified; reviewed forms are offset(solid, scalar) and offset(solid, amount=scalar).`,
+        node,
+      );
+    }
+    return undefined;
+  }
+  addUnresolved(
+    "build123d-offset-argument-not-qualified",
+    "offset arguments are not a reviewed form; reviewed forms are offset(solid, scalar) and offset(solid, amount=scalar).",
+    node,
+  );
+  return undefined;
+}
+
+function qualifyOffset(
+  solidNode: ParsedNode,
+  amountNode: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
+  before: number,
+  addUnresolved: AddUnresolved,
+): ShapeExpression | undefined {
+  const solid = parseShapeExpression(
+    solidNode,
+    importedCalls,
+    parameters,
+    shapes,
+    placements,
+    mathScalars,
+    before,
+    addUnresolved,
+  );
+  const amount = parseStaticExpression(amountNode, parameters, mathScalars);
+  if (solid === undefined || amount === undefined || amount.shape !== "scalar") {
+    return undefined;
+  }
+  if (solid.geometry !== "solid") {
+    addGeometryKindMismatch(
+      addUnresolved,
+      "offset",
+      "solid",
+      solid.geometry,
+      solidNode,
+    );
+    return undefined;
+  }
+  return {
+    geometry: "solid",
+    parameterReferences: [
+      ...solid.parameterReferences,
+      ...amount.references,
+    ],
+    shapeReferences: solid.shapeReferences,
+    placementReferences: solid.placementReferences,
+  };
+}
+
+/**
+ * Reviewed forms: `revolve(sketch, Axis.X|Y|Z)` and
+ * `revolve(sketch, axis=Axis.X|Y|Z)`.  Default axis, `revolution_arc=`,
+ * named Axis bindings, and the method form stay unproven.
+ */
+function parseRevolveCall(
+  node: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
+  before: number,
+  addUnresolved: AddUnresolved,
+): ShapeExpression | undefined {
+  if (node.name !== "CallExpression" || node.children.length !== 2) {
+    return undefined;
+  }
+  const [callee, argList] = node.children;
+  if (callee?.name !== "VariableName" || argList?.name !== "ArgList") {
+    return undefined;
+  }
+  const imported = importedCalls.get(currentText(callee));
+  if (imported?.imported !== "revolve" || imported.node.from >= before) {
+    return undefined;
+  }
+  if (argList.children.some((child) => ["*", "**"].includes(currentText(child)))) {
+    return undefined;
+  }
+  const keywordNames = extrudeKeywordNames(argList);
+  const expressions = argList.children.filter(isArgumentExpression);
+  const hasAssign = argList.children.some((child) => child.name === "AssignOp");
+
+  if (expressions.length === 2 && !hasAssign) {
+    const [sketchNode, axisNode] = expressions;
+    if (sketchNode !== undefined && axisNode !== undefined) {
+      if (parseNamedAxis(axisNode, importedCalls)) {
+        const qualified = qualifyRevolve(
+          sketchNode,
+          importedCalls,
+          parameters,
+          shapes,
+          placements,
+          mathScalars,
+          before,
+          addUnresolved,
+        );
+        if (qualified !== undefined) return qualified;
+      }
+    }
+  }
+
+  if (expressions.length === 4) {
+    const [sketchNode, keyword, assign, axisNode] = expressions;
+    if (
+      sketchNode !== undefined &&
+      keyword?.name === "VariableName" && currentText(keyword) === "axis" &&
+      assign?.name === "AssignOp" && currentText(assign) === "=" &&
+      axisNode !== undefined &&
+      parseNamedAxis(axisNode, importedCalls)
+    ) {
+      const qualified = qualifyRevolve(
+        sketchNode,
+        importedCalls,
+        parameters,
+        shapes,
+        placements,
+        mathScalars,
+        before,
+        addUnresolved,
+      );
+      if (qualified !== undefined) return qualified;
+    }
+  }
+
+  const axisCandidate = expressions.length === 2 && !hasAssign
+    ? expressions[1]
+    : expressions.length === 4 &&
+        expressions[1]?.name === "VariableName" &&
+        currentText(expressions[1]) === "axis"
+    ? expressions[3]
+    : undefined;
+  if (axisCandidate !== undefined) {
+    const axisName = unreviewedAxisProperty(axisCandidate, importedCalls);
+    if (axisName !== undefined) {
+      addUnresolved(
+        "build123d-axis-not-qualified",
+        `Axis.${axisName} is not a reviewed axis; reviewed axes are Axis.X, Axis.Y, and Axis.Z.`,
+        axisCandidate,
+      );
+    }
+  }
+
+  if (keywordNames.length > 0) {
+    for (const keyword of keywordNames) {
+      addUnresolved(
+        "build123d-revolve-argument-not-qualified",
+        `revolve keyword ${keyword}= is not qualified; reviewed forms are revolve(sketch, Axis.X|Y|Z) and revolve(sketch, axis=Axis.X|Y|Z).`,
+        node,
+      );
+    }
+    return undefined;
+  }
+  addUnresolved(
+    "build123d-revolve-argument-not-qualified",
+    "revolve arguments are not a reviewed form; reviewed forms are revolve(sketch, Axis.X|Y|Z) and revolve(sketch, axis=Axis.X|Y|Z).",
+    node,
+  );
+  return undefined;
+}
+
+function qualifyRevolve(
+  sketchNode: ParsedNode,
+  importedCalls: ReadonlyMap<string, ImportedName>,
+  parameters: ReadonlyMap<string, SupportedParameter>,
+  shapes: ReadonlyMap<string, SupportedShape>,
+  placements: ReadonlyMap<string, SupportedPlacement>,
+  mathScalars: ReadonlyMap<string, ImportedName>,
+  before: number,
+  addUnresolved: AddUnresolved,
+): ShapeExpression | undefined {
+  const sketch = parseShapeExpression(
+    sketchNode,
+    importedCalls,
+    parameters,
+    shapes,
+    placements,
+    mathScalars,
+    before,
+    addUnresolved,
+  );
+  if (sketch === undefined) return undefined;
+  if (sketch.geometry !== "sketch") {
+    addGeometryKindMismatch(
+      addUnresolved,
+      "revolve",
+      "sketch",
+      sketch.geometry,
+      sketchNode,
+    );
+    return undefined;
+  }
+  return {
+    geometry: "solid",
+    parameterReferences: sketch.parameterReferences,
+    shapeReferences: sketch.shapeReferences,
+    placementReferences: sketch.placementReferences,
+  };
 }
 
 function parseCompoundCall(
@@ -1600,7 +2235,12 @@ function parseCompoundCall(
     shapeReferences.push(shape);
   }
   if (mismatched || shapeReferences.length === 0) return undefined;
-  return { geometry: "solid", parameterReferences: [], shapeReferences };
+  return {
+    geometry: "solid",
+    parameterReferences: [],
+    shapeReferences,
+    placementReferences: [],
+  };
 }
 
 function parseStaticExpression(
@@ -1786,7 +2426,7 @@ function addExpressionUnresolved(
     } else if (candidate.name === "CallExpression") {
       add(
         "python-dynamic-call",
-        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Rectangle, Circle, Ellipse, RegularPolygon, Pos, Rot, Compound, scale, fillet, chamfer, or extrude calls are qualified.",
+        "Only reviewed direct Box, Cylinder, Cone, Sphere, Torus, Ellipsoid, Wedge, Rectangle, Circle, Ellipse, RegularPolygon, Pos, Rot, Compound, scale, fillet, chamfer, extrude, offset, or revolve calls are qualified.",
         candidate,
       );
     }
@@ -2013,6 +2653,14 @@ function uniqueShapes(
 ): readonly SupportedShape[] {
   const byId = new Map<string, SupportedShape>();
   for (const shape of shapes) byId.set(shape.symbol.id, shape);
+  return [...byId.values()];
+}
+
+function uniquePlacements(
+  placements: readonly SupportedPlacement[],
+): readonly SupportedPlacement[] {
+  const byId = new Map<string, SupportedPlacement>();
+  for (const placement of placements) byId.set(placement.symbol.id, placement);
   return [...byId.values()];
 }
 
