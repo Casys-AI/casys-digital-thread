@@ -666,6 +666,17 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         input.studyCase,
       );
     }
+    if (slot?.status === "dispatched") {
+      // The sensitivity solver is a synchronous MCP call: a dispatched slot
+      // seen on resume means the previous process died or received a
+      // synchronous provider error — no capture will ever arrive. Free the
+      // orphan so this resume may re-dispatch.
+      await this.#attempts.markSolveFailed({
+        projectId: input.projectId,
+        runId: input.runId,
+        phase: input.phase,
+      });
+    }
     const fingerprint = {
       algorithm: "sha256" as const,
       digest: input.cad.stepSha256,
@@ -694,7 +705,19 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         stagedAsset: staged.stagedAsset,
       },
     });
-    const execution = await this.#solver.solve(plan);
+    let execution;
+    try {
+      execution = await this.#solver.solve(plan);
+    } catch (error) {
+      // Synchronous provider failure: a known terminal outcome, not an
+      // unknown one. Free the WAL slot so a later run can re-dispatch.
+      await this.#attempts.markSolveFailed({
+        projectId: input.projectId,
+        runId: input.runId,
+        phase: input.phase,
+      });
+      throw error;
+    }
     if (execution.result.inputAttestation.fingerprint.digest !== input.cad.stepSha256) {
       throw invalidTransition(
         "CalculiX input attestation does not match the staged STEP sha256.",

@@ -224,6 +224,32 @@ export class FileFeaSensitivityAttemptStore {
     });
   }
 
+  /**
+   * A synchronous solver failure is a KNOWN outcome: the provider answered
+   * with an error, no capture will ever arrive. Return the slot to idle so a
+   * later resume may re-dispatch, instead of leaving a dispatched slot that
+   * dead-ends every retry as unknown-outcome (observed live on dl05).
+   */
+  async markSolveFailed(input: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly phase: SensitivityPhase;
+  }): Promise<FeaSensitivityAttempt> {
+    const current = await this.#required(input.projectId, input.runId);
+    const slot = current.solves[input.phase];
+    if (slot.status === "idle") return current;
+    if (slot.status !== "dispatched") {
+      throw new FeaSensitivityIllegalTransitionError(slot.status, "idle");
+    }
+    return await this.#replace(current, {
+      ...current,
+      solves: {
+        ...current.solves,
+        [input.phase]: { status: "idle" },
+      },
+    });
+  }
+
   async markSolveRecorded(input: {
     readonly projectId: string;
     readonly runId: string;
