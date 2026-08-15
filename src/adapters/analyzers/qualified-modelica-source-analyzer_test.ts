@@ -222,7 +222,10 @@ Deno.test("Deux paramètres de même nom produisent un bundle passed avec des id
   });
   assertEquals(bundle.policy.status, "passed");
   assertEquals(parameters.length, 2);
-  assertEquals(new Set(parameters.map((symbol) => symbol.id)), new Set([firstId, secondId]));
+  assertEquals(
+    new Set(parameters.map((symbol) => symbol.id)),
+    new Set([firstId, secondId]),
+  );
   assertEquals(
     bundle.unresolvedConstructs.some((item) =>
       item.kind === "modelica-duplicate-declaration"
