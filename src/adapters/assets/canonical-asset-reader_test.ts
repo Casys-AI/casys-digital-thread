@@ -112,6 +112,48 @@ Deno.test(
 );
 
 Deno.test(
+  "FileCanonicalAssetReader reads a .stl file when constructed with extension stl",
+  async () => {
+    const expected = new TextEncoder().encode("solid fixture\nendsolid fixture\n");
+    const dir = await Deno.makeTempDir();
+    try {
+      const digest = await sha256Hex(expected);
+      await Deno.writeFile(`${dir}/${digest}.stl`, expected);
+      const reader = new FileCanonicalAssetReader({
+        directory: dir,
+        extension: "stl",
+      });
+      assertEquals(await reader.read(digest), expected);
+    } finally {
+      await Deno.remove(dir, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "FileCanonicalAssetReader with extension stl does not read a sibling .step file",
+  async () => {
+    const bytes = new TextEncoder().encode("STEP geometry payload");
+    const dir = await Deno.makeTempDir();
+    try {
+      const digest = await sha256Hex(bytes);
+      await Deno.writeFile(`${dir}/${digest}.step`, bytes);
+      const reader = new FileCanonicalAssetReader({
+        directory: dir,
+        extension: "stl",
+      });
+      const error = await assertRejects(
+        () => reader.read(digest),
+        CanonicalAssetReadError,
+      );
+      assertEquals(error.code, "not_found");
+    } finally {
+      await Deno.remove(dir, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
   "FileCanonicalAssetReader throws TypeError for a digest that is not 64 lowercase hex characters",
   async () => {
     const dir = await Deno.makeTempDir();

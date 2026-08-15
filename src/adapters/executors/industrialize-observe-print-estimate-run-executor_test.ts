@@ -23,6 +23,7 @@ import {
   PRINT_ESTIMATE_CASE_CAPTURE_URI_PREFIX,
   validatePrintEstimateCaseCapture,
 } from "../captures/print-estimate-case-capture.ts";
+import { FileCanonicalAssetReader } from "../assets/canonical-asset-reader.ts";
 import { FilePrintEstimateAttemptStore } from "../wal/file-print-estimate-attempt-store.ts";
 import { IndustrializeObservePrintEstimateRunExecutor } from "./industrialize-observe-print-estimate-run-executor.ts";
 
@@ -78,31 +79,56 @@ Deno.test(
   "observe print-estimate publishes time and volume without mass or price when density is absent",
   async () => {
     const fixture = await createFixture();
-    const project = await fixture.executor.execute(AGENT, fixture.command);
-    assertEquals(project.agentRuns[0]?.status, "completed");
-    const snapshot = await fixture.snapshots.getFresh(
-      project.agentRuns[0]!.resultSnapshot!.snapshotId,
-    );
-    const metrics = snapshot?.observations.map((item) => item.metric) ?? [];
-    assertEquals(metrics.includes("print_time_s"), true);
-    assertEquals(metrics.includes("filament_volume_mm3"), true);
-    assertEquals(metrics.includes("filament_mass_g"), false);
-    assertEquals(metrics.some((metric) => metric.includes("price")), false);
-    assertEquals(snapshot?.evaluations.length, 0);
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      const snapshot = await fixture.snapshots.getFresh(
+        project.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      const metrics = snapshot?.observations.map((item) => item.metric) ?? [];
+      assertEquals(metrics.includes("print_time_s"), true);
+      assertEquals(metrics.includes("filament_volume_mm3"), true);
+      assertEquals(metrics.includes("filament_mass_g"), false);
+      assertEquals(metrics.some((metric) => metric.includes("price")), false);
+      assertEquals(snapshot?.evaluations.length, 0);
+    } finally {
+      await fixture.cleanup();
+    }
   },
 );
 
 Deno.test("observe print-estimate refuses a profile sha256 mismatch", async () => {
   const fixture = await createFixture({ profileOverride: "# other\n" });
-  await assertRejects(
-    () => fixture.executor.execute(AGENT, fixture.command),
-    EngineeringProjectCommandError,
-    "profile sha256",
-  );
-  assertEquals(fixture.prusaslicer.names.length, 0);
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "profile sha256",
+    );
+    assertEquals(fixture.prusaslicer.names.length, 0);
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
-async function createFixture(options: { readonly profileOverride?: string } = {}) {
+Deno.test("observe print-estimate refuses a model/step binding", async () => {
+  const fixture = await createFixture({ geometryMediaType: "model/step" });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "model/stl",
+    );
+    assertEquals(fixture.prusaslicer.names.length, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+async function createFixture(options: {
+  readonly profileOverride?: string;
+  readonly geometryMediaType?: "model/step" | "model/stl";
+} = {}) {
   const profileSha256 = await fingerprintResourceBytes(
     new TextEncoder().encode(PROFILE_TEXT),
   );
@@ -120,6 +146,13 @@ async function createFixture(options: { readonly profileOverride?: string } = {}
   const caseFingerprint = await sha256Fingerprint(caseCapture);
   const geometryBytes = new TextEncoder().encode("solid fixture\nendsolid fixture\n");
   const geometryDigest = await fingerprintResourceBytes(geometryBytes);
+  const geometryMediaType = options.geometryMediaType ?? "model/stl";
+  const geometryExtension = geometryMediaType === "model/step" ? "step" : "stl";
+  const assetDir = await Deno.makeTempDir({ prefix: "print-estimate-assets-" });
+  await Deno.writeFile(
+    `${assetDir}/${geometryDigest}.${geometryExtension}`,
+    geometryBytes,
+  );
   const caseArtifact = {
     id: CASE_ARTIFACT_ID,
     name: "Print-estimate case",
@@ -138,12 +171,12 @@ async function createFixture(options: { readonly profileOverride?: string } = {}
   };
   const geometryArtifact = {
     id: GEOMETRY_ARTIFACT_ID,
-    name: "Canonical STL",
-    kind: "cad-model" as const,
+    name: geometryMediaType === "model/step" ? "Canonical STEP" : "Canonical STL",
+    kind: geometryMediaType === "model/step" ? "step" as const : "cad-model" as const,
     version: geometryDigest,
     fingerprint: { algorithm: "sha256" as const, digest: geometryDigest },
-    uri: `/api/thread/assets/${geometryDigest}.stl`,
-    mediaType: "model/stl",
+    uri: `/api/thread/assets/${geometryDigest}.${geometryExtension}`,
+    mediaType: geometryMediaType,
     producer: {
       serverId: "digital-thread",
       tool: "design.write-geometry@1",
@@ -368,13 +401,20 @@ async function createFixture(options: { readonly profileOverride?: string } = {}
     },
     snapshots,
     prusaslicer,
+    cleanup: async () => {
+      await Deno.remove(walDir, { recursive: true });
+      await Deno.remove(assetDir, { recursive: true });
+    },
     executor: new IndustrializeObservePrintEstimateRunExecutor({
       projects,
       commands,
       snapshots,
       caseCaptures: caseCaptures as never,
       observationCaptures: observationCaptures as never,
-      geometryAssets: { read: () => Promise.resolve(geometryBytes) },
+      geometryAssets: new FileCanonicalAssetReader({
+        directory: assetDir,
+        extension: "stl",
+      }),
       stager: {
         stage: (input) =>
           Promise.resolve({

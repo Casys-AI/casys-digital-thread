@@ -1540,6 +1540,7 @@ async function createProjectControl(
       observationCaptures: printEstimateObservationCaptures,
       geometryAssets: new FileCanonicalAssetReader({
         directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+        extension: "stl",
       }),
       stager: new ExportVolumeGeometryStager(DEFAULT_PRINT_ESTIMATE_EXPORT_DIRECTORY),
       prusaslicer: new HttpMcpToolClient({

@@ -256,7 +256,7 @@ export class IndustrializeObservePrintabilityRunExecutor {
         const staged = await this.#stager.stage({
           bytes: geometryBytes,
           digest: geometryDigest,
-          fileName: geometryFileName(geometryArtifact),
+          fileName: `${geometryDigest}.step`,
         });
         if (staged.sha256 !== geometryDigest) {
           throw invalidTransition("Staged geometry sha256 diverges from the artifact.");
@@ -299,7 +299,7 @@ export class IndustrializeObservePrintabilityRunExecutor {
             artifactId: geometryArtifact.id,
             sha256: geometryDigest,
             byteCount: staged.byteCount,
-            mediaType: geometryMediaType(geometryArtifact),
+            mediaType: "model/step",
             stagedPath: staged.path,
           },
           providerCallParams: {
@@ -688,22 +688,12 @@ function requireBoundGeometry(
       "Geometry binding must be a design.write-geometry@1 canonical artifact.",
     );
   }
-  if (artifact.mediaType !== "model/step" && artifact.mediaType !== "model/stl") {
+  if (artifact.mediaType !== "model/step") {
     throw invalidTransition(
-      "Geometry binding must be a model/step or model/stl write-geometry artifact.",
+      "Geometry binding must be a model/step write-geometry artifact.",
     );
   }
   return artifact;
-}
-
-function geometryMediaType(artifact: ThreadArtifact): "model/step" | "model/stl" {
-  return artifact.mediaType === "model/stl" ? "model/stl" : "model/step";
-}
-
-function geometryFileName(artifact: ThreadArtifact): string {
-  return artifact.mediaType === "model/stl"
-    ? `${artifact.fingerprint.digest}.stl`
-    : `${artifact.fingerprint.digest}.step`;
 }
 
 function requireShape(

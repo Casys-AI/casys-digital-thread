@@ -23,6 +23,7 @@ import {
   PRINTABILITY_CASE_CAPTURE_URI_PREFIX,
   validatePrintabilityCaseCapture,
 } from "../captures/printability-case-capture.ts";
+import { FileCanonicalAssetReader } from "../assets/canonical-asset-reader.ts";
 import { FilePrintabilityAttemptStore } from "../wal/file-printability-attempt-store.ts";
 import { IndustrializeObservePrintabilityRunExecutor } from "./industrialize-observe-printability-run-executor.ts";
 
@@ -35,7 +36,7 @@ const DECISION_ID = "decision.printability-observe";
 const APPROVAL_ID = "approval.printability-observe";
 const COMMAND_ID = "command.printability-observe";
 const CASE_ARTIFACT_ID = "printability-case-sealed";
-const GEOMETRY_ARTIFACT_ID = "geometry-stl-1";
+const GEOMETRY_ARTIFACT_ID = "geometry-step-1";
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 
 function caseJson() {
@@ -74,28 +75,35 @@ Deno.test(
   "observe printability stages geometry, journals WAL before DFM, and publishes observations only",
   async () => {
     const fixture = await createFixture();
-    const project = await fixture.executor.execute(AGENT, fixture.command);
-    assertEquals(project.agentRuns[0]?.status, "completed");
-    assertEquals(fixture.dfm.names[0], "dfm_check_min_thickness");
-    assertEquals(fixture.dfm.names[1], "dfm_check_overhangs");
-    assertEquals(fixture.stager.calls.length, 1);
-    const snapshot = await fixture.snapshots.getFresh(
-      project.agentRuns[0]!.resultSnapshot!.snapshotId,
-    );
-    assertEquals(snapshot?.evaluations.length, 0);
-    assertEquals(snapshot?.violations.length, 0);
-    assertEquals(
-      snapshot?.observations.some((item) => item.metric === "min_wall_thickness_mm"),
-      true,
-    );
-    assertEquals(
-      snapshot?.observations.some((item) => item.metric === "dfm_violation_zone_count"),
-      true,
-    );
-    assertEquals(
-      snapshot?.observations.some((item) => item.metric === "dfm_not_checked_count"),
-      true,
-    );
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      assertEquals(fixture.dfm.names[0], "dfm_check_min_thickness");
+      assertEquals(fixture.dfm.names[1], "dfm_check_overhangs");
+      assertEquals(fixture.stager.calls.length, 1);
+      assertEquals(String(fixture.stager.calls[0]).endsWith(".step"), true);
+      const snapshot = await fixture.snapshots.getFresh(
+        project.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      assertEquals(snapshot?.evaluations.length, 0);
+      assertEquals(snapshot?.violations.length, 0);
+      assertEquals(
+        snapshot?.observations.some((item) => item.metric === "min_wall_thickness_mm"),
+        true,
+      );
+      assertEquals(
+        snapshot?.observations.some((item) =>
+          item.metric === "dfm_violation_zone_count"
+        ),
+        true,
+      );
+      assertEquals(
+        snapshot?.observations.some((item) => item.metric === "dfm_not_checked_count"),
+        true,
+      );
+    } finally {
+      await fixture.cleanup();
+    }
   },
 );
 
@@ -103,35 +111,64 @@ Deno.test("observe printability refuses an isolated-geometry binding", async () 
   const fixture = await createFixture({
     geometryTool: "design.seal-isolated-geometry@1",
   });
-  await assertRejects(
-    () => fixture.executor.execute(AGENT, fixture.command),
-    EngineeringProjectCommandError,
-    "design.seal-isolated-geometry@1",
-  );
-  assertEquals(fixture.dfm.names.length, 0);
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "design.seal-isolated-geometry@1",
+    );
+    assertEquals(fixture.dfm.names.length, 0);
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
 Deno.test("observe printability refuses a compilation-admission binding", async () => {
   const fixture = await createFixture({
     geometryTool: "compile.seal-admission@1",
   });
-  await assertRejects(
-    () => fixture.executor.execute(AGENT, fixture.command),
-    EngineeringProjectCommandError,
-    "compile.seal-admission@1",
-  );
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "compile.seal-admission@1",
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+Deno.test("observe printability refuses a model/stl binding", async () => {
+  const fixture = await createFixture({ geometryMediaType: "model/stl" });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "model/step",
+    );
+    assertEquals(fixture.dfm.names.length, 0);
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
 Deno.test("a completed printability observe run replays without a second DFM dispatch", async () => {
   const fixture = await createFixture();
-  await fixture.executor.execute(AGENT, fixture.command);
-  assertEquals(fixture.dfm.names.length, 2);
-  const again = await fixture.executor.execute(AGENT, fixture.command);
-  assertEquals(again.agentRuns[0]?.status, "completed");
-  assertEquals(fixture.dfm.names.length, 2);
+  try {
+    await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(fixture.dfm.names.length, 2);
+    const again = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(again.agentRuns[0]?.status, "completed");
+    assertEquals(fixture.dfm.names.length, 2);
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
-async function createFixture(options: { readonly geometryTool?: string } = {}) {
+async function createFixture(options: {
+  readonly geometryTool?: string;
+  readonly geometryMediaType?: "model/step" | "model/stl";
+} = {}) {
   const printabilityCase = validatePrintabilityCheckCase(caseJson());
   const caseDigest = (await sha256Fingerprint(printabilityCase)).digest;
   const caseCapture = await validatePrintabilityCaseCapture({
@@ -144,8 +181,15 @@ async function createFixture(options: { readonly geometryTool?: string } = {}) {
     sealedAt: AT,
   });
   const caseFingerprint = await sha256Fingerprint(caseCapture);
-  const geometryBytes = new TextEncoder().encode("solid fixture\nendsolid fixture\n");
+  const geometryBytes = new TextEncoder().encode("ISO-10303-21;END-ISO-10303-21;\n");
   const geometryDigest = await fingerprintResourceBytes(geometryBytes);
+  const geometryMediaType = options.geometryMediaType ?? "model/step";
+  const geometryExtension = geometryMediaType === "model/stl" ? "stl" : "step";
+  const assetDir = await Deno.makeTempDir({ prefix: "printability-assets-" });
+  await Deno.writeFile(
+    `${assetDir}/${geometryDigest}.${geometryExtension}`,
+    geometryBytes,
+  );
   const caseArtifact = {
     id: CASE_ARTIFACT_ID,
     name: "Printability case",
@@ -164,12 +208,12 @@ async function createFixture(options: { readonly geometryTool?: string } = {}) {
   };
   const geometryArtifact = {
     id: GEOMETRY_ARTIFACT_ID,
-    name: "Canonical STL",
-    kind: "cad-model" as const,
+    name: geometryMediaType === "model/stl" ? "Canonical STL" : "Canonical STEP",
+    kind: geometryMediaType === "model/stl" ? "cad-model" as const : "step" as const,
     version: geometryDigest,
     fingerprint: { algorithm: "sha256" as const, digest: geometryDigest },
-    uri: `/api/thread/assets/${geometryDigest}.stl`,
-    mediaType: "model/stl",
+    uri: `/api/thread/assets/${geometryDigest}.${geometryExtension}`,
+    mediaType: geometryMediaType,
     producer: {
       serverId: "digital-thread",
       tool: options.geometryTool ?? "design.write-geometry@1",
@@ -398,13 +442,17 @@ async function createFixture(options: { readonly geometryTool?: string } = {}) {
     dfm,
     stager,
     walDir,
+    cleanup: async () => {
+      await Deno.remove(walDir, { recursive: true });
+      await Deno.remove(assetDir, { recursive: true });
+    },
     executor: new IndustrializeObservePrintabilityRunExecutor({
       projects,
       commands,
       snapshots,
       caseCaptures: caseCaptures as never,
       observationCaptures: observationCaptures as never,
-      geometryAssets: { read: () => Promise.resolve(geometryBytes) },
+      geometryAssets: new FileCanonicalAssetReader({ directory: assetDir }),
       stager,
       dfm,
       attempts: new FilePrintabilityAttemptStore(walDir),

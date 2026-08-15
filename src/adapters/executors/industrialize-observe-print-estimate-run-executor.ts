@@ -294,9 +294,7 @@ export class IndustrializeObservePrintEstimateRunExecutor {
             artifactId: geometryArtifact.id,
             sha256: geometryDigest,
             byteCount: stagedGeometry.byteCount,
-            mediaType: geometryArtifact.mediaType === "model/step"
-              ? "model/step"
-              : "model/stl",
+            mediaType: "model/stl",
             stagedPath: stagedGeometry.path,
           },
           profile: {
@@ -658,9 +656,9 @@ function requireBoundGeometry(
       "Geometry binding must be a design.write-geometry@1 canonical artifact.",
     );
   }
-  if (artifact.mediaType !== "model/step" && artifact.mediaType !== "model/stl") {
+  if (artifact.mediaType !== "model/stl") {
     throw invalidTransition(
-      "Geometry binding must be a model/step or model/stl write-geometry artifact.",
+      "Geometry binding must be a model/stl write-geometry artifact.",
     );
   }
   return artifact;

@@ -1,5 +1,5 @@
 /**
- * Injected reader for content-addressed STEP assets on the local filesystem.
+ * Injected reader for content-addressed geometry assets on the local filesystem.
  *
  * WHY AN INTERFACE — `verify.seal-proof-case@1` and
  * `verify.run-fea-static-proof@1` must read a STEP file whose path they do not
@@ -49,10 +49,12 @@ export class CanonicalAssetReadError extends Error {
 // ── Production implementation ─────────────────────────────────────────────────
 
 /**
- * Reads canonical STEP assets from a local directory where filenames are their
- * own SHA-256 hex digests.
+ * Reads canonical geometry assets from a local directory where filenames are
+ * their own SHA-256 hex digests.
  *
- * Directory convention: `<directory>/<digest>.step`.
+ * Directory convention: `<directory>/<digest>.<extension>`.  `extension`
+ * defaults to `step` so FEA and printability keep the existing STEP store.
+ * Print-estimate injects `extension: "stl"` for write-geometry mesh bytes.
  *
  * `directory` is a PARAMETER — server.ts supplies `state/local/thread-assets`
  * at the composition root.  This class never hard-codes any path.
@@ -61,17 +63,30 @@ export class CanonicalAssetReadError extends Error {
  * is recomputed and compared to the requested digest.  A renamed or corrupted
  * file is caught deterministically, never silently accepted.
  */
+export type CanonicalAssetExtension = "step" | "stl";
+
 export class FileCanonicalAssetReader implements CanonicalAssetReader {
   readonly #directory: string;
+  readonly #extension: CanonicalAssetExtension;
 
-  constructor(options: { readonly directory: string }) {
+  constructor(options: {
+    readonly directory: string;
+    readonly extension?: CanonicalAssetExtension;
+  }) {
     this.#directory = options.directory.replace(/\/+$/, "");
+    const extension = options.extension ?? "step";
+    if (extension !== "step" && extension !== "stl") {
+      throw new TypeError(
+        'CanonicalAssetReader: extension must be "step" or "stl".',
+      );
+    }
+    this.#extension = extension;
   }
 
   async read(digest: string): Promise<Uint8Array> {
     requireHex64Digest(digest);
 
-    const path = `${this.#directory}/${digest}.step`;
+    const path = `${this.#directory}/${digest}.${this.#extension}`;
 
     let bytes: Uint8Array;
     try {
