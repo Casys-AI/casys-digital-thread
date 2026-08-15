@@ -94,6 +94,10 @@ export const SENSITIVITY_STUDY_CASE_SOURCES: ReadonlyMap<string, string> = new M
     "dl05-arm-thickness-sensitivity",
     "config/sensitivity-study-cases/dl05-arm-thickness-sensitivity.json",
   ],
+  [
+    "dl05-arm-thickness-isolated",
+    "config/sensitivity-study-cases/dl05-arm-thickness-isolated.json",
+  ],
 ]);
 
 export const SENSITIVITY_SEAL_THREAD_WRITE_OUTCOME_UNKNOWN =
