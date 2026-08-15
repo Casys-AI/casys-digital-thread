@@ -37,6 +37,10 @@ import {
   parseArchitectureProposalParameters,
 } from "../../domain/engineering/architecture-proposal.ts";
 import {
+  parseSysonModelSeedProposalParameters,
+  SYSON_MODEL_SEED_OPERATION,
+} from "../../domain/engineering/syson-model-seed-proposal.ts";
+import {
   MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
   parseArchitectureSysmlSealParameters,
 } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
@@ -121,6 +125,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION),
     (parameters) => {
       parseModelicaQualifiedKitRunAdmissionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(SYSON_MODEL_SEED_OPERATION),
+    (parameters) => {
+      parseSysonModelSeedProposalParameters(parameters);
     },
   ],
   [

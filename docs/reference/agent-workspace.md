@@ -176,11 +176,11 @@ Unknown ids/versions are indistinguishable from absent.
 | Operation                                           | Execution                 | Provider                     | What a success is                                                 | What it is not                       |
 | --------------------------------------------------- | ------------------------- | ---------------------------- | ----------------------------------------------------------------- | ------------------------------------ |
 | `baseline.from-approved-brief@1`                    | trusted                   | none                         | Documentary Thread r1                                             | A model or proof                     |
-| `architecture.seed-syson-model@2`                   | trusted                   | SysON                        | Blank container identity (r2)                                     | Architecture or requirements         |
+| `architecture.seed-syson-model@2`                   | trusted                   | SysON                        | Blank container identity (r2); closed seed MRTR                   | Architecture or requirements         |
 | `model.write-architecture@1`                        | trusted                   | SysON                        | `architecture-capture/3.0` after renderer + readback              | Agent-supplied SysML                 |
 | `model.capture-part-definitions@1`                  | trusted                   | SysON                        | Sealed architecture subgraph bundle                               | Quantity, CAD, or a new design fact  |
 | `model.seal-architecture-sysml@1`                   | trusted                   | none                         | Thread document of closed-subset analysis                         | SysON write or compilation admission |
-| `model.write-requirements@1`                        | trusted                   | SysON                        | Integer scalar requirements                                       | A verdict                            |
+| `model.write-requirements@1`                        | trusted                   | SysON                        | Integer scalar requirements (SysON 0.5.1)                         | A verdict                            |
 | `compile.seal-admission@1`                          | trusted                   | none                         | Admission capture                                                 | Execution authority                  |
 | `design.execute-build123d@1`                        | trusted                   | local microVM                | Documentary capture + noncanonical draft                          | Canonical STEP in Thread             |
 | `design.seal-isolated-geometry@1`                   | trusted                   | none                         | Thread document of isolated execution identities                  | STEP artifact, cad-model, or FEA     |
@@ -222,6 +222,24 @@ project_change_append (work item + required decision together)
 `architecture.seed-syson-model@2` **must** arrive via `project_change_append`, never the
 initial `project_plan_publish`. See
 [sequence a SysON seed](../how-to/sequence-seed-work-item.md).
+
+### Live-run lessons (`desk-lamp-dl05`)
+
+Observed on the real agent path. Contract facts, not style.
+
+| Lesson                                            | Exact rule                                                                                                                                                                                                                                     | When it fails                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every SysON write names its predecessor work item | Seed `dependsOnWorkItemIds` **must** include the `baseline.from-approved-brief@1` work item. Later SysON writes should name their predecessor the same way for sequencing.                                                                     | Seed only: the executor refuses at `project_agent_run_execute` with `The SysON model seed must explicitly depend on the approved-brief documentary baseline work item.` Append, propose and queue accept the omission. Architecture and requirements resolve the predecessor from the Thread (seed capture / architecture tip), not from `dependsOnWorkItemIds`. |
+| Requirement thresholds are integers               | `requirement.<slug>.threshold` is a safe integer. SysON 0.5.1 cannot round-trip a decimal literal through `syson_constraint_extract` (`LiteralRational`).                                                                                      | Grammar rejects at `project_decision_propose`. Message: threshold must be a safe integer because SysON 0.5.1 cannot round-trip decimal literals through `syson_constraint_extract`.                                                                                                                                                                              |
+| Seed MRTR is closed                               | Allowed keys: `seed.schemaVersion`, `seed.scope`, `seed.operation`, `model.name`. `model.name` is pinned to the server-owned role `system model`. `fingerprintSysonModelSeedProposal` is the envelope digest, not the MRTR `inputFingerprint`. | Grammar rejects a free-form key or any other `model.name` at `project_decision_propose`.                                                                                                                                                                                                                                                                         |
+
+Limit of the seed grammar: `assertProposalMatchesOperationGrammar` is project-agnostic.
+It cannot pin `model.name` to `projectId` or `project.project.name`. The executor does
+**not** consume the proposal: it names the SysON document
+`${project.project.name} system model` and the SysON project
+`${project.project.name} · system model seed · ${run.id}`. The hypothesis « nom =
+projectId » is false. The signed `model.name` is therefore the role token, not the
+provider display name.
 
 ## 6. Implemented language frontends
 

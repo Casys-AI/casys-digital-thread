@@ -31,7 +31,9 @@ export const SYSON_MODEL_SEED_OPERATION = {
 } as const;
 
 const CAPTURE_KIND = "syson-model-seed" as const;
-const CAPTURE_SCOPE = "sysml-container-identity" as const;
+/** Capture and MRTR scope of the blank SysON container. Not a model name. */
+export const SYSON_MODEL_SEED_SCOPE = "sysml-container-identity" as const;
+const CAPTURE_SCOPE = SYSON_MODEL_SEED_SCOPE;
 const CAPTURE_STATEMENT =
   "Immutable normalized identity record of a newly created SysON project, SysML document, and root package. It does not capture model semantics, requirements, CAD, simulation, measurements, or verification verdicts.";
 

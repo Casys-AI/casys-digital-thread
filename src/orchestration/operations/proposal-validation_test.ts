@@ -5,6 +5,12 @@ import {
   ProposalGrammarError,
 } from "./proposal-validation.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
+import {
+  encodeSysonModelSeedProposalParameters,
+  SYSON_MODEL_SEED_CANONICAL_MODEL_NAME,
+  SYSON_MODEL_SEED_OPERATION,
+} from "../../domain/engineering/syson-model-seed-proposal.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import { validateSimulationCase } from "../../domain/analysis/simulation-case.ts";
 import {
@@ -154,6 +160,78 @@ Deno.test("a proposal the operation can parse passes the gate untouched", () => 
   assertProposalMatchesOperationGrammar(
     MODEL_WRITE_ARCHITECTURE_OPERATION,
     VALID_ARCHITECTURE,
+  );
+});
+
+Deno.test("the seed proposal grammar rejects a free-form parameter key", () => {
+  const error = assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(SYSON_MODEL_SEED_OPERATION, [
+        ...encodeSysonModelSeedProposalParameters(),
+        { key: "model.displayName", label: "Free form", value: "DeskLamp" },
+      ]),
+    ProposalGrammarError,
+  );
+  assertEquals(error.operationKey, "architecture.seed-syson-model@2");
+  assert(error.message.includes("model.displayName"));
+  assert(error.message.includes("nothing was recorded"));
+});
+
+Deno.test("the seed proposal grammar pins the model name to the canonical form", () => {
+  const freeName = encodeSysonModelSeedProposalParameters().map((parameter) =>
+    parameter.key === "model.name"
+      ? { ...parameter, value: "desk-lamp-dl05" }
+      : parameter
+  );
+  const error = assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        SYSON_MODEL_SEED_OPERATION,
+        freeName,
+      ),
+    ProposalGrammarError,
+  );
+  assertEquals(error.operationKey, "architecture.seed-syson-model@2");
+  assert(error.message.includes(SYSON_MODEL_SEED_CANONICAL_MODEL_NAME));
+  assertProposalMatchesOperationGrammar(
+    SYSON_MODEL_SEED_OPERATION,
+    encodeSysonModelSeedProposalParameters(),
+  );
+});
+
+Deno.test("existing architecture and requirements grammars stay gated unchanged", () => {
+  assertProposalMatchesOperationGrammar(
+    MODEL_WRITE_ARCHITECTURE_OPERATION,
+    VALID_ARCHITECTURE,
+  );
+  assertProposalMatchesOperationGrammar(
+    MODEL_WRITE_REQUIREMENTS_OPERATION,
+    [
+      { key: "requirements.containerComponent", label: "Container", value: "Arm" },
+      { key: "requirement.r1.name", label: "Name", value: "Max displacement" },
+      { key: "requirement.r1.metric", label: "Metric", value: "maxDisplacement" },
+      { key: "requirement.r1.operator", label: "Operator", value: "<=" },
+      { key: "requirement.r1.threshold", label: "Threshold", value: 5, unit: "mm" },
+    ],
+  );
+  assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        MODEL_WRITE_REQUIREMENTS_OPERATION,
+        [
+          { key: "requirements.containerComponent", label: "Container", value: "Arm" },
+          { key: "requirement.r1.name", label: "Name", value: "Max displacement" },
+          { key: "requirement.r1.metric", label: "Metric", value: "maxDisplacement" },
+          { key: "requirement.r1.operator", label: "Operator", value: "<=" },
+          {
+            key: "requirement.r1.threshold",
+            label: "Threshold",
+            value: 1.5,
+            unit: "mm",
+          },
+        ],
+      ),
+    ProposalGrammarError,
   );
 });
 
@@ -356,6 +434,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
   // would silently reopen the round trip this module exists to close.
   assertEquals(gatedProposalOperations(), [
     "analyze.seal-sensitivity-study@1",
+    "architecture.seed-syson-model@2",
     "compile.seal-admission@1",
     "design.apply-vector-correction@1",
     "design.execute-build123d@1",
