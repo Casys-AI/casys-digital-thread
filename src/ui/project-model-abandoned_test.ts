@@ -4,17 +4,19 @@ import { buildProjectBrief, selectCurrentProjectFocus } from "./src/project/mode
 import { isEngineeringProjectSnapshot } from "./src/project/contract.ts";
 
 /**
- * Builds a project snapshot based on the generic fixture with one work item
- * forced to `abandoned` status.
+ * Builds a project snapshot based on the generic fixture with "work-verify"
+ * forced to the given status.
  *
- * "work-verify" is planned/ready with no runs or evidence in the fixture,
- * consistent with the domain guard requirements for abandonment.
+ * The fixture ships "work-verify" as `planned`, which nextWork already
+ * excludes — so the abandonment test needs a positive control: the same item
+ * at `ready` must appear in nextWork, and only then does its disappearance at
+ * `abandoned` prove the exclusion rather than restate the fixture.
  */
-function projectWithAbandonedWorkItem() {
+function projectWithWorkVerifyStatus(status: "ready" | "abandoned") {
   return {
     ...GENERIC_PROJECT_FIXTURE,
     workItems: GENERIC_PROJECT_FIXTURE.workItems.map((item) =>
-      item.id === "work-verify" ? { ...item, status: "abandoned" as const } : item
+      item.id === "work-verify" ? { ...item, status } : item
     ),
   };
 }
@@ -41,10 +43,16 @@ function projectWithAbandonedDecision() {
 Deno.test(
   "an abandoned work item is never presented as active work or as next work",
   () => {
-    const snapshot = projectWithAbandonedWorkItem();
-    const brief = buildProjectBrief(snapshot);
+    // Positive control: at "ready" the very same item IS next work, so the
+    // assertion below cannot pass by fixture accident.
+    const readyBrief = buildProjectBrief(projectWithWorkVerifyStatus("ready"));
+    assertEquals(
+      readyBrief.nextWork.some((item) => item.id === "work-verify"),
+      true,
+    );
 
-    // nextWork is status === "ready"; abandoned must never appear there.
+    const snapshot = projectWithWorkVerifyStatus("abandoned");
+    const brief = buildProjectBrief(snapshot);
     assertEquals(
       brief.nextWork.some((item) => item.id === "work-verify"),
       false,
