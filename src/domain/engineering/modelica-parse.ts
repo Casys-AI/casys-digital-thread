@@ -835,7 +835,7 @@ function consumeConstruct(
 
 function consumeBlock(
   cursor: TokenCursor,
-  opener: string,
+  _opener: string,
 ): { readonly text: string; readonly span: SourceAnalysisSpan } | undefined {
   const first = cursor.take();
   if (first === undefined) return undefined;
