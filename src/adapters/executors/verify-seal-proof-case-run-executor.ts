@@ -173,6 +173,10 @@ export const FEA_PROOF_CASE_SOURCES: ReadonlyMap<string, string> = new Map([
     "desk-lamp-dl04-arm-cantilever",
     "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
   ],
+  [
+    "desk-lamp-dl05-arm-cantilever",
+    "config/mechanical-proof-cases/desk-lamp-dl05-arm-cantilever.json",
+  ],
 ]);
 
 /**
