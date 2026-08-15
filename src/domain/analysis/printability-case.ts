@@ -218,11 +218,15 @@ function parseBuildDirection(
   if (!Array.isArray(value) || value.length !== 3) {
     throw new TypeError(`${path} must be an array of exactly 3 finite numbers.`);
   }
-  return [
+  const direction = [
     finite(value[0], `${path}[0]`),
     finite(value[1], `${path}[1]`),
     finite(value[2], `${path}[2]`),
   ] as const;
+  if (direction[0] === 0 && direction[1] === 0 && direction[2] === 0) {
+    throw new TypeError(`${path} must not be the zero vector.`);
+  }
+  return direction;
 }
 
 function parseProvider(value: unknown): PrintabilityCheckCase["provider"] {

@@ -251,3 +251,36 @@ Deno.test("validatePrintabilityCheckCase rejects buildDirection with a non-finit
     "finite",
   );
 });
+
+Deno.test("validatePrintabilityCheckCase rejects a null buildDirection", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  (input as any).buildDirection = null;
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    "3",
+  );
+});
+
+Deno.test("validatePrintabilityCheckCase rejects a zero buildDirection", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  (input as any).buildDirection = [0, 0, 0];
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    "zero vector",
+  );
+});
+
+Deno.test("validatePrintabilityCheckCase rejects an extra provider field", () => {
+  const input = validCaseInput();
+  // deno-lint-ignore no-explicit-any
+  (input.provider as any).envelopeTool = "dfm_check_envelope";
+  assertThrows(
+    () => validatePrintabilityCheckCase(input),
+    TypeError,
+    "envelopeTool",
+  );
+});
