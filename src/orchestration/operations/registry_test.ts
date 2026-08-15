@@ -25,6 +25,14 @@ import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
 } from "../../domain/analysis/sensitivity-study-proposal.ts";
+import {
+  INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
+  INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
+} from "../../domain/analysis/printability-proposal.ts";
+import {
+  INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION,
+  INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
+} from "../../domain/analysis/print-estimate-proposal.ts";
 
 Deno.test("the intake registry starts a new idea from the approved project brief", () => {
   const idea = engineeringOperationRegistry.getIntake("idea-or-spec")!;
@@ -518,25 +526,81 @@ Deno.test("reviewed operations validate only their declared current plan and que
 });
 
 Deno.test("retired CM-01 operations are neither lookupable nor queueable", () => {
-  const operation = {
-    id: "verify.coffee-machine-cm01-drip-tray-mechanical",
-    version: "3",
-  };
-  assertEquals(getRegisteredEngineeringOperation(operation), undefined);
+  const retired = [
+    {
+      id: "verify.coffee-machine-cm01-drip-tray-mechanical",
+      version: "3",
+    },
+    {
+      id: "industrialize.observe-coffee-machine-cm01-drip-tray-printability",
+      version: "1",
+    },
+    {
+      id: "industrialize.observe-coffee-machine-cm01-drip-tray-print-estimate",
+      version: "1",
+    },
+  ] as const;
+  for (const operation of retired) {
+    assertEquals(getRegisteredEngineeringOperation(operation), undefined);
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...operation,
+            bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+          },
+          stage: "queue",
+          basisKind: "thread-snapshot",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "unknown_operation");
+  }
+});
 
-  const error = assertThrows(
-    () =>
-      validateRegisteredEngineeringOperationInput({
-        operation: {
-          ...operation,
-          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
-        },
-        stage: "queue",
-        basisKind: "thread-snapshot",
-      }),
-    EngineeringOperationRegistryError,
-  );
-  assertEquals(error.code, "unknown_operation");
+Deno.test("generic DFM seal and observe operations are registered with the reviewed risk split", () => {
+  const sealPrintability = getRegisteredEngineeringOperation(
+    INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
+  )!;
+  assertEquals(sealPrintability.execution, "trusted");
+  assertEquals(sealPrintability.riskClass, "consequential");
+  assertEquals(sealPrintability.workItemKind, "industrialize");
+  assertEquals(sealPrintability.bindings, [{
+    name: "approvedBrief",
+    allowedSourceKinds: ["approved-brief"],
+  }]);
+
+  const observePrintability = getRegisteredEngineeringOperation(
+    INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
+  )!;
+  assertEquals(observePrintability.execution, "trusted");
+  assertEquals(observePrintability.riskClass, "low");
+  assertEquals(observePrintability.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(observePrintability.bindings.map((binding) => binding.name), [
+    "printabilityCase",
+    "geometry",
+  ]);
+
+  const sealEstimate = getRegisteredEngineeringOperation(
+    INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
+  )!;
+  assertEquals(sealEstimate.execution, "trusted");
+  assertEquals(sealEstimate.riskClass, "consequential");
+  assertEquals(sealEstimate.bindings, [{
+    name: "approvedBrief",
+    allowedSourceKinds: ["approved-brief"],
+  }]);
+
+  const observeEstimate = getRegisteredEngineeringOperation(
+    INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION,
+  )!;
+  assertEquals(observeEstimate.execution, "trusted");
+  assertEquals(observeEstimate.riskClass, "low");
+  assertEquals(observeEstimate.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(observeEstimate.bindings.map((binding) => binding.name), [
+    "printEstimateCase",
+    "geometry",
+  ]);
 });
 
 Deno.test("a human-only operation declares its origin so a human can reach it", () => {

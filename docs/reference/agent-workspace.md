@@ -195,6 +195,10 @@ Unknown ids/versions are indistinguishable from absent.
 | `analyze.seal-sensitivity-study@1`                  | trusted                   | none                         | Sealed 2.0 study-case document                       | A solve or a verdict                 |
 | `analyze.run-fea-sensitivity@1`                     | trusted                   | isolated CAD + CalculiX MCP  | Dimensioned observations + study capture             | A verdict or `@2` ROP plan           |
 | `model.write-sensitivity-edges@1`                   | trusted                   | SysON                        | Server-rendered derivative PartDef                   | Architecture write or agent SysML    |
+| `industrialize.seal-printability-case@1`            | trusted                   | none                         | Sealed printability-check-case/1.0 document          | A DFM dispatch or verdict            |
+| `industrialize.observe-printability@1`              | trusted                   | mcp-dfm                      | Unit-carrying FDM observations                       | A verdict or evaluation              |
+| `industrialize.seal-print-estimate-case@1`          | trusted                   | none                         | Sealed print-estimate-case/1.0 document              | A slice or a price                   |
+| `industrialize.observe-print-estimate@1`            | trusted                   | mcp-prusaslicer              | Time and material observations                       | A cost quote or verdict              |
 | `design.apply-vector-correction@1`                  | planning-only             | none                         | Correction proposal                                  | A provider run                       |
 | `record.reconcile-uncertain-writer@1`               | trusted, **human origin** | none                         | Release or inspect an uncertain write                | Agent inspection of a provider       |
 | `record.archive-lineage@1`                          | trusted                   | none                         | Append-only archive change                           | SysML deletion                       |

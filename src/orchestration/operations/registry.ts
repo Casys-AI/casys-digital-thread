@@ -27,6 +27,14 @@ import {
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
 } from "../../domain/analysis/sensitivity-study-proposal.ts";
 import {
+  INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
+  INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
+} from "../../domain/analysis/printability-proposal.ts";
+import {
+  INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION,
+  INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
+} from "../../domain/analysis/print-estimate-proposal.ts";
+import {
   type EngineeringOperationBasisKind,
   type EngineeringOperationRegistry,
   EngineeringOperationRegistryError,
@@ -616,6 +624,120 @@ const OPERATIONS = [
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
     }],
+  },
+  /**
+   * Provider-free seal of one reviewed printability-check-case/1.0. The catalog
+   * is server-owned and empty until a reviewed case is committed. No provider
+   * is called and no geometry is produced.
+   */
+  {
+    id: INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION.id,
+    version: INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed FDM printability case",
+    description:
+      "Resolve the reviewed printability-check-case/1.0 through the server-owned catalog, " +
+      "verify the operator-signed digest against the canonical case bytes, and publish " +
+      "the content-addressed case artifact. No provider is called.",
+    workItemKind: "industrialize",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Observational FDM printability run. Consumes the sealed case and one
+   * canonical write-geometry artifact. Publishes unit-carrying observations.
+   * Never a verdict, evaluation or violation.
+   */
+  {
+    id: INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION.id,
+    version: INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Observe FDM printability on sealed canonical geometry",
+    description:
+      "Re-read the sealed printability case and the bound canonical geometry, stage the " +
+      "exact bytes, dispatch the locked DFM thickness and overhang checks, and publish " +
+      "unit-carrying observations. No verdict is derived.",
+    workItemKind: "industrialize",
+    riskClass: "low",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [
+      {
+        name: "printabilityCase",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+      {
+        name: "geometry",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+    ],
+  },
+  /**
+   * Provider-free seal of one reviewed print-estimate-case/1.0. The committed
+   * INI digest is part of the signed identity. No provider is called and no
+   * price is derived.
+   */
+  {
+    id: INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION.id,
+    version: INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed FFF print-estimate case",
+    description:
+      "Resolve the reviewed print-estimate-case/1.0 through the server-owned catalog, " +
+      "verify the operator-signed digest and committed profile identity, and publish " +
+      "the content-addressed case artifact. No provider is called.",
+    workItemKind: "industrialize",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Observational FFF print-time-and-material run. Consumes the sealed case
+   * and one canonical write-geometry artifact. Publishes unit-carrying
+   * observations. Never a price, verdict or evaluation.
+   */
+  {
+    id: INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION.id,
+    version: INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Observe FFF print time and material on sealed canonical geometry",
+    description:
+      "Re-read the sealed print-estimate case and the bound canonical geometry, verify " +
+      "the committed INI digest, dispatch the locked PrusaSlicer estimate, and publish " +
+      "unit-carrying observations. No price or verdict is derived.",
+    workItemKind: "industrialize",
+    riskClass: "low",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [
+      {
+        name: "printEstimateCase",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+      {
+        name: "geometry",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+    ],
   },
   /**
    * Human-only recovery gate for a terminal failed provider run whose outcome
