@@ -31,6 +31,16 @@ import {
   safeId,
 } from "../kernel/case-validation.ts";
 
+export const INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION = {
+  id: "industrialize.seal-dfm-case",
+  version: "1",
+} as const;
+
+export const INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION = {
+  id: "industrialize.run-dfm-checks",
+  version: "1",
+} as const;
+
 export const DFM_CHECK_CASE_SCHEMA = "dfm-check-case/1.0" as const;
 
 export const DFM_TARGET_MEDIA_TYPE = "model/step" as const;

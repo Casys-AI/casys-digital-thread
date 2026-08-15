@@ -434,6 +434,20 @@ export const PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR: CaptureStoreDescript
   label: "Print-estimate observation",
 };
 
+export const DFM_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<"dfm-case"> = {
+  kind: "dfm-case",
+  directory: "state/local/dfm-case-captures",
+  uriNamespace: "dfm-case-capture",
+  label: "DFM case",
+};
+
+export const DFM_CHECK_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<"dfm-check"> = {
+  kind: "dfm-check",
+  directory: "state/local/dfm-check-captures",
+  uriNamespace: "dfm-check-capture",
+  label: "DFM check",
+};
+
 export const CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "correction-proposal"
 > = {
