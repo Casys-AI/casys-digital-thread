@@ -213,219 +213,236 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       throw unexpectedStatus(run, "running");
     }
 
-    const basis = requireBasis(run);
-    const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
-    await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
-    const caseArtifact = requireBoundArtifact(project, run, basisSnapshot, "studyCase");
-    const caseText = await this.#caseCaptures.read(caseArtifact.fingerprint);
-    if (!caseText) {
-      throw invalidTransition(
-        "The sealed sensitivity-study case capture is not readable.",
+    try {
+      const basis = requireBasis(run);
+      const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
+      await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
+      const caseArtifact = requireBoundArtifact(
+        project,
+        run,
+        basisSnapshot,
+        "studyCase",
       );
-    }
-    const caseCapture = await validateSensitivityStudyCaseCapture(JSON.parse(caseText));
-    const studyCase = caseCapture.studyCase;
-    const admissionArtifact = findAdmissionArtifact(
-      basisSnapshot,
-      studyCase,
-      caseCapture.admissionArtifact,
-      command.projectId,
-    );
-    const reopened = await this.#admissions.read({
-      projectId: command.projectId,
-      basis,
-      artifactId: admissionArtifact.id,
-      artifactFingerprint: admissionArtifact.fingerprint,
-    });
-    if (!reopened || reopened.document.inputManifest.sources.length !== 1) {
-      throw invalidTransition("The admitted Build123d source could not be reopened.");
-    }
-    const admitted = reopened.document.inputManifest.sources[0]!;
-    const parameter = admitted.analysis.symbols.filter((symbol) =>
-      symbol.name === studyCase.target.semanticKey && symbol.kind === "parameter"
-    );
-    if (parameter.length !== 1 || !parameter[0]!.span) {
-      throw invalidTransition("The admitted source has no unique parameter binding.");
-    }
-    const binding = locateModuleLevelNumericBinding(
-      admitted.sourceText,
-      parameter[0]!.span,
-      studyCase.target.semanticKey,
-    );
-    if (binding.value !== studyCase.baseValue.value) {
-      throw invalidTransition(
-        "Admitted parameter does not equal the sealed baseValue.",
+      const caseText = await this.#caseCaptures.read(caseArtifact.fingerprint);
+      if (!caseText) {
+        throw invalidTransition(
+          "The sealed sensitivity-study case capture is not readable.",
+        );
+      }
+      const caseCapture = await validateSensitivityStudyCaseCapture(
+        JSON.parse(caseText),
       );
-    }
-    const steppedText = substituteModuleLevelNumericLiteral(
-      admitted.sourceText,
-      binding.valueSpan,
-      studyCase.baseValue.value + studyCase.step.value,
-    );
-    if (steppedText === admitted.sourceText) {
-      throw invalidTransition("The sealed step did not change the admitted source.");
-    }
-
-    const planDigest = (await sha256Fingerprint({
-      caseDigest: caseCapture.caseDigest,
-      cadSource: studyCase.cadSource,
-      step: studyCase.step,
-      executionProfile: BUILD123D_EXECUTION_PROFILE,
-    })).digest;
-    const attempt = await this.#attempts.prepare({
-      projectId: command.projectId,
-      runId: run.id,
-      planDigest,
-    });
-    if (attempt.status === "completed" && attempt.snapshot) {
-      return await this.#completeFromRecordedSnapshot(
-        origin,
-        command,
-        run.id,
-        attempt,
+      const studyCase = caseCapture.studyCase;
+      const admissionArtifact = findAdmissionArtifact(
+        basisSnapshot,
+        studyCase,
+        caseCapture.admissionArtifact,
+        command.projectId,
       );
-    }
+      const reopened = await this.#admissions.read({
+        projectId: command.projectId,
+        basis,
+        artifactId: admissionArtifact.id,
+        artifactFingerprint: admissionArtifact.fingerprint,
+      });
+      if (!reopened || reopened.document.inputManifest.sources.length !== 1) {
+        throw invalidTransition("The admitted Build123d source could not be reopened.");
+      }
+      const admitted = reopened.document.inputManifest.sources[0]!;
+      const parameter = admitted.analysis.symbols.filter((symbol) =>
+        symbol.name === studyCase.target.semanticKey && symbol.kind === "parameter"
+      );
+      if (parameter.length !== 1 || !parameter[0]!.span) {
+        throw invalidTransition("The admitted source has no unique parameter binding.");
+      }
+      const binding = locateModuleLevelNumericBinding(
+        admitted.sourceText,
+        parameter[0]!.span,
+        studyCase.target.semanticKey,
+      );
+      if (binding.value !== studyCase.baseValue.value) {
+        throw invalidTransition(
+          "Admitted parameter does not equal the sealed baseValue.",
+        );
+      }
+      const steppedText = substituteModuleLevelNumericLiteral(
+        admitted.sourceText,
+        binding.valueSpan,
+        studyCase.baseValue.value + studyCase.step.value,
+      );
+      if (steppedText === admitted.sourceText) {
+        throw invalidTransition("The sealed step did not change the admitted source.");
+      }
 
-    const profile = await this.#profiles.resolve(BUILD123D_EXECUTION_PROFILE);
-    const baseCad = await this.#executeCad({
-      projectId: command.projectId,
-      runId: run.id,
-      phase: "base",
-      executionRunId: `${run.id}:cad-base`,
-      sourceText: admitted.sourceText,
-      dispatchedAt: requiredStart(run),
-      profile,
-    });
-    const steppedCad = await this.#executeCad({
-      projectId: command.projectId,
-      runId: run.id,
-      phase: "stepped",
-      executionRunId: `${run.id}:cad-stepped`,
-      sourceText: steppedText,
-      dispatchedAt: requiredStart(run),
-      profile,
-    });
+      const planDigest = (await sha256Fingerprint({
+        caseDigest: caseCapture.caseDigest,
+        cadSource: studyCase.cadSource,
+        step: studyCase.step,
+        executionProfile: BUILD123D_EXECUTION_PROFILE,
+      })).digest;
+      const attempt = await this.#attempts.prepare({
+        projectId: command.projectId,
+        runId: run.id,
+        planDigest,
+      });
+      if (attempt.status === "completed" && attempt.snapshot) {
+        return await this.#completeFromRecordedSnapshot(
+          origin,
+          command,
+          run.id,
+          attempt,
+        );
+      }
 
-    const baseMetrics = await this.#executeSolve({
-      projectId: command.projectId,
-      runId: run.id,
-      phase: "base",
-      studyCase,
-      cad: baseCad,
-      dispatchedAt: requiredStart(run),
-    });
-    const steppedMetrics = await this.#executeSolve({
-      projectId: command.projectId,
-      runId: run.id,
-      phase: "stepped",
-      studyCase,
-      cad: steppedCad,
-      dispatchedAt: requiredStart(run),
-    });
+      const profile = await this.#profiles.resolve(BUILD123D_EXECUTION_PROFILE);
+      const baseCad = await this.#executeCad({
+        projectId: command.projectId,
+        runId: run.id,
+        phase: "base",
+        executionRunId: `${run.id}:cad-base`,
+        sourceText: admitted.sourceText,
+        dispatchedAt: requiredStart(run),
+        profile,
+      });
+      const steppedCad = await this.#executeCad({
+        projectId: command.projectId,
+        runId: run.id,
+        phase: "stepped",
+        executionRunId: `${run.id}:cad-stepped`,
+        sourceText: steppedText,
+        dispatchedAt: requiredStart(run),
+        profile,
+      });
 
-    const derivatives = computeSensitivities(studyCase, baseMetrics, steppedMetrics);
-    const capturedAt = requiredStart(run);
-    const capture = await validateSensitivityStudyCapture({
-      schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
-      operation: ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
-      trustedRunId: run.id,
-      caseDigest: caseCapture.caseDigest,
-      studyCase,
-      cad: {
-        base: publicationOf(baseCad),
-        stepped: publicationOf(steppedCad),
-      },
-      measurements: {
-        base: [...baseMetrics.entries()].map(([metric, item]) => ({
-          metric,
-          value: item.value,
-          unit: item.unit,
-        })),
-        stepped: [...steppedMetrics.entries()].map(([metric, item]) => ({
-          metric,
-          value: item.value,
-          unit: item.unit,
-        })),
-      },
-      derivatives,
-      capturedAt,
-    });
-    const captureFingerprint = await sha256Fingerprint(capture);
-    const captureText = deterministicJson(capture);
-    await this.#studyCaptures.save(captureFingerprint, captureText);
-    if (await this.#studyCaptures.read(captureFingerprint) !== captureText) {
-      throw new Error("Sensitivity study capture was not durably readable after save.");
-    }
+      const baseMetrics = await this.#executeSolve({
+        projectId: command.projectId,
+        runId: run.id,
+        phase: "base",
+        studyCase,
+        cad: baseCad,
+        dispatchedAt: requiredStart(run),
+      });
+      const steppedMetrics = await this.#executeSolve({
+        projectId: command.projectId,
+        runId: run.id,
+        phase: "stepped",
+        studyCase,
+        cad: steppedCad,
+        dispatchedAt: requiredStart(run),
+      });
 
-    const graph = buildSensitivityAnalysisGraph({
-      caseFingerprint: { algorithm: "sha256", digest: caseCapture.caseDigest },
-      sensitivityCase: studyCase,
-      baseMetrics,
-      steppedMetrics,
-      evidence: {
-        capture: {
-          id: `sensitivity-study-${captureFingerprint.digest}`,
-          fingerprint: captureFingerprint,
+      const derivatives = computeSensitivities(studyCase, baseMetrics, steppedMetrics);
+      const capturedAt = requiredStart(run);
+      const capture = await validateSensitivityStudyCapture({
+        schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
+        operation: ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+        trustedRunId: run.id,
+        caseDigest: caseCapture.caseDigest,
+        studyCase,
+        cad: {
+          base: publicationOf(baseCad),
+          stepped: publicationOf(steppedCad),
         },
-      },
-    });
-    const successor = buildStudySuccessor({
-      basisSnapshot,
-      basis,
-      run,
-      caseArtifact,
-      capture,
-      captureFingerprint,
-      captureUri: this.#studyCaptures.uriFor(captureFingerprint),
-      graph,
-    });
-    await this.#snapshots.save(successor.snapshot);
-    const readback = await this.#snapshots.getFresh(successor.snapshot.id);
-    if (
-      !readback || deterministicJson(readback) !== deterministicJson(successor.snapshot)
-    ) {
-      throw new Error(
-        "Sensitivity study ThreadSnapshot was not durably readable after save.",
-      );
-    }
-    await this.#attempts.complete({
-      projectId: command.projectId,
-      runId: run.id,
-      snapshot: {
-        snapshotId: successor.snapshot.id,
-        revision: successor.snapshot.revision,
-        subjectId: basis.subjectId,
-      },
-    });
+        measurements: {
+          base: [...baseMetrics.entries()].map(([metric, item]) => ({
+            metric,
+            value: item.value,
+            unit: item.unit,
+          })),
+          stepped: [...steppedMetrics.entries()].map(([metric, item]) => ({
+            metric,
+            value: item.value,
+            unit: item.unit,
+          })),
+        },
+        derivatives,
+        capturedAt,
+      });
+      const captureFingerprint = await sha256Fingerprint(capture);
+      const captureText = deterministicJson(capture);
+      await this.#studyCaptures.save(captureFingerprint, captureText);
+      if (await this.#studyCaptures.read(captureFingerprint) !== captureText) {
+        throw new Error(
+          "Sensitivity study capture was not durably readable after save.",
+        );
+      }
 
-    project = await this.#requiredProject(command.projectId);
-    run = requireRun(project, command.runId);
-    if (run.status === "running") {
-      await this.#commands.publishRun(origin, {
-        ...command,
-        commandId: `${command.commandId}:publish`,
-        expectedRevision: project.revision,
-        summary: "Publishing the FEA sensitivity observations.",
+      const graph = buildSensitivityAnalysisGraph({
+        caseFingerprint: { algorithm: "sha256", digest: caseCapture.caseDigest },
+        sensitivityCase: studyCase,
+        baseMetrics,
+        steppedMetrics,
+        evidence: {
+          capture: {
+            id: `sensitivity-study-${captureFingerprint.digest}`,
+            fingerprint: captureFingerprint,
+          },
+        },
       });
-    }
-    project = await this.#requiredProject(command.projectId);
-    run = requireRun(project, command.runId);
-    if (run.status === "publishing") {
-      await this.#commands.completeRun(origin, {
-        ...command,
-        commandId: `${command.commandId}:complete`,
-        expectedRevision: project.revision,
-        summary: "Published FEA sensitivity observations without a verdict.",
-        resultSnapshot: snapshotRef(successor.snapshot),
-        evidenceRefs: [{
+      const successor = buildStudySuccessor({
+        basisSnapshot,
+        basis,
+        run,
+        caseArtifact,
+        capture,
+        captureFingerprint,
+        captureUri: this.#studyCaptures.uriFor(captureFingerprint),
+        graph,
+      });
+      await this.#snapshots.save(successor.snapshot);
+      const readback = await this.#snapshots.getFresh(successor.snapshot.id);
+      if (
+        !readback ||
+        deterministicJson(readback) !== deterministicJson(successor.snapshot)
+      ) {
+        throw new Error(
+          "Sensitivity study ThreadSnapshot was not durably readable after save.",
+        );
+      }
+      await this.#attempts.complete({
+        projectId: command.projectId,
+        runId: run.id,
+        snapshot: {
           snapshotId: successor.snapshot.id,
-          snapshotRevision: successor.snapshot.revision,
-          kind: "artifact",
-          id: successor.artifact.id,
-        }],
+          revision: successor.snapshot.revision,
+          subjectId: basis.subjectId,
+        },
       });
+
+      project = await this.#requiredProject(command.projectId);
+      run = requireRun(project, command.runId);
+      if (run.status === "running") {
+        await this.#commands.publishRun(origin, {
+          ...command,
+          commandId: `${command.commandId}:publish`,
+          expectedRevision: project.revision,
+          summary: "Publishing the FEA sensitivity observations.",
+        });
+      }
+      project = await this.#requiredProject(command.projectId);
+      run = requireRun(project, command.runId);
+      if (run.status === "publishing") {
+        await this.#commands.completeRun(origin, {
+          ...command,
+          commandId: `${command.commandId}:complete`,
+          expectedRevision: project.revision,
+          summary: "Published FEA sensitivity observations without a verdict.",
+          resultSnapshot: snapshotRef(successor.snapshot),
+          evidenceRefs: [{
+            snapshotId: successor.snapshot.id,
+            snapshotRevision: successor.snapshot.revision,
+            kind: "artifact",
+            id: successor.artifact.id,
+          }],
+        });
+      }
+      return await this.#requiredProject(command.projectId);
+    } catch (error) {
+      if (!(error instanceof EngineeringProjectCommandError)) {
+        await this.#recordFailure(origin, command, error);
+      }
+      throw error;
     }
-    return await this.#requiredProject(command.projectId);
   }
 
   async #completeFromRecordedSnapshot(
@@ -490,6 +507,41 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       });
     }
     return await this.#requiredProject(command.projectId);
+  }
+
+  /**
+   * Terminal execution failure: a raw provider or runtime error (a failed
+   * CalculiX solve, an isolated-runner fault) is not a recoverable
+   * unknown-outcome. Mark the claimed run failed so the project append is
+   * released and a successor study can be reconciled; product-level
+   * EngineeringProjectCommandError guards keep their resume semantics.
+   */
+  async #recordFailure(
+    origin: EngineeringProjectCommandOrigin,
+    command: { projectId: string; runId: string; commandId: string; issuedAt: string },
+    error: unknown,
+  ): Promise<void> {
+    try {
+      const project = await this.#requiredProject(command.projectId);
+      const run = requireRun(project, command.runId);
+      if (
+        run.status !== "running" || run.claimedBy?.origin !== origin.kind ||
+        run.claimedBy.id !== origin.actorId
+      ) return;
+      await this.#commands.failRun(origin, {
+        projectId: command.projectId,
+        runId: command.runId,
+        issuedAt: command.issuedAt,
+        commandId: `${command.commandId}:fail`,
+        expectedRevision: project.revision,
+        summary:
+          "FEA sensitivity execution failed on a terminal provider or runtime error.",
+        code: "analyze-run-fea-sensitivity-terminal-error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } catch {
+      // Preserve the original execution error.
+    }
   }
 
   async #executeCad(input: {
