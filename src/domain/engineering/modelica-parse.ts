@@ -309,7 +309,18 @@ function parseTypedDeclaration(
     return undefined;
   }
   cursor.take();
-  const name = cursor.expectIdentifier(`${prefix} name`);
+  const nameToken = cursor.peek();
+  if (nameToken?.kind !== "identifier") {
+    const extra = consumeToSemicolon(cursor);
+    unresolved.push({
+      kind: "modelica-expression-not-qualified",
+      message:
+        `A ${prefix} declaration must name a Real scalar in the Modelica closed subset.`,
+      span: extra?.span ?? start.span,
+    });
+    return undefined;
+  }
+  const name = cursor.take()!;
   if (isKind(cursor.peek(), "lbracket")) {
     const extra = consumeToSemicolon(cursor);
     unresolved.push({
@@ -335,17 +346,10 @@ function parseTypedDeclaration(
         message: "A parameter default must be a scalar in the Modelica closed subset.",
         span: extra?.span ?? name.span,
       });
-    } else if (defaultValue.kind === "identifier") {
-      if (prefix === "parameter") defaultReferencedName = defaultValue.text;
-      const close = cursor.expectKind("semicolon", `${prefix} close`);
-      return freezeDeclaration(
-        prefix,
-        start.span,
-        name,
-        attributes,
-        close.span,
-        defaultReferencedName,
-      );
+      return undefined;
+    }
+    if (defaultValue.kind === "identifier" && prefix === "parameter") {
+      defaultReferencedName = defaultValue.text;
     } else if (prefix === "output") {
       unresolved.push({
         kind: "modelica-expression-not-qualified",
@@ -354,7 +358,17 @@ function parseTypedDeclaration(
         span: defaultValue.span,
       });
     }
-  } else if (prefix === "parameter") {
+    const close = closeDeclaration(cursor, unresolved, name.span);
+    return freezeDeclaration(
+      prefix,
+      start.span,
+      name,
+      attributes,
+      close,
+      defaultReferencedName,
+    );
+  }
+  if (prefix === "parameter") {
     const extra = consumeToSemicolon(cursor);
     unresolved.push({
       kind: "modelica-expression-not-qualified",
@@ -365,15 +379,54 @@ function parseTypedDeclaration(
     return undefined;
   }
 
-  const close = cursor.expectKind("semicolon", `${prefix} close`);
+  const close = closeDeclaration(cursor, unresolved, name.span);
   return freezeDeclaration(
     prefix,
     start.span,
     name,
     attributes,
-    close.span,
+    close,
     defaultReferencedName,
   );
+}
+
+function closeDeclaration(
+  cursor: TokenCursor,
+  unresolved: ModelicaUnresolved[],
+  fallback: SourceAnalysisSpan,
+): SourceAnalysisSpan {
+  if (isKind(cursor.peek(), "semicolon")) return cursor.take()!.span;
+  const next = cursor.peek();
+  const extra = consumeToSemicolon(cursor);
+  const span = extra?.span ?? fallback;
+  unresolved.push({
+    kind: leftoverAfterDefaultKind(next),
+    message: leftoverAfterDefaultMessage(next),
+    span,
+  });
+  return span;
+}
+
+function leftoverAfterDefaultKind(
+  token: ModelicaToken | undefined,
+): string {
+  if (
+    isKind(token, "plus") || isKind(token, "minus") || isKind(token, "star") ||
+    isKind(token, "slash") || isKind(token, "lparen") || isKind(token, "dot") ||
+    isKind(token, "lbracket")
+  ) {
+    return "modelica-expression-not-qualified";
+  }
+  return "modelica-unsupported-section";
+}
+
+function leftoverAfterDefaultMessage(
+  token: ModelicaToken | undefined,
+): string {
+  if (leftoverAfterDefaultKind(token) === "modelica-expression-not-qualified") {
+    return "A parameter default must be a scalar in the Modelica closed subset.";
+  }
+  return "Only a scalar default and a semicolon may follow a qualified declaration.";
 }
 
 function freezeDeclaration(
