@@ -81,6 +81,10 @@ These pairs look related and are **not** substitutes.
 | `sensitivity-study-case/2.0` `cadSource`                  | Sealed compilation-admission artifact URI + sha256                                   | `recipeSource` 1.0 or a STEP artifact                                   |
 | `design.apply-vector-correction@1`                        | Provider-free Thread-document seal of a bounded correction proposal (`grants: none`) | CAD write, SysON insert, provider run, or execution admission           |
 | Binding `studyCapture`                                    | `sensitivity-study-capture/1.0`                                                      | `sensitivity-edges-capture/1.0` or a SysON PartDef                      |
+| `industrialize.observe-printability@1`                    | Documentary FDM observations (`estimate` path); no evaluation                        | Measured DFM verdicts                                                   |
+| `industrialize.run-dfm-checks@1`                          | Measured mcp-dfm envelope/thickness/overhang verdicts                                | `observe-printability` or a print-time estimate                         |
+| `printability-check-case/1.0`                             | Documentary estimate case; no attested STEP, no Z-min filter                         | `dfm-check-case/1.0`                                                    |
+| `dfm-check-case/1.0`                                      | Sealed measured case: attested STEP, build-volume object, declared Z-min filter      | A STL target or a hidden executor heuristic                             |
 
 ## 4. Surfaces an agent actually calls
 
@@ -200,6 +204,8 @@ Unknown ids/versions are indistinguishable from absent.
 | `model.write-sensitivity-edges@1`                   | trusted                   | SysON                        | Server-rendered derivative PartDef                                | Architecture write or agent SysML    |
 | `industrialize.seal-printability-case@1`            | trusted                   | none                         | Sealed printability-check-case/1.0 document                       | A DFM dispatch or verdict            |
 | `industrialize.observe-printability@1`              | trusted                   | mcp-dfm                      | Unit-carrying FDM observations                                    | A verdict or evaluation              |
+| `industrialize.seal-dfm-case@1`                     | trusted                   | none                         | Sealed dfm-check-case/1.0 document                                | A DFM dispatch or the estimate path  |
+| `industrialize.run-dfm-checks@1`                    | trusted                   | mcp-dfm                      | Measured observations + fail-closed evaluations                   | `observe-printability` or a quote    |
 | `industrialize.seal-print-estimate-case@1`          | trusted                   | none                         | Sealed print-estimate-case/1.0 document                           | A slice or a price                   |
 | `industrialize.observe-print-estimate@1`            | trusted                   | mcp-prusaslicer              | Time and material observations                                    | A cost quote or verdict              |
 | `design.apply-vector-correction@1`                  | planning-only             | none                         | Correction proposal                                               | A provider run                       |
@@ -208,6 +214,18 @@ Unknown ids/versions are indistinguishable from absent.
 | `record.archive-lineage@1`                          | trusted                   | none                         | Append-only archive change                                        | SysML deletion                       |
 | `architecture.author-inspection-drone@3`            | trusted                   | SysON                        | Product-specific drone r3                                         | A generic architecture op            |
 | `model.capture-inspection-drone-part-definitions@1` | trusted                   | SysON                        | Product-specific r4                                               | Generic product structure            |
+
+### Measured DFM (`industrialize.seal-dfm-case@1` + `industrialize.run-dfm-checks@1`)
+
+This pair is the measured authority. It does not replace
+`industrialize.observe-printability@1`, which stays the documentary estimate
+path (observations only, no evaluation).
+
+Live mcp-dfm 0.1.0 tools take `step_path` + `expected_step_sha256`, not STL.
+`build_volume_mm` is an object `{x, y, z}`. The sealed case must declare the
+Z-min bed-contact filter; the executor applies that signed filter and traces
+it. It must not invent a min-Z heuristic. A check fail is publishable with a
+named violation.
 
 Queueing sequence for any trusted consequential op:
 
@@ -331,6 +349,9 @@ and commit `src/ui/dist/**`.
 | `state/local/recorded-analysis/architecture-sysml/{sources,analyses,seals}` | Agent-authored SysML CAS                                   |
 | `state/local/sysml-source-captures/`                                        | Renderer `sysml-source-capture/1.0`                        |
 | `state/local/architecture-captures/`                                        | `architecture-capture/3.0` (SysON write)                   |
+| `state/local/dfm-case-captures/`                                            | Sealed `dfm-case-capture/1.0` documents                    |
+| `state/local/dfm-check-captures/`                                           | Measured `dfm-check-capture/1.0` (evaluations included)    |
+| `state/local/dfm-check-attempts/`                                           | WAL for `industrialize.run-dfm-checks@1`                   |
 | `state/fixtures/retired/`                                                   | CM-01 only. Never replay                                   |
 
 Do not treat a directory listing or “latest file” as authority. Reopen by content
