@@ -18,6 +18,14 @@ import {
   localYoloRationale,
   type ProjectApprovalMode,
 } from "./project-approval-mode.ts";
+import {
+  COMMAND_ID,
+  EXPECTED_REVISION,
+  FINGERPRINT_SCHEMA,
+  ISSUED_AT,
+  OBJECT_OUTPUT_SCHEMA,
+  PROJECT_ID,
+} from "./project-control/mcp-tool-schemas.ts";
 
 const MUTATION = {
   readOnlyHint: false,
@@ -26,41 +34,7 @@ const MUTATION = {
   openWorldHint: false,
 } as const;
 
-const OBJECT_OUTPUT = { type: "object", additionalProperties: true } as const;
 const STRING = { type: "string", minLength: 1 } as const;
-const COMMAND_ID = {
-  ...STRING,
-  maxLength: 160,
-  description:
-    "Stable command id. Reuse it verbatim with identical arguments when retrying an uncertain call.",
-} as const;
-const PROJECT_ID = {
-  ...STRING,
-  maxLength: 160,
-  pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
-  not: { const: "latest" },
-  description:
-    "Stable engineering project identity from the first intent onward. latest is refused.",
-} as const;
-const ISSUED_AT = {
-  ...STRING,
-  description:
-    "Client audit ISO timestamp preserved with commandId on retry. It must not be later than the server clock; use the current UTC time at whole seconds. Do not invent a future timestamp.",
-} as const;
-const EXPECTED_REVISION = {
-  type: "integer",
-  minimum: 1,
-  description: "Optimistic revision from project_snapshot.",
-} as const;
-const FINGERPRINT = {
-  type: "object",
-  properties: {
-    algorithm: { const: "sha256" },
-    digest: { type: "string", pattern: "^[a-f0-9]{64}$" },
-  },
-  required: ["algorithm", "digest"],
-  additionalProperties: false,
-} as const;
 const SOURCE = {
   type: "object",
   properties: {
@@ -262,7 +236,7 @@ const projectStartTool: MCPTool = {
     ],
     additionalProperties: false,
   },
-  outputSchema: OBJECT_OUTPUT,
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: MUTATION,
 };
 
@@ -324,7 +298,7 @@ const projectQuestionProposeTool: MCPTool = {
       additionalProperties: false,
     },
   }, ["question"]),
-  outputSchema: OBJECT_OUTPUT,
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: MUTATION,
 };
 
@@ -360,7 +334,7 @@ const projectAnswerRecordTool: MCPTool = {
       additionalProperties: false,
     },
   }, ["answer"]),
-  outputSchema: OBJECT_OUTPUT,
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: MUTATION,
 };
 
@@ -395,7 +369,7 @@ const projectBriefProposeTool: MCPTool = {
       },
     },
   }, ["items"]),
-  outputSchema: OBJECT_OUTPUT,
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: MUTATION,
 };
 
@@ -416,7 +390,7 @@ const projectBriefConfirmTool: MCPTool = {
         "Exact pending brief revision. Copy briefRevision from the latest project_brief_propose result, or framing.proposedBrief.revision.",
     },
     inputFingerprint: {
-      ...FINGERPRINT,
+      ...FINGERPRINT_SCHEMA,
       description:
         "Exact pending review fingerprint. Copy inputFingerprint from the latest project_brief_propose result, or framing.proposalReview.inputFingerprint.",
     },
@@ -427,7 +401,7 @@ const projectBriefConfirmTool: MCPTool = {
         "Optional verbatim record of why this brief reflects the paired conversation. Stored verbatim (including leading/trailing whitespace) in the approval record. Absent or blank-only values (all whitespace) are treated identically and fall back to a generic host-confirmation message.",
     },
   }, ["briefSnapshotId", "briefRevision", "inputFingerprint"]),
-  outputSchema: OBJECT_OUTPUT,
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: MUTATION,
 };
 

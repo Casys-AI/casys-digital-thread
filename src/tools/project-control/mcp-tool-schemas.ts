@@ -48,7 +48,7 @@ export const OBJECT_OUTPUT_SCHEMA = {
   additionalProperties: true,
 } as const;
 
-const COMMAND_ID = {
+export const COMMAND_ID = {
   type: "string",
   minLength: 1,
   maxLength: 160,
@@ -65,14 +65,14 @@ export const PROJECT_ID = {
   description: "Engineering project identity from project_snapshot. latest is refused.",
 } as const;
 
-const EXPECTED_REVISION = {
+export const EXPECTED_REVISION = {
   type: "integer",
   minimum: 1,
   description:
     "Optimistic EngineeringProject revision from the latest project_snapshot.",
 } as const;
 
-const ISSUED_AT = {
+export const ISSUED_AT = {
   type: "string",
   description:
     "Client audit ISO timestamp preserved with commandId on retry. It must not be later than the server clock; use the current UTC time at whole seconds. Do not invent a future timestamp.",
