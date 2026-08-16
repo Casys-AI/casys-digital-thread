@@ -55,10 +55,9 @@ export function registerCockpitFocusTools(
     const workspaceId = requiredString(args.workspaceId, "workspaceId");
     const target = targetInput(args.target);
     await requiredTarget(target, dependencies);
-    const expectedRevision = nonNegativeInteger(
-      args.expectedRevision,
-      "expectedRevision",
-    );
+    const expectedRevision = args.expectedRevision === undefined
+      ? (await dependencies.focus.get(workspaceId))?.revision ?? 0
+      : nonNegativeInteger(args.expectedRevision, "expectedRevision");
     const selectedAt = isoDateTime(args.issuedAt, "issuedAt");
     const snapshot = await dependencies.focus.select({
       schemaVersion: COCKPIT_FOCUS_SCHEMA_VERSION,
@@ -112,7 +111,7 @@ const cockpitFocusSetTool: MCPTool = {
         type: "integer",
         minimum: 0,
         description:
-          "Optimistic cockpit focus revision; use 0 only when cockpit_focus_snapshot reports no focus.",
+          "Optimistic cockpit focus revision. Omit to use the current cockpit focus revision. Use 0 only when cockpit_focus_snapshot reports no focus. Pass an explicit integer for optimistic concurrency when you have one.",
       },
       issuedAt: {
         type: "string",
@@ -131,7 +130,6 @@ const cockpitFocusSetTool: MCPTool = {
     required: [
       "commandId",
       "workspaceId",
-      "expectedRevision",
       "issuedAt",
       "target",
     ],

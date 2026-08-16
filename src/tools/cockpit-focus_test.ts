@@ -41,15 +41,75 @@ Deno.test("cockpit focus tools verify the selected durable target before changin
   );
 });
 
+Deno.test("cockpit_focus_set uses the current store revision when expectedRevision is omitted", async () => {
+  const app = new CapturingApp();
+  const store = new MemoryFocusStore();
+  store.value = seededFocus(22);
+  registerCockpitFocusTools(app as unknown as McpApp, {
+    focus: store,
+    projects: { get: (id) => Promise.resolve(id === "drone" ? project() : undefined) },
+  });
+  const result = await app.handler("cockpit_focus_set")(
+    omitExpectedRevision(args({ kind: "project", projectId: "drone" })),
+    context(),
+  ) as Record<string, unknown>;
+  assertEquals((result.structuredContent as CockpitFocusSnapshot).revision, 23);
+  assertEquals((result.structuredContent as CockpitFocusSnapshot).previous, {
+    revision: 22,
+  });
+});
+
+Deno.test("cockpit_focus_set schema does not require expectedRevision", () => {
+  const app = new CapturingApp();
+  registerCockpitFocusTools(app as unknown as McpApp, {
+    focus: new MemoryFocusStore(),
+    projects: { get: () => Promise.resolve(undefined) },
+  });
+  const schema = app.tool("cockpit_focus_set").inputSchema as {
+    required?: readonly string[];
+  };
+  const required = schema.required ?? [];
+  assertEquals(required.includes("expectedRevision"), false);
+  assertEquals(required.includes("commandId"), true);
+  assertEquals(required.includes("issuedAt"), true);
+});
+
+Deno.test("cockpit_focus_set still rejects an explicit stale expectedRevision", async () => {
+  const app = new CapturingApp();
+  const store = new MemoryFocusStore();
+  store.value = seededFocus(22);
+  registerCockpitFocusTools(app as unknown as McpApp, {
+    focus: store,
+    projects: { get: (id) => Promise.resolve(id === "drone" ? project() : undefined) },
+  });
+  await assertRejects(
+    async () =>
+      await app.handler("cockpit_focus_set")(
+        args({ kind: "project", projectId: "drone" }),
+        context(),
+      ),
+    Error,
+    "stale focus",
+  );
+  assertEquals(store.value?.revision, 22);
+});
+
 class CapturingApp {
   #handlers = new Map<string, ToolHandler>();
+  #tools = new Map<string, MCPTool>();
   registerTool(tool: MCPTool, handler: ToolHandler): void {
+    this.#tools.set(tool.name, tool);
     this.#handlers.set(tool.name, handler);
   }
   handler(name: string): ToolHandler {
     const handler = this.#handlers.get(name);
     assert(handler, `Expected handler ${name}`);
     return handler;
+  }
+  tool(name: string): MCPTool {
+    const tool = this.#tools.get(name);
+    assert(tool, `Expected tool ${name}`);
+    return tool;
   }
 }
 
@@ -77,6 +137,26 @@ function args(target: Record<string, unknown>) {
     expectedRevision: 0,
     issuedAt: "2026-08-03T12:00:00.000Z",
     target,
+  };
+}
+
+function omitExpectedRevision(
+  value: ReturnType<typeof args>,
+): Omit<ReturnType<typeof args>, "expectedRevision"> {
+  const { expectedRevision: _expectedRevision, ...omitted } = value;
+  return omitted;
+}
+
+function seededFocus(revision: number): CockpitFocusSnapshot {
+  return {
+    schemaVersion: "cockpit-focus/1.0",
+    workspaceId: "primary",
+    revision,
+    commandId: "focus-seed",
+    selectedAt: "2026-08-03T11:00:00.000Z",
+    selectedBy: { kind: "agent", actorId: "mcp:seed@1" },
+    target: { kind: "project", projectId: "other" },
+    previous: { revision: revision - 1 },
   };
 }
 

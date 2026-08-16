@@ -156,9 +156,7 @@ export class ProjectBriefCommandService {
       );
     }
     const appliedAt = authoritativeTime(this.now());
-    if (Date.parse(normalized.issuedAt) > Date.parse(appliedAt)) {
-      invalidInput("issuedAt cannot be later than the authoritative service clock.");
-    }
+    assertIssuedAtNotAfterClock(normalized.issuedAt, appliedAt);
     const snapshotId = projectSnapshotId(
       normalized.projectId,
       1,
@@ -508,9 +506,7 @@ export class ProjectBriefCommandService {
     if (Date.parse(appliedAt) < Date.parse(current.generatedAt)) {
       invalidInput("The authoritative service clock moved backwards.");
     }
-    if (Date.parse(normalized.issuedAt) > Date.parse(appliedAt)) {
-      invalidInput("issuedAt cannot be later than the authoritative service clock.");
-    }
+    assertIssuedAtNotAfterClock(normalized.issuedAt, appliedAt);
     const draft = structuredClone(current) as Mutable<EngineeringProjectSnapshot>;
     await update(draft, appliedAt);
     const revision = current.revision + 1;
@@ -889,6 +885,16 @@ function projectSnapshotId(
 
 function authoritativeTime(value: string): string {
   return requiredIsoDateTime(value, "service clock");
+}
+
+function assertIssuedAtNotAfterClock(issuedAt: string, appliedAt: string): void {
+  if (Date.parse(issuedAt) > Date.parse(appliedAt)) {
+    invalidInput(
+      `issuedAt ${issuedAt} is later than the authoritative service clock ${appliedAt}. ` +
+        "Reuse the same commandId and retry with issuedAt set to the current UTC time " +
+        "at whole seconds; do not invent a future timestamp.",
+    );
+  }
 }
 
 function requiredIsoDateTime(value: string, name: string): string {

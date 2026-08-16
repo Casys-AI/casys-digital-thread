@@ -73,7 +73,7 @@ const EXPECTED_REVISION = {
 const ISSUED_AT = {
   type: "string",
   description:
-    "Stable ISO timestamp for this command. Preserve it together with commandId on retry.",
+    "Client audit ISO timestamp preserved with commandId on retry. It must not be later than the server clock; use the current UTC time at whole seconds. Do not invent a future timestamp.",
 } as const;
 
 export const THREAD_ENTITY_KINDS = [

@@ -31,6 +31,7 @@ npm --prefix src/ui run build     # bundle Console MCP App → src/ui/dist/conso
 deno task start                   # serveur MCP Console + project control, :3020/mcp
 deno task dev                     # idem avec --watch
 deno task start:yolo              # loopback : auto-confirme les MRTR positifs
+deno task mcp:call --name=<tool> --args='{}'  # tools/call loopback :3020/mcp
 ```
 
 Qualité — à passer avant tout commit :

@@ -92,7 +92,11 @@ These pairs look related and are **not** substitutes.
 ## 4. Surfaces an agent actually calls
 
 The agent talks **only** to this repo’s MCP server (`http://127.0.0.1:3020/mcp`).
-Provider MCP ports are private backend dependencies.
+Provider MCP ports are private backend dependencies. Loopback CLI:
+`deno task mcp:call --name=<tool> --args='{}'`. It fills omitted `issuedAt` only
+when the arguments already include `commandId`. `cockpit_focus_set` may omit
+`expectedRevision`. `deno task preview:thread` follows cockpit focus unless
+`--project-id=` pins a vehicle.
 
 ### Project lifecycle
 

@@ -45,6 +45,7 @@ exercise that complete local microVM path end to end.
 | ------------------------------------------- | -------------------------------- | ----- |
 | `probes/capture-build123d-api-inventory.ts` | (direct `deno run`)              | write |
 | `probes/capture-syson-model-inventory.ts`   | `thread:capture-syson-inventory` | write |
+| `probes/mcp-call.ts`                        | `mcp:call`                       | write |
 | `probes/probe-constraint-solver.ts`         | `probe:constraint-solver`        | read  |
 | `probes/probe-archive-cascade.ts`           | `probe:archive-cascade`          | read  |
 | `probes/probe-requirement-units.ts`         | `probe:requirement-units`        | write |

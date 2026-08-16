@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringProjectSnapshot,
@@ -27,6 +27,73 @@ import { collectEngineeringProjectIssues } from "../../../domain/project/enginee
 const PROJECT_ID = "project-v3";
 const AGENT = { kind: "agent" as const, actorId: "agent:guide" };
 const HUMAN = { kind: "human" as const, actorId: "human:owner" };
+
+Deno.test(
+  "project_start names the service clock when issuedAt is in the future",
+  async () => {
+    const service = serviceFor(new MemoryProjectStore());
+    const error = await assertRejects(
+      () =>
+        service.startProject(AGENT, {
+          commandId: "start-future-clock",
+          projectId: PROJECT_ID,
+          projectName: "Project V3",
+          issuedAt: "2026-08-16T16:00:00.000Z",
+          intent: "Build a reviewable engineering project.",
+          intentSource: { kind: "human", reference: "conversation:turn-1" },
+        }),
+      EngineeringProjectCommandError,
+    );
+    assertEquals(error.code, "invalid_input");
+    assertStringIncludes(error.message, "issuedAt 2026-08-16T16:00:00.000Z");
+    assertStringIncludes(
+      error.message,
+      "authoritative service clock 2026-08-03T09:00:00.000Z",
+    );
+    assertStringIncludes(error.message, "Reuse the same commandId");
+  },
+);
+
+Deno.test(
+  "a later brief mutation names the service clock when issuedAt is in the future",
+  async () => {
+    const service = serviceFor(new MemoryProjectStore());
+    const project = await start(service);
+    const error = await assertRejects(
+      () =>
+        service.proposeQuestion(AGENT, {
+          ...context("question-future-clock", project.revision),
+          issuedAt: "2026-08-16T16:00:00.000Z",
+          question: {
+            id: "mission",
+            prompt: "Which initial operating scenario should the product prove?",
+            whyItMatters: "It bounds the architecture and verification plan.",
+            recommendation: {
+              value: "bounded-demonstration",
+              rationale: "It is observable and can be tested incrementally.",
+              confidence: "medium",
+            },
+            options: [{
+              value: "bounded-demonstration",
+              label: "Bounded demonstration",
+              consequences: "The first proof stays reviewable.",
+            }],
+            allowUnknown: true,
+            risk: "reversible",
+            evidenceNeeded: ["reviewed operating scenario"],
+          },
+        }),
+      EngineeringProjectCommandError,
+    );
+    assertEquals(error.code, "invalid_input");
+    assertStringIncludes(error.message, "issuedAt 2026-08-16T16:00:00.000Z");
+    assertStringIncludes(
+      error.message,
+      "authoritative service clock 2026-08-03T09:00:00.000Z",
+    );
+    assertStringIncludes(error.message, "Reuse the same commandId");
+  },
+);
 
 Deno.test("a project exists from first intent and framing stays inside it", async () => {
   const store = new MemoryProjectStore();

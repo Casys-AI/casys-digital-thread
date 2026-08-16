@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { createConsoleServer } from "../../server.ts";
 import { FileEngineeringProjectRevisionStore } from "../adapters/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../application/use-cases/project/project-brief-command-service.ts";
@@ -34,9 +34,19 @@ Deno.test("project MCP framing uses one project identity from intent through app
   try {
     const client = new TestMcpClient(`http://127.0.0.1:${port}/mcp`);
     const listed = await client.call("tools/list", {});
-    const names = (listed.tools as Array<{ name: string }>).map((tool) => tool.name);
+    const tools = listed.tools as Array<{
+      name: string;
+      inputSchema?: {
+        properties?: Record<string, { description?: string }>;
+      };
+    }>;
+    const names = tools.map((tool) => tool.name);
     assertEquals(names.includes("project_start"), true);
     assertEquals(names.includes("project_brief_confirm"), true);
+    const startIssuedAt = tools.find((tool) => tool.name === "project_start")
+      ?.inputSchema?.properties?.issuedAt?.description ?? "";
+    assertStringIncludes(startIssuedAt, "must not be later than the server clock");
+    assertStringIncludes(startIssuedAt, "Do not invent a future timestamp");
 
     let result = await client.tool("project_start", {
       commandId: "start-project",

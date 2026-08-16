@@ -43,12 +43,15 @@ deno task preview:thread
 ```
 
 Connect the agent to `http://127.0.0.1:3020/mcp`. Open
-`http://127.0.0.1:5173/`. Do not pass `--project-id=desk-lamp-dl05`.
+`http://127.0.0.1:5173/`. `deno task preview:thread` already follows
+cockpit focus (`--workspace-id=primary`). Do not pass
+`--project-id=desk-lamp-dl05` (that pins the old vehicle).
+Loopback writes: `deno task mcp:call --name=<tool> --args='{}'`.
 
 ## 1. Create the project
 
 `project_start` with the person's plain-language intent. Then
-`cockpit_focus_set` to that project id.
+`cockpit_focus_set` to that project id. `expectedRevision` may be omitted.
 
 Do not clone dl04/dl05. Those are local, gitignored vehicles. A missing reread
 `@2` elsewhere is `unavailable`, not an `@1` relabel.

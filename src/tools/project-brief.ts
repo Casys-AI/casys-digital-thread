@@ -41,7 +41,8 @@ const PROJECT_ID = {
 } as const;
 const ISSUED_AT = {
   ...STRING,
-  description: "Stable ISO timestamp; preserve it with commandId on retry.",
+  description:
+    "Client audit ISO timestamp preserved with commandId on retry. It must not be later than the server clock; use the current UTC time at whole seconds. Do not invent a future timestamp.",
 } as const;
 const EXPECTED_REVISION = {
   type: "integer",

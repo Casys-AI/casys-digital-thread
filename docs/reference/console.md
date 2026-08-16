@@ -100,9 +100,10 @@ The paired agent, not the browser, chooses what the single cockpit shell follows
 normal sequence is: create or resume one project, set the workspace focus to it, guide
 its living brief in conversation, and obtain the person's exact brief confirmation
 through MRTR. The focus never changes during this transition because there is no
-separate Discovery target. `cockpit_focus_snapshot` supplies the current revision;
-`cockpit_focus_set` requires it as `expectedRevision` together with a stable `commandId`
-and `issuedAt`.
+separate Discovery target. `cockpit_focus_set` requires a stable `commandId` and `issuedAt`.
+`expectedRevision` may be omitted (the server uses the current cockpit focus
+revision). Pass `0` only when `cockpit_focus_snapshot` reports no focus; an
+explicit stale integer is still rejected.
 
 Focus is durable UI-routing state only. It cannot create a project, record an answer,
 approve a brief or decision, queue or execute a run, call a provider, or produce
