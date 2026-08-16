@@ -89,10 +89,17 @@ export const THREAD_ENTITY_KINDS = [
   "action",
 ] as const satisfies readonly ThreadEntityKind[];
 
+const SNAPSHOT_ID = {
+  type: "string",
+  minLength: 1,
+  not: { const: "latest" },
+  description: "Exact Thread snapshot id. latest is refused.",
+} as const;
+
 export const THREAD_ENTITY_REFERENCE_SCHEMA = {
   type: "object",
   properties: {
-    snapshotId: { type: "string", minLength: 1 },
+    snapshotId: SNAPSHOT_ID,
     snapshotRevision: { type: "integer", minimum: 1 },
     kind: { type: "string", enum: THREAD_ENTITY_KINDS },
     id: { type: "string", minLength: 1 },
@@ -191,7 +198,7 @@ export const FINGERPRINT_SCHEMA = {
 export const THREAD_SNAPSHOT_REF_SCHEMA = {
   type: "object",
   properties: {
-    snapshotId: { type: "string", minLength: 1 },
+    snapshotId: SNAPSHOT_ID,
     revision: { type: "integer", minimum: 1 },
     subjectId: { type: "string", minLength: 1 },
   },

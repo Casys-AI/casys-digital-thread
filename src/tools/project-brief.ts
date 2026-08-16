@@ -151,7 +151,7 @@ export function registerProjectBriefTools(
       { ...commonMutation(args), items },
     );
     return projectResult(
-      `A sourced project brief revision is awaiting human review at project revision ${snapshot.revision}. It is intent and planning context, not technical or certification evidence.`,
+      `A sourced project brief revision is awaiting human review at project revision ${snapshot.revision}. Pass briefSnapshotId, briefRevision, and inputFingerprint from this result to project_brief_confirm. It is intent and planning context, not technical or certification evidence.`,
       snapshot,
     );
   });
@@ -280,7 +280,11 @@ const projectQuestionProposeTool: MCPTool = {
         recommendation: {
           type: "object",
           properties: {
-            value: STRING,
+            value: {
+              ...STRING,
+              description:
+                "Must equal one options[].value exactly. Do not invent a new value.",
+            },
             rationale: STRING,
             confidence: { enum: ["low", "medium", "high"] },
           },
@@ -335,7 +339,11 @@ const projectAnswerRecordTool: MCPTool = {
         id: STRING,
         questionId: STRING,
         kind: { enum: ["provided", "unknown"] },
-        value: STRING,
+        value: {
+          ...STRING,
+          description:
+            "Required when kind is provided. Must equal one options[].value of the named question. Omit when kind is unknown.",
+        },
         explanation: STRING,
         source: {
           type: "object",
@@ -364,6 +372,8 @@ const projectBriefProposeTool: MCPTool = {
     items: {
       type: "array",
       minItems: 3,
+      description:
+        "Must include exactly one objective, at least one mission-scenario, and at least one success-criterion. V2 gates require dependsOnItemIds ([] declares independence). Assumptions require owner and reviewTrigger.",
       items: {
         type: "object",
         properties: {
@@ -394,9 +404,22 @@ const projectBriefConfirmTool: MCPTool = {
   description:
     "Ask the paired MCP host to present the exact pending brief. In the default interactive mode, only a verified signed retry carrying an accepted human confirmation can promote it to canonical project intent. An explicit loopback-only --yolo startup opt-in instead records the positive confirmation through the same command service with the persisted local-yolo human origin; it never fabricates elicitation responses.",
   inputSchema: mutationSchema({
-    briefSnapshotId: STRING,
-    briefRevision: { type: "integer", minimum: 1 },
-    inputFingerprint: FINGERPRINT,
+    briefSnapshotId: {
+      ...STRING,
+      description:
+        "Exact pending brief id. Copy briefSnapshotId from the latest project_brief_propose result, or framing.proposedBrief.id.",
+    },
+    briefRevision: {
+      type: "integer",
+      minimum: 1,
+      description:
+        "Exact pending brief revision. Copy briefRevision from the latest project_brief_propose result, or framing.proposedBrief.revision.",
+    },
+    inputFingerprint: {
+      ...FINGERPRINT,
+      description:
+        "Exact pending review fingerprint. Copy inputFingerprint from the latest project_brief_propose result, or framing.proposalReview.inputFingerprint.",
+    },
     rationale: {
       type: "string",
       minLength: 1,
@@ -733,7 +756,24 @@ function elicitedHumanOrigin(context?: ToolHandlerContext) {
 function projectResult(content: string, snapshot: EngineeringProjectSnapshot) {
   return {
     content,
-    structuredContent: snapshot as unknown as Record<string, unknown>,
+    structuredContent: {
+      ...(snapshot as unknown as Record<string, unknown>),
+      ...pendingBriefConfirmArgs(snapshot),
+    },
+  };
+}
+
+function pendingBriefConfirmArgs(
+  snapshot: EngineeringProjectSnapshot,
+): Record<string, unknown> {
+  const brief = snapshot.framing?.proposedBrief;
+  const review = snapshot.framing?.proposalReview;
+  if (!brief || review?.status !== "pending") return {};
+  return {
+    nextTool: "project_brief_confirm",
+    briefSnapshotId: brief.id,
+    briefRevision: brief.revision,
+    inputFingerprint: review.inputFingerprint,
   };
 }
 

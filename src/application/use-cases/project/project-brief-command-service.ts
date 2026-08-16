@@ -281,7 +281,11 @@ export class ProjectBriefCommandService {
           !question.options.some((option) => option.value === command.answer.value)
         ) {
           invalidInput(
-            `Answer ${command.answer.id} must use one bounded option from question ${question.id}.`,
+            `Answer ${command.answer.id} value ${
+              JSON.stringify(command.answer.value)
+            } must equal one options[].value of question ${question.id}: ${
+              question.options.map((option) => option.value).join(", ")
+            }.`,
           );
         }
         if (command.answer.kind === "unknown" && !question.allowUnknown) {
@@ -712,7 +716,11 @@ function validateQuestion(input: ProjectQuestionProposalInput): void {
     optionValues.add(option.value);
   }
   if (!optionValues.has(input.recommendation.value)) {
-    invalidInput("question recommendation must match one bounded option.");
+    invalidInput(
+      `question.recommendation.value ${
+        JSON.stringify(input.recommendation.value)
+      } must equal one options[].value: ${[...optionValues].join(", ")}.`,
+    );
   }
   if (typeof input.allowUnknown !== "boolean") {
     invalidInput("question.allowUnknown must be boolean.");
@@ -803,7 +811,7 @@ function validateBriefItems(items: readonly ProjectBriefItem[]): void {
     if (isProjectBriefGateKind(item.kind)) {
       if (!Object.prototype.hasOwnProperty.call(item, "dependsOnItemIds")) {
         invalidInput(
-          `V2 gate ${item.id} must explicitly declare dependsOnItemIds; use [] only for declared independence.`,
+          `items[${index}] kind=${item.kind} id=${item.id} requires dependsOnItemIds; omit is invalid, use [] to declare independence.`,
         );
       }
       stringArray(item.dependsOnItemIds!, `items[${index}].dependsOnItemIds`);
@@ -822,6 +830,11 @@ function validateBriefItems(items: readonly ProjectBriefItem[]): void {
       );
     }
     if (item.kind === "assumption") {
+      if (item.owner === undefined || item.reviewTrigger === undefined) {
+        invalidInput(
+          `items[${index}] kind=assumption id=${item.id} requires owner and reviewTrigger.`,
+        );
+      }
       nonEmpty(item.owner, `items[${index}].owner`);
       nonEmpty(item.reviewTrigger, `items[${index}].reviewTrigger`);
     }
@@ -847,10 +860,10 @@ function validateBriefItems(items: readonly ProjectBriefItem[]): void {
       }
     }
   }
-  if (objectives !== 1) invalidInput("A project brief needs exactly one objective.");
-  if (missions === 0) invalidInput("A project brief needs a mission scenario.");
-  if (successCriteria === 0) {
-    invalidInput("A project brief needs a measurable success criterion.");
+  if (objectives !== 1 || missions === 0 || successCriteria === 0) {
+    invalidInput(
+      `items must include exactly one objective, at least one mission-scenario, and at least one success-criterion (got objective=${objectives}, mission-scenario=${missions}, success-criterion=${successCriteria}).`,
+    );
   }
 }
 

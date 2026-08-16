@@ -95,6 +95,145 @@ Deno.test(
   },
 );
 
+Deno.test("project_question_propose names the bounded options when recommendation is outside them", async () => {
+  const service = serviceFor(new MemoryProjectStore());
+  const project = await start(service);
+  const error = await assertRejects(
+    () =>
+      service.proposeQuestion(AGENT, {
+        ...context("question-unbounded-reco", project.revision),
+        question: {
+          id: "mission",
+          prompt: "Which initial operating scenario should the product prove?",
+          whyItMatters: "It bounds the architecture and verification plan.",
+          recommendation: {
+            value: "invented-scenario",
+            rationale: "Not one of the offered options.",
+            confidence: "medium",
+          },
+          options: [{
+            value: "bounded-demonstration",
+            label: "Bounded demonstration",
+            consequences: "The first proof stays reviewable.",
+          }],
+          allowUnknown: true,
+          risk: "reversible",
+          evidenceNeeded: ["reviewed operating scenario"],
+        },
+      }),
+    EngineeringProjectCommandError,
+  );
+  assertEquals(error.code, "invalid_input");
+  assertStringIncludes(error.message, '"invented-scenario"');
+  assertStringIncludes(error.message, "bounded-demonstration");
+});
+
+Deno.test("project_answer_record names the bounded options when the value is outside them", async () => {
+  const service = serviceFor(new MemoryProjectStore());
+  let project = await start(service);
+  project = await service.proposeQuestion(AGENT, {
+    ...context("question-mission", project.revision),
+    question: {
+      id: "mission",
+      prompt: "Which initial operating scenario should the product prove?",
+      whyItMatters: "It bounds the architecture and verification plan.",
+      recommendation: {
+        value: "bounded-demonstration",
+        rationale: "It is observable and can be tested incrementally.",
+        confidence: "medium",
+      },
+      options: [{
+        value: "bounded-demonstration",
+        label: "Bounded demonstration",
+        consequences: "The first proof stays reviewable.",
+      }],
+      allowUnknown: true,
+      risk: "reversible",
+      evidenceNeeded: ["reviewed operating scenario"],
+    },
+  });
+  const error = await assertRejects(
+    () =>
+      service.recordAnswer(AGENT, {
+        ...context("answer-unbounded", project.revision),
+        answer: {
+          id: "answer-mission",
+          questionId: "mission",
+          kind: "provided",
+          value: "invented-scenario",
+          source: { kind: "human", reference: "conversation:turn-2" },
+        },
+      }),
+    EngineeringProjectCommandError,
+  );
+  assertEquals(error.code, "invalid_input");
+  assertStringIncludes(error.message, '"invented-scenario"');
+  assertStringIncludes(error.message, "bounded-demonstration");
+});
+
+Deno.test("project_brief_propose names the missing required kinds", async () => {
+  const service = serviceFor(new MemoryProjectStore());
+  const project = await start(service);
+  const error = await assertRejects(
+    () =>
+      service.proposeBrief(AGENT, {
+        ...context("propose-no-kinds", project.revision),
+        items: [{
+          id: "c1",
+          kind: "constraint",
+          statement: "Stay on the behave branch.",
+          sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        }, {
+          id: "c2",
+          kind: "constraint",
+          statement: "Do not open make or buy.",
+          sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        }, {
+          id: "c3",
+          kind: "constraint",
+          statement: "Do not invent thresholds.",
+          sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        }],
+      }),
+    EngineeringProjectCommandError,
+  );
+  assertEquals(error.code, "invalid_input");
+  assertStringIncludes(error.message, "objective=0");
+  assertStringIncludes(error.message, "mission-scenario=0");
+  assertStringIncludes(error.message, "success-criterion=0");
+});
+
+Deno.test("project_brief_propose names the omitted V2 gate dependency field", async () => {
+  const service = serviceFor(new MemoryProjectStore());
+  const project = await start(service);
+  const error = await assertRejects(
+    () =>
+      service.proposeBrief(AGENT, {
+        ...context("propose-missing-deps", project.revision),
+        items: [{
+          id: "objective",
+          kind: "objective",
+          statement: "Demonstrate a reviewable system safely.",
+          sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        }, {
+          id: "mission",
+          kind: "mission-scenario",
+          statement: "Demonstrate a bounded operating scenario.",
+          sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        }, {
+          id: "success",
+          kind: "success-criterion",
+          statement: "Complete the reviewed scenario.",
+          sourceRefs: [{ kind: "intent", reference: "conversation:turn-1" }],
+        }],
+      }),
+    EngineeringProjectCommandError,
+  );
+  assertEquals(error.code, "invalid_input");
+  assertStringIncludes(error.message, "kind=success-criterion");
+  assertStringIncludes(error.message, "requires dependsOnItemIds");
+});
+
 Deno.test("a project exists from first intent and framing stays inside it", async () => {
   const store = new MemoryProjectStore();
   const service = serviceFor(store);

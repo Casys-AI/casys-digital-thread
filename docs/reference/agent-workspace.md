@@ -93,33 +93,33 @@ These pairs look related and are **not** substitutes.
 
 The agent talks **only** to this repo’s MCP server (`http://127.0.0.1:3020/mcp`).
 Provider MCP ports are private backend dependencies. Loopback CLI:
-`deno task mcp:call --name=<tool> --args='{}'`. It fills omitted `issuedAt` only
-when the arguments already include `commandId`. `cockpit_focus_set` may omit
+`deno task mcp:call --name=<tool> --args='{}'`. It fills omitted `issuedAt` only when
+the arguments already include `commandId`. `cockpit_focus_set` may omit
 `expectedRevision`. `deno task preview:thread` follows cockpit focus unless
 `--project-id=` pins a vehicle.
 
 ### Project lifecycle
 
-| Tool                                                               | Authority        | Effect                                                         |
-| ------------------------------------------------------------------ | ---------------- | -------------------------------------------------------------- |
-| `project_start`                                                    | Agent mutation   | Create schema-3.0 project from plain-language intent           |
-| `project_snapshot`                                                 | Read             | Current project, decisions, runs, receipts                     |
-| `project_question_propose`                                         | Agent mutation   | One framing question                                           |
-| `project_answer_record`                                            | Agent or human   | Sourced answer or explicit unknown                             |
-| `project_brief_propose`                                            | Agent mutation   | Living brief revision; not canonical                           |
-| `project_brief_confirm`                                            | Human MRTR       | Promote exact brief revision                                   |
-| `project_plan_publish`                                             | Agent mutation   | Unexecuted plan from approved brief only                       |
-| `project_change_append`                                            | Agent mutation   | Append-only next change; never rewrite history                 |
-| `project_decision_propose`                                         | Agent mutation   | Typed proposal                                                 |
-| `project_decision_approve` / `project_decision_reject`             | Human MRTR       | Exact proposal only                                            |
-| `project_agent_run_queue`                                          | Bounded mutation | Server derives run id, basis, summary                          |
-| `project_agent_run_execute`                                        | Server dispatch  | One queued registered operation                                |
-| `project_agent_run_cancel`                                         | Human MRTR       | Still-queued run only                                          |
-| `project_agent_run_plan_get`                                       | Read             | Inspect sealed `resolved-operation-plan/2.0`; does not execute |
-| `project_work_item_reconcile_successor`                            | Recovery         | Close an orphan after a real successor                         |
-| `project_work_item_supersede_unstarted`                            | Recovery         | Replace unstarted work                                         |
-| `cockpit_focus_set` / `cockpit_focus_snapshot`                     | UI routing       | Point the cockpit at one durable project                       |
-| `project_review_intent_list` / `project_review_intent_acknowledge` | Review outbox    | Receipt of a Workbench intent; never an approval               |
+| Tool                                                               | Authority        | Effect                                                                                                                              |
+| ------------------------------------------------------------------ | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `project_start`                                                    | Agent mutation   | Create schema-3.0 project from plain-language intent                                                                                |
+| `project_snapshot`                                                 | Read             | Current project, decisions, runs, receipts                                                                                          |
+| `project_question_propose`                                         | Agent mutation   | One framing question                                                                                                                |
+| `project_answer_record`                                            | Agent or human   | Sourced answer or explicit unknown                                                                                                  |
+| `project_brief_propose`                                            | Agent mutation   | Living brief revision; not canonical. Result carries `nextTool`, `briefSnapshotId`, `briefRevision`, `inputFingerprint` for confirm |
+| `project_brief_confirm`                                            | Human MRTR       | Promote that exact pending brief                                                                                                    |
+| `project_plan_publish`                                             | Agent mutation   | Unexecuted plan from approved brief only                                                                                            |
+| `project_change_append`                                            | Agent mutation   | Append-only next change; never rewrite history                                                                                      |
+| `project_decision_propose`                                         | Agent mutation   | Typed proposal                                                                                                                      |
+| `project_decision_approve` / `project_decision_reject`             | Human MRTR       | Exact proposal only                                                                                                                 |
+| `project_agent_run_queue`                                          | Bounded mutation | Server derives run id, basis, summary                                                                                               |
+| `project_agent_run_execute`                                        | Server dispatch  | One queued registered operation                                                                                                     |
+| `project_agent_run_cancel`                                         | Human MRTR       | Still-queued run only                                                                                                               |
+| `project_agent_run_plan_get`                                       | Read             | Inspect sealed `resolved-operation-plan/2.0`; does not execute                                                                      |
+| `project_work_item_reconcile_successor`                            | Recovery         | Close an orphan after a real successor                                                                                              |
+| `project_work_item_supersede_unstarted`                            | Recovery         | Replace unstarted work                                                                                                              |
+| `cockpit_focus_set` / `cockpit_focus_snapshot`                     | UI routing       | Point the cockpit at one durable project                                                                                            |
+| `project_review_intent_list` / `project_review_intent_acknowledge` | Review outbox    | Receipt of a Workbench intent; never an approval                                                                                    |
 
 ### Architecture SysML frontend (agent-authored)
 
@@ -167,18 +167,18 @@ How-to: [Compile brief parameters](../how-to/compile-brief-parameters.md).
 
 ### Technical compilation / isolated CAD
 
-| Tool                                        | Writes                   | Grant                                                              |
-| ------------------------------------------- | ------------------------ | ------------------------------------------------------------------ |
-| `project_technical_source_capture`          | Draft CAS                | Opaque source+analysis reference                                   |
-| `project_technical_compilation_preview`     | Review draft CAS         | `decisionParameters` for `compile.seal-admission@1` only           |
-| `project_admitted_geometry_export`          | Geometry **draft**       | Parameters for `design.write-geometry@1`. Not isolated execution   |
-| `project_build123d_execution_review`        | None                     | Parameters for `design.execute-build123d@1`. No capability         |
-| `project_isolated_geometry_seal_review`     | None                     | Parameters for `design.seal-isolated-geometry@1`. No STEP bytes    |
-| `project_vector_correction_review`          | None                     | Parameters for `design.apply-vector-correction@1`. No Thread write |
-| `project_sensitivity_base_evaluation_review` | None                    | Ready only if study metrics join Thread requirements exactly       |
-| `project_corrected_admission_review`        | None                     | Parameters for `compile.seal-admission@1` from a corrected source  |
-| `project_modelica_qualified_kit_run_review` | None                     | Parameters for the one local Modelica kit                          |
-| `project_geometry_preview`                  | Geometry draft (sandbox) | Historical MCP path; registered only if sandbox is composed        |
+| Tool                                         | Writes                   | Grant                                                              |
+| -------------------------------------------- | ------------------------ | ------------------------------------------------------------------ |
+| `project_technical_source_capture`           | Draft CAS                | Opaque source+analysis reference                                   |
+| `project_technical_compilation_preview`      | Review draft CAS         | `decisionParameters` for `compile.seal-admission@1` only           |
+| `project_admitted_geometry_export`           | Geometry **draft**       | Parameters for `design.write-geometry@1`. Not isolated execution   |
+| `project_build123d_execution_review`         | None                     | Parameters for `design.execute-build123d@1`. No capability         |
+| `project_isolated_geometry_seal_review`      | None                     | Parameters for `design.seal-isolated-geometry@1`. No STEP bytes    |
+| `project_vector_correction_review`           | None                     | Parameters for `design.apply-vector-correction@1`. No Thread write |
+| `project_sensitivity_base_evaluation_review` | None                     | Ready only if study metrics join Thread requirements exactly       |
+| `project_corrected_admission_review`         | None                     | Parameters for `compile.seal-admission@1` from a corrected source  |
+| `project_modelica_qualified_kit_run_review`  | None                     | Parameters for the one local Modelica kit                          |
+| `project_geometry_preview`                   | Geometry draft (sandbox) | Historical MCP path; registered only if sandbox is composed        |
 
 ## 5. Registered operations
 
@@ -254,13 +254,13 @@ initial `project_plan_publish`. See
 
 Observed on the real agent path. Contract facts, not style.
 
-| Lesson                                            | Exact rule                                                                                                                                                                                                                                     | When it fails                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Every SysON write names its predecessor work item | Seed `dependsOnWorkItemIds` **must** include the `baseline.from-approved-brief@1` work item. Later SysON writes should name their predecessor the same way for sequencing.                                                                     | Seed only: the executor refuses at `project_agent_run_execute` with `The SysON model seed must explicitly depend on the approved-brief documentary baseline work item.` Append, propose and queue accept the omission. Architecture and requirements resolve the predecessor from the Thread (seed capture / architecture tip), not from `dependsOnWorkItemIds`. |
-| Requirement thresholds are integers               | `requirement.<slug>.threshold` is a safe integer. SysON 0.5.1 cannot round-trip a decimal literal through `syson_constraint_extract` (`LiteralRational`).                                                                                      | Grammar rejects at `project_decision_propose`. Message: threshold must be a safe integer because SysON 0.5.1 cannot round-trip decimal literals through `syson_constraint_extract`.                                                                                                                                                                              |
-| Seed MRTR is closed                               | Allowed keys: `seed.schemaVersion`, `seed.scope`, `seed.operation`, `model.name`. `model.name` is pinned to the server-owned role `system model`. `fingerprintSysonModelSeedProposal` is the envelope digest, not the MRTR `inputFingerprint`. | Grammar rejects a free-form key or any other `model.name` at `project_decision_propose`.                                                                                                                                                                                                                                                                         |
-| Study metric ids must Object.is-equal Thread requirement metrics | `analyze.run-fea-sensitivity@1` publishes `sensitivity-base-<metric>-<digest>`. `verify.evaluate-sensitivity-base@1` joins only when `metric` is the Thread requirement metric. | Historical dl05 r16: study `assembly_max_*` vs requirements `maxDisplacement` / `maxVonMises` → `UNLINKED`. A later isolated reseal on that atelier joined. Do not invent a mapping. Do not replay r16. New project: [run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md). |
-| Proof-run evaluations do not authorize a correction | `design.apply-vector-correction@1` accepts only a fail that cites `sensitivity-base-<metric>-<digest>`. | A `@2` `pass` on `calculix-observation-*` is a different authority. A joined study-base `pass` also does not apply a correction. |
+| Lesson                                                           | Exact rule                                                                                                                                                                                                                                     | When it fails                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every SysON write names its predecessor work item                | Seed `dependsOnWorkItemIds` **must** include the `baseline.from-approved-brief@1` work item. Later SysON writes should name their predecessor the same way for sequencing.                                                                     | Seed only: the executor refuses at `project_agent_run_execute` with `The SysON model seed must explicitly depend on the approved-brief documentary baseline work item.` Append, propose and queue accept the omission. Architecture and requirements resolve the predecessor from the Thread (seed capture / architecture tip), not from `dependsOnWorkItemIds`. |
+| Requirement thresholds are integers                              | `requirement.<slug>.threshold` is a safe integer. SysON 0.5.1 cannot round-trip a decimal literal through `syson_constraint_extract` (`LiteralRational`).                                                                                      | Grammar rejects at `project_decision_propose`. Message: threshold must be a safe integer because SysON 0.5.1 cannot round-trip decimal literals through `syson_constraint_extract`.                                                                                                                                                                              |
+| Seed MRTR is closed                                              | Allowed keys: `seed.schemaVersion`, `seed.scope`, `seed.operation`, `model.name`. `model.name` is pinned to the server-owned role `system model`. `fingerprintSysonModelSeedProposal` is the envelope digest, not the MRTR `inputFingerprint`. | Grammar rejects a free-form key or any other `model.name` at `project_decision_propose`.                                                                                                                                                                                                                                                                         |
+| Study metric ids must Object.is-equal Thread requirement metrics | `analyze.run-fea-sensitivity@1` publishes `sensitivity-base-<metric>-<digest>`. `verify.evaluate-sensitivity-base@1` joins only when `metric` is the Thread requirement metric.                                                                | Historical dl05 r16: study `assembly_max_*` vs requirements `maxDisplacement` / `maxVonMises` → `UNLINKED`. A later isolated reseal on that atelier joined. Do not invent a mapping. Do not replay r16. New project: [run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md).                                                                |
+| Proof-run evaluations do not authorize a correction              | `design.apply-vector-correction@1` accepts only a fail that cites `sensitivity-base-<metric>-<digest>`.                                                                                                                                        | A `@2` `pass` on `calculix-observation-*` is a different authority. A joined study-base `pass` also does not apply a correction.                                                                                                                                                                                                                                 |
 
 Limit of the seed grammar: `assertProposalMatchesOperationGrammar` is project-agnostic.
 It cannot pin `model.name` to `projectId` or `project.project.name`. The executor does
@@ -343,14 +343,14 @@ flowchart TD
   geomA --> dfm["industrialize.run-dfm-checks@1"]
 ```
 
-Three judgement branches hang off that same canonical STEP. Exact ops above;
-do not invent a fourth join.
+Three judgement branches hang off that same canonical STEP. Exact ops above; do not
+invent a fourth join.
 
-| Branch | Played on dl05? | Independent verdict | Shared cause |
-| --- | --- | --- | --- |
-| Behave (CalculiX / Modelica / study-base) | Yes | A `@2` `pass` is not a DFM `pass` | Same STEP; a later CAD write retires the old proof |
-| Make (measured DFM; printability is documentary) | No | A DFM `fail` is not a `z*` grant | Same STEP only. Isolated geometry is not a DFM target |
-| Buy (BOM / ERP / cost) | No registered seal | — | Same part identities when a binding exists |
+| Branch                                           | Played on dl05?    | Independent verdict               | Shared cause                                          |
+| ------------------------------------------------ | ------------------ | --------------------------------- | ----------------------------------------------------- |
+| Behave (CalculiX / Modelica / study-base)        | Yes                | A `@2` `pass` is not a DFM `pass` | Same STEP; a later CAD write retires the old proof    |
+| Make (measured DFM; printability is documentary) | No                 | A DFM `fail` is not a `z*` grant  | Same STEP only. Isolated geometry is not a DFM target |
+| Buy (BOM / ERP / cost)                           | No registered seal | —                                 | Same part identities when a binding exists            |
 
 A documentary r1 or a SysON container r2 is **not** an architecture, a CAD model, a
 measurement, or a verdict.

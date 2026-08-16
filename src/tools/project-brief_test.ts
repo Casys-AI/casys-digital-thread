@@ -96,6 +96,10 @@ Deno.test("project MCP framing uses one project identity from intent through app
     const proposal = framing.proposedBrief as Record<string, unknown>;
     const review = framing.proposalReview as Record<string, unknown>;
     assertEquals(project.revision, 2);
+    assertEquals(project.nextTool, "project_brief_confirm");
+    assertEquals(project.briefSnapshotId, proposal.id);
+    assertEquals(project.briefRevision, proposal.revision);
+    assertEquals(project.inputFingerprint, review.inputFingerprint);
     assertEquals(proposal.contractVersion, "2.0");
     assertEquals(
       ((proposal.items as Array<Record<string, unknown>>).find((item) =>
@@ -311,15 +315,12 @@ Deno.test("local YOLO confirms the exact brief directly with a persisted human s
         dependsOnItemIds: [],
       }],
     });
-    const framing = (proposed.structuredContent as Record<string, unknown>)
-      .framing as Record<string, unknown>;
-    const proposal = framing.proposedBrief as Record<string, unknown>;
-    const review = framing.proposalReview as Record<string, unknown>;
+    const proposedContent = proposed.structuredContent as Record<string, unknown>;
     const result = await client.tool("project_brief_confirm", {
       ...common("confirm-brief-yolo", 2),
-      briefSnapshotId: proposal.id,
-      briefRevision: proposal.revision,
-      inputFingerprint: review.inputFingerprint,
+      briefSnapshotId: proposedContent.briefSnapshotId,
+      briefRevision: proposedContent.briefRevision,
+      inputFingerprint: proposedContent.inputFingerprint,
       rationale: "Proceed locally.",
     });
     assertEquals(result.resultType, "complete");
@@ -334,7 +335,7 @@ Deno.test("local YOLO confirms the exact brief directly with a persisted human s
     });
     assertEquals(
       approval.rationale,
-      `YOLO local startup opt-in auto-approved positive confirmation of brief ${proposal.id}@${proposal.revision} without MCP elicitation. Caller rationale: Proceed locally.`,
+      `YOLO local startup opt-in auto-approved positive confirmation of brief ${proposedContent.briefSnapshotId}@${proposedContent.briefRevision} without MCP elicitation. Caller rationale: Proceed locally.`,
     );
   } finally {
     await http.shutdown();
