@@ -217,6 +217,10 @@ Applied only in the UI, in this order:
    consumptions unless they are the sole path).
 7. Compact one unambiguous `PartUsage --typed_by--> PartDefinition` into
    `usage : Definition` (UI-only edge id `ui:sysml-composite:…`).
+8. Compact one unambiguous authoritative STEP + GLB preview onto the
+   STEP (UI-only edge id `ui:cad-presentation:…`). Two CAS identities
+   stay exact; the agent still publishes both. Focusing either member
+   expands the pair.
 
 On this head after (1)+(3)+(4): campaign documents, `sensitivity-base-*` /
 `sensitivity-d-*` observations, `CalculiX input.step` and
@@ -231,9 +235,10 @@ solver file pair as a second CAD product. One Graphology + dagre + Sigma
 surface. The SVG Map is not a second organisation of this dossier.
 
 Kept construction facts include Architecture, Requirements: Arm, geometry
-bundle, four STEP/GLB pairs, FEA proof seal, two proof observations,
-two proof evaluations, two study-base evaluations, SysML `arm : Arm`
-and siblings.
+bundle, four STEP nodes that each carry their GLB presentation, FEA
+proof observations, two proof evaluations, two study-base evaluations,
+SysML `arm : Arm` and siblings. Activity still lists STEP and GLB as
+separate recorded artifacts.
 
 ## Three construction chains on this head
 

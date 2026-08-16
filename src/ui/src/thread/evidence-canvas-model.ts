@@ -27,6 +27,11 @@ import {
   isSupportingNode,
 } from "./essential-graph-filter.ts";
 import {
+  cadPresentationSiblingOf,
+  compactCadPresentationPairs,
+  mergePresentationCompacts,
+} from "./cad-presentation-projection.ts";
+import {
   compactSysmlPartPairs,
   graphRefKey,
 } from "./sysml-composite-projection.ts";
@@ -321,7 +326,7 @@ export function buildEvidenceCanvasProjection(
       model.nodes as ThreadGraphNode[],
       allEdges,
     );
-    const compacted = compactSysmlPartPairs(model, filtered);
+    const compacted = compactEvidencePresentation(model, filtered);
     return {
       nodes: compacted.nodes,
       edges: compacted.edges,
@@ -378,7 +383,10 @@ export function buildEvidenceCanvasProjection(
     model.nodes as ThreadGraphNode[],
     allEdgesFallback,
   );
-  const compactedFallback = compactSysmlPartPairs(model, filteredFallback);
+  const compactedFallback = compactEvidencePresentation(
+    model,
+    filteredFallback,
+  );
   return {
     nodes: compactedFallback.nodes,
     edges: compactedFallback.edges,
@@ -396,6 +404,57 @@ export function buildEvidenceCanvasProjection(
  * re-layout or camera reset.
  */
 export const LOCAL_VIEW_MAX_DEPTH = 3 as const;
+
+function withCadPresentationSibling(
+  model: EvidenceGraphModel,
+  neighborhood: {
+    readonly nodes: readonly ThreadGraphNode[];
+    readonly edges: readonly ThreadGraphEdge[];
+  },
+  focusRef: ThreadGraphRef,
+): {
+  readonly nodes: readonly ThreadGraphNode[];
+  readonly edges: readonly ThreadGraphEdge[];
+} {
+  const siblingRef = cadPresentationSiblingOf(model, focusRef);
+  if (!siblingRef) return neighborhood;
+  const siblingKey = graphRefKey(siblingRef);
+  if (neighborhood.nodes.some((node) => graphRefKey(node.ref) === siblingKey)) {
+    return neighborhood;
+  }
+  const sibling = model.nodes.find((node) =>
+    graphRefKey(node.ref) === siblingKey
+  );
+  if (!sibling) return neighborhood;
+  const nodes = [...neighborhood.nodes, sibling];
+  const visible = new Set(nodes.map((node) => graphRefKey(node.ref)));
+  const existing = new Set(neighborhood.edges.map((edge) => edge.id));
+  const extra = [
+    ...model.edges,
+    ...model.stubs.map(stubToEdge),
+  ].filter((edge) =>
+    visible.has(graphRefKey(edge.from)) &&
+    visible.has(graphRefKey(edge.to)) &&
+    !existing.has(edge.id)
+  );
+  return { nodes, edges: [...neighborhood.edges, ...extra] };
+}
+
+function compactEvidencePresentation(
+  canonical: {
+    readonly nodes: readonly ThreadGraphNode[];
+    readonly edges: readonly ThreadGraphEdge[];
+  },
+  visible: {
+    readonly nodes: readonly ThreadGraphNode[];
+    readonly edges: readonly ThreadGraphEdge[];
+  },
+  expandedRef?: ThreadGraphRef,
+) {
+  const sysml = compactSysmlPartPairs(canonical, visible, expandedRef);
+  const cad = compactCadPresentationPairs(canonical, sysml, expandedRef);
+  return mergePresentationCompacts(sysml, cad);
+}
 
 /**
  * BFS depth of every neighbourhood node from the focus, over undirected
@@ -459,8 +518,17 @@ function localProjection(
   },
   foldedInstrumentCount: number,
 ): EvidenceCanvasProjection {
-  const depths = bfsDepths(focusRef, neighborhood);
-  const compacted = compactSysmlPartPairs(model, neighborhood, focusRef);
+  const neighborhoodWithPair = withCadPresentationSibling(
+    model,
+    neighborhood,
+    focusRef,
+  );
+  const depths = bfsDepths(focusRef, neighborhoodWithPair);
+  const compacted = compactEvidencePresentation(
+    model,
+    neighborhoodWithPair,
+    focusRef,
+  );
   const compactedDepths = new Map<string, number>();
   for (const node of compacted.nodes) {
     const key = graphRefKey(node.ref);
@@ -589,7 +657,7 @@ export function buildExplorationKindProjection(
     visibleKeys.has(`${edge.to.kind}:${edge.to.id}`)
   );
   const hiddenByKind = essential.nodes.length - visibleNodes.length;
-  const compacted = compactSysmlPartPairs(model, {
+  const compacted = compactEvidencePresentation(model, {
     nodes: visibleNodes,
     edges: visibleEdges,
   });

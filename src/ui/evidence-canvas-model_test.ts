@@ -460,6 +460,65 @@ Deno.test("Evidence Map and Exploration share the same definition-backed SysML c
   assertEquals(map.displayedCount, 3);
 });
 
+Deno.test("Evidence canvas draws STEP + GLB as one node and keeps both identities", () => {
+  const definition = node("arm-def", "part-definition", "syson");
+  const step: ThreadGraphNode = {
+    ...node("arm-step", "artifact", "build123d-sandbox"),
+    artifactKind: "step",
+    label: "Authoritative STEP: Arm",
+  };
+  const preview: ThreadGraphNode = {
+    ...node("arm-glb", "artifact", "build123d-sandbox"),
+    artifactKind: "cad-model",
+    label: "GLTF: Arm",
+  };
+  const structural = (
+    id: string,
+    from: ThreadGraphRef,
+    to: ThreadGraphRef,
+    relation: ThreadGraphEdge["relation"],
+  ): ThreadGraphEdge => ({
+    id,
+    from,
+    to,
+    relation,
+    rationale: id,
+    origin: "structure",
+  });
+  const model = buildEvidenceGraphModel({
+    nodes: [definition, step, preview],
+    edges: [
+      structural("arm-step", definition.ref, step.ref, "represented_by"),
+      structural("arm-glb", definition.ref, preview.ref, "represented_by"),
+    ],
+  }, emptyFamilyGraph);
+  const projection = buildEvidenceCanvasProjection(
+    model,
+    0,
+    undefined,
+    new Map(),
+  );
+  assertEquals(projection.nodes.map((item) => item.ref.id).sort(), [
+    "arm-def",
+    "arm-step",
+  ]);
+  assertEquals(
+    projection.nodes.find((item) => item.ref.id === "arm-step")?.summary,
+    "Authoritative STEP: Arm plus GLB presentation · 2 exact artifact identities",
+  );
+  const focused = buildEvidenceCanvasProjection(
+    model,
+    0,
+    preview.ref,
+    new Map(),
+  );
+  assertEquals(focused.nodes.map((item) => item.ref.id).sort(), [
+    "arm-def",
+    "arm-glb",
+    "arm-step",
+  ]);
+});
+
 Deno.test("focusing a compact SysML member restores the exact usage-definition pair", () => {
   const root = node("def-root", "part-definition", "syson");
   const usage = node("usage-stem", "part-usage", "syson");

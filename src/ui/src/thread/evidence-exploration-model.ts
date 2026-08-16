@@ -47,7 +47,7 @@ import {
   displayedGraphEdgeOccurrenceKey,
   graphRelationAccessibleLabel,
 } from "./graph-selection-model.ts";
-import { isUiOnlySysmlCompositeEdge } from "./sysml-composite-projection.ts";
+import { isUiOnlyPresentationEdge } from "./cad-presentation-projection.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -274,7 +274,7 @@ export function buildExplorationRelationRecords(
   const visibleEdges = edges.filter((edge) =>
     visibleNodeKeys.has(nodeKey(edge.from)) &&
     visibleNodeKeys.has(nodeKey(edge.to)) &&
-    !isUiOnlySysmlCompositeEdge(edge)
+    !isUiOnlyPresentationEdge(edge)
   );
   const keyFor = makeSigmaEdgeKeyFactory(visibleEdges);
   const groupByMember = new Map<ThreadGraphEdge, ExplorationVisualEdgeGroup>();
@@ -760,7 +760,7 @@ function isCollapsibleStructuralRelation(edge: ThreadGraphEdge): boolean {
 }
 
 function isRecordedCanvasEdge(edge: ThreadGraphEdge): boolean {
-  return !edge.id.startsWith("stub:") && !isUiOnlySysmlCompositeEdge(edge) &&
+  return !edge.id.startsWith("stub:") && !isUiOnlyPresentationEdge(edge) &&
     edge.analysis === undefined;
 }
 

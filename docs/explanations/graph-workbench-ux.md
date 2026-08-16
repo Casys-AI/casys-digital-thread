@@ -156,3 +156,7 @@ Provider solver envelopes (`solver-input`, `solver-result`) are folded
 the same way: `CalculiX input.step` is a byte-identical copy of the
 authoritative STEP, and `result.json` is the raw container of the
 already-painted observations. They are not a second build123d product.
+An authoritative STEP and its GLB preview are two recorded artifacts
+(the agent still publishes both hashes). The canvas draws them as one
+node so the dossier does not look like two CAD products. Focusing the
+node restores both identities.

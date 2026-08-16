@@ -31,7 +31,7 @@ import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import type { ThreadGraphRef } from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
-import { isUiOnlySysmlCompositeEdge } from "./sysml-composite-projection.ts";
+import { isUiOnlyPresentationEdge } from "./cad-presentation-projection.ts";
 
 export interface EvidenceExplorationProps {
   evidenceModel: EvidenceGraphModel;
@@ -164,7 +164,7 @@ export function EvidenceExploration({
     if (!compact) {
       sigma.on("clickEdge", ({ edge: edgeKey }) => {
         const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
-        if (!attrs || isUiOnlySysmlCompositeEdge(attrs.edge)) return;
+        if (!attrs || isUiOnlyPresentationEdge(attrs.edge)) return;
         onSelectionChangeRef.current?.({
           kind: "edge",
           id: attrs.edgeId,
