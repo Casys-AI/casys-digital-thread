@@ -38,10 +38,13 @@ not paraphrased.
 - [Author and seal architecture SysML](how-to/author-architecture-sysml.md) captures
   agent-authored closed-subset SysML, previews unresolved constructs, and seals a Thread
   document without inserting into SysON.
-- [Walk the post-proof loop](how-to/walk-the-post-proof-loop.md) is the A–Z
+- [Walk the post-proof loop](how-to/walk-the-post-proof-loop.md) is the **behave**
   continuation after FEA: join study-base observations, apply a correction only
-  on a real fail, capture `z*`, reseal, and run measured DFM on canonical STEP.
-  Local `desk-lamp-dl05` r16 is `UNLINKED` and `pass`; those labels stay.
+  on a real fail, capture `z*`, reseal. Measured DFM is the separate **make**
+  branch. Local `desk-lamp-dl05` r16 is `UNLINKED` and `pass`; those labels stay.
+- [Product direction](explanations/product-direction.md#three-judgement-branches)
+  names the three judgement branches (behave / make / buy). One STEP, no
+  cross-verdict.
 
 ## Legacy and golden records — audit, not operation
 

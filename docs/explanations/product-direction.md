@@ -150,3 +150,23 @@ decision, geometry appears, physics runs in the activity feed, named requirement
 or fail with margins, a correction updates the affected chain, and cost or manufacturing
 evidence remains inspectable. Anything that does not make that loop clearer is secondary
 to V1.
+
+## Three judgement branches
+
+One dossier, three questions. They share brief, architecture, part identities and
+the canonical `design.write-geometry@1` STEP. They do not share verdicts.
+
+| Branch | Question | What judges it today | What a fail may do |
+| --- | --- | --- | --- |
+| **Behave** | Does this design behave? | CalculiX proof `@2` / `@3`, Modelica simulation, study-base join | Only a study-base `fail` may authorize `design.apply-vector-correction@1` then a new CAD |
+| **Make** | Can we fabricate this STEP? | Measured DFM (`industrialize.run-dfm-checks@1`); printability / print-estimate stay documentary | Named violation only. Does not authorize a `z*` or a geometry write |
+| **Buy** | What is the configuration and cost? | Intended ERPNext / BOM / cost evidence | No registered BOM seal yet. A missing binding is a missing binding |
+
+A new canonical STEP supersedes prior behave / make / buy evidence of that
+geometry. Re-runs are new reviewed operations. One branch's `pass` never
+proves another.
+
+The constrained vehicles (`desk-lamp-dl04` / `desk-lamp-dl05`) have played
+**behave**. Make and buy stay later V1 work. Do not open those branches to
+make the current head look complete. A missing DFM or BOM card means that
+work was not run.

@@ -635,6 +635,23 @@ runtime evidence. Arbitrary agent-authored Modelica source and native CalculiX i
 decks are deliberately deferred. Later facts may feed the analysis graph only as
 qualified assertions with exact evidence; Graphology remains a read-only projection.
 
+## Three judgement branches
+
+Behave, make, and buy share the canonical STEP and part identities. They do
+not share verdicts. Product wording:
+[Three judgement branches](../explanations/product-direction.md#three-judgement-branches).
+Exact ops: [agent workspace golden path](agent-workspace.md#7-golden-path-generic-v3).
+
+| This | Is not |
+| --- | --- |
+| Study-base `fail` → `design.apply-vector-correction@1` | A DFM fail, a proof-run `@2` fail, or a BOM gap |
+| `industrialize.run-dfm-checks@1` | A CalculiX consumer, a `z*` grant, or isolated-geometry DFM |
+| A missing ERP / BOM binding | An implied part, a cost, or a fabricate verdict |
+| A new `design.write-geometry@1` STEP | A silent refresh of old FEA, DFM, or BOM facts |
+
+Constrained vehicles have played **behave**. Opening make or buy now is later
+V1 work, not a hole in the current authority boundary.
+
 ## Implementation status
 
 The pure technical compiler, exact source-analysis capture boundary, provider-free

@@ -127,9 +127,12 @@ the signed `z*` into the parent admission source.
 `compile.seal-admission@1` / `design.execute-build123d@1` / proof steps. Each
 stays its own MRTR.
 
-Measured DFM is a parallel branch on canonical `design.write-geometry@1` STEP:
-`industrialize.seal-dfm-case@1` then `industrialize.run-dfm-checks@1`. Isolated
-geometry is not a DFM target.
+The STEP then has **three** judgement branches: behave (this tutorial and the
+post-proof walk), make (measured DFM), buy (BOM / cost, not registered yet).
+They share the geometry identity, not verdicts. Measured DFM is
+`industrialize.seal-dfm-case@1` then `industrialize.run-dfm-checks@1` on
+canonical `design.write-geometry@1` STEP only. Isolated geometry is not a DFM
+target. Do not open make or buy to complete a behave head.
 
 Exact ids, the local r16 facts, and the fail-closed exits:
 [Walk the post-proof loop](../how-to/walk-the-post-proof-loop.md).

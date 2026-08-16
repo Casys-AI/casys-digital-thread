@@ -339,6 +339,15 @@ flowchart TD
   geomA --> dfm["industrialize.run-dfm-checks@1"]
 ```
 
+Three judgement branches hang off that same canonical STEP. Exact ops above;
+do not invent a fourth join.
+
+| Branch | Played on dl05? | Independent verdict | Shared cause |
+| --- | --- | --- | --- |
+| Behave (CalculiX / Modelica / study-base) | Yes | A `@2` `pass` is not a DFM `pass` | Same STEP; a later CAD write retires the old proof |
+| Make (measured DFM; printability is documentary) | No | A DFM `fail` is not a `z*` grant | Same STEP only. Isolated geometry is not a DFM target |
+| Buy (BOM / ERP / cost) | No registered seal | — | Same part identities when a binding exists |
+
 A documentary r1 or a SysON container r2 is **not** an architecture, a CAD model, a
 measurement, or a verdict.
 

@@ -6,8 +6,10 @@ generic twin. Both live only under gitignored `state/local/`.
 
 This page is the A–Z continuation after
 [Follow the engineering loop](../tutorials/first-engineering-loop.md) §4. It does
-not start a second proof. It walks join → correction document → corrected source
-→ reseal, plus measured DFM on canonical STEP.
+not start a second proof. It walks the **behave** branch: join → correction
+document → corrected source → reseal. Measured DFM on canonical STEP is the
+separate **make** branch. Buy (BOM / cost) has no registered seal yet. See
+[Three judgement branches](../explanations/product-direction.md#three-judgement-branches).
 
 The person never types a provider tool. The agent never invents a metric alias,
 a `z*`, a unit, or a DFM limit.
@@ -153,6 +155,8 @@ literal. A missing DFM card means DFM was not run, not that it passed.
 - Canonical geometry from isolated execution.
 - A committed golden. `state/local/` is gitignored.
 - Compiler F1 (inventory-driven qualification tables). That seam stays later.
+- The **make** or **buy** branches. A missing DFM or BOM card is not a gap in
+  this walk. Do not run them to complete a behave `pass`.
 
 When two operations look similar, read
 [agent workspace](../reference/agent-workspace.md) before calling either.

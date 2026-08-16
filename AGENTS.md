@@ -23,9 +23,12 @@ from UI copy or tool descriptions.
    — capture → analysis → MRTR → dispatch
 3. [Workspace map](docs/reference/workspace-map.md) — files, CAS roots, local ports
 4. [CLAUDE.md](CLAUDE.md) — commands, hexagonal rules, CM-01 retirement
-5. [Walk the post-proof loop](docs/how-to/walk-the-post-proof-loop.md) — join,
-   fail-only correction, `z*`, reseal, measured DFM. Local dl05 r16 is `UNLINKED`
-   and `pass`; do not invent a mapping or a fail.
+5. [Walk the post-proof loop](docs/how-to/walk-the-post-proof-loop.md) — **behave**
+   branch: join, fail-only correction, `z*`, reseal. Make (DFM) and buy (BOM)
+   are later. Local dl05 r16 is `UNLINKED` and `pass`; do not invent a mapping
+   or a fail.
+6. [Three judgement branches](docs/explanations/product-direction.md#three-judgement-branches)
+   — one STEP, three questions; verdicts do not cross.
 
 ## Immediate traps
 
