@@ -98,6 +98,35 @@ export function isAnalyzeInstrumentNode(node: ThreadGraphNode): boolean {
   return false;
 }
 
+/**
+ * Provider file envelopes whose essential counterpart is already on the
+ * Thread: the authoritative STEP (geometry) and the extracted observations
+ * (measures). `CalculiX input.step` is a byte-identical copy of the staged
+ * STEP; `CalculiX result.json` is the raw solver container. Painting either
+ * next to those facts looks like a second CAD product.
+ *
+ * Structural only (`artifactKind`). Never label or filename.
+ */
+const SOLVER_ENVELOPE_ARTIFACT_KINDS = new Set([
+  "solver-input",
+  "solver-result",
+]);
+
+export function isSolverEnvelopeNode(node: ThreadGraphNode): boolean {
+  return node.entityKind === "artifact" &&
+    node.artifactKind !== undefined &&
+    SOLVER_ENVELOPE_ARTIFACT_KINDS.has(node.artifactKind);
+}
+
+/**
+ * Default Evidence canvas fold. Campaign instruments stay experience, not
+ * a second study. Solver envelopes stay inspector records, not dossier
+ * products. The graph model emits stubs so a fold never severs a path.
+ */
+export function isFoldedEvidenceNode(node: ThreadGraphNode): boolean {
+  return isAnalyzeInstrumentNode(node) || isSolverEnvelopeNode(node);
+}
+
 // ---------------------------------------------------------------------------
 // Stub → edge conversion (for renderers that only understand ThreadGraphEdge)
 // ---------------------------------------------------------------------------

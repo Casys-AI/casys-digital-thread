@@ -16,7 +16,11 @@
  * This module is pure domain (no I/O, no Preact, no browser APIs).
  */
 
-import type { ThreadGraphEdge, ThreadGraphNode, ThreadGraphRef } from "./types.ts";
+import type {
+  ThreadGraphEdge,
+  ThreadGraphNode,
+  ThreadGraphRef,
+} from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Structural predicates
@@ -30,12 +34,11 @@ import type { ThreadGraphEdge, ThreadGraphNode, ThreadGraphRef } from "./types.t
  *
  * "solver-result" and "simulation-model" join "solver-input" here: all
  * three are raw provider output containers whose essential counterpart is
- * the ThreadObservation extracted from them. Showing the raw result file
- * next to its observation would duplicate the same engineering fact at
- * two abstraction levels; the condensed view collapses them to the
- * observation layer. Connector preservation still applies: if any of
- * these kinds is the sole path between two essential nodes it stays
- * visible (see applyEssentialFilter).
+ * the ThreadObservation extracted from them. The Evidence canvas also
+ * folds `solver-input` / `solver-result` earlier (`isSolverEnvelopeNode`)
+ * and stubs the authoritative STEP to those observations, so the pair
+ * cannot paint as a second CAD product. Connector preservation still
+ * applies if an envelope somehow remains the sole path.
  */
 export const SUPPORTING_ARTIFACT_KINDS: ReadonlySet<string> = new Set([
   "script",

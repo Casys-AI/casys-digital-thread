@@ -152,3 +152,7 @@ instrument observations) is folded from Evidence: it is accumulated
 neighbourhood experience, not a second construction study. Study-base
 evaluations stay on the Thread requirements they evaluate, so the experience
 remains attached to the dossier instead of floating as a separate graph.
+Provider solver envelopes (`solver-input`, `solver-result`) are folded
+the same way: `CalculiX input.step` is a byte-identical copy of the
+authoritative STEP, and `result.json` is the raw container of the
+already-painted observations. They are not a second build123d product.

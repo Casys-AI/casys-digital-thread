@@ -13,6 +13,8 @@ import {
   buildEvidenceCanvasProjection,
   buildExplorationKindProjection,
   isAnalyzeInstrumentNode,
+  isFoldedEvidenceNode,
+  isSolverEnvelopeNode,
   linkedEvidenceDetail,
   makeEvidenceComponentLabeler,
   paintedDossierMetric,
@@ -240,6 +242,77 @@ Deno.test("isAnalyzeInstrumentNode keeps non-sensitivity observations", () => {
   assertEquals(isAnalyzeInstrumentNode(n), false);
 });
 
+function artifactNode(
+  id: string,
+  system: string,
+  artifactKind: ThreadGraphNode["artifactKind"],
+): ThreadGraphNode {
+  return {
+    ...node(id, "artifact", system),
+    artifactKind,
+  };
+}
+
+Deno.test("isSolverEnvelopeNode folds CalculiX result.json", () => {
+  assertEquals(
+    isSolverEnvelopeNode(
+      artifactNode("calculix-result-json-abc", "mcp-calculix", "solver-result"),
+    ),
+    true,
+  );
+});
+
+Deno.test("isSolverEnvelopeNode folds CalculiX input.step", () => {
+  assertEquals(
+    isSolverEnvelopeNode(
+      artifactNode("calculix-input-step-abc", "mcp-calculix", "solver-input"),
+    ),
+    true,
+  );
+});
+
+Deno.test("isSolverEnvelopeNode keeps authoritative STEP and observations", () => {
+  assertEquals(
+    isSolverEnvelopeNode(
+      artifactNode("cad-asset-arm-step", "build123d-sandbox", "step"),
+    ),
+    false,
+  );
+  assertEquals(
+    isSolverEnvelopeNode(
+      artifactNode("cad-asset-arm-glb", "build123d-sandbox", "cad-model"),
+    ),
+    false,
+  );
+  assertEquals(
+    isSolverEnvelopeNode(
+      node("maxDisplacement", "observation", "mcp-calculix"),
+    ),
+    false,
+  );
+});
+
+Deno.test("isFoldedEvidenceNode covers campaign instruments and solver envelopes", () => {
+  assertEquals(
+    isFoldedEvidenceNode(
+      node("sensitivity-case-abc", "artifact", "digital-thread"),
+    ),
+    true,
+  );
+  assertEquals(
+    isFoldedEvidenceNode(
+      artifactNode("calculix-result-json-abc", "mcp-calculix", "solver-result"),
+    ),
+    true,
+  );
+  assertEquals(
+    isFoldedEvidenceNode(
+      artifactNode("cad-asset-arm-step", "build123d-sandbox", "step"),
+    ),
+    false,
+  );
+});
+
 // ---------------------------------------------------------------------------
 // 2 — stubToEdge
 // ---------------------------------------------------------------------------
@@ -420,7 +493,9 @@ Deno.test("focusing a compact SysML member restores the exact usage-definition p
     );
     assertEquals(detail.isFiltered, true);
     assertEquals(
-      detail.nodes.map((candidate) => `${candidate.ref.kind}:${candidate.ref.id}`)
+      detail.nodes.map((candidate) =>
+        `${candidate.ref.kind}:${candidate.ref.id}`
+      )
         .sort(),
       [
         "part-definition:def-root",
@@ -840,6 +915,81 @@ Deno.test(
     assertEquals(model.componentOf(admission.ref), 0);
     assertEquals(model.componentOf(evaluation.ref), 0);
     assertEquals(model.componentOf(requirement.ref), 0);
+  },
+);
+
+Deno.test(
+  "solver envelopes fold so the authoritative STEP reaches the observation",
+  () => {
+    const step = artifactNode(
+      "cad-asset-arm-step",
+      "build123d-sandbox",
+      "step",
+    );
+    const input = artifactNode(
+      "calculix-input-step-abc",
+      "mcp-calculix",
+      "solver-input",
+    );
+    const result = artifactNode(
+      "calculix-result-json-abc",
+      "mcp-calculix",
+      "solver-result",
+    );
+    const observation = node(
+      "maxDisplacement",
+      "observation",
+      "mcp-calculix",
+    );
+    const model = buildEvidenceGraphModel(
+      {
+        nodes: [step, input, result, observation],
+        edges: [
+          {
+            id: "step-input",
+            from: step.ref,
+            to: input.ref,
+            relation: "input_to",
+            rationale: "byte-identical staged STEP",
+            origin: "structure",
+          },
+          {
+            id: "input-result",
+            from: input.ref,
+            to: result.ref,
+            relation: "input_to",
+            rationale: "solver consumed the captured STEP",
+            origin: "structure",
+          },
+          {
+            id: "result-obs",
+            from: result.ref,
+            to: observation.ref,
+            relation: "source_of",
+            rationale: "observation extracted from result.json",
+            origin: "structure",
+          },
+        ],
+      },
+      emptyFamilyGraph,
+      { isAnalyzeInstrumentNode: isFoldedEvidenceNode },
+    );
+    const projection = buildEvidenceCanvasProjection(
+      model,
+      0,
+      undefined,
+      new Map(),
+    );
+    assertEquals(projection.nodes.map((item) => item.ref.id).sort(), [
+      "cad-asset-arm-step",
+      "maxDisplacement",
+    ]);
+    const stub = projection.edges.find((item) =>
+      item.id.startsWith("stub:") &&
+      item.from.id === "cad-asset-arm-step" &&
+      item.to.id === "maxDisplacement"
+    );
+    assertEquals(stub !== undefined, true);
   },
 );
 

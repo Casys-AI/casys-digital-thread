@@ -76,7 +76,7 @@ import { type ThreadGraphSelection } from "./graph.tsx";
 import {
   buildEvidenceCanvasProjection,
   buildExplorationKindProjection,
-  isAnalyzeInstrumentNode,
+  isFoldedEvidenceNode,
   linkedEvidenceDetail,
   paintedDossierMetric,
 } from "./evidence-canvas-model.ts";
@@ -471,7 +471,7 @@ export function ThreadWorkbench({
       ),
     );
     return buildEvidenceGraphModel(rawGraph, thread.evidenceFamilyGraph, {
-      isAnalyzeInstrumentNode,
+      isAnalyzeInstrumentNode: isFoldedEvidenceNode,
       intentionallyIsolatedSystems: [
         "openmodelica",
         "mcp-modelica",

@@ -207,25 +207,33 @@ Applied only in the UI, in this order:
    `sensitivity-case-`, `sensitivity-study-`, `sensitivity-edges-`,
    `sensitivity-relations-`, `sensitivity-base-evaluation-`, plus CAD/FEA
    artifacts and observations whose id contains `sensitivity`.
-4. Version-fold `supersedes` families.
-5. Essential mask (hide mesh / script / solver-input / changes /
+4. Fold provider solver envelopes (`isSolverEnvelopeNode`):
+   `solver-input` and `solver-result`. `CalculiX input.step` is a
+   byte-identical copy of the authoritative STEP; `CalculiX result.json`
+   is the raw container of the extracted observations. Neither is a
+   second build123d product. Stubs keep STEP → observation.
+5. Version-fold `supersedes` families.
+6. Essential mask (hide mesh / script / remaining envelopes / changes /
    consumptions unless they are the sole path).
-6. Compact one unambiguous `PartUsage --typed_by--> PartDefinition` into
+7. Compact one unambiguous `PartUsage --typed_by--> PartDefinition` into
    `usage : Definition` (UI-only edge id `ui:sysml-composite:…`).
 
-On this head after (1)+(3): campaign documents and `sensitivity-base-*` /
-`sensitivity-d-*` observations leave the canvas. **Study-base evaluations
-stay**, attached to the Thread requirements. Stubs keep the recorded path
-from the compilation admission (`via Sensitivity study case — folded`).
+On this head after (1)+(3)+(4): campaign documents, `sensitivity-base-*` /
+`sensitivity-d-*` observations, `CalculiX input.step` and
+`CalculiX result.json` leave the canvas. **Study-base evaluations stay**,
+attached to the Thread requirements. Stubs keep the recorded path from
+the compilation admission (`via Sensitivity study case — folded`) and
+from Authoritative STEP: Arm to the proof observations
+(`via CalculiX result.json — folded`).
 
-Painted Evidence (full canvas, essential mask): **32 items · 15 folded · 1
-component** `Digital thread · verification`. One Graphology + dagre + Sigma
+Painted Evidence (full canvas, essential mask) no longer treats the
+solver file pair as a second CAD product. One Graphology + dagre + Sigma
 surface. The SVG Map is not a second organisation of this dossier.
 
 Kept construction facts include Architecture, Requirements: Arm, geometry
-bundle, four STEP/GLB pairs, FEA proof seal, CalculiX result, two proof
-observations, two proof evaluations, two study-base evaluations, SysML
-`arm : Arm` and siblings.
+bundle, four STEP/GLB pairs, FEA proof seal, two proof observations,
+two proof evaluations, two study-base evaluations, SysML `arm : Arm`
+and siblings.
 
 ## Three construction chains on this head
 
