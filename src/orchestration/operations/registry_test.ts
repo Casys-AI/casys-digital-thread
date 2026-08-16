@@ -15,6 +15,7 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./recorded-analysis.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/analysis/apply-correction-source.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineering/part-definitions-capture.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
@@ -29,6 +30,7 @@ import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
 } from "../../domain/analysis/sensitivity-study-proposal.ts";
+import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/analysis/sensitivity-base-evaluation.ts";
 import {
   INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
   INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
@@ -259,6 +261,18 @@ Deno.test("the registry lists the three sensitivity operations as trusted and no
   assertEquals(write.bindings.map((binding) => binding.name), ["studyCapture"]);
 });
 
+Deno.test("verify.evaluate-sensitivity-base@1 is a trusted SysON join, not a sensitivity run", () => {
+  const registered = getRegisteredEngineeringOperation(
+    VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+  )!;
+  assertEquals(registered.execution, "trusted");
+  assertEquals(registered.workItemKind, "verify");
+  assertEquals(registered.riskClass, "consequential");
+  assertEquals(registered.resolvedOperationPlan, undefined);
+  assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(registered.bindings.map((binding) => binding.name), ["studyCapture"]);
+});
+
 Deno.test("model.seal-architecture-sysml@1 is a provider-free Thread-document seal", () => {
   const registered = getRegisteredEngineeringOperation(
     MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
@@ -314,6 +328,18 @@ Deno.test("the qualified local Modelica kit is a consequential zero-binding oper
     EngineeringOperationRegistryError,
   );
   assertEquals(extraBinding.code, "invalid_bindings");
+});
+
+Deno.test("compile.capture-corrected-source@1 is a trusted source capture, not an admission or execution", () => {
+  const registered = getRegisteredEngineeringOperation(
+    COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
+  )!;
+  assertEquals(registered.execution, "trusted");
+  assertEquals(registered.workItemKind, "design");
+  assertEquals(registered.resolvedOperationPlan, undefined);
+  assertEquals(registered.bindings.map((binding) => binding.name), [
+    "correctionProposal",
+  ]);
 });
 
 Deno.test("technical compilation admission is one consequential trusted Thread operation", () => {

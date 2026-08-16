@@ -1,5 +1,8 @@
 {
   "schemaVersion": "sysml-syson-roundtrip-inventory/1.0",
+  "authority": "documentary-ground-truth",
+  "consumedByCompiler": false,
+  "note": "No analyzer imports this file. The agent frontend remains package / part def / part usage. Counts.kindsAgentFrontend is an annotation, not a generated table.",
   "language": "SysML v2",
   "inventoryId": "sysml-syson-roundtrip-inventory-0.5.1",
   "doctrine": "Closed language = OMG SysML v2 textual grammar intersected with what the pinned SysON round-trips. Introspect, never invent. See docs/explanations/closed-language-compilation.md.",

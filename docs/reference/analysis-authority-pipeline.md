@@ -585,9 +585,18 @@ publishes that graph as `ThreadSnapshot/1.1`; its browser projection is explicit
 `origin: "analysis"`. No analysis edge grants MCP, provider, admission or decision
 authority.
 
+`verify.evaluate-sensitivity-base@1` is the missing join between
+`analyze.run-fea-sensitivity@1` observations and Thread requirements. It never
+invents a metric alias. A study whose metric ids do not Object.is-equal the
+requirement metrics stays `UNLINKED` for the whole set. Proof-run evaluations
+(`calculix-observation-*`) are a different authority and cannot authorize a
+correction.
+
 `design.apply-vector-correction@1` seals a Thread document of one bounded first-order
 proposal. The capture declares `grants: none`. It is not a CAD admission, a SysON write,
-or a mandate for a successor execution. The AnalysisGraph edge
+or a mandate for a successor execution. `compile.capture-corrected-source@1`
+then substitutes the signed `z*` into the parent admission source. The later
+`compile.seal-admission@1` stays its own MRTR. The AnalysisGraph edge
 `measured-local-sensitivity` remains an inspectable fact, not an execution gate.
 Thread-entity bindings are identities only: `assertPlanBindingsResolve` does not resolve
 them at plan publication, so the executor fail-closes if the named evaluation or study

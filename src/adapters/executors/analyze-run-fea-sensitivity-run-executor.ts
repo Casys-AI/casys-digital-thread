@@ -21,7 +21,10 @@ import {
   type EngineeringProjectCommandService,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { buildSensitivityAnalysisGraph } from "../../domain/analysis/sensitivity-analysis-graph.ts";
-import { SENSITIVITY_LIVE_METRIC_UNITS } from "../../domain/analysis/sensitivity-live-method.ts";
+import {
+  liveSolverObservationForMetric,
+  SENSITIVITY_LIVE_METRIC_UNITS,
+} from "../../domain/analysis/sensitivity-live-method.ts";
 import { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION } from "../../domain/analysis/sensitivity-study-proposal.ts";
 import { locateModuleLevelNumericBinding } from "../../domain/analysis/sensitivity-source-substitution.ts";
 import {
@@ -915,9 +918,10 @@ function measurementsFromSolve(
         `Unknown metric id ${metric.id} is rejected fail-closed.`,
       );
     }
-    const observed = metric.id === "assembly_max_displacement"
+    const field = liveSolverObservationForMetric(metric.id);
+    const observed = field === "maximumDisplacement"
       ? result.observations.maximumDisplacement.magnitude
-      : metric.id === "assembly_max_von_mises"
+      : field === "maximumVonMisesStress"
       ? result.observations.maximumVonMisesStress.magnitude
       : undefined;
     if (!observed || observed.unit !== expectedUnit || observed.unit !== metric.unit) {

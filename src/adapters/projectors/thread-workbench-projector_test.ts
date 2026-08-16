@@ -128,6 +128,83 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
   );
 });
 
+Deno.test("Activity marks measured DFM, study-base evaluation and corrected source as milestones", () => {
+  const canonical = clone(linkedSnapshot());
+  const extras = [
+    { id: `dfm-check-${"c".repeat(64)}`, name: "Measured DFM" },
+    {
+      id: `sensitivity-base-evaluation-${"d".repeat(64)}`,
+      name: "Study-base evaluation",
+    },
+    { id: `corrected-source-${"e".repeat(64)}`, name: "Corrected source" },
+  ];
+  for (const extra of extras) {
+    const digest = extra.id.split("-").at(-1)!;
+    canonical.artifacts.push({
+      id: extra.id,
+      name: extra.name,
+      kind: "document",
+      version: digest,
+      fingerprint: { algorithm: "sha256", digest },
+      producer: operation(
+        "digital-thread",
+        "compile.capture-corrected-source@1",
+        "run-demo",
+      ),
+      inputArtifactIds: ["step-r2"],
+      freshness: fresh(),
+    });
+    canonical.changeSet.changes.push({
+      id: `change-${extra.id}`,
+      kind: "created",
+      target: { kind: "artifact", id: extra.id },
+      summary: extra.name,
+      afterFingerprint: { algorithm: "sha256", digest },
+    });
+    canonical.consumptions.push({
+      id: `consume-step-r2-by-${extra.id}`,
+      artifactId: "step-r2",
+      consumer: operation(
+        "digital-thread",
+        "compile.capture-corrected-source@1",
+        "run-demo",
+      ),
+      observedFingerprint: fingerprint("a"),
+      verifiedAt: AT,
+      status: "verified",
+    });
+    canonical.provenance.push(
+      link("changes", "change", `change-${extra.id}`, "artifact", extra.id),
+      link(
+        "uses",
+        "consumption",
+        `consume-step-r2-by-${extra.id}`,
+        "artifact",
+        "step-r2",
+      ),
+      link("derived_from", "artifact", extra.id, "artifact", "step-r2"),
+    );
+  }
+  const projection = projectThreadWorkbenchSnapshot(
+    validateThreadSnapshot(canonical),
+  );
+  const roles = extras.map((extra) => {
+    const node = projection.graph.nodes.find((item) => item.ref.id === extra.id);
+    return { id: extra.id, activityRole: node?.activityRole };
+  });
+  assertEquals(
+    roles,
+    extras.map((extra) => ({
+      id: extra.id,
+      activityRole: "milestone",
+    })),
+  );
+  assertEquals(
+    projection.graph.nodes.find((item) => item.ref.id === "fea-r2")?.activityRole,
+    undefined,
+  );
+});
+
 Deno.test("the Workbench projects a qualified sensitivity assertion separately from provenance", () => {
   const canonical = linkedSnapshot();
   canonical.schemaVersion = "1.1";

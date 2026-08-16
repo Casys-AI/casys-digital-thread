@@ -3,9 +3,10 @@
  * sandbox container.
  *
  * The inventory (`config/build123d-api/inventory-<version>.json`) is the
- * ground truth the closed-language compilation direction is built on: the
- * qualification tables of the Build123d frontend are meant to be derived
- * from this introspected surface, never hand-enumerated. See
+ * introspected ground truth. No analyzer imports it yet. F1 must generate
+ * qualification tables from this file (plus type methods). Until then the
+ * frontend hand table in qualified-build123d-source-analyzer.ts remains
+ * documentary coverage, not a derived table. See
  * docs/explanations/closed-language-compilation.md.
  *
  * Read-only probe: it runs `python3 inspect` inside the already-running
@@ -76,6 +77,10 @@ for (const name of Object.keys(raw.names).sort()) {
 
 const inventory = {
   schemaVersion: "build123d-api-inventory/1.0",
+  authority: "documentary-ground-truth",
+  consumedByCompiler: false,
+  note:
+    "No analyzer imports this file. F1 generates QUALIFIED_* tables from it. Do not hand-edit the 1.6.0 Map from these names.",
   library: "build123d",
   version: raw.version,
   extractedFrom:

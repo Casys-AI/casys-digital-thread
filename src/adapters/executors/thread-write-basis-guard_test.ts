@@ -40,6 +40,8 @@ import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
 } from "../../domain/analysis/sensitivity-study-proposal.ts";
+import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/analysis/sensitivity-base-evaluation.ts";
+import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/analysis/apply-correction-source.ts";
 
 const BASIS = {
   kind: "thread-snapshot" as const,
@@ -274,6 +276,42 @@ Deno.test("a running sensitivity writer blocks every sibling on the same Thread 
       ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
       ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
       MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+    ]
+  ) {
+    const sibling = {
+      ...run("geometry", "running"),
+      id: `run:${operation.id}`,
+      workItemId: `work:${operation.id}`,
+    };
+    const initial = project([current, sibling]);
+    const value: EngineeringProjectSnapshot = {
+      ...initial,
+      workItems: initial.workItems.map((item) =>
+        item.id === sibling.workItemId
+          ? {
+            ...item,
+            operation: {
+              ...operation,
+              bindings: item.operation?.bindings ?? [],
+            },
+          }
+          : item
+      ),
+    };
+    await assertRejects(
+      () => assertThreadWriteBasisAvailable(value, current),
+      EngineeringProjectCommandError,
+      "active, completed, or uncertain durable write",
+    );
+  }
+});
+
+Deno.test("join and corrected-source writers share the same Thread-basis exclusion", async () => {
+  const current = run("architecture", "queued");
+  for (
+    const operation of [
+      VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+      COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
     ]
   ) {
     const sibling = {

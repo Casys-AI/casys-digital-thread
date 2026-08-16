@@ -29,11 +29,13 @@ cockpit focus, or the project ID explicitly passed by the operator. It never cre
 seeds, selects, or falls back to retired evidence, a checked-in baseline, the latest
 thread head, or another project with the same subject.
 
-The current generic qualification candidate is `desk-lamp-dl04`. Its existing sealed
-geometry, requirements and proof evidence make it a useful focused project while
-preparing `verify.run-fea-static-proof@2`. This status is deliberately narrower than a
-live result: the new `@2` run remains unproven until its provider output and resulting
-thread evidence are captured, persisted and reread.
+`desk-lamp-dl04` is a useful focused project: sealed geometry, requirements, and proof
+evidence. `desk-lamp-dl05` continues into sensitivity. A
+`verify.run-fea-static-proof@2` success is only a captured, reread Thread
+revision under `state/local/` (gitignored). If that revision is absent, the cockpit must
+not present `@1` as `@2`. Activity promotes later demo-loop documents with literal
+labels: `measured DFM`, `study-base evaluation`, `corrected source`. A missing
+card means the run was not persisted, not that it passed.
 
 ## Start the Workbench BFF
 

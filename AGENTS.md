@@ -23,6 +23,9 @@ from UI copy or tool descriptions.
    — capture → analysis → MRTR → dispatch
 3. [Workspace map](docs/reference/workspace-map.md) — files, CAS roots, local ports
 4. [CLAUDE.md](CLAUDE.md) — commands, hexagonal rules, CM-01 retirement
+5. [Walk the post-proof loop](docs/how-to/walk-the-post-proof-loop.md) — join,
+   fail-only correction, `z*`, reseal, measured DFM. Local dl05 r16 is `UNLINKED`
+   and `pass`; do not invent a mapping or a fail.
 
 ## Immediate traps
 
@@ -38,8 +41,15 @@ from UI copy or tool descriptions.
   `design.seal-isolated-geometry@1` seals that execution as a Thread document only.
 - `verify.run-fea-static-proof@1`, `@2`, and `@3` are distinct authorities. Do not
   reroute one plan to another.
-- CM-01 is retired. `desk-lamp-dl04` is the generic qualification candidate. Do not
-  replay retired fixtures as live evidence.
+- `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>`
+  only. A proof-run `@2` evaluation cannot authorize
+  `design.apply-vector-correction@1`. `compile.capture-corrected-source@1` is
+  not `compile.seal-admission@1`.
+- CM-01 is retired. Do not replay retired fixtures as live evidence.
+- A `verify.run-fea-static-proof@2` success is only a captured, reread Thread revision.
+  This atelier may hold such receipts for `desk-lamp-dl04` and `desk-lamp-dl05` under
+  `state/local/` (gitignored). Absence of that revision is `unavailable`. Do not relabel
+  `@1`.
 - New non-test modules must be listed in `deno.json` `check`. Omitting them is a silent
   type-check hole.
 

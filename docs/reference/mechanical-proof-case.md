@@ -81,9 +81,10 @@ actions. A `fail` verdict is publishable; `error` and `unresolved` never become 
 
 The earlier `@1` receipt ran on 2026-08-10, on `desk-lamp-dl03` (thread r9) and
 `desk-lamp-dl04` (thread r8). Both published a mechanical verdict on an isolated
-articulated arm. `desk-lamp-dl04` is now the generic candidate for a real `@2`
-qualification, but no `@2` success may be claimed until that new run is captured,
-persisted and read back.
+articulated arm. A later recorded `@2` receipt is live only as a captured, reread Thread
+revision. This atelier has held such revisions for `desk-lamp-dl04` (r9) and
+`desk-lamp-dl05` (r10) under `state/local/` (gitignored). The repo does not ship them.
+Absence of that revision is `unavailable`. Do not relabel the `@1` receipt.
 
 ### Provenance a published run must satisfy
 

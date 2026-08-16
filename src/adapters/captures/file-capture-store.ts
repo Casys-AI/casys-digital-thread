@@ -398,6 +398,15 @@ export const SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Sensitivity edges",
 };
 
+export const SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-base-evaluation"
+> = {
+  kind: "sensitivity-base-evaluation",
+  directory: "state/local/sensitivity-base-evaluation-captures",
+  uriNamespace: "sensitivity-base-evaluation-capture",
+  label: "Sensitivity-base evaluation",
+};
+
 export const PRINTABILITY_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "printability-case"
 > = {
@@ -455,6 +464,15 @@ export const CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   directory: "state/local/correction-proposal-captures",
   uriNamespace: "correction-proposal-capture",
   label: "Correction proposal",
+};
+
+export const CORRECTED_SOURCE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "corrected-source"
+> = {
+  kind: "corrected-source",
+  directory: "state/local/corrected-source-captures",
+  uriNamespace: "corrected-source-capture",
+  label: "Corrected source",
 };
 
 /**

@@ -88,6 +88,10 @@ import {
   registerProjectVectorCorrectionTools,
 } from "./project-control/vector-correction-tools.ts";
 import {
+  type ProjectDemoLoopToolDependencies,
+  registerProjectDemoLoopTools,
+} from "./project-control/demo-loop-tools.ts";
+import {
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
   type ProjectApprovalMode,
@@ -113,7 +117,8 @@ export interface ProjectControlToolDependencies
     ProjectTechnicalCompilationToolDependencies,
     ProjectArchitectureSysmlToolDependencies,
     ProjectBriefCompilationToolDependencies,
-    ProjectVectorCorrectionToolDependencies {
+    ProjectVectorCorrectionToolDependencies,
+    ProjectDemoLoopToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional browser-to-agent outbox; it carries no project decision authority. */
@@ -200,6 +205,7 @@ export function registerProjectControlTools(
   registerProjectArchitectureSysmlTools(app, dependencies);
   registerProjectBriefCompilationTools(app, dependencies);
   registerProjectVectorCorrectionTools(app, dependencies);
+  registerProjectDemoLoopTools(app, dependencies);
 
   if (dependencies.reviewIntents) {
     app.registerTool(projectReviewIntentListTool, async (args) => {

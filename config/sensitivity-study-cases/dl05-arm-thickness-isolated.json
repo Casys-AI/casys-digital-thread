@@ -22,11 +22,11 @@
   },
   "metrics": [
     {
-      "id": "assembly_max_displacement",
+      "id": "maxDisplacement",
       "unit": "mm"
     },
     {
-      "id": "assembly_max_von_mises",
+      "id": "maxVonMises",
       "unit": "MPa"
     }
   ],
@@ -83,7 +83,7 @@
     "localValidityNote": "Valid for arm_thickness in [10, 11] mm on the isolated Heron arm in its local frame.",
     "limitations": [
       "Remeshing variation is included because each CalculiX solve remeshes independently.",
-      "The study perimeter is the isolated arm cantilever, matching the sealed proof case desk-lamp-dl05-arm-cantilever: the base point at 10 mm corresponds to the proven 0.239 mm / 6.04 MPa solve, and the metric ids read as maximum over that isolated mesh, not the assembled lamp."
+      "The study perimeter is the isolated arm cantilever, matching the sealed proof case desk-lamp-dl05-arm-cantilever. Metric ids are the Thread requirement metrics maxDisplacement and maxVonMises — the join does not invent aliases."
     ]
   }
 }

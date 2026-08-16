@@ -1,5 +1,8 @@
 {
   "schemaVersion": "calculix-card-inventory/1.0",
+  "authority": "documentary-ground-truth",
+  "consumedByCompiler": false,
+  "note": "The agent never writes .inp. Coverage annotations here are not a generated lowering table. Linear-static + two-solve sensitivity remain the declared families.",
   "library": "calculix-ccx",
   "version": "2.21",
   "package": "calculix-ccx 2.21-1",

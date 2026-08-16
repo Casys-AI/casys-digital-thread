@@ -78,10 +78,17 @@ import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/prepare-project-isolated-geometry-seal-review.ts";
 import { PrepareProjectVectorCorrectionReview } from "./src/application/use-cases/prepare-project-vector-correction-review.ts";
+import { PrepareProjectSensitivityBaseEvaluationReview } from "./src/application/use-cases/prepare-project-sensitivity-base-evaluation-review.ts";
+import { PrepareProjectCorrectedAdmissionReview } from "./src/application/use-cases/prepare-project-corrected-admission-review.ts";
 import {
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   DesignApplyVectorCorrectionRunExecutor,
 } from "./src/adapters/executors/design-apply-vector-correction-run-executor.ts";
+import {
+  COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
+  CompileCaptureCorrectedSourceRunExecutor,
+} from "./src/adapters/executors/compile-capture-corrected-source-run-executor.ts";
+import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "./src/adapters/analyzers/qualified-build123d-source-analyzer.ts";
 import { PrepareProjectModelicaQualifiedKitRunReview } from "./src/application/use-cases/prepare-project-modelica-qualified-kit-run-review.ts";
 import { ExecuteIsolatedModelicaRun } from "./src/application/use-cases/execute-isolated-modelica-run.ts";
 import type { ProjectTechnicalSourceCaptureUseCase } from "./src/application/ports/in/project-technical-source-capture.ts";
@@ -184,6 +191,10 @@ import {
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
   ModelWriteSensitivityEdgesRunExecutor,
 } from "./src/adapters/executors/model-write-sensitivity-edges-run-executor.ts";
+import {
+  VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+  VerifyEvaluateSensitivityBaseRunExecutor,
+} from "./src/adapters/executors/verify-evaluate-sensitivity-base-run-executor.ts";
 import { FileFeaSensitivityAttemptStore } from "./src/adapters/wal/file-fea-sensitivity-attempt-store.ts";
 import {
   INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
@@ -226,6 +237,7 @@ import {
 } from "./src/adapters/plans/capture-backed-run-plan-sealer.ts";
 import { RecordedOperationPlanResolver } from "./src/adapters/plans/recorded-operation-plan-resolver.ts";
 import {
+  CORRECTED_SOURCE_CAPTURE_DESCRIPTOR,
   CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
   DFM_CASE_CAPTURE_DESCRIPTOR,
   DFM_CHECK_CAPTURE_DESCRIPTOR,
@@ -238,6 +250,7 @@ import {
   PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
   PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
   SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
@@ -1468,12 +1481,29 @@ async function createProjectControl(
   const sensitivityEdgesCaptures = new FileCaptureStore(
     SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
   );
+  const sensitivityBaseEvaluationCaptures = new FileCaptureStore(
+    SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
+  );
   const vectorCorrectionCaptures = new FileCaptureStore(
     CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
+  );
+  const correctedSourceCaptures = new FileCaptureStore(
+    CORRECTED_SOURCE_CAPTURE_DESCRIPTOR,
   );
   const vectorCorrectionReview = new PrepareProjectVectorCorrectionReview({
     snapshots: activeThreadSnapshots,
     studyCaptures: sensitivityStudyCaptures,
+  });
+  const sensitivityBaseEvaluationReview =
+    new PrepareProjectSensitivityBaseEvaluationReview({
+      snapshots: activeThreadSnapshots,
+      studyCaptures: sensitivityStudyCaptures,
+    });
+  const correctedAdmissionReview = new PrepareProjectCorrectedAdmissionReview({
+    snapshots: activeThreadSnapshots,
+    captures: correctedSourceCaptures,
+    admissions: technicalCompilationAdmissions,
+    preview: technicalCompilationPreview,
   });
   const designApplyVectorCorrection = new DesignApplyVectorCorrectionRunExecutor({
     projects: runtime.projects,
@@ -1482,6 +1512,18 @@ async function createProjectControl(
     studyCaptures: sensitivityStudyCaptures,
     captures: vectorCorrectionCaptures,
     lease,
+  });
+  const compileCaptureCorrectedSource = new CompileCaptureCorrectedSourceRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    corrections: vectorCorrectionCaptures,
+    studyCaptures: sensitivityStudyCaptures,
+    admissions: technicalCompilationAdmissions,
+    sourceCaptures: technicalSourceCapture,
+    captures: correctedSourceCaptures,
+    lease,
+    profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
   });
   const analyzeSealSensitivityStudy = new AnalyzeSealSensitivityStudyRunExecutor({
     projects: runtime.projects,
@@ -1623,6 +1665,17 @@ async function createProjectControl(
         options.printEstimateAttemptDirectory ??
           DEFAULT_PRINT_ESTIMATE_ATTEMPT_DIRECTORY,
       ),
+      lease,
+    })
+    : undefined;
+  const verifyEvaluateSensitivityBase = sysonMcpUrl
+    ? new VerifyEvaluateSensitivityBaseRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      studyCaptures: sensitivityStudyCaptures,
+      captures: sensitivityBaseEvaluationCaptures,
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
       lease,
     })
     : undefined;
@@ -1869,6 +1922,8 @@ async function createProjectControl(
       build123dExecutionReview,
       isolatedGeometrySealReview,
       vectorCorrectionReview,
+      sensitivityBaseEvaluationReview,
+      correctedAdmissionReview,
       modelicaQualifiedKitRunReview,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
@@ -2030,6 +2085,13 @@ async function createProjectControl(
               "configured for this run (SysON provider is required).",
           },
           {
+            operation: VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+            executor: verifyEvaluateSensitivityBase,
+            unavailableMessage:
+              "The server has no trusted verify.evaluate-sensitivity-base@1 executor " +
+              "configured for this run (SysON provider is required).",
+          },
+          {
             operation: INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
             executor: industrializeSealPrintabilityCase,
           },
@@ -2065,6 +2127,10 @@ async function createProjectControl(
           {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
             executor: designApplyVectorCorrection,
+          },
+          {
+            operation: COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
+            executor: compileCaptureCorrectedSource,
           },
         ],
       }),

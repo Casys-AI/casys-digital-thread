@@ -42,14 +42,15 @@
  * a fully qualified compilation by omission.  Every geometry-kind mix is
  * labelled with the expected kind and the received kind.
  *
- * Next AST lock (not opened here): Polygon; `shell` (not a 0.11.1 algebra
- * function); `Plane()` / `Axis()` constructors; Location / Vector / class
- * Scale; extrude `both=`/`dir=`/`until=`; offset `openings=` / `kind=` /
- * `side=` / `closed=` / `min_edge_length=` / `mode=`; revolve
- * `revolution_arc=`; named Axis bindings; fillet / chamfer method forms;
- * general MemberExpression, `.faces()`, `filter_by`; math `sin`/`cos` and
- * every other D4 math name; `&` / `|` (D4 ALLOWED_OPS rejects them before
- * this frontend runs); loft / sweep / Align / mirror.
+ * QUALIFIED_BUILD123D_CALLS below is a hand table for analyzer 1.6.0. It is
+ * not the closed language. `config/build123d-api/inventory-0.11.1.json` is
+ * the introspected ground truth; no module imports it yet. F1 (RFC
+ * build123d-full-compilation-plan) replaces this Map with generated tables
+ * and analyzer 2.0.0. Do not add a 1.7.0 idiom lot here.
+ *
+ * `Ellipsoid` is listed because D4 still admits the import. It is absent
+ * from the 0.11.1 inventory (G6 phantom). F1 drops it from the generated
+ * table. `shell` is not a 0.11.1 algebra function.
  */
 
 import { parser } from "@lezer/python";
@@ -94,9 +95,10 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
 
 /**
- * A reviewed subset of the D4 build123d import allowlist.  The D4 validator is
- * still authoritative for reachability; this set only states which calls the
- * frontend can currently qualify semantically.
+ * Hand table for 1.6.0 — not the inventory. F1 generates the replacement
+ * from `config/build123d-api/inventory-0.11.1.json` plus type methods.
+ * D4 remains authoritative for reachability; this set only states which
+ * calls the frontend can currently qualify semantically.
  */
 const QUALIFIED_BUILD123D_CALLS = new Map(
   [

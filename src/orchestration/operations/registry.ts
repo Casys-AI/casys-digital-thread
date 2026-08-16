@@ -15,6 +15,7 @@ import {
 } from "../../domain/engineering/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/analysis/apply-correction-source.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/analysis/vector-correction-proposal.ts";
@@ -27,6 +28,7 @@ import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
 } from "../../domain/analysis/sensitivity-study-proposal.ts";
+import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/analysis/sensitivity-base-evaluation.ts";
 import {
   INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
   INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
@@ -243,6 +245,32 @@ const OPERATIONS = [
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
       name: "sysmlModel",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Substitute the sealed z* into the parent admission source and capture
+   * those bytes. Not compile.seal-admission@1 and not a Build123d execution.
+   */
+  {
+    id: COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.id,
+    version: COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Capture the corrected admitted source",
+    description:
+      "Reopen one sealed vector-correction document and the study admission it " +
+      "cites, substitute the signed z* into the admitted module-level literal, " +
+      "and publish a Thread document plus an opaque source reference for a later " +
+      "compile.seal-admission@1. No CAD execution is granted.",
+    workItemKind: "design",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "correctionProposal",
       allowedSourceKinds: ["thread-entity"],
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
@@ -621,6 +649,32 @@ const OPERATIONS = [
       "SysON seed root package, and publish the sensitivity-edges artifact after " +
       "re-extraction. No SysML text is supplied by the agent.",
     workItemKind: "architect",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "studyCapture",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * SysON evaluation of study-base observations. Never a solve. Never a
+   * mapping from proof-run observations. A fail is publishable.
+   */
+  {
+    id: VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION.id,
+    version: VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Evaluate the study-base observations against named requirements",
+    description:
+      "Re-read the sealed sensitivity-study capture, join each declared metric " +
+      "to the unique Thread requirement of the same metric id and to the " +
+      "sensitivity-base observation of that digest, then ask SysON to evaluate. " +
+      "No metric mapping is invented. A fail is a named violation.",
+    workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
     decisionEvidenceScope: "thread-entity-bindings",

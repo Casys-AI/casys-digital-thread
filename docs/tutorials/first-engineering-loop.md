@@ -43,8 +43,9 @@ deno task preview:thread      # cockpit :5173
 Connect the agent to `http://127.0.0.1:3020/mcp`. Open `http://127.0.0.1:5173/`. With no
 cockpit focus the page waits; it does not invent a project.
 
-A focused generic candidate already on disk is `desk-lamp-dl04`. It is useful to learn
-the five spaces. It is not automatically live CalculiX `@2` proof.
+A focused generic vehicle already on disk is `desk-lamp-dl04`. It is useful to learn the
+five spaces. A CalculiX `@2` receipt is only a captured, reread Thread revision (local
+`state/local/`, gitignored), never an `@1` relabel.
 
 ## 1. Create or resume a project
 
@@ -106,9 +107,32 @@ Every consequential step is: append work + decision → propose → human MRTR �
 execute. The agent supplies no provider name, tool, path, or SysML text on the renderer
 path.
 
-After a sealed sensitivity study, `project_vector_correction_review` can prepare a
-bounded correction document for `design.apply-vector-correction@1`. That seal is not a
-CAD loop and does not rewrite a Build123d literal.
+After a sealed sensitivity study, check the join **before** queueing an
+evaluation. `project_sensitivity_base_evaluation_review` is ready only when
+each study metric Object.is-equals one Thread requirement. On the local
+`desk-lamp-dl05` r16 capture the study metrics are
+`assembly_max_displacement` / `assembly_max_von_mises` while the Thread
+requirements are `maxDisplacement` / `maxVonMises` — that is `UNLINKED`, not a
+mapping the agent may invent. The isolated template now uses the Thread metric
+ids; a new seal + run can join. Proof-run `@2` evaluations stay a different
+authority.
+
+`verify.evaluate-sensitivity-base@1` then asks SysON to evaluate the
+`sensitivity-base-<metric>-<digest>` observations. Only a **fail** of those
+evaluations can authorize `project_vector_correction_review` /
+`design.apply-vector-correction@1`. That seal is not a CAD loop and does not
+rewrite a Build123d literal. `compile.capture-corrected-source@1` substitutes
+the signed `z*` into the parent admission source.
+`project_corrected_admission_review` then feeds the existing
+`compile.seal-admission@1` / `design.execute-build123d@1` / proof steps. Each
+stays its own MRTR.
+
+Measured DFM is a parallel branch on canonical `design.write-geometry@1` STEP:
+`industrialize.seal-dfm-case@1` then `industrialize.run-dfm-checks@1`. Isolated
+geometry is not a DFM target.
+
+Exact ids, the local r16 facts, and the fail-closed exits:
+[Walk the post-proof loop](../how-to/walk-the-post-proof-loop.md).
 
 ## 5. Read the cockpit, do not command it
 

@@ -1,5 +1,8 @@
-import { assertThrows } from "@std/assert";
-import { assertSensitivityLiveMethod } from "./sensitivity-live-method.ts";
+import { assertEquals, assertThrows } from "@std/assert";
+import {
+  assertSensitivityLiveMethod,
+  liveSolverObservationForMetric,
+} from "./sensitivity-live-method.ts";
 import { validateSensitivityStudyCaseV2 } from "./sensitivity-study-v2.ts";
 
 function validCase(overrides: Record<string, unknown> = {}) {
@@ -84,5 +87,24 @@ Deno.test("an unknown metric id is rejected fail-closed", () => {
     () => assertSensitivityLiveMethod(studyCase),
     TypeError,
     "invented_metric",
+  );
+});
+
+Deno.test("Thread requirement metric ids are admitted by the live method", () => {
+  const studyCase = validCase({
+    metrics: [
+      { id: "maxDisplacement", unit: "mm" },
+      { id: "maxVonMises", unit: "MPa" },
+    ],
+  });
+  assertSensitivityLiveMethod(studyCase);
+  assertEquals(
+    liveSolverObservationForMetric("maxDisplacement"),
+    "maximumDisplacement",
+  );
+  assertEquals(liveSolverObservationForMetric("maxVonMises"), "maximumVonMisesStress");
+  assertEquals(
+    liveSolverObservationForMetric("assembly_max_displacement"),
+    "maximumDisplacement",
   );
 });

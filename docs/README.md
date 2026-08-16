@@ -17,10 +17,9 @@ not paraphrased.
 
 ## How-to guides — achieve a focused task
 
-- The active qualification candidate is `desk-lamp-dl04`: it holds generic sealed
-  geometry, requirements and proof evidence suitable for the next
-  `verify.run-fea-static-proof@2` admission. Until that distinct run has completed,
-  persisted and been read back, it is not live CalculiX `@2` proof.
+- `desk-lamp-dl04` / `desk-lamp-dl05` are the generic / Heron vehicles. A
+  `verify.run-fea-static-proof@2` success is only a captured, reread Thread revision
+  (local `state/local/`, gitignored). Absence is `unavailable`. Do not relabel `@1`.
 - [Recover a quarantined provider run](how-to/recover-a-quarantined-provider-run.md)
   covers the one path out of a dispatch the executor could not settle: inspect the
   provider, sign the seven-parameter reconciliation, execute it as a human, and requeue.
@@ -39,6 +38,10 @@ not paraphrased.
 - [Author and seal architecture SysML](how-to/author-architecture-sysml.md) captures
   agent-authored closed-subset SysML, previews unresolved constructs, and seals a Thread
   document without inserting into SysON.
+- [Walk the post-proof loop](how-to/walk-the-post-proof-loop.md) is the A–Z
+  continuation after FEA: join study-base observations, apply a correction only
+  on a real fail, capture `z*`, reseal, and run measured DFM on canonical STEP.
+  Local `desk-lamp-dl05` r16 is `UNLINKED` and `pass`; those labels stay.
 
 ## Legacy and golden records — audit, not operation
 

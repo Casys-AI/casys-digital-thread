@@ -11,7 +11,31 @@ import type { SensitivityStudyCaseV2 } from "./sensitivity-study-v2.ts";
 export const SENSITIVITY_LIVE_METRIC_UNITS: ReadonlyMap<string, string> = new Map([
   ["assembly_max_displacement", "mm"],
   ["assembly_max_von_mises", "MPa"],
+  ["maxDisplacement", "mm"],
+  ["maxVonMises", "MPa"],
 ]);
+
+export type SensitivityLiveSolverObservation =
+  | "maximumDisplacement"
+  | "maximumVonMisesStress";
+
+/**
+ * Which CalculiX result field fills a declared study metric. The study case
+ * names the metric; this is not a join-time alias of Thread requirements.
+ */
+export function liveSolverObservationForMetric(
+  metricId: string,
+): SensitivityLiveSolverObservation | undefined {
+  if (
+    metricId === "assembly_max_displacement" || metricId === "maxDisplacement"
+  ) {
+    return "maximumDisplacement";
+  }
+  if (metricId === "assembly_max_von_mises" || metricId === "maxVonMises") {
+    return "maximumVonMisesStress";
+  }
+  return undefined;
+}
 
 export function assertSensitivityLiveMethod(
   studyCase: SensitivityStudyCaseV2,

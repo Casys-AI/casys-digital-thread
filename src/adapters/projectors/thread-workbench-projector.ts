@@ -446,6 +446,9 @@ function projectGraph(
         summary: `${artifact.kind} · ${artifact.version}`,
         recordedAt: artifact.freshness.changedAt,
         selection: { kind: "artifact", id: artifact.id },
+        ...(isDemoLoopPrimaryArtifact(artifact.id)
+          ? { activityRole: "milestone" as const }
+          : {}),
       }),
     ),
     ...snapshot.consumptions.map((consumption): ThreadGraphNode => {
@@ -1117,6 +1120,12 @@ function copyGraphRef(reference: ThreadEntityRef): ThreadGraphRef {
 
 function graphNodeId(reference: ThreadGraphRef): string {
   return `graph:${reference.kind}:${reference.id}`;
+}
+
+function isDemoLoopPrimaryArtifact(id: string): boolean {
+  return id.startsWith("dfm-check-") ||
+    id.startsWith("sensitivity-base-evaluation-") ||
+    id.startsWith("corrected-source-");
 }
 
 function graphActionSelection(

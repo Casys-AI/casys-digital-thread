@@ -1,5 +1,8 @@
 {
   "schemaVersion": "modelica-language-inventory/1.0",
+  "authority": "documentary-ground-truth",
+  "consumedByCompiler": false,
+  "note": "No analyzer imports this file. The shipped frontend is modelica-closed-subset-v1 (LinearThermalRamp). Coverage percents below are annotations, not generated tables.",
   "compiler": {
     "name": "OpenModelica",
     "version": "1.27.0",
