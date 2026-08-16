@@ -10,6 +10,10 @@ const CONFIG_URL = new URL(
   "../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
   import.meta.url,
 );
+const DL06_CONFIG_URL = new URL(
+  "../../../config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
+  import.meta.url,
+);
 const CONFIG_TEXT = await Deno.readTextFile(CONFIG_URL);
 
 Deno.test("DL-04 is one strict immutable mechanical proof declaration", () => {
@@ -67,6 +71,24 @@ Deno.test("DL-04 is one strict immutable mechanical proof declaration", () => {
   );
   assertEquals(Object.isFrozen(proofCase), true);
   assertEquals(Object.isFrozen(proofCase.analysis.loads[0].force.value), true);
+});
+
+Deno.test("DL-06 Heron arm cantilever is one strict immutable mechanical proof declaration", async () => {
+  const proofCase = validateMechanicalProofCase(
+    JSON.parse(await Deno.readTextFile(DL06_CONFIG_URL)),
+  );
+  assertEquals(proofCase.id, "desk-lamp-dl06-arm-cantilever");
+  assertEquals(proofCase.project.id, "desk-lamp-dl06");
+  assertEquals(proofCase.target.modelElementId, "7dda85d1-764e-4329-95ea-09052355cc47");
+  assertEquals(proofCase.expectedCadArtifact, {
+    format: "step",
+    sha256: "eec1fd0f1526161d9957b4693ab7d3ae67945870dcd75a5a91d21fd11f63140d",
+    bytes: 15460,
+  });
+  assertEquals(proofCase.requirements.map((item) => item.feature), [
+    "maxDisplacement",
+    "maxVonMises",
+  ]);
 });
 
 Deno.test("declaration identity binding matches only project, target, snapshot and CAD identities", () => {
