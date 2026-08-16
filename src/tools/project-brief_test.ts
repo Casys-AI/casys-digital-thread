@@ -37,16 +37,26 @@ Deno.test("project MCP framing uses one project identity from intent through app
     const tools = listed.tools as Array<{
       name: string;
       inputSchema?: {
-        properties?: Record<string, { description?: string }>;
+        properties?: Record<string, {
+          description?: string;
+          pattern?: string;
+          not?: { const?: string };
+        }>;
       };
     }>;
     const names = tools.map((tool) => tool.name);
     assertEquals(names.includes("project_start"), true);
     assertEquals(names.includes("project_brief_confirm"), true);
-    const startIssuedAt = tools.find((tool) => tool.name === "project_start")
-      ?.inputSchema?.properties?.issuedAt?.description ?? "";
+    const startSchema = tools.find((tool) => tool.name === "project_start")
+      ?.inputSchema?.properties;
+    const startIssuedAt = startSchema?.issuedAt?.description ?? "";
     assertStringIncludes(startIssuedAt, "must not be later than the server clock");
     assertStringIncludes(startIssuedAt, "Do not invent a future timestamp");
+    assertEquals(
+      startSchema?.projectId?.pattern,
+      "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+    );
+    assertEquals(startSchema?.projectId?.not, { const: "latest" });
 
     let result = await client.tool("project_start", {
       commandId: "start-project",

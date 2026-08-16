@@ -60,7 +60,9 @@ export const PROJECT_ID = {
   type: "string",
   minLength: 1,
   maxLength: 160,
-  description: "Engineering project identity from project_snapshot.",
+  pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+  not: { const: "latest" },
+  description: "Engineering project identity from project_snapshot. latest is refused.",
 } as const;
 
 const EXPECTED_REVISION = {
@@ -140,7 +142,12 @@ export const OPERATION_REF_SCHEMA = {
   type: "object",
   properties: {
     id: { type: "string", minLength: 1 },
-    version: { type: "string", minLength: 1 },
+    version: {
+      type: "string",
+      minLength: 1,
+      not: { const: "latest" },
+      description: "Exact registered operation version. latest is refused.",
+    },
     bindings: {
       type: "array",
       items: OPERATION_BINDING_SCHEMA,

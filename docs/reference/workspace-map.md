@@ -512,9 +512,10 @@ Loopback is a deployment guard, not user authentication. Human confirmation flow
 the paired MCP host and still require a real authentication policy before multi-user
 deployment.
 
-`deno task preview:thread` is focus-only: it reads the durable cockpit focus or an
-explicit `--project-id`; absent either, it reports awaiting project context. It never
-seeds or falls back to retired evidence. Browser project GET and SSE requests remain
+`deno task preview:thread` injects `--workspace-id=primary` and follows the durable
+cockpit focus. Pass `--project-id=` only to pin a vehicle; that disables focus
+follow. Without a focus and without a pin, it reports awaiting project context. It
+never seeds or falls back to retired evidence. Browser project GET and SSE requests remain
 passive. The separate `/api/review-intents` POST records a reviewer's exact action and
 comment in an append-only outbox; it cannot change a decision status, approval, project
 revision, thread snapshot, or provider. The cockpit therefore still exposes no project

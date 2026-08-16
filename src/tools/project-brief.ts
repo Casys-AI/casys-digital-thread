@@ -37,7 +37,10 @@ const COMMAND_ID = {
 const PROJECT_ID = {
   ...STRING,
   maxLength: 160,
-  description: "Stable engineering project identity from the first intent onward.",
+  pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$",
+  not: { const: "latest" },
+  description:
+    "Stable engineering project identity from the first intent onward. latest is refused.",
 } as const;
 const ISSUED_AT = {
   ...STRING,
