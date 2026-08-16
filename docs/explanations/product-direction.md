@@ -169,4 +169,5 @@ proves another.
 The constrained vehicles (`desk-lamp-dl04` / `desk-lamp-dl05`) have played
 **behave**. Make and buy stay later V1 work. Do not open those branches to
 make the current head look complete. A missing DFM or BOM card means that
-work was not run.
+work was not run. A new live project follows
+[Run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md).

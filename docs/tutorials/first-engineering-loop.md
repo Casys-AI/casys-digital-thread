@@ -47,6 +47,9 @@ A focused generic vehicle already on disk is `desk-lamp-dl04`. It is useful to l
 five spaces. A CalculiX `@2` receipt is only a captured, reread Thread revision (local
 `state/local/`, gitignored), never an `@1` relabel.
 
+A **new** live project on the behave branch only:
+[Run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md).
+
 ## 1. Create or resume a project
 
 In the conversation the agent calls `project_start` with the person’s plain-language
@@ -109,13 +112,13 @@ path.
 
 After a sealed sensitivity study, check the join **before** queueing an
 evaluation. `project_sensitivity_base_evaluation_review` is ready only when
-each study metric Object.is-equals one Thread requirement. On the local
-`desk-lamp-dl05` r16 capture the study metrics are
-`assembly_max_displacement` / `assembly_max_von_mises` while the Thread
-requirements are `maxDisplacement` / `maxVonMises` — that is `UNLINKED`, not a
-mapping the agent may invent. The isolated template now uses the Thread metric
-ids; a new seal + run can join. Proof-run `@2` evaluations stay a different
-authority.
+each study metric Object.is-equals one Thread requirement. Historical
+`desk-lamp-dl05` r16 published `assembly_max_*` against Thread
+`maxDisplacement` / `maxVonMises` — that is `UNLINKED`, not a mapping the
+agent may invent. A later isolated reseal on that atelier joined. A new
+project starts at
+[Run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md).
+Proof-run `@2` evaluations stay a different authority.
 
 `verify.evaluate-sensitivity-base@1` then asks SysON to evaluate the
 `sensitivity-base-<metric>-<digest>` observations. Only a **fail** of those

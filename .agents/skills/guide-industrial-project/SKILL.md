@@ -102,9 +102,14 @@ For each approved objective, derive the smallest useful loop:
 2. generate an exact CAD revision and content fingerprint;
 3. run the relevant physical or behavioural verification against explicit inputs;
 4. evaluate named requirements with units and margins;
-5. update the design or escalate an unresolved trade-off;
-6. produce a BOM and cost view whose evidence class is explicit;
-7. present only the consequential choices for human review.
+5. update the design or escalate an unresolved trade-off **only on a real
+   study-base fail**;
+6. present only the consequential choices for human review.
+
+Stop on a joined `pass`. Do not open make (DFM / printability) or buy (BOM /
+cost) to complete the behave loop. Those are later branches on the same
+canonical STEP. Script:
+[run the behave loop from zero](../../../docs/how-to/run-the-behave-loop-from-zero.md).
 
 For the currently registered generic physical chain, the reviewed vocabulary is
 `model.write-architecture@1`, `model.write-requirements@1`, `design.write-geometry@1`,

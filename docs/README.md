@@ -14,6 +14,9 @@ not paraphrased.
 - [Follow the engineering loop](tutorials/first-engineering-loop.md) walks a person and
   a paired agent from plain-language intent to inspectable evidence. The cockpit
   observes; the conversation commands.
+- [Run the behave loop from zero](how-to/run-the-behave-loop-from-zero.md) is the
+  live script for a **new** project on the behave branch only. It lists the
+  typed refusals that replace unharnessed shortcuts. Do not replay dl05.
 
 ## How-to guides — achieve a focused task
 
@@ -41,7 +44,8 @@ not paraphrased.
 - [Walk the post-proof loop](how-to/walk-the-post-proof-loop.md) is the **behave**
   continuation after FEA: join study-base observations, apply a correction only
   on a real fail, capture `z*`, reseal. Measured DFM is the separate **make**
-  branch. Local `desk-lamp-dl05` r16 is `UNLINKED` and `pass`; those labels stay.
+  branch. Historical `desk-lamp-dl05` r16 is `UNLINKED`; a later join on that
+  atelier can be `pass`. Those labels stay.
 - [Product direction](explanations/product-direction.md#three-judgement-branches)
   names the three judgement branches (behave / make / buy). One STEP, no
   cross-verdict.

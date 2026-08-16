@@ -27,11 +27,17 @@ Connect the agent to `http://127.0.0.1:3020/mcp`. The cockpit is read-only.
 A local reread `@2` proof must already exist. Absence is `unavailable`. Do not
 relabel `@1`.
 
-## What one local r16 already shows
+## What one local atelier already showed
 
-On a machine that already ran the isolated loop, Thread
+This block is **historical**. It is the r16 capture that first published the
+`UNLINKED` join. A later isolated reseal on the same atelier can reach a
+joined `pass` (Thread r19). Do not treat r16 as the current head. Do not
+rewrite it. A **new** from-zero project is
+[Run the behave loop from zero](run-the-behave-loop-from-zero.md).
+
+On a machine that already ran that isolated loop, Thread
 `project:desk-lamp-dl05:r16:model-write-sensitivity-edges-run:cmd-dl05-queue-sens2-edges`
-holds:
+held:
 
 | Fact | Exact identity |
 | ---- | -------------- |
