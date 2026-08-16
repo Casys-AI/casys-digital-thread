@@ -211,6 +211,15 @@ Deno.test("activity feed promotes measured DFM and corrected-source documents", 
   assertEquals(activityKindLabel(dfm), "measured DFM");
   assertEquals(activityKindLabel(corrected), "corrected source");
   assertEquals(activityKindLabel(join), "study-base evaluation");
+  const joinEval: ThreadGraphNode = {
+    ...node(
+      "requirement-arm-maxDisplacement-evaluation-abc",
+      "evaluation",
+      "2026-08-16T10:12:00.000Z",
+    ),
+    evaluationFamily: "study-base",
+  };
+  assertEquals(activityKindLabel(joinEval), "study-base evaluation");
 });
 
 Deno.test("activity feed promotes server-declared live milestones, not generic support", () => {

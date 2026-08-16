@@ -312,6 +312,11 @@ export function activityKindLabel(node: ThreadGraphNode): string {
     }
     return node.artifactKind;
   }
+  if (
+    node.entityKind === "evaluation" && node.evaluationFamily === "study-base"
+  ) {
+    return "study-base evaluation";
+  }
   return node.entityKind;
 }
 

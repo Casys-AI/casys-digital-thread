@@ -41,60 +41,58 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
+ * Server-fixed artifact id prefixes of the sensitivity *campaign* (experience
+ * accumulated on a neighbourhood). Folded from Evidence so they do not paint
+ * as a second construction study. Study-base evaluations stay visible: they
+ * attach that experience to the Thread requirement they evaluate.
+ */
+const SENSITIVITY_CAMPAIGN_ARTIFACT_PREFIXES = [
+  "sensitivity-case-",
+  "sensitivity-study-",
+  "sensitivity-edges-",
+  "sensitivity-relations-",
+  "sensitivity-base-evaluation-",
+] as const;
+
+/**
  * Returns true if `node` belongs to the analyze.* instrument family and should
  * be folded out of the default Evidence canvas, preserved only as a stub link.
  *
- * Structural criterion (system + entityKind + id content — never label or summary):
+ * Structural criterion (system + entityKind + id content — never label or
+ * summary):
  *
  * Artifacts:
- *   - entityKind "artifact"
- *   - system "build123d" or "calculix" (intermediate CAD/FEA steps)
- *     → ref.id contains "sensitivity" (server-fixed operation-family prefix)
- *   - system "syson" with ref.id starting with "sensitivity-relations-" or
- *     "sensitivity-edges-" (SysML structural trace declarations anchored by the
- *     analyze.* run — not independent model specifications)
+ *   - ref.id starts with a sensitivity-campaign prefix (case, study, edges,
+ *     relations, join capture) — any producer system
+ *   - system "build123d" or "calculix" whose ref.id contains "sensitivity"
+ *     (intermediate CAD/FEA steps of the instrument run)
  *
- *   Excluded from artifact folding (kept visible):
- *   - The sensitivity capture artifact (digital-thread system)
- *   - All other syson elements (model specifications, requirements, etc.)
+ *   Kept visible:
+ *   - Study-base evaluations (`entityKind === "evaluation"`)
+ *   - SysON model specs (including `sensitivity-oracle-requirements-*`)
+ *   - Proof-run CalculiX artifacts without a sensitivity id
  *
  * Observations:
- *   - entityKind "observation"
- *   - ref.id contains "sensitivity" (server-fixed prefix shared with the source
- *     artifact, e.g. "drip-tray-sensitivity-<digest>-displacement")
+ *   - ref.id contains "sensitivity" (server-fixed prefix, never a label)
  *
- *   Rationale: observations produced by the analyze.* family are intermediate
- *   measurements — facts about the instrument run, not about the current design.
- *   The validated rule is "facts produced by the analyze.* family hors vitrine,
- *   products included". The structural signal is the server-fixed id prefix,
- *   never a label or summary.
- *
- *   Excluded from observation folding:
- *   - Any observation whose ref.id does not contain "sensitivity" (the id is
- *     controlled server-side; no free-text criterion is used here).
+ * Folding never severs a recorded path: a stub remains from the visible
+ * construction node (admission, requirement) to the visible evaluation.
  */
 export function isAnalyzeInstrumentNode(node: ThreadGraphNode): boolean {
   if (node.entityKind === "artifact") {
-    // Intermediate CAD/FEA steps produced by the sensitivity instrument run.
+    if (
+      SENSITIVITY_CAMPAIGN_ARTIFACT_PREFIXES.some((prefix) =>
+        node.ref.id.startsWith(prefix)
+      )
+    ) {
+      return true;
+    }
     if (node.system === "build123d" || node.system === "calculix") {
       return node.ref.id.includes("sensitivity");
-    }
-    // SysML structural trace declarations anchored by the analyze.* run.
-    // The server-fixed id prefixes "sensitivity-relations-" and
-    // "sensitivity-edges-" identify these elements uniquely; all other syson
-    // elements (model specs, requirements, DripTray geometry) are kept visible.
-    if (node.system === "syson") {
-      return (
-        node.ref.id.startsWith("sensitivity-relations-") ||
-        node.ref.id.startsWith("sensitivity-edges-")
-      );
     }
     return false;
   }
   if (node.entityKind === "observation") {
-    // Sensitivity observations share the same server-fixed id prefix as their
-    // source artifact. The criterion is structural: presence of "sensitivity"
-    // in the stable ref.id — never derived from label, summary, or system name.
     return node.ref.id.includes("sensitivity");
   }
   return false;
@@ -213,6 +211,35 @@ export interface EvidenceCanvasProjection {
    * all neighbours including supporting are shown for full inspector context).
    */
   readonly supportingNodeCount: number;
+}
+
+/**
+ * Full-map dossier counts for the Evidence header. Derived from the painted
+ * projection, never from Activity flow producers.
+ */
+export interface PaintedDossierMetric {
+  readonly itemCount: number;
+  readonly componentCount: number;
+}
+
+export function paintedDossierMetric(
+  model: EvidenceGraphModel,
+  projection: Pick<EvidenceCanvasProjection, "nodes">,
+): PaintedDossierMetric {
+  const visible = new Set(
+    projection.nodes.map((node) => graphRefKey(node.ref)),
+  );
+  const componentCount =
+    model.components.filter((component) =>
+      [...component.visibleNodeRefKeys].some((key) => visible.has(key))
+    ).length;
+  return { itemCount: projection.nodes.length, componentCount };
+}
+
+export function linkedEvidenceDetail(componentCount: number): string {
+  if (componentCount <= 0) return "no painted dossier";
+  if (componentCount === 1) return "in 1 linked dossier";
+  return `across ${componentCount} linked dossier components`;
 }
 
 /**

@@ -2,7 +2,7 @@
  * Preparation model for the sigma.js exploration renderer of the Evidence graph.
  *
  * Responsibilities (all pure, no I/O, no Preact):
- *   1. Build a graphology DirectedGraph from an EvidenceCanvasProjection, assigning
+ *   1. Build a graphology MultiDirectedGraph from an EvidenceCanvasProjection, assigning
  *      x/y positions via a deterministic dagre layout (rankdir: LR) — causal
  *      origins on the left, observations/verdicts on the right.
  *   2. Attach sigma-ready visual attributes to each node and edge (color, size,
@@ -172,7 +172,7 @@ export interface SystemLegendItem {
 
 export interface ExplorationModel {
   /**
-   * A DirectedGraph with all visual attributes already set.
+   * A MultiDirectedGraph with all visual attributes already set.
    * Sigma consumes this instance directly — no conversion step.
    */
   readonly graph: MultiDirectedGraph<SigmaNodeAttrs, SigmaEdgeAttrs>;

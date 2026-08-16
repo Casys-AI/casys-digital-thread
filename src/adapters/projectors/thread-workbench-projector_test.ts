@@ -357,6 +357,107 @@ Deno.test("the Workbench projects a qualified sensitivity assertion separately f
   );
 });
 
+Deno.test("analysis-node ids that already include the kind prefix are not wrapped twice", () => {
+  const canonical = linkedSnapshot();
+  canonical.schemaVersion = "1.1";
+  canonical.analysisGraph = structuredClone(validateAnalysisGraph({
+    schemaVersion: "analysis-graph/1.0",
+    nodes: [{
+      id: "analysis-node:brief-item:abc:assume-material",
+      kind: "brief-item",
+      semanticRef: {
+        domain: "brief",
+        kind: "brief-item",
+        id: "assume-material",
+        basisFingerprint: fingerprint("a"),
+      },
+    }, {
+      id: "analysis-node:brief-item:abc:crit-arm",
+      kind: "brief-item",
+      semanticRef: {
+        domain: "brief",
+        kind: "brief-item",
+        id: "crit-arm",
+        basisFingerprint: fingerprint("a"),
+      },
+    }],
+    relations: [{
+      fromNodeId: "analysis-node:brief-item:abc:assume-material",
+      toNodeId: "analysis-node:brief-item:abc:crit-arm",
+      assertion: {
+        schemaVersion: "engineering-assertion/1.0",
+        id: "assertion:brief:assume-material:crit-arm",
+        relation: "declared-dependency",
+        from: {
+          domain: "brief",
+          kind: "brief-item",
+          id: "assume-material",
+          basisFingerprint: fingerprint("a"),
+        },
+        to: {
+          domain: "brief",
+          kind: "brief-item",
+          id: "crit-arm",
+          basisFingerprint: fingerprint("a"),
+        },
+        epistemicBasis: "declared",
+        assertedBy: { kind: "analyzer", id: "brief-frontend" },
+        evidence: [{ id: "step-r2", fingerprint: fingerprint("a") }],
+        scope: { kind: "basis", basisFingerprint: fingerprint("a") },
+        rationale: "The brief declared this dependency.",
+      },
+    }],
+  })) as Mutable<NonNullable<ThreadSnapshot["analysisGraph"]>>;
+
+  const projection = projectThreadWorkbenchSnapshot(
+    validateThreadSnapshot(canonical),
+  );
+  const analysisIds = projection.graph.nodes
+    .filter((node) => node.entityKind === "analysis-node")
+    .map((node) => node.id)
+    .sort();
+  assertEquals(analysisIds, [
+    "graph:analysis-node:brief-item:abc:assume-material",
+    "graph:analysis-node:brief-item:abc:crit-arm",
+  ]);
+  assertEquals(
+    analysisIds.some((id) => id.includes("analysis-node:analysis-node:")),
+    false,
+  );
+});
+
+Deno.test("study-base evaluations carry evaluationFamily and proof evaluations do not", () => {
+  const canonical = linkedSnapshot();
+  canonical.evaluations.push({
+    id: "REQ-STRESS-evaluation-study",
+    name: "Allowable bracket stress study-base evaluation",
+    requirementId: "REQ-STRESS",
+    observationIds: [`sensitivity-base-von_mises_max-${"c".repeat(64)}`],
+    status: "pass",
+    evaluatedAt: "2026-08-16T00:00:00.000Z",
+    evaluator: {
+      serverId: "syson",
+      tool: "syson_constraint_evaluate",
+      runId: "run-study-base",
+    },
+    evidenceArtifactIds: [`sensitivity-base-evaluation-${"c".repeat(64)}`],
+    message: "The study-base observation is within the reviewed concept limit.",
+    freshness: fresh(),
+  });
+  const projection = projectThreadWorkbenchSnapshot(
+    canonical as ThreadSnapshot,
+  );
+  const studyBase = projection.graph.nodes.find((node) =>
+    node.ref.id === "REQ-STRESS-evaluation-study"
+  );
+  const proof = projection.graph.nodes.find((node) =>
+    node.entityKind === "evaluation" &&
+    node.ref.id !== "REQ-STRESS-evaluation-study"
+  );
+  assertEquals(studyBase?.evaluationFamily, "study-base");
+  assertEquals(proof?.evaluationFamily, undefined);
+});
+
 Deno.test("the Workbench flow hides retired current entities but retains the archive change", () => {
   const snapshot = clone(linkedSnapshot());
   const archived = [

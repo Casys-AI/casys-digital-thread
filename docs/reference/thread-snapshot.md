@@ -110,6 +110,10 @@ The BFF's passive read path projects the latest validated subject snapshot into 
 deliberately smaller browser contract. The projection is never promoted back into the
 canonical domain model, and project commands cannot create thread evidence.
 
+The four graph layers, painted relations, and a frozen dl05 inventory live in
+[`graph-data-model.md`](graph-data-model.md). Use that page to review coherence;
+this page stays the `ThreadSnapshot` contract.
+
 The browser projection includes a required `graph` with typed nodes and edges. Canonical
 `provenance` links retain their relation and rationale. Exact `inputArtifactIds` and
 observation source artifact IDs become explicit structural edges; no label or filename

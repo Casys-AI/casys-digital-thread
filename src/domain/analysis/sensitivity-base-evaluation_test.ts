@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+  isStudyBaseEvaluation,
   resolveSensitivityBaseJoin,
   VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
 } from "./sensitivity-base-evaluation.ts";
@@ -12,6 +13,23 @@ import type {
 
 const DIGEST = "a".repeat(64);
 const AT = "2026-08-15T00:00:00.000Z";
+
+Deno.test("isStudyBaseEvaluation is true only when a sensitivity-base observation or join capture is cited", () => {
+  assertEquals(
+    isStudyBaseEvaluation({
+      observationIds: [`sensitivity-base-maxDisplacement-${DIGEST}`],
+      evidenceArtifactIds: [`sensitivity-base-evaluation-${DIGEST}`],
+    }),
+    true,
+  );
+  assertEquals(
+    isStudyBaseEvaluation({
+      observationIds: ["calculix-observation-abc"],
+      evidenceArtifactIds: ["calculix-syson-evaluation-abc"],
+    }),
+    false,
+  );
+});
 
 Deno.test("verify.evaluate-sensitivity-base@1 is the join identity, not a sensitivity run", () => {
   assertEquals(

@@ -1,5 +1,9 @@
 /**
- * Graphology-backed evidence graph model.
+ * Graphology-backed evidence presentation graph.
+ *
+ * This is the navigation model for Evidence, not Thread authority.
+ * ThreadSnapshot + AnalysisGraph remain the source of truth. Graphology
+ * never grants admission, a join, or an execution.
  *
  * Solves the false-island bug: connected components are computed on the FULL
  * raw graph, and folding (version supersession, analyze.* instruments) is
@@ -7,17 +11,13 @@
  * never silently drops their link — it leaves a stub edge that carries the
  * original relation and a human label describing what was folded.
  *
- * This module is a pure domain model (no Preact, no I/O). The canvas in
- * graph.tsx continues to work with its own layout engine; this model coexists
- * and will be the backbone of the next-wave renderer.
- *
- * Why graphology: it gives us O(1) adjacency lookups and a standard node/edge
- * attribute API that makes the neighborhood query clean and testable. We do not
- * need graphology-components — connected components are a single BFS loop using
- * graphology's forEachNeighbor iterator.
+ * Why MultiDirectedGraph: the painted Sigma canvas is already a directed
+ * multigraph. Topology, components, and neighbourhood share that same
+ * Graphology kind so the presentation graph is one model, not an undirected
+ * twin plus a later conversion.
  */
 
-import { UndirectedGraph } from "graphology";
+import { MultiDirectedGraph } from "graphology";
 import type {
   ThreadEvidenceFamilyGraph,
   ThreadGraph,
@@ -30,6 +30,27 @@ import {
   buildVersionedProvenanceProjection,
   type VersionedProvenanceProjection,
 } from "./versioned-provenance-model.ts";
+
+/**
+ * Evidence paints the Thread dossier (provenance + structure). AnalysisGraph
+ * stays a semantic index: painting it as `analysis-node` islands created a
+ * second, third, and fourth disconnected graph. Sensitivity measurements
+ * already appear as Thread observations and evaluations.
+ */
+export function graphWithoutAnalysisOverlay(graph: ThreadGraph): ThreadGraph {
+  const nodes = graph.nodes.filter((node) =>
+    node.entityKind !== "analysis-node"
+  );
+  const visible = new Set(nodes.map((node) => refKey(node.ref)));
+  return {
+    nodes,
+    edges: graph.edges.filter((edge) =>
+      edge.origin !== "analysis" &&
+      visible.has(refKey(edge.from)) &&
+      visible.has(refKey(edge.to))
+    ),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Public API types
@@ -80,6 +101,13 @@ export interface EvidenceGraphModel {
   readonly nodes: readonly ThreadGraphNode[];
   /** Visible edges for the default canvas (versioned + stubs preserved). */
   readonly edges: readonly ThreadGraphEdge[];
+  /**
+   * Graphology presentation graph: the same visible nodes and recorded
+   * edges, stored as a directed multigraph. Stubs stay a separate list so a
+   * folded instrument never silently becomes a recorded Thread relation.
+   * This graph is navigation only — never admission, join, or execution.
+   */
+  readonly graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>;
   /** Synthetic connector stubs for folded instruments bridging clusters. */
   readonly stubs: readonly EvidenceGraphStub[];
   /** Connected components from the FULL raw graph. Never re-computed after folding. */
@@ -205,22 +233,16 @@ export function buildEvidenceGraphModel(
   const isInstrument = config.isAnalyzeInstrumentNode ?? (() => false);
   const isolatedSystems = new Set(config.intentionallyIsolatedSystems ?? []);
 
-  // Step 1 — load the FULL raw graph into graphology for adjacency queries.
-  const fullGraph = new UndirectedGraph();
+  // Step 1 — load the FULL raw graph into Graphology. Direction is the BFF
+  // source → consumer axis; component BFS still walks undirected neighbours.
+  // Parallel recorded relations stay distinct edges: collapsing them would
+  // make the presentation graph lie about the dossier.
+  const fullGraph = new MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>();
   for (const node of raw.nodes) {
     const key = refKey(node.ref);
     if (!fullGraph.hasNode(key)) fullGraph.addNode(key, node);
   }
-  for (const edge of raw.edges) {
-    const from = refKey(edge.from);
-    const to = refKey(edge.to);
-    if (
-      fullGraph.hasNode(from) && fullGraph.hasNode(to) && from !== to &&
-      !fullGraph.hasEdge(from, to)
-    ) {
-      fullGraph.addEdge(from, to);
-    }
-  }
+  for (const edge of raw.edges) addThreadEdge(fullGraph, edge);
 
   // Step 2 — compute connected components on the FULL graph.
   const componentIdByKey = new Map<string, number>();
@@ -290,6 +312,7 @@ export function buildEvidenceGraphModel(
       const toNode = nodeByRefKey(afterVersioning.nodes, toKey);
       const downstream = visibleNeighboursOf(toKey, fullGraph, visibleRefKeys);
       for (const targetKey of downstream) {
+        if (targetKey === fromKey) continue;
         const target = nodeByRefKey(afterVersioning.nodes, targetKey) ??
           nodeByRefKey(raw.nodes, targetKey);
         if (!target) continue;
@@ -313,6 +336,7 @@ export function buildEvidenceGraphModel(
       const fromNode = nodeByRefKey(afterVersioning.nodes, fromKey);
       const upstream = visibleNeighboursOf(fromKey, fullGraph, visibleRefKeys);
       for (const sourceKey of upstream) {
+        if (sourceKey === toKey) continue;
         const source = nodeByRefKey(afterVersioning.nodes, sourceKey) ??
           nodeByRefKey(raw.nodes, sourceKey);
         if (!source) continue;
@@ -363,38 +387,23 @@ export function buildEvidenceGraphModel(
     },
   );
 
-  // Step 8 — build directed adjacency for bounded neighbourhood queries.
-  //  outgoing[key] = keys reachable by following edge.from → edge.to
-  //  incoming[key] = keys reachable by following edge backwards
-  const outgoing = new Map<string, Set<string>>();
-  const incoming = new Map<string, Set<string>>();
-  for (const n of visibleNodes) {
-    const k = refKey(n.ref);
-    if (!outgoing.has(k)) outgoing.set(k, new Set());
-    if (!incoming.has(k)) incoming.set(k, new Set());
+  // Step 8 — the visible dossier is one Graphology MultiDirectedGraph.
+  // Neighbourhood walks this graph; stubs stay off it so a folded
+  // instrument cannot be mistaken for a recorded Thread edge.
+  const presentation = new MultiDirectedGraph<
+    ThreadGraphNode,
+    ThreadGraphEdge
+  >();
+  for (const node of visibleNodes) {
+    const key = refKey(node.ref);
+    if (!presentation.hasNode(key)) presentation.addNode(key, node);
   }
-  for (const edge of visibleEdges) {
-    const from = refKey(edge.from);
-    const to = refKey(edge.to);
-    outgoing.get(from)?.add(to);
-    incoming.get(to)?.add(from);
-  }
-  // Also index stubs in the undirected adjacency (both directions).
-  const stubAdjacency = new Map<string, Set<string>>();
-  for (const stub of stubs) {
-    const from = refKey(stub.from);
-    const to = refKey(stub.to);
-    if (!stubAdjacency.has(from)) stubAdjacency.set(from, new Set());
-    if (!stubAdjacency.has(to)) stubAdjacency.set(to, new Set());
-    stubAdjacency.get(from)!.add(to);
-    stubAdjacency.get(to)!.add(from);
-  }
-
-  const nodeByKey = new Map(visibleNodes.map((n) => [refKey(n.ref), n]));
+  for (const edge of visibleEdges) addThreadEdge(presentation, edge);
 
   return {
     nodes: visibleNodes,
     edges: visibleEdges,
+    graph: presentation,
     stubs,
     components,
     rawNodeCount: raw.nodes.length,
@@ -406,7 +415,7 @@ export function buildEvidenceGraphModel(
 
     boundedNeighborhood(ref, depth, direction = "both") {
       const root = refKey(ref);
-      if (!nodeByKey.has(root)) {
+      if (!presentation.hasNode(root)) {
         return { nodes: [], edges: [] };
       }
       const visited = new Set<string>([root]);
@@ -416,27 +425,22 @@ export function buildEvidenceGraphModel(
       while (queue.length > 0) {
         const item = queue.shift()!;
         if (item.remaining <= 0) continue;
-        const neighbours = neighboursFor(
-          item.key,
-          direction,
-          outgoing,
-          incoming,
-        );
-        for (const neighbour of neighbours) {
+        for (
+          const neighbour of neighboursOn(presentation, item.key, direction)
+        ) {
           if (visited.has(neighbour)) continue;
           visited.add(neighbour);
           queue.push({ key: neighbour, remaining: item.remaining - 1 });
         }
       }
       const resultNodes = [...visited]
-        .map((k) => nodeByKey.get(k))
+        .map((k) => presentation.getNodeAttributes(k))
         .filter((n): n is ThreadGraphNode => n !== undefined);
       const resultEdges = visibleEdges.filter((e) => {
         const from = refKey(e.from);
         const to = refKey(e.to);
         return visited.has(from) && visited.has(to);
       });
-      // Include stubs that touch the neighbourhood.
       const resultStubEdges: ThreadGraphEdge[] = stubs
         .filter((s) => {
           const from = refKey(s.from);
@@ -470,6 +474,18 @@ function edgeOccurrenceKey(edge: ThreadGraphEdge): string {
   ].join("\u0000");
 }
 
+function addThreadEdge(
+  graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>,
+  edge: ThreadGraphEdge,
+): void {
+  const from = refKey(edge.from);
+  const to = refKey(edge.to);
+  if (!graph.hasNode(from) || !graph.hasNode(to) || from === to) return;
+  const key = edgeOccurrenceKey(edge);
+  if (graph.hasEdge(key)) return;
+  graph.addEdgeWithKey(key, from, to, edge);
+}
+
 function isContextStructureRelation(
   relation: ThreadGraphRelation,
 ): boolean {
@@ -496,7 +512,7 @@ function nodeByRefKey(
  */
 function visibleNeighboursOf(
   key: string,
-  graph: UndirectedGraph,
+  graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>,
   visibleRefKeys: Set<string>,
 ): Set<string> {
   const result = new Set<string>();
@@ -537,7 +553,7 @@ function maxEntry(counts: Map<string, number>): string | undefined {
 function componentName(
   dominantSystem: string,
   allNodeRefKeys: ReadonlySet<string>,
-  graph: UndirectedGraph,
+  graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>,
 ): string {
   // Collect entity kinds.
   const kinds = new Set<string>();
@@ -576,18 +592,14 @@ const SYSTEM_LABEL: Record<string, string> = {
   "erpnext": "ERP",
 };
 
-function neighboursFor(
+function neighboursOn(
+  graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>,
   key: string,
   direction: "both" | "upstream" | "downstream",
-  outgoing: Map<string, Set<string>>,
-  incoming: Map<string, Set<string>>,
-): Set<string> {
-  if (direction === "downstream") return outgoing.get(key) ?? new Set();
-  if (direction === "upstream") return incoming.get(key) ?? new Set();
-  const result = new Set<string>();
-  for (const k of outgoing.get(key) ?? []) result.add(k);
-  for (const k of incoming.get(key) ?? []) result.add(k);
-  return result;
+): readonly string[] {
+  if (direction === "downstream") return graph.outNeighbors(key);
+  if (direction === "upstream") return graph.inNeighbors(key);
+  return graph.neighbors(key);
 }
 
 /**

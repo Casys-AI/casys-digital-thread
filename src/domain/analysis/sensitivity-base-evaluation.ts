@@ -21,6 +21,29 @@ export const VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION = {
   version: "1",
 } as const;
 
+/** Server-fixed observation id prefix published by `analyze.run-fea-sensitivity@1`. */
+export const SENSITIVITY_BASE_OBSERVATION_ID_PREFIX = "sensitivity-base-";
+
+/** Server-fixed capture id prefix of `verify.evaluate-sensitivity-base@1`. */
+export const SENSITIVITY_BASE_EVALUATION_ARTIFACT_ID_PREFIX =
+  "sensitivity-base-evaluation-";
+
+/**
+ * True when the evaluation cites a study-base observation or join capture.
+ * Structural ids only — never the evaluation name.
+ */
+export function isStudyBaseEvaluation(evaluation: {
+  readonly observationIds: readonly string[];
+  readonly evidenceArtifactIds: readonly string[];
+}): boolean {
+  return evaluation.observationIds.some((id) =>
+    id.startsWith(SENSITIVITY_BASE_OBSERVATION_ID_PREFIX)
+  ) ||
+    evaluation.evidenceArtifactIds.some((id) =>
+      id.startsWith(SENSITIVITY_BASE_EVALUATION_ARTIFACT_ID_PREFIX)
+    );
+}
+
 const ORACLE_OPERATORS = new Set<RequirementOperator>(["<=", ">="]);
 
 export type SensitivityBaseJoinReason =

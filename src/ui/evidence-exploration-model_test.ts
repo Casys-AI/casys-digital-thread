@@ -1000,6 +1000,17 @@ Deno.test(
 );
 
 Deno.test(
+  "displayKindOf: study-base evaluationFamily is a distinct type chip",
+  () => {
+    const n: ThreadGraphNode = {
+      ...node("eval-join", "evaluation", "syson", "evaluation"),
+      evaluationFamily: "study-base",
+    };
+    assertEquals(displayKindOf(n), "study-base-evaluation");
+  },
+);
+
+Deno.test(
   "DISPLAY_KIND_LABELS has an English label for every DisplayKind",
   () => {
     const expectedKinds = [
@@ -1008,6 +1019,7 @@ Deno.test(
       "observation",
       "requirement",
       "evaluation",
+      "study-base-evaluation",
       "violation",
       "change",
       "consumption",

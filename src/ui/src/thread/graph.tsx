@@ -162,22 +162,16 @@ export function ThreadGraph({
     () => threadGraphImpactContext(layout.nodes, layout.edges, focusedRef),
     [layout, focusedRef],
   );
-  const selectedNodeRef = selection?.kind === "node"
-    ? selection.ref
-    : focusedRef;
+  const selectedNodeRef = selection?.kind === "node" ? selection.ref : focusedRef;
   const selectedNodeKey = selection?.kind === "node"
     ? threadGraphRefKey(selection.ref)
     : undefined;
   const selectedNodeVisible = selectedNodeKey
-    ? layout.nodes.some((item) =>
-      threadGraphRefKey(item.node.ref) === selectedNodeKey
-    )
+    ? layout.nodes.some((item) => threadGraphRefKey(item.node.ref) === selectedNodeKey)
     : false;
   const selectedEdgeId = selection?.kind === "edge" ? selection.id : undefined;
   const selectedEdgeVisible = selectedEdgeId
-    ? layout.edges.some((item) =>
-      threadGraphSelectionMatchesEdge(selection, item.edge)
-    )
+    ? layout.edges.some((item) => threadGraphSelectionMatchesEdge(selection, item.edge))
     : false;
   const viewport = useMemo(
     () =>
@@ -340,8 +334,7 @@ export function ThreadGraph({
       {presentation === "canvas" && (
         <div class="thread-graph-controls" aria-label="Graph view controls">
           <span aria-live="polite">
-            {Math.round(viewport.zoom * 100)}% · {layout.nodes.length}{" "}
-            recorded facts
+            {Math.round(viewport.zoom * 100)}% · {layout.nodes.length} recorded facts
           </span>
           <div role="group" aria-label="Zoom graph">
             <button
@@ -400,9 +393,7 @@ export function ThreadGraph({
                 onShowSupportingChange?.(next);
               }}
             >
-              {showingSupporting
-                ? "Show essential thread"
-                : "Show all evidence"}
+              {showingSupporting ? "Show essential thread" : "Show all evidence"}
             </button>
           </div>
         )}
@@ -469,9 +460,7 @@ export function ThreadGraph({
           <desc>
             {`${layout.nodes.length} evidence nodes and ${layout.edges.length} explicit relations in ${layout.components.length} connected component${
               layout.components.length === 1 ? "" : "s"
-            }. ${
-              presentation === "canvas" ? "Drag empty canvas space to pan." : ""
-            }`}
+            }. ${presentation === "canvas" ? "Drag empty canvas space to pan." : ""}`}
           </desc>
           <defs>
             <marker
@@ -495,17 +484,13 @@ export function ThreadGraph({
             const label = componentLabeler
               ? componentLabeler(componentNodes, component.id)
               : layout.components.length > 1
-              ? `EVIDENCE COMPONENT ${
-                String(component.id + 1).padStart(2, "0")
-              }`
+              ? `EVIDENCE COMPONENT ${String(component.id + 1).padStart(2, "0")}`
               : "LINKED EVIDENCE";
             return (
               <g
                 key={component.id}
                 class="thread-graph-component"
-                data-disconnected={layout.components.length > 1
-                  ? "true"
-                  : "false"}
+                data-disconnected={layout.components.length > 1 ? "true" : "false"}
               >
                 <rect
                   class="thread-graph-component-boundary"
@@ -575,7 +560,9 @@ export function ThreadGraph({
                   style={animate
                     ? { animationDelay: `${Math.min(index * 55, 440)}ms` }
                     : undefined}
-                  onClick={selectable ? () => selectEdge(item) : undefined}
+                  onClick={selectable
+                    ? () => selectEdge(item)
+                    : undefined}
                   onFocus={selectable
                     ? () => setKeyboardEdge(occurrenceKey)
                     : undefined}
@@ -607,9 +594,7 @@ export function ThreadGraph({
                     : undefined}
                 >
                   <title>
-                    {`${item.edge.rationale}${
-                      attestationDescription(attestation)
-                    }`}
+                    {`${item.edge.rationale}${attestationDescription(attestation)}`}
                   </title>
                   <path
                     class="thread-graph-edge-line"
@@ -733,7 +718,9 @@ export function ThreadGraph({
                     y="20"
                     text-anchor="end"
                   >
-                    {item.node.ref.kind}
+                    {item.node.evaluationFamily === "study-base"
+                      ? "study-base"
+                      : item.node.ref.kind}
                   </text>
                 </g>
               );
@@ -744,8 +731,8 @@ export function ThreadGraph({
 
       {layout.components.length > 1 && (
         <figcaption class="thread-graph-caption">
-          Separate frames are intentional: no canonical relation currently
-          connects these evidence components.
+          Separate frames are intentional: no canonical relation currently connects
+          these evidence components.
         </figcaption>
       )}
       {layout.unresolvedEdgeIds.length > 0 && (
@@ -776,7 +763,5 @@ function normaliseZoom(value: number): number {
 }
 
 function truncate(value: string, maxLength: number): string {
-  return value.length <= maxLength
-    ? value
-    : `${value.slice(0, maxLength - 1)}…`;
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
 }

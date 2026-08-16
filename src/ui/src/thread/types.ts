@@ -1434,6 +1434,7 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
     "recordedAt",
     "affectedComponentId",
     "activityRole",
+    "evaluationFamily",
     "selection",
   ]) && typeof node.id === "string" && node.id.length > 0 &&
     isThreadGraphRef(node.ref) &&
@@ -1452,6 +1453,8 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
       (typeof node.affectedComponentId === "string" &&
         node.affectedComponentId.length > 0)) &&
     (node.activityRole === undefined || node.activityRole === "milestone") &&
+    (node.evaluationFamily === undefined ||
+      node.evaluationFamily === "study-base") &&
     (node.selection === undefined || isThreadRef(node.selection));
 }
 

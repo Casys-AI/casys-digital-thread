@@ -12,7 +12,7 @@ flowchart TD
   sa --> assert["engineering-assertion/1.0\ndeclared | inferred | observed"]
   assert --> graph["AnalysisGraph/1.0"]
   graph --> ts["ThreadSnapshot/1.1"]
-  ts --> bff["BFF → Graphology MultiDirectedGraph\nread only, origin analysis"]
+  ts --> bff["BFF → Graphology MultiDirectedGraph\nread only, Thread dossier"]
   sa --> mrtr["Human MRTR + qualified method\nexact decision, approval, basis"]
   mrtr --> rop["resolved-operation-plan/2.0\none server-owned action"]
   rop --> exec["Server-fixed executor"]
@@ -45,7 +45,7 @@ facts, symbols, local dependencies, diagnostics|
         |    ThreadSnapshot/1.1                 |
         |                 |                     |
         |                 v                     |
-        |    BFF -> Graphology MultiDirectedGraph (read only)
+        |    BFF -> Graphology MultiDirectedGraph (read only, Thread dossier)
         |                                      |
         +--> human MRTR + qualified method
              exact decision, approval and thread basis
@@ -122,10 +122,13 @@ unchanged; `@2` is a successor vertical, not a reinterpretation of old captures.
   select a raw provider transport or inject its wire envelope.
 - Execution revalidates the stored plan and its referenced records. An opaque plan id is
   a lookup handle, not proof of authority.
-- Graphology is a read/navigation projection. The BFF emits analysis edges with
-  `origin: "analysis"`; the UI renders them in a `MultiDirectedGraph` so parallel
-  qualified relations are inspectable rather than collapsed. Canonical relations and
-  evidence remain domain records and thread captures.
+- Graphology is a read/navigation projection. The BFF still emits analysis edges
+  with `origin: "analysis"` so Product and tests can inspect the index. The
+  Evidence canvas omits that overlay and loads the Thread dossier
+  (provenance + structure) into a `MultiDirectedGraph`, so parallel recorded
+  relations stay inspectable rather than collapsed. Sensitivity and other
+  `AnalysisGraph` islands remain a semantic index, not a second painted graph.
+  Canonical relations and evidence remain domain records and thread captures.
 
 ## Hexagonal placement
 

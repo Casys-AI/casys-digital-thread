@@ -151,6 +151,11 @@ export interface ThreadGraphNode {
    * It does not change the node's engineering/provenance semantics.
    */
   activityRole?: "milestone";
+  /**
+   * Present only for `verify.evaluate-sensitivity-base@1` evaluations.
+   * Distinguishes the experience join from a proof-run oracle verdict.
+   */
+  evaluationFamily?: "study-base";
   /** Existing inspector target when this entity has a native detail panel. */
   selection?: ThreadRef;
 }

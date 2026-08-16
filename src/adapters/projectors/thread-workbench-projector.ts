@@ -21,6 +21,7 @@ import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 import type { AnalysisGraph } from "../../domain/analysis/analysis-graph.ts";
+import { isStudyBaseEvaluation } from "../../domain/analysis/sensitivity-base-evaluation.ts";
 import type {
   AssertionScope,
   SemanticRef,
@@ -507,6 +508,9 @@ function projectGraph(
       summary: evaluation.status,
       recordedAt: evaluation.evaluatedAt,
       selection: { kind: "requirement", id: evaluation.requirementId },
+      ...(isStudyBaseEvaluation(evaluation)
+        ? { evaluationFamily: "study-base" as const }
+        : {}),
     })),
     ...snapshot.violations.map((violation): ThreadGraphNode => {
       const evaluation = snapshot.evaluations.find((item) =>
@@ -1119,7 +1123,11 @@ function copyGraphRef(reference: ThreadEntityRef): ThreadGraphRef {
 }
 
 function graphNodeId(reference: ThreadGraphRef): string {
-  return `graph:${reference.kind}:${reference.id}`;
+  const kindPrefix = `${reference.kind}:`;
+  if (reference.id.startsWith(kindPrefix)) {
+    return `graph:${reference.id}`;
+  }
+  return `graph:${kindPrefix}${reference.id}`;
 }
 
 function isDemoLoopPrimaryArtifact(id: string): boolean {

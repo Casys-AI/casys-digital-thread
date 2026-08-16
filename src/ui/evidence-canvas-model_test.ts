@@ -13,7 +13,9 @@ import {
   buildEvidenceCanvasProjection,
   buildExplorationKindProjection,
   isAnalyzeInstrumentNode,
+  linkedEvidenceDetail,
   makeEvidenceComponentLabeler,
+  paintedDossierMetric,
   stubToEdge,
 } from "./src/thread/evidence-canvas-model.ts";
 import type { DisplayKind } from "./src/thread/essential-graph-filter.ts";
@@ -99,11 +101,47 @@ Deno.test("isAnalyzeInstrumentNode folds calculix sensitivity artifacts", () => 
   assertEquals(isAnalyzeInstrumentNode(n), true);
 });
 
-Deno.test("isAnalyzeInstrumentNode keeps sensitivity capture (digital-thread)", () => {
+Deno.test("isAnalyzeInstrumentNode folds digital-thread sensitivity-study campaign documents", () => {
+  assertEquals(
+    isAnalyzeInstrumentNode(
+      node("sensitivity-study-abc123", "artifact", "digital-thread"),
+    ),
+    true,
+  );
+  assertEquals(
+    isAnalyzeInstrumentNode(
+      node("sensitivity-case-abc123", "artifact", "digital-thread"),
+    ),
+    true,
+  );
+  assertEquals(
+    isAnalyzeInstrumentNode(
+      node("sensitivity-edges-abc123", "artifact", "digital-thread"),
+    ),
+    true,
+  );
+  assertEquals(
+    isAnalyzeInstrumentNode(
+      node("sensitivity-base-evaluation-abc123", "artifact", "digital-thread"),
+    ),
+    true,
+  );
+});
+
+Deno.test("isAnalyzeInstrumentNode keeps a digital-thread document that is not a campaign id", () => {
   const n = node(
     "drip-tray-sensitivity-abc123-capture",
     "artifact",
     "digital-thread",
+  );
+  assertEquals(isAnalyzeInstrumentNode(n), false);
+});
+
+Deno.test("isAnalyzeInstrumentNode keeps study-base evaluations attached to Thread requirements", () => {
+  const n = node(
+    "requirement-arm-maxDisplacement-evaluation-abc123",
+    "evaluation",
+    "syson",
   );
   assertEquals(isAnalyzeInstrumentNode(n), false);
 });
@@ -222,6 +260,25 @@ Deno.test("stubToEdge produces a ThreadGraphEdge with via rationale", () => {
   assertEquals(result.relation, "derived_from");
   assertEquals(result.rationale, "via sensitivity base step — folded");
   assertEquals(result.origin, "provenance");
+});
+
+Deno.test("paintedDossierMetric counts the full-map essential nodes and visible components", () => {
+  const { model } = instrumentBridgeFixture();
+  const projection = buildEvidenceCanvasProjection(
+    model,
+    0,
+    undefined,
+    new Map(),
+  );
+  const painted = paintedDossierMetric(model, projection);
+  assertEquals(painted.itemCount, projection.displayedCount);
+  assertEquals(painted.componentCount, 1);
+  assertEquals(linkedEvidenceDetail(1), "in 1 linked dossier");
+  assertEquals(
+    linkedEvidenceDetail(2),
+    "across 2 linked dossier components",
+  );
+  assertEquals(linkedEvidenceDetail(0), "no painted dossier");
 });
 
 // ---------------------------------------------------------------------------
@@ -710,6 +767,82 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "sensitivity campaign folds into the construction dossier via a stub to the study-base evaluation",
+  () => {
+    const admission = node(
+      "technical-compilation-admission-abc",
+      "artifact",
+      "digital-thread",
+    );
+    const studyCase = node(
+      "sensitivity-case-abc",
+      "artifact",
+      "digital-thread",
+    );
+    const study = node(
+      "sensitivity-study-abc",
+      "artifact",
+      "digital-thread",
+    );
+    const requirement = node("maxDisplacement", "requirement", "syson");
+    const evaluation = node(
+      "requirement-maxDisplacement-evaluation-abc",
+      "evaluation",
+      "syson",
+    );
+    const model = buildEvidenceGraphModel(
+      {
+        nodes: [admission, studyCase, study, requirement, evaluation],
+        edges: [
+          edge("admission-case", admission.ref, studyCase.ref),
+          edge("case-study", studyCase.ref, study.ref),
+          edge("study-eval", study.ref, evaluation.ref),
+          {
+            id: "req-eval",
+            from: requirement.ref,
+            to: evaluation.ref,
+            relation: "evaluates",
+            rationale: "join",
+            origin: "provenance",
+          },
+        ],
+      },
+      emptyFamilyGraph,
+      { isAnalyzeInstrumentNode },
+    );
+    const projection = buildEvidenceCanvasProjection(
+      model,
+      0,
+      undefined,
+      new Map(),
+    );
+    const visibleIds = projection.nodes.map((n) => n.ref.id).sort();
+    assertEquals(visibleIds, [
+      "maxDisplacement",
+      "requirement-maxDisplacement-evaluation-abc",
+      "technical-compilation-admission-abc",
+    ]);
+    const stub = projection.edges.find((item) =>
+      item.id.startsWith("stub:") &&
+      ((item.from.id === "technical-compilation-admission-abc" &&
+        item.to.id === "requirement-maxDisplacement-evaluation-abc") ||
+        (item.from.id === "requirement-maxDisplacement-evaluation-abc" &&
+          item.to.id === "technical-compilation-admission-abc"))
+    );
+    assertEquals(stub !== undefined, true);
+    assertEquals(
+      projection.edges.some((item) =>
+        item.id.startsWith("stub:") && item.from.id === item.to.id
+      ),
+      false,
+    );
+    assertEquals(model.componentOf(admission.ref), 0);
+    assertEquals(model.componentOf(evaluation.ref), 0);
+    assertEquals(model.componentOf(requirement.ref), 0);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // 6 — buildExplorationKindProjection
 // ---------------------------------------------------------------------------
@@ -721,6 +854,7 @@ const ALL_KINDS_VISIBLE: Record<DisplayKind, boolean> = {
   "observation": true,
   "requirement": true,
   "evaluation": true,
+  "study-base-evaluation": true,
   "violation": true,
   "change": true,
   "consumption": true,
@@ -736,6 +870,7 @@ const DEFAULT_MAP_KINDS: Record<DisplayKind, boolean> = {
   "observation": true,
   "requirement": true,
   "evaluation": true,
+  "study-base-evaluation": true,
   "violation": true,
   "change": false,
   "consumption": false,

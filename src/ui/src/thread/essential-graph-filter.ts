@@ -16,11 +16,7 @@
  * This module is pure domain (no I/O, no Preact, no browser APIs).
  */
 
-import type {
-  ThreadGraphEdge,
-  ThreadGraphNode,
-  ThreadGraphRef,
-} from "./types.ts";
+import type { ThreadGraphEdge, ThreadGraphNode, ThreadGraphRef } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Structural predicates
@@ -69,6 +65,7 @@ export type DisplayKind =
   | "observation"
   | "requirement"
   | "evaluation"
+  | "study-base-evaluation"
   | "violation"
   | "change"
   | "consumption"
@@ -85,7 +82,8 @@ export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
   "supporting-artifact": "Technical artifacts",
   "observation": "Observations",
   "requirement": "Requirements",
-  "evaluation": "Evaluations",
+  "evaluation": "Proof evaluations",
+  "study-base-evaluation": "Study-base evaluations",
   "violation": "Violations",
   "change": "Changes",
   "consumption": "Consumptions",
@@ -106,6 +104,11 @@ export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
  * model continue to work without a circular dependency.
  */
 export function displayKindOf(node: ThreadGraphNode): DisplayKind {
+  if (
+    node.entityKind === "evaluation" && node.evaluationFamily === "study-base"
+  ) {
+    return "study-base-evaluation";
+  }
   if (node.entityKind === "analysis-node") return "analysis";
   if (
     node.entityKind === "part-definition" ||

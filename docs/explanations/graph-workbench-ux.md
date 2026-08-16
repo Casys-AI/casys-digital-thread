@@ -33,7 +33,12 @@ conversation.
   recorded ancestor and descendant, not only the shortest path.
 - **Evidence graph:** one native canvas owns the Evidence space, fit/zoom controls,
   legend and large-topology inspection. Revision history is folded into its current
-  evidence node instead of creating a second graph mode.
+  evidence node instead of creating a second graph mode. The canvas paints the
+  Thread dossier (`origin: provenance` and `structure`) as one Graphology
+  `MultiDirectedGraph`. `AnalysisGraph` stays a semantic index: its
+  `analysis-node` overlay is not painted, so a sensitivity study cannot appear
+  as a second disconnected graph. Graphology never grants admission, a join,
+  or an execution.
 - **Right drawer:** one sticky, resizable tool inspector. It follows selection without
   changing the feed or topology viewport and exposes the selected node's exact recorded
   versions and their internal transition relations.
@@ -122,3 +127,28 @@ performs no network call, and exposes callbacks for selection, preparing an acti
 host-owned navigation to a full native tool view. A branch that only shares the declared
 subject identity is labelled independent until an explicit cross-tool dependency exists
 in the Workbench projection.
+
+The data model behind this UX — four layers, three `origin` vocabularies, and
+what a live head actually emits — is inventoried in
+[`docs/reference/graph-data-model.md`](../reference/graph-data-model.md).
+
+## Evidence canvas: one Graphology dossier
+
+The BFF still projects `AnalysisGraph` as browser-safe `origin: "analysis"`
+data. Product and tests may inspect that index. The Evidence canvas does not
+paint it. Painting those nodes created disconnected islands (brief, FEA
+sensitivity, other analysis families) that looked like three graphs.
+
+The presentation model is a Graphology `MultiDirectedGraph` loaded from the
+Thread dossier after closed actions and the analysis overlay are removed.
+Connected components, neighbourhood, and the Sigma canvas all read that
+same directed multigraph. Positions come from one deterministic dagre LR
+layout. Evidence no longer has a second SVG Map organisation of the same
+dossier. Activity may still render a small SVG fallback when no Evidence
+model is available. Parallel recorded relations stay distinct edges. The
+canvas does not invent an analysis→Thread join to re-attach a sensitivity
+island. The sensitivity *campaign* (case, study, edges, join capture,
+instrument observations) is folded from Evidence: it is accumulated
+neighbourhood experience, not a second construction study. Study-base
+evaluations stay on the Thread requirements they evaluate, so the experience
+remains attached to the dossier instead of floating as a separate graph.

@@ -72,12 +72,13 @@ import {
 import { activityFeedNodes, type FeedScope } from "./feed-model.ts";
 import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
-import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
+import { type ThreadGraphSelection } from "./graph.tsx";
 import {
   buildEvidenceCanvasProjection,
   buildExplorationKindProjection,
   isAnalyzeInstrumentNode,
-  makeEvidenceComponentLabeler,
+  linkedEvidenceDetail,
+  paintedDossierMetric,
 } from "./evidence-canvas-model.ts";
 import {
   DISPLAY_KIND_LABELS,
@@ -87,6 +88,7 @@ import {
 import {
   buildEvidenceGraphModel,
   type EvidenceGraphModel,
+  graphWithoutAnalysisOverlay,
 } from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
 import {
@@ -130,7 +132,6 @@ import type {
   ThreadComponent,
   ThreadComponentBinding,
   ThreadComponentProvider,
-  ThreadFlowStage,
   ThreadFreshness,
   ThreadGraph as ThreadGraphData,
   ThreadGraphEdge,
@@ -182,12 +183,8 @@ export function ThreadWorkbench({
   const [reviewIntentStates, setReviewIntentStates] = useState<
     ReadonlyMap<string, ReviewIntentTransmissionState>
   >(new Map());
-  // Mode "Exploration" (sigma) par défaut sur la surface Evidence ; la Carte
-  // SVG reste disponible. Le mode "Par pièce" a été retiré (décision opérateur
-  // 2026-08-07) : la lecture par pièce vit dans le filtre du feed Activity.
-  const [evidenceMode, setEvidenceMode] = useState<
-    "carte" | "exploration"
-  >("exploration");
+  // Evidence is one Graphology + dagre + Sigma canvas. The SVG Map layout
+  // is not a second organisation of the same dossier.
   // Profondeur du voisinage en vue locale (façon Obsidian). Décision
   // opérateur 2026-08-08 : défaut 1 — les voisins immédiats seulement.
   const [localDepth, setLocalDepth] = useState<1 | 2 | 3>(1);
@@ -204,6 +201,7 @@ export function ThreadWorkbench({
     "observation": true,
     "requirement": true,
     "evaluation": true,
+    "study-base-evaluation": true,
     "violation": true,
     "change": false,
     "consumption": false,
@@ -221,6 +219,7 @@ export function ThreadWorkbench({
     "observation": true,
     "requirement": true,
     "evaluation": true,
+    "study-base-evaluation": true,
     "violation": true,
     "change": true,
     "consumption": true,
@@ -441,10 +440,12 @@ export function ThreadWorkbench({
       buildCurrentProjectWork(workbench.project).closedActionTargetIds,
     );
     return buildVersionedProvenanceProjection(
-      graphWithoutClosedActions(
-        thread.graph,
-        thread.actions,
-        closedIds,
+      graphWithoutAnalysisOverlay(
+        graphWithoutClosedActions(
+          thread.graph,
+          thread.actions,
+          closedIds,
+        ),
       ),
       thread.evidenceFamilyGraph,
       { presentedMemberRef },
@@ -462,10 +463,12 @@ export function ThreadWorkbench({
     const closedIds = new Set(
       buildCurrentProjectWork(workbench.project).closedActionTargetIds,
     );
-    const rawGraph = graphWithoutClosedActions(
-      thread.graph,
-      thread.actions,
-      closedIds,
+    const rawGraph = graphWithoutAnalysisOverlay(
+      graphWithoutClosedActions(
+        thread.graph,
+        thread.actions,
+        closedIds,
+      ),
     );
     return buildEvidenceGraphModel(rawGraph, thread.evidenceFamilyGraph, {
       isAnalyzeInstrumentNode,
@@ -500,27 +503,43 @@ export function ThreadWorkbench({
   // on every click — the "everything refreshes" defect. localDepth is NOT a
   // dependency: the local neighbourhood is computed at max depth and the
   // visible depth filters display only.
-  const evidenceCanvasMemo = useMemo(() => {
+  const fullMapCanvasMemo = useMemo(() => {
     if (!workbench || workbench.surface !== "evidence") return undefined;
     if (!versionedProvenanceMemo || !evidenceModel) return undefined;
     return buildEvidenceCanvasProjection(
       evidenceModel,
       versionedProvenanceMemo.collapsedVersionCount,
-      presentedMemberRef ?? lineageFocus,
+      undefined,
+      versionedProvenanceMemo.visibleRefByMemberRef,
+    );
+  }, [workbench, versionedProvenanceMemo, evidenceModel]);
+
+  const evidenceCanvasMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!versionedProvenanceMemo || !evidenceModel || !fullMapCanvasMemo) {
+      return undefined;
+    }
+    const focus = presentedMemberRef ?? lineageFocus;
+    if (!focus) return fullMapCanvasMemo;
+    return buildEvidenceCanvasProjection(
+      evidenceModel,
+      versionedProvenanceMemo.collapsedVersionCount,
+      focus,
       versionedProvenanceMemo.visibleRefByMemberRef,
     );
   }, [
     workbench,
     versionedProvenanceMemo,
     evidenceModel,
+    fullMapCanvasMemo,
     lineageFocus,
     presentedMemberRef,
   ]);
 
-  // Kind-filtered projection for the full-map Exploration view. This projection
-  // replaces the essential-filter projection when evidenceMode==="exploration"
-  // and there is no focus. Changing explorationMapKinds triggers a dagre
-  // remount — the re-layout on the visible set is intentional (no gaps).
+  // Kind-filtered projection for the full Evidence canvas. This projection
+  // replaces the essential-filter projection when there is no focus. Changing
+  // explorationMapKinds triggers a dagre remount — the re-layout on the
+  // visible set is intentional (no gaps).
   const explorationKindProjectionMemo = useMemo(() => {
     if (!workbench || workbench.surface !== "evidence") return undefined;
     if (!evidenceModel) return undefined;
@@ -537,8 +556,7 @@ export function ThreadWorkbench({
   // occurrence disappeared. Raw ids are intentionally absent from this path.
   const graphSelectionIndexMemo = useMemo(() => {
     if (!versionedProvenanceMemo || !evidenceCanvasMemo) return undefined;
-    const activeProjection = evidenceMode === "exploration" &&
-        !evidenceCanvasMemo.isFiltered
+    const activeProjection = !evidenceCanvasMemo.isFiltered
       ? (explorationKindProjectionMemo ?? evidenceCanvasMemo)
       : evidenceCanvasMemo;
     return buildVersionedGraphSelectionIndex(
@@ -549,7 +567,6 @@ export function ThreadWorkbench({
     versionedProvenanceMemo,
     evidenceCanvasMemo,
     explorationKindProjectionMemo,
-    evidenceMode,
   ]);
 
   // An occurrence key is an exact selection contract. When a live snapshot
@@ -834,12 +851,12 @@ export function ThreadWorkbench({
   // returns have already fired.
   const versionedProvenance = versionedProvenanceMemo!;
   const evidenceCanvas = evidenceCanvasMemo!;
+  const fullMapCanvas = fullMapCanvasMemo!;
   const graphSelectionIndex = graphSelectionIndexMemo!;
 
   // Visible-depth display filter (local view only). The neighbourhood is
   // computed at max depth; here we derive what the chosen depth actually
-  // shows — used for the Carte SVG filtered node set. Type filters from
-  // explorationLocalKinds are NOT applied here (Carte is type-agnostic).
+  // shows for the Evidence banner.
   const depthKey = (ref: ThreadGraphRef) => `${ref.kind}:${ref.id}`;
   const withinLocalDepth = (ref: ThreadGraphRef): boolean => {
     if (!evidenceCanvas.isFiltered) return true;
@@ -847,30 +864,11 @@ export function ThreadWorkbench({
     if (depths && (depths.get(depthKey(ref)) ?? 0) > localDepth) return false;
     return true;
   };
-  // Banner count for the local view in Exploration mode: accounts for depth
-  // AND type visibility (explorationLocalKinds). Not used for Carte.
   const explorationLocalVisibleCount = evidenceCanvas.isFiltered
-    ? evidenceCanvas.nodes.filter((n) => {
-      if (!withinLocalDepth(n.ref)) return false;
-      if (evidenceMode === "exploration") {
-        return explorationLocalKinds[displayKindOf(n)];
-      }
-      return true;
-    }).length
+    ? evidenceCanvas.nodes.filter((n) =>
+      withinLocalDepth(n.ref) && explorationLocalKinds[displayKindOf(n)]
+    ).length
     : 0;
-  // Banner count for the local view in Carte mode (depth only, no types).
-  const carteLocalVisibleCount =
-    evidenceCanvas.nodes.filter((n) => withinLocalDepth(n.ref)).length;
-  const carteNodes = evidenceCanvas.nodes.filter((n) =>
-    withinLocalDepth(n.ref)
-  );
-  const carteEdges = evidenceCanvas.edges.filter(
-    (e) => withinLocalDepth(e.from) && withinLocalDepth(e.to),
-  );
-  const evidenceComponentLabeler = makeEvidenceComponentLabeler(
-    evidenceModel,
-    evidenceModel.components.length <= 1,
-  );
 
   // Compute which DisplayKinds are present in the model (post-fold) so the
   // burger menu only shows toggles for types that actually exist in the data.
@@ -982,16 +980,6 @@ export function ThreadWorkbench({
       setDrawerMode("tool");
       setInspectorOpen(true);
     }
-  };
-
-  const inspectVerificationGraphItem = (
-    next: ThreadRef,
-    node: ThreadGraphNode,
-  ) => {
-    setSelection(next);
-    setLineageFocus(node.ref);
-    setDrawerMode("tool");
-    setInspectorOpen(true);
   };
 
   const changeFollowLive = (next: boolean) => {
@@ -1352,7 +1340,10 @@ export function ThreadWorkbench({
             {activeView === "verification" && (
               <MetricGrid
                 className="thread-metrics project-verification-metrics"
-                items={summaryMetrics(snapshot)}
+                items={summaryMetrics(
+                  snapshot,
+                  paintedDossierMetric(evidenceModel, fullMapCanvas),
+                )}
               />
             )}
             <div
@@ -1437,7 +1428,7 @@ export function ThreadWorkbench({
                     >
                       <header>
                         <div>
-                          <p>CURRENT EVIDENCE MAP</p>
+                          <p>CURRENT EVIDENCE</p>
                           <h4 id="thread-versioned-provenance-title">
                             {presentedMemberRef
                               ? "Recorded path for the selected version"
@@ -1460,13 +1451,8 @@ export function ThreadWorkbench({
                         >
                           <span>
                             {evidenceCanvas.isFiltered
-                              ? `${
-                                evidenceMode === "exploration"
-                                  ? explorationLocalVisibleCount
-                                  : carteLocalVisibleCount
-                              } items shown · local view · depth ${localDepth}`
-                              : evidenceMode === "exploration"
-                              ? (() => {
+                              ? `${explorationLocalVisibleCount} items shown · local view · depth ${localDepth}`
+                              : (() => {
                                 const kp = explorationKindProjectionMemo ??
                                   evidenceCanvas;
                                 const parts: string[] = [
@@ -1483,201 +1469,115 @@ export function ThreadWorkbench({
                                   );
                                 }
                                 return parts.join(" · ");
-                              })()
-                              : (() => {
-                                // Carte mode full map — essential-filter
-                                // projection, unchanged.
-                                const essentialCount =
-                                  evidenceCanvas.displayedCount;
-                                const totalFolded =
-                                  evidenceCanvas.foldedInstrumentCount +
-                                  versionedProvenance.collapsedVersionCount;
-                                const parts: string[] = [
-                                  `${essentialCount} items shown`,
-                                ];
-                                if (totalFolded > 0) {
-                                  parts.push(`${totalFolded} folded`);
-                                }
-                                if (evidenceCanvas.supportingNodeCount > 0) {
-                                  parts.push(
-                                    `${evidenceCanvas.supportingNodeCount} outside the current view`,
-                                  );
-                                }
-                                return parts.join(" · ");
                               })()}
                           </span>
-                          <div
-                            class="evidence-graph-mode-toggle"
-                            role="group"
-                            aria-label="Graph rendering mode"
-                          >
-                            <button
-                              type="button"
-                              aria-pressed={evidenceMode === "exploration"}
-                              onClick={() => setEvidenceMode("exploration")}
-                            >
-                              Exploration
-                            </button>
-                            <button
-                              type="button"
-                              aria-pressed={evidenceMode === "carte"}
-                              onClick={() => setEvidenceMode("carte")}
-                            >
-                              Map
-                            </button>
-                          </div>
                         </div>
                       </header>
-                      {evidenceMode === "exploration" && (
-                        <div class="evidence-graph-menu">
-                          <button
-                            type="button"
-                            class="evidence-graph-menu-toggle"
-                            aria-expanded={graphMenuOpen}
-                            aria-label="Graph settings"
-                            title="Graph settings"
-                            onClick={() => setGraphMenuOpen(!graphMenuOpen)}
-                          >
-                            ☰
-                          </button>
-                          {graphMenuOpen && (
-                            <div class="evidence-graph-menu-panel">
-                              {(evidenceCanvas.isFiltered ||
-                                presentedMemberRef) && (
-                                <>
-                                  <p class="evidence-graph-menu-label">
-                                    NEIGHBOR DEPTH
-                                  </p>
-                                  <div
-                                    class="evidence-graph-mode-toggle"
-                                    role="group"
-                                    aria-label="Local neighborhood depth"
-                                  >
-                                    {([1, 2, 3] as const).map((depth) => (
-                                      <button
-                                        key={depth}
-                                        type="button"
-                                        aria-pressed={localDepth === depth}
-                                        title={`Show neighbors up to depth ${depth}`}
-                                        onClick={() => setLocalDepth(depth)}
-                                      >
-                                        {depth}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </>
-                              )}
-                              <p class="evidence-graph-menu-label">
-                                SHOW
-                              </p>
-                              {(Object.keys(
-                                DISPLAY_KIND_LABELS,
-                              ) as DisplayKind[]).map(
-                                (kind) => {
-                                  if (!presentKinds.has(kind)) return null;
-                                  const currentKinds = evidenceCanvas.isFiltered
-                                    ? explorationLocalKinds
-                                    : explorationMapKinds;
-                                  const setCurrentKinds = evidenceCanvas
-                                      .isFiltered
-                                    ? setExplorationLocalKinds
-                                    : setExplorationMapKinds;
-                                  return (
-                                    <label
-                                      key={kind}
-                                      class="evidence-graph-menu-check"
+                      <div class="evidence-graph-menu">
+                        <button
+                          type="button"
+                          class="evidence-graph-menu-toggle"
+                          aria-expanded={graphMenuOpen}
+                          aria-label="Graph settings"
+                          title="Graph settings"
+                          onClick={() => setGraphMenuOpen(!graphMenuOpen)}
+                        >
+                          ☰
+                        </button>
+                        {graphMenuOpen && (
+                          <div class="evidence-graph-menu-panel">
+                            {(evidenceCanvas.isFiltered ||
+                              presentedMemberRef) && (
+                              <>
+                                <p class="evidence-graph-menu-label">
+                                  NEIGHBOR DEPTH
+                                </p>
+                                <div
+                                  class="evidence-graph-mode-toggle"
+                                  role="group"
+                                  aria-label="Local neighborhood depth"
+                                >
+                                  {([1, 2, 3] as const).map((depth) => (
+                                    <button
+                                      key={depth}
+                                      type="button"
+                                      aria-pressed={localDepth === depth}
+                                      title={`Show neighbors up to depth ${depth}`}
+                                      onClick={() => setLocalDepth(depth)}
                                     >
-                                      <input
-                                        type="checkbox"
-                                        checked={currentKinds[kind]}
-                                        onChange={(event) =>
-                                          setCurrentKinds((prev) => ({
-                                            ...prev,
-                                            [kind]:
-                                              (event.target as HTMLInputElement)
-                                                .checked,
-                                          }))}
-                                      />
-                                      {DISPLAY_KIND_LABELS[kind]}
-                                    </label>
-                                  );
-                                },
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      {evidenceMode === "carte" && (
-                        <>
-                          <div
-                            class="thread-graph-legend"
-                            aria-label="Graph legend"
-                          >
-                            <span data-tone="source">upstream evidence</span>
-                            <span data-tone="focus">selected fact</span>
-                            <span data-tone="impact">downstream impact</span>
-                            <span data-tone="attested">
-                              verified fingerprint
-                            </span>
-                            <span data-tone="mismatch">
-                              fingerprint mismatch
-                            </span>
+                                      {depth}
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                            <p class="evidence-graph-menu-label">
+                              SHOW
+                            </p>
+                            {(Object.keys(
+                              DISPLAY_KIND_LABELS,
+                            ) as DisplayKind[]).map(
+                              (kind) => {
+                                if (!presentKinds.has(kind)) return null;
+                                const currentKinds = evidenceCanvas.isFiltered
+                                  ? explorationLocalKinds
+                                  : explorationMapKinds;
+                                const setCurrentKinds = evidenceCanvas
+                                    .isFiltered
+                                  ? setExplorationLocalKinds
+                                  : setExplorationMapKinds;
+                                return (
+                                  <label
+                                    key={kind}
+                                    class="evidence-graph-menu-check"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={currentKinds[kind]}
+                                      onChange={(event) =>
+                                        setCurrentKinds((prev) => ({
+                                          ...prev,
+                                          [kind]:
+                                            (event.target as HTMLInputElement)
+                                              .checked,
+                                        }))}
+                                    />
+                                    {DISPLAY_KIND_LABELS[kind]}
+                                  </label>
+                                );
+                              },
+                            )}
                           </div>
-                          <ThreadGraph
-                            key={presentedMemberRef
-                              ? versionedRefKey(presentedMemberRef)
-                              : "live-map"}
-                            nodes={carteNodes as ThreadGraphNode[]}
-                            edges={carteEdges as ThreadGraphEdge[]}
-                            selection={visibleGraphSelection(
-                              versionedProvenance,
-                              graphSelection,
-                              graphSelectionIndex,
-                            )}
-                            focus={visibleGraphRef(
-                              versionedProvenance,
-                              presentedMemberRef ?? lineageFocus,
-                            )}
-                            presentation="canvas"
-                            initialZoom={2.25}
-                            showSupporting
-                            showDensityControl={false}
-                            onSelectionChange={selectVerificationGraphItem}
-                            onInspect={inspectVerificationGraphItem}
-                            componentLabeler={evidenceComponentLabeler}
-                          />
-                        </>
-                      )}
-                      {evidenceMode === "exploration" && (
-                        <EvidenceExploration
-                          key={presentedMemberRef
-                            ? `version:${versionedRefKey(presentedMemberRef)}`
-                            : "live-map"}
-                          evidenceModel={evidenceModel}
-                          projection={presentedMemberRef ||
-                              evidenceCanvas.isFiltered
-                            ? evidenceCanvas
-                            : (explorationKindProjectionMemo ?? evidenceCanvas)}
-                          displayDepth={presentedMemberRef ||
-                              evidenceCanvas.isFiltered
-                            ? localDepth
-                            : undefined}
-                          visibleKinds={presentedMemberRef ||
-                              evidenceCanvas.isFiltered
-                            ? explorationLocalKinds
-                            : undefined}
-                          selection={visibleGraphSelection(
-                            versionedProvenance,
-                            graphSelection,
-                            graphSelectionIndex,
-                          )}
-                          focus={visibleGraphRef(
-                            versionedProvenance,
-                            presentedMemberRef ?? lineageFocus,
-                          )}
-                          onSelectionChange={selectVerificationGraphItem}
-                        />
-                      )}
+                        )}
+                      </div>
+                      <EvidenceExploration
+                        key={presentedMemberRef
+                          ? `version:${versionedRefKey(presentedMemberRef)}`
+                          : "live-map"}
+                        evidenceModel={evidenceModel}
+                        projection={presentedMemberRef ||
+                            evidenceCanvas.isFiltered
+                          ? evidenceCanvas
+                          : (explorationKindProjectionMemo ?? evidenceCanvas)}
+                        displayDepth={presentedMemberRef ||
+                            evidenceCanvas.isFiltered
+                          ? localDepth
+                          : undefined}
+                        visibleKinds={presentedMemberRef ||
+                            evidenceCanvas.isFiltered
+                          ? explorationLocalKinds
+                          : undefined}
+                        selection={visibleGraphSelection(
+                          versionedProvenance,
+                          graphSelection,
+                          graphSelectionIndex,
+                        )}
+                        focus={visibleGraphRef(
+                          versionedProvenance,
+                          presentedMemberRef ?? lineageFocus,
+                        )}
+                        onSelectionChange={selectVerificationGraphItem}
+                      />
                     </section>
                   )
                   : activeView === "product"
@@ -2377,7 +2277,10 @@ function graphWithoutClosedActions(
   };
 }
 
-function summaryMetrics(snapshot: ThreadWorkbenchSnapshot): MetricItem[] {
+function summaryMetrics(
+  snapshot: ThreadWorkbenchSnapshot,
+  painted: ReturnType<typeof paintedDossierMetric>,
+): MetricItem[] {
   const artifacts = currentArtifacts(
     snapshot.artifacts,
     snapshot.evidenceFamilyGraph,
@@ -2394,18 +2297,13 @@ function summaryMetrics(snapshot: ThreadWorkbenchSnapshot): MetricItem[] {
   const passed = requirements.filter((item) => item.status === "pass").length;
   const failed = requirements.filter((item) => item.status === "fail").length;
   const noCriterion = requirements.length === 0;
-  const linkedEntities =
-    snapshot.flow.filter((stage) => stage.selection.kind !== "change").length;
-  const branchCount =
-    evidenceBranches(snapshot.flow).filter((branch) => branch.id !== "thread")
-      .length;
   return [
     {
       id: "impact",
       label: "Linked evidence",
-      value: linkedEntities,
-      unit: "entities",
-      detail: `across ${branchCount} independent domain branches`,
+      value: painted.itemCount,
+      unit: "items",
+      detail: linkedEvidenceDetail(painted.componentCount),
       tone: "info",
     },
     {
@@ -2490,67 +2388,6 @@ function changeState(snapshot: ThreadWorkbenchSnapshot): {
       "The snapshot contains modelled requirements but no current evaluation for this change.",
     tone: "warning",
   };
-}
-
-interface EvidenceBranch {
-  id: "thread" | "system" | "mechanical" | "thermal" | "enterprise" | "other";
-  label: string;
-  systems: string[];
-  stages: ThreadFlowStage[];
-}
-
-function evidenceBranches(stages: ThreadFlowStage[]): EvidenceBranch[] {
-  const branches = new Map<EvidenceBranch["id"], EvidenceBranch>();
-  for (const stage of stages) {
-    const definition = branchDefinition(stage.system);
-    const existing = branches.get(definition.id);
-    if (existing) {
-      existing.stages.push(stage);
-      if (!existing.systems.includes(stage.system)) {
-        existing.systems.push(stage.system);
-      }
-      continue;
-    }
-    branches.set(definition.id, {
-      ...definition,
-      systems: [stage.system],
-      stages: [stage],
-    });
-  }
-  const order: EvidenceBranch["id"][] = [
-    "thread",
-    "system",
-    "mechanical",
-    "thermal",
-    "enterprise",
-    "other",
-  ];
-  return order.flatMap((id) => {
-    const branch = branches.get(id);
-    return branch ? [branch] : [];
-  });
-}
-
-function branchDefinition(
-  system: string,
-): Pick<EvidenceBranch, "id" | "label"> {
-  const normalized = system.toLowerCase();
-  if (normalized.includes("digital-thread")) {
-    return { id: "thread", label: "Thread revision" };
-  }
-  if (normalized.includes("syson")) {
-    return { id: "system", label: "System model" };
-  }
-  if (normalized.includes("build123d") || normalized.includes("calculix")) {
-    return { id: "mechanical", label: "Mechanical evidence" };
-  }
-  if (normalized.includes("modelica")) {
-    return { id: "thermal", label: "Thermal evidence" };
-  }
-  if (normalized.includes("erpnext")) {
-    return { id: "enterprise", label: "Enterprise evidence" };
-  }
-  return { id: "other", label: "Other evidence" };
 }
 
 function graphNodeByRef(

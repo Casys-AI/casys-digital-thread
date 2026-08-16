@@ -14,6 +14,7 @@ import { assertEquals, assertNotEquals } from "@std/assert";
 import {
   boundedLineageNeighborhood,
   buildEvidenceGraphModel,
+  graphWithoutAnalysisOverlay,
 } from "./src/thread/evidence-graph-model.ts";
 import { buildVersionedProvenanceProjection } from "./src/thread/versioned-provenance-model.ts";
 import type {
@@ -22,6 +23,188 @@ import type {
   ThreadGraphNode,
   ThreadGraphRef,
 } from "./src/thread/types.ts";
+
+// ---------------------------------------------------------------------------
+// Evidence canvas policy: AnalysisGraph overlay is not painted
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "graphWithoutAnalysisOverlay drops analysis-node islands and analysis-origin edges",
+  () => {
+    const graph = {
+      nodes: [
+        nodeFor("step", "artifact", "build123d"),
+        nodeFor("obs", "observation", "calculix"),
+        nodeFor("param", "analysis-node", "calculix"),
+        nodeFor("response", "analysis-node", "calculix"),
+      ],
+      edges: [
+        edgeFor(
+          "step-obs",
+          "step",
+          "artifact",
+          "obs",
+          "observation",
+          "evidences",
+        ),
+        analysisEdge(
+          "param-response",
+          "param",
+          "response",
+          "measured-local-sensitivity",
+        ),
+      ],
+    };
+
+    const filtered = graphWithoutAnalysisOverlay(graph);
+
+    assertEquals(
+      filtered.nodes.map((node) => node.ref.id).sort(),
+      ["obs", "step"],
+    );
+    assertEquals(filtered.edges.map((edge) => edge.id), ["step-obs"]);
+    assertEquals(
+      filtered.nodes.some((node) => node.entityKind === "analysis-node"),
+      false,
+    );
+    assertEquals(
+      filtered.edges.some((edge) => edge.origin === "analysis"),
+      false,
+    );
+  },
+);
+
+Deno.test(
+  "graphWithoutAnalysisOverlay keeps Thread sensitivity observations and invents no join",
+  () => {
+    const graph = {
+      nodes: [
+        nodeFor("step", "artifact", "build123d"),
+        nodeFor(
+          "sensitivity-base-maxDisplacement-x",
+          "observation",
+          "calculix",
+        ),
+        nodeFor("eval", "evaluation", "digital-thread"),
+        nodeFor("driver", "analysis-node", "calculix"),
+      ],
+      edges: [
+        edgeFor(
+          "step-obs",
+          "step",
+          "artifact",
+          "sensitivity-base-maxDisplacement-x",
+          "observation",
+          "evidences",
+        ),
+        edgeFor(
+          "obs-eval",
+          "sensitivity-base-maxDisplacement-x",
+          "observation",
+          "eval",
+          "evaluation",
+          "evaluates",
+        ),
+        {
+          id: "driver-obs",
+          from: { kind: "analysis-node" as const, id: "driver" },
+          to: {
+            kind: "observation" as const,
+            id: "sensitivity-base-maxDisplacement-x",
+          },
+          relation: "projection-of" as const,
+          rationale: "driver-obs",
+          origin: "analysis" as const,
+        },
+      ],
+    };
+
+    const filtered = graphWithoutAnalysisOverlay(graph);
+
+    assertEquals(
+      filtered.nodes.map((node) => node.ref.id).sort(),
+      ["eval", "sensitivity-base-maxDisplacement-x", "step"],
+    );
+    assertEquals(
+      filtered.edges.map((edge) => edge.id).sort(),
+      ["obs-eval", "step-obs"],
+    );
+    assertEquals(
+      filtered.edges.some((edge) => edge.id === "driver-obs"),
+      false,
+      "must not keep or invent an analysis→Thread join",
+    );
+  },
+);
+
+Deno.test(
+  "presentation graph is a Graphology MultiDirectedGraph that keeps parallel edges",
+  () => {
+    const graph = {
+      nodes: [
+        nodeFor("A", "artifact", "calculix"),
+        nodeFor("B", "observation", "calculix"),
+      ],
+      edges: [
+        edgeFor(
+          "A-B-evidences",
+          "A",
+          "artifact",
+          "B",
+          "observation",
+          "evidences",
+        ),
+        edgeFor("A-B-uses", "A", "artifact", "B", "observation", "uses"),
+      ],
+    };
+
+    const model = buildEvidenceGraphModel(graph, emptyFamilyGraph());
+
+    assertEquals(model.graph.multi, true);
+    assertEquals(model.graph.type, "directed");
+    assertEquals(model.graph.order, 2);
+    assertEquals(model.graph.size, 2);
+    assertEquals(model.edges.length, 2);
+    assertEquals(model.graph.hasNode("artifact:A"), true);
+    assertEquals(model.graph.hasNode("observation:B"), true);
+  },
+);
+
+Deno.test(
+  "Evidence model built after overlay omission has no analysis-node component",
+  () => {
+    const graph = {
+      nodes: [
+        nodeFor("A", "artifact", "build123d"),
+        nodeFor("B", "artifact", "build123d"),
+        nodeFor("param", "analysis-node", "calculix"),
+        nodeFor("response", "analysis-node", "calculix"),
+      ],
+      edges: [
+        edgeFor("A-B", "A", "artifact", "B", "artifact", "derived_from"),
+        analysisEdge(
+          "param-response",
+          "param",
+          "response",
+          "measured-local-sensitivity",
+        ),
+      ],
+    };
+
+    const model = buildEvidenceGraphModel(
+      graphWithoutAnalysisOverlay(graph),
+      emptyFamilyGraph(),
+    );
+
+    assertEquals(model.components.length, 1);
+    assertEquals(model.nodes.map((node) => node.ref.id).sort(), ["A", "B"]);
+    assertEquals(
+      model.graph.nodes().some((key) => key.startsWith("analysis-node:")),
+      false,
+    );
+    assertEquals(model.rawNodeCount, 2);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Core invariant: a folded connector never severs the component link
@@ -60,6 +243,51 @@ Deno.test("component assignment survives analyze.* folding — stub preserves th
   assertNotEquals(stub, undefined, "stub A↔C must exist");
 });
 
+Deno.test("folding never emits a stub whose endpoints are the same node", () => {
+  // admission → instrument, and the instrument's only other path is back to
+  // admission. A self-loop stub would look like a recorded relation.
+  const graph = {
+    nodes: [
+      nodeFor("admission", "artifact", "digital-thread"),
+      nodeFor("case", "artifact", "analyze"),
+      nodeFor("eval", "evaluation", "syson"),
+    ],
+    edges: [
+      edgeFor(
+        "admission-case",
+        "admission",
+        "artifact",
+        "case",
+        "artifact",
+        "derived_from",
+      ),
+      edgeFor(
+        "case-eval",
+        "case",
+        "artifact",
+        "eval",
+        "evaluation",
+        "derived_from",
+      ),
+    ],
+  };
+  const model = buildEvidenceGraphModel(graph, emptyFamilyGraph(), {
+    isAnalyzeInstrumentNode: (n) => n.system === "analyze",
+  });
+  assertEquals(
+    model.stubs.some((stub) =>
+      stub.from.kind === stub.to.kind && stub.from.id === stub.to.id
+    ),
+    false,
+  );
+  assertEquals(
+    model.stubs.some((stub) =>
+      stub.from.id === "admission" && stub.to.id === "eval"
+    ),
+    true,
+  );
+});
+
 Deno.test("non-instrument nodes are never folded — stubs are only for instruments", () => {
   const { graph, familyGraph } = threeNodeBridge();
 
@@ -96,7 +324,9 @@ Deno.test("intentionally isolated component is flagged but nodes remain in data"
   });
 
   assertEquals(model.components.length, 2);
-  const thermal = model.components.find((c) => c.allNodeRefKeys.has("artifact:T"));
+  const thermal = model.components.find((c) =>
+    c.allNodeRefKeys.has("artifact:T")
+  );
   assertEquals(thermal?.intentionallyIsolated, true);
   // Thermal node still in raw data.
   assertEquals(model.rawNodeCount, 3);
@@ -528,6 +758,28 @@ function edgeFor(
     relation,
     rationale: id,
     origin: "provenance",
+  };
+}
+
+function analysisEdge(
+  id: string,
+  fromId: string,
+  toId: string,
+  relation: Extract<
+    ThreadGraphEdge["relation"],
+    | "measured-local-sensitivity"
+    | "projection-of"
+    | "semantic-binding"
+    | "declared-dependency"
+  >,
+): ThreadGraphEdge {
+  return {
+    id,
+    from: { kind: "analysis-node", id: fromId },
+    to: { kind: "analysis-node", id: toId },
+    relation,
+    rationale: id,
+    origin: "analysis",
   };
 }
 
