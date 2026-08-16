@@ -14,6 +14,7 @@ import type {
 } from "../domain/project/project-brief.ts";
 import type { ContentFingerprint } from "../domain/thread/thread-snapshot.ts";
 import {
+  autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
   type ProjectApprovalMode,
@@ -151,7 +152,7 @@ export function registerProjectBriefTools(
     );
     const approvalMode = dependencies.approvalMode ??
       INTERACTIVE_PROJECT_APPROVAL_MODE;
-    if (approvalMode.kind === "local-yolo") {
+    if (autoConfirms(approvalMode, "brief-confirm")) {
       const suppliedRationale = typeof args.rationale === "string"
         ? args.rationale
         : undefined;

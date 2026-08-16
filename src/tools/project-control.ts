@@ -92,6 +92,7 @@ import {
   registerProjectDemoLoopTools,
 } from "./project-control/demo-loop-tools.ts";
 import {
+  autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
   type ProjectApprovalMode,
@@ -1131,7 +1132,7 @@ const projectAgentRunPlanGetTool: MCPTool = {
 const projectAgentRunCancelTool: MCPTool = {
   name: "project_agent_run_cancel",
   description:
-    "Ask the paired MCP host to present cancellation of one exact queued agent run for human confirmation. The first call requests elicitation; only a signed retry whose request state verifies and whose response is accepted records the human cancellation. A cancelled queued run has not been claimed or executed, and returns its work item to its derived idle state.",
+    "Ask the paired MCP host to present cancellation of one exact queued agent run for human confirmation. The first call requests elicitation; only a signed retry whose request state verifies and whose response is accepted records the human cancellation. An explicit loopback-only --yolo startup opt-in auto-cancels that same queued, unclaimed run through the command service with the persisted local-yolo human origin; it never fabricates elicitation responses. A cancelled queued run has not been claimed or executed, and returns its work item to its derived idle state.",
   inputSchema: mutationSchema({
     runId: { type: "string", minLength: 1 },
     rationale: {
@@ -1487,7 +1488,7 @@ async function handleDecisionElicitation(
   }
   const approvalMode = dependencies.approvalMode ??
     INTERACTIVE_PROJECT_APPROVAL_MODE;
-  if (action === "approve" && approvalMode.kind === "local-yolo") {
+  if (action === "approve" && autoConfirms(approvalMode, "decision-approve")) {
     const snapshot = await dependencies.commands.approveDecision(
       approvalMode.origin,
       {
@@ -1717,6 +1718,25 @@ async function handleQueuedRunCancellation(
     common.expectedRevision,
     runId,
   );
+  const approvalMode = dependencies.approvalMode ??
+    INTERACTIVE_PROJECT_APPROVAL_MODE;
+  if (autoConfirms(approvalMode, "queued-run-cancel")) {
+    const snapshot = await dependencies.commands.cancelQueuedRun(
+      approvalMode.origin,
+      {
+        ...common,
+        runId,
+        rationale: localYoloRationale(
+          `queued-run cancellation ${runId}`,
+          rationale,
+        ),
+      },
+    );
+    return projectResult(
+      `YOLO local startup opt-in auto-cancelled queued agent run ${runId} at project revision ${snapshot.revision}. No MCP elicitation response was fabricated, and no agent claim or execution was recorded.`,
+      snapshot,
+    );
+  }
   const confirmation = runCancellationConfirmationResponse(context);
   if (confirmation === undefined) {
     return runCancellationConfirmationRequest(current, runId, rationale);
@@ -1763,6 +1783,28 @@ async function handleUnstartedWorkItemSupersession(
     common.expectedRevision,
     { workItemId, predecessorDecisionId, successorWorkItemId, successorDecisionId },
   );
+  const approvalMode = dependencies.approvalMode ??
+    INTERACTIVE_PROJECT_APPROVAL_MODE;
+  if (autoConfirms(approvalMode, "unstarted-supersede")) {
+    const snapshot = await dependencies.commands.supersedeUnstartedWorkItem(
+      approvalMode.origin,
+      {
+        ...common,
+        workItemId,
+        predecessorDecisionId,
+        successorWorkItemId,
+        successorDecisionId,
+        rationale: localYoloRationale(
+          `unstarted supersession ${workItemId}`,
+          rationale,
+        ),
+      },
+    );
+    return projectResult(
+      `YOLO local startup opt-in auto-superseded unstarted work item ${workItemId} at project revision ${snapshot.revision}. No MCP elicitation response was fabricated, and no agent run, provider call, or ThreadSnapshot was created.`,
+      snapshot,
+    );
+  }
   const confirmation = unstartedSupersessionConfirmationResponse(context);
   if (confirmation === undefined) {
     return unstartedSupersessionConfirmationRequest(

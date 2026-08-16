@@ -1091,11 +1091,21 @@ Deno.test("local YOLO auto-approves only positive MRTR decisions through the can
   assertEquals(rejected, []);
 });
 
-Deno.test("local YOLO leaves cancellation, supersession and human-only execution interactive", async () => {
+Deno.test("local YOLO auto-cancels a queued unclaimed run and still elicits reject and human-only execute", async () => {
   const cancellationApp = new CapturingApp();
   const queued = queuedRunSnapshot();
+  const cancellations: Array<{ origin: unknown; command: Record<string, unknown> }> =
+    [];
   registerProjectControlTools(cancellationApp as unknown as McpApp, {
-    ...dependencies(queued),
+    ...dependencies(queued, {
+      cancelQueuedRun: (origin, command) => {
+        cancellations.push({
+          origin,
+          command: command as unknown as Record<string, unknown>,
+        });
+        return Promise.resolve(queued);
+      },
+    }),
     approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
   });
   const cancellation = await cancellationApp.handler("project_agent_run_cancel")({
@@ -1103,12 +1113,27 @@ Deno.test("local YOLO leaves cancellation, supersession and human-only execution
     runId: "run:queued-before-cancellation",
     rationale: "Cancel this queued run.",
   }, clientContext()) as Record<string, unknown>;
-  assertEquals(cancellation.resultType, "input_required");
+  assertStringIncludes(cancellation.content as string, "YOLO local startup opt-in");
+  assertEquals(cancellations, [{
+    origin: { kind: "human", actorId: "local-yolo:startup-opt-in" },
+    command: {
+      ...COMMON,
+      runId: "run:queued-before-cancellation",
+      rationale:
+        "YOLO local startup opt-in auto-approved queued-run cancellation run:queued-before-cancellation without MCP elicitation. Caller rationale: Cancel this queued run.",
+    },
+  }]);
 
   const supersessionApp = new CapturingApp();
   const supersession = unstartedSupersessionSnapshot();
+  let superseded = 0;
   registerProjectControlTools(supersessionApp as unknown as McpApp, {
-    ...dependencies(supersession),
+    ...dependencies(supersession, {
+      supersedeUnstartedWorkItem: () => {
+        superseded++;
+        return Promise.resolve(supersession);
+      },
+    }),
     approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
   });
   const supersede = await supersessionApp.handler(
@@ -1121,7 +1146,8 @@ Deno.test("local YOLO leaves cancellation, supersession and human-only execution
     successorDecisionId: "seal-v2-decision",
     rationale: "Use the reviewed V2 replacement.",
   }, clientContext()) as Record<string, unknown>;
-  assertEquals(supersede.resultType, "input_required");
+  assertStringIncludes(supersede.content as string, "YOLO local startup opt-in");
+  assertEquals(superseded, 1);
 
   const humanOnly = structuredClone(queued) as Mutable<EngineeringProjectSnapshot>;
   humanOnly.workItems[0]!.operation = {
@@ -2137,6 +2163,8 @@ function dependencies(
       queueRun: () => Promise.resolve(snapshot),
       approveDecision: () => Promise.resolve(snapshot),
       rejectDecision: () => Promise.resolve(snapshot),
+      cancelQueuedRun: () => Promise.resolve(snapshot),
+      supersedeUnstartedWorkItem: () => Promise.resolve(snapshot),
       ...commandOverrides,
     } as unknown as EngineeringProjectCommandService,
   };
