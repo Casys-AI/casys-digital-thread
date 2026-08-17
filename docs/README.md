@@ -44,6 +44,10 @@ not paraphrased.
 - [Compile FEA parameters](how-to/compile-fea-parameters.md) turns a catalog id
   into `fea.proof.*` and a sealed proof document into `@2` bindings (STEP, never
   cad-model). There is no `fea.run.*` grammar.
+- [Compile sensitivity-study parameters](how-to/compile-sensitivity-parameters.md)
+  turns a catalog id into `sensitivity.case.*` for
+  `analyze.seal-sensitivity-study@1`. `cadSource` is a compilation admission,
+  never a STEP. `desk-lamp-dl06` is `catalog-absent`.
 - [Walk the post-proof loop](how-to/walk-the-post-proof-loop.md) is the **behave**
   continuation after FEA: join study-base observations, apply a correction only
   on a real fail, capture `z*`, reseal. Measured DFM is the separate **make**

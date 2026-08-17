@@ -83,6 +83,7 @@ import { PrepareProjectVectorCorrectionReview } from "./src/application/use-case
 import { PrepareProjectFeaProofSealReview } from "./src/application/use-cases/prepare-project-fea-proof-seal-review.ts";
 import { PrepareProjectFeaRecordedRunReview } from "./src/application/use-cases/prepare-project-fea-recorded-run-review.ts";
 import { PrepareProjectSensitivityBaseEvaluationReview } from "./src/application/use-cases/prepare-project-sensitivity-base-evaluation-review.ts";
+import { PrepareProjectSensitivityStudySealReview } from "./src/application/use-cases/prepare-project-sensitivity-study-seal-review.ts";
 import { PrepareProjectCorrectedAdmissionReview } from "./src/application/use-cases/prepare-project-corrected-admission-review.ts";
 import {
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
@@ -1524,6 +1525,12 @@ async function createProjectControl(
       snapshots: activeThreadSnapshots,
       studyCaptures: sensitivityStudyCaptures,
     });
+  const sensitivityStudySealReview = new PrepareProjectSensitivityStudySealReview({
+    snapshots: activeThreadSnapshots,
+    projects: runtime.projects,
+    catalogReader: proofCaseCatalogReader,
+    admissions: technicalCompilationAdmissions,
+  });
   const correctedAdmissionReview = new PrepareProjectCorrectedAdmissionReview({
     snapshots: activeThreadSnapshots,
     captures: correctedSourceCaptures,
@@ -1946,6 +1953,7 @@ async function createProjectControl(
       briefRequirementsReview,
       feaProofSealReview,
       feaRecordedRunReview,
+      sensitivityStudySealReview,
       build123dExecutionReview,
       isolatedGeometrySealReview,
       vectorCorrectionReview,

@@ -67,7 +67,8 @@ template bytes.
 ## Sequence
 
 ```text
-analyze.seal-sensitivity-study@1
+project_sensitivity_study_seal_review   # catalog id → sensitivity.case.*; cadSource = admission
+  → analyze.seal-sensitivity-study@1
   → analyze.run-fea-sensitivity@1          # observations only
   → project_sensitivity_base_evaluation_review
   → verify.evaluate-sensitivity-base@1     # only if review is ready
@@ -82,6 +83,20 @@ analyze.seal-sensitivity-study@1
 industrialize.seal-dfm-case@1
   → industrialize.run-dfm-checks@1         # write-geometry STEP only
 ```
+
+Do not type `sensitivity.case.*` by hand. Call
+`project_sensitivity_study_seal_review` first. Name `caseId` when the project
+has more than one template (`desk-lamp-dl05` does). `desk-lamp-dl06` is
+`catalog-absent` until a reviewed template exists. Restart `:3020` after the
+tool is added so the running process lists it. Probe:
+
+```bash
+deno task mcp:call --name=project_sensitivity_study_seal_review \
+  --args='{"projectId":"desk-lamp-dl05","caseId":"dl05-arm-thickness-isolated"}'
+```
+
+How-to:
+[Compile sensitivity-study parameters](compile-sensitivity-parameters.md).
 
 Every consequential step is still: append work + decision → propose → human MRTR
 → queue → execute.

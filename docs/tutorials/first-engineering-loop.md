@@ -110,6 +110,12 @@ Every consequential step is: append work + decision → propose → human MRTR �
 execute. The agent supplies no provider name, tool, path, or SysML text on the renderer
 path.
 
+Do not type `sensitivity.case.*`. Call
+`project_sensitivity_study_seal_review` first — catalog id and the current
+Thread admission become the seal parameters. `desk-lamp-dl06` is
+`catalog-absent` until a reviewed template exists. How-to:
+[Compile sensitivity-study parameters](../how-to/compile-sensitivity-parameters.md).
+
 After a sealed sensitivity study, check the join **before** queueing an
 evaluation. `project_sensitivity_base_evaluation_review` is ready only when
 each study metric Object.is-equals one Thread requirement. Historical

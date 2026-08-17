@@ -575,7 +575,11 @@ legacy observations. Modelica and CalculiX declaration nodes and scopes use the 
 case/proof digest; each seal assertion keeps its run-scoped capture fingerprint only as
 evidence, so repeated seals can merge as parallel assertion occurrences without changing
 semantic identity. The live producer is `analyze.run-fea-sensitivity@1` after
-`analyze.seal-sensitivity-study@1`. After its two solver runs, the sensitivity path
+`analyze.seal-sensitivity-study@1`. Seal parameters come from the read-only
+`project_sensitivity_study_seal_review` compiler (catalog template + unique
+`compile.seal-admission@1` admission). The caller never invents
+`sensitivity.case.*` or a `cadSource`. A project without a reviewed template
+(`desk-lamp-dl06`) stays `catalog-absent`. After its two solver runs, the sensitivity path
 creates one observed `measured-local-sensitivity` assertion per declared response
 metric, including the reviewed finite-difference case, base and stepped results,
 derivative, local scope and the one exact persisted sensitivity-capture fingerprint. The

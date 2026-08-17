@@ -121,6 +121,43 @@ Deno.test("fea proof-case seal review compiles fea.proof.* from the catalog and 
   assertEquals(parsed.requirementsArtifact.id, "req-Arm-test");
 });
 
+Deno.test("fea proof-case seal review auto-select ignores a broken sibling catalog entry", async () => {
+  const snapshot = basisSnapshot();
+  for (
+    const sibling of [
+      undefined,
+      "{}",
+      "throw",
+    ] as const
+  ) {
+    const review = new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      catalogReader: {
+        async read(path: string) {
+          if (!path.endsWith("desk-lamp-dl06-arm-cantilever.json")) {
+            if (sibling === "throw") {
+              throw new Error("sibling catalog source is unreadable");
+            }
+            return sibling;
+          }
+          return CATALOG_READER.read(path);
+        },
+      },
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      projects: new MemoryProjects(snapshot),
+      geometryCaptures: ADMITTED_GEOMETRY,
+      stepAssets: ADMITTED_STEP,
+    });
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      basis: basisRef(),
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.caseId, CASE_ID);
+  }
+});
+
 Deno.test("fea proof-case seal review selects the unique catalogued case when caseId is omitted", async () => {
   const snapshot = basisSnapshot();
   const review = new PrepareProjectFeaProofSealReview({

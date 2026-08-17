@@ -523,6 +523,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_review_intent_list",
     "project_review_intent_signal",
     "project_sensitivity_base_evaluation_review",
+    "project_sensitivity_study_seal_review",
     "project_snapshot",
     "project_start",
     "project_technical_compilation_preview",
@@ -599,6 +600,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_review_intent_acknowledge",
       "project_review_intent_list",
       "project_sensitivity_base_evaluation_review",
+      "project_sensitivity_study_seal_review",
       "project_snapshot",
       "project_start",
       "project_technical_compilation_preview",
@@ -812,6 +814,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_fea_recorded_run_review" ||
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
+          tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_corrected_admission_review" ||
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review",
@@ -845,6 +848,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_fea_recorded_run_review" ||
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
+          tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_corrected_admission_review",
       );
     }

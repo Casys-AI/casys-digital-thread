@@ -110,11 +110,18 @@ Oracle `pass` or publishable `fail` stay literal.
 Optional experience, not a second proof:
 
 ```text
-analyze.seal-sensitivity-study@1
+project_sensitivity_study_seal_review   # catalog id → sensitivity.case.*
+  → analyze.seal-sensitivity-study@1
   → analyze.run-fea-sensitivity@1
   → project_sensitivity_base_evaluation_review
   → verify.evaluate-sensitivity-base@1   # only if ready
 ```
+
+Do not invent the case. How-to:
+[Compile sensitivity-study parameters](compile-sensitivity-parameters.md).
+`desk-lamp-dl06` has no reviewed sensitivity template (`catalog-absent` on
+`project_sensitivity_study_seal_review`). Restart `:3020` so a newly
+registered compiler is listed.
 
 Study metric ids must Object.is-equal Thread requirement metrics. The live lesson on
 historical **dl05 r16** is `assembly_max_*` vs `maxDisplacement` / `maxVonMises` →

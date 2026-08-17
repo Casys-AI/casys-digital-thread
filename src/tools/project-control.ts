@@ -92,6 +92,10 @@ import {
   registerProjectFeaReviewTools,
 } from "./project-control/fea-review-tools.ts";
 import {
+  type ProjectSensitivityReviewToolDependencies,
+  registerProjectSensitivityReviewTools,
+} from "./project-control/sensitivity-review-tools.ts";
+import {
   type ProjectDemoLoopToolDependencies,
   registerProjectDemoLoopTools,
 } from "./project-control/demo-loop-tools.ts";
@@ -124,6 +128,7 @@ export interface ProjectControlToolDependencies
     ProjectBriefCompilationToolDependencies,
     ProjectVectorCorrectionToolDependencies,
     ProjectFeaReviewToolDependencies,
+    ProjectSensitivityReviewToolDependencies,
     ProjectDemoLoopToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
@@ -212,6 +217,7 @@ export function registerProjectControlTools(
   registerProjectBriefCompilationTools(app, dependencies);
   registerProjectVectorCorrectionTools(app, dependencies);
   registerProjectFeaReviewTools(app, dependencies);
+  registerProjectSensitivityReviewTools(app, dependencies);
   registerProjectDemoLoopTools(app, dependencies);
 
   if (dependencies.reviewIntents) {

@@ -26,6 +26,10 @@ import {
 } from "../../domain/analysis/sensitivity-study-proposal.ts";
 import { locateModuleLevelNumericBinding } from "../../domain/analysis/sensitivity-source-substitution.ts";
 import {
+  SENSITIVITY_STUDY_CASE_SOURCES,
+  sensitivityStudyCaseSourcePath,
+} from "../../domain/analysis/sensitivity-study-case-catalog.ts";
+import {
   assembleSensitivityStudyCaseV2,
   validateSensitivityStudyCaseTemplate,
 } from "../../domain/analysis/sensitivity-study-template.ts";
@@ -85,20 +89,7 @@ export {
   SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX,
 };
 
-export const SENSITIVITY_STUDY_CASE_SOURCES: ReadonlyMap<string, string> = new Map([
-  [
-    "dl04-size-z-sensitivity",
-    "config/sensitivity-study-cases/dl04-size-z-sensitivity.json",
-  ],
-  [
-    "dl05-arm-thickness-sensitivity",
-    "config/sensitivity-study-cases/dl05-arm-thickness-sensitivity.json",
-  ],
-  [
-    "dl05-arm-thickness-isolated",
-    "config/sensitivity-study-cases/dl05-arm-thickness-isolated.json",
-  ],
-]);
+export { SENSITIVITY_STUDY_CASE_SOURCES };
 
 export const SENSITIVITY_SEAL_THREAD_WRITE_OUTCOME_UNKNOWN =
   "analyze-seal-sensitivity-study-thread-write-outcome-unknown";
@@ -431,7 +422,7 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
   ): Promise<
     { readonly studyCase: SensitivityStudyCaseV2; readonly caseDigest: string }
   > {
-    const casePath = SENSITIVITY_STUDY_CASE_SOURCES.get(decisionParams.id);
+    const casePath = sensitivityStudyCaseSourcePath(decisionParams.id);
     if (!casePath) {
       throw new EngineeringProjectCommandError(
         "invalid_input",

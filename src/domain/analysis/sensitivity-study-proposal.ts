@@ -11,7 +11,10 @@
  */
 
 import { deterministicJson } from "../kernel/deterministic-json.ts";
-import type { EngineeringDecisionProposalParameter } from "../project/engineering-project.ts";
+import type {
+  EngineeringDecisionProposalParameter,
+  EngineeringOperationRef,
+} from "../project/engineering-project.ts";
 import {
   SENSITIVITY_STUDY_CASE_V2_SCHEMA,
   type SensitivityCadSource,
@@ -29,6 +32,18 @@ export const ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION = {
   id: "analyze.seal-sensitivity-study",
   version: "1",
 } as const;
+
+/** Work-item operation for `project_change_append`. Numbers stay in the MRTR. */
+export function sealSensitivityStudyWorkItemOperation(): EngineeringOperationRef {
+  return {
+    id: ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.id,
+    version: ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.version,
+    bindings: [{
+      name: "approvedBrief",
+      source: { kind: "approved-brief" },
+    }],
+  };
+}
 
 export const ANALYZE_RUN_FEA_SENSITIVITY_OPERATION = {
   id: "analyze.run-fea-sensitivity",

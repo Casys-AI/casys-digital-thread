@@ -70,6 +70,7 @@ These pairs look related and are **not** substitutes.
 | `verify.run-fea-static-proof@2`                           | Recorded CalculiX MCP plan (`resolved-operation-plan/2.0`)                                | The local microVM `@3` executor                                         |
 | `verify.run-fea-static-proof@3`                           | Isolated local CalculiX + separate SysON oracle                                           | A reinterpretation of `@2` plans                                        |
 | `project_fea_proof_seal_review`                           | Catalog id → `fea.proof.*` for `verify.seal-proof-case@1`                                 | Case authoring or a `fea.run.*` grammar                                 |
+| `project_sensitivity_study_seal_review`                   | Catalog id → `sensitivity.case.*` for `analyze.seal-sensitivity-study@1`                  | Case authoring, a solve, or inventing `cadSource`                       |
 | `project_fea_recorded_run_review`                         | Sealed proof document → `@2` bindings (`proofCase` document + STEP)                       | `@1` / `@3`, or binding the assembly cad-model as `geometry`            |
 | `@2` binding `geometry`                                   | Canonical part STEP (`kind: step`, `mediaType: model/step`)                               | The sibling `cad-model` or isolated `@3` authority                      |
 | `simulate.run-modelica-scenario@2`                        | Recorded provider Modelica                                                                | `simulate.run-qualified-modelica-kit@1` (one local kit)                 |
@@ -193,6 +194,29 @@ parameters or bindings. `rejectedLookalikes` names the assembly cad-model (and a
 sibling cad-models in one diagnostic) so they are not copied into a later `@2` proposal.
 
 How-to: [Compile FEA parameters](../how-to/compile-fea-parameters.md).
+
+### Sensitivity compilation (catalog / admission → proposal)
+
+| Tool                                    | Writes | Grant                                                                                           |
+| --------------------------------------- | ------ | ----------------------------------------------------------------------------------------------- |
+| `project_sensitivity_study_seal_review` | None   | `decisionParameters` plus `next.append` / `next.propose` for `analyze.seal-sensitivity-study@1` |
+
+The caller may name only `projectId`. Omitted `caseId` / `basis` are resolved
+server-side (unique catalog template for that `project.id`, unique current Thread tip).
+That tip is not `latest`. `cadSource` is the unique readable
+`compile.seal-admission@1` admission whose source has exactly one module-level numeric
+binding equal to the template `target.semanticKey`. A cad-model, STEP,
+`design.write-geometry@1`, or `design.seal-isolated-geometry@1` is a lookalike and
+never `cadSource`. Only an exact current project head also receives
+`next.append.arguments` / `next.propose.arguments`. A historical basis, catalog-absent
+project (including `desk-lamp-dl06`), unbound semanticKey, or unreadable admission
+returns `unavailable` or `unresolved` with an exact diagnostic and no `next`. Never
+relabel that as `resolved`. The caller never invents mesh, loads, boxes, hashes, or
+`arm_thickness`.
+
+How-to: [Compile sensitivity-study parameters](../how-to/compile-sensitivity-parameters.md).
+
+`desk-lamp-dl06` has no reviewed sensitivity template (`catalog-absent`).
 
 ### Technical compilation / isolated CAD
 

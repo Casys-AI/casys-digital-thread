@@ -421,49 +421,13 @@ async function uniqueCaseForProject(
     readonly caseId: string;
     readonly diagnostics: readonly FeaProofSealBindingDiagnostic[];
   }
-  | { readonly status: "catalog_unavailable"; readonly message: string }
-  | { readonly status: "catalog_integrity_failed"; readonly message: string }
 > {
   const loaded: Array<
     { readonly caseId: string; readonly path: string; readonly projectId: string }
   > = [];
   for (const [caseId, path] of FEA_PROOF_CASE_SOURCES) {
-    let raw: string | undefined;
-    try {
-      raw = await reader.read(path);
-    } catch (error) {
-      return {
-        status: "catalog_unavailable",
-        message:
-          `Catalog entry "${caseId}" could not be read while selecting project "${projectId}": ${
-            error instanceof Error ? error.message : String(error)
-          }.`,
-      };
-    }
-    if (raw === undefined) {
-      return {
-        status: "catalog_unavailable",
-        message:
-          `Catalog entry "${caseId}" is registered, but source "${path}" is unavailable.`,
-      };
-    }
-    try {
-      const proofCase = validateMechanicalProofCase(JSON.parse(raw));
-      if (proofCase.id !== caseId) {
-        return {
-          status: "catalog_integrity_failed",
-          message: `Catalog entry "${caseId}" declares proof id "${proofCase.id}".`,
-        };
-      }
-      loaded.push({ caseId, path, projectId: proofCase.project.id });
-    } catch (error) {
-      return {
-        status: "catalog_integrity_failed",
-        message: `Catalog entry "${caseId}" failed exact validation: ${
-          error instanceof Error ? error.message : String(error)
-        }.`,
-      };
-    }
+    const candidate = await readCataloguedProofCase(reader, caseId, path);
+    if (candidate) loaded.push(candidate);
   }
   const selected = selectUniqueCataloguedProofCase(projectId, loaded);
   if (selected.status === "ok") {
@@ -479,6 +443,35 @@ async function uniqueCaseForProject(
       message: selected.message,
     }],
   };
+}
+
+/**
+ * Auto-select only considers readable, exact catalog entries. A missing or
+ * invalid sibling must not fail another project's unique-case scan; naming
+ * that sibling as `caseId` still reports catalog-unavailable / integrity.
+ */
+async function readCataloguedProofCase(
+  reader: CataloguedMechanicalProofCaseReader,
+  caseId: string,
+  path: string,
+): Promise<
+  | { readonly caseId: string; readonly path: string; readonly projectId: string }
+  | undefined
+> {
+  let raw: string | undefined;
+  try {
+    raw = await reader.read(path);
+  } catch {
+    return undefined;
+  }
+  if (raw === undefined) return undefined;
+  try {
+    const proofCase = validateMechanicalProofCase(JSON.parse(raw));
+    if (proofCase.id !== caseId) return undefined;
+    return { caseId, path, projectId: proofCase.project.id };
+  } catch {
+    return undefined;
+  }
 }
 
 function unresolved(
