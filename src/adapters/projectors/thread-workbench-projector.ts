@@ -104,7 +104,7 @@ export function projectThreadWorkbenchSnapshot(
       }
       : {}),
     source: "observed",
-    sourceLabel: "CANONICAL THREAD SNAPSHOT",
+    sourceLabel: "Canonical thread snapshot",
     change: {
       id: snapshot.changeSet.id,
       title: snapshot.changeSet.name,
@@ -142,7 +142,9 @@ function currentThreadView(snapshot: ThreadSnapshot): ThreadSnapshot {
   const archived = archivedRefKeys(snapshot);
   const active = (kind: ThreadEntityRef["kind"], id: string) =>
     !archived.has(`${kind}:${id}`);
-  const artifacts = snapshot.artifacts.filter((item) => active("artifact", item.id));
+  const artifacts = snapshot.artifacts.filter((item) =>
+    active("artifact", item.id)
+  );
   const observations = snapshot.observations.filter((item) =>
     active("observation", item.id)
   );
@@ -152,7 +154,9 @@ function currentThreadView(snapshot: ThreadSnapshot): ThreadSnapshot {
   const evaluations = snapshot.evaluations.filter((item) =>
     active("evaluation", item.id)
   );
-  const violations = snapshot.violations.filter((item) => active("violation", item.id));
+  const violations = snapshot.violations.filter((item) =>
+    active("violation", item.id)
+  );
   const artifactIds = new Set(artifacts.map((item) => item.id));
   const violationIds = new Set(violations.map((item) => item.id));
   return {
@@ -262,7 +266,9 @@ function projectArtifact(
     kind: artifact.kind,
     system: artifact.producer.serverId,
     revision: artifact.version,
-    freshness: attestation?.status === "mismatch" ? "stale" : artifact.freshness.status,
+    freshness: attestation?.status === "mismatch"
+      ? "stale"
+      : artifact.freshness.status,
     fingerprint: fingerprint(artifact.fingerprint),
     uri: artifact.uri,
     producedBy: artifact.producer.tool,
@@ -368,9 +374,10 @@ function projectViolation(
   return {
     id: violation.id,
     name: violation.name,
-    severity: violation.severity === "error" || violation.severity === "critical"
-      ? "blocking"
-      : "warning",
+    severity:
+      violation.severity === "error" || violation.severity === "critical"
+        ? "blocking"
+        : "warning",
     // Workbench 0.1 has no accepted state; accepted remains non-resolved.
     status: violation.status === "resolved" ? "resolved" : "open",
     requirementId: violation.requirementId,
@@ -417,7 +424,10 @@ function projectGraph(
   context: ProjectionContext,
   components: ThreadWorkbenchSnapshot["components"],
 ): ThreadGraph {
-  const componentStructure = projectComponentStructureGraph(context, components);
+  const componentStructure = projectComponentStructureGraph(
+    context,
+    components,
+  );
   const analysis = projectAnalysisGraph(
     snapshot.analysisGraph,
     snapshot.freshness.status,
@@ -466,7 +476,9 @@ function projectGraph(
         ]),
         summary: consumption.status,
         recordedAt: consumption.verifiedAt,
-        ...(source ? { selection: { kind: "artifact", id: source.id } as const } : {}),
+        ...(source
+          ? { selection: { kind: "artifact", id: source.id } as const }
+          : {}),
       };
     }),
     ...snapshot.observations.map((observation): ThreadGraphNode => {
@@ -490,8 +502,9 @@ function projectGraph(
         ref: { kind: "requirement", id: requirement.id },
         entityKind: "requirement",
         label: requirement.name,
-        system: context.artifacts.get(requirement.trace.sourceArtifactId)?.producer
-          .serverId ?? "Unassigned",
+        system:
+          context.artifacts.get(requirement.trace.sourceArtifactId)?.producer
+            .serverId ?? "Unassigned",
         freshness: requirementGraphFreshness(requirement, context),
         summary: `${projected.expression} · ${projected.status}`,
         recordedAt: requirement.freshness.changedAt,
@@ -572,7 +585,9 @@ function projectAnalysisGraph(
 ): ThreadGraph {
   if (!graph) return { nodes: [], edges: [] };
   const relations = graph.relations.filter((relation) =>
-    relation.assertion.evidence.every((evidence) => currentArtifactIds.has(evidence.id))
+    relation.assertion.evidence.every((evidence) =>
+      currentArtifactIds.has(evidence.id)
+    )
   );
   const referencedNodeIds = new Set(
     relations.flatMap((relation) => [relation.fromNodeId, relation.toNodeId]),
@@ -759,7 +774,8 @@ function projectStructuralGraphEdges(
   return [...artifactEdges, ...observationEdges, ...requirementEdges];
 }
 
-type ProjectedComponent = ThreadWorkbenchSnapshot["components"]["components"][number];
+type ProjectedComponent =
+  ThreadWorkbenchSnapshot["components"]["components"][number];
 type ProjectedComponentBinding = ProjectedComponent["bindings"][number];
 
 interface ExactComponentStructureRecord {
@@ -910,7 +926,8 @@ function projectComponentStructureGraph(
     if (existing) {
       if (
         existing.binding.label !== record.definition.label ||
-        existing.binding.evidenceArtifactId !== record.definition.evidenceArtifactId ||
+        existing.binding.evidenceArtifactId !==
+          record.definition.evidenceArtifactId ||
         existing.cad?.id !== record.cad?.id ||
         existing.preview?.id !== record.preview?.id
       ) {
@@ -966,7 +983,9 @@ function projectComponentStructureGraph(
         selection: { kind: "artifact", id: architecture.id },
       })),
     ...[...usages.values()]
-      .sort((left, right) => left.record.usage.id.localeCompare(right.record.usage.id))
+      .sort((left, right) =>
+        left.record.usage.id.localeCompare(right.record.usage.id)
+      )
       .map(({ record }): ThreadGraphNode => ({
         id: graphNodeId({ kind: "part-usage", id: record.usage.id }),
         ref: { kind: "part-usage", id: record.usage.id },
@@ -981,7 +1000,8 @@ function projectComponentStructureGraph(
   ];
 
   const hierarchyEdges: ThreadGraphEdge[] = [{
-    id: `structure:contains:${rootRecord.architecture.id}:${rootRecord.definition.id}`,
+    id:
+      `structure:contains:${rootRecord.architecture.id}:${rootRecord.definition.id}`,
     from: { kind: "artifact", id: rootRecord.architecture.id },
     to: { kind: "part-definition", id: rootRecord.definition.id },
     relation: "contains",
@@ -1053,7 +1073,10 @@ function samePartUsageStructure(
   return sameComponentBinding(left.record.usage, right.record.usage) &&
     sameComponentBinding(left.ownerDefinition, right.ownerDefinition) &&
     sameComponentBinding(left.record.definition, right.record.definition) &&
-    sameOptionalComponentBinding(left.record.cadBinding, right.record.cadBinding) &&
+    sameOptionalComponentBinding(
+      left.record.cadBinding,
+      right.record.cadBinding,
+    ) &&
     left.record.component.kind === right.record.component.kind &&
     left.record.component.label === right.record.component.label &&
     left.record.component.quantity === right.record.component.quantity;
@@ -1251,7 +1274,9 @@ function projectFlow(
       summary: projected.display,
       selection: { kind: "observation", id: observation.id },
       dependsOn: observation.source.artifactIds
-        .map((artifactId) => currentIdByHistoricalId.get(artifactId) ?? artifactId)
+        .map((artifactId) =>
+          currentIdByHistoricalId.get(artifactId) ?? artifactId
+        )
         .filter((artifactId) =>
           context.artifacts.has(artifactId) &&
           !historicalArtifactIds.has(artifactId)
@@ -1465,9 +1490,13 @@ function targetSystem(
       : "Unassigned";
   }
   if (target.kind === "violation") {
-    const violation = context.snapshot.violations.find((item) => item.id === target.id);
+    const violation = context.snapshot.violations.find((item) =>
+      item.id === target.id
+    );
     const evaluation = violation &&
-      context.snapshot.evaluations.find((item) => item.id === violation.evaluationId);
+      context.snapshot.evaluations.find((item) =>
+        item.id === violation.evaluationId
+      );
     return evaluation?.evaluator.serverId ?? "Unassigned";
   }
   return "digital-thread";
@@ -1541,7 +1570,9 @@ function topologicallySortedArtifacts(
 function architectureCaptureIds(snapshot: ThreadSnapshot): ReadonlySet<string> {
   return new Set(
     snapshot.artifacts
-      .filter((artifact) => artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX))
+      .filter((artifact) =>
+        artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
+      )
       .map((artifact) => artifact.id),
   );
 }

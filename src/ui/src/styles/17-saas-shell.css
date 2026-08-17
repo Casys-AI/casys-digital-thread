@@ -1,0 +1,126 @@
+/* Shell SaaS --------------------------------------------------------------
+
+   Le chrome du cockpit (topbar unique, sidebar, colonne de contenu) est
+   rendu en utilities Tailwind par `navigation.tsx` ; cette feuille ne porte
+   que ce que les utilities ne couvrent pas — le placement en grille,
+le
+   chrome de colonne de la sidebar et son repli mobile — plus le langage de
+   cartes que les vues legacy consomment encore le temps de leur refonte.
+   -------------------------------------------------------------------------- */
+
+/* --- Cadre applicatif : pleine page --------------------------------------- */
+
+.native-preview-body {
+  padding: 0;
+}
+.native-preview-shell {
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+}
+.native-preview-content,
+#thread-workbench-root {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+} /* --- Grille : topbar pleine largeur,
+sidebar,
+colonne de contenu ----------- */
+
+.thread-workbench {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 13.5rem minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  border: 0;
+  background: var(--thread-canvas);
+}
+.thread-workbench > * {
+  min-width: 0;
+  grid-column: 2;
+}
+.thread-workbench > .thread-cockpit-header {
+  grid-column: 1 / -1;
+} /* La sidebar se cale sous la topbar (h-12 = 48px) et occupe la hauteur
+restante du viewport. */
+.thread-workbench > .project-navigation {
+  position: sticky;
+  top: 48px;
+  grid-column: 1;
+  grid-row: 2 / span 14;
+  align-self: start;
+  height: calc(100dvh - 48px);
+  overflow-y: auto;
+  border-right: 1px solid var(--ui-border);
+  background: var(--ui-background);
+} /* La surface de planification n'a pas de navigation : une seule colonne. */
+.planning-workbench {
+  grid-template-columns: minmax(0, 1fr);
+}
+.planning-workbench > * {
+  grid-column: 1;
+} /* Marges de la colonne de contenu. `width: auto` neutralise les largeurs
+`min(100%, …)` héritées du layout centré : additionnées aux marges,
+elles
+feraient déborder la cellule de grille. */
+.thread-workbench > :not(.thread-cockpit-header):not(.project-navigation) {
+  width: auto;
+  max-width: 1280px;
+  margin: var(--space-20) clamp(1rem, 2.5vw, 2rem) 0;
+}
+.thread-workbench > :last-child:not(.project-navigation) {
+  margin-bottom: var(--space-40);
+} /* --- Échelle éditoriale : titres de page discrets ------------------------- */
+
+.thread-workbench .thread-section-heading h3 {
+  font-size: var(--text-xl);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+} /* --- Langage de cartes (consommé par les vues legacy) ---------------------- */
+
+.thread-workbench :is(.thread-flow-section, .thread-tool-drawer) {
+  border: 1px solid var(--thread-border);
+  border-radius: var(--radius-lg);
+  background: var(--thread-panel);
+  box-shadow: var(--shadow-card);
+} /* --- Contrôles legacy : boutons ------------------------------------------- */
+
+.thread-workbench button {
+  border-radius: var(--radius-sm);
+  font-family: var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.thread-workbench :is(.thread-graph-density-toggle, .thread-graph-controls button) {
+  font: 500 var(--text-sm) / 1 var(--sans);
+} /* --- Repli mobile : la sidebar redevient une rangée d'onglets -------------- */
+
+@media (max-width: 900px) {
+  .thread-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .thread-workbench > * {
+    grid-column: 1;
+  }
+  .thread-workbench > .thread-cockpit-header {
+    grid-column: 1;
+  }
+  .thread-workbench > .project-navigation {
+    position: static;
+    grid-column: 1;
+    grid-row: auto;
+    height: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: var(--space-6) var(--space-10);
+    border-right: 0;
+    border-bottom: 1px solid var(--ui-border);
+  }
+  .thread-workbench > :not(.thread-cockpit-header):not(.project-navigation) {
+    margin: var(--space-12) var(--space-12) 0;
+  }
+}

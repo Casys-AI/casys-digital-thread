@@ -1,7 +1,14 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
+import type { JSX } from "react";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
+import { Badge } from "../ui/badge.tsx";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../ui/card.tsx";
+import { Separator } from "../ui/separator.tsx";
 import { buildProjectBriefRecord } from "./brief-record-model.ts";
 
 /**
@@ -17,80 +24,152 @@ export function ProjectBriefRecord({
   const record = buildProjectBriefRecord(project.framing);
   if (!record) return null;
 
+  const statusVariant = record.status === "confirmed" ? "success" : "warning";
+
   return (
-    <section class="project-brief-record" aria-labelledby="project-brief-title">
-      <header class="project-section-label">
-        <div>
-          <p>COMPLETE ENGINEERING BRIEF</p>
-          <h3 id="project-brief-title">Approved engineering project brief</h3>
-        </div>
-        <span class="project-brief-status" data-state={record.status}>
-          {record.statusLabel}
-        </span>
-      </header>
-
-      <div class="project-brief-record-body">
-        <section
-          class="project-brief-intent"
-          aria-labelledby="project-brief-intent-title"
-        >
-          <p>STARTING INTENT</p>
-          <blockquote id="project-brief-intent-title">
-            {record.intent}
-          </blockquote>
-          <small>{record.statusDetail}</small>
-        </section>
-
-        {record.sections.length > 0 && (
-          <div class="project-brief-sections">
-            {record.sections.map((section) => (
-              <section
-                key={section.id}
-                aria-labelledby={`project-brief-${section.id}`}
+    <Card aria-labelledby="project-brief-title">
+      {
+        /* Le brief est la référence immuable du projet : replié par défaut,
+          il s'ouvre à la demande — et reste déplié tant qu'il est en cours
+          de discussion. */
+      }
+      <details
+        className="group"
+        {...(record.status !== "confirmed" ? { open: true } : {})}
+      >
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <CardHeader className="flex-row items-start justify-between gap-4 px-5 pt-5 max-md:flex-col">
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">
+                Complete engineering brief
+              </p>
+              <CardTitle id="project-brief-title" className="text-base">
+                Approved engineering project brief
+              </CardTitle>
+              <p className="text-xs text-muted-foreground group-open:hidden">
+                Open to read the approved direction the agent plans against.
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-2">
+              <Badge variant={statusVariant} data-state={record.status}>
+                {record.statusLabel}
+              </Badge>
+              <svg
+                viewBox="0 0 16 16"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="size-4 text-muted-foreground transition-transform group-open:rotate-180"
               >
-                <h4 id={`project-brief-${section.id}`}>{section.title}</h4>
-                <ul>
-                  {section.items.map((item) => (
-                    <li key={item.id}>{item.statement}</li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        )}
+                <path d="m4 6 4 4 4-4" />
+              </svg>
+            </span>
+          </CardHeader>
+        </summary>
 
-        {record.openQuestions.length > 0 && (
+        <CardContent className="grid gap-6 px-5 pb-5">
           <section
-            class="project-brief-open-questions"
-            aria-labelledby="project-brief-open-title"
+            className="border-l-2 border-brand pl-4"
+            aria-labelledby="project-brief-intent-title"
           >
-            <p>STILL TO RESOLVE WITH THE AGENT</p>
-            <h4 id="project-brief-open-title">Open points stay visible</h4>
-            <ul>
-              {record.openQuestions.map((question) => (
-                <li key={question}>{question}</li>
-              ))}
-            </ul>
+            <p className="text-xs font-medium text-muted-foreground">
+              Starting intent
+            </p>
+            <blockquote
+              id="project-brief-intent-title"
+              className="mt-1.5 text-sm leading-relaxed"
+            >
+              {record.intent}
+            </blockquote>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {record.statusDetail}
+            </p>
           </section>
-        )}
-      </div>
 
-      <footer class="project-brief-record-footer">
-        <span>
-          Brief revision {record.revision}
-          {record.confirmedAt
-            ? ` · confirmed ${formatShortDate(record.confirmedAt)}`
-            : ""}
-        </span>
-        {record.sourceLabels.length > 0 && (
-          <span>Built from {record.sourceLabels.join(" · ")}</span>
-        )}
-        <small>
-          Discuss a correction with the agent; this Cockpit follows the saved
-          record.
-        </small>
-      </footer>
-    </section>
+          {record.sections.length > 0 && (
+            <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
+              {record.sections.map((section) => (
+                <section
+                  key={section.id}
+                  aria-labelledby={`project-brief-${section.id}`}
+                >
+                  <h4
+                    id={`project-brief-${section.id}`}
+                    className="text-sm font-semibold"
+                  >
+                    {section.title}
+                  </h4>
+                  <ul className="mt-2 list-none space-y-1.5 text-sm text-muted-foreground">
+                    {section.items.map((item) => (
+                      <li
+                        key={item.id}
+                        className="before:mr-2 before:text-muted-foreground/60 before:content-['•']"
+                      >
+                        {item.statement}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          )}
+
+          {record.openQuestions.length > 0 && (
+            <section aria-labelledby="project-brief-open-title">
+              <p className="text-xs font-medium text-muted-foreground">
+                Still to resolve with the agent
+              </p>
+              <h4
+                id="project-brief-open-title"
+                className="mt-1.5 text-sm font-semibold"
+              >
+                Open points stay visible
+              </h4>
+              <ul className="mt-2 list-none space-y-1.5 text-sm text-muted-foreground">
+                {record.openQuestions.map((question) => (
+                  <li
+                    key={question}
+                    className="before:mr-2 before:text-muted-foreground/60 before:content-['•']"
+                  >
+                    {question}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </CardContent>
+
+        <Separator />
+
+        <CardFooter className="flex-col items-start gap-1.5 px-5 pb-5 pt-4 text-xs text-muted-foreground">
+          <span>
+            Brief revision <span className="font-mono">{record.revision}</span>
+            {record.confirmedAt
+              ? (
+                <>
+                  {" · confirmed "}
+                  <span className="font-mono">
+                    {formatShortDate(record.confirmedAt)}
+                  </span>
+                </>
+              )
+              : ""}
+          </span>
+          {record.sourceLabels.length > 0 && (
+            <span>Built from {record.sourceLabels.join(" · ")}</span>
+          )}
+          <span>
+            Discuss a correction with the agent; this Cockpit follows the saved
+            record.
+          </span>
+        </CardFooter>
+      </details>
+    </Card>
   );
 }
 

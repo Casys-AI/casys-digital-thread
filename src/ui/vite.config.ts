@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 function trimGeneratedHtml(): Plugin {
@@ -22,7 +23,7 @@ function trimGeneratedHtml(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [viteSingleFile(), trimGeneratedHtml()],
+  plugins: [tailwindcss(), viteSingleFile(), trimGeneratedHtml()],
   base: "./",
   build: {
     outDir: "dist/console",

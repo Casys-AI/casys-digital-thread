@@ -9,13 +9,13 @@ Deno.test("documentary baseline stays inside the project cockpit, without preten
   );
 
   assertStringIncludes(source, "export function DocumentaryBaselineWorkbench");
-  assertStringIncludes(source, "DURABLE STARTING RECORD");
-  assertStringIncludes(source, "WHAT THIS DOES NOT PROVE");
+  assertStringIncludes(source, "Durable starting record");
+  assertStringIncludes(source, "What this does not prove");
   assertStringIncludes(source, "Exact documentary record");
   assertStringIncludes(source, "No SysML model or CAD geometry is recorded.");
   assertStringIncludes(source, "ProjectNavigation");
   assertStringIncludes(source, "ProjectWorkRibbon");
-  assertStringIncludes(source, "From reviewed intent to technical proof");
+  assertStringIncludes(source, "Intent to technical proof");
   assertStringIncludes(source, "No product definition is recorded yet");
   assertStringIncludes(source, "No verification chain is recorded yet");
 

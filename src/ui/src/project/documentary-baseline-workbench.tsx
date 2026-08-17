@@ -1,8 +1,15 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
+import type { JSX } from "react";
+import { cn } from "../lib/utils.ts";
 import type { ThreadStreamStatus } from "../thread/client.ts";
 import type { EngineeringDocumentaryWorkbenchSnapshot } from "../thread/types.ts";
+import { Badge, type BadgeProps } from "../ui/badge.tsx";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card.tsx";
 import { DocumentaryTechnicalStartActivity } from "./documentary-technical-start-activity.tsx";
 import {
   buildProjectBrief,
@@ -10,8 +17,15 @@ import {
   projectBriefStatusLabel,
   projectStatusTone,
 } from "./model.ts";
-import { ProjectNavigation, type ProjectWorkspaceView } from "./navigation.tsx";
+import {
+  ProjectCockpitHeader,
+  ProjectNavigation,
+  type ProjectWorkspaceView,
+} from "./navigation.tsx";
+import { hasDistinctProjectObjectiveStatement } from "./navigation-model.ts";
 import { ProjectWorkRibbon } from "./work.tsx";
+
+type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
 /**
  * The pre-technical state of the same project cockpit. A documentary starting
@@ -36,81 +50,67 @@ export function DocumentaryBaselineWorkbench({
   const technicalStart = documentary.technicalStart;
   const statusSeal = documentaryProjectStatusSeal(brief, technicalStart);
   return (
-    <div class="thread-workbench mcp-view-surface documentary-baseline-workbench">
-      <header class="thread-cockpit-header">
-        <div class="thread-cockpit-identity">
-          <div class="thread-kicker">
-            <span class="thread-coordinate">ENGINEERING PROJECT COCKPIT</span>
-          </div>
-          <div class="thread-subject-heading">
-            <span class="thread-subject-mark" aria-hidden="true">DT</span>
-            <div>
-              <p class="thread-program">
-                PROJECT {project.project.id} · REVISION {project.revision}
-              </p>
-              <h2>{project.project.name}</h2>
-              <span class="thread-subject-context">
-                Documentary starting record · {project.project.subjectId}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="thread-session-panel">
-          <div class="thread-session-state" data-state={streamStatus}>
-            <i aria-hidden="true" />
-            <div>
-              <small>PROJECT RECORD</small>
-              <strong>{documentaryStreamLabel(streamStatus)}</strong>
-            </div>
-          </div>
-          <div class="thread-session-change">
-            <small>TECHNICAL PROOF</small>
-            <strong>Not recorded yet</strong>
-          </div>
-          <dl class="thread-session-facts">
-            <div>
-              <dt>Recorded</dt>
-              <dd>{formatTime(record.recordedAt)}</dd>
-            </div>
-          </dl>
-        </div>
-      </header>
+    <div className="thread-workbench mcp-view-surface">
+      <ProjectCockpitHeader
+        projectId={project.project.id}
+        revision={project.revision}
+        projectName={project.project.name}
+        context={`Documentary · ${project.project.subjectId}`}
+        streamState={streamStatus}
+        streamLabel={documentaryStreamLabel(streamStatus)}
+        statusLabel="Technical proof"
+        statusValue="Not recorded yet"
+        metaLabel="Recorded"
+        metaValue={formatTime(record.recordedAt)}
+      />
 
       <ProjectNavigation activeView={activeView} onChange={onChangeView} />
 
       {activeView === "overview"
         ? (
-          <main
-            class="project-overview documentary-baseline-main"
-            id="project-workspace-panel"
-          >
+          <main className="grid gap-4" id="project-workspace-panel">
             <section
-              class="project-objective"
+              className="flex flex-col gap-4 border-b border-border pb-4 md:flex-row md:items-start md:justify-between"
               aria-labelledby="project-objective-title"
             >
-              <div class="project-objective-index" aria-hidden="true">
-                <span>MISSION</span>
-                <strong>{String(project.revision).padStart(2, "0")}</strong>
-              </div>
-              <div class="project-objective-copy">
-                <p>ENGINEERING OBJECTIVE</p>
+              <div className="min-w-0 [&>h3]:m-0 [&>h3]:max-w-3xl [&>h3]:text-lg [&>h3]:font-semibold [&>h3]:tracking-tight">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Project objective
+                </p>
                 <h3 id="project-objective-title">
                   {project.project.objective.title}
                 </h3>
-                <blockquote>{project.project.objective.statement}</blockquote>
+                {hasDistinctProjectObjectiveStatement(
+                  project.project.objective.title,
+                  project.project.objective.statement,
+                ) && (
+                  <blockquote className="mt-3 max-w-3xl text-sm text-muted-foreground">
+                    {project.project.objective.statement}
+                  </blockquote>
+                )}
               </div>
               <div
-                class="project-status-seal"
+                className="flex shrink-0 flex-col items-start gap-1.5 md:items-end"
                 data-tone={statusSeal.tone}
                 aria-label={`Project status: ${statusSeal.label}`}
               >
-                <i aria-hidden="true" />
-                <span>PROJECT STATE</span>
-                <strong>{statusSeal.label}</strong>
-                <small>
+                <Badge
+                  variant={projectToneVariant(statusSeal.tone)}
+                  className="gap-1.5 px-2.5 py-1 text-sm"
+                >
+                  <i
+                    aria-hidden="true"
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      toneDotClass(statusSeal.tone),
+                    )}
+                  />
+                  {statusSeal.label}
+                </Badge>
+                <p className="text-xs text-muted-foreground">
                   {brief.completedPhases}/{brief.phases.length}{" "}
                   phase gates satisfied
-                </small>
+                </p>
               </div>
             </section>
 
@@ -125,138 +125,186 @@ export function DocumentaryBaselineWorkbench({
             )}
 
             <section
-              class="documentary-baseline-notice"
               aria-labelledby="documentary-baseline-title"
               role="status"
             >
-              <div class="documentary-baseline-mark" aria-hidden="true">01</div>
-              <div>
-                <p>DURABLE STARTING RECORD</p>
-                <h3 id="documentary-baseline-title">
-                  Your reviewed starting point is now traceable
-                </h3>
-                <span>{documentary.message}</span>
-              </div>
+              <Card>
+                <CardHeader>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Durable starting record
+                  </p>
+                  <CardTitle
+                    id="documentary-baseline-title"
+                    className="text-base"
+                  >
+                    Your reviewed starting point is now traceable
+                  </CardTitle>
+                  <CardDescription>{documentary.message}</CardDescription>
+                </CardHeader>
+              </Card>
+            </section>
+
+            <section aria-labelledby="documentary-record-title">
+              <Card>
+                <CardHeader className="flex-row items-start justify-between gap-4 max-md:flex-col">
+                  <div className="min-w-0 space-y-1.5">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Recorded provenance
+                    </p>
+                    <CardTitle
+                      id="documentary-record-title"
+                      className="text-base"
+                    >
+                      {record.label}
+                    </CardTitle>
+                  </div>
+                  <Badge variant="success">Immutable record</Badge>
+                </CardHeader>
+                <CardContent>
+                  <dl className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <dt className="text-xs text-muted-foreground">
+                        Record type
+                      </dt>
+                      <dd className="text-sm">
+                        Approved project brief and reviewed path
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">
+                        Snapshot
+                      </dt>
+                      <dd className="font-mono text-xs text-muted-foreground">
+                        Revision {record.snapshotRevision}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-muted-foreground">
+                        Fingerprint
+                      </dt>
+                      <dd className="font-mono text-xs text-muted-foreground">
+                        {shortFingerprint(record.fingerprint)}
+                      </dd>
+                    </div>
+                  </dl>
+                </CardContent>
+              </Card>
             </section>
 
             <section
-              class="documentary-record-card"
-              aria-labelledby="documentary-record-title"
-            >
-              <header>
-                <div>
-                  <p>RECORDED PROVENANCE</p>
-                  <h3 id="documentary-record-title">{record.label}</h3>
-                </div>
-                <span class="documentary-record-state">IMMUTABLE RECORD</span>
-              </header>
-              <dl class="documentary-record-facts">
-                <div>
-                  <dt>Record type</dt>
-                  <dd>Approved project brief and reviewed path</dd>
-                </div>
-                <div>
-                  <dt>Snapshot</dt>
-                  <dd>Revision {record.snapshotRevision}</dd>
-                </div>
-                <div>
-                  <dt>Fingerprint</dt>
-                  <dd>
-                    <code>{shortFingerprint(record.fingerprint)}</code>
-                  </dd>
-                </div>
-              </dl>
-            </section>
-
-            <section
-              class="documentary-boundary-grid"
+              className="grid gap-4 md:grid-cols-2"
               aria-label="Meaning of the documentary baseline"
             >
-              <article class="documentary-boundary-card is-recorded">
-                <p>WHAT IS NOW DURABLE</p>
-                <h3>The project’s approved starting point</h3>
-                <ul>
-                  <li>
-                    The approved project brief is retained with its project
-                    path.
-                  </li>
-                  <li>The record has one exact, checkable fingerprint.</li>
-                  <li>Later technical work can name this starting record.</li>
-                </ul>
-              </article>
-              <article class="documentary-boundary-card is-not-evidence">
-                <p>WHAT THIS DOES NOT PROVE</p>
-                <h3>Engineering claims still need a bounded run</h3>
-                <ul>
-                  <li>No SysML model or CAD geometry is recorded.</li>
-                  <li>
-                    No simulation, measurement or physical behaviour is
-                    recorded.
-                  </li>
-                  <li>
-                    No requirement, compliance or certification verdict exists.
-                  </li>
-                </ul>
-              </article>
+              <Card>
+                <CardHeader>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    What is now durable
+                  </p>
+                  <CardTitle className="text-base">
+                    The project’s approved starting point
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="list-none space-y-1.5 text-sm text-muted-foreground">
+                    <li className="before:mr-2 before:text-success before:content-['•']">
+                      The approved project brief is retained with its project
+                      path.
+                    </li>
+                    <li className="before:mr-2 before:text-success before:content-['•']">
+                      The record has one exact, checkable fingerprint.
+                    </li>
+                    <li className="before:mr-2 before:text-success before:content-['•']">
+                      Later technical work can name this starting record.
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    What this does not prove
+                  </p>
+                  <CardTitle className="text-base">
+                    Engineering claims still need a bounded run
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="list-none space-y-1.5 text-sm text-muted-foreground">
+                    <li className="before:mr-2 before:text-warning before:content-['•']">
+                      No SysML model or CAD geometry is recorded.
+                    </li>
+                    <li className="before:mr-2 before:text-warning before:content-['•']">
+                      No simulation, measurement or physical behaviour is
+                      recorded.
+                    </li>
+                    <li className="before:mr-2 before:text-warning before:content-['•']">
+                      No requirement, compliance or certification verdict
+                      exists.
+                    </li>
+                  </ul>
+                </CardContent>
+              </Card>
             </section>
 
-            <section
-              class="documentary-next-step"
-              aria-labelledby="documentary-next-step-title"
-            >
-              <div>
-                <p>NEXT WITH YOUR AGENT</p>
-                <h3 id="documentary-next-step-title">
-                  {technicalStart
-                    ? "Follow the bounded technical start"
-                    : "Choose the first bounded technical operation"}
-                </h3>
-              </div>
-              <p>
-                {technicalStart
-                  ? "The activity above is the only live view of this narrow operation. It remains provisional until a read-back, hash-addressed record becomes the next thread revision."
-                  : (
-                    <>
-                      {documentary.technicalEvidence.message}{" "}
-                      Ask the agent to propose a concrete model, CAD or analysis
-                      step in your paired conversation. Its recorded scope and
-                      results will appear here.
-                    </>
-                  )}
-              </p>
+            <section aria-labelledby="documentary-next-step-title">
+              <Card>
+                <CardHeader>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Next with your agent
+                  </p>
+                  <CardTitle
+                    id="documentary-next-step-title"
+                    className="text-base"
+                  >
+                    {technicalStart
+                      ? "Follow the bounded technical start"
+                      : "Choose the first bounded technical operation"}
+                  </CardTitle>
+                  <CardDescription>
+                    {technicalStart
+                      ? "The activity above is the only live view of this narrow operation. It remains provisional until a read-back, hash-addressed record becomes the next thread revision."
+                      : (
+                        <>
+                          {documentary.technicalEvidence.message}{" "}
+                          Ask the agent to propose a concrete model, CAD or
+                          analysis step in your paired conversation. Its
+                          recorded scope and results will appear here.
+                        </>
+                      )}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
             </section>
 
-            <details class="project-technical-record documentary-record-details">
-              <summary>Exact documentary record</summary>
-              <dl>
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer">
+                Exact documentary record
+              </summary>
+              <dl className="mt-3 grid gap-3 sm:grid-cols-3">
                 <div>
                   <dt>Snapshot</dt>
-                  <dd>
-                    <code>{record.snapshotId}@{record.snapshotRevision}</code>
+                  <dd className="font-mono text-xs">
+                    {record.snapshotId}@{record.snapshotRevision}
                   </dd>
                 </div>
                 <div>
                   <dt>Artifact</dt>
-                  <dd>
-                    <code>{record.artifactId}</code>
-                  </dd>
+                  <dd className="font-mono text-xs">{record.artifactId}</dd>
                 </div>
                 <div>
                   <dt>Fingerprint</dt>
-                  <dd>
-                    <code>{record.fingerprint}</code>
-                  </dd>
+                  <dd className="font-mono text-xs">{record.fingerprint}</dd>
                 </div>
                 <div>
                   <dt>Captured</dt>
-                  <dd>{formatDateTime(record.recordedAt)}</dd>
+                  <dd className="font-mono text-xs">
+                    {formatDateTime(record.recordedAt)}
+                  </dd>
                 </div>
                 {record.uri && (
                   <div>
                     <dt>Record URI</dt>
-                    <dd>
-                      <code>{record.uri}</code>
-                    </dd>
+                    <dd className="font-mono text-xs">{record.uri}</dd>
                   </div>
                 )}
               </dl>
@@ -279,50 +327,65 @@ function DocumentaryProjectPath(
   { brief }: { brief: ProjectBrief },
 ): JSX.Element {
   return (
-    <section
-      class="project-phase-section"
-      aria-labelledby="documentary-project-path-title"
-    >
-      <header class="project-section-label">
-        <div>
-          <p>PROJECT PATH</p>
-          <h3 id="documentary-project-path-title">
-            From reviewed intent to technical proof
-          </h3>
-        </div>
-        <span>
-          Progress comes from recorded work and evidence, not a checklist.
-        </span>
-      </header>
-      <ol
-        class="project-phase-rail"
-        tabIndex={0}
-        aria-label="Project phases, scrolls horizontally"
-      >
-        {brief.phases.map((item, index) => (
-          <li key={item.phase.id} data-state={item.status}>
-            <div class="project-phase-node">
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              <i aria-hidden="true" />
-            </div>
-            <div class="project-phase-copy">
-              <small>{phaseStatusLabel(item.status)}</small>
-              <strong>{item.phase.name}</strong>
-              <p>{item.phase.description}</p>
-              <dl>
-                <div>
-                  <dt>Work</dt>
-                  <dd>{item.completedWorkItems}/{item.totalWorkItems}</dd>
+    <section aria-labelledby="documentary-project-path-title">
+      <Card>
+        <CardHeader>
+          <p className="text-xs font-medium text-muted-foreground">
+            Project path
+          </p>
+          <CardTitle
+            id="documentary-project-path-title"
+            className="text-base"
+          >
+            Intent to technical proof
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ol
+            className="flex items-start overflow-x-auto"
+            tabIndex={0}
+            aria-label="Project phases, scrolls horizontally"
+          >
+            {brief.phases.map((item, index) => (
+              <li
+                key={item.phase.id}
+                data-state={item.status}
+                className="flex min-w-[8.5rem] flex-1 flex-col gap-1.5"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "size-2 shrink-0 rounded-full",
+                      item.status === "completed" ||
+                        item.status === "active"
+                        ? "bg-success"
+                        : "bg-muted-foreground",
+                    )}
+                  />
+                  {index < brief.phases.length - 1 && (
+                    <span
+                      className="h-px flex-1 bg-border"
+                      aria-hidden="true"
+                    />
+                  )}
                 </div>
-                <div>
-                  <dt>Evidence</dt>
-                  <dd>{item.evidenceCount}</dd>
-                </div>
-              </dl>
-            </div>
-          </li>
-        ))}
-      </ol>
+                <span className="text-xs font-medium">{item.phase.name}</span>
+                <p className="text-xs text-muted-foreground">
+                  {phaseStatusLabel(item.status)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {item.phase.description}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {item.completedWorkItems}/{item.totalWorkItems} work ·{" "}
+                  {item.evidenceCount} evidence
+                </p>
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
     </section>
   );
 }
@@ -342,59 +405,47 @@ function DocumentaryWorkspace({
   const copy = documentaryWorkspaceCopy(activeView);
   return (
     <section
-      class={`thread-flow-section project-workspace-page is-${activeView}`}
+      className="grid gap-4"
       id="project-workspace-panel"
       aria-labelledby="documentary-workspace-title"
     >
-      <div class="thread-section-heading">
-        <div>
-          <p>{copy.eyebrow}</p>
-          <h3 id="documentary-workspace-title">{copy.title}</h3>
-        </div>
+      <div>
+        <h3
+          id="documentary-workspace-title"
+          className="text-lg font-semibold tracking-tight"
+        >
+          {copy.title}
+        </h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {copy.description}
+        </p>
       </div>
-      <div class="thread-workspace-meta">
-        <p class="thread-flow-explanation">{copy.description}</p>
-        <div class="thread-operator-contract" aria-label="Cockpit mode">
-          <span data-state="history">
-            <i aria-hidden="true" />
-            Reviewing recorded project state
-          </span>
-          <span>
-            <b>YOUR ROLE</b>{" "}
-            inspect the record and discuss intent with the agent
-          </span>
-        </div>
-      </div>
-      <div class="thread-graph-workspace is-wide">
-        <div class={`thread-graph-stage thread-graph-stage-${activeView}`}>
-          {activeView === "work"
-            ? (
-              <>
-                <ProjectWorkRibbon project={project} />
-                {technicalStart
-                  ? (
-                    <DocumentaryTechnicalStartActivity
-                      technicalStart={technicalStart}
-                    />
-                  )
-                  : (
-                    <DocumentaryUnavailable
-                      title="No live engineering activity yet"
-                      detail={technicalEvidenceMessage}
-                    />
-                  )}
-              </>
-            )
-            : activeView === "operations"
-            ? <DocumentaryExecution project={project} />
-            : (
-              <DocumentaryUnavailable
-                title={copy.unavailableTitle}
-                detail={copy.unavailableDetail}
-              />
-            )}
-        </div>
-      </div>
+      {activeView === "work"
+        ? (
+          <>
+            <ProjectWorkRibbon project={project} />
+            {technicalStart
+              ? (
+                <DocumentaryTechnicalStartActivity
+                  technicalStart={technicalStart}
+                />
+              )
+              : (
+                <DocumentaryUnavailable
+                  title="No live engineering activity yet"
+                  detail={technicalEvidenceMessage}
+                />
+              )}
+          </>
+        )
+        : activeView === "operations"
+        ? <DocumentaryExecution project={project} />
+        : (
+          <DocumentaryUnavailable
+            title={copy.unavailableTitle}
+            detail={copy.unavailableDetail}
+          />
+        )}
     </section>
   );
 }
@@ -404,22 +455,19 @@ function DocumentaryUnavailable({ title, detail }: {
   detail: string;
 }): JSX.Element {
   return (
-    <section
-      class="project-operations-panel documentary-unavailable"
-      role="status"
-    >
-      <header>
-        <div>
-          <p>NOT RECORDED YET</p>
-          <h4>{title}</h4>
-        </div>
-      </header>
-      <p class="project-operations-empty">{detail}</p>
-      <p class="project-operations-empty">
-        Ask your agent to propose the next bounded operation; its recorded
-        result will appear in this project cockpit.
-      </p>
-    </section>
+    <Card role="status">
+      <CardHeader>
+        <p className="text-xs font-medium text-muted-foreground">
+          Not recorded yet
+        </p>
+        <CardTitle className="text-base">{title}</CardTitle>
+        <CardDescription>{detail}</CardDescription>
+        <CardDescription>
+          Ask your agent to propose the next bounded operation; its recorded
+          result will appear in this project cockpit.
+        </CardDescription>
+      </CardHeader>
+    </Card>
   );
 }
 
@@ -427,23 +475,33 @@ function DocumentaryExecution({ project }: {
   project: EngineeringDocumentaryWorkbenchSnapshot["project"];
 }): JSX.Element {
   return (
-    <div class="project-operations">
+    <div className="grid gap-4">
       <ProjectWorkRibbon project={project} />
-      <section
-        class="project-operations-panel"
-        aria-labelledby="documentary-execution-title"
-      >
-        <header>
-          <div>
-            <p>RECORDED EXECUTION</p>
-            <h4 id="documentary-execution-title">Project run journal</h4>
-          </div>
-          <span>{project.agentRuns.length} recorded</span>
-        </header>
-        <p class="project-operations-empty">
-          This project has a durable starting record. No technical tool run has
-          produced evidence yet.
-        </p>
+      <section aria-labelledby="documentary-execution-title">
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-4 max-md:flex-col">
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">
+                Recorded execution
+              </p>
+              <CardTitle
+                id="documentary-execution-title"
+                className="text-base"
+              >
+                Project run journal
+              </CardTitle>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {project.agentRuns.length} recorded
+            </span>
+          </CardHeader>
+          <CardContent>
+            <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
+              This project has a durable starting record. No technical tool run
+              has produced evidence yet.
+            </p>
+          </CardContent>
+        </Card>
       </section>
     </div>
   );
@@ -452,7 +510,6 @@ function DocumentaryExecution({ project }: {
 function documentaryWorkspaceCopy(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): {
-  eyebrow: string;
   title: string;
   description: string;
   unavailableTitle: string;
@@ -460,10 +517,8 @@ function documentaryWorkspaceCopy(
 } {
   if (view === "work") {
     return {
-      eyebrow: "AGENT ACTIVITY · SHARED RECORD",
-      title: "Follow the work as it happens",
-      description:
-        "Recorded activity appears here as the agent works. This project has not produced technical evidence yet.",
+      title: "Activity",
+      description: "Recorded activity only; no technical evidence yet.",
       unavailableTitle: "No live engineering activity yet",
       unavailableDetail:
         "The documentary baseline is complete; the next technical operation has not been recorded.",
@@ -471,10 +526,9 @@ function documentaryWorkspaceCopy(
   }
   if (view === "product") {
     return {
-      eyebrow: "PRODUCT EXPLORER",
-      title: "Explore one product across its tools",
+      title: "Product structure",
       description:
-        "Components appear only after an explicit model or CAD operation records them.",
+        "Components appear after an explicit model or CAD operation.",
       unavailableTitle: "No product definition is recorded yet",
       unavailableDetail:
         "There is no SysML model, CAD geometry or ERP component record to inspect.",
@@ -482,20 +536,16 @@ function documentaryWorkspaceCopy(
   }
   if (view === "verification") {
     return {
-      eyebrow: "EVIDENCE & IMPACT",
-      title: "Understand evidence and impact",
-      description:
-        "Traceability appears after a bounded technical result links a fact to its sources and consequences.",
+      title: "Evidence map",
+      description: "Traceability appears after a bounded technical result.",
       unavailableTitle: "No verification chain is recorded yet",
       unavailableDetail:
         "There are no requirements, measurements or evidence relations to trace from the documentary baseline.",
     };
   }
   return {
-    eyebrow: "EXECUTION HISTORY",
-    title: "Review execution history and the work plan",
-    description:
-      "The cockpit records what the agent has run and what is explicitly planned next.",
+    title: "Execution record",
+    description: "Recorded runs and explicitly planned work.",
     unavailableTitle: "No technical execution is recorded yet",
     unavailableDetail:
       "The only recorded operation established the approved starting point; it did not produce technical evidence.",
@@ -539,6 +589,24 @@ function documentaryStreamLabel(
   if (status === "connecting") return "Connecting to project updates";
   if (status === "reconnecting") return "Restoring project updates";
   return "Durable project record";
+}
+
+function projectToneVariant(
+  tone: ReturnType<typeof projectStatusTone>,
+): BadgeVariant {
+  if (tone === "active" || tone === "complete") return "success";
+  if (tone === "attention") return "warning";
+  if (tone === "blocked") return "destructive";
+  // Le ton neutre (Planned…) doit rester lisible sur le fond canvas : une
+  // bordure, pas un fond gris quasi invisible.
+  return "outline";
+}
+
+function toneDotClass(tone: ReturnType<typeof projectStatusTone>): string {
+  if (tone === "active" || tone === "complete") return "bg-success";
+  if (tone === "attention") return "bg-warning";
+  if (tone === "blocked") return "bg-destructive";
+  return "bg-muted-foreground";
 }
 
 function shortFingerprint(value: string): string {

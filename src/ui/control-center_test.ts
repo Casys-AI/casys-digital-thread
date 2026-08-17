@@ -8,7 +8,7 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(source, "export function DecisionCenter");
   assertStringIncludes(source, 'surface="inbox"');
   assertStringIncludes(source, "export function ReviewNotifications");
-  assertStringIncludes(source, "REVIEW NOW");
+  assertStringIncludes(source, "<p>Review</p>");
   assertStringIncludes(source, "export function ActivityReviewFeedCard");
   assertStringIncludes(source, "activityReviewStatus(record)");
   assertStringIncludes(source, "data-review-status={displayStatus}");
@@ -17,17 +17,17 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertEquals(source.includes("activity-review-events"), false);
   assertEquals(source.includes("CompactDecisionRecord"), false);
   assertEquals(source.includes("RESULT PUBLISHED"), false);
-  assertStringIncludes(source, "REVIEW IN ACTIVITY");
+  assertStringIncludes(source, "Review in activity");
   assertStringIncludes(source, "needsReviewCount");
-  assertStringIncludes(source, "APPROVED · RESULT PENDING");
+  assertStringIncludes(source, "Approved · result pending");
   assertEquals(source.includes("AGENT PREPARING"), false);
   assertEquals(source.includes("<dd>{nextReview ? 1 : 0}</dd>"), false);
-  assertStringIncludes(source, "PARTDEFINITION BINDING DIAGRAM");
-  assertStringIncludes(source, "REQUIREMENTS PROPOSAL · TARGET");
+  assertStringIncludes(source, "PartDefinition binding diagram");
+  assertStringIncludes(source, "Requirements proposal · target");
   assertStringIncludes(source, "GltfAssetCanvas");
-  assertStringIncludes(source, "SEALED RESULT · EXACT RECORDED BYTES");
-  assertStringIncludes(source, "VALIDATED PROPOSAL · RESULT PENDING");
-  assertStringIncludes(source, "DRAFT · GEOMETRY PROPOSAL");
+  assertStringIncludes(source, "Sealed result · exact recorded bytes");
+  assertStringIncludes(source, "Validated proposal · result pending");
+  assertStringIncludes(source, "Draft · geometry proposal");
   assertEquals(source.includes("0x1a1c1e"), false);
   assertEquals(source.includes("Comment for the agent"), false);
   assertStringIncludes(source, 'send("validate", undefined)');
@@ -113,27 +113,17 @@ Deno.test("Activity reuses one exact GLB viewer across selectable PartDefinition
   assertStringIncludes(source, "authoritative per-part CAD");
   assertStringIncludes(source, "no per-part browser");
   assertStringIncludes(source, "viewer is claimed");
-  assertStringIncludes(source, "SEALED PART PRESENTATION · EXACT RECORDED GLB");
+  assertStringIncludes(source, "Sealed part presentation · exact recorded GLB");
   assertStringIncludes(
     source,
-    "VALIDATED PART PROPOSAL · RESULT PENDING · GLB",
+    "Validated part proposal · result pending · GLB",
   );
   assertStringIncludes(
     source,
-    "VALIDATED HISTORICAL PART PROPOSAL · SUPERSEDED · GLB",
+    "Validated historical part proposal · superseded · GLB",
   );
-  assertStringIncludes(source, "DRAFT PART PROPOSAL · GLB · NOT CANONICAL");
+  assertStringIncludes(source, "Draft part proposal · GLB · not canonical");
   assertEquals(source.includes("Desk Lamp"), false);
-
-  const styles = await Deno.readTextFile(
-    new URL("./src/styles/11-review-notifications.css", import.meta.url),
-  );
-  assertStringIncludes(styles, ".geometry-part-visual-list");
-  assertStringIncludes(styles, "max-height: 25rem;");
-  assertStringIncludes(
-    styles,
-    "grid-template-columns: minmax(10.5rem, 0.32fr) minmax(0, 1fr);",
-  );
 });
 
 Deno.test("Project keeps its brief and path without duplicate engineering summaries", async () => {
@@ -143,10 +133,10 @@ Deno.test("Project keeps its brief and path without duplicate engineering summar
   const brief = await Deno.readTextFile(
     new URL("./src/project/brief-record.tsx", import.meta.url),
   );
-  assertStringIncludes(brief, "COMPLETE ENGINEERING BRIEF");
+  assertStringIncludes(brief, "Complete engineering brief");
   assertStringIncludes(brief, "Approved engineering project brief");
-  assertStringIncludes(overview, "PROJECT PATH");
-  assertStringIncludes(overview, "What the agent is doing");
+  assertStringIncludes(overview, ">Project path</h3>");
+  assertStringIncludes(overview, 'title="Agent now"');
   assertEquals(overview.includes("GENERIC GOLDEN PATH"), false);
   assertEquals(overview.includes("Brief to sealed geometry"), false);
   assertEquals(overview.includes("SEPARATE ENGINEERING RECORD"), false);
@@ -227,31 +217,17 @@ Deno.test("Product keeps its combined SysML and build123d facets", async () => {
   assertStringIncludes(source, 'role="tablist"');
   assertStringIncludes(source, "sealedAssemblyGlbAsset");
   assertStringIncludes(source, "GltfAssetCanvas");
-  assertStringIncludes(source, "SEALED ASSEMBLY PREVIEW · GLB");
+  assertStringIncludes(source, "Sealed assembly preview · GLB");
   assertEquals(source.includes("Review published geometry"), false);
   assertEquals(source.includes("per-part GLB"), false);
 });
 
-Deno.test("the shared GLB viewer stays on the light atelier surface", async () => {
+Deno.test("the shared GLB viewer stays on a light surface", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/thread/gltf-asset-canvas.tsx", import.meta.url),
   );
   assertStringIncludes(source, "GLTFLoader");
-  assertStringIncludes(source, "0xf4efe5");
   assertStringIncludes(source, "Fit / reset");
   assertEquals(source.includes("0x1a1c1e"), false);
-});
-
-Deno.test("Review Now uses three responsive meter columns for its three states", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./src/styles/11-review-notifications.css", import.meta.url),
-  );
-  assertStringIncludes(
-    source,
-    "grid-template-columns: repeat(3, minmax(4.65rem, 5.4rem));",
-  );
-  assertStringIncludes(
-    source,
-    "grid-template-columns: repeat(3, minmax(0, 1fr));",
-  );
+  assertEquals(source.includes("0x0b0f10"), false);
 });

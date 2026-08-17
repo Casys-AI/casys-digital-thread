@@ -1,7 +1,5 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import type { JSX } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
@@ -34,7 +32,7 @@ export function GltfAssetCanvas({
 
     const viewport = createThreeOrbitViewport(container);
     const { scene } = viewport;
-    scene.background = new THREE.Color(0xf4efe5);
+    scene.background = new THREE.Color(0xf2f4f6);
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0xb9aa98, 2.4));
     const key = new THREE.DirectionalLight(0xfff8ed, 3.4);
@@ -77,9 +75,13 @@ export function GltfAssetCanvas({
   }, [url]);
 
   return (
-    <div class="geometry-draft-canvas-shell">
-      <div class="geometry-draft-canvas" ref={host} aria-label={ariaLabel} />
-      <div class="geometry-draft-canvas-state" data-state={state}>
+    <div className="geometry-draft-canvas-shell">
+      <div
+        className="geometry-draft-canvas"
+        ref={host}
+        aria-label={ariaLabel}
+      />
+      <div className="geometry-draft-canvas-state" data-state={state}>
         {state === "loading"
           ? loadingLabel
           : state === "error"
@@ -88,7 +90,7 @@ export function GltfAssetCanvas({
       </div>
       <button
         type="button"
-        class="geometry-draft-reset"
+        className="geometry-draft-reset"
         disabled={state !== "ready"}
         onClick={() => resetView.current?.()}
       >

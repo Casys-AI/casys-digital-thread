@@ -1,24 +1,25 @@
-/** @jsxImportSource preact */
-
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { ComponentChildren, JSX } from "preact";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { JSX, ReactNode } from "react";
+import { Badge, type BadgeProps } from "../ui/badge.tsx";
+import { Button } from "../ui/button.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.tsx";
+import { EmptyNotice, Notice } from "../ui/notice.tsx";
+import { Tabs, TabsList, TabsTrigger } from "../ui/tabs.tsx";
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  type KeyValueItem,
-  KeyValueList,
-  MetricGrid,
-  type MetricItem,
-  type PresentationTone,
-  StateMessage,
-  Toolbar,
-} from "../mcp-view-primitives.ts";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu.tsx";
 import type {
   ProjectReviewIntent,
   ProjectReviewIntentAction,
 } from "../../../domain/project/project-review-intent.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import {
   buildActivityReviewRecords,
   type ProjectReviewRecord,
@@ -38,18 +39,15 @@ import {
   shouldPollReviewIntentReceipts,
 } from "../project/review-intent-model.ts";
 import {
-  agentRunRecordedAt,
+  type AgentNowPresentation,
   agentRunSummary,
   buildAgentNowPresentation,
   buildCurrentProjectWork,
-  buildProjectPath,
-  projectPathStatusLabel,
-  projectStatusTone,
   selectCurrentProjectFocus,
 } from "../project/model.ts";
 import {
+  ProjectCockpitHeader,
   ProjectNavigation,
-  projectViewLabel,
   type ProjectWorkspaceView,
 } from "../project/navigation.tsx";
 import {
@@ -144,6 +142,39 @@ import type {
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 
+type PresentationTone =
+  | "neutral"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info";
+
+interface FactItem {
+  id: string;
+  label: ReactNode;
+  value: ReactNode;
+}
+
+interface MetricTileItem {
+  id: string;
+  label: ReactNode;
+  value: ReactNode;
+  unit?: ReactNode;
+  detail?: ReactNode;
+  tone?: PresentationTone;
+}
+
+const TONE_BADGE_VARIANT: Record<
+  PresentationTone,
+  NonNullable<BadgeProps["variant"]>
+> = {
+  neutral: "secondary",
+  success: "success",
+  warning: "warning",
+  danger: "destructive",
+  info: "info",
+};
+
 export interface ThreadWorkbenchProps {
   client: ThreadWorkbenchClient;
   reviewIntentClient?: ProjectReviewIntentClient;
@@ -189,7 +220,6 @@ export function ThreadWorkbench({
   // opérateur 2026-08-08 : défaut 1 — les voisins immédiats seulement.
   const [localDepth, setLocalDepth] = useState<1 | 2 | 3>(1);
   // Panneau burger des réglages du graphe (fermé par défaut).
-  const [graphMenuOpen, setGraphMenuOpen] = useState(false);
   // Type visibility for the full-map Exploration view (kind-projection, dagre
   // remounts on change). Defaults: artifact/observation/requirement/evaluation/
   // violation/action visible; change/consumption/supporting-artifact hidden.
@@ -640,18 +670,26 @@ export function ThreadWorkbench({
 
   if (error) {
     return (
-      <StateMessage title="Engineering project unavailable" tone="danger">
+      <Notice title="Engineering project unavailable" tone="danger">
         {error}
-      </StateMessage>
+      </Notice>
     );
   }
   if (!workbench || (workbench.surface === "evidence" && !selection)) {
     return (
-      <div class="thread-loading" aria-busy="true">
-        <span class="thread-loading-mark" aria-hidden="true" />
+      <div
+        className="flex min-h-80 items-center justify-center gap-3 text-sm text-muted-foreground"
+        aria-busy="true"
+      >
+        <span
+          className="size-4 shrink-0 animate-spin rounded-full border-2 border-border border-t-foreground"
+          aria-hidden="true"
+        />
         <div>
-          <strong>Reading project intent and linked evidence</strong>
-          <small>No engineering tool is being executed.</small>
+          <strong className="block font-medium text-foreground">
+            Reading project intent and linked evidence
+          </strong>
+          <span>No engineering tool is being executed.</span>
         </div>
       </div>
     );
@@ -840,9 +878,11 @@ export function ThreadWorkbench({
       );
     }
   };
-  const agentNow = buildAgentNowPresentation(project);
   const currentFocus = selectCurrentProjectFocus(project);
-  const projectPath = buildProjectPath(project, snapshot);
+  const agentHeader = compactAgentHeader(
+    buildAgentNowPresentation(project),
+    project,
+  );
   // versionedProvenance and evidenceCanvas are memoized above (guarded
   // useMemo, same pattern as evidenceModel): a stable projection identity is
   // what keeps the sigma instance alive across renders — the visible-depth
@@ -1075,7 +1115,7 @@ export function ThreadWorkbench({
   const inspector = (
     <aside
       id="thread-tool-inspector"
-      class="thread-tool-drawer"
+      className="thread-tool-drawer space-y-3 p-3"
       aria-label="Active engineering tool workspace"
     >
       {selectedEdge
@@ -1089,29 +1129,23 @@ export function ThreadWorkbench({
         )
         : (
           <>
-            <div
-              class="thread-drawer-tabs"
-              role="tablist"
-              aria-label="Inspector mode"
+            <Tabs
+              value={drawerMode}
+              onValueChange={(mode) => setDrawerMode(mode as "tool" | "record")}
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={drawerMode === "tool"}
-                onClick={() => setDrawerMode("tool")}
-              >
-                Tool context
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={drawerMode === "record"}
-                disabled={!inspectorRecord}
-                onClick={() => setDrawerMode("record")}
-              >
-                Exact record
-              </button>
-            </div>
+              <TabsList aria-label="Inspector mode" className="w-full">
+                <TabsTrigger value="tool" className="flex-1">
+                  Tool context
+                </TabsTrigger>
+                <TabsTrigger
+                  value="record"
+                  className="flex-1"
+                  disabled={!inspectorRecord}
+                >
+                  Exact record
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
             {selectedVersionFamily && (
               <EvidenceVersionHistory
                 family={selectedVersionFamily}
@@ -1140,10 +1174,10 @@ export function ThreadWorkbench({
                 />
               )
               : (
-                <EmptyState>
+                <EmptyNotice>
                   This graph entity has no richer record projection. Use the
                   tool context to inspect its recorded neighbours.
-                </EmptyState>
+                </EmptyNotice>
               )}
           </>
         )}
@@ -1151,59 +1185,34 @@ export function ThreadWorkbench({
   );
 
   return (
-    <div class="thread-workbench mcp-view-surface">
-      <header class="thread-cockpit-header">
-        <div class="thread-cockpit-identity">
-          <div class="thread-kicker">
-            <span class="thread-coordinate">
-              ENGINEERING PROJECT COCKPIT
-            </span>
-            <Badge tone={snapshot.source === "fixture" ? "warning" : "success"}>
-              {snapshot.sourceLabel}
-            </Badge>
-          </div>
-          <div class="thread-subject-heading">
-            <span class="thread-subject-mark" aria-hidden="true">DT</span>
-            <div>
-              <p class="thread-program">
-                PROJECT {project.project.id} · REVISION {project.revision}
-              </p>
-              <h2>{project.project.name}</h2>
-              <span class="thread-subject-context">
-                Technical subject · {snapshot.subject.label}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="thread-session-panel">
-          <div
-            class="thread-session-state"
-            data-state={followLive ? streamStatus : "history"}
-            aria-live="polite"
+    <div className="thread-workbench mcp-view-surface">
+      <ProjectCockpitHeader
+        projectId={project.project.id}
+        revision={project.revision}
+        projectName={project.project.name}
+        context={snapshot.subject.label}
+        streamState={followLive ? streamStatus : "history"}
+        streamLabel={streamStatusLabel(streamStatus, followLive)}
+        statusLabel={agentHeader.label}
+        statusValue={
+          <span title={agentHeader.value}>
+            {agentHeader.value}
+          </span>
+        }
+        metaLabel="Projection"
+        metaValue={
+          <time dateTime={snapshot.generatedAt} title={snapshot.generatedAt}>
+            {formatTime(snapshot.generatedAt)}
+          </time>
+        }
+        badge={
+          <Badge
+            variant={snapshot.source === "fixture" ? "warning" : "success"}
           >
-            <i aria-hidden="true" />
-            <div>
-              <small>LIVE PROJECT FEED</small>
-              <strong>{streamStatusLabel(streamStatus, followLive)}</strong>
-            </div>
-          </div>
-          <div class="thread-session-change">
-            <AgentNowSession project={project} presentation={agentNow} />
-          </div>
-          <dl class="thread-session-facts">
-            <div>
-              <dt>Project</dt>
-              <dd data-project-tone={projectStatusTone(projectPath.status)}>
-                {projectPathStatusLabel(projectPath)}
-              </dd>
-            </div>
-            <div>
-              <dt>Updated</dt>
-              <dd>{formatTime(project.generatedAt)}</dd>
-            </div>
-          </dl>
-        </div>
-      </header>
+            {snapshot.sourceLabel}
+          </Badge>
+        }
+      />
 
       <ProjectNavigation
         activeView={activeView}
@@ -1211,42 +1220,36 @@ export function ThreadWorkbench({
       />
 
       {workbench.alignment.status === "thread-ahead" && (
-        <div class="project-alignment-notice" role="status">
-          <span aria-hidden="true">!</span>
-          <div>
-            <strong>Project intent needs reconciliation</strong>
-            <small>
-              The technical thread is at revision{" "}
-              {workbench.alignment.currentThreadRevision}, while project
-              decisions remain anchored to revision{" "}
-              {workbench.alignment.projectThreadRevision}.
-            </small>
-          </div>
-        </div>
+        <Notice tone="warning">
+          <strong className="block font-medium">
+            Project intent needs reconciliation
+          </strong>
+          <span>
+            The technical thread is at revision{" "}
+            {workbench.alignment.currentThreadRevision}, while project decisions
+            remain anchored to revision{" "}
+            {workbench.alignment.projectThreadRevision}.
+          </span>
+        </Notice>
       )}
 
       {workbench.unresolvedEvidenceReferences.length > 0 && (
-        <div class="project-alignment-notice" role="status">
-          <span aria-hidden="true">!</span>
-          <div>
-            <strong>
-              {workbench.unresolvedEvidenceReferences.length} evidence{" "}
-              {workbench.unresolvedEvidenceReferences.length === 1
-                ? "reference does"
-                : "references do"} not resolve in this thread revision
-            </strong>
-            <small>
-              These project records cite thread entities or snapshots that the
-              exact revision cannot resolve (usually residues of abandoned
-              work). The rest of this page resolved.{" "}
-              {workbench.unresolvedEvidenceReferences
-                .map((issue) =>
-                  issue.path
-                )
-                .join(", ")}
-            </small>
-          </div>
-        </div>
+        <Notice tone="warning">
+          <strong className="block font-medium">
+            {workbench.unresolvedEvidenceReferences.length} evidence{" "}
+            {workbench.unresolvedEvidenceReferences.length === 1
+              ? "reference does"
+              : "references do"} not resolve in this thread revision
+          </strong>
+          <span>
+            These project records cite thread entities or snapshots that the
+            exact revision cannot resolve (usually residues of abandoned work).
+            The rest of this page resolved.{" "}
+            {workbench.unresolvedEvidenceReferences
+              .map((issue) => issue.path)
+              .join(", ")}
+          </span>
+        </Notice>
       )}
 
       {activeView === "overview"
@@ -1262,84 +1265,84 @@ export function ThreadWorkbench({
         )
         : (
           <section
-            class={`thread-flow-section project-workspace-page is-${activeView}`}
+            className={`thread-flow-section project-workspace-page is-${activeView}`}
             id="project-workspace-panel"
             aria-labelledby="thread-flow-title"
           >
-            <div class="thread-section-heading">
-              <div>
-                <p>{workspaceEyebrow(activeView)}</p>
-                <h3 id="thread-flow-title">{workspaceTitle(activeView)}</h3>
+            <div className="mb-3 flex items-end justify-between gap-4 max-md:flex-col max-md:items-start">
+              <div className="min-w-0">
+                <h3
+                  id="thread-flow-title"
+                  className="text-lg font-semibold tracking-tight"
+                >
+                  {workspaceTitle(activeView)}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {workspaceDescription(activeView)}
+                </p>
               </div>
-              <div class="thread-workspace-heading-tools">
-                <span>
-                  {projectViewLabel(activeView)} ·{" "}
-                  {formatTime(snapshot.generatedAt)}
-                </span>
+              <div className="flex shrink-0 items-center justify-end">
                 {activeView !== "verification" && (
-                  <button
-                    type="button"
-                    class="thread-inspector-toggle"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     aria-expanded={inspectorOpen}
                     aria-controls="thread-tool-inspector"
                     onClick={() => setInspectorOpen((open) => !open)}
                   >
                     {inspectorOpen ? "Close details" : "Inspect selection"}
-                  </button>
+                  </Button>
                 )}
                 {activeView === "verification" && inspectorOpen && (
-                  <button
-                    type="button"
-                    class="thread-inspector-toggle"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     aria-expanded="true"
                     aria-controls="thread-tool-inspector"
                     onClick={() => setInspectorOpen(false)}
                   >
                     Close details
-                  </button>
+                  </Button>
                 )}
-              </div>
-            </div>
-            <div class="thread-workspace-meta">
-              <p class="thread-flow-explanation">
-                {workspaceDescription(activeView)}
-              </p>
-              <div
-                class="thread-operator-contract"
-                aria-label="Cockpit mode"
-              >
-                <span data-state={followLive ? "live" : "history"}>
-                  <i aria-hidden="true" />
-                  {followLive ? "Following activity" : "Reviewing history"}
-                </span>
-                <span>
-                  <b>YOUR ROLE</b>{" "}
-                  inspect the shared record and discuss intent with the agent
-                </span>
               </div>
             </div>
             {activeView === "work" && (
               <details
-                class="project-activity-brief"
+                className="group mb-3"
                 open={currentFocus.proposedDecision !== undefined}
               >
-                <summary>
-                  <span>PROJECT PULSE</span>
-                  <strong>
+                <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 [&>span]:shrink-0 [&>span]:text-xs [&>span]:font-medium [&>span]:text-muted-foreground [&::-webkit-details-marker]:hidden">
+                  <span>Project pulse</span>
+                  <strong className="min-w-0 flex-1 truncate text-sm font-medium">
                     {currentFocus.proposedDecision
                       ? "A recorded recommendation is ready to discuss"
                       : "Decision status, current work and blockers"}
                   </strong>
-                  <small>Open when you need the project context</small>
+                  <small className="shrink-0 text-xs text-muted-foreground max-md:hidden">
+                    Open when you need the project context
+                  </small>
+                  <svg
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="m6 9 6 6 6-6"
+                    />
+                  </svg>
                 </summary>
-                <div>
+                <div className="mt-3">
                   <ProjectWorkRibbon project={project} />
                 </div>
               </details>
             )}
             {activeView === "verification" && (
-              <MetricGrid
-                className="thread-metrics project-verification-metrics"
+              <MetricTiles
                 items={summaryMetrics(
                   snapshot,
                   paintedDossierMetric(evidenceModel, fullMapCanvas),
@@ -1347,12 +1350,12 @@ export function ThreadWorkbench({
               />
             )}
             <div
-              class={`thread-graph-workspace ${
-                inspectorOpen ? "has-inspector" : "is-wide"
+              className={`thread-graph-workspace ${
+                inspectorOpen ? "" : "is-wide"
               }`}
             >
               <div
-                class={`thread-graph-stage thread-graph-stage-${activeView}`}
+                className={`thread-graph-stage thread-graph-stage-${activeView}`}
               >
                 {activeView === "work"
                   ? (
@@ -1423,97 +1426,91 @@ export function ThreadWorkbench({
                   : activeView === "verification"
                   ? (
                     <section
-                      class="thread-versioned-provenance"
+                      className="thread-versioned-provenance"
                       aria-labelledby="thread-versioned-provenance-title"
                     >
-                      <header>
-                        <div>
-                          <p>CURRENT EVIDENCE</p>
-                          <h4 id="thread-versioned-provenance-title">
+                      <div className="flex items-start justify-between gap-4 px-5 py-4">
+                        <div className="min-w-0 space-y-1">
+                          <h4
+                            id="thread-versioned-provenance-title"
+                            className="text-base font-semibold"
+                          >
                             {presentedMemberRef
-                              ? "Recorded path for the selected version"
-                              : "Trace the evidence behind the current design"}
+                              ? "Selected version path"
+                              : "Evidence map"}
                           </h4>
-                          <span>
+                          <p className="text-sm text-muted-foreground">
                             {presentedMemberRef
-                              ? `Recorded path for this version at neighbor depth ${localDepth}. Exclusive dependents of the other version stay hidden.`
+                              ? `Depth ${localDepth}; the alternate version stays hidden.`
                               : evidenceCanvas.isFiltered
-                              ? "Local view — select the canvas background to return to the full map."
-                              : "Select a result, requirement or component to see what supports it and what it affects. Choosing a recorded version replaces the nodes that belonged to the other path."}
-                          </span>
+                              ? "Local view. Select the background for the full map."
+                              : "Select an item to trace its support and impact."}
+                          </p>
                         </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "var(--space-12)",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span>
-                            {evidenceCanvas.isFiltered
-                              ? `${explorationLocalVisibleCount} items shown · local view · depth ${localDepth}`
-                              : (() => {
-                                const kp = explorationKindProjectionMemo ??
-                                  evidenceCanvas;
-                                const parts: string[] = [
-                                  `${kp.displayedCount} items shown`,
-                                ];
-                                const totalFolded = kp.foldedInstrumentCount +
-                                  versionedProvenance.collapsedVersionCount;
-                                if (totalFolded > 0) {
-                                  parts.push(`${totalFolded} folded`);
-                                }
-                                if (kp.supportingNodeCount > 0) {
-                                  parts.push(
-                                    `${kp.supportingNodeCount} hidden by type`,
-                                  );
-                                }
-                                return parts.join(" · ");
-                              })()}
-                          </span>
-                        </div>
-                      </header>
-                      <div class="evidence-graph-menu">
-                        <button
-                          type="button"
-                          class="evidence-graph-menu-toggle"
-                          aria-expanded={graphMenuOpen}
-                          aria-label="Graph settings"
-                          title="Graph settings"
-                          onClick={() => setGraphMenuOpen(!graphMenuOpen)}
-                        >
-                          ☰
-                        </button>
-                        {graphMenuOpen && (
-                          <div class="evidence-graph-menu-panel">
+                        <p className="shrink-0 font-mono text-xs text-muted-foreground">
+                          {evidenceCanvas.isFiltered
+                            ? `${explorationLocalVisibleCount} items shown · local view · depth ${localDepth}`
+                            : (() => {
+                              const kp = explorationKindProjectionMemo ??
+                                evidenceCanvas;
+                              const parts: string[] = [
+                                `${kp.displayedCount} items shown`,
+                              ];
+                              const totalFolded = kp.foldedInstrumentCount +
+                                versionedProvenance.collapsedVersionCount;
+                              if (totalFolded > 0) {
+                                parts.push(`${totalFolded} folded`);
+                              }
+                              if (kp.supportingNodeCount > 0) {
+                                parts.push(
+                                  `${kp.supportingNodeCount} hidden by type`,
+                                );
+                              }
+                              return parts.join(" · ");
+                            })()}
+                        </p>
+                      </div>
+                      <div className="evidence-graph-menu">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="absolute left-3 top-2 size-7"
+                              aria-label="Graph settings"
+                            >
+                              ☰
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
                             {(evidenceCanvas.isFiltered ||
                               presentedMemberRef) && (
                               <>
-                                <p class="evidence-graph-menu-label">
-                                  NEIGHBOR DEPTH
-                                </p>
-                                <div
-                                  class="evidence-graph-mode-toggle"
-                                  role="group"
-                                  aria-label="Local neighborhood depth"
+                                <DropdownMenuLabel>
+                                  Neighbor depth
+                                </DropdownMenuLabel>
+                                <DropdownMenuRadioGroup
+                                  value={String(localDepth)}
+                                  onValueChange={(value) =>
+                                    setLocalDepth(
+                                      Number(value) as 1 | 2 | 3,
+                                    )}
                                 >
                                   {([1, 2, 3] as const).map((depth) => (
-                                    <button
+                                    <DropdownMenuRadioItem
                                       key={depth}
-                                      type="button"
-                                      aria-pressed={localDepth === depth}
-                                      title={`Show neighbors up to depth ${depth}`}
-                                      onClick={() => setLocalDepth(depth)}
+                                      value={String(depth)}
+                                      onSelect={(event) =>
+                                        event.preventDefault()}
                                     >
-                                      {depth}
-                                    </button>
+                                      Depth {depth}
+                                    </DropdownMenuRadioItem>
                                   ))}
-                                </div>
+                                </DropdownMenuRadioGroup>
+                                <DropdownMenuSeparator />
                               </>
                             )}
-                            <p class="evidence-graph-menu-label">
-                              SHOW
-                            </p>
+                            <DropdownMenuLabel>Show</DropdownMenuLabel>
                             {(Object.keys(
                               DISPLAY_KIND_LABELS,
                             ) as DisplayKind[]).map(
@@ -1527,28 +1524,23 @@ export function ThreadWorkbench({
                                   ? setExplorationLocalKinds
                                   : setExplorationMapKinds;
                                 return (
-                                  <label
+                                  <DropdownMenuCheckboxItem
                                     key={kind}
-                                    class="evidence-graph-menu-check"
+                                    checked={currentKinds[kind]}
+                                    onCheckedChange={(checked) =>
+                                      setCurrentKinds((prev) => ({
+                                        ...prev,
+                                        [kind]: checked === true,
+                                      }))}
+                                    onSelect={(event) => event.preventDefault()}
                                   >
-                                    <input
-                                      type="checkbox"
-                                      checked={currentKinds[kind]}
-                                      onChange={(event) =>
-                                        setCurrentKinds((prev) => ({
-                                          ...prev,
-                                          [kind]:
-                                            (event.target as HTMLInputElement)
-                                              .checked,
-                                        }))}
-                                    />
                                     {DISPLAY_KIND_LABELS[kind]}
-                                  </label>
+                                  </DropdownMenuCheckboxItem>
                                 );
                               },
                             )}
-                          </div>
-                        )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                       <EvidenceExploration
                         key={presentedMemberRef
@@ -1610,49 +1602,6 @@ export function ThreadWorkbench({
   );
 }
 
-function AgentNowSession({
-  project,
-  presentation,
-}: {
-  project: EngineeringWorkbenchSnapshot["project"];
-  presentation: ReturnType<typeof buildAgentNowPresentation>;
-}): JSX.Element {
-  if (presentation.kind === "active-run") {
-    return (
-      <>
-        <small>AGENT NOW</small>
-        <strong>{agentRunSummary(project, presentation.run)}</strong>
-      </>
-    );
-  }
-  if (presentation.kind === "current-work") {
-    return (
-      <>
-        <small>AGENT NOW</small>
-        <strong>{presentation.work.title}</strong>
-      </>
-    );
-  }
-  if (presentation.kind === "last-settled-run") {
-    return (
-      <>
-        <small>LAST AGENT RUN</small>
-        <strong>
-          {presentation.run.status.replaceAll("-", " ")} · {formatTime(
-            agentRunRecordedAt(presentation.run),
-          )}
-        </strong>
-      </>
-    );
-  }
-  return (
-    <>
-      <small>AGENT NOW</small>
-      <strong>No active work recorded</strong>
-    </>
-  );
-}
-
 /**
  * Planning receives status-only live milestones without a project revision.
  * The generic evidence comparator intentionally rejects equal-revision
@@ -1666,37 +1615,81 @@ function shouldAcceptPlanningActivityUpdate(
     incoming.planning.activity.version > current.planning.activity.version;
 }
 
-function workspaceEyebrow(
-  view: Exclude<ProjectWorkspaceView, "overview">,
-): string {
-  if (view === "work") return "AGENT ACTIVITY · SHARED RECORD";
-  if (view === "product") return "PRODUCT EXPLORER";
-  if (view === "verification") return "EVIDENCE & IMPACT";
-  return "EXECUTION HISTORY";
-}
-
 function workspaceTitle(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): string {
-  if (view === "work") return "Follow the work as it happens";
-  if (view === "product") return "Explore one product across its tools";
-  if (view === "verification") return "Understand evidence and impact";
-  return "Review execution history and the work plan";
+  if (view === "work") return "Activity";
+  if (view === "product") return "Product structure";
+  if (view === "verification") return "Evidence map";
+  return "Execution record";
 }
 
 function workspaceDescription(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): string {
   if (view === "work") {
-    return "Validated results appear here as the agent works. The feed explains what changed and what it affects; it never exposes private reasoning.";
+    return "Recorded results and review requests, in order.";
   }
   if (view === "product") {
-    return "Choose a component to see its matching system, CAD and ERP records without leaving the project.";
+    return "Components matched across system, CAD and ERP records.";
   }
   if (view === "verification") {
-    return "Follow a recorded result back to its sources and forward to its consequences. Only recorded links are treated as cause and effect.";
+    return "Recorded support and impact for each result.";
   }
-  return "See what the agent ran, what is planned next, and which tools contributed evidence to this project.";
+  return "Runs, planned work and contributing tools.";
+}
+
+function FactList(
+  { items }: { items: readonly FactItem[] },
+): JSX.Element {
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+      {items.map((item) => (
+        <div key={item.id} className="contents">
+          <dt className="text-xs text-muted-foreground">{item.label}</dt>
+          <dd className="text-sm">{item.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function MetricTiles(
+  { items }: { items: readonly MetricTileItem[] },
+): JSX.Element {
+  return (
+    <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+      {items.map((metric) => (
+        <article
+          key={metric.id}
+          className="rounded-lg border border-border bg-card p-3"
+          data-metric={metric.id}
+          data-tone={metric.tone ?? "neutral"}
+        >
+          <p className="text-xs text-muted-foreground">{metric.label}</p>
+          <p>
+            <strong className="text-xl font-semibold tabular-nums">
+              {metric.value}
+            </strong>
+            {metric.unit && (
+              <span className="ml-1 font-mono text-xs text-muted-foreground">
+                {metric.unit}
+              </span>
+            )}
+          </p>
+          {metric.detail && (
+            <p className="text-xs text-muted-foreground">{metric.detail}</p>
+          )}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function Mono({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <code className="font-mono text-xs text-muted-foreground">{children}</code>
+  );
 }
 
 function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
@@ -1712,12 +1705,12 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
     : edge.attestation?.status === "verified"
     ? "success"
     : "info";
-  const facts: KeyValueItem[] = [
+  const facts: FactItem[] = [
     { id: "origin", label: "Evidence class", value: edge.origin },
     {
       id: "relation",
       label: "Relation",
-      value: <code>{edge.relation}</code>,
+      value: <Mono>{edge.relation}</Mono>,
     },
   ];
   if (edge.attestation) {
@@ -1730,12 +1723,12 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "producer-hash",
         label: "Producer hash",
-        value: <code>{edge.attestation.producerFingerprint}</code>,
+        value: <Mono>{edge.attestation.producerFingerprint}</Mono>,
       },
       {
         id: "consumer-hash",
         label: "Consumed hash",
-        value: <code>{edge.attestation.consumedFingerprint}</code>,
+        value: <Mono>{edge.attestation.consumedFingerprint}</Mono>,
       },
     );
   }
@@ -1744,7 +1737,7 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "assertion-id",
         label: "Assertion",
-        value: <code>{edge.analysis.assertionId}</code>,
+        value: <Mono>{edge.analysis.assertionId}</Mono>,
       },
       {
         id: "epistemic-basis",
@@ -1783,72 +1776,84 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
   }
 
   return (
-    <Card
-      className="thread-card thread-edge-inspector"
-      eyebrow="SELECTED HANDOFF"
-      title={relationTitle(edge.relation)}
-      actions={<Badge tone={tone}>{edge.origin}</Badge>}
-    >
-      <p class="thread-inspector-lead">{edge.rationale}</p>
-      <div class="thread-edge-route">
-        <GraphEndpoint
-          label="SOURCE / UPSTREAM"
-          node={source}
-          onSelect={onSelectGraphNode}
-        />
-        <span aria-hidden="true">→</span>
-        <GraphEndpoint
-          label="RESULT / DOWNSTREAM"
-          node={target}
-          onSelect={onSelectGraphNode}
-        />
-      </div>
-      <KeyValueList items={facts} />
-      {history && history.members.length > 1 && (
-        <details class="thread-version-relations thread-edge-history">
-          <summary>Recorded handoffs ({history.members.length})</summary>
-          <ul>
-            {history.members.map((member, index) => (
-              <li key={member.id}>
-                <strong>
-                  {member.id === history.representative.id
-                    ? "CURRENT HANDOFF"
-                    : `EARLIER HANDOFF ${index + 1}`}
-                </strong>
-                <code>{relationLabel(member.relation)}</code>
-                <span>{member.rationale}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-      {edge.attestation && (
-        <StateMessage
-          title={edge.attestation.status === "verified"
-            ? "Exact consumed bytes verified"
-            : "Producer / consumer bytes differ"}
-          tone={edge.attestation.status === "verified" ? "success" : "danger"}
-        >
-          {edge.attestation.status === "verified"
-            ? "This handoff is backed by matching producer and consumer fingerprints."
-            : "This dependency cannot support a current verdict until the consumer is rerun with the recorded producer bytes."}
-        </StateMessage>
-      )}
-      {!edge.attestation && edge.analysis
-        ? (
-          <StateMessage title="Qualified analysis assertion" tone="info">
-            This semantic relation is backed by the exact evidence listed above
-            and is classified as{" "}
-            {edge.analysis.epistemicBasis}. It does not grant execution
-            authority.
-          </StateMessage>
-        )
-        : !edge.attestation && (
-          <StateMessage title="Recorded semantic relation" tone="info">
-            This edge comes from an explicit canonical relation. It is not a
-            byte-level consumption attestation.
-          </StateMessage>
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">
+            Selected handoff
+          </p>
+          <CardTitle className="text-base">
+            {relationTitle(edge.relation)}
+          </CardTitle>
+        </div>
+        <Badge variant={TONE_BADGE_VARIANT[tone]}>{edge.origin}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">{edge.rationale}</p>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+          <GraphEndpoint
+            label="Source / upstream"
+            node={source}
+            onSelect={onSelectGraphNode}
+          />
+          <span aria-hidden="true" className="text-muted-foreground">→</span>
+          <GraphEndpoint
+            label="Result / downstream"
+            node={target}
+            onSelect={onSelectGraphNode}
+          />
+        </div>
+        <FactList items={facts} />
+        {history && history.members.length > 1 && (
+          <details>
+            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+              Recorded handoffs ({history.members.length})
+            </summary>
+            <ul className="mt-2 divide-y divide-border">
+              {history.members.map((member, index) => (
+                <li key={member.id} className="space-y-0.5 py-2">
+                  <strong className="text-sm">
+                    {member.id === history.representative.id
+                      ? "Current handoff"
+                      : `Earlier handoff ${index + 1}`}
+                  </strong>
+                  <Mono>{relationLabel(member.relation)}</Mono>
+                  <p className="text-sm text-muted-foreground">
+                    {member.rationale}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
+        {edge.attestation && (
+          <Notice
+            title={edge.attestation.status === "verified"
+              ? "Exact consumed bytes verified"
+              : "Producer / consumer bytes differ"}
+            tone={edge.attestation.status === "verified" ? "success" : "danger"}
+          >
+            {edge.attestation.status === "verified"
+              ? "This handoff is backed by matching producer and consumer fingerprints."
+              : "This dependency cannot support a current verdict until the consumer is rerun with the recorded producer bytes."}
+          </Notice>
+        )}
+        {!edge.attestation && edge.analysis
+          ? (
+            <Notice title="Qualified analysis assertion" tone="info">
+              This semantic relation is backed by the exact evidence listed
+              above and is classified as{" "}
+              {edge.analysis.epistemicBasis}. It does not grant execution
+              authority.
+            </Notice>
+          )
+          : !edge.attestation && (
+            <Notice title="Recorded semantic relation" tone="info">
+              This edge comes from an explicit canonical relation. It is not a
+              byte-level consumption attestation.
+            </Notice>
+          )}
+      </CardContent>
     </Card>
   );
 }
@@ -1860,21 +1865,26 @@ function GraphEndpoint({ label, node, onSelect }: {
 }): JSX.Element {
   if (!node) {
     return (
-      <div class="thread-edge-endpoint" data-missing="true">
-        <small>{label}</small>
-        <strong>Endpoint unavailable</strong>
+      <div
+        className="min-w-0 rounded-lg bg-muted/50 p-3"
+        data-missing="true"
+      >
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <strong className="block text-sm">Endpoint unavailable</strong>
       </div>
     );
   }
   return (
     <button
-      class="thread-edge-endpoint"
+      className="min-w-0 rounded-lg bg-muted/50 p-3 text-left"
       type="button"
       onClick={() => onSelect(node)}
     >
-      <small>{label}</small>
-      <strong>{node.label}</strong>
-      <span>{node.system} · {node.entityKind}</span>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <strong className="block text-sm">{node.label}</strong>
+      <span className="font-mono text-xs text-muted-foreground">
+        {node.system} · {node.entityKind}
+      </span>
     </button>
   );
 }
@@ -1899,7 +1909,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
           onSelect={onSelect}
         />
       )
-      : <EmptyState>Artifact not present in this snapshot.</EmptyState>;
+      : <EmptyNotice>Artifact not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "observation") {
     const observation = snapshot.observations.find((item) =>
@@ -1913,7 +1923,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
           onSelect={onSelect}
         />
       )
-      : <EmptyState>Observation not present in this snapshot.</EmptyState>;
+      : <EmptyNotice>Observation not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "requirement") {
     const requirement = snapshot.requirements.find((item) =>
@@ -1927,7 +1937,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
           onSelect={onSelect}
         />
       )
-      : <EmptyState>Requirement not present in this snapshot.</EmptyState>;
+      : <EmptyNotice>Requirement not present in this snapshot.</EmptyNotice>;
   }
   const violation = snapshot.violations.find((item) =>
     item.id === selection.id
@@ -1940,23 +1950,27 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
         onSelect={onSelect}
       />
     )
-    : <EmptyState>Violation not present in this snapshot.</EmptyState>;
+    : <EmptyNotice>Violation not present in this snapshot.</EmptyNotice>;
 }
 
 function InspectorShell({ eyebrow, title, tone, children }: {
   eyebrow: string;
   title: string;
   tone: PresentationTone;
-  children: ComponentChildren;
+  children: ReactNode;
 }): JSX.Element {
   return (
-    <Card
-      className="thread-card thread-inspector-card"
-      eyebrow={eyebrow}
-      title={title}
-      actions={<Badge tone={tone}>{eyebrow}</Badge>}
-    >
-      {children}
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">
+            {eyebrow}
+          </p>
+          <CardTitle className="text-base">{title}</CardTitle>
+        </div>
+        <Badge variant={TONE_BADGE_VARIANT[tone]}>{eyebrow}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-4">{children}</CardContent>
     </Card>
   );
 }
@@ -1966,12 +1980,12 @@ function ChangeInspector(
 ): JSX.Element {
   const change = snapshot.change;
   const state = changeState(snapshot);
-  const facts: KeyValueItem[] = [
+  const facts: FactItem[] = [
     { id: "author", label: "Changed by", value: change.author },
     {
       id: "revision",
       label: "Revision",
-      value: <code>{change.revision}</code>,
+      value: <Mono>{change.revision}</Mono>,
     },
     {
       id: "time",
@@ -1987,12 +2001,12 @@ function ChangeInspector(
     });
   }
   return (
-    <InspectorShell eyebrow="REVISION" title={change.id} tone="info">
-      <p class="thread-inspector-lead">{change.summary}</p>
-      <KeyValueList items={facts} />
-      <StateMessage title={state.title} tone={state.tone}>
+    <InspectorShell eyebrow="Revision" title={change.id} tone="info">
+      <p className="text-sm text-muted-foreground">{change.summary}</p>
+      <FactList items={facts} />
+      <Notice title={state.title} tone={state.tone}>
         {state.message}
-      </StateMessage>
+      </Notice>
       <ActionList actions={snapshot.actions} />
     </InspectorShell>
   );
@@ -2012,15 +2026,15 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
       title={artifact.label}
       tone={freshnessTone(artifact.freshness)}
     >
-      <KeyValueList items={artifactFacts(artifact)} />
+      <FactList items={artifactFacts(artifact)} />
       {artifact.freshness === "stale" && (
-        <StateMessage title="Evidence invalidated" tone="warning">
+        <Notice title="Evidence invalidated" tone="warning">
           This result predates a dependency. It remains available for provenance
           but cannot support a current verdict.
-        </StateMessage>
+        </Notice>
       )}
       {artifact.attestation && (
-        <StateMessage
+        <Notice
           title={artifact.attestation.status === "verified"
             ? "Producer / consumer hash verified"
             : "Producer / consumer hash mismatch"}
@@ -2031,7 +2045,7 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
           {artifact.attestation.status === "verified"
             ? "The consumer used the exact fingerprint emitted by its upstream producer."
             : "This result consumed a different upstream fingerprint and cannot support the current verdict."}
-        </StateMessage>
+        </Notice>
       )}
       <RelationLinks
         title="Depends on"
@@ -2065,20 +2079,22 @@ function ObservationInspector({ snapshot, observation, onSelect }: {
   );
   return (
     <InspectorShell
-      eyebrow="OBSERVATION"
+      eyebrow="Observation"
       title={observation.label}
       tone={freshnessTone(observation.freshness)}
     >
-      <div class="thread-inspector-value">
-        <strong>{observation.display}</strong>
+      <div className="flex items-end justify-between gap-3">
+        <strong className="text-xl font-semibold tabular-nums">
+          {observation.display}
+        </strong>
         <Freshness freshness={observation.freshness} />
       </div>
-      <KeyValueList
+      <FactList
         items={[
           {
             id: "id",
             label: "Stable id",
-            value: <code>{observation.id}</code>,
+            value: <Mono>{observation.id}</Mono>,
           },
           {
             id: "source",
@@ -2102,13 +2118,19 @@ function ObservationInspector({ snapshot, observation, onSelect }: {
         onSelect={onSelect}
       />
       {artifact && (
-        <Toolbar label="Observation provenance">
+        <div
+          role="group"
+          aria-label="Observation provenance"
+          className="flex flex-wrap items-center gap-2"
+        >
           <Button
+            variant="outline"
+            size="sm"
             onClick={() => onSelect({ kind: "artifact", id: artifact.id })}
           >
             Trace source artifact →
           </Button>
-        </Toolbar>
+        </div>
       )}
     </InspectorShell>
   );
@@ -2125,9 +2147,11 @@ function RequirementInspector({ snapshot, requirement, onSelect }: {
       title={requirement.label}
       tone={verdictTone(requirement.status)}
     >
-      <div class="thread-expression">{requirement.expression}</div>
-      <p class="thread-inspector-lead">{requirement.rationale}</p>
-      <KeyValueList
+      <div className="rounded-lg bg-muted/50 p-4 font-mono text-sm">
+        {requirement.expression}
+      </div>
+      <p className="text-sm text-muted-foreground">{requirement.rationale}</p>
+      <FactList
         items={[
           { id: "source", label: "Authority", value: requirement.source },
           { id: "status", label: "Verdict", value: requirement.status },
@@ -2165,11 +2189,13 @@ function ViolationInspector({ snapshot, violation, onSelect }: {
   );
   return (
     <InspectorShell eyebrow={violation.id} title={violation.name} tone="danger">
-      <div class="thread-violation-banner">
-        <span>BLOCKING</span>
-        <strong>{violation.margin}</strong>
+      <div className="flex items-baseline justify-between gap-3 rounded-md bg-destructive/10 px-3 py-2 text-destructive">
+        <span className="text-xs font-medium">Blocking</span>
+        <strong className="text-xl font-semibold tabular-nums">
+          {violation.margin}
+        </strong>
       </div>
-      <p class="thread-inspector-lead">{violation.message}</p>
+      <p className="text-sm text-muted-foreground">{violation.message}</p>
       <RelationLinks
         title="Failed requirement"
         refs={[{ kind: "requirement", id: violation.requirementId }]}
@@ -2192,23 +2218,37 @@ function ActionList({ actions }: {
 }): JSX.Element | null {
   if (!actions.length) return null;
   return (
-    <div class="thread-actions">
-      <div class="thread-relation-title">
-        <span>Proposed next actions</span>
-        <small>discuss with the agent</small>
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-xs font-medium text-muted-foreground">
+          Proposed next actions
+        </p>
+        <p className="text-xs text-muted-foreground">discuss with the agent</p>
       </div>
-      {actions.map((action, index) => (
-        <article key={action.id} data-readiness={action.readiness}>
-          <span>{pad(index + 1)}</span>
-          <div>
-            <strong>{action.label}</strong>
-            <small>{action.description}</small>
-          </div>
-          <b>
-            {action.readiness === "blocked" ? "Blocked" : action.readiness}
-          </b>
-        </article>
-      ))}
+      <div className="divide-y divide-border">
+        {actions.map((action, index) => (
+          <article
+            key={action.id}
+            className="flex items-start gap-3 py-2"
+            data-readiness={action.readiness}
+          >
+            <span className="font-mono text-xs text-muted-foreground">
+              {pad(index + 1)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <strong className="text-sm">{action.label}</strong>
+              <p className="text-xs text-muted-foreground">
+                {action.description}
+              </p>
+            </div>
+            <Badge
+              variant={action.readiness === "blocked" ? "warning" : "secondary"}
+            >
+              {action.readiness === "blocked" ? "Blocked" : action.readiness}
+            </Badge>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2221,31 +2261,36 @@ function RelationLinks({ title, refs, snapshot, onSelect }: {
 }): JSX.Element | null {
   if (!refs.length) return null;
   return (
-    <div class="thread-relations">
-      <div class="thread-relation-title">
-        <span>{title}</span>
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">{title}</p>
+      <div className="divide-y divide-border">
+        {refs.map((ref) => (
+          <button
+            type="button"
+            key={`${ref.kind}:${ref.id}`}
+            className="flex w-full items-center gap-3 py-2 text-left"
+            onClick={() => onSelect(ref)}
+          >
+            <Mono>{ref.id}</Mono>
+            <span className="min-w-0 flex-1 truncate text-sm">
+              {refLabel(snapshot, ref)}
+            </span>
+            <span aria-hidden="true" className="text-muted-foreground">↗</span>
+          </button>
+        ))}
       </div>
-      {refs.map((ref) => (
-        <button
-          type="button"
-          key={`${ref.kind}:${ref.id}`}
-          onClick={() => onSelect(ref)}
-        >
-          <code>{ref.id}</code>
-          <span>{refLabel(snapshot, ref)}</span>
-          <b aria-hidden="true">↗</b>
-        </button>
-      ))}
     </div>
   );
 }
 
 function Freshness({ freshness }: { freshness: ThreadFreshness }): JSX.Element {
   return (
-    <span class="thread-freshness" data-state={freshness}>
-      <i aria-hidden="true" />
+    <Badge
+      variant={TONE_BADGE_VARIANT[freshnessTone(freshness)]}
+      data-state={freshness}
+    >
       {freshness}
-    </span>
+    </Badge>
   );
 }
 
@@ -2280,7 +2325,7 @@ function graphWithoutClosedActions(
 function summaryMetrics(
   snapshot: ThreadWorkbenchSnapshot,
   painted: ReturnType<typeof paintedDossierMetric>,
-): MetricItem[] {
+): MetricTileItem[] {
   const artifacts = currentArtifacts(
     snapshot.artifacts,
     snapshot.evidenceFamilyGraph,
@@ -2410,12 +2455,12 @@ function relationLabel(relation: ThreadGraphEdge["relation"]): string {
   return relation.replaceAll("_", " ").replaceAll("-", " ");
 }
 
-function artifactFacts(artifact: ThreadArtifact): KeyValueItem[] {
-  const facts: KeyValueItem[] = [
+function artifactFacts(artifact: ThreadArtifact): FactItem[] {
+  const facts: FactItem[] = [
     {
       id: "revision",
       label: "Revision",
-      value: <code>{artifact.revision}</code>,
+      value: <Mono>{artifact.revision}</Mono>,
     },
     {
       id: "system",
@@ -2430,12 +2475,12 @@ function artifactFacts(artifact: ThreadArtifact): KeyValueItem[] {
     {
       id: "fingerprint",
       label: "Fingerprint",
-      value: <code>{artifact.fingerprint ?? "not recorded"}</code>,
+      value: <Mono>{artifact.fingerprint ?? "not recorded"}</Mono>,
     },
     {
       id: "uri",
       label: "Artifact URI",
-      value: <code>{artifact.uri ?? "not persisted"}</code>,
+      value: <Mono>{artifact.uri ?? "not persisted"}</Mono>,
     },
   ];
   if (artifact.attestation) {
@@ -2443,12 +2488,12 @@ function artifactFacts(artifact: ThreadArtifact): KeyValueItem[] {
       {
         id: "producer-hash",
         label: "Producer hash",
-        value: <code>{artifact.attestation.producerFingerprint}</code>,
+        value: <Mono>{artifact.attestation.producerFingerprint}</Mono>,
       },
       {
         id: "consumer-hash",
         label: "Consumed hash",
-        value: <code>{artifact.attestation.consumedFingerprint}</code>,
+        value: <Mono>{artifact.attestation.consumedFingerprint}</Mono>,
       },
     );
   }
@@ -2511,6 +2556,31 @@ function mergeReviewIntentTransmission(
     if (!next.has(key) && state.kind !== "idle") next.set(key, state);
   }
   return next;
+}
+
+function compactAgentHeader(
+  presentation: AgentNowPresentation,
+  project: EngineeringProjectSnapshot,
+): { label: "Agent now" | "Last agent run"; value: string } {
+  if (presentation.kind === "active-run") {
+    const work = project.workItems.find((item) =>
+      item.id === presentation.run.workItemId
+    );
+    return {
+      label: "Agent now",
+      value: work?.title ?? agentRunSummary(project, presentation.run),
+    };
+  }
+  if (presentation.kind === "current-work") {
+    return { label: "Agent now", value: presentation.work.title };
+  }
+  if (presentation.kind === "last-settled-run") {
+    return {
+      label: "Last agent run",
+      value: agentRunSummary(project, presentation.run),
+    };
+  }
+  return { label: "Agent now", value: "No recorded activity" };
 }
 
 function formatTime(value: string): string {

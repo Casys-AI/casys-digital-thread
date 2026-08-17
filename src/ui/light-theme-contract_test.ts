@@ -5,8 +5,8 @@ const STYLE_FILES = [
   "04-feed-and-graph.css",
   "05-tool-drawer.css",
   "06-component-workspace.css",
-  "07-project-spaces.css",
-  "08-human-command-plane.css",
+  "16-refined-cockpit.css",
+  "17-saas-shell.css",
 ] as const;
 
 Deno.test("the application keeps native controls light after the shared MCP theme loads", async () => {
@@ -22,7 +22,7 @@ Deno.test("the application keeps native controls light after the shared MCP them
   assertStringIncludes(tokens, "--mcp-view-text: var(--text);");
 });
 
-Deno.test("legacy cockpit families cannot reintroduce dark surface backgrounds", async () => {
+Deno.test("cockpit style families cannot reintroduce dark surface backgrounds", async () => {
   const declarations: string[] = [];
   const background = /background(?:-color)?\s*:\s*([^;]+);/gi;
   const color =
@@ -56,27 +56,18 @@ Deno.test("legacy cockpit families cannot reintroduce dark surface backgrounds",
   assertEquals(declarations, []);
 });
 
-Deno.test("Activity filters, inspector surfaces and CAD share the light atelier palette", async () => {
-  const feed = await Deno.readTextFile(
-    new URL("./src/styles/04-feed-and-graph.css", import.meta.url),
-  );
-  const drawer = await Deno.readTextFile(
-    new URL("./src/styles/05-tool-drawer.css", import.meta.url),
-  );
-  const componentWorkspace = await Deno.readTextFile(
-    new URL("./src/thread/component-workspace.tsx", import.meta.url),
-  );
-
-  assertStringIncludes(
-    feed,
-    ".thread-feed-component-filter > select",
-  );
-  assertStringIncludes(feed, "background: var(--thread-panel-muted);");
-  assertStringIncludes(drawer, "background: var(--thread-panel);");
-  assertStringIncludes(drawer, "background: var(--amber-dim);");
-  assertStringIncludes(
-    componentWorkspace,
-    "scene.background = new THREE.Color(0xf8f6f0);",
-  );
-  assertEquals(componentWorkspace.includes("0x0b0f10"), false);
+Deno.test("the 3D viewers cannot reintroduce a dark scene background", async () => {
+  // La teinte exacte est un choix de design ; l'invariant est qu'aucun canvas
+  // WebGL ne repasse sur le fond sombre du thème abandonné.
+  for (
+    const file of [
+      "./src/thread/component-workspace.tsx",
+      "./src/thread/gltf-asset-canvas.tsx",
+      "./src/project/control-center.tsx",
+    ]
+  ) {
+    const source = await Deno.readTextFile(new URL(file, import.meta.url));
+    assertEquals(source.includes("0x0b0f10"), false, file);
+    assertEquals(source.includes("0x1a1c1e"), false, file);
+  }
 });

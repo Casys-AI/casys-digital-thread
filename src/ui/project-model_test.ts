@@ -154,7 +154,9 @@ Deno.test("Project Path reads an unfinished lifecycle as retained history, never
   (retry as unknown as { status: string }).status = "ready";
 
   const path = buildProjectPath(mutable, thread);
-  const mechanical = path.phases.find((item) => item.phase.id === "verification");
+  const mechanical = path.phases.find((item) =>
+    item.phase.id === "verification"
+  );
   assertEquals(mechanical?.lifecycle?.state, "retained");
   for (const item of path.phases) {
     if (!item.lifecycle) continue;
@@ -276,7 +278,9 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
     "a measurement feeding a folded enrichment folds with it — it is " +
       "instrumentation of the model, not an engineering gate",
   );
-  const architecture = path.phases.find((item) => item.phase.id === "architecture");
+  const architecture = path.phases.find((item) =>
+    item.phase.id === "architecture"
+  );
   assertEquals(architecture?.lifecycle, {
     affectedComponentIds: [],
     correctionCount: 0,
@@ -439,7 +443,9 @@ Deno.test("Project Path wraps a later architecture-capture tip under the origina
     true,
     "the seed stays its own gate",
   );
-  const architecture = path.phases.find((item) => item.phase.id === "architecture");
+  const architecture = path.phases.find((item) =>
+    item.phase.id === "architecture"
+  );
   assertEquals(architecture?.lifecycle?.revisionAttemptCount, 1);
 });
 
@@ -476,7 +482,8 @@ Deno.test("current project work prefers an explicit successor reconciliation", (
                 snapshotRevision: 10,
               },
             ],
-            rationale: "The recorded R3 successor closed the failed R2 attempt.",
+            rationale:
+              "The recorded R3 successor closed the failed R2 attempt.",
           },
         }
         : item
@@ -488,6 +495,114 @@ Deno.test("current project work prefers an explicit successor reconciliation", (
   assertEquals(current.nextWork, []);
   assertEquals(current.historicalWorkItemIds, ["mechanical-v2"]);
   assertEquals(current.closedActionTargetIds, ["artifact:correction-record"]);
+});
+
+Deno.test("current project work does not advertise a ready predecessor when a later work item for the same registered operation completed", () => {
+  const snapshot = leftoverReadyPredecessorFixture({
+    predecessor: {
+      id: "wi-geom",
+      phaseId: "phase-cad",
+      order: 4,
+      operationId: "design.write-geometry",
+      version: "1",
+    },
+    successor: {
+      id: "wi-geom-2",
+      phaseId: "phase-cad-2",
+      order: 5,
+      operationId: "design.write-geometry",
+      version: "1",
+    },
+    remainingReady: {
+      id: "wi-industrialize",
+      phaseId: "phase-make",
+      order: 6,
+      operationId: "industrialize.seal-print-estimate-case",
+      version: "1",
+    },
+  });
+
+  const current = buildCurrentProjectWork(snapshot);
+
+  assertEquals(current.nextWork.map((item) => item.id), ["wi-industrialize"]);
+  assertEquals(current.historicalWorkItemIds, ["wi-geom"]);
+  assertEquals(current.closedActionTargetIds, []);
+});
+
+Deno.test("current project work applies the same later-completed operation rule to a leftover FEA @2 predecessor", () => {
+  const snapshot = leftoverReadyPredecessorFixture({
+    predecessor: {
+      id: "wi-fea-2",
+      phaseId: "phase-fea",
+      order: 7,
+      operationId: "verify.run-fea-static-proof",
+      version: "2",
+      geometryId: "geometry-assembly",
+    },
+    successor: {
+      id: "wi-fea-3",
+      phaseId: "phase-fea-3",
+      order: 8,
+      operationId: "verify.run-fea-static-proof",
+      version: "2",
+      geometryId: "geometry-arm-step",
+    },
+  });
+
+  const current = buildCurrentProjectWork(snapshot);
+
+  assertEquals(current.nextWork, []);
+  assertEquals(current.historicalWorkItemIds, ["wi-fea-2"]);
+});
+
+Deno.test("current project work does not treat a later completed @3 as closing a ready @2 of the same operation id", () => {
+  const snapshot = leftoverReadyPredecessorFixture({
+    predecessor: {
+      id: "wi-fea-2",
+      phaseId: "phase-fea",
+      order: 7,
+      operationId: "verify.run-fea-static-proof",
+      version: "2",
+    },
+    successor: {
+      id: "wi-fea-3",
+      phaseId: "phase-fea-3",
+      order: 8,
+      operationId: "verify.run-fea-static-proof",
+      version: "3",
+    },
+  });
+
+  const current = buildCurrentProjectWork(snapshot);
+
+  assertEquals(current.nextWork.map((item) => item.id), ["wi-fea-2"]);
+  assertEquals(current.historicalWorkItemIds, []);
+});
+
+Deno.test("current project work still offers a later ready revision after an earlier completion of the same registered operation", () => {
+  const snapshot = leftoverReadyPredecessorFixture({
+    predecessor: {
+      id: "wi-geom",
+      phaseId: "phase-cad",
+      order: 4,
+      operationId: "design.write-geometry",
+      version: "1",
+      status: "completed",
+    },
+    successor: {
+      id: "wi-geom-2",
+      phaseId: "phase-cad-2",
+      order: 5,
+      operationId: "design.write-geometry",
+      version: "1",
+      status: "ready",
+    },
+  });
+
+  const current = buildCurrentProjectWork(snapshot);
+
+  assertEquals(current.nextWork.map((item) => item.id), ["wi-geom-2"]);
+  assertEquals(current.historicalWorkItemIds, []);
 });
 
 Deno.test("browser project contract rejects a half-defined input anchor", () => {
@@ -565,12 +680,14 @@ Deno.test("browser project contract accepts an approved-brief baseline and rejec
   assertEquals(isEngineeringProjectSnapshot(valid), true);
 
   const forgedBasis = structuredClone(valid) as Record<string, unknown>;
-  const forgedRun = (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const forgedRun =
+    (forgedBasis.agentRuns as Array<Record<string, unknown>>)[0]!;
   (forgedRun.basis as Record<string, unknown>).briefId = "other-approved-brief";
   assertEquals(isEngineeringProjectSnapshot(forgedBasis), false);
 
   const v1Fallback = structuredClone(valid) as Record<string, unknown>;
-  const fallbackRun = (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
+  const fallbackRun =
+    (v1Fallback.agentRuns as Array<Record<string, unknown>>)[0]!;
   delete fallbackRun.basis;
   fallbackRun.baseSnapshot = (v1Fallback.threadSnapshots as unknown[])[0];
   assertEquals(isEngineeringProjectSnapshot(v1Fallback), false);
@@ -585,7 +702,8 @@ Deno.test("browser project contract accepts a V3 run anchored to its declared th
   const project = structuredClone(
     GENERIC_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
-  const reference = (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
+  const reference =
+    (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
   project.schemaVersion = "3.0";
   project.agentRuns = [{
     id: "run-v3-thread-snapshot",
@@ -834,7 +952,9 @@ Deno.test("current project focus uses the recorded phase work order as its stabl
   const snapshot = {
     ...base,
     phases: base.phases.map((phase) =>
-      phase.id === "simulate" ? { ...phase, workItemIds: [first.id, second.id] } : phase
+      phase.id === "simulate"
+        ? { ...phase, workItemIds: [first.id, second.id] }
+        : phase
     ),
     // The append-only storage order is intentionally the opposite of the plan.
     workItems: [
@@ -946,7 +1066,8 @@ function v3CancelledQueuedRunEnvelope(): Record<string, unknown> {
     },
     evidenceRefs: [],
     cancellation: {
-      rationale: "The reviewed queue entry was retired before any worker claim.",
+      rationale:
+        "The reviewed queue entry was retired before any worker claim.",
       cancelledAt,
       cancelledBy: { id: "human:owner", origin: "human" },
     },
@@ -1006,6 +1127,104 @@ function canonicalBriefFraming(
       decidedBy: { id: "human:owner", origin: "human" },
       rationale: "Confirmed in the paired conversation.",
     },
+  };
+}
+
+interface LeftoverOperationWorkSpec {
+  readonly id: string;
+  readonly phaseId: string;
+  readonly order: number;
+  readonly operationId: string;
+  readonly version: string;
+  readonly status?: "ready" | "completed";
+  readonly geometryId?: string;
+}
+
+function leftoverReadyPredecessorFixture(spec: {
+  readonly predecessor: LeftoverOperationWorkSpec;
+  readonly successor: LeftoverOperationWorkSpec;
+  readonly remainingReady?: LeftoverOperationWorkSpec;
+}) {
+  const items = [
+    { spec: spec.predecessor, defaultStatus: "ready" as const },
+    { spec: spec.successor, defaultStatus: "completed" as const },
+    ...(spec.remainingReady
+      ? [{ spec: spec.remainingReady, defaultStatus: "ready" as const }]
+      : []),
+  ];
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
+  return {
+    ...base,
+    phases: [
+      ...base.phases,
+      ...items.map(({ spec: item }) => ({
+        id: item.phaseId,
+        name: item.phaseId,
+        order: item.order,
+        description: item.phaseId,
+        workItemIds: [item.id],
+        requiredDecisionIds: [],
+        evidenceRefs: [],
+      })),
+    ],
+    workItems: [
+      ...base.workItems,
+      ...items.map(({ spec: item, defaultStatus }) =>
+        leftoverOperationWork(item, defaultStatus)
+      ),
+    ],
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  };
+}
+
+function leftoverOperationWork(
+  spec: LeftoverOperationWorkSpec,
+  defaultStatus: "ready" | "completed",
+) {
+  const status = spec.status ?? defaultStatus;
+  return {
+    id: spec.id,
+    phaseId: spec.phaseId,
+    title: spec.id,
+    description: spec.id,
+    kind: "verify" as const,
+    operation: {
+      id: spec.operationId,
+      version: spec.version,
+      bindings: spec.geometryId
+        ? [{
+          name: "geometry",
+          source: {
+            kind: "thread-entity" as const,
+            reference: {
+              kind: "artifact" as const,
+              id: spec.geometryId,
+              snapshotId: "thread-leftover",
+              snapshotRevision: 6,
+            },
+          },
+        }]
+        : [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" as const },
+        }],
+    },
+    status,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: status === "completed"
+      ? [{
+        kind: "artifact" as const,
+        id: `${spec.id}-evidence`,
+        snapshotId: "thread-leftover",
+        snapshotRevision: 6,
+      }]
+      : [],
+    decisionIds: [],
+    blockerIds: [],
   };
 }
 

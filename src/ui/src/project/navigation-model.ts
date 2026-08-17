@@ -50,6 +50,22 @@ export const PROJECT_VIEWS: readonly ProjectWorkspaceViewDescriptor[] = [
 
 export const DEFAULT_PROJECT_VIEW: ProjectWorkspaceView = "overview";
 
+/**
+ * Keep an objective's supporting sentence only when it adds information.
+ * Snapshot producers may repeat the title with different whitespace or final
+ * punctuation; rendering both makes the cockpit look denser without helping.
+ */
+export function hasDistinctProjectObjectiveStatement(
+  title: string,
+  statement: string,
+): boolean {
+  const normalize = (value: string): string =>
+    value.trim().replace(/\s+/g, " ").replace(/[.!?]+$/, "").toLowerCase();
+  const normalizedStatement = normalize(statement);
+  return normalizedStatement.length > 0 &&
+    normalizedStatement !== normalize(title);
+}
+
 export type ProjectDeepLinkTarget =
   | "review/brief"
   | "review/architecture"

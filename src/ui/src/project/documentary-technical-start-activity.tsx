@@ -1,7 +1,17 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
+import type { JSX } from "react";
+import { recordStatusVariant } from "./record-status.ts";
 import type { EngineeringDocumentaryTechnicalStart } from "../thread/types.ts";
+import { Badge, type BadgeProps } from "../ui/badge.tsx";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../ui/card.tsx";
+
+type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
 /**
  * A small live feed for the transition from durable discovery provenance to
@@ -16,72 +26,87 @@ export function DocumentaryTechnicalStartActivity({
   const steps = technicalStart.activity.steps;
   return (
     <section
-      class="documentary-technical-start"
       data-state={technicalStart.state}
       aria-labelledby="documentary-technical-start-title"
       aria-live="polite"
     >
-      <header>
-        <div>
-          <p>LIVE TECHNICAL START</p>
-          <h3 id="documentary-technical-start-title">
-            {technicalStartTitle(technicalStart.state)}
-          </h3>
-        </div>
-        <span class="documentary-technical-start-state">
-          {technicalStartStateLabel(technicalStart.state)}
-        </span>
-      </header>
-      <p class="documentary-technical-start-message">
-        {technicalStart.message}
-      </p>
+      <Card>
+        <CardHeader className="flex-row items-start justify-between gap-4 max-md:flex-col">
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">
+              Live technical start
+            </p>
+            <CardTitle
+              id="documentary-technical-start-title"
+              className="text-base"
+            >
+              {technicalStartTitle(technicalStart.state)}
+            </CardTitle>
+          </div>
+          <Badge variant={technicalStartVariant(technicalStart.state)}>
+            {technicalStartStateLabel(technicalStart.state)}
+          </Badge>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <CardDescription>{technicalStart.message}</CardDescription>
 
-      {steps.length > 0
-        ? (
-          <ol
-            class="documentary-technical-start-feed"
-            aria-label="Live SysON model-container activity"
-          >
-            {steps.map((step) => (
-              <li key={step.id} data-state={step.state}>
-                <div
-                  class="documentary-technical-start-rail"
-                  aria-hidden="true"
-                >
-                  <i />
-                </div>
-                <article>
-                  <header>
-                    <span class="documentary-technical-start-provider">SY</span>
-                    <div>
-                      <small>SYSON · {stepKindLabel(step.id)}</small>
-                      <strong>{step.label}</strong>
+          {steps.length > 0
+            ? (
+              <ol
+                className="divide-y divide-border"
+                aria-label="Live SysON model-container activity"
+              >
+                {steps.map((step) => (
+                  <li
+                    key={step.id}
+                    data-state={step.state}
+                    className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          SysON · {stepKindLabel(step.id)}
+                        </p>
+                        <p className="text-sm font-semibold">{step.label}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <Badge variant={recordStatusVariant(step.state)}>
+                          {sentenceLabel(step.state)}
+                        </Badge>
+                        <time
+                          className="font-mono text-xs text-muted-foreground"
+                          dateTime={step.recordedAt}
+                        >
+                          {formatTime(step.recordedAt)}
+                        </time>
+                      </div>
                     </div>
-                    <time dateTime={step.recordedAt}>
-                      {formatTime(step.recordedAt)}
-                    </time>
-                  </header>
-                  {step.predecessor && (
-                    <p class="documentary-technical-start-relation">
-                      contained in the preceding visible container
+                    {step.predecessor && (
+                      <p className="text-xs text-muted-foreground">
+                        contained in the preceding visible container
+                      </p>
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {step.summary}
                     </p>
-                  )}
-                  <p>{step.summary}</p>
-                </article>
-              </li>
-            ))}
-          </ol>
-        )
-        : (
-          <p class="documentary-technical-start-empty">
-            The agent has not started the server-owned SysON sequence yet.
+                  </li>
+                ))}
+              </ol>
+            )
+            : (
+              <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                The agent has not started the server-owned SysON sequence yet.
+              </p>
+            )}
+        </CardContent>
+        <CardFooter>
+          <p className="text-xs text-muted-foreground">
+            Live status is not a saved engineering claim. The record becomes
+            inspectable evidence only after SysON has been read back and a new
+            immutable thread revision is published.
           </p>
-        )}
-      <footer>
-        Live status is not a saved engineering claim. The record becomes
-        inspectable evidence only after SysON has been read back and a new
-        immutable thread revision is published.
-      </footer>
+        </CardFooter>
+      </Card>
     </section>
   );
 }
@@ -100,18 +125,31 @@ function technicalStartTitle(
 function technicalStartStateLabel(
   state: EngineeringDocumentaryTechnicalStart["state"],
 ): string {
-  if (state === "queued") return "QUEUED";
-  if (state === "running") return "LIVE";
-  if (state === "publishing") return "RECORDING";
-  return "NEEDS REVIEW";
+  if (state === "queued") return "Queued";
+  if (state === "running") return "Live";
+  if (state === "publishing") return "Recording";
+  return "Needs review";
+}
+
+function technicalStartVariant(
+  state: EngineeringDocumentaryTechnicalStart["state"],
+): BadgeVariant {
+  if (state === "queued" || state === "running") return "info";
+  if (state === "publishing") return "success";
+  return "destructive";
 }
 
 function stepKindLabel(
   id: EngineeringDocumentaryTechnicalStart["activity"]["steps"][number]["id"],
 ): string {
-  if (id === "project-container") return "PROJECT";
-  if (id === "sysml-document") return "DOCUMENT";
-  return "ROOT PACKAGE";
+  if (id === "project-container") return "Project";
+  if (id === "sysml-document") return "Document";
+  return "Root package";
+}
+
+function sentenceLabel(value: string): string {
+  const label = value.replaceAll("-", " ");
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
 function formatTime(value: string): string {

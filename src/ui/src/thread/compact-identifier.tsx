@@ -1,7 +1,5 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import type { JSX } from "react";
+import { useEffect, useRef, useState } from "react";
 import { compactTechnicalIdentifier } from "./compact-identifier-model.ts";
 
 export interface CompactIdentifierProps {
@@ -47,7 +45,7 @@ export function CompactIdentifier({
 
   return (
     <span
-      class={`compact-identifier${className ? ` ${className}` : ""}`}
+      className={`compact-identifier${className ? ` ${className}` : ""}`}
       data-copy-state={copyState}
     >
       <code title={value} aria-label={`${label}: ${value}`}>
@@ -56,7 +54,7 @@ export function CompactIdentifier({
       {copyable && (
         <button
           type="button"
-          class="compact-identifier-copy"
+          className="compact-identifier-copy"
           aria-label={`Copy full ${label}`}
           title={`Copy full ${label}`}
           onClick={copy}
@@ -68,7 +66,7 @@ export function CompactIdentifier({
             : "Copy"}
         </button>
       )}
-      <span class="sr-only" aria-live="polite">
+      <span className="sr-only" aria-live="polite">
         {copyState === "copied"
           ? `${label} copied.`
           : copyState === "failed"

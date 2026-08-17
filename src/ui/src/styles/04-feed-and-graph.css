@@ -1,48 +1,3 @@
-/* Le feed d'activite et le graphe de preuves. */
-
-.thread-graph-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-8) var(--space-16);
-  margin: 0 0 var(--space-12);
-  color: #858d88;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.thread-graph-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-
-.thread-graph-legend span::before {
-  content: "";
-  width: 18px;
-  height: 2px;
-  background: #606a65;
-}
-
-.thread-graph-legend span[data-tone="source"]::before {
-  background: var(--thread-blue);
-}
-
-.thread-graph-legend span[data-tone="focus"]::before {
-  background: var(--thread-orange);
-}
-
-.thread-graph-legend span[data-tone="impact"]::before,
-.thread-graph-legend span[data-tone="attested"]::before {
-  background: var(--thread-green);
-}
-
-.thread-graph-legend span[data-tone="attested"]::before {
-  height: 7px;
-  border: 1px solid var(--thread-green);
-  background: transparent;
-}
-
 .thread-graph-workspace {
   min-width: 0;
   display: grid;
@@ -51,352 +6,19 @@
   border: 1px solid var(--line);
   background: var(--thread-panel);
 }
-
 .thread-graph-stage {
   min-width: 0;
   min-height: max(570px, calc(100vh - 390px));
   padding: clamp(0.7rem, 1.6vw, 1.2rem);
 }
-
 .thread-feed {
   min-width: 0;
 }
-
-.thread-feed-toolbar {
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-16);
-  margin-bottom: var(--space-12);
-  padding: var(--space-10) var(--space-12);
-  border: 1px solid var(--thread-border);
-  background: var(--thread-panel);
-}
-
-.thread-feed-toolbar > div {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-2) var(--space-8);
-  align-items: center;
-}
-
-.thread-feed-toolbar strong {
-  color: #c9cdc7;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.thread-feed-toolbar small {
-  grid-column: 2;
-  color: #69736e;
-  font: var(--text-3xs)/1.25 var(--mono);
-}
-
-.thread-live-pulse {
-  grid-row: 1 / 3;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--thread-green);
-  box-shadow: 0 0 0 4px rgba(159, 196, 90, 0.09);
-  animation: thread-live-pulse 1.8s ease-in-out infinite;
-}
-
-.thread-feed[data-follow-live="false"] .thread-live-pulse,
-.thread-feed:not([data-stream="live"]) .thread-live-pulse {
-  background: #68706c;
-  box-shadow: none;
-  animation: none;
-}
-
-.thread-feed[data-stream="reconnecting"] .thread-live-pulse {
-  background: var(--amber);
-}
-
-.thread-feed-toolbar button {
-  flex: 0 0 auto;
-  min-height: 28px;
-  padding: 0 var(--space-10);
-  border: 1px solid var(--thread-border);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-/*
- * A correction is a revision trail, not a generic warning toast. The browser
- * only renders the old -> successor relation that the thread explicitly
- * recorded; a stale fact without that relation remains visibly unresolved.
- */
-.thread-recompute-history {
-  margin: 0 0 var(--space-16);
-  border: 1px solid #3c4541;
-  border-left: 3px solid var(--thread-orange);
-  background: var(--thread-panel);
-}
-
-.thread-recompute-history > header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-16);
-  padding: var(--space-12);
-  border-bottom: 1px solid #303735;
-}
-
-.thread-recompute-history > header > div {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-}
-
-.thread-recompute-history > header small,
-.thread-recompute-pending small,
-.thread-recompute-evidence small,
-.thread-recompute-bridge span,
-.thread-recompute-changes > span {
-  color: var(--thread-orange);
-  font: 700 var(--text-3xs)/1.2 var(--mono);
-  letter-spacing: 0.065em;
-  text-transform: uppercase;
-}
-
-.thread-recompute-history > header strong {
-  color: #deddd7;
-  font-size: var(--text-xs);
-}
-
-.thread-recompute-history > header > span {
-  flex: 0 0 auto;
-  color: #7f8983;
-  font: 700 var(--text-3xs)/1.3 var(--mono);
-  text-align: right;
-  text-transform: uppercase;
-}
-
-.thread-recompute-snapshot-history,
-.thread-recompute-history-empty {
-  margin: 0;
-  padding: var(--space-10) var(--space-12);
-  border-bottom: 1px solid #303735;
-  color: #929a95;
-  font: var(--text-3xs)/1.5 var(--mono);
-}
-
-.thread-recompute-snapshot-history code {
-  color: #cbd0cc;
-  font: inherit;
-}
-
-.thread-recompute-list {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.thread-recompute-list > li {
-  padding: var(--space-12);
-  border-bottom: 1px solid #303735;
-}
-
-.thread-recompute-list > li[data-active="true"] {
-  background: linear-gradient(90deg, rgba(217, 155, 80, 0.1), transparent 72%);
-}
-
-.thread-recompute-list > li[data-state="recomputing"] {
-  border-left: 2px solid var(--amber);
-}
-
-.thread-recompute-list > li[data-state="failed"] {
-  border-left: 2px solid var(--thread-red);
-}
-
-.thread-recompute-transition-heading {
-  display: grid;
-  gap: var(--space-4);
-  margin: 0 0 var(--space-10);
-}
-
-.thread-recompute-transition-heading small,
-.thread-recompute-unaffected > span {
-  color: var(--thread-orange);
-  font: 700 var(--text-3xs)/1.2 var(--mono);
-  letter-spacing: 0.065em;
-  text-transform: uppercase;
-}
-
-.thread-recompute-transition-heading strong {
-  color: #deddd7;
-  font-size: var(--text-2xs);
-}
-
-.thread-recompute-path {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(138px, 0.46fr) minmax(0, 1fr);
-  gap: var(--space-10);
-  align-items: stretch;
-}
-
-.thread-recompute-evidence {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-  padding: var(--space-10);
-  border: 1px solid var(--thread-border);
-  color: inherit;
-  text-align: left;
-  background: var(--thread-panel);
-  cursor: pointer;
-}
-
-.thread-recompute-evidence[data-role="historic"],
-.thread-recompute-evidence[data-role="stale"] {
-  border-color: rgba(169, 95, 40, 0.42);
-  background: var(--amber-dim);
-}
-
-.thread-recompute-evidence[data-role="current"][data-freshness="fresh"] {
-  border-color: rgba(54, 117, 83, 0.42);
-  background: var(--green-dim);
-}
-
-.thread-recompute-evidence[data-freshness="running"] {
-  border-color: #b18445;
-}
-
-.thread-recompute-evidence[data-freshness="failed"] {
-  border-color: #a65043;
-}
-
-.thread-recompute-evidence:focus-visible,
-.thread-recompute-changes button:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: -2px;
-}
-
-.thread-recompute-evidence strong {
-  overflow: hidden;
-  color: #deddd7;
-  font-size: var(--text-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thread-recompute-evidence > span,
-.thread-recompute-evidence code {
-  overflow: hidden;
-  color: #929a95;
-  font: var(--text-3xs)/1.35 var(--mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thread-recompute-evidence code {
-  color: #69736e;
-}
-
-.thread-recompute-bridge {
-  min-width: 0;
-  display: grid;
-  align-content: center;
-  gap: var(--space-6);
-  padding: var(--space-8) 0;
-  text-align: center;
-}
-
-.thread-recompute-bridge::before {
-  width: 100%;
-  height: 1px;
-  margin-bottom: var(--space-2);
-  background: linear-gradient(90deg, #806744, var(--thread-orange), #43866f);
-  content: "";
-}
-
-.thread-recompute-bridge small {
-  display: -webkit-box;
-  overflow: hidden;
-  color: #858d88;
-  font: var(--text-3xs)/1.35 var(--mono);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.thread-recompute-changes {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-8);
-  margin: var(--space-10) 0 0;
-}
-
-.thread-recompute-changes button {
-  min-width: 0;
-  overflow: hidden;
-  padding: 0;
-  border: 0;
-  color: #c9cdc7;
-  font: 600 var(--text-3xs)/1.35 var(--mono);
-  text-align: left;
-  text-decoration: underline;
-  text-decoration-color: #806744;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: transparent;
-  cursor: pointer;
-}
-
-.thread-recompute-unaffected {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-8);
-  margin: var(--space-10) 0 0;
-  color: #84918a;
-  font: 600 var(--text-3xs)/1.35 var(--mono);
-}
-
-.thread-recompute-unaffected b {
-  padding: var(--space-4) var(--space-6);
-  border: 1px solid #3c4541;
-  color: #9cb9a9;
-  font: inherit;
-  font-weight: 600;
-}
-
-.thread-recompute-pending {
-  display: grid;
-  gap: var(--space-10);
-  padding: var(--space-12);
-  background: rgba(128, 103, 68, 0.1);
-}
-
-.thread-recompute-pending > div:first-child {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.thread-recompute-pending strong {
-  color: #deddd7;
-  font-size: var(--text-2xs);
-}
-
-.thread-recompute-pending-records {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-8);
-}
-
 .thread-feed-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
-
 .thread-feed-entry {
   min-width: 0;
   display: grid;
@@ -404,31 +26,9 @@
   opacity: 0;
   animation: thread-feed-arrive 320ms ease forwards;
 }
-
-.thread-feed-time {
-  display: grid;
-  align-content: start;
-  justify-items: end;
-  gap: var(--space-4);
-  padding: var(--space-16) var(--space-8) 0 0;
-  color: #737c77;
-  font-family: var(--mono);
-}
-
-.thread-feed-time strong {
-  color: #a4aaa5;
-  font-size: var(--text-3xs);
-}
-
-.thread-feed-time span {
-  font-size: var(--text-3xs);
-  text-transform: uppercase;
-}
-
 .thread-feed-rail {
   position: relative;
 }
-
 .thread-feed-rail::before {
   content: "";
   position: absolute;
@@ -437,15 +37,12 @@
   left: 11px;
   width: 1px;
 }
-
 .thread-feed-entry:first-child .thread-feed-rail::before {
   top: 1.15rem;
 }
-
 .thread-feed-entry:last-child .thread-feed-rail::before {
   bottom: calc(100% - 1.2rem);
 }
-
 .thread-feed-rail i {
   position: absolute;
   z-index: 1;
@@ -453,143 +50,34 @@
   left: 7px;
   width: 9px;
   height: 9px;
-  border: 2px solid #0c0f0f;
+  border: 2px solid var(--thread-panel);
   border-radius: 50%;
 }
-
 .thread-feed-entry[data-active="true"] .thread-feed-rail::before {
-  background: linear-gradient(var(--thread-orange), var(--thread-blue));
+  background: var(--thread-focus);
 }
-
 .thread-feed-entry[data-active="true"] .thread-feed-rail i {
-  background: var(--thread-orange);
-  box-shadow: 0 0 0 1px var(--thread-orange), 0 0 0 5px rgba(217, 155, 80,
-    0.08);
+  background: var(--thread-focus);
+  box-shadow: none;
 }
-
 .thread-feed-entry[data-freshness="stale"] .thread-feed-rail i,
 .thread-feed-entry[data-freshness="running"] .thread-feed-rail i {
-  background: var(--amber);
+  background: var(--thread-warning);
 }
-
 .thread-feed-entry[data-freshness="failed"] .thread-feed-rail i {
   background: var(--thread-red);
 }
-
 .thread-feed-event {
   min-width: 0;
   padding: 0 0 var(--space-8);
 }
-
-.thread-feed-card {
-  width: 100%;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  gap: var(--space-12);
-  align-items: center;
-  padding: var(--space-12);
-  border: 1px solid var(--thread-border);
-  color: inherit;
-  text-align: left;
-  background: var(--thread-panel);
-  cursor: pointer;
-  transition: border-color 140ms ease, background 140ms ease;
-}
-
-/* Ces cartes sont des <button>. Supprimer leur anneau de focus les rendait
-   introuvables au clavier (WCAG 2.4.7). L'anneau est pose en retrait plutot
-   qu'en debord : il ne peut pas etre rogne par le defilement de la liste, et il
-   n'ecrase pas le liseré de provenance que la carte porte deja en box-shadow. */
-.thread-feed-card:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: -2px;
-}
-.thread-feed-provider {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #414b46;
-  font: 800 var(--text-3xs)/1 var(--mono);
-}
-
-.thread-feed-entry[data-active="true"] .thread-feed-provider {
-  border-color: var(--thread-orange);
-  color: var(--thread-orange);
-}
-
-.thread-feed-copy {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-}
-
-.thread-feed-copy small {
-  overflow: hidden;
-  color: #747e79;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.045em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.thread-feed-copy strong {
-  overflow: hidden;
-  color: #deddd7;
-  font-size: var(--text-xs);
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thread-feed-copy > span {
-  overflow: hidden;
-  color: #929a95;
-  font: var(--text-3xs)/1.35 var(--mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thread-feed-meta {
-  display: grid;
-  justify-items: end;
-  gap: var(--space-4);
-  font-family: var(--mono);
-}
-
-.thread-feed-meta i {
-  color: var(--thread-green);
-  font-size: var(--text-3xs);
-  font-style: normal;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.thread-feed-meta i[data-state="stale"],
-.thread-feed-meta i[data-state="running"] {
-  color: var(--amber);
-}
-
-.thread-feed-meta i[data-state="failed"] {
-  color: var(--thread-red);
-}
-
-.thread-feed-meta b {
-  color: #69716d;
-  font-size: var(--text-3xs);
-  font-weight: 600;
-}
-
 .thread-feed-lineage {
   margin-top: -1px;
-  border: 1px solid #3b4540;
-  border-top-color: #272d2a;
+  border: 1px solid var(--thread-border);
+  border-top-color: var(--thread-border);
   animation: thread-lineage-open 260ms ease both;
   transform-origin: top;
 }
-
 .thread-feed-lineage > header {
   min-height: 52px;
   display: flex;
@@ -597,63 +85,31 @@
   justify-content: space-between;
   gap: var(--space-16);
   padding: var(--space-10) var(--space-12);
-  border-bottom: 1px solid #2c3430;
+  border-bottom: 1px solid var(--thread-border);
 }
-
 .thread-feed-lineage > header > div {
   display: grid;
   gap: var(--space-4);
 }
-
-.thread-feed-lineage header small {
-  color: var(--thread-orange);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.08em;
-}
-
-.thread-feed-lineage header strong {
-  color: #d4d5cf;
-  font-size: var(--text-xs);
-  font-weight: 700;
-}
-
-.thread-feed-lineage header > span {
-  color: #77817b;
-  font: var(--text-3xs)/1 var(--mono);
-}
-
 .thread-feed-lineage .thread-graph {
   padding: var(--space-10);
 }
-
 .thread-feed-lineage .thread-graph-canvas {
   min-height: 300px;
   max-height: 540px;
-}
-
-/* Sigma local view inside an expanded feed card.
-   Même vocabulaire visuel que le mode Exploration (même composant, même
-   position:relative, même containment) mais hauteur réduite pour s'intégrer
-   au flux du feed sans prendre toute la page. */
+} /* Sigma local view inside an expanded feed card.
+Même vocabulaire visuel que le mode Exploration (même composant, même
+position:relative, même containment) mais hauteur réduite pour s'intégrer
+au flux du feed sans prendre toute la page. */
 .thread-feed-lineage-sigma {
   padding: var(--space-10);
 }
-
 .thread-feed-lineage-sigma .evidence-exploration {
   min-height: 300px;
   max-height: 480px;
   /* Pas de border redondante : la section .thread-feed-lineage apporte déjà
      une bordure ; on garde celle du stage pour la profondeur visuelle. */
 }
-
-.thread-feed-unlinked,
-.thread-feed-empty {
-  margin: 0;
-  padding: var(--space-32);
-  color: #7d8681;
-  font: var(--text-3xs)/1.55 var(--mono);
-}
-
 .thread-graph[data-animate="true"] .thread-graph-edge,
 .thread-graph[data-animate="true"] .thread-graph-node {
   opacity: 0;
@@ -690,19 +146,10 @@
     opacity: 1;
   }
 }
-
-@keyframes thread-live-pulse {
-  50% {
-    opacity: 0.45;
-    box-shadow: 0 0 0 7px rgba(159, 196, 90, 0.025);
-  }
-}
-
 .thread-graph {
   min-width: 0;
   margin: 0;
 }
-
 .thread-graph-density {
   min-height: 38px;
   display: flex;
@@ -713,132 +160,108 @@
   padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12);
   border-left: 2px solid var(--thread-border-strong);
   background: var(--thread-panel);
-  font: var(--text-3xs)/1.4 var(--mono);
+  font: var(--text-3xs)/1.4 var(--sans);
 }
-
 .thread-graph-density-toggle {
   flex: 0 0 auto;
   min-height: 26px;
   padding: 0 var(--space-10);
-  border: 1px solid #3b4541;
+  border: 1px solid var(--thread-border);
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .thread-graph-viewport {
   min-width: 0;
 }
-
 .thread-graph-canvas {
   width: 100%;
   height: auto;
   min-height: 480px;
   overflow: visible;
 }
-
 .thread-graph-component-boundary {
   stroke-width: 1;
   stroke-dasharray: 5 5;
 }
-
 .thread-graph-component-label {
-  font: 700 9px/1 var(--mono);
+  font: 700 9px/1 var(--sans);
   letter-spacing: 1.2px;
-}
-
-/* Aretes et noeuds sont des <g role="button"> atteignables au clavier. Le
-   `outline: none` les rendait muets au focus ; l'anneau global les rend a
-   nouveau reperables sur le canevas. */
+} /* Aretes et noeuds sont des <g role="button"> atteignables au clavier. Le
+`outline: none` les rendait muets au focus ; l'anneau global les rend a
+nouveau reperables sur le canevas. */
 .thread-graph-edge {
   cursor: pointer;
 }
-
 .thread-graph-edge-line {
   stroke-width: 1.4;
   transition: opacity 140ms ease, stroke 140ms ease, stroke-width 140ms ease;
 }
-
 .thread-graph-edge-hit {
   fill: none;
   stroke: transparent;
   stroke-width: 14;
 }
-
 .thread-graph-edge-label {
   paint-order: stroke;
   stroke-width: 5px;
   stroke-linejoin: round;
-  font: 700 8px/1 var(--mono);
+  font: 700 8px/1 var(--sans);
   letter-spacing: 0.35px;
   pointer-events: none;
 }
 .thread-graph-edge[data-impact="upstream"] .thread-graph-edge-line {
   stroke: var(--thread-blue);
 }
-
 .thread-graph-edge[data-impact="downstream"] .thread-graph-edge-line,
 .thread-graph-edge[data-impact="related"] .thread-graph-edge-line {
   stroke: var(--thread-green);
 }
-
 .thread-graph-edge[data-impact="unrelated"] {
   opacity: 0.19;
 }
-
 .thread-graph-edge[data-selected="true"] .thread-graph-edge-line,
 .thread-graph-edge:focus-visible .thread-graph-edge-line {
-  stroke: var(--thread-orange);
+  stroke: var(--thread-focus);
   stroke-width: 3;
 }
-
 .thread-graph-edge[data-selected="true"] .thread-graph-edge-label {
-  fill: var(--thread-orange);
+  fill: var(--thread-focus);
 }
-
 .thread-graph-edge[data-attestation="verified"] .thread-graph-edge-line {
   stroke-dasharray: 4 3;
 }
-
 .thread-graph-node {
   cursor: pointer;
   transition: opacity 140ms ease;
 }
-
 .thread-graph-node-body {
   stroke-width: 1;
   transition: fill 140ms ease, stroke 140ms ease, stroke-width 140ms ease;
 }
 .thread-graph-node[data-selected="true"] .thread-graph-node-body {
-  stroke: var(--thread-orange);
+  stroke: var(--thread-focus);
   stroke-width: 2.3;
 }
-
 .thread-graph-node[data-impact="upstream"] .thread-graph-node-body {
   stroke: var(--thread-blue);
 }
-
 .thread-graph-node[data-impact="downstream"] .thread-graph-node-body,
 .thread-graph-node[data-impact="related"] .thread-graph-node-body {
   stroke: var(--thread-green);
 }
-
 .thread-graph-node[data-impact="unrelated"] {
   opacity: 0.22;
 }
-
 .thread-graph-node-state {
   fill: var(--thread-green);
 }
-
 .thread-graph-node[data-freshness="stale"] .thread-graph-node-state,
 .thread-graph-node[data-freshness="running"] .thread-graph-node-state {
-  fill: var(--amber);
+  fill: var(--thread-warning);
 }
-
 .thread-graph-node[data-freshness="failed"] .thread-graph-node-state {
   fill: var(--thread-red);
 }
-
 .thread-graph-node[data-kind="consumption"] .thread-graph-node-body,
 .thread-graph-node[data-kind="action"] .thread-graph-node-body {
   stroke-dasharray: 4 3;
@@ -848,51 +271,42 @@
 .thread-graph-node-summary {
   font-family: var(--mono);
 }
-
 .thread-graph-node-system {
   font-size: var(--text-3xs);
   font-weight: 800;
   letter-spacing: 0.7px;
 }
-
 .thread-graph-node-kind {
   font-size: var(--text-3xs);
-  text-transform: uppercase;
 }
-
 .thread-graph-node-label {
   font-family: var(--sans);
   font-size: var(--text-sm);
   font-weight: 700;
 }
-
 .thread-graph-node-summary {
   font-size: var(--text-3xs);
 }
-
 .thread-graph-caption,
 .thread-graph-notice {
   margin: var(--space-12) 0 0;
   padding-left: var(--space-10);
-  border-left: 2px solid var(--amber);
-  color: #8f9691;
-  font: var(--text-3xs)/1.45 var(--mono);
+  border-left: 2px solid var(--thread-warning);
+  color: var(--thread-muted);
+  font: var(--text-3xs)/1.45 var(--sans);
 }
-
 .thread-graph-empty {
   min-height: 26rem;
   display: grid;
   place-items: center;
   color: var(--muted);
   font-size: var(--text-xs);
-}
+} /* --------------------------------------------------------------------------
+Versioned provenance
 
-/* --------------------------------------------------------------------------
-   Versioned provenance
-
-   Evidence has one graph. Explicit supersession families share one current
-   node; their canonical records and internal relations live in the inspector.
-   ----------------------------------------------------------------------- */
+Evidence has one graph. Explicit supersession families share one current
+node; their canonical records and internal relations live in the inspector.
+----------------------------------------------------------------------- */
 
 .thread-versioned-provenance {
   /* Anchor for the absolutely-positioned local-graph burger menu. */
@@ -901,63 +315,9 @@
   border: 1px solid var(--thread-border, var(--line));
   background: var(--thread-panel, var(--surface-1));
 }
-
-.thread-versioned-provenance > header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-20);
-  padding: var(--space-14) var(--space-16);
-  border-bottom: 1px solid var(--thread-border, var(--line));
-}
-
-.thread-versioned-provenance > header > div {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-5);
-}
-
-.thread-versioned-provenance > header p,
-.thread-version-history > header p {
-  margin: 0;
-  color: var(--thread-orange, var(--amber));
-  font: 700 var(--text-3xs)/1.1 var(--mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.thread-versioned-provenance > header h4 {
-  margin: 0;
-  color: var(--thread-ink, var(--text));
-  font: 500 clamp(1rem, 1.65vw, 1.3rem)/1.16 var(--serif);
-}
-
-.thread-versioned-provenance > header > div > span {
-  max-width: 52rem;
-  color: var(--thread-muted, var(--muted));
-  font-size: var(--text-xs);
-  line-height: 1.48;
-}
-
-.thread-versioned-provenance > header > span {
-  flex: 0 0 auto;
-  color: var(--thread-muted, var(--muted));
-  font: 700 var(--text-3xs)/1.3 var(--mono);
-  letter-spacing: 0.045em;
-  text-align: right;
-  text-transform: uppercase;
-}
-
-.thread-versioned-provenance > .thread-graph-legend {
-  margin: 0;
-  padding: var(--space-10) var(--space-16);
-  border-bottom: 1px solid var(--thread-border, var(--line));
-}
-
 .thread-versioned-provenance > .thread-graph {
   padding: var(--space-12);
 }
-
 .thread-versioned-provenance .thread-graph[data-presentation="canvas"] .thread-graph-viewport,
 .thread-versioned-provenance .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
   height: clamp(560px, 67vh, 820px);
@@ -965,216 +325,14 @@
   max-height: none;
 }
 
-.thread-graph-legend span[data-tone="mismatch"]::before {
-  height: 7px;
-  border: 1px dashed var(--thread-red);
-  background: transparent;
-}
-
-.thread-version-history {
-  border-bottom: 1px solid var(--thread-border, var(--line));
-  background: var(--thread-paper, var(--surface-0));
-}
-
-.thread-version-history > header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-12);
-  padding: var(--space-14) var(--space-16) var(--space-8);
-}
-
-.thread-version-history > header h4 {
-  margin: var(--space-4) 0 0;
-  color: var(--thread-ink, var(--text));
-  font: 600 var(--text-md)/1.2 var(--serif);
-}
-
-.thread-version-history > header > span {
-  color: var(--thread-green, var(--green));
-  font: 700 var(--text-3xs)/1.2 var(--mono);
-  letter-spacing: 0.05em;
-}
-
-.thread-version-history-intro {
-  margin: 0;
-  padding: 0 var(--space-16) var(--space-12);
-  color: var(--thread-muted, var(--muted));
-  font-size: var(--text-2xs);
-  line-height: 1.45;
-}
-
-.thread-version-history > ol {
-  display: grid;
-  gap: var(--space-6);
-  margin: 0;
-  padding: 0 var(--space-12) var(--space-12);
-  list-style: none;
-}
-
-.thread-version-history li button {
-  width: 100%;
-  display: grid;
-  gap: var(--space-4);
-  padding: var(--space-10) var(--space-12);
-  border: 1px solid var(--thread-border, var(--line));
-  border-left: 3px solid var(--thread-border-strong, var(--line-strong));
-  color: var(--thread-ink, var(--text));
-  text-align: left;
-  background: var(--thread-panel, var(--surface-1));
-  cursor: pointer;
-}
-
-.thread-version-history li[data-current="true"] button {
-  border-left-color: var(--thread-green, var(--green));
-}
-
-.thread-version-history li button[aria-pressed="true"],
-.thread-version-history li button:hover,
-.thread-version-history li button:focus-visible {
-  border-color: var(--thread-orange, var(--amber));
-  border-left-color: var(--thread-orange, var(--amber));
-  background: color-mix(
-    in srgb,
-    var(--thread-orange, var(--amber)) 7%,
-    var(--thread-panel, var(--surface-1))
-  );
-}
-
-.thread-version-history li small {
-  color: var(--thread-muted, var(--muted));
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.055em;
-}
-
-.thread-version-history li strong {
-  overflow: hidden;
-  color: var(--thread-ink, var(--text));
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thread-version-history li span {
-  overflow: hidden;
-  color: var(--thread-muted, var(--muted));
-  font: var(--text-3xs)/1.35 var(--mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thread-version-relations {
-  border-top: 1px solid var(--thread-border, var(--line));
-}
-
-.thread-version-relations > summary {
-  padding: var(--space-10) var(--space-16);
-  color: var(--thread-muted, var(--muted));
-  font: 700 var(--text-3xs)/1.2 var(--mono);
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.thread-version-relations[open] > summary {
-  color: var(--thread-orange, var(--amber));
-}
-
-.thread-version-relations > ul {
-  display: grid;
-  gap: var(--space-8);
-  margin: 0;
-  padding: 0 var(--space-16) var(--space-14);
-  list-style: none;
-}
-
-.thread-version-relations li {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-  padding-left: var(--space-10);
-  border-left: 2px solid var(--thread-border-strong, var(--line-strong));
-  color: var(--thread-muted, var(--muted));
-  font-size: var(--text-2xs);
-  line-height: 1.4;
-}
-
-.thread-version-relations li strong,
-.thread-version-relations li code {
-  color: var(--thread-ink, var(--text));
-  font: 700 var(--text-3xs)/1.2 var(--mono);
-  letter-spacing: 0.035em;
-  text-transform: uppercase;
-}
-
-.thread-edge-history {
-  margin: var(--space-12) 0;
-  border: 1px solid var(--thread-border, var(--line));
-}
-
 @media (width <= 720px) {
   .thread-versioned-provenance > header {
     flex-direction: column;
   }
-
   .thread-versioned-provenance > header > span {
     text-align: left;
   }
 }
-
-@media (width <= 720px) {
-  .thread-recompute-history > header {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .thread-recompute-history > header > span {
-    text-align: left;
-  }
-
-  .thread-recompute-path {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .thread-recompute-bridge {
-    grid-template-columns: minmax(0, 1fr);
-    padding: var(--space-4) 0;
-  }
-}
-
-/* ---------------------------------------------------------------------------
-   Evidence exploration — mode sigma
-   Sigma prend le canvas / WebGL ; la légende de composantes est une aside HTML.
-   -------------------------------------------------------------------------- */
-
-.evidence-graph-mode-toggle {
-  display: flex;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-2);
-}
-
-.evidence-graph-mode-toggle button {
-  padding: var(--space-4) var(--space-10);
-  border: 1px solid transparent;
-  border-radius: 4px;
-  font: 700 var(--text-3xs)/1.3 var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-  color: var(--muted);
-  background: transparent;
-  transition: color 120ms, background 120ms, border-color 120ms;
-}
-
-.evidence-graph-mode-toggle button[aria-pressed="true"] {
-  color: var(--text);
-  background: var(--surface-0);
-  border-color: var(--line-strong);
-}
-
 .evidence-exploration {
   position: relative;
   display: flex;
@@ -1185,7 +343,6 @@
   overflow: hidden;
   background: var(--surface-1);
 }
-
 .evidence-exploration-stage {
   flex: 1;
   min-width: 0;
@@ -1194,195 +351,29 @@
      containing block, soit stage + légende — le hit-testing sigma est alors
      décalé de la largeur de la légende et les clics sur nœuds ne s'enregistrent pas. */
   position: relative;
-}
-
-/* Sigma injecte ses propres canvas dans ce conteneur.
-   width/height 100% sont calculés depuis le stage (position:relative ci-dessus),
-   ce qui garantit que la résolution CSS des canvases correspond à leurs pixels
-   physiques initialisés au montage. */
+} /* Sigma injecte ses propres canvas dans ce conteneur.
+width/height 100% sont calculés depuis le stage (position:relative ci-dessus),
+ce qui garantit que la résolution CSS des canvases correspond à leurs pixels
+physiques initialisés au montage. */
 .evidence-exploration-stage > canvas,
 .evidence-exploration-stage > div {
   width: 100% !important;
   height: 100% !important;
 }
-
-.evidence-exploration-legend {
-  flex: 0 0 260px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-16) var(--space-12);
-  border-left: 1px solid var(--line);
-  background: var(--surface-0);
-  overflow-y: auto;
-}
-
-.evidence-exploration-legend-title {
-  margin: 0 0 var(--space-8);
-  font: 700 var(--text-3xs)/1.3 var(--mono);
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-
-.evidence-exploration-legend-chip {
-  display: flex;
-  align-items: center;
-  gap: var(--space-8);
-  padding: var(--space-6) var(--space-8);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  text-align: left;
-  cursor: pointer;
-  background: var(--surface-1);
-  transition: border-color 120ms, background 120ms;
-}
-
-.evidence-exploration-legend-chip:hover {
-  border-color: var(--line-strong);
-  background: var(--surface-2);
-}
-
-.evidence-exploration-legend-chip:focus-visible,
-.evidence-exploration-stage:focus-visible,
-.evidence-exploration-relations summary:focus-visible,
-.evidence-exploration-relations button:focus-visible {
+.evidence-exploration-stage:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 2px;
-}
-
-.evidence-exploration-legend-chip-dot {
-  flex: 0 0 8px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.evidence-exploration-legend-chip-name {
-  flex: 1;
-  font: var(--text-xs)/1.3 var(--sans);
-  color: var(--text);
-}
-
-.evidence-exploration-legend-chip-count {
-  flex: 0 0 auto;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  color: var(--muted);
-}
-
-.evidence-exploration-relations {
-  margin-top: var(--space-8);
-  border-top: 1px solid var(--line);
-  padding-top: var(--space-8);
-  font: var(--text-3xs)/1.45 var(--sans);
-  color: var(--muted);
-}
-
-.evidence-exploration-relations summary {
-  cursor: pointer;
-  font: 700 var(--text-3xs)/1.3 var(--mono);
-  letter-spacing: 0.04em;
-  color: var(--text);
-}
-
-.evidence-exploration-relations p {
-  margin: var(--space-8) 0;
-}
-
-.evidence-exploration-table-wrap {
-  max-height: 420px;
-  overflow: auto;
-  border: 1px solid var(--line);
-}
-
-.evidence-exploration-relations table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  color: var(--text);
-  background: var(--surface-1);
-}
-
-.evidence-exploration-relations th,
-.evidence-exploration-relations td {
-  padding: var(--space-6);
-  border-bottom: 1px solid var(--line);
-  overflow-wrap: anywhere;
-  text-align: left;
-  vertical-align: top;
-}
-
-.evidence-exploration-relations th {
-  position: sticky;
-  z-index: 1;
-  top: 0;
-  color: var(--muted);
-  background: var(--surface-2);
-  font: 700 var(--text-3xs)/1.2 var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.evidence-exploration-relations th:first-child,
-.evidence-exploration-relations td:first-child {
-  width: 52px;
-  color: var(--muted);
-  font-family: var(--mono);
-}
-
-.evidence-exploration-relations th:last-child,
-.evidence-exploration-relations td:last-child {
-  width: 58px;
-}
-
-.evidence-exploration-relations tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.evidence-exploration-relations button {
-  width: auto;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: var(--space-4) var(--space-6);
-  text-align: left;
-  font: var(--text-3xs)/1.35 var(--sans);
-  color: var(--text);
-  background: var(--surface-1);
-  cursor: pointer;
-}
-
-.evidence-exploration-relations button:hover,
-.evidence-exploration-relations button:focus-visible {
-  border-color: var(--line-strong);
-  background: var(--surface-2);
 }
 
 @media (width <= 720px) {
   .evidence-exploration {
     flex-direction: column;
   }
-  .evidence-exploration-legend {
-    flex: 0 0 auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    border-left: none;
-    border-top: 1px solid var(--line);
-  }
-
-  .evidence-exploration-relations {
-    flex: 1 0 100%;
-    width: 100%;
-  }
-
-  .evidence-exploration-table-wrap {
-    max-height: 55vh;
-  }
-}
-
-/* ---------------------------------------------------------------------------
-   Filtre par pièce du feed Activity (sélecteur de composant en tête du feed).
-   Déplacé de 16-part-lane.css lors du retrait de la vue Par pièce : le filtre
-   du feed est la lecture par pièce qui survit.
-   --------------------------------------------------------------------------- */
+} /* ---------------------------------------------------------------------------
+Filtre par pièce du feed Activity (sélecteur de composant en tête du feed).
+Déplacé de 16-part-lane.css lors du retrait de la vue Par pièce : le filtre
+du feed est la lecture par pièce qui survit.
+--------------------------------------------------------------------------- */
 
 .thread-feed-component-filter {
   display: flex;
@@ -1392,15 +383,12 @@
   border-bottom: 1px solid var(--thread-border);
   background: var(--thread-panel-muted);
 }
-
 .thread-feed-component-filter > label {
   flex-shrink: 0;
   color: var(--muted);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font: 600 var(--text-2xs)/1 var(--sans);
+  letter-spacing: 0.02em;
 }
-
 .thread-feed-component-filter > select {
   flex: 1;
   min-width: 0;
@@ -1412,12 +400,11 @@
   background: var(--thread-panel);
   cursor: pointer;
   appearance: auto;
-}
-
-/* ---------------------------------------------------------------------------
-   Menu burger des réglages du graphe local (vue Evidence).
-   Posé en haut à gauche du canvas, replié par défaut — façon Obsidian.
-   --------------------------------------------------------------------------- */
+} /* ---------------------------------------------------------------------------
+Menu burger des réglages du graphe local (vue Evidence).
+Posé en haut à gauche du canvas,
+replié par défaut — façon Obsidian.
+--------------------------------------------------------------------------- */
 
 /* Zero-height in-flow anchor placed between the section header and the
    canvas: the toggle and panel float over the canvas' top-left corner
@@ -1426,68 +413,4 @@
   position: relative;
   height: 0;
   z-index: 5;
-}
-
-.evidence-graph-menu-toggle,
-.evidence-graph-menu-panel {
-  position: absolute;
-  left: var(--space-12);
-}
-
-.evidence-graph-menu-toggle {
-  top: var(--space-8);
-}
-
-.evidence-graph-menu-panel {
-  top: 44px;
-}
-
-.evidence-graph-menu-toggle {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1;
-  background: var(--surface-0);
-  cursor: pointer;
-}
-
-.evidence-graph-menu-toggle[aria-expanded="true"],
-.evidence-graph-menu-toggle:hover {
-  color: var(--text);
-  border-color: var(--muted);
-}
-
-.evidence-graph-menu-panel {
-  padding: var(--space-8) var(--space-10);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--surface-0);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.evidence-graph-menu-label {
-  margin: 0 0 var(--space-6);
-  color: var(--muted);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.06em;
-}
-
-.evidence-graph-menu-check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  margin-top: var(--space-4);
-  color: var(--text);
-  font: var(--text-xs)/1.2 var(--sans);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.evidence-graph-menu-check > input {
-  margin: 0;
-  accent-color: var(--muted);
 }

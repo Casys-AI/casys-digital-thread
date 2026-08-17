@@ -73,9 +73,10 @@ export type AgentNowPresentation =
 
 /**
  * The operational subset of a project brief for a linked, current evidence
- * snapshot. It never removes immutable work or run history: it prevents only
- * a cancelled attempt with an explicit immutable reconciliation from being
- * offered as the next action again.
+ * snapshot. It never removes immutable work or run history. It withholds a
+ * ready item from "Up next" only when the snapshot already records either an
+ * explicit successor reconciliation, or a later completed work item for the
+ * same registered operation (`id@version`). Distinct versions stay distinct.
  */
 export interface CurrentProjectWork {
   readonly nextWork: readonly EngineeringWorkItem[];
@@ -325,6 +326,15 @@ export function buildCurrentProjectWork(
     }
   }
 
+  // `project_change_append` is append-only: a later revision of the same
+  // registered operation becomes a new work item and leaves the predecessor
+  // `ready`. That leftover is not current work once a later evidenced
+  // completion of the same `id@version` exists. Action targets stay open
+  // unless a reconciliation named them: those bindings may still be current.
+  for (const id of readyWorkItemIdsClosedByLaterCompletedOperation(snapshot)) {
+    historicalWorkItemIds.add(id);
+  }
+
   return {
     nextWork: brief.nextWork.filter((item) =>
       !historicalWorkItemIds.has(item.id)
@@ -332,6 +342,70 @@ export function buildCurrentProjectWork(
     historicalWorkItemIds: [...historicalWorkItemIds].toSorted(),
     closedActionTargetIds: [...closedActionTargetIds].toSorted(),
   };
+}
+
+function registeredOperationKey(
+  item: EngineeringWorkItem,
+): string | undefined {
+  return item.operation
+    ? `${item.operation.id}@${item.operation.version}`
+    : undefined;
+}
+
+function workItemPlanOrder(
+  snapshot: EngineeringProjectSnapshot,
+): ReadonlyMap<string, number> {
+  const order = new Map<string, number>();
+  let index = 0;
+  for (
+    const phase of snapshot.phases.toSorted((left, right) =>
+      left.order - right.order || left.id.localeCompare(right.id)
+    )
+  ) {
+    for (const id of phase.workItemIds) {
+      if (!order.has(id)) order.set(id, index++);
+    }
+  }
+  for (const item of snapshot.workItems) {
+    if (!order.has(item.id)) order.set(item.id, index++);
+  }
+  return order;
+}
+
+/**
+ * A ready, evidence-free predecessor is historical when a later work item
+ * for the same registered operation already completed with evidence.
+ * `@2` does not close `@3`, and an earlier completion does not close a
+ * later ready revision that is still owed.
+ */
+function readyWorkItemIdsClosedByLaterCompletedOperation(
+  snapshot: EngineeringProjectSnapshot,
+): readonly string[] {
+  const planOrder = workItemPlanOrder(snapshot);
+  const completedOrdersByOperation = new Map<string, number[]>();
+  for (const item of snapshot.workItems) {
+    const key = registeredOperationKey(item);
+    if (
+      !key || item.status !== "completed" || item.evidenceRefs.length === 0
+    ) continue;
+    const existing = completedOrdersByOperation.get(key) ?? [];
+    existing.push(planOrder.get(item.id) ?? Number.POSITIVE_INFINITY);
+    completedOrdersByOperation.set(key, existing);
+  }
+
+  const closed: string[] = [];
+  for (const item of snapshot.workItems) {
+    const key = registeredOperationKey(item);
+    if (
+      !key || item.status !== "ready" || item.evidenceRefs.length !== 0
+    ) continue;
+    const itemOrder = planOrder.get(item.id) ?? Number.POSITIVE_INFINITY;
+    const completedOrders = completedOrdersByOperation.get(key);
+    if (completedOrders?.some((completedOrder) => completedOrder > itemOrder)) {
+      closed.push(item.id);
+    }
+  }
+  return closed;
 }
 
 /**

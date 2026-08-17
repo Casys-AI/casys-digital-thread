@@ -3,903 +3,177 @@
 /* -------------------------------------------------------------------------
    Light atelier palette
 
-   The workbench is a place to review engineering work, not a terminal. The
-   warm paper, graphite ink and restrained copper keep its technical character
-   while letting a new reviewer read the hierarchy without visual fatigue.
+   The workbench is a place to review engineering work,
+not a terminal. The
+   neutral paper and graphite ink keep its technical character while semantic
+   colours remain available for recorded states and focused inspection.
    ------------------------------------------------------------------------- */
 
 .native-preview-body {
   color: var(--text);
-  background:
-    radial-gradient(circle at 50% -20%, rgba(169, 95, 40, 0.08), transparent
-    36rem),
-    var(--bg);
+  background: var(--bg);
 }
-
 .native-preview-shell {
   border-color: var(--line);
   background: var(--surface-0);
-  box-shadow: 0 24px 70px rgba(44, 51, 45, 0.13);
+  box-shadow: none;
 }
-
 .thread-workbench {
-  --mcp-view-text: var(--text);
-  --mcp-view-muted: var(--muted);
-  --mcp-view-border: var(--line);
-  --mcp-view-panel: var(--surface-1);
-  --mcp-view-subtle: var(--surface-2);
-  --mcp-view-accent: var(--amber);
-  --mcp-view-success: var(--green);
-  --mcp-view-warning: var(--amber);
-  --mcp-view-danger: var(--red);
-  --thread-ink: var(--text);
-  --thread-paper: var(--surface-0);
-  --thread-orange: var(--amber);
-  --thread-red: var(--red);
-  --thread-green: var(--green);
-  --thread-blue: var(--cyan);
-  --thread-panel: var(--surface-1);
-  --thread-panel-muted: var(--surface-2);
-  --thread-border: var(--line);
-  --thread-border-strong: var(--line-strong);
-  --thread-muted: var(--muted);
-  --thread-faint: var(--muted);
+  --thread-canvas: #f7f8fa;
+  --thread-paper: #fbfcfd;
+  --thread-panel: #ffffff;
+  --thread-panel-muted: #f2f4f6;
+  --thread-ink: #1c2126;
+  --thread-text: #3a424b;
+  --thread-muted: #5f6773;
+  --thread-faint: #868e99;
+  --thread-border: #e2e5e9;
+  --thread-border-strong: #c6cbd2;
+  --thread-focus: #5e6ad2;
+  --thread-info: #3f68c4;
+  --thread-green: #1a7f4e;
+  --thread-warning: #9a5b12;
+  --thread-red: #c03e38;
+  --mcp-view-text: var(--thread-text);
+  --mcp-view-muted: var(--thread-muted);
+  --mcp-view-border: var(--thread-border);
+  --mcp-view-panel: var(--thread-panel);
+  --mcp-view-subtle: var(--thread-panel-muted);
+  --mcp-view-accent: var(--thread-focus);
+  --mcp-view-success: var(--thread-green);
+  --mcp-view-warning: var(--thread-warning);
+  --mcp-view-danger: var(--thread-red);
+  --thread-orange: var(--thread-warning);
+  --thread-blue: var(--thread-info);
   border-color: var(--thread-border);
-  color: var(--thread-ink);
-  background:
-    radial-gradient(circle at 82% -15%, rgba(169, 95, 40, 0.09), transparent
-    29rem),
-    linear-gradient(rgba(37, 53, 48, 0.032) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(37, 53, 48, 0.032) 1px, transparent 1px),
-    var(--thread-paper);
+  color: var(--thread-text);
+  background: var(--thread-canvas);
 }
-
-.thread-workbench :is(p, small, dt, dd, code, .mcp-view-metric-detail) {
+.thread-workbench :is(p, small, dt, dd, code) {
   color: var(--thread-muted);
 }
-
 .thread-workbench :is(h1, h2, h3, h4, h5, strong, b, .mcp-view-card-title) {
   color: var(--thread-ink);
 }
-
 .thread-workbench button {
   color: var(--thread-ink);
 }
-.thread-workbench :is(.thread-cockpit-header, .project-navigation, .thread-metrics .mcp-view-metric, .thread-operator-contract span, .thread-graph-workspace, .thread-feed-toolbar, .thread-feed-card, .thread-feed-lineage, .thread-feed-lineage > header, .thread-graph-density, .thread-tool-drawer, .thread-tool-drawer > .thread-card.mcp-view-card, .thread-tool-drawer > .thread-inspector-card.mcp-view-card, .thread-tool-drawer > .thread-edge-inspector.mcp-view-card, .thread-card.mcp-view-card, .thread-inspector-card.mcp-view-card, .component-workspace, .component-workspace-header, .component-provider-tabs button, .part-trace-strip, .part-trace-step button, .syson-root-node, .syson-part-grid button, .erp-bom-row, .erp-bom-head, .cad-viewer-shell, .cad-viewer-evidence, .project-objective, .project-phase-rail li, .project-control-panel, .project-evidence-route, .project-technical-record, .project-work-ribbon, .project-operations-panel, .project-work-plan, .decision-center) {
+.thread-workbench :is(.thread-graph-workspace, .thread-feed-lineage, .thread-feed-lineage > header, .thread-graph-density, .thread-tool-drawer) {
   border-color: var(--thread-border);
   background: var(--thread-panel);
 }
-
-.thread-cockpit-header {
-  background:
-    linear-gradient(90deg, rgba(169, 95, 40, 0.09), transparent 38%),
-    var(--thread-panel);
-}
-.thread-cockpit-identity,
-.thread-session-state,
-.thread-session-change,
-.thread-session-facts > div,
-.thread-metrics .mcp-view-metric,
-.project-navigation :is(button, a),
-.project-objective-index,
-.project-status-seal,
-.project-phase-rail li,
-.project-control-panel,
-.project-evidence-route,
-.project-work-ribbon-cell,
-.project-operations-panel > header,
-.project-work-plan > header,
-.project-run-list li,
-.project-tool-matrix article,
-.project-work-item-list article,
-.project-work-item-record,
-.decision-center-header,
-.decision-center-meter,
-.decision-center-meter > div {
-  border-color: var(--thread-border);
-}
-.thread-workbench :is(.thread-session-state small, .thread-session-change small, .thread-session-facts dt, .thread-metrics .mcp-view-metric-label, .thread-metrics .mcp-view-metric-unit, .thread-feed-toolbar small, .thread-feed-time, .thread-feed-copy small, .thread-feed-copy > span, .thread-feed-meta b, .thread-feed-unlinked, .thread-feed-empty, .thread-graph-density, .project-objective-copy blockquote, .project-status-seal span, .project-status-seal small, .project-phase-copy > p, .project-phase-copy dl > div, .project-phase-copy dd, .project-control-record > p, .project-control-empty, .project-control-record > small, .project-evidence-route p, .project-evidence-route small, .project-technical-record, .project-work-ribbon-cell small, .project-run-list span, .project-run-list p, .project-run-list small, .project-tool-matrix article > span, .project-tool-matrix small, .project-work-item-list article > span, .project-work-item-list article small, .project-work-item-list article > b, .decision-center-header > div:nth-child(2) > span, .decision-center-meter dt, .decision-center-meter dd, .decision-agent-preparation-copy small, .decision-review-form > header small, .decision-review-form > small, .decision-approval-journal li span, .decision-approval-journal li p, .decision-queue-form > div small, .decision-center-empty) {
+.thread-workbench :is(.thread-graph-density) {
   color: var(--thread-muted);
 }
-.thread-workbench :is(.thread-coordinate, .thread-section-heading p, .thread-operator-contract b, .thread-feed-lineage header small, .thread-graph-node-system, .thread-graph-edge[data-selected="true"] .thread-graph-edge-label, .project-objective-copy > p, .project-section-label p, .project-evidence-overview > header p, .project-operations-panel > header p, .project-work-plan > header p, .project-control-panel > header span, .project-work-ribbon-cell > span, .decision-center-header p) {
-  color: var(--thread-orange);
+.thread-workbench :is(.thread-feed-lineage header small, .thread-graph-node-system) {
+  color: var(--thread-muted);
 }
-.thread-workbench :is(.thread-operator-contract span, .thread-feed-toolbar, .thread-graph-density, .thread-feed-card, .thread-feed-lineage, .thread-feed-lineage > header, .thread-tool-drawer, .project-technical-record) {
+.thread-workbench .thread-graph-edge[data-selected="true"] .thread-graph-edge-label {
+  color: var(--thread-blue);
+}
+.thread-workbench :is(.thread-graph-density, .thread-feed-lineage, .thread-feed-lineage > header, .thread-tool-drawer) {
   box-shadow: none;
 }
-.thread-feed-toolbar button,
-.thread-graph-density-toggle,
-.thread-inspector-toggle,
-.project-control-panel > button,
-.provider-surface-header > button,
-.cad-available-parts button,
-.decision-secondary-button {
+.thread-graph-density-toggle {
   border-color: var(--thread-border-strong);
   color: var(--thread-ink);
   background: var(--thread-panel);
 }
-.thread-inspector-toggle {
-  min-height: 30px;
-  padding: 0 var(--space-12);
-  border: 1px solid var(--thread-border-strong);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.thread-inspector-toggle:hover,
-.thread-inspector-toggle:focus-visible,
-.thread-feed-toolbar button:hover,
-.thread-feed-toolbar button:focus-visible,
-.thread-graph-density-toggle:hover,
-.project-control-panel > button:hover,
-.provider-surface-header > button:hover,
-.cad-available-parts button:hover {
-  border-color: var(--thread-orange);
-  color: var(--thread-orange);
-  background: #fbf0e5;
-}
-
-.project-navigation {
-  background: rgba(255, 253, 250, 0.96);
-}
-
-.project-navigation :is(button, a) {
-  color: var(--thread-muted);
-}
-
-.project-navigation :is(button, a):hover {
+.thread-graph-density-toggle:hover {
+  border-color: var(--thread-border-strong);
   color: var(--thread-ink);
-  background: #f5f1e9;
+  background: var(--thread-panel-muted);
 }
-
-.project-navigation :is(button, a)[aria-current="page"] {
-  color: var(--thread-ink);
-  background: linear-gradient(90deg, #f8e9dc, transparent);
-  box-shadow: inset 0 -2px 0 var(--thread-orange);
-}
-
-.project-navigation :is(button, a) > span,
-.project-navigation :is(button, a)[aria-current="page"] > span {
-  color: var(--thread-orange);
-}
-
 .thread-graph-workspace {
   overflow: hidden;
-}
-
+} /* Le quadrillage est réservé aux canvas de graphe (Evidence) ; le feed et
+les autres stages restent sur fond plat. */
 .thread-graph-stage {
+  background: transparent;
+}
+.thread-graph-stage-verification {
   background:
-    linear-gradient(rgba(37, 53, 48, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(37, 53, 48, 0.045) 1px, transparent 1px),
-    radial-gradient(circle at 48% 35%, rgba(44, 113, 128, 0.08), transparent
-    32rem),
-    var(--surface-0);
-  background-size: 22px 22px, 22px 22px, auto, auto;
+    linear-gradient(rgba(28, 33, 38, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 33, 38, 0.045) 1px, transparent 1px),
+    var(--thread-panel-muted);
+  background-size: 22px 22px, 22px 22px, auto;
 }
-
-.thread-feed-card:hover,
-.thread-feed-card:focus-visible {
-  border-color: var(--thread-border-strong);
-  background: #f5f1e9;
-}
-
-.thread-feed-entry[data-active="true"] .thread-feed-card {
-  border-color: var(--thread-orange);
-  background: #f9ecdf;
-  box-shadow: inset 3px 0 var(--thread-orange);
-}
-.thread-feed-provider,
-.project-evidence-route > span,
-.project-control-record > span {
-  border-color: var(--thread-border-strong);
-  color: var(--thread-muted);
-  background: var(--thread-panel-muted);
-}
-
-.thread-feed-rail::before,
-.project-phase-node::after {
+.thread-feed-rail::before {
   background: var(--thread-border-strong);
 }
-
 .thread-feed-rail i {
   border-color: var(--thread-panel);
-  background: #93a099;
-  box-shadow: 0 0 0 1px var(--thread-border-strong);
+  background: var(--thread-border-strong);
+  box-shadow: none;
 }
-
 .thread-feed-lineage {
-  background: #f7f5ef;
-}
-
-/* Evidence revision trail -------------------------------------------------
-
-   This is a compact reading record, not a second evidence canvas. The old
-   dark, dense comparison card made immutable identifiers the first thing a
-   reviewer saw. The light treatment starts with the engineering story and
-   keeps exact refs behind a native disclosure for the moment they are useful.
-*/
-
-.thread-workbench .thread-recompute-history {
-  margin: 0 0 var(--space-16);
-  border: 1px solid var(--thread-border);
-  border-left: 3px solid var(--thread-orange);
   background: var(--thread-panel);
 }
-
-/* A correction belongs to the affected item’s open lineage, never above the
-   chronological feed. It starts as a one-line reading aid and expands only
-   when the reviewer asks for the before/after record. */
-.thread-workbench .thread-recompute-context {
-  margin: var(--space-12) 0 0;
-}
-
-.thread-workbench .thread-recompute-cluster {
-  border: 1px solid #d8c4a8;
-  border-left: 3px solid var(--thread-orange);
-  background: #fffaf4;
-}
-
-.thread-workbench .thread-recompute-cluster > header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-12);
-  padding: var(--space-10) var(--space-12) var(--space-6);
-}
-
-.thread-workbench .thread-recompute-cluster > header > div {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-}
-
-.thread-workbench .thread-recompute-cluster > header small {
-  color: var(--thread-orange);
-  font: 700 var(--text-3xs)/1.2 var(--mono);
-  letter-spacing: 0.065em;
-}
-
-.thread-workbench .thread-recompute-cluster > header strong {
-  color: var(--thread-ink);
-  font-family: var(--serif);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.thread-workbench .thread-recompute-cluster > p {
-  margin: 0;
-  padding: 0 var(--space-12) var(--space-10);
-  color: var(--thread-muted);
-  font-size: var(--text-2xs);
-  line-height: 1.45;
-}
-
-.thread-workbench .thread-recompute-cluster > details {
-  border-top: 1px solid #e4d6c3;
-}
-
-.thread-workbench .thread-recompute-cluster > details > summary {
-  padding: var(--space-9) var(--space-12);
-  color: #7c512e;
-  font: 700 var(--text-3xs)/1.3 var(--mono);
-  cursor: pointer;
-}
-
-.thread-workbench .thread-recompute-cluster > details[open] > summary {
-  border-bottom: 1px solid var(--thread-border);
-  background: rgba(169, 95, 40, 0.06);
-}
-
-.thread-workbench .thread-recompute-history > header {
-  align-items: center;
-  padding: var(--space-12) var(--space-14);
-  border-bottom-color: var(--thread-border);
-  background: linear-gradient(90deg, rgba(169, 95, 40, 0.075), transparent 52%);
-}
-
-.thread-workbench .thread-recompute-history > header > div {
-  gap: var(--space-4);
-}
-
-.thread-workbench .thread-recompute-history > header small,
-.thread-workbench .thread-recompute-transition-heading small,
-.thread-workbench .thread-recompute-pending small,
-.thread-workbench .thread-recompute-changes > span,
-.thread-workbench .thread-recompute-unaffected > span {
-  color: var(--thread-orange);
-}
-
-.thread-workbench .thread-recompute-history > header strong {
-  max-width: 45rem;
-  color: var(--thread-ink);
-  font-family: var(--serif);
-  font-size: var(--text-lg);
-  font-weight: 600;
-  line-height: 1.2;
-}
-
-.thread-workbench .thread-recompute-history > header > span {
-  padding: var(--space-4) var(--space-8);
-  border: 1px solid var(--thread-border);
-  color: var(--thread-muted);
-  background: rgba(255, 253, 250, 0.72);
-  font-size: var(--text-3xs);
-}
-
-.thread-workbench .thread-recompute-list > li {
-  padding: var(--space-14);
-  border-bottom-color: var(--thread-border);
-  background: transparent;
-}
-
-.thread-workbench .thread-recompute-list > li[data-active="true"] {
-  background: linear-gradient(90deg, rgba(169, 95, 40, 0.075), transparent 66%);
-}
-
-.thread-workbench .thread-recompute-list > li[data-state="recomputing"] {
-  border-left-color: var(--amber);
-}
-
-.thread-workbench .thread-recompute-list > li[data-state="failed"] {
-  border-left-color: var(--red);
-}
-
-.thread-workbench .thread-recompute-transition-heading {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: var(--space-12);
-  margin-bottom: var(--space-12);
-}
-
-.thread-workbench .thread-recompute-transition-heading > div {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.thread-workbench .thread-recompute-transition-heading strong {
-  color: var(--thread-ink);
-  font-family: var(--serif);
-  font-size: var(--text-md);
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.thread-workbench .thread-recompute-status {
-  align-self: start;
-  padding: var(--space-4) var(--space-8);
-  border: 1px solid var(--thread-border-strong);
-  color: var(--thread-ink);
-  background: var(--thread-panel-muted);
-  font: 700 var(--text-3xs)/1.1 var(--mono);
-  letter-spacing: 0.055em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.thread-workbench .thread-recompute-status[data-tone="published"] {
-  border-color: rgba(54, 117, 83, 0.42);
-  color: #275d42;
-  background: var(--green-dim);
-}
-
-.thread-workbench .thread-recompute-status[data-tone="recorded"] {
-  border-color: rgba(169, 95, 40, 0.38);
-  color: #7c512e;
-  background: #fff1df;
-}
-
-.thread-workbench .thread-recompute-status[data-tone="running"],
-.thread-workbench .thread-recompute-status[data-tone="awaiting"] {
-  border-color: rgba(163, 91, 39, 0.38);
-  color: #884615;
-  background: var(--amber-dim);
-}
-
-.thread-workbench .thread-recompute-status[data-tone="failed"] {
-  border-color: rgba(182, 69, 61, 0.38);
-  color: #95342e;
-  background: var(--red-dim);
-}
-
-.thread-workbench .thread-recompute-story-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  margin: 0 0 var(--space-12);
-  border: 1px solid var(--thread-border);
-  background: var(--thread-border);
-}
-
-.thread-workbench .thread-recompute-story-facts > div {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-  padding: var(--space-10) var(--space-12);
-  background: rgba(255, 253, 250, 0.84);
-}
-
-.thread-workbench .thread-recompute-story-facts dt {
-  color: var(--thread-muted);
-  font: 700 var(--text-3xs)/1.1 var(--mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.thread-workbench .thread-recompute-story-facts dd {
-  margin: 0;
-  color: var(--thread-ink);
-  font-size: var(--text-xs);
-  line-height: 1.42;
-}
-
-.thread-workbench .thread-recompute-story-facts button {
-  padding: 0;
-  border: 0;
-  color: var(--thread-ink);
-  font: inherit;
-  font-weight: 700;
-  text-align: left;
-  text-decoration: underline;
-  text-decoration-color: rgba(169, 95, 40, 0.45);
-  text-underline-offset: 0.18em;
-  background: transparent;
-  cursor: pointer;
-}
-
-.thread-workbench .thread-recompute-story-facts button:hover,
-.thread-workbench .thread-recompute-story-facts button:focus-visible {
-  color: var(--thread-orange);
-}
-
-.thread-workbench .thread-recompute-path {
-  grid-template-columns: minmax(0, 1fr) 5.25rem minmax(0, 1fr);
-  gap: var(--space-8);
-  align-items: center;
-  margin: 0;
-}
-
-.thread-workbench .thread-recompute-evidence {
-  gap: var(--space-4);
-  padding: var(--space-10) var(--space-12);
-  border-color: var(--thread-border);
-  color: var(--thread-ink);
-  background: var(--thread-panel);
-}
-
-.thread-workbench .thread-recompute-evidence[data-role="historic"],
-.thread-workbench .thread-recompute-evidence[data-role="stale"] {
-  border-color: #d8c4a8;
-  background: #fff8ee;
-}
-
-.thread-workbench .thread-recompute-evidence[data-role="current"][data-freshness="fresh"] {
-  border-color: #b8d3bf;
-  background: #f0f7f0;
-}
-
-.thread-workbench .thread-recompute-evidence[data-freshness="running"] {
-  border-color: #d8b888;
-  background: #fff8ed;
-}
-
-.thread-workbench .thread-recompute-evidence[data-freshness="failed"] {
-  border-color: #deb1ac;
-  background: #fff4f2;
-}
-
-.thread-workbench .thread-recompute-evidence:hover,
-.thread-workbench .thread-recompute-evidence:focus-visible {
-  border-color: var(--thread-orange);
-  background: #fff1e4;
-}
-
-.thread-workbench .thread-recompute-evidence strong {
-  color: var(--thread-ink);
-  font-size: var(--text-xs);
-  line-height: 1.25;
-  white-space: normal;
-}
-
-.thread-workbench .thread-recompute-evidence > span {
-  overflow: visible;
-  color: var(--thread-muted);
-  font: var(--text-3xs)/1.35 var(--mono);
-  text-overflow: clip;
-  white-space: normal;
-}
-
-.thread-workbench .thread-recompute-bridge {
-  gap: var(--space-4);
-  padding: 0;
-}
-
-.thread-workbench .thread-recompute-bridge::before {
-  margin: 0;
-  background: linear-gradient(90deg, #caa271, var(--thread-orange), #75a384);
-}
-
-.thread-workbench .thread-recompute-bridge span {
-  color: var(--thread-muted);
-  font-size: var(--text-3xs);
-  letter-spacing: 0.04em;
-}
-
-.thread-workbench .thread-recompute-changes,
-.thread-workbench .thread-recompute-unaffected {
-  margin-top: var(--space-12);
-  color: var(--thread-muted);
-}
-
-.thread-workbench .thread-recompute-changes button {
-  color: var(--thread-ink);
-  font-family: var(--sans);
-  text-decoration-color: var(--thread-orange);
-}
-
-.thread-workbench .thread-recompute-unaffected b {
-  border-color: var(--thread-border);
-  color: #426858;
-  background: #f1f6f1;
-}
-
-.thread-workbench .thread-recompute-technical,
-.thread-workbench .thread-recompute-snapshot-history {
-  margin-top: var(--space-12);
-  border-top: 1px solid var(--thread-border);
-  color: var(--thread-muted);
-}
-
-.thread-workbench .thread-recompute-technical > summary,
-.thread-workbench .thread-recompute-snapshot-history > summary {
-  padding: var(--space-10) 0;
-  color: var(--thread-muted);
-  font: 700 var(--text-3xs)/1.3 var(--mono);
-  cursor: pointer;
-}
-
-.thread-workbench .thread-recompute-technical > summary:hover,
-.thread-workbench .thread-recompute-technical > summary:focus-visible,
-.thread-workbench .thread-recompute-snapshot-history > summary:hover,
-.thread-workbench .thread-recompute-snapshot-history > summary:focus-visible {
-  color: var(--thread-orange);
-}
-
-.thread-workbench .thread-recompute-technical > dl {
-  display: grid;
-  gap: var(--space-6);
-  margin: 0 0 var(--space-10);
-}
-
-.thread-workbench .thread-recompute-technical > dl > div {
-  display: grid;
-  grid-template-columns: minmax(8rem, 0.4fr) minmax(0, 1fr);
-  gap: var(--space-10);
-}
-
-.thread-workbench .thread-recompute-technical dt,
-.thread-workbench .thread-recompute-technical dd,
-.thread-workbench .thread-recompute-snapshot-history li {
-  margin: 0;
-  color: var(--thread-muted);
-  font: var(--text-3xs)/1.35 var(--mono);
-}
-
-.thread-workbench .thread-recompute-technical code,
-.thread-workbench .thread-recompute-snapshot-history code {
-  overflow-wrap: anywhere;
-  color: #52645c;
-}
-
-.thread-workbench .thread-recompute-snapshot-history {
-  margin: 0;
-  padding: 0 var(--space-14);
-  border-bottom: 1px solid var(--thread-border);
+.thread-feed-lineage > header {
   background: var(--thread-panel-muted);
 }
-
-.thread-workbench .thread-recompute-snapshot-history > ul {
-  display: grid;
-  gap: var(--space-4);
-  margin: 0 0 var(--space-10);
-  padding-left: var(--space-16);
-}
-
-.thread-workbench .thread-recompute-pending {
-  display: grid;
-  gap: var(--space-10);
-  padding: var(--space-14);
-  border-top: 1px solid #d8c4a8;
-  background: #fff9f0;
-}
-
-.thread-workbench .thread-recompute-pending > header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-12);
-}
-
-.thread-workbench .thread-recompute-pending > header > div {
-  display: grid;
-  gap: var(--space-4);
-}
-
-.thread-workbench .thread-recompute-pending strong {
-  color: var(--thread-ink);
-  font-family: var(--serif);
-  font-size: var(--text-md);
-  font-weight: 600;
-}
-
-.thread-workbench .thread-recompute-pending > p {
-  max-width: 44rem;
-  margin: 0;
-  color: var(--thread-muted);
-  font-size: var(--text-xs);
-  line-height: 1.45;
-}
-
-.thread-workbench .thread-recompute-pending-records {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-@media (width <= 720px) {
-  .thread-workbench .thread-recompute-history > header,
-  .thread-workbench .thread-recompute-pending > header {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .thread-workbench .thread-recompute-story-facts {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .thread-workbench .thread-recompute-transition-heading {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .thread-workbench .thread-recompute-path {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .thread-workbench .thread-recompute-bridge {
-    min-height: 1.4rem;
-  }
-
-  .thread-workbench .thread-recompute-technical > dl > div {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-2);
-  }
-}
-
-.thread-feed-lineage > header,
-.thread-inspector-card.mcp-view-card {
-  background: var(--thread-panel-muted);
-}
-
 .thread-graph-component-boundary,
 .thread-feed-lineage .thread-graph-component-boundary {
   fill: transparent;
-  stroke: #c8ccc5;
+  stroke: var(--thread-border-strong);
 }
-
 .thread-graph-component-label,
 .thread-feed-lineage .thread-graph-component-label {
-  fill: #65746e;
+  fill: var(--thread-muted);
 }
-
 .thread-graph-edge-line {
   fill: none;
-  stroke: #8b9791;
+  stroke: var(--thread-border-strong);
 }
-
 .thread-graph-arrow path {
   fill: context-stroke;
   stroke: none;
 }
-
 .thread-graph-edge-label {
-  fill: #53625c;
+  fill: var(--thread-muted);
   stroke: var(--surface-0);
 }
-
 .thread-graph-node-body {
   fill: var(--surface-1);
-  stroke: #b8c0b8;
+  stroke: var(--thread-border-strong);
 }
-
 .thread-graph-node:hover .thread-graph-node-body,
 .thread-graph-node:focus-visible .thread-graph-node-body {
-  fill: #fff6ed;
-  stroke: var(--thread-orange);
+  fill: var(--thread-panel-muted);
+  stroke: var(--thread-focus);
 }
-
 .thread-graph-node[data-selected="true"] .thread-graph-node-body {
-  fill: #f9e9dc;
+  fill: var(--thread-panel-muted);
 }
-
 .thread-graph-node[data-kind="consumption"] .thread-graph-node-body,
 .thread-graph-node[data-kind="action"] .thread-graph-node-body {
-  fill: #f2f4ef;
+  fill: var(--thread-panel-muted);
 }
-
 .thread-graph-node[data-kind="requirement"] .thread-graph-node-body {
-  fill: #fff7ed;
+  fill: var(--thread-panel-muted);
 }
-
 .thread-graph-node-system,
 .thread-graph-node-kind,
 .thread-graph-node-summary {
-  fill: #65746e;
+  fill: var(--thread-muted);
 }
-
 .thread-graph-node-label {
   fill: var(--thread-ink);
 }
-
-.thread-graph-density,
-.thread-feed-toolbar,
-.thread-operator-contract span {
+.thread-graph-density {
   color: var(--thread-muted);
 }
-.project-control-grid,
-.project-evidence-routes,
-.project-work-ribbon,
-.project-technical-record,
-.decision-center {
-  border-color: var(--thread-border);
-}
-.project-evidence-route:hover {
-  background: #f5f1e9;
-  box-shadow: inset 0 -2px var(--thread-orange);
-}
-.project-objective {
-  background:
-    linear-gradient(115deg, rgba(169, 95, 40, 0.09), transparent 35%),
-    var(--thread-panel);
-}
-
-.project-status-seal {
-  background: #f5f2eb;
-}
-.project-phase-rail li[data-state="active"],
-.project-control-record[data-state="waiting-for-decision"] > span,
-.project-control-record[data-state="blocked"] > span {
-  border-color: rgba(169, 95, 40, 0.52);
-}
-
-.project-phase-rail li[data-state="active"] .project-phase-copy > small,
-.project-control-record[data-state="waiting-for-decision"] > span,
-.project-control-record[data-state="blocked"] > span,
-.project-work-ribbon-cell.is-human > span,
-.thread-session-facts dd[data-project-tone="attention"] {
-  color: var(--thread-orange);
-}
-
-.project-phase-rail li[data-state="completed"] .project-phase-copy > small,
-.thread-session-facts dd[data-project-tone="active"],
-.thread-session-facts dd[data-project-tone="complete"],
-.decision-center-meter [data-tone="complete"] dd {
-  color: var(--thread-green);
-}
-
-.project-phase-rail li[data-state="blocked"] .project-phase-copy > small,
-.project-work-ribbon-cell.is-blocker > span,
-.thread-session-facts dd[data-project-tone="blocked"] {
-  color: var(--thread-red);
-}
-
-.component-workspace-header {
-  background: linear-gradient(90deg, #f8f0e7, #fdfbf6);
-}
-
-.compact-identifier-copy,
-.cad-sealed-assembly-actions > a,
-.cad-sealed-assembly-actions > button {
+.compact-identifier-copy {
   border-color: var(--thread-border-strong);
   color: var(--thread-ink);
   background: var(--thread-panel);
 }
-
-.compact-identifier-copy:hover,
-.cad-sealed-assembly-actions > a:hover,
-.cad-sealed-assembly-actions > button:hover {
-  border-color: var(--thread-orange);
-  color: var(--thread-orange);
-  background: #fbf0e5;
-}
-
-.cad-sealed-assembly {
-  border-color: #9eb7a5;
-  border-left-color: var(--thread-green);
-  background: var(--green-dim);
-}
-
-.thread-workbench .cad-sealed-assembly-copy > span {
-  color: var(--thread-green);
-}
-
-.cad-geometry-blocker {
-  border-color: #c18b5a;
-  background: var(--amber-dim);
-}
-
-.cad-sealed-summary,
-.cad-mesh-pending {
+.compact-identifier-copy:hover {
   border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
   background: var(--thread-panel-muted);
 }
 
-.component-revision-link {
-  border-color: var(--thread-border);
-  color: var(--thread-ink);
-  background: #fff8ee;
-}
-
-.component-provider-tabs button[aria-selected="true"],
-.part-trace-step button[aria-current="true"],
-.syson-part-grid button.is-selected,
-.syson-root-node.is-selected,
-.erp-bom-row.is-selected {
-  color: var(--thread-ink);
-  background: #e7f0e9;
-  box-shadow: inset 3px 0 var(--thread-green);
-}
-
-.cad-viewer-shell {
-  background: #edf0eb;
-}
-
-.cad-viewer-state,
-.cad-axis i {
-  border-color: var(--thread-border-strong);
-  color: var(--thread-muted);
-  background: rgba(255, 253, 250, 0.88);
-}
-
-.cad-trace-gap,
-.component-empty {
-  border-color: #d7c5aa;
-  background: radial-gradient(circle, #fff9ef, var(--surface-2) 66%);
-}
-
-.decision-center {
-  color: var(--thread-ink);
-  background:
-    linear-gradient(130deg, rgba(169, 95, 40, 0.08), transparent 30%),
-    var(--thread-panel);
-}
-.decision-review-brief[data-state="proposed"] {
-  background: #fff5e9;
-}
-.decision-secondary-button:disabled {
-  border-color: #d6d8d2;
-  color: #8a948e;
-  background: #ecece7;
-}
-
-/* Keep the preview transport present, but let the work itself own the page. */
-.native-preview-header {
-  border-bottom-color: var(--line);
-  color: var(--text);
-  background: var(--surface-0);
-  box-shadow: inset 0 2px 0 var(--text);
-}
-
-.native-preview-header small {
-  color: var(--amber);
-}
-
-.native-preview-header h1 {
-  color: var(--text);
-}
-
-.native-preview-header p {
-  color: var(--muted);
-}
-
-.native-preview-brand {
-  border-color: var(--amber);
-  color: var(--amber);
-}
+/* Keep the preview transport present, but let the work itself own the page.
+   No accent colour here: the transport is a neutral frame, not a brand
+   moment competing with the recorded project it hosts. */

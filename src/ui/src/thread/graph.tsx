@@ -1,7 +1,5 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
-import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import type { JSX } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   canvasComponentRowWidth,
   graphViewport,
@@ -72,7 +70,7 @@ export interface ThreadGraphProps {
    * Optional component frame title resolver. Called with all visible nodes
    * inside each layout component and the component index.
    *
-   * When omitted the canvas falls back to "LINKED EVIDENCE" (single component)
+   * When omitted the canvas falls back to "Linked evidence" (single component)
    * or "EVIDENCE COMPONENT NN" (multiple components).
    *
    * Pass `makeEvidenceComponentLabeler(model, ...)` from evidence-canvas-model
@@ -227,7 +225,7 @@ export function ThreadGraph({
 
   if (layout.nodes.length === 0) {
     return (
-      <div class="thread-graph-empty" role="status">
+      <div className="thread-graph-empty" role="status">
         {emptyLabel}
       </div>
     );
@@ -329,7 +327,7 @@ export function ThreadGraph({
 
   return (
     <figure
-      class="thread-graph"
+      className="thread-graph"
       data-focused={focusedRef ? "true" : "false"}
       data-components={layout.components.length}
       data-density={showingSupporting ? "complete" : "essential"}
@@ -338,7 +336,7 @@ export function ThreadGraph({
       data-panning={panning ? "true" : "false"}
     >
       {presentation === "canvas" && (
-        <div class="thread-graph-controls" aria-label="Graph view controls">
+        <div className="thread-graph-controls" aria-label="Graph view controls">
           <span aria-live="polite">
             {Math.round(viewport.zoom * 100)}% · {layout.nodes.length}{" "}
             recorded facts
@@ -380,7 +378,7 @@ export function ThreadGraph({
       {showDensityControl && (projection.hiddenNodeCount > 0 ||
         (showingSupporting && projection.supportingCount > 0)) &&
         (
-          <div class="thread-graph-density">
+          <div className="thread-graph-density">
             <span>
               {showingSupporting
                 ? `All ${nodes.length} evidence nodes are visible.`
@@ -390,7 +388,7 @@ export function ThreadGraph({
             </span>
             <button
               type="button"
-              class="thread-graph-density-toggle"
+              className="thread-graph-density-toggle"
               aria-pressed={showingSupporting}
               onClick={() => {
                 const next = !showingSupporting;
@@ -406,9 +404,9 @@ export function ThreadGraph({
             </button>
           </div>
         )}
-      <div class="thread-graph-viewport" ref={viewportElement}>
+      <div className="thread-graph-viewport" ref={viewportElement}>
         <svg
-          class="thread-graph-canvas"
+          className="thread-graph-canvas"
           viewBox={`${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`}
           preserveAspectRatio="xMidYMid meet"
           role="group"
@@ -476,7 +474,7 @@ export function ThreadGraph({
           <defs>
             <marker
               id={`${markerPrefix}-arrow`}
-              class="thread-graph-arrow"
+              className="thread-graph-arrow"
               markerWidth="8"
               markerHeight="8"
               refX="7"
@@ -495,20 +493,20 @@ export function ThreadGraph({
             const label = componentLabeler
               ? componentLabeler(componentNodes, component.id)
               : layout.components.length > 1
-              ? `EVIDENCE COMPONENT ${
+              ? `Evidence component ${
                 String(component.id + 1).padStart(2, "0")
               }`
-              : "LINKED EVIDENCE";
+              : "Linked evidence";
             return (
               <g
                 key={component.id}
-                class="thread-graph-component"
+                className="thread-graph-component"
                 data-disconnected={layout.components.length > 1
                   ? "true"
                   : "false"}
               >
                 <rect
-                  class="thread-graph-component-boundary"
+                  className="thread-graph-component-boundary"
                   x={component.x}
                   y={component.y}
                   width={component.width}
@@ -516,7 +514,7 @@ export function ThreadGraph({
                   rx="12"
                 />
                 <text
-                  class="thread-graph-component-label"
+                  className="thread-graph-component-label"
                   x={component.x + THREAD_GRAPH_COMPONENT_PADDING_X}
                   y={component.y + 21}
                 >
@@ -526,7 +524,7 @@ export function ThreadGraph({
             );
           })}
 
-          <g class="thread-graph-edges" aria-label="Explicit relations">
+          <g className="thread-graph-edges" aria-label="Explicit relations">
             {layout.edges.map((item, index) => {
               const occurrenceKey = positionedEdgeOccurrenceKey(
                 item,
@@ -558,9 +556,9 @@ export function ThreadGraph({
                       edgeElements.current.delete(occurrenceKey);
                     }
                   }}
-                  class="thread-graph-edge"
+                  className="thread-graph-edge"
                   role={selectable ? "button" : undefined}
-                  tabindex={selectable ? (isKeyboardEdge ? 0 : -1) : undefined}
+                  tabIndex={selectable ? (isKeyboardEdge ? 0 : -1) : undefined}
                   aria-label={`${
                     relationLabel(item.edge.relation)
                   }: ${item.source.node.label} to ${item.target.node.label}. ${item.edge.rationale}${
@@ -612,16 +610,16 @@ export function ThreadGraph({
                     }`}
                   </title>
                   <path
-                    class="thread-graph-edge-line"
+                    className="thread-graph-edge-line"
                     d={item.path}
                     marker-end={`url(#${markerPrefix}-arrow)`}
                   />
-                  <path class="thread-graph-edge-hit" d={item.path} />
+                  <path className="thread-graph-edge-hit" d={item.path} />
                   <text
-                    class="thread-graph-edge-label"
+                    className="thread-graph-edge-label"
                     x={item.labelX}
                     y={item.labelY}
-                    text-anchor="middle"
+                    textAnchor="middle"
                   >
                     {relationLabel(item.edge.relation)}
                   </text>
@@ -630,7 +628,7 @@ export function ThreadGraph({
             })}
           </g>
 
-          <g class="thread-graph-nodes" aria-label="Evidence nodes">
+          <g className="thread-graph-nodes" aria-label="Evidence nodes">
             {layout.nodes.map((item, index) => {
               const key = threadGraphRefKey(item.node.ref);
               const selected = selection?.kind === "node" &&
@@ -648,10 +646,10 @@ export function ThreadGraph({
                     if (element) nodeElements.current.set(key, element);
                     else nodeElements.current.delete(key);
                   }}
-                  class="thread-graph-node"
+                  className="thread-graph-node"
                   transform={`translate(${item.x} ${item.y})`}
                   role="button"
-                  tabindex={isKeyboardNode ? 0 : -1}
+                  tabIndex={isKeyboardNode ? 0 : -1}
                   aria-label={`${item.node.system}, ${item.node.label}. ${item.node.summary}`}
                   aria-pressed={selected}
                   data-kind={item.node.ref.kind}
@@ -707,31 +705,31 @@ export function ThreadGraph({
                 >
                   <title>{item.node.summary}</title>
                   <rect
-                    class="thread-graph-node-body"
+                    className="thread-graph-node-body"
                     width={THREAD_GRAPH_NODE_WIDTH}
                     height={THREAD_GRAPH_NODE_HEIGHT}
                     rx="10"
                   />
                   <circle
-                    class="thread-graph-node-state"
+                    className="thread-graph-node-state"
                     cx="14"
                     cy="16"
                     r="4"
                   />
-                  <text class="thread-graph-node-system" x="25" y="20">
+                  <text className="thread-graph-node-system" x="25" y="20">
                     {truncate(item.node.system.toUpperCase(), 27)}
                   </text>
-                  <text class="thread-graph-node-label" x="14" y="46">
+                  <text className="thread-graph-node-label" x="14" y="46">
                     {truncate(item.node.label, 31)}
                   </text>
-                  <text class="thread-graph-node-summary" x="14" y="66">
+                  <text className="thread-graph-node-summary" x="14" y="66">
                     {truncate(item.node.summary, 38)}
                   </text>
                   <text
-                    class="thread-graph-node-kind"
+                    className="thread-graph-node-kind"
                     x={THREAD_GRAPH_NODE_WIDTH - 12}
                     y="20"
-                    text-anchor="end"
+                    textAnchor="end"
                   >
                     {item.node.evaluationFamily === "study-base"
                       ? "study-base"
@@ -745,13 +743,13 @@ export function ThreadGraph({
       </div>
 
       {layout.components.length > 1 && (
-        <figcaption class="thread-graph-caption">
+        <figcaption className="thread-graph-caption">
           Separate frames are intentional: no canonical relation currently
           connects these evidence components.
         </figcaption>
       )}
       {layout.unresolvedEdgeIds.length > 0 && (
-        <p class="thread-graph-notice" role="status">
+        <p className="thread-graph-notice" role="status">
           {layout.unresolvedEdgeIds.length}{" "}
           relation{layout.unresolvedEdgeIds.length === 1 ? "" : "s"}{" "}
           not drawn because an endpoint is absent from this snapshot.

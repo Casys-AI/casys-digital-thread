@@ -7,7 +7,6 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "preact",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,

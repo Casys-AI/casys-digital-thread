@@ -1,215 +1,66 @@
 /* Baseline documentaire et demarrage technique. */
 
-/* Documentary baseline --------------------------------------------------
-
-   One durable document is useful provenance, but it is not a miniature
-   evidence dashboard. The surface therefore remains deliberately quiet:
-   make the boundary readable first, and move exact hashes and storage details
-   behind an explicit disclosure. */
-
-.documentary-baseline-notice {
-  display: grid;
-  grid-template-columns: 50px minmax(0, 1fr);
-  gap: var(--space-14);
-  align-items: start;
-  padding: var(--space-16) var(--space-18);
-  border: 1px solid var(--thread-border);
-  border-left: 3px solid var(--thread-green);
-  background: #eef6ef;
-}
-
-.documentary-baseline-mark {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border: 1px solid #96bd9f;
-  color: #245b3b;
-  background: #dceee0;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.08em;
-}
-
-.documentary-baseline-notice p,
-.documentary-record-card > header p,
-.documentary-boundary-card > p,
 .documentary-next-step p:first-child {
   margin: 0 0 var(--space-6);
-  color: var(--thread-green);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.1em;
+  color: var(--thread-muted);
+  font: 600 var(--text-2xs)/1.2 var(--sans);
+  letter-spacing: 0.025em;
 }
-
-.documentary-baseline-notice h3,
-.documentary-record-card h3,
-.documentary-boundary-card h3,
 .documentary-next-step h3 {
   margin: 0;
   color: var(--thread-ink);
-  font: 500 clamp(1rem, 1.8vw, 1.36rem)/1.12 var(--serif);
-}
-
-.documentary-baseline-notice span {
-  display: block;
-  max-width: 780px;
-  margin-top: var(--space-6);
-  color: var(--thread-muted);
-  font-size: var(--text-2xs);
-  line-height: 1.55;
-}
-
-/* A compact live feed for the bounded r1 -> r2 SysON container transition.
-   It intentionally sits beside the documentary record rather than turning
-   that record into a generic technical evidence dashboard. */
+  font: 600 clamp(1rem, 1.6vw, 1.25rem)/1.2 var(--sans);
+} /* A compact live feed for the bounded r1 -> r2 SysON container transition.
+It intentionally sits beside the documentary record rather than turning
+that record into a generic technical evidence dashboard. */
 .documentary-technical-start {
   overflow: hidden;
   border: 1px solid var(--thread-border);
-  border-left: 3px solid #5788a8;
-  background: #f5f9fc;
+  background: var(--thread-panel);
 }
-
 .documentary-technical-start[data-state="failed"] {
-  border-left-color: var(--thread-orange);
-  background: #fffaf4;
+  border-left: 3px solid var(--thread-red);
+  background: var(--thread-panel);
 }
-
 .documentary-technical-start > header {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: var(--space-16);
   padding: var(--space-16) var(--space-18) var(--space-12);
-  border-bottom: 1px solid rgba(103, 134, 155, 0.24);
+  border-bottom: 1px solid var(--thread-border);
 }
-
 .documentary-technical-start > header p,
-.documentary-technical-start article small,
-.documentary-technical-start footer {
+.documentary-technical-start article small {
   margin: 0 0 var(--space-6);
-  color: #477593;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.1em;
+  color: var(--thread-muted);
+  font: 600 var(--text-2xs)/1.2 var(--sans);
+  letter-spacing: 0.025em;
 }
-
 .documentary-technical-start > header h3 {
   margin: 0;
   color: var(--thread-ink);
-  font: 500 clamp(0.98rem, 1.6vw, 1.22rem)/1.13 var(--serif);
+  font: 600 clamp(0.98rem, 1.4vw, 1.16rem)/1.2 var(--sans);
 }
-
-.documentary-technical-start-state {
-  flex: 0 0 auto;
-  padding: var(--space-6) var(--space-8);
-  border: 1px solid #8baec3;
-  color: #285a7a;
-  background: #e8f2f8;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.07em;
-}
-
-.documentary-technical-start[data-state="failed"] .documentary-technical-start-state {
-  border-color: #d7a16f;
-  color: #8a4a1f;
-  background: #fff0df;
-}
-
-.documentary-technical-start-message,
-.documentary-technical-start-empty {
-  margin: 0;
-  padding: var(--space-12) var(--space-18);
-  color: var(--thread-muted);
-  font-size: var(--text-xs);
-  line-height: 1.55;
-}
-
-.documentary-technical-start-feed {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  padding: var(--space-2) var(--space-18) var(--space-12);
-  list-style: none;
-}
-
-.documentary-technical-start-feed > li {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: var(--space-12);
-  min-width: 0;
-}
-
-.documentary-technical-start-rail {
-  position: relative;
-  display: flex;
-  justify-content: center;
-}
-
-.documentary-technical-start-rail::before {
-  position: absolute;
-  top: 0;
-  bottom: -0.9rem;
-  width: 1px;
-  background: #b8ccda;
-  content: "";
-}
-
-.documentary-technical-start-feed > li:last-child .documentary-technical-start-rail::before {
-  bottom: 50%;
-}
-
-.documentary-technical-start-rail i {
-  z-index: 1;
-  width: 9px;
-  height: 9px;
-  margin-top: var(--space-18);
-  border: 2px solid #6e98b2;
-  border-radius: 999px;
-  background: #f5f9fc;
-}
-
-.documentary-technical-start-feed > li[data-state="running"] .documentary-technical-start-rail i {
-  border-color: #2b6c97;
-  background: #2b6c97;
-  box-shadow: 0 0 0 4px rgba(43, 108, 151, 0.12);
-}
-
-.documentary-technical-start-feed > li[data-state="failed"] .documentary-technical-start-rail i {
-  border-color: var(--thread-orange);
-  background: var(--thread-orange);
-}
-
 .documentary-technical-start article {
   min-width: 0;
   margin: var(--space-8) 0;
   padding: var(--space-12) var(--space-12);
-  border: 1px solid rgba(103, 134, 155, 0.25);
+  border: 1px solid var(--thread-border);
   background: var(--thread-panel);
 }
-
 .documentary-technical-start article > header {
   display: grid;
   grid-template-columns: 25px minmax(0, 1fr) auto;
   gap: var(--space-10);
   align-items: center;
 }
-
-.documentary-technical-start-provider {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  color: #285a7a;
-  background: #e5f0f7;
-  font: 800 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.04em;
-}
-
 .documentary-technical-start article small {
   display: block;
   margin-bottom: var(--space-2);
-  color: #477593;
+  color: var(--thread-muted);
   font-size: var(--text-3xs);
 }
-
 .documentary-technical-start article strong {
   display: block;
   overflow: hidden;
@@ -218,155 +69,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .documentary-technical-start article time {
   color: var(--thread-muted);
   font: 600 var(--text-3xs)/1 var(--mono);
   white-space: nowrap;
 }
-
 .documentary-technical-start article > p {
   margin: var(--space-8) 0 0 31px;
   color: var(--thread-muted);
   font-size: var(--text-2xs);
   line-height: 1.45;
 }
-
-.documentary-technical-start article > p.documentary-technical-start-relation {
-  margin-top: var(--space-8);
-  color: #477593;
-  font: 600 var(--text-3xs)/1.35 var(--mono);
-}
-
 .documentary-technical-start footer {
   display: block;
   margin: 0;
   padding: var(--space-12) var(--space-18);
-  border-top: 1px solid rgba(103, 134, 155, 0.22);
+  border-top: 1px solid var(--thread-border);
   color: var(--thread-muted);
   font: 500 var(--text-3xs)/1.5 var(--mono);
   letter-spacing: 0.015em;
 }
-.documentary-record-card {
-  border: 1px solid var(--thread-border);
-  background: var(--thread-panel);
-}
-
-.documentary-record-card > header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: var(--space-16);
-  padding: var(--space-16) var(--space-18) var(--space-14);
-  border-bottom: 1px solid var(--thread-border);
-  background: linear-gradient(90deg, rgba(54, 117, 83, 0.08), transparent 44%);
-}
-
-.documentary-record-card > header h3 {
-  font-size: clamp(0.96rem, 1.6vw, 1.22rem);
-}
-
-.documentary-record-state {
-  flex: 0 0 auto;
-  padding: var(--space-6) var(--space-8);
-  border: 1px solid #96bd9f;
-  color: #245b3b;
-  background: #eef6ef;
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.07em;
-}
-
-.documentary-record-facts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0;
-  margin: 0;
-}
-
-.documentary-record-facts > div {
-  min-width: 0;
-  padding: var(--space-14) var(--space-18);
-  border-right: 1px solid var(--thread-border);
-}
-
-.documentary-record-facts > div:last-child {
-  border-right: 0;
-}
-
-.documentary-record-facts dt {
-  margin: 0;
-  color: var(--thread-muted);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.055em;
-  text-transform: uppercase;
-}
-
-.documentary-record-facts dd {
-  margin: var(--space-6) 0 0;
-  overflow: hidden;
-  color: var(--thread-ink);
-  font-size: var(--text-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.documentary-boundary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-16);
-}
-
-.documentary-boundary-card {
-  min-width: 0;
-  padding: var(--space-18);
-  border: 1px solid var(--thread-border);
-  background: var(--thread-panel);
-}
-
-.documentary-boundary-card.is-recorded {
-  border-top: 3px solid var(--thread-green);
-}
-
-.documentary-boundary-card.is-not-evidence {
-  border-top: 3px solid var(--thread-orange);
-  background: #fffaf4;
-}
-
-.documentary-boundary-card.is-not-evidence > p {
-  color: var(--thread-orange);
-}
-
-.documentary-boundary-card h3 {
-  font-size: clamp(0.94rem, 1.45vw, 1.12rem);
-}
-
-.documentary-boundary-card ul {
-  display: grid;
-  gap: var(--space-8);
-  margin: var(--space-12) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.documentary-boundary-card li {
-  position: relative;
-  padding-left: var(--space-14);
-  color: var(--thread-muted);
-  font-size: var(--text-2xs);
-  line-height: 1.45;
-}
-
-.documentary-boundary-card li::before {
-  position: absolute;
-  left: 0;
-  color: var(--thread-green);
-  content: "•";
-}
-
-.documentary-boundary-card.is-not-evidence li::before {
-  color: var(--thread-orange);
-}
-
 .documentary-next-step {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
@@ -374,9 +96,8 @@
   align-items: center;
   padding: var(--space-18);
   border: 1px solid var(--thread-border);
-  background: var(--thread-panel-muted);
+  background: var(--thread-panel);
 }
-
 .documentary-next-step > p:last-child {
   margin: 0;
   color: var(--thread-muted);
@@ -384,124 +105,36 @@
   line-height: 1.55;
 }
 
-.documentary-record-details {
-  margin-top: -0.35rem;
-}
-
 @media (max-width: 720px) {
-  .planning-baseline-notice,
-  .planning-next-step,
-  .documentary-baseline-notice,
   .documentary-next-step {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .planning-baseline-activity > header,
-  .planning-baseline-run {
+  .planning-baseline-activity > header {
     align-items: start;
     flex-direction: column;
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .planning-baseline-run-times {
-    flex-wrap: wrap;
-  }
-
-  .planning-work-list li {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .planning-work-list li > span {
-    grid-column: 1 / -1;
-  }
-
-  .documentary-record-card > header {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .documentary-record-facts,
-  .documentary-boundary-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .documentary-record-facts > div {
-    border-right: 0;
-    border-bottom: 1px solid var(--thread-border);
-  }
-
-  .documentary-record-facts > div:last-child {
-    border-bottom: 0;
-  }
-
   .documentary-technical-start > header {
     align-items: start;
     flex-direction: column;
   }
-
   .documentary-technical-start article > header {
     grid-template-columns: 25px minmax(0, 1fr);
   }
-
   .documentary-technical-start article time {
     grid-column: 2;
   }
-
-  .thread-workbench .project-navigation {
-    justify-content: flex-start;
-    overflow-x: auto;
-  }
-
-  .thread-workbench .project-navigation :is(button, a) {
-    min-width: max-content;
-    flex: 0 0 auto;
-    padding-inline: var(--space-12);
-  }
-
   .thread-workbench .thread-graph-controls {
     align-items: flex-start;
     flex-direction: column;
   }
-
   .thread-workbench .thread-graph-controls > div {
     width: 100%;
     flex-wrap: wrap;
   }
-
-  .thread-workbench .thread-feed-lineage-actions {
-    align-items: flex-end;
-    flex-direction: column;
-  }
-
-  .thread-evidence-context > header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .thread-evidence-context > header > span {
-    text-align: left;
-  }
 }
 
 @media (max-width: 540px) {
-  .planning-work-list li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-8);
-  }
-
-  .planning-work-list li > b {
-    text-align: left;
-  }
-
-  .project-activity-brief > summary {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .project-activity-brief > summary > span,
-  .project-activity-brief > summary > small {
-    display: none;
-  }
-
   .thread-workbench .thread-graph-controls button:nth-child(3) {
     display: none;
   }

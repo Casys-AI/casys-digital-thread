@@ -1,7 +1,7 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
-import { useId } from "preact/hooks";
+import type { JSX } from "react";
+import { useId } from "react";
+import { cn } from "../lib/utils.ts";
+import { Badge } from "../ui/badge.tsx";
 import type { ThreadGraphNode, ThreadGraphRef } from "./types.ts";
 import {
   type VersionedEvidenceFamily,
@@ -25,19 +25,29 @@ export function EvidenceVersionHistory({
   const currentKey = versionedRefKey(family.representative.ref);
 
   return (
-    <section class="thread-version-history" aria-labelledby={titleId}>
-      <header>
-        <div>
-          <p>VERSION HISTORY</p>
-          <h4 id={titleId}>{versionLabel(family.members.length)}</h4>
+    <section
+      className="flex flex-col gap-3 border-b border-border px-5 py-4"
+      aria-labelledby={titleId}
+    >
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">
+            Version history
+          </p>
+          <h4 id={titleId} className="text-sm font-semibold">
+            {versionLabel(family.members.length)}
+          </h4>
         </div>
-        <span>ONE GRAPH NODE</span>
+        <span className="text-xs text-muted-foreground">One graph node</span>
       </header>
-      <p class="thread-version-history-intro">
+      <p className="text-sm text-muted-foreground">
         Select a version to replace the graph with that version's recorded path
         — including the nodes that depended on it.
       </p>
-      <ol aria-label="Recorded evidence versions">
+      <ol
+        className="m-0 list-none divide-y divide-border p-0"
+        aria-label="Recorded evidence versions"
+      >
         {family.members.map((node, index) => {
           const key = versionedRefKey(node.ref);
           const current = key === currentKey;
@@ -49,29 +59,45 @@ export function EvidenceVersionHistory({
               <button
                 type="button"
                 aria-pressed={selected}
+                className={cn(
+                  "flex w-full flex-col items-start gap-0.5 px-2.5 py-1.5 text-left",
+                  selected && "bg-muted/50",
+                )}
                 onClick={(event) => {
                   event.stopPropagation();
                   onSelectVersion(node);
                 }}
               >
-                <small>{current ? "CURRENT" : `VERSION ${index + 1}`}</small>
-                <strong>{node.label}</strong>
-                <span>{node.system} · {node.summary}</span>
+                {current
+                  ? <Badge variant="success">Current</Badge>
+                  : (
+                    <span className="font-mono text-xs text-muted-foreground">
+                      Version {index + 1}
+                    </span>
+                  )}
+                <strong className="text-sm font-semibold">{node.label}</strong>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {node.system} · {node.summary}
+                </span>
               </button>
             </li>
           );
         })}
       </ol>
       {family.internalEdges.length > 0 && (
-        <details class="thread-version-relations">
-          <summary>
+        <details>
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
             Recorded transitions ({family.internalEdges.length})
           </summary>
-          <ul>
+          <ul className="m-0 list-none divide-y divide-border p-0">
             {family.internalEdges.map((edge) => (
-              <li key={edge.id}>
-                <code>{relationLabel(edge.relation)}</code>
-                <span>{edge.rationale}</span>
+              <li key={edge.id} className="flex flex-col gap-0.5 py-2">
+                <code className="font-mono text-xs">
+                  {relationLabel(edge.relation)}
+                </code>
+                <span className="text-xs text-muted-foreground">
+                  {edge.rationale}
+                </span>
               </li>
             ))}
           </ul>

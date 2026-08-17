@@ -1,35 +1,27 @@
 /**
  * Release gate for the native Workbench presentation boundary.
  *
- * The Workbench must use the presentation-only mcp-view entry point.  It is
- * deliberately not allowed to depend on the MCP Apps lifecycle merely because
- * both surfaces happen to share Preact primitives.
+ * The Workbench is not an MCP App. Since the React migration its
+ * presentation primitives and theme are local ports, so the boundary file
+ * must not import `@casys/mcp-view` at all, and the emitted bundle must not
+ * contain the MCP Apps bridge.
  *
- * Older working copies without `@casys/mcp-view/preact/components` receive a
- * precise release blocker. Published consumers use the hard gate for both the
- * import boundary and the emitted bundle.
+ * `postMessage` is deliberately not a marker: react-dom's scheduler uses a
+ * MessageChannel, so the literal appears in any React bundle. The two
+ * remaining markers are signatures of the MCP Apps handshake itself.
  */
-
-export const PURE_COMPONENTS_EXPORT = "./preact/components";
 
 export const FORBIDDEN_NATIVE_BUNDLE_MARKERS = [
   "ui/initialize",
   "toolresult",
-  "postMessage",
 ] as const;
 
 export interface PresentationBoundaryInput {
-  readonly packageJson: unknown;
   readonly primitiveAdapterSource: string;
   readonly nativeBundle: string;
 }
 
 export type PresentationBoundaryResult =
-  | {
-    readonly status: "blocked";
-    readonly releaseStep: string;
-    readonly runtimeMarkers: readonly string[];
-  }
   | {
     readonly status: "ready";
   }
@@ -38,41 +30,16 @@ export type PresentationBoundaryResult =
     readonly errors: readonly string[];
   };
 
-/**
- * Checks the native surface without conflating an unpublished package export
- * with an application regression.  `blocked` is intentional and exits zero:
- * it describes the exact release work still required before migration.
- */
 export function evaluatePresentationBoundary(
   input: PresentationBoundaryInput,
 ): PresentationBoundaryResult {
-  if (!hasPureComponentsExport(input.packageJson)) {
-    return {
-      status: "blocked",
-      releaseStep:
-        "Publish an npm version of @casys/mcp-view that exports ./preact/components, then update src/ui/package.json and its lockfile to that version.",
-      runtimeMarkers: findMarkers(input.nativeBundle),
-    };
-  }
-
   const errors: string[] = [];
-  if (
-    !input.primitiveAdapterSource.includes(
-      'from "@casys/mcp-view/preact/components"',
-    )
-  ) {
-    errors.push(
-      "src/ui/src/mcp-view-primitives.ts must import the published presentation-only entry point.",
-    );
-  }
 
-  const nonPureMcpViewImports = findNonPureMcpViewImports(
-    input.primitiveAdapterSource,
-  );
-  if (nonPureMcpViewImports.length > 0) {
+  const mcpViewImports = findMcpViewImports(input.primitiveAdapterSource);
+  if (mcpViewImports.length > 0) {
     errors.push(
-      `src/ui/src/mcp-view-primitives.ts must not import MCP Apps entry points: ${
-        nonPureMcpViewImports.join(", ")
+      `src/ui/src/mcp-view-primitives.ts must not import @casys/mcp-view entry points: ${
+        mcpViewImports.join(", ")
       }.`,
     );
   }
@@ -89,48 +56,32 @@ export function evaluatePresentationBoundary(
   return errors.length > 0 ? { status: "failed", errors } : { status: "ready" };
 }
 
-function hasPureComponentsExport(packageJson: unknown): boolean {
-  if (!packageJson || typeof packageJson !== "object") return false;
-  const exports = (packageJson as { exports?: unknown }).exports;
-  return Boolean(
-    exports && typeof exports === "object" &&
-      PURE_COMPONENTS_EXPORT in exports,
+function findMarkers(bundle: string): string[] {
+  return FORBIDDEN_NATIVE_BUNDLE_MARKERS.filter((marker) =>
+    bundle.includes(marker)
   );
 }
 
-function findMarkers(bundle: string): string[] {
-  return FORBIDDEN_NATIVE_BUNDLE_MARKERS.filter((marker) => bundle.includes(marker));
-}
-
-function findNonPureMcpViewImports(source: string): string[] {
+function findMcpViewImports(source: string): string[] {
   return [...source.matchAll(/from\s+"(@casys\/mcp-view(?:\/[^\"]+)?)"/g)]
     .map((match) => match[1])
-    .filter((specifier) => specifier !== "@casys/mcp-view/preact/components");
+    .filter((specifier): specifier is string => specifier !== undefined);
 }
 
 if (import.meta.main) {
-  const [packageJsonText, primitiveAdapterSource, nativeBundle] = await Promise.all([
-    Deno.readTextFile("src/ui/node_modules/@casys/mcp-view/package.json"),
+  const [primitiveAdapterSource, nativeBundle] = await Promise.all([
     Deno.readTextFile("src/ui/src/mcp-view-primitives.ts"),
     Deno.readTextFile("src/ui/dist/thread/native-workbench.html"),
   ]);
   const result = evaluatePresentationBoundary({
-    packageJson: JSON.parse(packageJsonText),
     primitiveAdapterSource,
     nativeBundle,
   });
 
   switch (result.status) {
     case "ready":
-      console.log("OK native Workbench uses the pure mcp-view presentation bundle.");
-      break;
-    case "blocked":
-      console.log("BLOCKED native Workbench pure-presentation migration:");
-      console.log(result.releaseStep);
       console.log(
-        `Current bundle bridge markers (expected until that release): ${
-          result.runtimeMarkers.join(", ") || "none"
-        }.`,
+        "OK native Workbench keeps its self-contained presentation boundary.",
       );
       break;
     case "failed":

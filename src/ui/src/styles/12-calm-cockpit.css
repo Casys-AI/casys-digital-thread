@@ -3,205 +3,26 @@
 /* Calm cockpit and evidence canvas ---------------------------------------
 
    The workspace is a reading surface first. Navigation and project pulse are
-   deliberately compact, while the graph receives a dedicated canvas when an
+   deliberately compact,
+while the graph receives a dedicated canvas when an
    operator needs to inspect the whole recorded chain. */
-
-.thread-workbench .thread-cockpit-header {
-  min-height: 96px;
-}
-
-.thread-workbench .thread-kicker {
-  margin-bottom: var(--space-6);
-}
-
-.thread-workbench .project-navigation {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0.3rem clamp(0.65rem, 2vw, 1.35rem);
-  border-bottom-color: var(--thread-border);
-  background: rgba(255, 253, 250, 0.9);
-}
-
-.thread-workbench .project-navigation :is(button, a) {
-  min-height: 38px;
-  flex: 1 1 0;
-  display: grid;
-  /* Le rail large pose un gabarit a deux colonnes ; le cockpit empile. */
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-content: center;
-  justify-items: center;
-  gap: var(--space-2);
-  padding: var(--space-6) var(--space-10);
-  border: 0;
-  color: var(--thread-muted);
-  text-align: center;
-  text-decoration: none;
-  background: transparent;
-}
-
-.thread-workbench .project-navigation :is(button, a)::after {
-  display: none;
-}
-
-.thread-workbench .project-navigation strong {
-  overflow: visible;
-  font-size: var(--text-2xs);
-  line-height: 1;
-  text-overflow: clip;
-  white-space: normal;
-}
 
 /* Les noms des cinq espaces sont abstraits pour qui ouvre le cockpit la
    premiere fois. La ligne de description etait deja ecrite dans le code mais
    masquee : on la rend visible des qu'il y a la place. */
-.thread-workbench .project-navigation small {
-  display: none;
-  max-width: 100%;
-  overflow: hidden;
-  color: var(--thread-muted);
-  font-size: var(--text-3xs);
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (min-width: 900px) {
-  .thread-workbench .project-navigation small {
-    display: block;
-  }
-}
-
-.thread-workbench .project-navigation :is(button, a):hover {
-  color: var(--thread-ink);
-  background: #f5f1e9;
-}
-
-.thread-workbench .project-navigation :is(button, a)[aria-current="page"] {
-  color: var(--thread-ink);
-  box-shadow: inset 0 -2px 0 var(--thread-orange);
-  background: #faede1;
-}
-
 .project-workspace-page.is-work {
   padding-top: clamp(0.85rem, 1.5vw, 1.2rem);
 }
-
-.project-workspace-page .thread-workspace-meta {
-  margin-bottom: var(--space-10);
-}
-
-.project-activity-brief {
-  margin: 0 0 var(--space-12);
-  border: 1px solid var(--thread-border);
-  background: var(--thread-panel);
-}
-
-.project-activity-brief > summary {
-  min-height: 42px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-10);
-  padding: var(--space-8) var(--space-12);
-  color: var(--thread-muted);
-  cursor: pointer;
-  list-style: none;
-}
-
-.project-activity-brief > summary::-webkit-details-marker {
-  display: none;
-}
-
-.project-activity-brief > summary > span {
-  color: var(--thread-orange);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.09em;
-}
-
-.project-activity-brief > summary > strong {
-  overflow: hidden;
-  color: var(--thread-ink);
-  font-size: var(--text-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-activity-brief > summary > small {
-  color: var(--thread-muted);
-  font-size: var(--text-3xs);
-  white-space: nowrap;
-}
-
-.project-activity-brief > summary::after {
-  content: "⌄";
-  color: var(--thread-orange);
-  font: 700 var(--text-xs)/1 var(--mono);
-  transition: rotate 140ms ease;
-}
-
-.project-activity-brief[open] > summary {
-  border-bottom: 1px solid var(--thread-border);
-  background: #f8f4ed;
-}
-
-.project-activity-brief[open] > summary::after {
-  rotate: 180deg;
-}
-
-.project-activity-brief > div {
-  padding: var(--space-12);
-}
-
-.project-activity-brief .project-work-ribbon {
-  margin-bottom: var(--space-12);
-}
-
-.thread-workbench .thread-feed-lineage-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-8);
-}
-
-.thread-workbench .thread-feed-lineage-actions > span {
-  color: var(--thread-muted);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  white-space: nowrap;
-}
-
-.thread-workbench .thread-feed-lineage-actions button {
-  min-height: 27px;
-  padding: 0 var(--space-8);
-  border: 1px solid var(--thread-border-strong);
-  color: var(--thread-ink);
-  background: var(--thread-panel);
-  letter-spacing: 0.035em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.thread-workbench .thread-feed-lineage-actions button:hover,
-.thread-workbench .thread-feed-lineage-actions button:focus-visible {
-  border-color: var(--thread-orange);
-  color: var(--thread-orange);
-  background: #fff4ea;
-}
-
 .thread-workbench .thread-graph-workspace.is-wide {
   grid-template-columns: minmax(0, 1fr);
 }
-
 .thread-workbench .thread-graph-stage {
   min-height: max(480px, calc(100vh - 350px));
 }
-
 .thread-workbench .thread-graph {
   display: grid;
   gap: var(--space-12);
 }
-
 .thread-workbench .thread-graph-controls {
   min-height: 38px;
   display: flex;
@@ -211,18 +32,15 @@
   padding: var(--space-6) var(--space-6) var(--space-6) var(--space-12);
   border: 1px solid var(--thread-border);
   color: var(--thread-muted);
-  background: rgba(255, 253, 250, 0.88);
-  font: 700 var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  background: var(--thread-panel);
+  font: 600 var(--text-3xs)/1 var(--sans);
+  letter-spacing: 0.02em;
 }
-
 .thread-workbench .thread-graph-controls > div {
   display: inline-flex;
   align-items: center;
   gap: var(--space-4);
 }
-
 .thread-workbench .thread-graph-controls button {
   min-height: 28px;
   padding: 0 var(--space-10);
@@ -230,40 +48,34 @@
   color: var(--thread-ink);
   background: var(--thread-panel);
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   cursor: pointer;
 }
-
 .thread-workbench .thread-graph-controls button:first-child,
 .thread-workbench .thread-graph-controls button:last-child {
   width: 28px;
   padding: 0;
   font-size: var(--text-base);
 }
-
 .thread-workbench .thread-graph-controls button:hover:not(:disabled),
 .thread-workbench .thread-graph-controls button:focus-visible {
-  border-color: var(--thread-orange);
-  color: var(--thread-orange);
-  background: #fff4ea;
+  border-color: var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: var(--thread-panel-muted);
 }
-
 .thread-workbench .thread-graph-controls button:disabled {
   opacity: 0.42;
   cursor: not-allowed;
 }
-
 .thread-workbench .thread-graph[data-presentation="canvas"] .thread-graph-viewport {
   min-height: clamp(430px, 56vh, 690px);
   overflow: hidden;
   border: 1px solid var(--thread-border);
   background:
-    linear-gradient(rgba(37, 53, 48, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(37, 53, 48, 0.035) 1px, transparent 1px),
-    #fbfaf6;
+    linear-gradient(rgba(28, 33, 38, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 33, 38, 0.035) 1px, transparent 1px),
+    var(--thread-panel-muted);
   background-size: 24px 24px;
 }
-
 .thread-workbench .thread-graph[data-presentation="canvas"] .thread-graph-canvas {
   height: clamp(430px, 56vh, 690px);
   min-height: 0;
@@ -271,123 +83,43 @@
   touch-action: none;
   user-select: none;
 }
-
 .thread-workbench .thread-graph[data-panning="true"] .thread-graph-canvas {
   cursor: grabbing;
 }
-
 .thread-workbench .thread-feed-lineage .thread-graph-viewport {
   overflow: hidden;
 }
-
 .thread-workbench .thread-graph-component-boundary {
   fill: transparent;
-  stroke: #bac4bb;
+  stroke: var(--thread-border-strong);
   stroke-dasharray: 4 5;
 }
-
 .thread-workbench .thread-graph-component-label {
-  fill: #5e7169;
+  fill: var(--thread-muted);
 }
-
 .thread-workbench .thread-graph-edge-line {
   fill: none;
-  stroke: #738179;
+  stroke: var(--thread-border-strong);
 }
-
 .thread-workbench .thread-graph-arrow path {
   fill: context-stroke;
   stroke: none;
 }
-
 .thread-workbench .thread-graph-edge[data-attestation="verified"] .thread-graph-edge-line {
   stroke-dasharray: 5 3;
 }
-
 .thread-workbench .thread-graph-edge[data-attestation="mismatch"]:not([data-selected="true"]) .thread-graph-edge-line {
   stroke: var(--thread-red);
   stroke-dasharray: 2 3;
   stroke-width: 2.4;
 }
-
 .thread-workbench .thread-graph-edge[data-attestation="mismatch"]:not([data-selected="true"]) .thread-graph-edge-label {
   fill: var(--thread-red);
 }
-
 .thread-workbench .thread-graph-edge-label {
-  fill: #52665d;
-  stroke: #fbfaf6;
+  fill: var(--thread-muted);
+  stroke: var(--thread-panel-muted);
 }
-
-.thread-workbench .thread-graph-legend span[data-tone="attested"]::before {
-  height: 0;
-  border-top: 2px dashed var(--thread-green);
-  background: transparent;
-}
-
-.thread-workbench .thread-graph-legend span[data-tone="mismatch"]::before {
-  height: 0;
-  border-top: 2px dashed var(--thread-red);
-  background: transparent;
-}
-
 .thread-workbench .thread-graph-stage-verification {
-  min-height: 0;
-}
-
-.thread-evidence-context {
-  overflow: hidden;
-  border: 1px solid var(--thread-border);
-  background: rgba(255, 253, 250, 0.82);
-}
-
-.thread-evidence-context > header {
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-12);
-  padding: var(--space-10) var(--space-12);
-  border-bottom: 1px solid var(--thread-border);
-  background: var(--thread-panel-muted);
-}
-
-.thread-evidence-context > header > div {
-  min-width: 0;
-  display: grid;
-  gap: var(--space-4);
-}
-
-.thread-evidence-context > header small,
-.thread-evidence-context > header > span {
-  color: var(--thread-muted);
-  font: 700 var(--text-3xs)/1.25 var(--mono);
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
-}
-
-.thread-evidence-context > header strong {
-  overflow: hidden;
-  color: var(--thread-ink);
-  font-size: var(--text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.thread-evidence-context > header > span {
-  flex: 0 0 auto;
-  text-align: right;
-}
-
-.thread-evidence-context .thread-graph {
-  padding: var(--space-12);
-}
-
-.thread-evidence-context .thread-graph-viewport {
-  overflow: hidden;
-}
-
-.thread-evidence-context .thread-graph-canvas {
-  height: clamp(300px, 40vh, 420px);
   min-height: 0;
 }

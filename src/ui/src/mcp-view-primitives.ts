@@ -1,25 +1,13 @@
 /**
- * Presentation-only boundary for the native Workbench.
+ * Presentation-only boundary for the MCP Console surface.
  *
- * Domain components import this adapter instead of the MCP Apps lifecycle.
- *
- * This import must remain on the presentation-only package entry point. The
- * native shell is not an MCP App and must not bundle the iframe lifecycle,
- * postMessage transport, or `ui/initialize` handshake.
+ * Since the shadcn migration the native Workbench renders its own
+ * components (`src/ui/src/ui/*`) and no longer uses the mcp-view
+ * presentation primitives or theme. Only the Console MCP App still installs
+ * the shared mcp-view stylesheet, through the verbatim local copy
+ * (`./view/mcp-view-theme.ts`): the published theme is only reachable
+ * through Preact-importing entry points. This file must never import an
+ * MCP Apps entry point of `@casys/mcp-view` — the native bundle carries no
+ * iframe lifecycle, postMessage transport, or `ui/initialize` handshake.
  */
-export {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  installMcpViewTheme,
-  KeyValueList,
-  MetricGrid,
-  StateMessage,
-  Toolbar,
-} from "@casys/mcp-view/preact/components";
-export type {
-  KeyValueItem,
-  MetricItem,
-  PresentationTone,
-} from "@casys/mcp-view/preact/components";
+export { installMcpViewTheme } from "./view/mcp-view-theme.ts";

@@ -1,19 +1,28 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
-import { useMemo } from "preact/hooks";
+import type { JSX } from "react";
+import { useMemo } from "react";
 import type { ProjectReviewIntentAction } from "../../../domain/project/project-review-intent.ts";
+import { cn } from "../lib/utils.ts";
 import { ActivityReviewFeedCard } from "../project/control-center.tsx";
 import {
   activityReviewStatus,
   type ProjectReviewRecord,
 } from "../project/review-decision-model.ts";
 import {
+  type ActivityReviewDisplayStatus,
   activityReviewDisplayStatusLabel,
   effectiveActivityReviewStatus,
   reviewIntentScopeKey,
   type ReviewIntentTransmissionState,
 } from "../project/review-intent-model.ts";
+import { Badge } from "../ui/badge.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select.tsx";
+import { Button } from "../ui/button.tsx";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
   activityFeedNodes,
@@ -187,7 +196,10 @@ export function ThreadFeed({
 
   if (entries.length === 0 && !filterOptions) {
     return (
-      <div class="thread-feed-empty" role="status">
+      <div
+        className="px-8 py-8 text-sm text-muted-foreground"
+        role="status"
+      >
         Waiting for the first linked engineering fact.
       </div>
     );
@@ -195,58 +207,84 @@ export function ThreadFeed({
 
   return (
     <div
-      class="thread-feed"
+      className="thread-feed"
       data-follow-live={followLive ? "true" : "false"}
       data-stream={streamStatus}
     >
-      <div class="thread-feed-toolbar">
-        <div>
-          <span class="thread-live-pulse" aria-hidden="true" />
-          <strong>{streamLabel(streamStatus, followLive)}</strong>
-          <small>
-            {entries.length} meaningful events · support records on demand
-          </small>
+      <div className="mb-2.5 flex items-center justify-between rounded-lg border border-border bg-card px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={livePulseClass(streamStatus, followLive)}
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">
+              {streamLabel(streamStatus, followLive)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {entries.length} meaningful events · support records on demand
+            </p>
+          </div>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           aria-pressed={followLive}
           onClick={() => onFollowLiveChange(!followLive)}
         >
           {followLive ? "Pause follow" : "Resume live"}
-        </button>
+        </Button>
       </div>
 
       {filterOptions && onFilterChange && (
         <div
-          class="thread-feed-component-filter"
+          className="thread-feed-component-filter flex items-center gap-2"
           aria-label="Filter by part"
         >
-          <label for="feed-component-filter">PART</label>
-          <select
-            id="feed-component-filter"
-            value={filterComponentId ?? ""}
-            onChange={(e) => {
-              const val = (e.target as HTMLSelectElement).value;
-              onFilterChange(val === "" ? undefined : val as FeedScope);
+          <span
+            id="feed-component-filter-label"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Part
+          </span>
+          <Select
+            value={filterComponentId ?? "entire-project"}
+            onValueChange={(value) => {
+              onFilterChange(
+                value === "entire-project" ? undefined : value as FeedScope,
+              );
             }}
           >
-            <option value="">Entire project</option>
-            {filterOptions.map((opt) => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
-          </select>
+            <SelectTrigger
+              aria-labelledby="feed-component-filter-label"
+              className="min-w-44"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="entire-project">Entire project</SelectItem>
+              {filterOptions.map((opt) => (
+                <SelectItem key={opt.id} value={opt.id}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
       {entries.length === 0 && (
-        <div class="thread-feed-empty" role="status">
+        <div
+          className="px-8 py-8 text-sm text-muted-foreground"
+          role="status"
+        >
           {filterComponentId
             ? "No event is recorded for this scope."
             : "Waiting for the first linked engineering fact."}
         </div>
       )}
 
-      <ol class="thread-feed-list" aria-label="Linked engineering activity">
+      <ol className="thread-feed-list" aria-label="Linked engineering activity">
         {entries.map((entry, index) => {
           if (entry.kind === "review") {
             const status = activityReviewStatus(entry.review);
@@ -259,22 +297,22 @@ export function ThreadFeed({
               <li
                 id={entry.review.anchorId}
                 key={entry.key}
-                class="thread-feed-entry thread-feed-entry--review"
+                className="thread-feed-entry"
                 data-review-status={displayStatus}
                 data-canonical-review-status={status}
                 style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
               >
                 <div
-                  class="thread-feed-time"
+                  className="grid content-start justify-items-end gap-1 pt-3 pr-2 font-mono text-xs text-muted-foreground"
                   aria-label={entry.recordedAt}
                 >
-                  <strong>{formatFeedTime(entry.recordedAt)}</strong>
+                  <span>{formatFeedTime(entry.recordedAt)}</span>
                   <span>{formatFeedDate(entry.recordedAt)}</span>
                 </div>
-                <div class="thread-feed-rail" aria-hidden="true">
+                <div className="thread-feed-rail" aria-hidden="true">
                   <i />
                 </div>
-                <div class="thread-feed-event">
+                <div className="thread-feed-event">
                   <ActivityReviewFeedCard
                     record={entry.review}
                     onOpenEvidence={onOpenReviewEvidence}
@@ -326,7 +364,7 @@ export function ThreadFeed({
             <li
               id={attachedReview?.anchorId}
               key={entry.key}
-              class="thread-feed-entry"
+              className="thread-feed-entry"
               data-active={active ? "true" : "false"}
               data-kind={node.entityKind}
               data-authority={node.entityKind === "artifact" &&
@@ -339,46 +377,66 @@ export function ThreadFeed({
               data-canonical-review-status={reviewStatus}
               style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
             >
-              <div class="thread-feed-time" aria-label={node.recordedAt}>
-                <strong>{formatFeedTime(node.recordedAt)}</strong>
+              <div
+                className="grid content-start justify-items-end gap-1 pt-3 pr-2 font-mono text-xs text-muted-foreground"
+                aria-label={node.recordedAt}
+              >
+                <span>{formatFeedTime(node.recordedAt)}</span>
                 <span>{formatFeedDate(node.recordedAt)}</span>
               </div>
-              <div class="thread-feed-rail" aria-hidden="true">
+              <div className="thread-feed-rail" aria-hidden="true">
                 <i />
               </div>
-              <div class="thread-feed-event">
+              <div className="thread-feed-event">
                 <button
                   type="button"
-                  class="thread-feed-card"
+                  className={cn(
+                    "grid w-full grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border bg-card p-4 text-left shadow-sm",
+                    "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    active && "rounded-b-none bg-muted/50",
+                  )}
                   aria-expanded={active}
                   onClick={() => onSelectNode(node, "feed")}
                 >
                   <span
-                    class="thread-feed-provider"
+                    className="grid size-9 place-items-center rounded-md border border-border bg-muted font-mono text-xs"
                     data-system={systemKey(node.system)}
                   >
                     {providerMark(node.system)}
                   </span>
-                  <span class="thread-feed-copy">
-                    <small>
+                  <span className="grid min-w-0 gap-1">
+                    <span className="truncate text-xs font-medium text-muted-foreground">
                       {node.system} · {activityKindLabel(node)}
-                    </small>
-                    <strong>{node.label}</strong>
-                    <span>{node.summary}</span>
+                    </span>
+                    <span className="truncate text-sm font-semibold">
+                      {node.label}
+                    </span>
+                    <span className="truncate font-mono text-xs text-muted-foreground">
+                      {node.summary}
+                    </span>
                   </span>
-                  <span class="thread-feed-meta">
+                  <span className="grid justify-items-end gap-1 text-xs">
                     {reviewDisplayStatus && (
-                      <i
-                        class="thread-feed-review-badge"
+                      <Badge
+                        variant={reviewDisplayBadgeVariant(
+                          reviewDisplayStatus,
+                        )}
                         data-review-status={reviewDisplayStatus}
                       >
                         {activityReviewDisplayStatusLabel(
                           reviewDisplayStatus,
                         )}
-                      </i>
+                      </Badge>
                     )}
-                    <i data-state={node.freshness}>{node.freshness}</i>
-                    <b>{lineageCount} linked</b>
+                    <span
+                      data-state={node.freshness}
+                      className={freshnessClass(node.freshness)}
+                    >
+                      {node.freshness}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {lineageCount} linked
+                    </span>
                   </span>
                 </button>
 
@@ -400,18 +458,22 @@ export function ThreadFeed({
 
                 {active && lineage && (
                   <section
-                    class="thread-feed-lineage"
+                    className="thread-feed-lineage"
                     aria-label={`Live lineage for ${node.label}`}
                   >
                     <header>
                       <div>
-                        <small>LINEAGE ASSEMBLED FROM RECORDED RELATIONS</small>
-                        <strong>Complete chain for this event</strong>
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Lineage assembled from recorded relations
+                        </p>
+                        <p className="text-sm font-semibold">
+                          Complete chain for this event
+                        </p>
                       </div>
-                      <div class="thread-feed-lineage-actions">
+                      <div className="flex items-center justify-end gap-2">
                         {compact
                           ? (
-                            <span>
+                            <span className="text-xs text-muted-foreground">
                               {compact.total} items · depth 2 ·{" "}
                               {compact.upstream} upstream / {compact.downstream}
                               {" "}
@@ -419,18 +481,19 @@ export function ThreadFeed({
                             </span>
                           )
                           : (
-                            <span>
+                            <span className="text-xs text-muted-foreground">
                               {lineage.upstream.length} upstream ·{" "}
                               {lineage.downstream.length} downstream
                             </span>
                           )}
                         {onOpenEvidenceAnchored && (
-                          <button
-                            type="button"
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => onOpenEvidenceAnchored(node.ref)}
                           >
                             Open evidence canvas
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </header>
@@ -443,7 +506,7 @@ export function ThreadFeed({
                     />
                     {lineageCount === 0
                       ? (
-                        <p class="thread-feed-unlinked">
+                        <p className="px-8 py-8 text-sm text-muted-foreground">
                           This fact is recorded, but no causal relation connects
                           it to another fact yet.
                         </p>
@@ -574,7 +637,7 @@ function FeedLineageGraph({
   // Fall back gracefully when the focus node is not in the visible graph.
   if (neighborhood.nodes.length === 0) {
     return (
-      <p class="thread-feed-unlinked">
+      <p className="px-8 py-8 text-sm text-muted-foreground">
         This fact is recorded, but it is not currently present in the evidence
         graph (it may be a folded historical version).
       </p>
@@ -582,7 +645,7 @@ function FeedLineageGraph({
   }
 
   return (
-    <div class="thread-feed-lineage-sigma" aria-label={ariaLabel}>
+    <div className="thread-feed-lineage-sigma" aria-label={ariaLabel}>
       <EvidenceExploration
         evidenceModel={evidenceModel}
         projection={projection}
@@ -610,6 +673,44 @@ function FeedLineageGraph({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function livePulseClass(
+  status: ThreadStreamStatus | "snapshot",
+  followLive: boolean,
+): string {
+  const tone = !followLive
+    ? "bg-border"
+    : status === "reconnecting"
+    ? "bg-warning"
+    : status === "live"
+    ? "bg-success"
+    : "bg-border";
+  return cn("size-2 shrink-0 rounded-full", tone);
+}
+
+function reviewDisplayBadgeVariant(
+  status: ActivityReviewDisplayStatus,
+): "warning" | "success" | "info" | "secondary" {
+  if (status === "to-review" || status === "revision-requested") {
+    return "warning";
+  }
+  if (status === "validated") return "success";
+  if (
+    status === "sending" || status === "sent" || status === "received"
+  ) {
+    return "info";
+  }
+  return "secondary";
+}
+
+function freshnessClass(freshness: string): string {
+  if (freshness === "fresh") return "font-medium text-success";
+  if (freshness === "failed") return "font-medium text-destructive";
+  if (freshness === "stale" || freshness === "running") {
+    return "font-medium text-warning";
+  }
+  return "text-muted-foreground";
+}
 
 function streamLabel(
   status: ThreadStreamStatus | "snapshot",

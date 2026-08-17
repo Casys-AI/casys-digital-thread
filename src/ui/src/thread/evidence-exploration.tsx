@@ -1,5 +1,3 @@
-/** @jsxImportSource preact */
-
 /**
  * Sigma.js exploration renderer for the Evidence graph.
  *
@@ -12,8 +10,8 @@
  * evidence-exploration-model.ts et evidence-canvas-model.ts.
  */
 
-import type { JSX } from "preact";
-import { useEffect, useMemo, useRef } from "preact/hooks";
+import type { JSX } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Sigma from "sigma";
 import {
   buildExplorationModel,
@@ -29,9 +27,15 @@ import {
 } from "./evidence-exploration-model.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
+import { Button } from "../ui/button.tsx";
 import type { ThreadGraphRef } from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
 import { isUiOnlyPresentationEdge } from "./cad-presentation-projection.ts";
+
+const legendRowClass =
+  "flex items-center justify-between rounded-md px-2 py-1.5 text-sm";
+const legendCountClass = "text-xs text-muted-foreground tabular-nums";
+const legendTitleClass = "text-xs font-medium text-muted-foreground";
 
 export interface EvidenceExplorationProps {
   evidenceModel: EvidenceGraphModel;
@@ -114,7 +118,7 @@ export function EvidenceExploration({
       container,
       {
         renderLabels: true,
-        labelFont: "Avenir Next, Avenir, Segoe UI, Helvetica, sans-serif",
+        labelFont: "Inter, -apple-system, Segoe UI, Helvetica, sans-serif",
         labelSize: 11,
         labelColor: { attribute: "color" },
         defaultNodeColor: explorationModel.tokens.muted,
@@ -387,9 +391,9 @@ export function EvidenceExploration({
   }, [explorationModel, displayDepth, visibleKinds, projection]);
 
   return (
-    <div class="evidence-exploration">
+    <div className="evidence-exploration">
       <div
-        class="evidence-exploration-stage"
+        className="evidence-exploration-stage"
         ref={containerRef}
         aria-label={compact
           ? "Evidence preview graph — select a node with the pointer; inspect relations in Evidence"
@@ -406,58 +410,52 @@ export function EvidenceExploration({
       />
       {!compact && (
         <aside
-          class="evidence-exploration-legend"
+          className="flex w-[260px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-border bg-background px-3 py-4 text-xs max-[720px]:w-full max-[720px]:flex-none max-[720px]:flex-row max-[720px]:flex-wrap max-[720px]:border-l-0 max-[720px]:border-t"
           aria-label="Evidence legend"
         >
           {systemLegend.length > 0 && (
-            <>
-              <p class="evidence-exploration-legend-title">TOOLS</p>
+            <div className="flex min-w-[10rem] flex-col">
+              <p className={legendTitleClass}>Tools</p>
               {systemLegend.map((item) => (
                 <span
                   key={item.system}
-                  class="evidence-exploration-legend-chip"
+                  className={legendRowClass}
                   aria-label={`${item.label} — ${item.count} visible items — recorded as ${
                     item.systems.join(", ")
                   }`}
                   title={`Recorded systems: ${item.systems.join(", ")}`}
                 >
-                  <span
-                    class="evidence-exploration-legend-chip-dot"
-                    style={{ background: item.color }}
-                    aria-hidden="true"
-                  />
-                  <span class="evidence-exploration-legend-chip-name">
-                    {item.label}
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ background: item.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{item.label}</span>
                   </span>
-                  <span class="evidence-exploration-legend-chip-count">
-                    {item.count}
-                  </span>
+                  <span className={legendCountClass}>{item.count}</span>
                 </span>
               ))}
-            </>
+            </div>
           )}
           {kindLegend.length > 0 && (
-            <>
-              <p class="evidence-exploration-legend-title">TYPES</p>
+            <div className="flex min-w-[10rem] flex-col">
+              <p className={legendTitleClass}>Types</p>
               {kindLegend.map((item) => (
                 <span
                   key={item.kind}
-                  class="evidence-exploration-legend-chip"
+                  className={legendRowClass}
                   aria-label={`${item.label} — ${item.count} visible items`}
                 >
-                  <span class="evidence-exploration-legend-chip-name">
-                    {item.label}
-                  </span>
-                  <span class="evidence-exploration-legend-chip-count">
-                    {item.count}
-                  </span>
+                  <span className="truncate">{item.label}</span>
+                  <span className={legendCountClass}>{item.count}</span>
                 </span>
               ))}
-            </>
+            </div>
           )}
           {legend.length > 0 && (
-            <>
-              <p class="evidence-exploration-legend-title">COMPONENTS</p>
+            <div className="flex min-w-[10rem] flex-col">
+              <p className={legendTitleClass}>Components</p>
               {legend.map((item) => (
                 <LegendChip
                   key={item.componentIds[0]}
@@ -466,7 +464,7 @@ export function EvidenceExploration({
                   graph={explorationModel.graph}
                 />
               ))}
-            </>
+            </div>
           )}
           <ExplorationKeyboardNavigation
             nodes={navigation.nodes}
@@ -497,59 +495,73 @@ function ExplorationKeyboardNavigation({
   onSelectionChange: EvidenceExplorationProps["onSelectionChange"];
 }): JSX.Element {
   return (
-    <details class="evidence-exploration-relations">
-      <summary>
-        ACCESSIBLE EVIDENCE TABLE ({nodes.length} items · {edges.length}{" "}
+    <details className="mt-1 w-full max-[720px]:basis-full">
+      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+        Accessible evidence table ({nodes.length} items · {edges.length}{" "}
         relations)
       </summary>
-      <p>
+      <p className="mt-2 text-xs text-muted-foreground">
         Use Tab to reach a record, then press Enter to inspect it. A shared
         canvas route is listed here once per exact recorded assertion.
       </p>
-      <div class="evidence-exploration-table-wrap">
-        <table>
-          <caption class="sr-only">
+      <div className="mt-2 max-h-[420px] overflow-x-auto overflow-y-auto rounded-lg border border-border">
+        <table className="w-full text-sm">
+          <caption className="sr-only">
             Visible evidence items and relations
           </caption>
-          <thead>
-            <tr>
-              <th scope="col">Type</th>
-              <th scope="col">Record</th>
-              <th scope="col">Action</th>
+          <thead className="text-xs text-muted-foreground">
+            <tr className="border-b border-border">
+              <th scope="col" className="px-3 py-2 text-left font-medium">
+                Type
+              </th>
+              <th scope="col" className="px-3 py-2 text-left font-medium">
+                Record
+              </th>
+              <th scope="col" className="px-3 py-2 text-left font-medium">
+                Action
+              </th>
             </tr>
           </thead>
           <tbody>
             {nodes.map((node) => (
-              <tr key={node.key}>
-                <td>Item</td>
-                <td>{node.label}</td>
-                <td>
-                  <button
-                    type="button"
+              <tr
+                key={node.key}
+                className="border-b border-border last:border-0"
+              >
+                <td className="px-3 py-2">Item</td>
+                <td className="px-3 py-2">{node.label}</td>
+                <td className="px-3 py-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     aria-label={`Inspect fact: ${node.label}`}
                     onClick={() =>
                       onSelectionChange?.({ kind: "node", ref: node.ref })}
                   >
                     Inspect
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
             {edges.map((edge) => (
-              <tr key={edge.key}>
-                <td>Relation</td>
-                <td>
+              <tr
+                key={edge.key}
+                className="border-b border-border last:border-0"
+              >
+                <td className="px-3 py-2">Relation</td>
+                <td className="px-3 py-2">
                   <span aria-hidden="true">{edge.label}</span>
                   {edge.visualRouteLabel && (
                     <span aria-hidden="true">
                       {` · ${edge.visualRouteLabel}`}
                     </span>
                   )}
-                  <span class="sr-only">{edge.accessibleLabel}</span>
+                  <span className="sr-only">{edge.accessibleLabel}</span>
                 </td>
-                <td>
-                  <button
-                    type="button"
+                <td className="px-3 py-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     aria-label={`Inspect relation: ${edge.accessibleLabel}`}
                     onClick={() =>
                       onSelectionChange?.({
@@ -562,7 +574,7 @@ function ExplorationKeyboardNavigation({
                       })}
                   >
                     Inspect
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -608,20 +620,18 @@ function LegendChip({
   return (
     <button
       type="button"
-      class="evidence-exploration-legend-chip"
+      className={`${legendRowClass} w-full text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`}
       onClick={handleClick}
       title={`Focus the camera on component "${item.name}"`}
       aria-label={`${item.name} — ${item.visibleNodeCount} facts`}
     >
       {
-        /* No color dot: node colors encode the producing TOOL (see the TOOLS
+        /* No color dot: node colors encode the producing TOOL (see the Tools
           key above); painting component chips with a second palette made the
           two mappings contradict each other on screen. */
       }
-      <span class="evidence-exploration-legend-chip-name">{item.name}</span>
-      <span class="evidence-exploration-legend-chip-count">
-        {item.visibleNodeCount}
-      </span>
+      <span className="truncate">{item.name}</span>
+      <span className={legendCountClass}>{item.visibleNodeCount}</span>
     </button>
   );
 }

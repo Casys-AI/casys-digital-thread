@@ -1,7 +1,5 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import type { JSX } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import type {
@@ -13,6 +11,10 @@ import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { type GeometryDecisionValid } from "../thread/geometry-decision-model.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
 import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
+import { cn } from "../lib/utils.ts";
+import { Badge } from "../ui/badge.tsx";
+import { Button } from "../ui/button.tsx";
+import { Card, CardContent, CardHeader } from "../ui/card.tsx";
 import {
   activityReviewStatus,
   buildProjectReviewRecords,
@@ -66,52 +68,80 @@ export function ReviewNotifications({
   const revisionRequestedCount =
     records.filter((record) => record.state === "revision-requested").length;
   return (
-    <section
-      class="decision-center"
+    <Card
       data-surface="inbox"
       aria-labelledby="review-notifications-title-inbox"
     >
-      <header class="decision-center-header">
-        <div class="decision-center-index" aria-hidden="true">RN</div>
-        <div>
-          <p>REVIEW NOW</p>
-          <h3 id="review-notifications-title-inbox">
+      <CardHeader className="flex-row items-start justify-between gap-6 px-5 pt-5 max-md:flex-col">
+        <div className="min-w-0 space-y-1">
+          <div className="text-xs font-medium text-muted-foreground">
+            <p>Review</p>
+          </div>
+          <h3
+            id="review-notifications-title-inbox"
+            className="text-base font-semibold"
+            aria-live="polite"
+          >
             {needsReviewCount > 0
               ? `${needsReviewCount} exact proposal${
                 needsReviewCount === 1 ? " is" : "s are"
               } ready`
               : "No proposal is waiting for review"}
           </h3>
-          <span>
+          <p className="text-sm text-muted-foreground">
             {nextReview
-              ? "Open Activity to inspect and respond to each exact proposal."
-              : "Published review records remain available in Activity."}
-          </span>
+              ? "Inspect and respond in Activity."
+              : "Past reviews remain in Activity."}
+          </p>
         </div>
-        <dl class="decision-center-meter">
-          <div data-tone={nextReview ? "attention" : "quiet"}>
-            <dt>To review</dt>
-            <dd>{needsReviewCount}</dd>
+        <dl className="flex shrink-0 gap-6">
+          <div
+            className="flex flex-col-reverse text-right"
+            data-tone={nextReview ? "attention" : "quiet"}
+          >
+            <dt className="text-xs text-muted-foreground">To review</dt>
+            <dd className="m-0">
+              <strong className="text-xl font-semibold tabular-nums">
+                {needsReviewCount}
+              </strong>
+            </dd>
           </div>
-          <div data-tone={pendingResultCount > 0 ? "preparing" : "quiet"}>
-            <dt>Result pending</dt>
-            <dd>{pendingResultCount}</dd>
+          <div
+            className="flex flex-col-reverse text-right"
+            data-tone={pendingResultCount > 0 ? "preparing" : "quiet"}
+          >
+            <dt className="text-xs text-muted-foreground">Result pending</dt>
+            <dd className="m-0">
+              <strong className="text-xl font-semibold tabular-nums">
+                {pendingResultCount}
+              </strong>
+            </dd>
           </div>
-          <div data-tone={revisionRequestedCount > 0 ? "attention" : "quiet"}>
-            <dt>Revision requested</dt>
-            <dd>{revisionRequestedCount}</dd>
+          <div
+            className="flex flex-col-reverse text-right"
+            data-tone={revisionRequestedCount > 0 ? "attention" : "quiet"}
+          >
+            <dt className="text-xs text-muted-foreground">
+              Revision requested
+            </dt>
+            <dd className="m-0">
+              <strong className="text-xl font-semibold tabular-nums">
+                {revisionRequestedCount}
+              </strong>
+            </dd>
           </div>
         </dl>
-      </header>
-
-      <ReviewInboxHandoff
-        nextReview={nextReview}
-        pendingResultCount={pendingResultCount}
-        revisionRequestedCount={revisionRequestedCount}
-        onOpenActivity={onOpenActivity}
-        onOpenReview={onOpenReview}
-      />
-    </section>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 px-5 pb-5">
+        <ReviewInboxHandoff
+          nextReview={nextReview}
+          pendingResultCount={pendingResultCount}
+          revisionRequestedCount={revisionRequestedCount}
+          onOpenActivity={onOpenActivity}
+          onOpenReview={onOpenReview}
+        />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -131,64 +161,77 @@ function ReviewInboxHandoff({
   const state = nextReview
     ? {
       tone: "proposed",
-      marker: "REVIEW IN ACTIVITY",
+      marker: "Review in activity",
       title: nextReview.title,
-      detail:
-        "Inspect the exact preview, then validate it or request a revision from its feed card.",
+      detail: "Inspect the exact preview, then validate or request a revision.",
       action: "Inspect exact preview",
       icon: "!",
     }
     : pendingResultCount > 0
     ? {
       tone: "required",
-      marker: "APPROVED · RESULT PENDING",
+      marker: "Approved · result pending",
       title: "A reviewed operation has not published its result yet",
-      detail:
-        "Nothing is needed in the cockpit. Activity will show the exact result if and when it is published.",
+      detail: "Activity will show the result when it is published.",
       action: "See activity",
       icon: "···",
     }
     : revisionRequestedCount > 0
     ? {
       tone: "required",
-      marker: "REVISION REQUESTED",
+      marker: "Revision requested",
       title: "A proposal was returned for revision",
-      detail:
-        "The durable decision record does not by itself prove that an agent run is active.",
+      detail: "The decision record does not prove that a run is active.",
       action: "See activity",
       icon: "↺",
     }
     : {
       tone: "approved",
-      marker: "NO QUESTION WAITING",
+      marker: "No question waiting",
       title: "No project decision needs discussion right now",
-      detail:
-        "Use Activity to follow the project. Your paired conversation remains the place to clarify or change intent.",
+      detail: "Use Activity to follow the project.",
       action: "See activity",
       icon: "✓",
     };
 
+  const iconTone = state.tone === "proposed"
+    ? "text-warning"
+    : state.tone === "required"
+    ? "text-brand"
+    : "text-success";
+
   return (
     <section
-      class="decision-review-brief"
+      className="flex flex-wrap items-center gap-3 rounded-lg bg-muted/50 p-4"
       data-state={state.tone}
       aria-label="Project signal"
     >
-      <span aria-hidden="true">{state.icon}</span>
-      <div>
-        <p>{state.marker}</p>
-        <strong>{state.title}</strong>
-        <small>{state.detail}</small>
+      <span
+        aria-hidden="true"
+        className={`grid size-8 shrink-0 place-items-center rounded-md ` +
+          `bg-background text-sm font-medium ${iconTone}`}
+      >
+        {state.icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-muted-foreground">
+          {state.marker}
+        </p>
+        <strong className="text-sm font-medium">{state.title}</strong>
+        <small className="mt-0.5 block text-sm text-muted-foreground">
+          {state.detail}
+        </small>
       </div>
-      <button
-        type="button"
-        class="decision-secondary-button"
+      <Button
+        variant="outline"
+        size="sm"
+        className="shrink-0"
         onClick={() =>
           nextReview ? onOpenReview?.(nextReview.id) : onOpenActivity?.()}
         disabled={nextReview ? !onOpenReview : !onOpenActivity}
       >
         {state.action}
-      </button>
+      </Button>
     </section>
   );
 }
@@ -273,7 +316,7 @@ export function ActivityReviewFeedCard({
   };
   return (
     <details
-      class="thread-feed-review-card"
+      className="rounded-lg border border-border bg-card shadow-sm"
       data-review-status={displayStatus}
       data-canonical-review-status={status}
       data-representation={record.representation}
@@ -282,45 +325,67 @@ export function ActivityReviewFeedCard({
       onToggle={(event) => setOpen(event.currentTarget.open)}
       aria-label={`Review record: ${record.title}`}
     >
-      <summary>
-        <span class="thread-feed-review-mark" aria-hidden="true">
-          {reviewStatusIcon(displayStatus)}
+      <summary className="flex cursor-pointer list-none items-start gap-3 p-4 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2">
+            <Badge variant={activityReviewBadgeVariant(displayStatus)}>
+              {activityReviewDisplayStatusLabel(displayStatus)}
+              {record.supersededBy ? " · Superseded" : ""}
+            </Badge>
+            <span className="text-xs font-medium text-muted-foreground">
+              {reviewKindLabel(record.id)}
+            </span>
+          </span>
+          <strong className="mt-1.5 block text-sm font-semibold">
+            {record.title}
+          </strong>
+          <span className="mt-0.5 block text-sm text-muted-foreground">
+            {record.question}
+          </span>
         </span>
-        <span class="thread-feed-review-copy">
-          <small>
-            {activityReviewDisplayStatusLabel(displayStatus)}
-            {record.supersededBy ? " · Superseded" : ""} ·{" "}
-            {reviewKindLabel(record.id)}
-          </small>
-          <strong>{record.title}</strong>
-          <span>{record.question}</span>
-        </span>
-        <span class="thread-feed-review-toggle">
+        <span className="shrink-0 text-xs text-muted-foreground">
           {open ? "Hide preview" : "Open exact preview"}
         </span>
       </summary>
-      <div class="thread-feed-review-body">
+      <div className="space-y-4 border-t border-border p-4">
         {record.supersededBy && (
-          <aside class="decision-review-superseded" role="note">
+          <aside
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 p-4"
+            role="note"
+          >
             <div>
-              <strong>Superseded by the current geometry review</strong>
-              <span>{record.supersededBy.title}</span>
+              <strong className="text-sm font-medium">
+                Superseded by the current geometry review
+              </strong>
+              <span className="mt-0.5 block text-sm text-muted-foreground">
+                {record.supersededBy.title}
+              </span>
             </div>
-            <a href={record.supersededBy.href}>Open replacement</a>
+            <a
+              className="text-sm font-medium text-brand hover:underline"
+              href={record.supersededBy.href}
+            >
+              Open replacement&nbsp;→
+            </a>
           </aside>
         )}
-        <p class="decision-notification-summary">{record.summary}</p>
+        <p className="text-sm text-muted-foreground">{record.summary}</p>
         <ReviewBusinessPreview record={record} />
         {canCompose && (
           <section
-            class="decision-review-composer"
+            className="flex flex-col gap-3 rounded-lg bg-muted/50 p-4"
             aria-labelledby={`${commentId}-title`}
             aria-busy={isSending}
           >
-            <header>
+            <header className="flex items-start justify-between gap-3">
               <div>
-                <small>REVIEW THIS EXACT PROPOSAL</small>
-                <strong id={`${commentId}-title`}>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Review this exact proposal
+                </p>
+                <strong
+                  id={`${commentId}-title`}
+                  className="text-sm font-semibold"
+                >
                   Send your intent to the paired agent
                 </strong>
               </div>
@@ -331,31 +396,33 @@ export function ActivityReviewFeedCard({
                   transmissionState.retryIntent !== undefined)
               ? (
                 <div
-                  class="decision-review-composer-fields"
+                  className="flex flex-col gap-3"
                   data-composer-mode={composerMode}
                 >
                   {transmissionState.kind === "error" && (
                     <div
-                      class="decision-review-transmission"
+                      className={reviewTransmissionNoticeClass("error")}
                       data-transmission-state="error"
                       role="alert"
                     >
                       <strong>Send failed</strong>
                       <span>{transmissionState.message}</span>
                       {transmissionState.retryIntent && onRetryIntent && (
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => void onRetryIntent()}
                         >
                           Retry exact send
-                        </button>
+                        </Button>
                       )}
                     </div>
                   )}
                   {commentError && (
                     <p
                       id={commentErrorId}
-                      class="decision-review-comment-error"
+                      className={reviewTransmissionNoticeClass("error")}
                       role="alert"
                     >
                       {commentError}
@@ -364,26 +431,27 @@ export function ActivityReviewFeedCard({
                   {composerMode === "choice"
                     ? (
                       <>
-                        <p class="decision-review-choice-copy">
+                        <p className="text-sm text-muted-foreground">
                           Validate this exact proposal, or describe what must
                           change.
                         </p>
                         <div
-                          class="decision-review-submit-actions"
+                          className="flex flex-wrap gap-2"
                           role="group"
                           aria-label="Review response"
                         >
-                          <button
+                          <Button
                             type="button"
-                            class="decision-review-validate-button"
+                            size="sm"
                             disabled={isSending}
                             onClick={() => send("validate", undefined)}
                           >
                             Validate
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            class="decision-review-revision-button"
+                            variant="outline"
+                            size="sm"
                             disabled={isSending}
                             onClick={() => {
                               setCommentError(undefined);
@@ -391,17 +459,30 @@ export function ActivityReviewFeedCard({
                             }}
                           >
                             Request revision
-                          </button>
+                          </Button>
                         </div>
                       </>
                     )
                     : (
                       <>
-                        <label for={commentId}>
-                          What should change? <span>Required</span>
+                        <label
+                          htmlFor={commentId}
+                          className="text-sm font-medium"
+                        >
+                          What should change?{" "}
+                          <span className="text-xs text-destructive">
+                            Required
+                          </span>
                         </label>
                         <textarea
                           id={commentId}
+                          className={cn(
+                            "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
+                            "placeholder:text-muted-foreground",
+                            "focus-visible:outline-none focus-visible:ring-1",
+                            "focus-visible:ring-ring",
+                            commentError && "border-destructive",
+                          )}
                           value={comment}
                           rows={3}
                           required
@@ -416,7 +497,7 @@ export function ActivityReviewFeedCard({
                             if (commentError) setCommentError(undefined);
                           }}
                         />
-                        <div class="decision-review-comment-meta">
+                        <div className="flex justify-between gap-3 text-xs text-muted-foreground">
                           <small id={commentHelpId}>
                             This text is sent exactly as written.
                           </small>
@@ -425,21 +506,22 @@ export function ActivityReviewFeedCard({
                           </small>
                         </div>
                         <div
-                          class="decision-review-submit-actions"
+                          className="flex flex-wrap gap-2"
                           role="group"
                           aria-label="Revision request"
                         >
-                          <button
+                          <Button
                             type="button"
-                            class="decision-review-revision-button"
+                            size="sm"
                             disabled={isSending || !canSendRevision}
                             onClick={() => send("request-revision", comment)}
                           >
                             Send revision request
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             type="button"
-                            class="decision-review-back-button"
+                            variant="outline"
+                            size="sm"
                             disabled={isSending}
                             onClick={() => {
                               setComment("");
@@ -448,7 +530,7 @@ export function ActivityReviewFeedCard({
                             }}
                           >
                             Back
-                          </button>
+                          </Button>
                         </div>
                       </>
                     )}
@@ -464,61 +546,60 @@ export function ActivityReviewFeedCard({
         )}
         {record.outcome && (
           <dl
-            class="decision-review-outcome"
+            className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5"
             aria-label="Recorded review outcome"
           >
             {record.outcome.rationale && (
-              <div>
-                <dt>Rationale</dt>
-                <dd>{record.outcome.rationale}</dd>
-              </div>
+              <>
+                <dt className="text-xs text-muted-foreground">Rationale</dt>
+                <dd className="text-sm">{record.outcome.rationale}</dd>
+              </>
             )}
             {record.outcome.decidedBy && (
-              <div>
-                <dt>Decided by</dt>
-                <dd>{record.outcome.decidedBy}</dd>
-              </div>
+              <>
+                <dt className="text-xs text-muted-foreground">Decided by</dt>
+                <dd className="text-sm">{record.outcome.decidedBy}</dd>
+              </>
             )}
             {record.outcome.decidedAt && (
-              <div>
-                <dt>Decided</dt>
-                <dd>{formatDateTime(record.outcome.decidedAt)}</dd>
-              </div>
+              <>
+                <dt className="text-xs text-muted-foreground">Decided</dt>
+                <dd className="font-mono text-xs text-muted-foreground">
+                  {formatDateTime(record.outcome.decidedAt)}
+                </dd>
+              </>
             )}
           </dl>
         )}
-        <dl class="decision-notification-scope">
-          <div>
-            <dt>Review</dt>
-            <dd>{activityReviewDisplayStatusLabel(displayStatus)}</dd>
-          </div>
-          <div>
-            <dt>Scope</dt>
-            <dd>
-              {record.decision?.inputFingerprint
-                ? "Exact input bound"
-                : "Record only"}
-            </dd>
-          </div>
-          <div>
-            <dt>Recorded</dt>
-            <dd>
-              {record.recordedAt ? formatDateTime(record.recordedAt) : "—"}
-            </dd>
-          </div>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+          <dt className="text-xs text-muted-foreground">Review</dt>
+          <dd className="text-sm">
+            {activityReviewDisplayStatusLabel(displayStatus)}
+          </dd>
+          <dt className="text-xs text-muted-foreground">Scope</dt>
+          <dd className="text-sm">
+            {record.decision?.inputFingerprint
+              ? "Exact input bound"
+              : "Record only"}
+          </dd>
+          <dt className="text-xs text-muted-foreground">Recorded</dt>
+          <dd className="font-mono text-xs text-muted-foreground">
+            {record.recordedAt ? formatDateTime(record.recordedAt) : "—"}
+          </dd>
         </dl>
         {record.resultEvidence && onOpenEvidence && (
-          <div class="decision-review-actions">
-            <button
+          <div>
+            <Button
               type="button"
-              class="decision-secondary-button"
+              variant="outline"
+              size="sm"
               onClick={() => onOpenEvidence(record.resultEvidence!)}
             >
               Trace exact result
-            </button>
+            </Button>
           </div>
         )}
-        <small class="decision-review-guidance">
+        <p className="text-xs text-muted-foreground">
           {status === "to-review" && canCompose
             ? "A sent intent is not a validation. This card changes only when the canonical project records the signed decision."
             : status === "to-review" || status === "revision-requested"
@@ -528,7 +609,7 @@ export function ActivityReviewFeedCard({
             : record.resultEvidence
             ? "Validated review attached to this exact published feed fact."
             : "Validated review. No exact published result is recorded yet."}
-        </small>
+        </p>
       </div>
     </details>
   );
@@ -547,9 +628,12 @@ function ReviewIntentTransmissionBadge(
     : state.kind === "stale"
     ? "Stale"
     : "Send failed";
+  const variant = state.kind === "error" || state.kind === "stale"
+    ? "warning"
+    : "info";
   return (
-    <span
-      class="decision-review-transmission-badge"
+    <Badge
+      variant={variant}
       data-transmission-state={state.kind}
       aria-label={state.kind === "queued"
         ? "Sent to review queue · agent receipt pending"
@@ -558,7 +642,7 @@ function ReviewIntentTransmissionBadge(
         : label}
     >
       {label}
-    </span>
+    </Badge>
   );
 }
 
@@ -572,7 +656,11 @@ function ReviewIntentTransmissionNotice({
   if (state.kind === "idle") return null;
   if (state.kind === "sending") {
     return (
-      <p class="decision-review-transmission" role="status" aria-live="polite">
+      <p
+        className={reviewTransmissionNoticeClass()}
+        role="status"
+        aria-live="polite"
+      >
         Sending review intent…
       </p>
     );
@@ -580,7 +668,7 @@ function ReviewIntentTransmissionNotice({
   if (state.kind === "queued" || state.kind === "acknowledged") {
     return (
       <div
-        class="decision-review-transmission"
+        className={reviewTransmissionNoticeClass()}
         data-transmission-state={state.kind}
         role="status"
         aria-live="polite"
@@ -597,34 +685,55 @@ function ReviewIntentTransmissionNotice({
   if (state.kind === "error") {
     return (
       <div
-        class="decision-review-transmission"
+        className={reviewTransmissionNoticeClass("error")}
         data-transmission-state="error"
         role="alert"
       >
         <strong>Refresh required</strong>
         <span>{state.message}</span>
         {onRefresh && (
-          <button type="button" onClick={() => void onRefresh()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void onRefresh()}
+          >
             Refresh preview
-          </button>
+          </Button>
         )}
       </div>
     );
   }
   return (
     <div
-      class="decision-review-transmission"
+      className={reviewTransmissionNoticeClass("error")}
       data-transmission-state="stale"
       role="alert"
     >
       <strong>Proposal changed</strong>
       <span>{state.message}</span>
       {onRefresh && (
-        <button type="button" onClick={() => void onRefresh()}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void onRefresh()}
+        >
           Refresh preview
-        </button>
+        </Button>
       )}
     </div>
+  );
+}
+
+function reviewTransmissionNoticeClass(
+  tone: "quiet" | "error" = "quiet",
+): string {
+  return cn(
+    "flex flex-wrap items-center gap-2 rounded-md px-3 py-2 text-xs",
+    tone === "error"
+      ? "bg-destructive/10 text-destructive"
+      : "bg-muted/50 text-muted-foreground",
   );
 }
 
@@ -634,53 +743,73 @@ export function ReviewBusinessPreview(
   const preview = record.preview;
   if (preview.kind === "unavailable") {
     return (
-      <div class="review-preview-unavailable" role="status">
-        <strong>Preview unavailable</strong>
+      <div
+        className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
+        role="status"
+      >
+        <strong className="block text-sm font-medium">
+          Preview unavailable
+        </strong>
         <span>{preview.reason}</span>
       </div>
     );
   }
   if (preview.kind === "brief") {
     return (
-      <section class="review-business-preview review-brief-preview">
-        <header>
-          <span>ENGINEERING BRIEF · REVISION {preview.brief.revision}</span>
-          <strong>{preview.brief.items.length} explicit statements</strong>
+      <section className="divide-y divide-border">
+        <header className="pb-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Engineering brief · revision {preview.brief.revision}
+          </p>
+          <strong className="text-sm font-semibold">
+            {preview.brief.items.length} explicit statements
+          </strong>
         </header>
-        <ul>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 pt-3">
           {preview.brief.items.map((item) => (
-            <li key={item.id}>
-              <small>{item.kind.replaceAll("-", " ")}</small>
-              <span>{item.statement}</span>
-            </li>
+            <div key={item.id} className="contents">
+              <dt className="text-xs text-muted-foreground">
+                {item.kind.replaceAll("-", " ")}
+              </dt>
+              <dd className="text-sm">{item.statement}</dd>
+            </div>
           ))}
-        </ul>
+        </dl>
       </section>
     );
   }
   if (preview.kind === "architecture") {
     const bindingRows = buildArchitectureBindingRows(preview.value);
     return (
-      <section class="review-business-preview review-architecture-preview">
-        <header>
-          <span>
-            PARTDEFINITION BINDING DIAGRAM · {preview.value.packageName}
-          </span>
-          <strong>{preview.value.system.name}</strong>
+      <section className="divide-y divide-border">
+        <header className="pb-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            PartDefinition binding diagram · {preview.value.packageName}
+          </p>
+          <strong className="text-sm font-semibold">
+            {preview.value.system.name}
+          </strong>
         </header>
-        <ol>
+        <ol className="divide-y divide-border pt-1">
           {bindingRows.map(({ component, depth }, index) => (
             <li
               key={`${component.parentName}:${component.usageName}:${index}`}
+              className="flex flex-wrap items-baseline gap-2 py-2"
               style={{ paddingInlineStart: `${12 + depth * 22}px` }}
               aria-label={`Nesting level ${
                 depth + 1
               }: ${component.parentName} contains usage ${component.usageName} typed by ${component.name}`}
             >
-              <code>{component.parentName}</code>
+              <code className="font-mono text-xs text-muted-foreground">
+                {component.parentName}
+              </code>
               <span aria-hidden="true">→</span>
-              <strong>{component.usageName}</strong>
-              <small>: {component.name}</small>
+              <strong className="text-sm font-medium">
+                {component.usageName}
+              </strong>
+              <small className="text-xs text-muted-foreground">
+                : {component.name}
+              </small>
             </li>
           ))}
         </ol>
@@ -689,26 +818,41 @@ export function ReviewBusinessPreview(
   }
   if (preview.kind === "requirements") {
     return (
-      <section class="review-business-preview review-requirements-preview">
-        <header>
-          <span>REQUIREMENTS PROPOSAL · TARGET</span>
-          <strong>{preview.value.containerComponent}</strong>
+      <section className="divide-y divide-border">
+        <header className="pb-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Requirements proposal · target
+          </p>
+          <strong className="text-sm font-semibold">
+            {preview.value.containerComponent}
+          </strong>
         </header>
-        <ul>
+        <dl className="divide-y divide-border">
           {preview.value.requirements.map((requirement) => (
-            <li key={requirement.metric}>
-              <div>
-                <strong>{requirement.name}</strong>
-                <code>{requirement.metric}</code>
-              </div>
-              <span>
-                {requirement.operator} {requirement.threshold.value}{" "}
-                {requirement.threshold.unit}
-              </span>
-              <small>Target only · no measurement</small>
-            </li>
+            <div
+              key={requirement.metric}
+              className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 py-2"
+            >
+              <dt className="text-xs text-muted-foreground">
+                <span className="block text-sm text-foreground">
+                  {requirement.name}
+                </span>
+                <code className="font-mono text-xs">
+                  {requirement.metric}
+                </code>
+              </dt>
+              <dd className="text-sm">
+                <span className="font-mono text-xs text-muted-foreground">
+                  {requirement.operator} {requirement.threshold.value}{" "}
+                  {requirement.threshold.unit}
+                </span>
+                <small className="mt-0.5 block text-xs text-muted-foreground">
+                  Target only · no measurement
+                </small>
+              </dd>
+            </div>
           ))}
-        </ul>
+        </dl>
       </section>
     );
   }
@@ -737,13 +881,17 @@ function reviewKindLabel(kind: ProjectReviewKind): string {
   return "Geometry";
 }
 
-function reviewStatusIcon(status: ActivityReviewDisplayStatus): string {
-  if (status === "to-review") return "!";
-  if (status === "sending") return "···";
-  if (status === "sent") return "↑";
-  if (status === "received") return "↓";
-  if (status === "validated") return "✓";
-  return "↺";
+function activityReviewBadgeVariant(
+  status: ActivityReviewDisplayStatus,
+): "warning" | "success" | "info" | "secondary" {
+  if (status === "to-review" || status === "revision-requested") {
+    return "warning";
+  }
+  if (status === "validated") return "success";
+  if (status === "sending" || status === "sent" || status === "received") {
+    return "info";
+  }
+  return "secondary";
 }
 
 // ── Geometry draft viewer ─────────────────────────────────────────────────────
@@ -775,8 +923,8 @@ function GeometryDraftPreview(
   const path = assetPath;
   if (!path || !format) {
     return (
-      <div class="geometry-review-preview" data-geometry-review-mode={mode}>
-        <p class="geometry-draft-no-preview">
+      <div className="divide-y divide-border" data-geometry-review-mode={mode}>
+        <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
           No previewable {mode === "sealed" ? "sealed" : "reviewed"}{" "}
           assembly is available (
           {view.assemblyFiles.length} file
@@ -793,19 +941,20 @@ function GeometryDraftPreview(
 
   if (format === "step") {
     return (
-      <div
-        class="geometry-draft-viewer geometry-draft-viewer--text"
-        data-geometry-review-mode={mode}
-      >
-        <p class="geometry-draft-label">{geometryPreviewLabel(mode, format)}</p>
-        <p>
+      <div className="divide-y divide-border" data-geometry-review-mode={mode}>
+        <p className="pb-3 text-xs font-medium text-muted-foreground">
+          {geometryPreviewLabel(mode, format)}
+        </p>
+        <p className="py-3 text-sm text-muted-foreground">
           {mode === "sealed"
             ? "Exact sealed STEP bytes are recorded; this format has no in-browser preview."
             : mode === "approved"
             ? "The STEP proposal was validated; its sealed result is still pending."
             : "STEP format — no in-browser preview. Review the available assembly preview with the agent before approving."}
         </p>
-        <code class="geometry-draft-digest">{view.draftDigest}</code>
+        <code className="block py-3 font-mono text-xs text-muted-foreground">
+          {view.draftDigest}
+        </code>
         <GeometryDecisionDetails
           view={view}
           partAssets={partAssets}
@@ -816,8 +965,8 @@ function GeometryDraftPreview(
   }
 
   return (
-    <div class="geometry-draft-viewer" data-geometry-review-mode={mode}>
-      <p class="geometry-draft-label">
+    <div className="divide-y divide-border" data-geometry-review-mode={mode}>
+      <p className="pb-3 text-xs font-medium text-muted-foreground">
         {geometryPreviewLabel(mode, format)}
       </p>
       {format === "gltf"
@@ -842,12 +991,14 @@ function GeometryDraftPreview(
           />
         )
         : <StlDraftCanvas url={path} />}
-      <footer class="geometry-draft-footer">
-        <small>
+      <footer className="flex flex-wrap items-baseline justify-between gap-2 py-3">
+        <small className="text-xs text-muted-foreground">
           Assembly files: {view.assemblyFiles.length} · Components:{" "}
           {view.components.length} · Unit: {view.unitSystem}
         </small>
-        <code class="geometry-draft-digest">{view.draftDigest}</code>
+        <code className="font-mono text-xs text-muted-foreground">
+          {view.draftDigest}
+        </code>
       </footer>
       <GeometryDecisionDetails
         view={view}
@@ -863,18 +1014,18 @@ function geometryPreviewLabel(
   format: string,
 ): string {
   if (mode === "sealed") {
-    return `SEALED RESULT · EXACT RECORDED BYTES · ${format.toUpperCase()}`;
+    return `Sealed result · exact recorded bytes · ${format.toUpperCase()}`;
   }
   if (mode === "approved") {
-    return `VALIDATED PROPOSAL · RESULT PENDING · ${format.toUpperCase()}`;
+    return `Validated proposal · result pending · ${format.toUpperCase()}`;
   }
   if (mode === "superseded") {
-    return `VALIDATED HISTORICAL PROPOSAL · SUPERSEDED · ${format.toUpperCase()}`;
+    return `Validated historical proposal · superseded · ${format.toUpperCase()}`;
   }
   if (mode === "historical") {
-    return `VALIDATED HISTORICAL PROPOSAL · RESULT NOT IN CURRENT GRAPH · ${format.toUpperCase()}`;
+    return `Validated historical proposal · result not in current graph · ${format.toUpperCase()}`;
   }
-  return `DRAFT · GEOMETRY PROPOSAL · ${format.toUpperCase()} · NOT CANONICAL`;
+  return `Draft · geometry proposal · ${format.toUpperCase()} · NOT CANONICAL`;
 }
 
 function GeometryDecisionDetails(
@@ -904,10 +1055,12 @@ function GeometryDecisionDetails(
     <>
       {view.schemaVersion === "geometry-manifest/2.0" && (
         <>
-          <section class="geometry-part-artifacts">
-            <header>
-              <span>INDEPENDENT PARTDEFINITION CAD</span>
-              <strong>
+          <section className="divide-y divide-border">
+            <header className="pb-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Independent PartDefinition CAD
+              </p>
+              <strong className="text-sm font-semibold">
                 {view.partDefinitions.length}{" "}
                 definition{view.partDefinitions.length === 1 ? "" : "s"}{" "}
                 included in this review
@@ -920,31 +1073,37 @@ function GeometryDecisionDetails(
                 mode={mode}
               />
             )}
-            <div class="geometry-part-artifact-grid">
+            <div className="grid gap-3 py-3 sm:grid-cols-2">
               {view.partDefinitions.map((definition) => {
                 const assets = partAssets.filter((asset) =>
                   asset.partDefinitionElementId === definition.elementId
                 );
                 return (
-                  <article key={definition.elementId}>
-                    <div>
-                      <strong>{definition.label}</strong>
-                      <small>
+                  <article
+                    key={definition.elementId}
+                    className="divide-y divide-border"
+                  >
+                    <div className="pb-2">
+                      <strong className="text-sm font-medium">
+                        {definition.label}
+                      </strong>
+                      <small className="mt-0.5 block font-mono text-xs text-muted-foreground">
                         SysML PartDefinition · {definition.elementId}
                       </small>
                     </div>
                     {assets.map((asset) => (
                       <div
-                        class="geometry-part-artifact-file"
+                        className="flex flex-wrap items-center justify-between gap-2 py-2"
                         key={`${asset.digest}:${asset.format}`}
                       >
-                        <span>
+                        <span className="font-mono text-xs text-muted-foreground">
                           {asset.format.toUpperCase()} ·{" "}
                           {shortDigest(asset.digest)}
                         </span>
                         {asset.path
                           ? (
                             <a
+                              className="text-sm font-medium text-brand hover:underline"
                               href={asset.path}
                               download={`${asset.name}.${
                                 asset.format === "gltf" ? "glb" : asset.format
@@ -958,7 +1117,7 @@ function GeometryDecisionDetails(
                             </a>
                           )
                           : (
-                            <small>
+                            <small className="text-xs text-muted-foreground">
                               Exact file unavailable in this projection
                             </small>
                           )}
@@ -970,26 +1129,33 @@ function GeometryDecisionDetails(
             </div>
             {hasPreviewablePartGlb
               ? (
-                <p>
+                <p className="pt-3 text-sm text-muted-foreground">
                   These files share the same bundle decision. STEP remains the
                   authoritative per-part CAD; the selected GLB is its visual
                   review derivative. Every exact file stays downloadable above.
                 </p>
               )
               : (
-                <p>
+                <p className="pt-3 text-sm text-muted-foreground">
                   These files are validated by the same bundle decision. STEP is
                   downloadable for downstream part work; no per-part browser
                   viewer is claimed.
                 </p>
               )}
           </section>
-          <section class="geometry-occurrence-table">
-            <header>
-              <span>PARTUSAGE → PARTDEFINITION</span>
-              <strong>{view.occurrences.length} placed occurrences</strong>
+          <section className="divide-y divide-border">
+            <header className="pb-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                PartUsage → PartDefinition
+              </p>
+              <strong className="text-sm font-semibold">
+                {view.occurrences.length} placed occurrences
+              </strong>
             </header>
-            <div role="table" aria-label="Geometry occurrence placements">
+            <dl
+              className="divide-y divide-border"
+              aria-label="Geometry occurrence placements"
+            >
               {view.occurrences.map((occurrence) => {
                 const usage = usageById.get(occurrence.usageElementId);
                 const definition = definitionById.get(
@@ -997,91 +1163,88 @@ function GeometryDecisionDetails(
                 );
                 return (
                   <div
-                    role="row"
                     key={occurrence.usageElementId}
+                    className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 py-2"
                   >
-                    <span role="cell">
-                      <strong>
+                    <dt>
+                      <strong className="text-sm font-medium">
                         {usage?.usageName ?? occurrence.usageElementId}
                       </strong>
-                      <small>{usage?.label ?? "Recorded occurrence"}</small>
-                    </span>
-                    <i aria-hidden="true">→</i>
-                    <span role="cell">
-                      <strong>
+                      <small className="mt-0.5 block text-xs text-muted-foreground">
+                        {usage?.label ?? "Recorded occurrence"}
+                      </small>
+                    </dt>
+                    <dd>
+                      <strong className="text-sm font-medium">
                         {definition?.label ??
                           occurrence.partDefinitionElementId}
                       </strong>
-                      <small>
+                      <small className="mt-0.5 block font-mono text-xs text-muted-foreground">
                         T [{occurrence.translationMm.join(", ")}] mm · R
                         [{occurrence
                           .rotationDeg.join(", ")}]°
                       </small>
-                    </span>
+                    </dd>
                   </div>
                 );
               })}
-            </div>
+            </dl>
           </section>
         </>
       )}
       {view.schemaVersion === "geometry-manifest/1.0" && (
-        <p class="geometry-legacy-scope">
+        <p className="text-sm text-muted-foreground">
           Legacy assembly-only review · no independent PartDefinition CAD was
           included in this decision.
         </p>
       )}
-      <details class="geometry-review-trace">
-        <summary>Formats, hashes and recorded source</summary>
-        <dl>
-          <div>
-            <dt>Manifest</dt>
-            <dd>{view.schemaVersion}</dd>
-          </div>
-          <div>
-            <dt>Source</dt>
-            <dd>
-              {view.architecture.snapshotId} · r{view.architecture.revision}
-            </dd>
-          </div>
+      <details>
+        <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+          Formats, hashes and recorded source
+        </summary>
+        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+          <dt className="text-xs text-muted-foreground">Manifest</dt>
+          <dd className="font-mono text-xs text-muted-foreground">
+            {view.schemaVersion}
+          </dd>
+          <dt className="text-xs text-muted-foreground">Source</dt>
+          <dd className="font-mono text-xs text-muted-foreground">
+            {view.architecture.snapshotId} · r{view.architecture.revision}
+          </dd>
           {view.predecessor && (
-            <div>
-              <dt>Replaces</dt>
-              <dd>
+            <>
+              <dt className="text-xs text-muted-foreground">Replaces</dt>
+              <dd className="font-mono text-xs text-muted-foreground">
                 {view.predecessor.artifactId} ·{" "}
-                <code>{shortDigest(view.predecessor.digest)}</code>
+                {shortDigest(view.predecessor.digest)}
               </dd>
-            </div>
+            </>
           )}
-          <div>
-            <dt>Architecture SHA-256</dt>
-            <dd>
-              <code>{view.architecture.artifactDigest}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>Requested formats</dt>
-            <dd>
-              Assembly {view.exportFormats.join(", ")}
-              {view.partExportFormats.length > 0
-                ? ` · Parts ${view.partExportFormats.join(", ")}`
-                : ""}
-            </dd>
-          </div>
-          <div>
-            <dt>Assembly</dt>
-            <dd>
-              {view.assemblyFiles.map((file) =>
-                `${file.format.toUpperCase()} ${file.name} ${
-                  shortDigest(file.digest)
-                }`
-              ).join(" · ") || "None recorded"}
-            </dd>
-          </div>
+          <dt className="text-xs text-muted-foreground">
+            Architecture SHA-256
+          </dt>
+          <dd className="font-mono text-xs text-muted-foreground">
+            {view.architecture.artifactDigest}
+          </dd>
+          <dt className="text-xs text-muted-foreground">Requested formats</dt>
+          <dd className="text-sm">
+            Assembly {view.exportFormats.join(", ")}
+            {view.partExportFormats.length > 0
+              ? ` · Parts ${view.partExportFormats.join(", ")}`
+              : ""}
+          </dd>
+          <dt className="text-xs text-muted-foreground">Assembly</dt>
+          <dd className="font-mono text-xs text-muted-foreground">
+            {view.assemblyFiles.map((file) =>
+              `${file.format.toUpperCase()} ${file.name} ${
+                shortDigest(file.digest)
+              }`
+            ).join(" · ") || "None recorded"}
+          </dd>
           {view.partDefinitions.length > 0 && (
-            <div>
-              <dt>Parts</dt>
-              <dd>
+            <>
+              <dt className="text-xs text-muted-foreground">Parts</dt>
+              <dd className="font-mono text-xs text-muted-foreground">
                 {view.partDefinitions.map((definition) =>
                   `${definition.label} source ${
                     shortDigest(definition.scriptDigest)
@@ -1092,14 +1255,12 @@ function GeometryDecisionDetails(
                   }`
                 ).join(" · ")}
               </dd>
-            </div>
+            </>
           )}
-          <div>
-            <dt>Script SHA-256</dt>
-            <dd>
-              <code>{view.scriptDigest}</code>
-            </dd>
-          </div>
+          <dt className="text-xs text-muted-foreground">Script SHA-256</dt>
+          <dd className="font-mono text-xs text-muted-foreground">
+            {view.scriptDigest}
+          </dd>
         </dl>
       </details>
     </>
@@ -1145,19 +1306,21 @@ function PartDefinitionGlbReview(
 
   return (
     <section
-      class="geometry-part-visual-review"
+      className="divide-y divide-border py-3"
       data-geometry-review-mode={mode}
       aria-label="PartDefinition visual review"
     >
-      <header>
-        <span>PARTDEFINITION VISUAL CHECK</span>
-        <strong>
+      <header className="pb-3">
+        <p className="text-xs font-medium text-muted-foreground">
+          PartDefinition visual check
+        </p>
+        <strong className="text-sm font-semibold">
           {previews.length} preview{previews.length === 1 ? "" : "s"} available
         </strong>
       </header>
-      <div class="geometry-part-visual-layout">
+      <div className="grid gap-3 pt-3 md:grid-cols-[minmax(10.5rem,0.32fr)_minmax(0,1fr)]">
         <ul
-          class="geometry-part-visual-list"
+          className="grid max-h-[25rem] gap-1 overflow-y-auto"
           aria-label="PartDefinition GLB previews"
         >
           {previews.map((preview) => {
@@ -1165,26 +1328,42 @@ function PartDefinitionGlbReview(
               selected.definition.elementId;
             return (
               <li key={preview.definition.elementId}>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "h-auto w-full flex-col items-start py-2",
+                    isSelected && "bg-muted",
+                  )}
                   data-selected={isSelected ? "true" : "false"}
                   aria-pressed={isSelected}
                   onClick={() =>
                     setSelectedDefinitionId(preview.definition.elementId)}
                 >
-                  <strong>{preview.definition.label}</strong>
-                  <small>SysML PartDefinition</small>
-                  <code>GLB · {shortDigest(preview.asset.digest)}</code>
-                </button>
+                  <strong className="text-sm font-medium">
+                    {preview.definition.label}
+                  </strong>
+                  <small className="text-xs text-muted-foreground">
+                    SysML PartDefinition
+                  </small>
+                  <code className="font-mono text-xs text-muted-foreground">
+                    GLB · {shortDigest(preview.asset.digest)}
+                  </code>
+                </Button>
               </li>
             );
           })}
         </ul>
-        <div class="geometry-part-visual-current">
-          <p class="geometry-part-visual-label">{copy.label}</p>
-          <header>
-            <strong>{selected.definition.label}</strong>
-            <small>
+        <div className="divide-y divide-border">
+          <p className="pb-2 text-xs font-medium text-muted-foreground">
+            {copy.label}
+          </p>
+          <header className="py-2">
+            <strong className="text-sm font-semibold">
+              {selected.definition.label}
+            </strong>
+            <small className="mt-0.5 block font-mono text-xs text-muted-foreground">
               SysML PartDefinition · {selected.definition.elementId}
             </small>
           </header>
@@ -1194,9 +1373,13 @@ function PartDefinitionGlbReview(
             loadingLabel={copy.loadingLabel}
             errorLabel={copy.errorLabel}
           />
-          <footer>
-            <span>GLB visual derivative · STEP remains authoritative</span>
-            <code>{shortDigest(selected.asset.digest)}</code>
+          <footer className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+            <span className="text-xs text-muted-foreground">
+              GLB visual derivative · STEP remains authoritative
+            </span>
+            <code className="font-mono text-xs text-muted-foreground">
+              {shortDigest(selected.asset.digest)}
+            </code>
           </footer>
         </div>
       </div>
@@ -1214,7 +1397,7 @@ function partDefinitionPreviewCopy(
 } {
   if (mode === "sealed") {
     return {
-      label: "SEALED PART PRESENTATION · EXACT RECORDED GLB",
+      label: "Sealed part presentation · exact recorded GLB",
       ariaLabel: "Interactive sealed PartDefinition presentation",
       loadingLabel: "Loading sealed part presentation…",
       errorLabel: "Sealed part presentation unavailable",
@@ -1222,7 +1405,7 @@ function partDefinitionPreviewCopy(
   }
   if (mode === "approved") {
     return {
-      label: "VALIDATED PART PROPOSAL · RESULT PENDING · GLB",
+      label: "Validated part proposal · result pending · GLB",
       ariaLabel: "Interactive validated PartDefinition proposal",
       loadingLabel: "Loading validated part proposal…",
       errorLabel: "Validated part proposal unavailable",
@@ -1230,7 +1413,7 @@ function partDefinitionPreviewCopy(
   }
   if (mode === "superseded") {
     return {
-      label: "VALIDATED HISTORICAL PART PROPOSAL · SUPERSEDED · GLB",
+      label: "Validated historical part proposal · superseded · GLB",
       ariaLabel: "Interactive superseded PartDefinition proposal",
       loadingLabel: "Loading superseded part proposal…",
       errorLabel: "Superseded part proposal unavailable",
@@ -1239,14 +1422,14 @@ function partDefinitionPreviewCopy(
   if (mode === "historical") {
     return {
       label:
-        "VALIDATED HISTORICAL PART PROPOSAL · RESULT NOT IN CURRENT GRAPH · GLB",
+        "Validated historical part proposal · result not in current graph · GLB",
       ariaLabel: "Interactive historical PartDefinition proposal",
       loadingLabel: "Loading historical part proposal…",
       errorLabel: "Historical part proposal unavailable",
     };
   }
   return {
-    label: "DRAFT PART PROPOSAL · GLB · NOT CANONICAL",
+    label: "Draft part proposal · GLB · not canonical",
     ariaLabel: "Interactive proposed PartDefinition geometry",
     loadingLabel: "Loading proposed part geometry…",
     errorLabel: "Proposed part geometry unavailable",
@@ -1271,7 +1454,7 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
 
     const viewport = createThreeOrbitViewport(container);
     const { scene } = viewport;
-    scene.background = new THREE.Color(0xf4efe5);
+    scene.background = new THREE.Color(0xf2f4f6);
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0xb9aa98, 2.4));
     const key = new THREE.DirectionalLight(0xfff8ed, 3.4);
@@ -1290,7 +1473,7 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
         geometry.center();
         geometry.computeBoundingSphere();
         material = new THREE.MeshStandardMaterial({
-          color: 0xb86635,
+          color: 0x6f7f79,
           metalness: 0.08,
           roughness: 0.72,
         });
@@ -1318,23 +1501,34 @@ function StlDraftCanvas({ url }: { url: string }): JSX.Element {
   }, [url]);
 
   return (
-    <div class="geometry-draft-canvas-shell">
-      <div class="geometry-draft-canvas" ref={host} />
-      <div class="geometry-draft-canvas-state" data-state={state}>
+    <div className="geometry-draft-canvas-shell">
+      <div className="geometry-draft-canvas" ref={host} />
+      <div
+        className={cn(
+          "pointer-events-none absolute text-xs text-muted-foreground",
+          state === "loading" || state === "error"
+            ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+            : "bottom-2 right-2.5",
+          state === "error" && "text-destructive",
+        )}
+        data-state={state}
+      >
         {state === "loading"
           ? "Loading draft mesh…"
           : state === "error"
           ? "Draft mesh unavailable"
           : "Drag to orbit · scroll to zoom"}
       </div>
-      <button
+      <Button
         type="button"
-        class="geometry-draft-reset"
+        variant="outline"
+        size="sm"
+        className="absolute right-2.5 top-2.5"
         disabled={state !== "ready"}
         onClick={() => resetView.current?.()}
       >
         Fit / reset
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
+import tailwindcss from "@tailwindcss/vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 function trimGeneratedHtml(): Plugin {
@@ -41,7 +42,7 @@ function environmentPort(name: string, fallback: number): number {
 }
 
 export default defineConfig({
-  plugins: [viteSingleFile(), trimGeneratedHtml()],
+  plugins: [tailwindcss(), viteSingleFile(), trimGeneratedHtml()],
   base: "./",
   server: {
     host: "127.0.0.1",

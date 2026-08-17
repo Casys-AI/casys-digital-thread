@@ -23,7 +23,8 @@ import {
   initialSnapshotFromResult,
   toolResultErrorMessage,
 } from "./initial-result.ts";
-import { h, render as renderPreact } from "preact";
+import { createElement } from "react";
+import { createRoot } from "react-dom/client";
 import { installMcpViewTheme } from "./mcp-view-primitives.ts";
 import {
   createThreadWorkbenchClient,
@@ -937,7 +938,9 @@ function buildConsole(): HTMLElement {
       "#thread-workbench-root",
     );
     if (workbenchRoot) {
-      renderPreact(h(ThreadWorkbench, { client: threadClient }), workbenchRoot);
+      createRoot(workbenchRoot).render(
+        createElement(ThreadWorkbench, { client: threadClient }),
+      );
     }
   }
   return shell;

@@ -1,6 +1,5 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
+import type { JSX } from "react";
+import { recordStatusVariant } from "./record-status.ts";
 import type {
   EngineeringProjectPhase,
   EngineeringWorkItem,
@@ -11,9 +10,20 @@ import {
   projectBriefItems,
   type ProjectBriefRevision,
 } from "../../../domain/project/project-brief.ts";
+import { cn } from "../lib/utils.ts";
 import type { ThreadStreamStatus } from "../thread/client.ts";
 import type { EngineeringPlanningWorkbenchSnapshot } from "../thread/types.ts";
+import { Badge, type BadgeProps } from "../ui/badge.tsx";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card.tsx";
 import { BaselineRunActivity } from "./baseline-run-activity.tsx";
+import { ProjectCockpitHeader } from "./navigation.tsx";
+import { hasDistinctProjectObjectiveStatement } from "./navigation-model.ts";
 import {
   buildProjectBrief,
   projectBriefStatusLabel,
@@ -21,6 +31,8 @@ import {
   workOwnerLabel,
   workStatusLabel,
 } from "./model.ts";
+
+type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
 /**
  * Native project surface for the period between an approved brief and the
@@ -45,9 +57,12 @@ export function PlanningWorkbench({
     ? engineeringProjectFramingStatus(framing)
     : undefined;
   const displayedBrief = framing?.proposedBrief ?? framing?.currentBrief;
-  const displayedObjective = displayedBrief
-    ? projectBriefItems(displayedBrief, "objective")[0]?.statement
-    : framing?.intent.statement ?? project.project.objective.statement;
+  const intentStatement = framing?.intent.statement ??
+    project.project.objective.statement;
+  const displayedObjective =
+    (displayedBrief
+      ? projectBriefItems(displayedBrief, "objective")[0]?.statement
+      : intentStatement) ?? intentStatement;
   const projectStateLabel = framingStatus && framingStatus !== "approved"
     ? framingStatusLabel(framingStatus)
     : projectBriefStatusLabel(brief);
@@ -58,83 +73,71 @@ export function PlanningWorkbench({
     : framingStatus === "revision-requested"
     ? "Continue refining it with the agent"
     : "Shape the brief with the agent";
+  const statusTone = projectStatusTone(brief.status);
 
   return (
-    <div class="thread-workbench mcp-view-surface planning-workbench">
-      <header class="thread-cockpit-header">
-        <div class="thread-cockpit-identity">
-          <div class="thread-kicker">
-            <span class="thread-coordinate">ENGINEERING PROJECT COCKPIT</span>
-          </div>
-          <div class="thread-subject-heading">
-            <span class="thread-subject-mark" aria-hidden="true">DT</span>
-            <div>
-              <p class="thread-program">
-                PROJECT {project.project.id} · REVISION {project.revision}
-              </p>
-              <h2>{project.project.name}</h2>
-              <span class="thread-subject-context">
-                Planning subject · {project.project.subjectId}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="thread-session-panel">
-          <div class="thread-session-state" data-state={streamStatus}>
-            <i aria-hidden="true" />
-            <div>
-              <small>LIVE PROJECT PATH</small>
-              <strong>{planningStreamLabel(streamStatus)}</strong>
-            </div>
-          </div>
-          <div class="thread-session-change">
-            <small>PROJECT STATE</small>
-            <strong>{projectStateLabel}</strong>
-          </div>
-          <dl class="thread-session-facts">
-            <div>
-              <dt>Updated</dt>
-              <dd>{formatTime(project.generatedAt)}</dd>
-            </div>
-          </dl>
-        </div>
-      </header>
+    <div className="thread-workbench mcp-view-surface planning-workbench">
+      <ProjectCockpitHeader
+        projectId={project.project.id}
+        revision={project.revision}
+        projectName={project.project.name}
+        context={`Planning · ${project.project.subjectId}`}
+        streamState={streamStatus}
+        streamLabel={planningStreamLabel(streamStatus)}
+        statusLabel="Project"
+        statusValue={projectStateLabel}
+        metaLabel="Updated"
+        metaValue={formatTime(project.generatedAt)}
+      />
 
-      <main class="project-overview" id="project-workspace-panel">
+      <main className="grid gap-4" id="project-workspace-panel">
         <section
-          class="project-objective"
+          className="flex flex-col gap-4 border-b border-border pb-4 md:flex-row md:items-start md:justify-between"
           aria-labelledby="project-objective-title"
         >
-          <div class="project-objective-index" aria-hidden="true">
-            <span>MISSION</span>
-            <strong>{String(project.revision).padStart(2, "0")}</strong>
-          </div>
-          <div class="project-objective-copy">
-            <p>
+          <div className="min-w-0 [&>h3]:m-0 [&>h3]:max-w-3xl [&>h3]:text-lg [&>h3]:font-semibold [&>h3]:tracking-tight">
+            <p className="text-xs font-medium text-muted-foreground">
               {framingStatus === "awaiting-review"
-                ? "BRIEF PROPOSED FOR REVIEW"
+                ? "Brief proposed for review"
                 : framingStatus === "revision-requested"
-                ? "BRIEF REVISION REQUESTED"
+                ? "Brief revision requested"
                 : framingStatus === "approved"
-                ? "CANONICAL PROJECT BRIEF"
-                : "INITIAL PROJECT INTENT"}
+                ? "Canonical project brief"
+                : "Initial project intent"}
             </p>
             <h3 id="project-objective-title">
               {displayedObjective}
             </h3>
-            <blockquote>
-              {framing?.intent.statement ?? project.project.objective.statement}
-            </blockquote>
+            {hasDistinctProjectObjectiveStatement(
+              displayedObjective,
+              intentStatement,
+            ) && (
+              <blockquote className="mt-3 max-w-3xl text-sm text-muted-foreground">
+                {intentStatement}
+              </blockquote>
+            )}
           </div>
           <div
-            class="project-status-seal"
-            data-tone={projectStatusTone(brief.status)}
+            className="flex shrink-0 flex-col items-start gap-1.5 md:items-end"
+            data-tone={statusTone}
             aria-label={`Project status: ${projectStateLabel}`}
           >
-            <i aria-hidden="true" />
-            <span>PROJECT STATE</span>
-            <strong>{projectStateLabel}</strong>
-            <small>{projectStateDetail}</small>
+            <Badge
+              variant={projectToneVariant(statusTone)}
+              className="gap-1.5 px-2.5 py-1 text-sm"
+            >
+              <i
+                aria-hidden="true"
+                className={cn(
+                  "size-1.5 rounded-full",
+                  toneDotClass(statusTone),
+                )}
+              />
+              {projectStateLabel}
+            </Badge>
+            <p className="text-xs text-muted-foreground">
+              {projectStateDetail}
+            </p>
           </div>
         </section>
 
@@ -150,145 +153,182 @@ export function PlanningWorkbench({
         )}
 
         <section
-          class="planning-baseline-notice"
           aria-labelledby="planning-baseline-title"
           role="status"
         >
-          <div class="planning-baseline-mark" aria-hidden="true">01</div>
-          <div>
-            <p>BEFORE TECHNICAL EVIDENCE</p>
-            <h3 id="planning-baseline-title">
-              {technicalBaselineTitle(baseline.status)}
-            </h3>
-            <span>{baseline.message}</span>
-          </div>
+          <Card>
+            <CardHeader>
+              <p className="text-xs font-medium text-muted-foreground">
+                Before technical evidence
+              </p>
+              <CardTitle
+                id="planning-baseline-title"
+                className="text-base"
+              >
+                {technicalBaselineTitle(baseline.status)}
+              </CardTitle>
+              <CardDescription>{baseline.message}</CardDescription>
+            </CardHeader>
+          </Card>
         </section>
 
         <BaselineRunActivity planning={workbench.planning} />
 
-        <section
-          class="project-phase-section"
-          aria-labelledby="project-phase-title"
-        >
-          <header class="project-section-label">
-            <div>
-              <p>PROJECT PATH</p>
-              <h3 id="project-phase-title">
-                {hasPath
-                  ? "The agent’s proposed path"
-                  : "The agent has not published a path yet"}
-              </h3>
-            </div>
-            <span>
-              {hasPath
-                ? "This path is durable planning intent. It is not proof that a technical operation ran."
-                : "The project brief is being shaped with the agent. No work path or technical evidence is recorded yet."}
-            </span>
-          </header>
-          {hasPath
-            ? (
-              <ol
-                class="project-phase-rail planning-phase-rail"
-                tabIndex={0}
-                aria-label="Project phases, scrolls horizontally"
-              >
-                {phases.map((item, index) => (
-                  <li key={item.phase.id} data-state={item.status}>
-                    <div class="project-phase-node">
-                      <span>{String(index + 1).padStart(2, "0")}</span>
-                      <i aria-hidden="true" />
-                    </div>
-                    <div class="project-phase-copy">
-                      <small>{planningPhaseLabel(item.status)}</small>
-                      <strong>{item.phase.name}</strong>
-                      <p>{item.phase.description}</p>
-                      <dl>
-                        <div>
-                          <dt>Planned work</dt>
-                          <dd>{item.totalWorkItems}</dd>
-                        </div>
-                        {item.requiredDecisions > 0 && (
-                          <div>
-                            <dt>Review gates</dt>
-                            <dd>{item.requiredDecisions}</dd>
-                          </div>
-                        )}
-                      </dl>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            )
-            : (
-              <p class="planning-empty-path">
-                Ask the agent to publish a bounded project path in your paired
-                conversation. The recorded path will appear here.
+        <section aria-labelledby="project-phase-title">
+          <Card>
+            <CardHeader>
+              <p className="text-xs font-medium text-muted-foreground">
+                Project path
               </p>
-            )}
+              <CardTitle
+                id="project-phase-title"
+                className="text-base"
+              >
+                {hasPath ? "Proposed project path" : "No project path yet"}
+              </CardTitle>
+              <CardDescription>
+                {hasPath
+                  ? "This path is durable planning intent. It is not proof that a technical operation ran."
+                  : "The project brief is being shaped with the agent. No work path or technical evidence is recorded yet."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {hasPath
+                ? (
+                  <ol
+                    className="flex items-start overflow-x-auto"
+                    tabIndex={0}
+                    aria-label="Project phases, scrolls horizontally"
+                  >
+                    {phases.map((item, index) => (
+                      <li
+                        key={item.phase.id}
+                        data-state={item.status}
+                        className="flex min-w-[8.5rem] flex-1 flex-col gap-1.5"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "size-2 shrink-0 rounded-full",
+                              item.status === "completed" ||
+                                item.status === "active"
+                                ? "bg-success"
+                                : "bg-muted-foreground",
+                            )}
+                          />
+                          {index < phases.length - 1 && (
+                            <span
+                              className="h-px flex-1 bg-border"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </div>
+                        <span className="text-xs font-medium">
+                          {item.phase.name}
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          {planningPhaseLabel(item.status)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.phase.description}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.totalWorkItems} planned work
+                          {item.requiredDecisions > 0 && (
+                            <>
+                              {" · "}
+                              {item.requiredDecisions} review gates
+                            </>
+                          )}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                )
+                : (
+                  <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                    Ask the agent to publish a bounded project path in your
+                    paired conversation. The recorded path will appear here.
+                  </p>
+                )}
+            </CardContent>
+          </Card>
         </section>
 
         {hasPath && (
-          <section
-            class="project-work-plan planning-work-plan"
-            aria-labelledby="planning-work-title"
-          >
-            <header>
-              <div>
-                <p>DECLARED WORK</p>
-                <h4 id="planning-work-title">What the path contains</h4>
-              </div>
-              <span>
-                {items.length} planned item{items.length === 1 ? "" : "s"}
-              </span>
-            </header>
-            <ol class="planning-work-list">
-              {items.map((item) => (
-                <PlanningWorkItem
-                  key={item.id}
-                  item={item}
-                  phase={project.phases.find((phase) =>
-                    phase.id === item.phaseId
-                  )}
-                />
-              ))}
-            </ol>
+          <section aria-labelledby="planning-work-title">
+            <Card>
+              <CardHeader className="flex-row items-start justify-between gap-4 max-md:flex-col">
+                <div className="min-w-0 space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Declared work
+                  </p>
+                  <CardTitle
+                    id="planning-work-title"
+                    className="text-base"
+                  >
+                    What the path contains
+                  </CardTitle>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {items.length} planned item{items.length === 1 ? "" : "s"}
+                </span>
+              </CardHeader>
+              <CardContent>
+                <ol className="divide-y divide-border">
+                  {items.map((item) => (
+                    <PlanningWorkItem
+                      key={item.id}
+                      item={item}
+                      phase={project.phases.find((phase) =>
+                        phase.id === item.phaseId
+                      )}
+                    />
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
           </section>
         )}
 
-        <section
-          class="planning-next-step"
-          aria-labelledby="planning-next-title"
-        >
-          <div>
-            <p>NEXT HUMAN MOVE</p>
-            <h3 id="planning-next-title">
-              {nextHumanMoveTitle(baseline.status)}
-            </h3>
-          </div>
-          <p>
-            {nextHumanMoveMessage(baseline.status)}
-          </p>
+        <section aria-labelledby="planning-next-title">
+          <Card>
+            <CardHeader>
+              <p className="text-xs font-medium text-muted-foreground">
+                Next human move
+              </p>
+              <CardTitle id="planning-next-title" className="text-base">
+                {nextHumanMoveTitle(baseline.status)}
+              </CardTitle>
+              <CardDescription>
+                {nextHumanMoveMessage(baseline.status)}
+              </CardDescription>
+            </CardHeader>
+          </Card>
         </section>
 
         {project.plan && (
-          <details class="project-technical-record planning-provenance">
-            <summary>Planning provenance</summary>
-            <dl>
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Planning provenance</summary>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-3">
               <div>
                 <dt>Starting point</dt>
-                <dd>{startingPointLabel(project.plan.startingPoint)}</dd>
+                <dd>
+                  {startingPointLabel(project.plan.startingPoint)}
+                </dd>
               </div>
               <div>
                 <dt>Approved brief</dt>
-                <dd>
-                  <code>
-                    {`${project.plan.basis.briefId}@${project.plan.basis.briefRevision}`}
-                  </code>
+                <dd className="font-mono text-xs">
+                  {`${project.plan.basis.briefId}@${project.plan.basis.briefRevision}`}
                 </dd>
               </div>
               <div>
                 <dt>Path published</dt>
-                <dd>{formatTime(project.plan.publishedAt)}</dd>
+                <dd className="font-mono text-xs">
+                  {formatTime(project.plan.publishedAt)}
+                </dd>
               </div>
             </dl>
           </details>
@@ -333,61 +373,83 @@ function ProjectFraming({
     }].filter((section) => section.items.length > 0)
     : [];
   return (
-    <section class="project-framing" aria-labelledby="project-framing-title">
-      <header class="project-section-label">
-        <div>
-          <p>LIVING PROJECT BRIEF</p>
-          <h3 id="project-framing-title">
-            One project, from first intent onward
-          </h3>
-        </div>
-        <span data-state={status}>{framingStatusLabel(status)}</span>
-      </header>
-      {brief
-        ? (
-          <>
-            <div class="project-framing-sections">
-              {sections.map((section) => (
-                <section key={section.title}>
-                  <h4>{section.title}</h4>
-                  <ul>
-                    {section.items.map((item) => (
-                      <li key={item.id}>{item.statement}</li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
-            </div>
-            <p class="project-framing-boundary">
-              {status === "awaiting-review"
-                ? "Review this proposal in the paired conversation. It does not replace the canonical brief until you confirm the exact revision."
-                : status === "revision-requested"
-                ? "Continue the conversation with the agent; the last approved brief remains canonical while this proposal is corrected."
-                : "This approved brief anchors planning. Later technical facts stay in SysML, CAD, simulation and evidence records linked to this project."}
+    <section aria-labelledby="project-framing-title">
+      <Card>
+        <CardHeader className="flex-row items-start justify-between gap-4 max-md:flex-col">
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">
+              Living project brief
             </p>
-          </>
-        )
-        : (
-          <p class="project-framing-empty">
-            Project {projectId}{" "}
-            already exists. Continue describing the product in the paired
-            conversation; the agent will add focused questions and consolidate
-            the first reviewable brief here.
-          </p>
-        )}
-      {questions.length > 0 && (
-        <section class="project-framing-questions">
-          <p>QUESTIONS TO DISCUSS WITH THE AGENT</p>
-          <ol>
-            {questions.slice(0, 3).map((question) => (
-              <li key={question.id}>
-                <strong>{question.prompt}</strong>
-                <span>{question.whyItMatters}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+            <CardTitle id="project-framing-title" className="text-base">
+              One project, from first intent onward
+            </CardTitle>
+          </div>
+          <Badge variant={framingStatusVariant(status)} data-state={status}>
+            {framingStatusLabel(status)}
+          </Badge>
+        </CardHeader>
+        <CardContent className="grid gap-6">
+          {brief
+            ? (
+              <>
+                <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
+                  {sections.map((section) => (
+                    <section key={section.title}>
+                      <h4 className="text-sm font-semibold">
+                        {section.title}
+                      </h4>
+                      <ul className="mt-2 list-none space-y-1.5 text-sm text-muted-foreground">
+                        {section.items.map((item) => (
+                          <li
+                            key={item.id}
+                            className="before:mr-2 before:text-muted-foreground/60 before:content-['•']"
+                          >
+                            {item.statement}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {status === "awaiting-review"
+                    ? "Review this proposal in the paired conversation. It does not replace the canonical brief until you confirm the exact revision."
+                    : status === "revision-requested"
+                    ? "Continue the conversation with the agent; the last approved brief remains canonical while this proposal is corrected."
+                    : "This approved brief anchors planning. Later technical facts stay in SysML, CAD, simulation and evidence records linked to this project."}
+                </p>
+              </>
+            )
+            : (
+              <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
+                Project {projectId}{" "}
+                already exists. Continue describing the product in the paired
+                conversation; the agent will add focused questions and
+                consolidate the first reviewable brief here.
+              </p>
+            )}
+          {questions.length > 0 && (
+            <section>
+              <p className="text-xs font-medium text-muted-foreground">
+                Questions to discuss with the agent
+              </p>
+              <ol className="mt-2 divide-y divide-border">
+                {questions.slice(0, 3).map((question) => (
+                  <li
+                    key={question.id}
+                    className="py-3 first:pt-0 last:pb-0"
+                  >
+                    <p className="text-sm font-semibold">{question.prompt}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {question.whyItMatters}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+        </CardContent>
+      </Card>
     </section>
   );
 }
@@ -401,6 +463,18 @@ function framingStatusLabel(
   return "Framing with agent";
 }
 
+function framingStatusVariant(
+  status: ReturnType<typeof engineeringProjectFramingStatus>,
+): BadgeVariant {
+  if (status === "approved") return "success";
+  if (
+    status === "awaiting-review" || status === "revision-requested"
+  ) {
+    return "warning";
+  }
+  return "secondary";
+}
+
 function PlanningWorkItem({
   item,
   phase,
@@ -409,19 +483,31 @@ function PlanningWorkItem({
   phase?: EngineeringProjectPhase;
 }): JSX.Element {
   return (
-    <li data-state={item.status}>
-      <span>{phase?.name ?? item.phaseId}</span>
-      <div>
-        <strong>{item.title}</strong>
-        <p>{item.description}</p>
-        <small>
+    <li
+      data-state={item.status}
+      className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between"
+    >
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">
+          {phase?.name ?? item.phaseId}
+        </p>
+        <p className="text-sm font-semibold">{item.title}</p>
+        <p className="text-sm text-muted-foreground">{item.description}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
           {workOwnerLabel(item.owner)} · {item.kind}
           {item.operation && (
-            <>· reviewed {item.operation.id}@{item.operation.version}</>
+            <>
+              {" · reviewed "}
+              <span className="font-mono">
+                {item.operation.id}@{item.operation.version}
+              </span>
+            </>
           )}
-        </small>
+        </p>
       </div>
-      <b>{workStatusLabel(item.status)}</b>
+      <Badge variant={recordStatusVariant(item.status)}>
+        {sentenceLabel(workStatusLabel(item.status))}
+      </Badge>
     </li>
   );
 }
@@ -463,12 +549,12 @@ function nextHumanMoveTitle(status: string): string {
 
 function nextHumanMoveMessage(status: string): string {
   if (status === "queued" || status === "running" || status === "publishing") {
-    return "Keep the project intent under review while the agent works. Once the documentary baseline is durably published, the cockpit will show that record; it does not become technical evidence until a later bounded tool operation produces it.";
+    return "Keep the intent under review. The baseline will appear here once it is durably published; technical evidence still requires a later bounded operation.";
   }
   if (status === "failed") {
-    return "Ask the agent to explain or revise the recorded path before authorizing another bounded run. This page deliberately does not expose provider diagnostics as evidence.";
+    return "Review the stopped run with the agent before authorizing another bounded operation. This page deliberately does not expose provider diagnostics as evidence.";
   }
-  return "Discuss the project intent with the agent in your paired conversation. The cockpit will show a documentary baseline after the first bounded operation; technical evidence remains a later, explicitly linked result.";
+  return "Review the project intent with the agent. A documentary baseline comes first; technical evidence remains a later, linked result.";
 }
 
 function planningStreamLabel(status: ThreadStreamStatus | "snapshot"): string {
@@ -482,6 +568,29 @@ function startingPointLabel(value: string): string {
   if (value === "existing-cad") return "Existing CAD";
   if (value === "existing-product") return "Existing product";
   return "Idea or specification";
+}
+
+function projectToneVariant(
+  tone: ReturnType<typeof projectStatusTone>,
+): BadgeVariant {
+  if (tone === "active" || tone === "complete") return "success";
+  if (tone === "attention") return "warning";
+  if (tone === "blocked") return "destructive";
+  // Le ton neutre (Planned…) doit rester lisible sur le fond canvas : une
+  // bordure, pas un fond gris quasi invisible.
+  return "outline";
+}
+
+function toneDotClass(tone: ReturnType<typeof projectStatusTone>): string {
+  if (tone === "active" || tone === "complete") return "bg-success";
+  if (tone === "attention") return "bg-warning";
+  if (tone === "blocked") return "bg-destructive";
+  return "bg-muted-foreground";
+}
+
+function sentenceLabel(value: string): string {
+  const label = value.replaceAll("-", " ");
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
 function formatTime(value: string): string {

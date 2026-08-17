@@ -6,8 +6,8 @@ Deno.test("planning Workbench is a native project-path surface, not an empty evi
   );
 
   assertStringIncludes(source, "export function PlanningWorkbench");
-  assertStringIncludes(source, "LIVING PROJECT BRIEF");
-  assertStringIncludes(source, "PROJECT PATH");
+  assertStringIncludes(source, "Living project brief");
+  assertStringIncludes(source, "Project path");
   assertStringIncludes(source, "What the path contains");
   assertStringIncludes(source, "Documentary baseline not created yet");
   assertStringIncludes(source, "baseline.message");
@@ -22,8 +22,8 @@ Deno.test("planning Workbench is a native project-path surface, not an empty evi
   const activity = await Deno.readTextFile(
     new URL("./src/project/baseline-run-activity.tsx", import.meta.url),
   );
-  assertStringIncludes(activity, "FIRST BASELINE RUN");
-  assertStringIncludes(activity, "LIVE ACTIVITY");
+  assertStringIncludes(activity, "First baseline run");
+  assertStringIncludes(activity, "Live activity");
   assertStringIncludes(activity, "statusHistory");
 
   for (

@@ -1,60 +1,42 @@
 import { assertEquals } from "@std/assert";
 import { evaluatePresentationBoundary } from "./verify-native-workbench-presentation.ts";
 
-Deno.test("native presentation gate records the unpublished pure export as a release blocker", () => {
+Deno.test("native presentation gate accepts a self-contained boundary with a bridge-free bundle", () => {
   const result = evaluatePresentationBoundary({
-    packageJson: { exports: { "./preact": "./preact.js" } },
-    primitiveAdapterSource: 'export { Card } from "@casys/mcp-view/preact";',
-    nativeBundle: "ui/initialize toolresult postMessage",
-  });
-
-  assertEquals(result, {
-    status: "blocked",
-    releaseStep:
-      "Publish an npm version of @casys/mcp-view that exports ./preact/components, then update src/ui/package.json and its lockfile to that version.",
-    runtimeMarkers: ["ui/initialize", "toolresult", "postMessage"],
-  });
-});
-
-Deno.test("native presentation gate accepts the pure subpath only with a bridge-free bundle", () => {
-  const result = evaluatePresentationBoundary({
-    packageJson: { exports: { "./preact/components": "./components.js" } },
-    primitiveAdapterSource: 'export { Card } from "@casys/mcp-view/preact/components";',
-    nativeBundle: "<html><body>native application</body></html>",
+    primitiveAdapterSource:
+      'export { installMcpViewTheme } from "./view/mcp-view-theme.ts";',
+    nativeBundle: "<html><body>native application postMessage</body></html>",
   });
 
   assertEquals(result, { status: "ready" });
 });
 
-Deno.test("native presentation gate fails if a published pure export still leaks MCP Apps runtime", () => {
+Deno.test("native presentation gate rejects any mcp-view import in the boundary file", () => {
   const result = evaluatePresentationBoundary({
-    packageJson: { exports: { "./preact/components": "./components.js" } },
-    primitiveAdapterSource: 'export { Card } from "@casys/mcp-view/preact/components";',
-    nativeBundle: "native ui/initialize and postMessage",
-  });
-
-  assertEquals(result, {
-    status: "failed",
-    errors: [
-      "native Workbench bundle contains MCP Apps bridge markers: ui/initialize, postMessage.",
-    ],
-  });
-});
-
-Deno.test("native presentation gate rejects a mixed pure and runtime mcp-view adapter", () => {
-  const result = evaluatePresentationBoundary({
-    packageJson: { exports: { "./preact/components": "./components.js" } },
-    primitiveAdapterSource: [
-      'export { Card } from "@casys/mcp-view/preact/components";',
-      'export { installMcpViewTheme } from "@casys/mcp-view";',
-    ].join("\n"),
+    primitiveAdapterSource:
+      'export { installMcpViewTheme } from "@casys/mcp-view/preact/components";',
     nativeBundle: "<html><body>native application</body></html>",
   });
 
   assertEquals(result, {
     status: "failed",
     errors: [
-      "src/ui/src/mcp-view-primitives.ts must not import MCP Apps entry points: @casys/mcp-view.",
+      "src/ui/src/mcp-view-primitives.ts must not import @casys/mcp-view entry points: @casys/mcp-view/preact/components.",
+    ],
+  });
+});
+
+Deno.test("native presentation gate fails when the bundle leaks the MCP Apps handshake", () => {
+  const result = evaluatePresentationBoundary({
+    primitiveAdapterSource:
+      'export { installMcpViewTheme } from "./view/mcp-view-theme.ts";',
+    nativeBundle: "native ui/initialize then toolresult",
+  });
+
+  assertEquals(result, {
+    status: "failed",
+    errors: [
+      "native Workbench bundle contains MCP Apps bridge markers: ui/initialize, toolresult.",
     ],
   });
 });

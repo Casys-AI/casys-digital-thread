@@ -438,7 +438,7 @@
   display: grid;
   gap: var(--space-12);
   padding: var(--space-14);
-  border: 1px solid #665026;
+  border: 1px solid var(--amber);
   color: var(--text-soft);
   background: var(--amber-dim);
 }

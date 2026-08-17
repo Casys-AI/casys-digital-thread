@@ -1,16 +1,9 @@
-/** @jsxImportSource preact */
-
-import type { JSX } from "preact";
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  MetricGrid,
-  type MetricItem,
-  StateMessage,
-  Toolbar,
-} from "../mcp-view-primitives.ts";
+import type { JSX, ReactNode } from "react";
+import { cn } from "../lib/utils.ts";
+import { Badge, type BadgeProps } from "../ui/badge.tsx";
+import { Button } from "../ui/button.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.tsx";
+import { EmptyNotice, Notice } from "../ui/notice.tsx";
 import type {
   ThreadAction,
   ThreadArtifact,
@@ -37,6 +30,23 @@ export type {
   WorkbenchToolId,
   WorkbenchToolIdentity,
 } from "./tool-inspector-model.ts";
+
+type BadgeVariant = NonNullable<BadgeProps["variant"]>;
+type InspectorTone =
+  | "neutral"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger";
+
+interface InspectorMetric {
+  id: string;
+  label: string;
+  value: number;
+  unit: string;
+  detail: string;
+  tone: InspectorTone;
+}
 
 export interface ToolInspectorPanelProps {
   snapshot: ThreadWorkbenchSnapshot;
@@ -75,25 +85,33 @@ export function ToolInspectorPanel({
 }: ToolInspectorPanelProps): JSX.Element {
   if (!node && !selection) {
     return (
-      <Card
-        className="thread-card tool-inspector tool-inspector-empty"
-        eyebrow="TOOL CONTEXT"
-        title="Select an element in the thread"
-        actions={<Badge tone="neutral">5 facets · 1 subject</Badge>}
-      >
-        <p class="tool-inspector-lead">
-          Choose a node or an edge to inspect the owning tool and the evidence
-          it contributes to {snapshot.subject.label}.
-        </p>
-        <ToolFacetRail
-          snapshot={snapshot}
-          onSelect={onSelect}
-          onSelectGraphNode={onSelectGraphNode}
-        />
-        <EmptyState>
-          No engineering tool is selected. The Workbench will not execute a tool
-          while you browse the graph.
-        </EmptyState>
+      <Card>
+        <CardHeader className="flex-row items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">
+              Tool context
+            </p>
+            <CardTitle className="text-base">
+              Select an element in the thread
+            </CardTitle>
+          </div>
+          <Badge variant="secondary">5 facets · 1 subject</Badge>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Choose a node or an edge to inspect the owning tool and the evidence
+            it contributes to {snapshot.subject.label}.
+          </p>
+          <ToolFacetRail
+            snapshot={snapshot}
+            onSelect={onSelect}
+            onSelectGraphNode={onSelectGraphNode}
+          />
+          <EmptyNotice>
+            No engineering tool is selected. The Workbench will not execute a
+            tool while you browse the graph.
+          </EmptyNotice>
+        </CardContent>
       </Card>
     );
   }
@@ -110,90 +128,118 @@ export function ToolInspectorPanel({
   });
 
   return (
-    <Card
-      className="thread-card tool-inspector"
-      eyebrow="OWNING TOOL"
-      title={context.owner.label}
-      actions={
-        <Badge tone={ownerTone(context)}>
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-4">
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">
+            Owning tool
+          </p>
+          <CardTitle className="text-base">{context.owner.label}</CardTitle>
+        </div>
+        <Badge variant={ownerTone(context)}>
           {context.connection === "connected"
             ? "linked facet"
             : context.connection === "independent"
             ? "independent branch"
             : "thread context"}
         </Badge>
-      }
-    >
-      <header class="tool-inspector-identity" data-tool={context.owner.id}>
-        <span class="tool-inspector-mark" aria-hidden="true">
-          {toolMonogram(context.owner)}
-        </span>
-        <div>
-          <small>{context.owner.id}</small>
-          <strong>{context.owner.role}</strong>
-          {node && <span>{node.summary}</span>}
-          {target && <code>{target.kind}:{target.id}</code>}
-        </div>
-      </header>
-
-      <ToolFacetRail
-        snapshot={snapshot}
-        activeTool={context.owner.id}
-        onSelect={onSelect}
-        onSelectGraphNode={onSelectGraphNode}
-      />
-
-      <MetricGrid className="tool-inspector-metrics" items={metrics} />
-
-      {sealView && <ArchitectureSysmlSealSummary view={sealView} />}
-
-      <BranchState context={context} snapshot={snapshot} />
-
-      {context.owner.id !== "digital-thread" && (
-        <>
-          <div class="tool-inspector-sections">
-            <GraphOnlySummary
-              nodes={context.graphOnlyNodes}
-              onSelect={onSelectGraphNode}
-            />
-            <ArtifactSummary
-              artifacts={context.artifacts}
-              onSelect={onSelect}
-            />
-            <ObservationSummary
-              observations={context.observations}
-              onSelect={onSelect}
-            />
-            <RequirementSummary
-              requirements={context.requirements}
-              onSelect={onSelect}
-            />
-            <ViolationSummary
-              violations={context.violations}
-              onSelect={onSelect}
-            />
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <header
+          className="flex items-center gap-3 rounded-lg bg-muted/50 p-3"
+          data-tool={context.owner.id}
+        >
+          <span
+            className="grid size-11 shrink-0 place-items-center rounded-md border border-border font-mono text-xs font-semibold"
+            aria-hidden="true"
+          >
+            {toolMonogram(context.owner)}
+          </span>
+          <div className="min-w-0">
+            <small className="font-mono text-xs text-muted-foreground">
+              {context.owner.id}
+            </small>
+            <strong className="block text-sm font-semibold">
+              {context.owner.role}
+            </strong>
+            {node && (
+              <span className="block text-xs text-muted-foreground">
+                {node.summary}
+              </span>
+            )}
+            {target && (
+              <code className="font-mono text-xs text-muted-foreground">
+                {target.kind}:{target.id}
+              </code>
+            )}
           </div>
+        </header>
 
-          <ProvenanceSummary
-            artifacts={context.artifacts}
-            snapshot={snapshot}
-            onSelect={onSelect}
-          />
-        </>
-      )}
+        <ToolFacetRail
+          snapshot={snapshot}
+          activeTool={context.owner.id}
+          onSelect={onSelect}
+          onSelectGraphNode={onSelectGraphNode}
+        />
 
-      <ActionSummary
-        actions={context.actions}
-      />
+        <InspectorMetrics items={metrics} />
 
-      {selection && context.owner.fullViewLabel && onOpenToolView &&
-        availableFullViews?.includes(context.owner.id) && (
-        <Toolbar label="Native tool detail">
-          <Button onClick={() => onOpenToolView(context.owner, selection)}>
-            {context.owner.fullViewLabel} →
-          </Button>
-        </Toolbar>
-      )}
+        {sealView && <ArchitectureSysmlSealSummary view={sealView} />}
+
+        <BranchState context={context} snapshot={snapshot} />
+
+        {context.owner.id !== "digital-thread" && (
+          <>
+            <div className="flex flex-col gap-4">
+              <GraphOnlySummary
+                nodes={context.graphOnlyNodes}
+                onSelect={onSelectGraphNode}
+              />
+              <ArtifactSummary
+                artifacts={context.artifacts}
+                onSelect={onSelect}
+              />
+              <ObservationSummary
+                observations={context.observations}
+                onSelect={onSelect}
+              />
+              <RequirementSummary
+                requirements={context.requirements}
+                onSelect={onSelect}
+              />
+              <ViolationSummary
+                violations={context.violations}
+                onSelect={onSelect}
+              />
+            </div>
+
+            <ProvenanceSummary
+              artifacts={context.artifacts}
+              snapshot={snapshot}
+              onSelect={onSelect}
+            />
+          </>
+        )}
+
+        <ActionSummary actions={context.actions} />
+
+        {selection && context.owner.fullViewLabel && onOpenToolView &&
+          availableFullViews?.includes(context.owner.id) && (
+          <div
+            role="group"
+            aria-label="Native tool detail"
+            className="flex flex-wrap items-center gap-2"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenToolView(context.owner, selection)}
+            >
+              {context.owner.fullViewLabel}&nbsp;→
+            </Button>
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 }
@@ -210,7 +256,7 @@ function ToolFacetRail({
   onSelectGraphNode?: (node: ThreadGraphNode) => void;
 }): JSX.Element {
   return (
-    <nav class="tool-facet-rail" aria-label="Engineering tool facets">
+    <nav className="flex flex-col gap-0.5" aria-label="Engineering tool facets">
       {TOOL_FACETS.map((tool) => {
         const inventory = resolveToolFacetInventory(snapshot, tool.id);
         const recordTarget = inventory.records.find((record) =>
@@ -220,23 +266,37 @@ function ToolFacetRail({
         const canSelect = recordTarget ? Boolean(onSelect) : Boolean(
           graphTarget && onSelectGraphNode,
         );
+        const active = activeTool === tool.id;
         return (
           <button
             type="button"
             key={tool.id}
-            data-active={activeTool === tool.id}
+            data-active={active}
             data-present={inventory.itemCount > 0}
-            aria-pressed={activeTool === tool.id}
+            aria-pressed={active}
             disabled={!canSelect}
             onClick={() => {
               if (recordTarget) onSelect?.(recordTarget);
-              else if (graphTarget) onSelectGraphNode?.(graphTarget);
+              else if (graphTarget) {
+                onSelectGraphNode?.(graphTarget);
+              }
             }}
             title={tool.role}
+            className={cn(
+              "flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm",
+              active
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-muted/50",
+              !canSelect && "opacity-40",
+            )}
           >
-            <span>{toolMonogram(tool)}</span>
-            <strong>{tool.label}</strong>
-            <small>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="font-mono text-xs" aria-hidden="true">
+                {toolMonogram(tool)}
+              </span>
+              <strong className="truncate font-medium">{tool.label}</strong>
+            </span>
+            <small className="shrink-0 font-mono text-xs text-muted-foreground">
               {inventory.itemCount} item{inventory.itemCount === 1 ? "" : "s"}
             </small>
           </button>
@@ -271,65 +331,76 @@ function ArchitectureSysmlSealSummary({
 }): JSX.Element {
   return (
     <section
-      class="tool-inspector-section tool-inspector-seal"
+      className="flex flex-col gap-3"
       data-authority={view.authority}
       data-artifact-kind={view.artifactKind}
       data-source-status={view.sourceStatus}
     >
-      <header>
-        <h4>Architecture SysML seal</h4>
-        <span>{view.authority}</span>
+      <header className="flex items-center justify-between gap-3">
+        <h4 className="text-xs font-medium text-muted-foreground">
+          Architecture SysML seal
+        </h4>
+        <Badge variant="secondary">{view.authority}</Badge>
       </header>
-      <StateMessage title="Thread document only" tone="info">
+      <Notice title="Thread document only" tone="info">
         Producer {view.producer}. This is not a SysON model, not{" "}
         model.write-architecture@1, and not compile.seal-admission@1. Bindings
         are symbol ids; labels are display only.
-      </StateMessage>
-      <div class="tool-inspector-rows">
-        <div class="tool-inspector-row">
-          <small>producer</small>
+      </Notice>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+        <dt className="text-xs text-muted-foreground">producer</dt>
+        <dd className="min-w-0 text-sm">
           <strong>{view.producer}</strong>
-          <span>kind {view.artifactKind}</span>
-        </div>
-        <div class="tool-inspector-row">
-          <small>source</small>
+          <span className="ml-2 font-mono text-xs text-muted-foreground">
+            kind {view.artifactKind}
+          </span>
+        </dd>
+        <dt className="text-xs text-muted-foreground">source</dt>
+        <dd className="min-w-0 text-sm">
           <strong>{view.sourceStatus}</strong>
-          <span>
+          <span className="ml-2 text-xs text-muted-foreground">
             {view.sourceStatus === "observed"
               ? "reopened analysis"
               : "source analysis unavailable"}
           </span>
-        </div>
+        </dd>
         {view.fingerprint && (
-          <div class="tool-inspector-row">
-            <small>fingerprint</small>
-            <strong>{view.fingerprint}</strong>
-            <span>content-addressed capture</span>
-          </div>
+          <>
+            <dt className="text-xs text-muted-foreground">fingerprint</dt>
+            <dd className="min-w-0 text-sm">
+              <strong className="font-mono text-xs">{view.fingerprint}</strong>
+              <span className="ml-2 text-xs text-muted-foreground">
+                content-addressed capture
+              </span>
+            </dd>
+          </>
         )}
         {view.uri && (
-          <div class="tool-inspector-row">
-            <small>uri</small>
-            <strong>{view.uri}</strong>
-            <span>architecture-sysml-seal-capture/1.0</span>
-          </div>
+          <>
+            <dt className="text-xs text-muted-foreground">uri</dt>
+            <dd className="min-w-0 text-sm">
+              <strong className="font-mono text-xs">{view.uri}</strong>
+              <span className="ml-2 font-mono text-xs text-muted-foreground">
+                architecture-sysml-seal-capture/1.0
+              </span>
+            </dd>
+          </>
         )}
-      </div>
+      </dl>
       <InspectorSection
         title={view.sourceStatus === "unavailable"
           ? "Source unavailable"
           : "Source"}
         count={view.sourceText === undefined ? 0 : 1}
       >
-        {view.sourceText === undefined ? [] : [
+        {view.sourceText === undefined ? null : (
           <pre
-            key="source-text"
-            class="tool-inspector-source"
+            className="max-h-64 overflow-auto whitespace-pre font-mono text-xs"
             aria-readonly="true"
           >
             {view.sourceText}
-          </pre>,
-        ]}
+          </pre>
+        )}
       </InspectorSection>
       <InspectorSection
         title={view.symbolsStatus === "unavailable"
@@ -399,12 +470,20 @@ function SealFactRow({
 }): JSX.Element {
   const spanLabel = architectureSysmlSealSpanLabel(span);
   return (
-    <div class="tool-inspector-row">
-      <small>{kind}</small>
-      <strong>{id}</strong>
-      <span>{detail}</span>
-      {spanLabel && <b>{spanLabel}</b>}
-    </div>
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 py-2">
+      <dt className="text-xs text-muted-foreground">{kind}</dt>
+      <dd className="min-w-0">
+        <strong className="block font-mono text-sm">{id}</strong>
+        <span className="block font-mono text-xs text-muted-foreground">
+          {detail}
+        </span>
+        {spanLabel && (
+          <span className="block font-mono text-xs text-muted-foreground">
+            {spanLabel}
+          </span>
+        )}
+      </dd>
+    </dl>
   );
 }
 
@@ -414,27 +493,27 @@ function BranchState({ context, snapshot }: {
 }): JSX.Element {
   if (context.connection === "thread") {
     return (
-      <StateMessage title="One engineering subject" tone="info">
+      <Notice title="One engineering subject" tone="info">
         The five providers are facets of{" "}
         {snapshot.subject.label}. Select a provider node to inspect its evidence
         branch.
-      </StateMessage>
+      </Notice>
     );
   }
   if (context.connection === "independent") {
     return (
-      <StateMessage title="No causal edge recorded" tone="warning">
+      <Notice title="No causal edge recorded" tone="warning">
         This provider shares the declared subject identity, but the snapshot
         does not prove a dependency to another tool. Its evidence remains an
         independent branch.
-      </StateMessage>
+      </Notice>
     );
   }
   return (
-    <StateMessage title="Cross-tool link recorded" tone="success">
+    <Notice title="Cross-tool link recorded" tone="success">
       At least one explicit Workbench dependency connects this provider to
       another tool. Inspect the provenance below before treating it as causal.
-    </StateMessage>
+    </Notice>
   );
 }
 
@@ -525,15 +604,15 @@ function ViolationSummary({ violations, onSelect }: {
 function InspectorSection({ title, count, children }: {
   title: string;
   count: number;
-  children: JSX.Element[];
+  children: ReactNode;
 }): JSX.Element {
   return (
-    <section class="tool-inspector-section">
-      <header>
-        <h4>{title}</h4>
-        <span>{count}</span>
+    <section className="flex flex-col gap-2">
+      <header className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold">{title}</h4>
+        <span className="font-mono text-xs text-muted-foreground">{count}</span>
       </header>
-      <div class="tool-inspector-rows">{children}</div>
+      <div className="divide-y divide-border">{children}</div>
     </section>
   );
 }
@@ -547,23 +626,29 @@ function ContextRow({ target, eyebrow, title, detail, onSelect }: {
 }): JSX.Element {
   const content = (
     <>
-      <small>{eyebrow}</small>
-      <strong>{title}</strong>
-      <span>{detail}</span>
+      <span className="text-xs font-medium text-muted-foreground">
+        {eyebrow}
+      </span>
+      <strong className="text-sm font-semibold">{title}</strong>
+      <span className="font-mono text-xs text-muted-foreground">{detail}</span>
     </>
   );
   return onSelect
     ? (
       <button
-        class="tool-inspector-row"
         type="button"
+        className="flex w-full items-center justify-between gap-2 py-2 text-left hover:bg-muted/50"
         onClick={() => onSelect(target)}
       >
-        {content}
-        <b aria-hidden="true">↗</b>
+        <span className="flex min-w-0 flex-col items-start gap-0.5">
+          {content}
+        </span>
+        <span aria-hidden="true" className="text-sm font-medium text-brand">
+          →
+        </span>
       </button>
     )
-    : <div class="tool-inspector-row">{content}</div>;
+    : <div className="flex flex-col items-start gap-0.5 py-2">{content}</div>;
 }
 
 function GraphContextRow({ node, onSelect }: {
@@ -575,23 +660,31 @@ function GraphContextRow({ node, onSelect }: {
     : "PartUsage";
   const content = (
     <>
-      <small>SysON · {entityLabel}</small>
-      <strong>{node.label}</strong>
-      <span>{node.summary}</span>
+      <span className="text-xs font-medium text-muted-foreground">
+        SysON · {entityLabel}
+      </span>
+      <strong className="text-sm font-semibold">{node.label}</strong>
+      <span className="font-mono text-xs text-muted-foreground">
+        {node.summary}
+      </span>
     </>
   );
   return onSelect
     ? (
       <button
-        class="tool-inspector-row"
         type="button"
+        className="flex w-full items-center justify-between gap-2 py-2 text-left hover:bg-muted/50"
         onClick={() => onSelect(node)}
       >
-        {content}
-        <b aria-hidden="true">↗</b>
+        <span className="flex min-w-0 flex-col items-start gap-0.5">
+          {content}
+        </span>
+        <span aria-hidden="true" className="text-sm font-medium text-brand">
+          →
+        </span>
       </button>
     )
-    : <div class="tool-inspector-row">{content}</div>;
+    : <div className="flex flex-col items-start gap-0.5 py-2">{content}</div>;
 }
 
 function ProvenanceSummary({ artifacts, snapshot, onSelect }: {
@@ -609,51 +702,68 @@ function ProvenanceSummary({ artifacts, snapshot, onSelect }: {
   );
 
   return (
-    <section class="tool-inspector-provenance">
-      <div class="tool-inspector-section-title">
-        <h4>Provenance &amp; attestation</h4>
-        <small>recorded links only</small>
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold">Provenance &amp; attestation</h4>
+        <p className="text-xs font-medium text-muted-foreground">
+          recorded links only
+        </p>
       </div>
       {!dependencies.length && !attestations.length
         ? (
-          <EmptyState>
+          <EmptyNotice>
             No dependency or producer/consumer attestation is available for this
             selection.
-          </EmptyState>
+          </EmptyNotice>
         )
         : (
-          <div class="tool-inspector-provenance-list">
+          <div className="flex flex-col gap-2">
             {dependencies.map(({ artifact, sourceId }) => {
               const source = snapshot.artifacts.find((item) =>
                 item.id === sourceId
               );
               return (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   key={`${artifact.id}:${sourceId}`}
                   disabled={!onSelect}
+                  className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal py-2"
                   onClick={() => onSelect?.({ kind: "artifact", id: sourceId })}
                 >
-                  <span>DERIVED / USES</span>
-                  <strong>{source?.label ?? sourceId}</strong>
-                  <small>feeds {artifact.label}</small>
-                </button>
+                  <span className="text-xs text-muted-foreground">
+                    Derived / uses
+                  </span>
+                  <strong className="text-sm font-semibold">
+                    {source?.label ?? sourceId}
+                  </strong>
+                  <small className="font-mono text-xs text-muted-foreground">
+                    feeds {artifact.label}
+                  </small>
+                </Button>
               );
             })}
             {attestations.map(({ artifact, attestation }) => (
               <div
-                class="tool-inspector-attestation"
+                className="flex items-start gap-3 rounded-lg bg-muted/50 p-3"
                 data-status={attestation.status}
                 key={`${artifact.id}:attestation`}
               >
-                <span>{attestation.status === "verified" ? "✓" : "!"}</span>
-                <div>
-                  <strong>
+                <Badge
+                  variant={attestation.status === "verified"
+                    ? "success"
+                    : "destructive"}
+                >
+                  {attestation.status === "verified" ? "Verified" : "Mismatch"}
+                </Badge>
+                <div className="min-w-0">
+                  <strong className="block text-sm font-semibold">
                     {attestation.status === "verified"
                       ? "Consumed bytes verified"
                       : "Consumed bytes mismatch"}
                   </strong>
-                  <small>
+                  <small className="font-mono text-xs text-muted-foreground">
                     {shortFingerprint(attestation.producerFingerprint)} /{"  "}
                     {shortFingerprint(attestation.consumedFingerprint)}
                   </small>
@@ -671,28 +781,76 @@ function ActionSummary({ actions }: {
 }): JSX.Element | null {
   if (!actions.length) return null;
   return (
-    <section class="tool-inspector-actions">
-      <div class="tool-inspector-section-title">
-        <h4>Recorded next actions</h4>
-        <small>discuss with the agent</small>
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-sm font-semibold">Recorded next actions</h4>
+        <p className="text-xs font-medium text-muted-foreground">
+          discuss with the agent
+        </p>
       </div>
-      {actions.map((action) => (
-        <div class="tool-inspector-action" key={action.id}>
-          <div>
-            <small>{action.system} · {action.kind}</small>
-            <strong>{action.label}</strong>
-            <span>{action.description}</span>
+      <div className="divide-y divide-border">
+        {actions.map((action) => (
+          <div
+            className="flex items-start justify-between gap-3 py-2"
+            key={action.id}
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-muted-foreground">
+                {action.system} · {action.kind}
+              </p>
+              <strong className="block text-sm font-semibold">
+                {action.label}
+              </strong>
+              <span className="text-xs text-muted-foreground">
+                {action.description}
+              </span>
+            </div>
+            <Badge
+              variant={action.readiness === "blocked" ? "warning" : "secondary"}
+            >
+              {action.readiness === "blocked" ? "Blocked" : action.readiness}
+            </Badge>
           </div>
-          <small>
-            {action.readiness === "blocked" ? "Blocked" : action.readiness}
-          </small>
-        </div>
-      ))}
+        ))}
+      </div>
     </section>
   );
 }
 
-function contextMetrics(context: InspectorContext): MetricItem[] {
+function InspectorMetrics({
+  items,
+}: {
+  items: readonly InspectorMetric[];
+}): JSX.Element {
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {items.map((metric) => (
+        <article
+          key={metric.id}
+          className="rounded-lg border border-border bg-card p-3"
+          data-metric={metric.id}
+          data-tone={metric.tone}
+        >
+          <p className="text-xs text-muted-foreground">{metric.label}</p>
+          <strong
+            className={cn(
+              "block text-xl font-semibold tabular-nums",
+              metricToneClass(metric.tone),
+            )}
+          >
+            {metric.value}
+          </strong>
+          <p className="text-xs font-mono text-muted-foreground">
+            {metric.unit}
+          </p>
+          <p className="text-xs text-muted-foreground">{metric.detail}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function contextMetrics(context: InspectorContext): InspectorMetric[] {
   return [
     {
       id: "artifacts",
@@ -737,19 +895,25 @@ function contextMetrics(context: InspectorContext): MetricItem[] {
   ];
 }
 
-function ownerTone(
-  context: InspectorContext,
-): "neutral" | "info" | "success" | "warning" | "danger" {
+function ownerTone(context: InspectorContext): BadgeVariant {
   if (context.violations.some((item) => item.status === "open")) {
-    return "danger";
+    return "destructive";
   }
   if (context.artifacts.some((item) => item.freshness === "failed")) {
-    return "danger";
+    return "destructive";
   }
   if (context.artifacts.some((item) => item.freshness === "stale")) {
     return "warning";
   }
-  return context.connection === "connected" ? "success" : "neutral";
+  return context.connection === "connected" ? "success" : "secondary";
+}
+
+function metricToneClass(tone: InspectorTone): string {
+  if (tone === "success") return "text-success";
+  if (tone === "warning") return "text-warning";
+  if (tone === "danger") return "text-destructive";
+  if (tone === "info") return "text-brand";
+  return "";
 }
 
 function toolMonogram(tool: WorkbenchToolIdentity): string {

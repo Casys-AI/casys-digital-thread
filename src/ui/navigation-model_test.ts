@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   DEFAULT_PROJECT_VIEW,
+  hasDistinctProjectObjectiveStatement,
   parseProjectLocationHash,
   parseProjectViewHash,
   PROJECT_VIEWS,
@@ -10,6 +11,23 @@ import {
   projectViewLabel,
   shouldScrollProjectDeepLink,
 } from "./src/project/navigation-model.ts";
+
+Deno.test("objective supporting copy is hidden when it only repeats the title", () => {
+  assertEquals(
+    hasDistinctProjectObjectiveStatement(
+      "A compact engineering lamp",
+      "  A compact engineering\nlamp. ",
+    ),
+    false,
+  );
+  assertEquals(
+    hasDistinctProjectObjectiveStatement(
+      "A compact engineering lamp",
+      "Designed for an individual work surface.",
+    ),
+    true,
+  );
+});
 
 Deno.test("An absent fragment opens the cockpit on its default space", () => {
   assertEquals(parseProjectViewHash(""), DEFAULT_PROJECT_VIEW);
