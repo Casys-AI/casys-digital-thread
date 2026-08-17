@@ -32,6 +32,8 @@ import {
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/captures/file-capture-store.ts";
+import { FileCataloguedMechanicalProofCaseReader } from "./src/adapters/captures/file-catalogued-mechanical-proof-case-reader.ts";
+import { CaptureBackedFeaProofSealRequirementsReviewer } from "./src/adapters/captures/capture-backed-fea-proof-seal-requirements-reviewer.ts";
 import { PythonCadSourceAnalyzer } from "./src/adapters/analyzers/python-cad-source-analyzer.ts";
 import {
   PROJECT_BRIEF_SOURCE_ANALYZER_ID,
@@ -78,6 +80,8 @@ import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/prepare-project-isolated-geometry-seal-review.ts";
 import { PrepareProjectVectorCorrectionReview } from "./src/application/use-cases/prepare-project-vector-correction-review.ts";
+import { PrepareProjectFeaProofSealReview } from "./src/application/use-cases/prepare-project-fea-proof-seal-review.ts";
+import { PrepareProjectFeaRecordedRunReview } from "./src/application/use-cases/prepare-project-fea-recorded-run-review.ts";
 import { PrepareProjectSensitivityBaseEvaluationReview } from "./src/application/use-cases/prepare-project-sensitivity-base-evaluation-review.ts";
 import { PrepareProjectCorrectedAdmissionReview } from "./src/application/use-cases/prepare-project-corrected-admission-review.ts";
 import {
@@ -1459,17 +1463,38 @@ async function createProjectControl(
     };
   };
   // FEA proof-case seal calls no provider — always available.
+  const geometryCaptures = new FileCaptureStore(GEOMETRY_CAPTURE_DESCRIPTOR);
+  const proofCaseCatalogReader = new FileCataloguedMechanicalProofCaseReader();
+  const proofSealRequirementsReviewer =
+    new CaptureBackedFeaProofSealRequirementsReviewer({
+      requirementsCaptures,
+      seedCaptures: sysonModelSeedCaptures,
+    });
+  const feaProofStepAssets = new FileCanonicalAssetReader({
+    directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+  });
+  const feaProofSealReview = new PrepareProjectFeaProofSealReview({
+    snapshots: activeThreadSnapshots,
+    projects: runtime.projects,
+    catalogReader: proofCaseCatalogReader,
+    requirementsReviewer: proofSealRequirementsReviewer,
+    geometryCaptures,
+    stepAssets: feaProofStepAssets,
+  });
+  const feaRecordedRunReview = new PrepareProjectFeaRecordedRunReview({
+    snapshots: activeThreadSnapshots,
+    admissionReviewer: recordedPlanResolver,
+    projects: runtime.projects,
+  });
   const genericVerifySealProofCase = new VerifySealProofCaseRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
     snapshots: activeThreadSnapshots,
     proofCaseCaptures: feaProofCaptures,
-    geometryCaptures: new FileCaptureStore(GEOMETRY_CAPTURE_DESCRIPTOR),
+    geometryCaptures,
     requirementsCaptures,
     seedCaptures: sysonModelSeedCaptures,
-    canonicalAssetReader: new FileCanonicalAssetReader({
-      directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
-    }),
+    canonicalAssetReader: feaProofStepAssets,
     lease,
   });
   const sensitivityCaseCaptures = new FileCaptureStore(
@@ -1919,6 +1944,8 @@ async function createProjectControl(
       architectureSysmlPreview,
       briefArchitectureReview,
       briefRequirementsReview,
+      feaProofSealReview,
+      feaRecordedRunReview,
       build123dExecutionReview,
       isolatedGeometrySealReview,
       vectorCorrectionReview,

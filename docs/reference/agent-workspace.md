@@ -69,6 +69,9 @@ These pairs look related and are **not** substitutes.
 | `verify.run-fea-static-proof@1`                           | Historical generic MCP FEA                                                                | The current recorded or isolated successors                             |
 | `verify.run-fea-static-proof@2`                           | Recorded CalculiX MCP plan (`resolved-operation-plan/2.0`)                                | The local microVM `@3` executor                                         |
 | `verify.run-fea-static-proof@3`                           | Isolated local CalculiX + separate SysON oracle                                           | A reinterpretation of `@2` plans                                        |
+| `project_fea_proof_seal_review`                           | Catalog id → `fea.proof.*` for `verify.seal-proof-case@1`                                 | Case authoring or a `fea.run.*` grammar                                 |
+| `project_fea_recorded_run_review`                         | Sealed proof document → `@2` bindings (`proofCase` document + STEP)                       | `@1` / `@3`, or binding the assembly cad-model as `geometry`            |
+| `@2` binding `geometry`                                   | Canonical part STEP (`kind: step`, `mediaType: model/step`)                               | The sibling `cad-model` or isolated `@3` authority                      |
 | `simulate.run-modelica-scenario@2`                        | Recorded provider Modelica                                                                | `simulate.run-qualified-modelica-kit@1` (one local kit)                 |
 | `planning-only` operation                                 | Descriptor only; `queueRun` refuses it with `invalid_transition`                          | A trusted Thread writer                                                 |
 | CM-01 / `state/fixtures/retired/`                         | Historical golden record                                                                  | A live project, fallback, or provider admission                         |
@@ -164,6 +167,32 @@ reads the prose and never asserts that a declared value restates its statement. 
 records where the value came from; the signing human confirms what it says.
 
 How-to: [Compile brief parameters](../how-to/compile-brief-parameters.md).
+
+### FEA compilation (catalog / sealed proof → proposal)
+
+| Tool                              | Writes | Grant                                                                                   |
+| --------------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| `project_fea_proof_seal_review`   | None   | `decisionParameters` plus `next.append` / `next.propose` for `verify.seal-proof-case@1` |
+| `project_fea_recorded_run_review` | None   | `@2` bindings plus guarded hops. `geometry` = canonical part STEP. Not `@1`/`@3`        |
+
+The caller may name only `projectId`. Omitted `caseId` / `proofArtifactId` / `basis` are
+resolved server-side (unique catalog case, unique sealed document, unique current Thread
+tip). That tip is not `latest`. There is no `fea.run.*` grammar: numbers stay in the
+sealed proof; the recorded run admits thread-entity bindings. The result names
+`selected` (case, digest, STEP, proof document, work item, decision). Only an exact
+current project head also receives `next.append.arguments` / `next.propose.arguments`,
+which are complete argument envelopes for those tools. A historical basis, conflicting
+project identity, or unreadable geometry/STEP source returns `unavailable` or
+`unresolved` with an exact diagnostic and no `next`. Never relabel that as `resolved`.
+The recorded-run proposal restates the compiled identities so the agent does not invent
+solver numbers.
+
+An unknown catalog id, a project or subject mismatch, an absent or ambiguous STEP, or a
+cad-model offered as `geometry` yields `unresolved` with diagnostics and **no**
+parameters or bindings. `rejectedLookalikes` names the assembly cad-model (and any
+sibling cad-models in one diagnostic) so they are not copied into a later `@2` proposal.
+
+How-to: [Compile FEA parameters](../how-to/compile-fea-parameters.md).
 
 ### Technical compilation / isolated CAD
 

@@ -76,6 +76,8 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import { parseSysonModelSeedCapture } from "../../domain/engineering/syson-model-seed.ts";
+import { FEA_PROOF_CASE_SOURCES } from "../../domain/analysis/fea-proof-case-catalog.ts";
+import { FEA_PROOF_CASE_CAPTURE_SCHEMA } from "../../domain/analysis/fea-proof-case-capture.ts";
 import {
   canonicalProofText,
   type FeaProofDecisionParameters,
@@ -120,14 +122,11 @@ import {
   threadWriteBasisLeaseScope,
 } from "./thread-write-basis-guard.ts";
 import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
+import { admitFeaProofSealSource } from "../../application/use-cases/fea-proof-seal-source-admission.ts";
 import {
   REQUIREMENTS_CAPTURE_SCHEMA,
   requireRequirementsTip,
 } from "./model-write-requirements-run-executor.ts";
-import {
-  GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
-  PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
-} from "./design-write-geometry-run-executor.ts";
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -137,7 +136,7 @@ import {
 export { VERIFY_SEAL_PROOF_CASE_OPERATION };
 
 /** Schema version written into every fea-proof-case capture envelope. */
-export const FEA_PROOF_CASE_CAPTURE_SCHEMA = "fea-proof-case-capture/1.0" as const;
+export { FEA_PROOF_CASE_CAPTURE_SCHEMA };
 
 /**
  * Shared URI prefix for all FEA proof case capture artifacts.
@@ -157,31 +156,11 @@ export const FEA_PROOF_CASE_CAPTURE_URI_PREFIX =
  * WHY EXPORTED — tests pin the catalog entries; operator tooling enumerates
  * known cases without re-parsing executor code.
  *
- * EXTENSION RULE — a new proof case adds exactly one entry here and one JSON
- * file at the declared path. The executor never falls back to a derived path.
+ * EXTENSION RULE — a new proof case adds exactly one entry to the domain
+ * catalog and one JSON file at the declared path. The executor never falls
+ * back to a derived path.
  */
-export const FEA_PROOF_CASE_SOURCES: ReadonlyMap<string, string> = new Map([
-  [
-    "desk-lamp-dl01-articulated-arm-cantilever-v1",
-    "config/mechanical-proof-cases/desk-lamp-dl01-articulated-arm-cantilever.json",
-  ],
-  [
-    "desk-lamp-dl03-arm-cantilever",
-    "config/mechanical-proof-cases/desk-lamp-dl03-arm-cantilever.json",
-  ],
-  [
-    "desk-lamp-dl04-arm-cantilever",
-    "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
-  ],
-  [
-    "desk-lamp-dl05-arm-cantilever",
-    "config/mechanical-proof-cases/desk-lamp-dl05-arm-cantilever.json",
-  ],
-  [
-    "desk-lamp-dl06-arm-cantilever",
-    "config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
-  ],
-]);
+export { FEA_PROOF_CASE_SOURCES };
 
 /**
  * The descriptor lives in file-capture-store.ts (the canonical home for every
@@ -353,6 +332,12 @@ export class VerifySealProofCaseRunExecutor {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
         `Work item for run ${run.id} not found.`,
+      );
+    }
+    if (validatedCase.authorization.workItemId !== run.workItemId) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Proof case authorization.workItemId "${validatedCase.authorization.workItemId}" does not match the run work item "${run.workItemId}".`,
       );
     }
     if (
@@ -849,230 +834,22 @@ export class VerifySealProofCaseRunExecutor {
     stepArtifact: ThreadArtifact;
     stepBytes: number;
   }> {
-    // Find the geometry artifact in the basis by MRTR-signed identity.
-    const geomDigest = decisionParams.geometryArtifact.fingerprint.digest;
-    const expectedGeomId = `geometry-${geomDigest}`;
-    const geometryArtifact = basisSnapshot.artifacts.find(
-      (a) => a.id === decisionParams.geometryArtifact.id,
-    );
-    if (!geometryArtifact) {
+    const admitted = await admitFeaProofSealSource({
+      snapshot: basisSnapshot,
+      decisionParams,
+      geometryCaptures: this.#geometryCaptures,
+      stepAssets: this.#canonicalAssetReader,
+    });
+    if (admitted.status !== "admitted") {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `Geometry artifact "${decisionParams.geometryArtifact.id}" is not present ` +
-          "in the current basis snapshot.",
+        admitted.diagnostic.message,
       );
     }
-    if (geometryArtifact.id !== expectedGeomId) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Geometry artifact id "${geometryArtifact.id}" does not match the canonical ` +
-          `form "geometry-<digest>" for the signed fingerprint.`,
-      );
-    }
-    if (
-      geometryArtifact.kind !== "cad-model" ||
-      !fingerprintsEqual(
-        geometryArtifact.fingerprint,
-        decisionParams.geometryArtifact.fingerprint,
-      )
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Geometry artifact kind or fingerprint does not match the MRTR-signed values.",
-      );
-    }
-    if (!geometryArtifact.uri?.startsWith("casys://geometry-capture/")) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Geometry artifact URI does not start with the expected geometry-capture prefix.",
-      );
-    }
-    if (
-      geometryArtifact.mediaType !== "application/json" ||
-      geometryArtifact.producer.serverId !== "digital-thread"
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Geometry artifact mediaType or producer serverId is not canonical.",
-      );
-    }
-
-    // Re-read the signed geometry capture by content-address.
-    const geoCaptureText = await this.#geometryCaptures.read(
-      geometryArtifact.fingerprint,
-    );
-    if (!geoCaptureText) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Geometry capture ${geomDigest.slice(0, 16)}… is not readable from the ` +
-          "content-addressed store.",
-      );
-    }
-
-    let geoCaptureRecord: unknown;
-    try {
-      geoCaptureRecord = JSON.parse(geoCaptureText);
-    } catch {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Geometry capture is not valid JSON.",
-      );
-    }
-
-    if (
-      !geoCaptureRecord ||
-      typeof geoCaptureRecord !== "object" ||
-      Array.isArray(geoCaptureRecord) ||
-      ![
-        PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
-        GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
-      ].includes(
-        (geoCaptureRecord as Record<string, unknown>).schemaVersion as
-          | typeof PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA
-          | typeof GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
-      )
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `FEA proof seal requires a geometry bundle capture (2.0 or 2.1); ` +
-          `got schemaVersion="${
-            (geoCaptureRecord as Record<string, unknown>)?.schemaVersion
-          }".`,
-      );
-    }
-
-    const geoRecord = geoCaptureRecord as Record<string, unknown>;
-    const manifest = geoRecord.manifest as Record<string, unknown> | undefined;
-    if (
-      !manifest || typeof manifest !== "object" || Array.isArray(manifest) ||
-      !Array.isArray(manifest.partDefinitions)
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Geometry capture manifest or partDefinitions is missing or invalid.",
-      );
-    }
-
-    const partDefinitions = manifest.partDefinitions as Array<
-      Record<string, unknown>
-    >;
-
-    // target.modelElementId must be found in partDefinitions[].elementId
-    // (PartDefinition only — proof boxes are in local frame).
-    const targetElementId = decisionParams.target.modelElementId;
-    let matchingDefIndex = -1;
-    for (let i = 0; i < partDefinitions.length; i++) {
-      const def = partDefinitions[i];
-      if (def?.elementId === targetElementId) {
-        matchingDefIndex = i;
-        break;
-      }
-    }
-    if (matchingDefIndex < 0) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Target modelElementId "${targetElementId}" is not found among ` +
-          `partDefinitions[].elementId in the geometry capture. ` +
-          "Only PartDefinition elements are valid FEA targets (proof load/support " +
-          "boxes are expressed in the part's local frame).",
-      );
-    }
-
-    const matchingDef = partDefinitions[matchingDefIndex]!;
-    if (!Array.isArray(matchingDef.files)) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `PartDefinition at index ${matchingDefIndex} (elementId "${targetElementId}") ` +
-          "has no files in the geometry capture.",
-      );
-    }
-
-    const files = matchingDef.files as Array<Record<string, unknown>>;
-    let stepFileIndex = -1;
-    let stepFingerprint: ContentFingerprint | undefined;
-    for (let j = 0; j < files.length; j++) {
-      const file = files[j];
-      if (file?.format === "step") {
-        const fp = file.fingerprint as Record<string, unknown> | undefined;
-        if (
-          fp && fp.algorithm === "sha256" &&
-          typeof fp.digest === "string"
-        ) {
-          stepFingerprint = {
-            algorithm: fp.algorithm as "sha256",
-            digest: fp.digest,
-          };
-          stepFileIndex = j;
-          break;
-        }
-      }
-    }
-    if (stepFileIndex < 0 || !stepFingerprint) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `No STEP file found for PartDefinition "${targetElementId}" ` +
-          "in the geometry capture.",
-      );
-    }
-
-    // Verify the STEP fingerprint matches the MRTR-signed step.digest.
-    if (stepFingerprint.digest !== decisionParams.step.digest) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `STEP fingerprint "${stepFingerprint.digest.slice(0, 16)}…" in the ` +
-          `geometry capture does not match MRTR-signed step.digest ` +
-          `"${decisionParams.step.digest.slice(0, 16)}…".`,
-      );
-    }
-
-    // Resolve the STEP thread artifact from the basis.
-    const stepArtifactId =
-      `cad-asset-${geomDigest}-definition-${matchingDefIndex}-${stepFileIndex}-${decisionParams.step.digest}`;
-    const stepArtifact = basisSnapshot.artifacts.find(
-      (a) => a.id === stepArtifactId,
-    );
-    if (!stepArtifact) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `STEP artifact "${stepArtifactId}" is not present in the current basis snapshot. ` +
-          "This artifact should have been created by design.write-geometry@1.",
-      );
-    }
-    if (
-      stepArtifact.kind !== "step" ||
-      stepArtifact.fingerprint.digest !== decisionParams.step.digest
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "STEP artifact kind or fingerprint does not match the expected STEP identity.",
-      );
-    }
-
-    // Read and hash-verify the STEP bytes via the canonical asset reader.
-    let stepBytesData: Uint8Array;
-    try {
-      stepBytesData = await this.#canonicalAssetReader.read(
-        decisionParams.step.digest,
-      );
-    } catch (error) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `STEP file read failed: ${errorMessage(error)}`,
-      );
-    }
-
-    if (stepBytesData.byteLength !== decisionParams.step.bytes) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `STEP byte count mismatch: expected ${decisionParams.step.bytes}, ` +
-          `got ${stepBytesData.byteLength}.`,
-      );
-    }
-
     return {
-      geometryArtifact,
-      stepArtifact,
-      stepBytes: stepBytesData.byteLength,
+      geometryArtifact: admitted.geometryArtifact,
+      stepArtifact: admitted.stepArtifact,
+      stepBytes: admitted.stepBytes,
     };
   }
 

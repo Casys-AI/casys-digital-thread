@@ -21,6 +21,7 @@
  */
 
 import { deterministicJson } from "../kernel/deterministic-json.ts";
+import type { EngineeringOperationRef } from "../project/engineering-project.ts";
 import type { ContentFingerprint } from "../thread/thread-snapshot.ts";
 import {
   MECHANICAL_PROOF_CASE_SCHEMA,
@@ -46,6 +47,18 @@ export const VERIFY_SEAL_PROOF_CASE_OPERATION = {
   id: "verify.seal-proof-case",
   version: "1",
 } as const;
+
+/** Work-item operation for `project_change_append`. Numbers stay in the MRTR. */
+export function sealProofCaseWorkItemOperation(): EngineeringOperationRef {
+  return {
+    id: VERIFY_SEAL_PROOF_CASE_OPERATION.id,
+    version: VERIFY_SEAL_PROOF_CASE_OPERATION.version,
+    bindings: [{
+      name: "approvedBrief",
+      source: { kind: "approved-brief" },
+    }],
+  };
+}
 
 // ── Error contract ────────────────────────────────────────────────────────────
 

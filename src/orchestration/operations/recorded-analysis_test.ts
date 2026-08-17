@@ -1,4 +1,5 @@
 import { assertEquals } from "@std/assert";
+import { RECORDED_CALCULIX_RUN_OPERATION } from "../../domain/analysis/recorded-calculix-bindings.ts";
 import {
   RECORDED_ANALYSIS_OPERATION_DESCRIPTORS,
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
@@ -39,5 +40,12 @@ Deno.test("recorded analysis successors keep qualification planless and every ru
         bindings: ["proofCase", "geometry"],
       },
     ],
+  );
+});
+
+Deno.test("recorded CalculiX review identity is the registry @2 pair, not @1 or @3", () => {
+  assertEquals(
+    RECORDED_CALCULIX_RUN_OPERATION,
+    VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   );
 });

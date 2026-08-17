@@ -34,6 +34,7 @@ import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
   deterministicJson,
   sha256Fingerprint,
+  sha256Hex,
 } from "../../domain/kernel/deterministic-json.ts";
 import {
   encodeFeaProofDecisionParameters,
@@ -105,10 +106,10 @@ const REQUIREMENTS_ELEMENT_ID = "req-element-test-001";
 
 /** Stable fake fingerprints (length 64 hex) for test-local captures. */
 const GEOM_DIGEST = "a".repeat(64);
-const STEP_DIGEST = "b".repeat(64);
+const STEP_BYTES = 12345;
+const STEP_DIGEST = await sha256Hex(new Uint8Array(STEP_BYTES));
 const REQ_DIGEST = "c".repeat(64);
 const SEED_DIGEST = "d".repeat(64);
-const STEP_BYTES = 12345;
 
 /** ISO datetime reused across stubs. */
 const NOW = "2026-08-09T10:00:00.000Z";
@@ -363,6 +364,74 @@ Deno.test(
           }),
         EngineeringProjectCommandError,
         "digest divergence",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Test 4b — authorization.workItemId must match the queued run
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "verify-seal-proof-case executor rejects when authorization.workItemId does not match the run",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-fea-seal-work-item-mismatch-",
+    });
+    try {
+      const mismatched = validateMechanicalProofCase({
+        ...makeTestCase("snap-001", undefined, "snap-001"),
+        authorization: {
+          workItemId: "other-item",
+          decisionId: "seal-decision",
+        },
+      });
+      const proofDigest = (await sha256Fingerprint(mismatched)).digest;
+      const geomArtifact = makeGeomArtifact();
+      const reqArtifact = makeReqArtifact();
+      const params = encodeFeaProofDecisionParameters(
+        proofDigest,
+        mismatched,
+        { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
+        { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+      );
+      const fixture = await queuedSealFixture(directory, {
+        proofCase: mismatched,
+        proofDigest,
+        params: [...params],
+        geomArtifact,
+        reqArtifact,
+      });
+      const executor = new VerifySealProofCaseRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        proofCaseCaptures: new FileCaptureStore({
+          ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/fea-proof-captures`,
+        }),
+        geometryCaptures: makeGeomCaptureStub() as never,
+        requirementsCaptures: makeReqCaptureStub() as never,
+        seedCaptures: makeSeedCaptureStub() as never,
+        canonicalAssetReader: makeCanonicalAssetReader() as never,
+        lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        readTextFile: makeReadStub(mismatched),
+      });
+
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            commandId: "work-item-mismatch",
+            projectId: PROJECT_ID,
+            expectedRevision: fixture.queued.revision,
+            issuedAt: NOW,
+            runId: fixture.runId,
+          }),
+        EngineeringProjectCommandError,
+        "authorization.workItemId",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });

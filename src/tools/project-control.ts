@@ -88,6 +88,10 @@ import {
   registerProjectVectorCorrectionTools,
 } from "./project-control/vector-correction-tools.ts";
 import {
+  type ProjectFeaReviewToolDependencies,
+  registerProjectFeaReviewTools,
+} from "./project-control/fea-review-tools.ts";
+import {
   type ProjectDemoLoopToolDependencies,
   registerProjectDemoLoopTools,
 } from "./project-control/demo-loop-tools.ts";
@@ -119,6 +123,7 @@ export interface ProjectControlToolDependencies
     ProjectArchitectureSysmlToolDependencies,
     ProjectBriefCompilationToolDependencies,
     ProjectVectorCorrectionToolDependencies,
+    ProjectFeaReviewToolDependencies,
     ProjectDemoLoopToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
@@ -206,6 +211,7 @@ export function registerProjectControlTools(
   registerProjectArchitectureSysmlTools(app, dependencies);
   registerProjectBriefCompilationTools(app, dependencies);
   registerProjectVectorCorrectionTools(app, dependencies);
+  registerProjectFeaReviewTools(app, dependencies);
   registerProjectDemoLoopTools(app, dependencies);
 
   if (dependencies.reviewIntents) {

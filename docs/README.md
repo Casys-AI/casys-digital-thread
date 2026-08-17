@@ -41,6 +41,9 @@ not paraphrased.
 - [Author and seal architecture SysML](how-to/author-architecture-sysml.md) captures
   agent-authored closed-subset SysML, previews unresolved constructs, and seals a Thread
   document without inserting into SysON.
+- [Compile FEA parameters](how-to/compile-fea-parameters.md) turns a catalog id
+  into `fea.proof.*` and a sealed proof document into `@2` bindings (STEP, never
+  cad-model). There is no `fea.run.*` grammar.
 - [Walk the post-proof loop](how-to/walk-the-post-proof-loop.md) is the **behave**
   continuation after FEA: join study-base observations, apply a correction only
   on a real fail, capture `z*`, reseal. Measured DFM is the separate **make**

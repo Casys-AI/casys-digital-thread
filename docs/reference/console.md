@@ -82,6 +82,8 @@ not grant MRTR or provider authority. Full grants:
 | `project_build123d_execution_review`        | Read           | MRTR parameters for `design.execute-build123d@1`. No capability                     |
 | `project_isolated_geometry_seal_review`     | Read           | MRTR parameters for `design.seal-isolated-geometry@1`. No STEP bytes                |
 | `project_modelica_qualified_kit_run_review` | Read           | MRTR parameters for the one local Modelica kit                                      |
+| `project_fea_proof_seal_review`             | Read           | `fea.proof.*` plus paste-ready `next.append` / `next.propose` for the seal          |
+| `project_fea_recorded_run_review`           | Read           | `@2` bindings plus paste-ready hops; geometry is STEP, never cad-model              |
 | `project_geometry_preview`                  | Geometry draft | Historical sandbox preview; composed only when the sandbox fleet entry exists       |
 
 Every mutation uses a stable command ID, `expectedRevision`, and `issuedAt`. Retrying an
@@ -100,10 +102,10 @@ The paired agent, not the browser, chooses what the single cockpit shell follows
 normal sequence is: create or resume one project, set the workspace focus to it, guide
 its living brief in conversation, and obtain the person's exact brief confirmation
 through MRTR. The focus never changes during this transition because there is no
-separate Discovery target. `cockpit_focus_set` requires a stable `commandId` and `issuedAt`.
-`expectedRevision` may be omitted (the server uses the current cockpit focus
-revision). Pass `0` only when `cockpit_focus_snapshot` reports no focus; an
-explicit stale integer is still rejected.
+separate Discovery target. `cockpit_focus_set` requires a stable `commandId` and
+`issuedAt`. `expectedRevision` may be omitted (the server uses the current cockpit focus
+revision). Pass `0` only when `cockpit_focus_snapshot` reports no focus; an explicit
+stale integer is still rejected.
 
 Focus is durable UI-routing state only. It cannot create a project, record an answer,
 approve a brief or decision, queue or execute a run, call a provider, or produce

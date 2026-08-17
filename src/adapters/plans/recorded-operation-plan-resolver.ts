@@ -25,13 +25,17 @@ import {
   fingerprintResourceBytes,
 } from "../../domain/analysis/provider-resource-reader.ts";
 import {
-  canonicalProofText,
+  type FeaProofCaseCapture,
+  parseFeaProofCaseCapture,
+} from "../../domain/analysis/fea-proof-case-capture.ts";
+import {
   feaProofDecisionParametersToMap,
   parseFeaProofDecisionParameters,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   verifyFeaProofParametersMatchCase,
 } from "../../domain/analysis/fea-proof-proposal.ts";
-import { validateMechanicalProofCase } from "../../domain/analysis/mechanical-proof-case.ts";
+import { recordedCalculixBindingRejectionMessage } from "../../domain/analysis/recorded-calculix-bindings.ts";
+import type { MechanicalProofCase } from "../../domain/analysis/mechanical-proof-case.ts";
 import {
   canonicalSimulationCaseV2Text,
   type SimulationCaseV2,
@@ -48,6 +52,7 @@ import type {
   EngineeringApproval,
   EngineeringDecision,
   EngineeringOperationInputBinding,
+  EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
   EngineeringWorkItem,
@@ -59,6 +64,10 @@ import type {
 } from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
+import type {
+  FeaRecordedRunAdmissionReview,
+  FeaRecordedRunAdmissionReviewer,
+} from "../../application/ports/out/fea-recorded-run-admission-reviewer.ts";
 import type { ExactThreadSnapshotReader } from "../stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../stores/thread-snapshot-lineage.ts";
 import {
@@ -112,7 +121,7 @@ export interface RecordedOperationPlanResolverOptions {
   };
 }
 
-export class RecordedOperationPlanResolver {
+export class RecordedOperationPlanResolver implements FeaRecordedRunAdmissionReviewer {
   readonly #elementOrder: 1 | 2;
   readonly #calculixTimeoutMs: number;
 
@@ -426,69 +435,23 @@ export class RecordedOperationPlanResolver {
       geometry.kind !== "step" || geometry.mediaType !== "model/step"
     ) {
       throw new TypeError(
-        "Recorded CalculiX inputs must be an exact proof JSON document and STEP Thread artifact.",
+        recordedCalculixBindingRejectionMessage({
+          proofKind: proofArtifact.kind,
+          proofMediaType: proofArtifact.mediaType,
+          geometryKind: geometry.kind,
+          geometryMediaType: geometry.mediaType,
+        }),
       );
     }
-    const proof = await this.#proofCase(proofArtifact);
-    const capturedGeometry = exactProofInputArtifact(
+    const admission = await this.reviewRecordedCalculixAdmission({
+      project: input.project,
       snapshot,
-      proof.geometry,
-      "geometry capture",
-    );
-    const capturedRequirements = exactProofInputArtifact(
-      snapshot,
-      proof.requirements,
-      "requirements",
-    );
-    assertExactArtifactInputs(
       proofArtifact,
-      [capturedGeometry.id, capturedRequirements.id, proof.step.id],
-      "FEA proof capture",
-    );
-    if (
-      proof.case.project.id !== input.project.project.id ||
-      proof.case.project.subjectId !== snapshot.subject.id
-    ) {
-      throw new TypeError(
-        "FEA proof case does not bind the recorded-plan project subject.",
-      );
-    }
-    await this.#assertCaseBasisIsAncestor(
-      snapshot,
-      proof.case.project.baseThreadSnapshot,
-      "FEA proof case",
-    );
-    await assertFeaProofSealProjectHistory(
-      input,
-      snapshot,
-      proof,
-      proofArtifact,
-      this.options.snapshots,
-    );
-    if (
-      proof.step.id !== geometry.id ||
-      !fingerprintsEqual(proof.step.fingerprint, geometry.fingerprint) ||
-      proof.step.producerRunId !== geometry.producer.runId ||
-      proof.step.bytes !== proof.case.expectedCadArtifact.bytes ||
-      proof.case.expectedCadArtifact.sha256 !== geometry.fingerprint.digest ||
-      proof.trustedRunId !== proofArtifact.producer.runId ||
-      proofArtifact.producer.serverId !== "digital-thread" ||
-      proofArtifact.producer.tool !== "verify.seal-proof-case@1"
-    ) {
-      throw new TypeError(
-        "FEA proof capture and geometry binding are not the same exact STEP artifact.",
-      );
-    }
+      geometryArtifact: geometry,
+    });
+    const proof = proofCaptureView(admission.capture);
     const geometryCasUri = canonicalCalculixStepAssetCasUri(geometry);
-    const stepBytes = await this.options.stepAssets.read(geometry.fingerprint.digest);
-    if (
-      await fingerprintResourceBytes(stepBytes) !== geometry.fingerprint.digest ||
-      stepBytes.byteLength !== proof.step.bytes
-    ) {
-      throw new Error(
-        "Canonical STEP asset does not match the proof capture byte identity.",
-      );
-    }
+    const stepBytes = admission.stepBytes;
     const requestId = await requestIdFor(input.run.id, "calculix");
     const commonPlan = {
       ...common,
@@ -590,6 +553,110 @@ export class RecordedOperationPlanResolver {
         capturedOutcome: "cas-only-recovery",
       },
     };
+  }
+
+  async reviewRecordedCalculixAdmission(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly snapshot: ThreadSnapshot;
+    readonly proofArtifact: ThreadArtifact;
+    readonly geometryArtifact?: ThreadArtifact;
+  }): Promise<FeaRecordedRunAdmissionReview> {
+    const snapshot = validateThreadSnapshot(input.snapshot);
+    const proofArtifact = artifactById(snapshot, input.proofArtifact.id);
+    if (!sameExactArtifactIdentity(proofArtifact, input.proofArtifact)) {
+      throw new TypeError(
+        "FEA proof binding is not the exact artifact identity on the reviewed basis.",
+      );
+    }
+    if (
+      proofArtifact.kind !== "document" ||
+      proofArtifact.mediaType !== "application/json"
+    ) {
+      throw new TypeError(
+        recordedCalculixBindingRejectionMessage({
+          proofKind: proofArtifact.kind,
+          proofMediaType: proofArtifact.mediaType,
+          geometryKind: "step",
+          geometryMediaType: "model/step",
+        }),
+      );
+    }
+    const capture = await this.#proofCase(proofArtifact);
+    const proof = proofCaptureView(capture);
+    const capturedGeometry = exactProofInputArtifact(
+      snapshot,
+      proof.geometry,
+      "geometry capture",
+    );
+    const capturedRequirements = exactProofInputArtifact(
+      snapshot,
+      proof.requirements,
+      "requirements",
+    );
+    const stepArtifact = exactProofInputArtifact(
+      snapshot,
+      proof.step,
+      "STEP",
+    );
+    assertExactArtifactInputs(
+      proofArtifact,
+      [capturedGeometry.id, capturedRequirements.id, stepArtifact.id],
+      "FEA proof capture",
+    );
+    if (
+      proof.case.project.id !== input.project.project.id ||
+      proof.case.project.subjectId !== snapshot.subject.id
+    ) {
+      throw new TypeError(
+        "FEA proof case does not bind the recorded-plan project subject.",
+      );
+    }
+    await this.#assertCaseBasisIsAncestor(
+      snapshot,
+      proof.case.project.baseThreadSnapshot,
+      "FEA proof case",
+    );
+    await assertFeaProofSealProjectHistory(
+      input.project,
+      snapshot,
+      proof,
+      proofArtifact,
+      this.options.snapshots,
+    );
+    if (
+      stepArtifact.kind !== "step" ||
+      stepArtifact.mediaType !== "model/step" ||
+      proof.step.bytes !== proof.case.expectedCadArtifact.bytes ||
+      proof.case.expectedCadArtifact.sha256 !== stepArtifact.fingerprint.digest ||
+      proof.trustedRunId !== proofArtifact.producer.runId ||
+      proofArtifact.producer.serverId !== "digital-thread" ||
+      proofArtifact.producer.tool !== "verify.seal-proof-case@1"
+    ) {
+      throw new TypeError(
+        "FEA proof capture, producer and canonical STEP identity are not exact.",
+      );
+    }
+    if (
+      input.geometryArtifact &&
+      !sameBoundStepArtifact(stepArtifact, input.geometryArtifact)
+    ) {
+      throw new TypeError(
+        "FEA proof capture and geometry binding are not the same exact STEP artifact.",
+      );
+    }
+    canonicalCalculixStepAssetCasUri(stepArtifact);
+    const stepBytes = await this.options.stepAssets.read(
+      stepArtifact.fingerprint.digest,
+    );
+    if (
+      await fingerprintResourceBytes(stepBytes) !== stepArtifact.fingerprint.digest ||
+      stepBytes.byteLength !== proof.step.bytes
+    ) {
+      throw new Error(
+        "Canonical STEP asset does not match the proof capture byte identity.",
+      );
+    }
+    return { capture, stepArtifact, stepBytes };
   }
 
   async #assertCaseBasisIsAncestor(
@@ -812,94 +879,10 @@ export class RecordedOperationPlanResolver {
     return simulationCase;
   }
 
-  async #proofCase(artifact: ThreadArtifact): Promise<ProofCapture> {
+  async #proofCase(artifact: ThreadArtifact): Promise<FeaProofCaseCapture> {
     const bytes = await this.#artifactBytes(artifact);
     const fullText = decodeUtf8(bytes, "FEA proof capture");
-    const record = exactObject(
-      parseJson(fullText, "FEA proof capture"),
-      [
-        "schemaVersion",
-        "operation",
-        "trustedRunId",
-        "proofDigest",
-        "canonicalProofText",
-        "geometryArtifact",
-        "stepArtifact",
-        "requirementsArtifact",
-        "requirementsElementId",
-        "seedIdentity",
-        "sealedAt",
-      ],
-      "FEA proof capture",
-    );
-    if (deterministicJson(record) !== fullText) {
-      throw new TypeError("FEA proof capture is not canonical JSON.");
-    }
-    if (record.schemaVersion !== "fea-proof-case-capture/1.0") {
-      throw new TypeError("FEA proof capture schemaVersion is unsupported.");
-    }
-    const operation = exactObject(
-      record.operation,
-      ["id", "version"],
-      "FEA proof capture.operation",
-    );
-    if (operation.id !== "verify.seal-proof-case" || operation.version !== "1") {
-      throw new TypeError(
-        "FEA proof capture was not produced by verify.seal-proof-case@1.",
-      );
-    }
-    const proofText = requiredText(record.canonicalProofText, "canonicalProofText");
-    const proofCase = validateMechanicalProofCase(
-      parseJson(proofText, "canonical proof case"),
-    );
-    const proofDigest = (await sha256Fingerprint(proofCase)).digest;
-    if (
-      canonicalProofText(proofCase) !== proofText ||
-      requiredDigest(record.proofDigest, "proofDigest") !== proofDigest
-    ) {
-      throw new TypeError(
-        "FEA proof capture does not bind canonical proof case bytes.",
-      );
-    }
-    const trustedRunId = requiredText(record.trustedRunId, "trustedRunId");
-    const geometry = proofArtifactRef(record.geometryArtifact, "geometryArtifact");
-    const requirements = proofArtifactRef(
-      record.requirementsArtifact,
-      "requirementsArtifact",
-    );
-    const step = exactObject(
-      record.stepArtifact,
-      ["id", "fingerprint", "producerRunId", "bytes"],
-      "stepArtifact",
-    );
-    const seed = exactObject(
-      record.seedIdentity,
-      ["editingContextId", "elementId"],
-      "seedIdentity",
-    );
-    requiredText(record.requirementsElementId, "requirementsElementId");
-    requiredText(seed.editingContextId, "seedIdentity.editingContextId");
-    requiredText(seed.elementId, "seedIdentity.elementId");
-    const sealedAt = requiredText(record.sealedAt, "sealedAt");
-    if (Number.isNaN(Date.parse(sealedAt))) {
-      throw new TypeError("FEA proof capture sealedAt must be ISO-8601.");
-    }
-    return {
-      case: proofCase,
-      trustedRunId,
-      sealedAt,
-      geometry,
-      requirements,
-      step: {
-        id: requiredText(step.id, "stepArtifact.id"),
-        fingerprint: fingerprintValue(step.fingerprint, "stepArtifact.fingerprint"),
-        producerRunId: requiredText(
-          step.producerRunId,
-          "stepArtifact.producerRunId",
-        ),
-        bytes: positiveInteger(step.bytes, "stepArtifact.bytes"),
-      },
-    };
+    return await parseFeaProofCaseCapture(fullText);
   }
 }
 
@@ -908,7 +891,7 @@ type PlanCommon = Omit<
   "sources" | "action" | "expectedProviderResources" | "recovery"
 >;
 interface ProofCapture {
-  readonly case: ReturnType<typeof validateMechanicalProofCase>;
+  readonly case: MechanicalProofCase;
   readonly trustedRunId: string;
   readonly sealedAt: string;
   readonly geometry: ProofArtifactRef;
@@ -918,6 +901,17 @@ interface ProofCapture {
     readonly fingerprint: ContentFingerprint;
     readonly producerRunId: string;
     readonly bytes: number;
+  };
+}
+
+function proofCaptureView(capture: FeaProofCaseCapture): ProofCapture {
+  return {
+    case: capture.proofCase,
+    trustedRunId: capture.trustedRunId,
+    sealedAt: capture.sealedAt,
+    geometry: capture.geometryArtifact,
+    requirements: capture.requirementsArtifact,
+    step: capture.stepArtifact,
   };
 }
 interface ProofArtifactRef {
@@ -933,22 +927,6 @@ interface ModelicaBoundSource {
     readonly resource: ModelicaResumableResource;
   };
   readonly artifact: ThreadArtifact;
-}
-
-function proofArtifactRef(value: unknown, path: string): ProofArtifactRef {
-  const record = exactObject(
-    value,
-    ["id", "fingerprint", "producerRunId"],
-    path,
-  );
-  return {
-    id: requiredText(record.id, `${path}.id`),
-    fingerprint: fingerprintValue(record.fingerprint, `${path}.fingerprint`),
-    producerRunId: requiredText(
-      record.producerRunId,
-      `${path}.producerRunId`,
-    ),
-  };
 }
 
 function exactProofInputArtifact(
@@ -1232,17 +1210,17 @@ async function assertAuthorityProjectHistory(
  * two decision or work-item IDs.
  */
 async function assertFeaProofSealProjectHistory(
-  input: RegisteredRunPlanSealInput,
+  project: EngineeringProjectSnapshot,
   currentBasis: ThreadSnapshot,
   proof: ProofCapture,
   proofArtifact: ThreadArtifact,
   snapshots: ExactThreadSnapshotReader,
 ): Promise<void> {
-  const workItem = input.project.workItems.find((item) =>
+  const workItem = project.workItems.find((item) =>
     item.id === proof.case.authorization.workItemId
   );
-  const run = input.project.agentRuns.find((item) => item.id === proof.trustedRunId);
-  const decision = input.project.decisions.find((item) =>
+  const run = project.agentRuns.find((item) => item.id === proof.trustedRunId);
+  const decision = project.decisions.find((item) =>
     item.id === proof.case.authorization.decisionId
   );
   if (
@@ -1271,13 +1249,13 @@ async function assertFeaProofSealProjectHistory(
       "FEA proof authority is not backed by its completed registered verify.seal-proof-case@1 run.",
     );
   }
-  const approval = await exactHumanApproval(input, decision, run.basis);
+  const approval = await exactHumanApproval(project, decision, run.basis);
   if (!approval) {
     throw new TypeError(
       "FEA proof authority does not retain one exact human MRTR approval.",
     );
   }
-  await assertFeaSealRunInputFingerprint(input, run, workItem);
+  await assertFeaSealRunInputFingerprint(project, run, workItem);
   await assertFeaSealDecisionMatchesProof(decision, proof);
 
   const resultReference = run.resultSnapshot;
@@ -1323,11 +1301,11 @@ async function assertFeaProofSealProjectHistory(
 }
 
 async function exactHumanApproval(
-  input: RegisteredRunPlanSealInput,
+  project: EngineeringProjectSnapshot,
   decision: EngineeringDecision,
   basis: EngineeringThreadSnapshotBasis,
 ): Promise<EngineeringApproval | undefined> {
-  const candidates = input.project.approvals.filter((approval) =>
+  const candidates = project.approvals.filter((approval) =>
     approval.decisionId === decision.id &&
     approval.status === "approved" &&
     approval.decidedByOrigin === "human" &&
@@ -1351,7 +1329,7 @@ async function exactHumanApproval(
 }
 
 async function assertFeaSealRunInputFingerprint(
-  input: RegisteredRunPlanSealInput,
+  project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
   workItem: EngineeringWorkItem,
 ): Promise<void> {
@@ -1361,9 +1339,7 @@ async function assertFeaSealRunInputFingerprint(
     );
   }
   const approvedDecisions = workItem.decisionIds.map((decisionId) => {
-    const decision = input.project.decisions.find((candidate) =>
-      candidate.id === decisionId
-    );
+    const decision = project.decisions.find((candidate) => candidate.id === decisionId);
     if (!decision?.inputFingerprint || decision.status !== "approved") {
       throw new TypeError(
         "FEA proof authority seal work item has a decision that is not exactly approved.",
@@ -1477,6 +1453,23 @@ function sameExactArtifactIdentity(
   } catch {
     return false;
   }
+}
+
+/**
+ * Compare a public STEP binding without interpreting its route as a CAS URI.
+ *
+ * STEP routes are validated separately by canonicalCalculixStepAssetCasUri.
+ */
+function sameBoundStepArtifact(
+  left: ThreadArtifact,
+  right: ThreadArtifact,
+): boolean {
+  return left.id === right.id &&
+    left.kind === right.kind &&
+    left.mediaType === right.mediaType &&
+    left.uri === right.uri &&
+    fingerprintsEqual(left.fingerprint, right.fingerprint) &&
+    sameProducer(left, right);
 }
 
 function assertExactSealEvidenceRefs(
@@ -1915,61 +1908,8 @@ function parseJson(text: string, label: string): unknown {
   }
 }
 
-function requiredObject(value: unknown, path: string): Record<string, unknown> {
-  if (!isObject(value)) throw new TypeError(`${path} must be an object.`);
-  return value;
-}
-
-function exactObject(
-  value: unknown,
-  keys: readonly string[],
-  path: string,
-): Record<string, unknown> {
-  const record = requiredObject(value, path);
-  const actual = Object.keys(record).sort();
-  const expected = [...keys].sort();
-  if (
-    actual.length !== expected.length ||
-    actual.some((key, index) => key !== expected[index])
-  ) {
-    throw new TypeError(`${path} must contain exactly ${expected.join(", ")}.`);
-  }
-  return record;
-}
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requiredText(value: unknown, path: string): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new TypeError(`${path} must be non-empty text.`);
-  }
-  return value;
-}
-
-function requiredDigest(value: unknown, path: string): string {
-  const digest = requiredText(value, path);
-  if (!SHA256.test(digest)) throw new TypeError(`${path} must be SHA-256 hex.`);
-  return digest;
-}
-
-function fingerprintValue(value: unknown, path: string): ContentFingerprint {
-  const record = requiredObject(value, path);
-  if (record.algorithm !== "sha256") {
-    throw new TypeError(`${path}.algorithm must be sha256.`);
-  }
-  return {
-    algorithm: "sha256",
-    digest: requiredDigest(record.digest, `${path}.digest`),
-  };
-}
-
-function positiveInteger(value: unknown, path: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) {
-    throw new TypeError(`${path} must be a positive integer.`);
-  }
-  return Number(value);
 }
 
 function requiredMediaType(value: string | undefined, id: string): string {

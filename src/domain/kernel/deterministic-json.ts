@@ -28,16 +28,20 @@ export function deterministicJson(value: unknown): string {
   }
 }
 
+/** SHA-256 of exact bytes as lowercase hex. Same algorithm as CAS STEP reads. */
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export async function sha256Fingerprint(
   value: unknown,
 ): Promise<ContentFingerprint> {
   const bytes = new TextEncoder().encode(deterministicJson(value));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
   return {
     algorithm: "sha256",
-    digest: [...new Uint8Array(digest)].map((byte) =>
-      byte.toString(16).padStart(2, "0")
-    ).join(""),
+    digest: await sha256Hex(bytes),
   };
 }
 

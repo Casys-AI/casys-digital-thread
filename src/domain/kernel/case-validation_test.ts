@@ -1,5 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
+  closedRecord,
   deepFreeze,
   exactRecord,
   finite,
@@ -65,6 +66,20 @@ Deno.test("case-validation exactRecord accepts an object with exactly the declar
 Deno.test("case-validation exactRecord accepts an empty key set on an empty object", () => {
   const result = exactRecord({}, [], "$obj");
   assertEquals(Object.keys(result).length, 0);
+});
+
+Deno.test("case-validation closedRecord accepts an omitted optional key", () => {
+  const result = closedRecord({ id: "x" }, ["id", "basis"], ["id"], "$obj");
+  assertEquals(result["id"], "x");
+  assertEquals("basis" in result, false);
+});
+
+Deno.test("case-validation closedRecord rejects an undeclared key", () => {
+  assertThrows(
+    () => closedRecord({ id: "x", extra: 1 }, ["id"], ["id"], "$obj"),
+    TypeError,
+    "unsupported field extra",
+  );
 });
 
 // ---------------------------------------------------------------------------

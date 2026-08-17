@@ -41,6 +41,34 @@ export function exactRecord(
   return rec;
 }
 
+/**
+ * A plain object whose keys stay inside `allowed` and include every
+ * `required` key. Extra or missing keys throw TypeError.
+ */
+export function closedRecord(
+  value: unknown,
+  allowed: readonly string[],
+  required: readonly string[],
+  path: string,
+): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${path} must be an object.`);
+  }
+  const rec = value as Record<string, unknown>;
+  const allowedSet = new Set(allowed);
+  for (const key of Object.keys(rec)) {
+    if (!allowedSet.has(key)) {
+      throw new TypeError(`${path} has unsupported field ${key}.`);
+    }
+  }
+  for (const key of required) {
+    if (!Object.hasOwn(rec, key)) {
+      throw new TypeError(`${path}.${key} is required.`);
+    }
+  }
+  return rec;
+}
+
 /** Assert that value is an array. */
 export function arrayOf(value: unknown, path: string): unknown[] {
   if (!Array.isArray(value)) throw new TypeError(`${path} must be an array.`);
