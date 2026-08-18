@@ -124,8 +124,8 @@ import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
 } from "./src/adapters/executors/design-write-geometry-run-executor.ts";
-import { CaptureBackedProjectGeometryPreviewAdapter } from "./src/adapters/captures/capture-backed-project-geometry-preview-adapter.ts";
 import { AdmissionBackedGeometryExportAdapter } from "./src/adapters/captures/admission-backed-geometry-export-adapter.ts";
+import type { GeometrySourceAnalysisCaptureDependencies } from "./src/adapters/captures/geometry-source-analysis-capture.ts";
 import { ExportAdmittedProjectGeometry } from "./src/application/use-cases/export-admitted-project-geometry.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
@@ -1969,15 +1969,11 @@ async function createProjectControl(
         options.projectReviewIntentDirectory ??
           DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY,
       ),
-      // WHY THE SANDBOX INSTANCE AND NOT THE TRUSTED ONE — preview executes a
-      // geometry program PROPOSED BY AN AGENT. A fingerprint proves byte identity
-      // after sealing, never causal provenance: a write reaching the shared
-      // evidence volume before its producer hashes it would make the wrong hash
-      // the expected one. The sandbox owns a private export volume, so a proposed
-      // program can never touch evidence bytes. No sandbox entry in the fleet
-      // manifest ⇒ no preview tool at all, never a ghost that fails when called.
-      // The admitted-geometry path reuses this same private client after
-      // compile.seal-admission@1; it is not gated on --local-execution.
+      // WHY THE SANDBOX INSTANCE AND NOT THE TRUSTED ONE — admitted export
+      // reopens sealed CAD bytes. A fingerprint proves identity after sealing,
+      // never causal provenance. The sandbox owns a private export volume, so
+      // those bytes never touch evidence. No sandbox entry ⇒ no admitted-export
+      // tool. It is not gated on --local-execution.
       ...composePrivateBuild123dGeometrySurfaces(
         build123dSandboxMcpUrl,
         geometrySourceAnalysis,
@@ -2193,19 +2189,11 @@ function createCockpitFocus(
 
 function composePrivateBuild123dGeometrySurfaces(
   build123dSandboxMcpUrl: string | undefined,
-  geometrySourceAnalysis: ConstructorParameters<
-    typeof CaptureBackedProjectGeometryPreviewAdapter
-  >[0]["sourceAnalysis"],
+  geometrySourceAnalysis: GeometrySourceAnalysisCaptureDependencies,
   admissions: CaptureBackedTechnicalCompilationAdmissionReader,
-): Pick<
-  ProjectControlToolDependencies,
-  "geometryPreview" | "admittedGeometryExport"
-> {
+): Pick<ProjectControlToolDependencies, "admittedGeometryExport"> {
   if (!build123dSandboxMcpUrl) {
-    return {
-      geometryPreview: undefined,
-      admittedGeometryExport: undefined,
-    };
+    return { admittedGeometryExport: undefined };
   }
   const client = new HttpMcpToolClient({
     mcpUrl: build123dSandboxMcpUrl,
@@ -2216,7 +2204,6 @@ function composePrivateBuild123dGeometrySurfaces(
     directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
   });
   return {
-    geometryPreview: undefined,
     admittedGeometryExport: new ExportAdmittedProjectGeometry({
       admissions,
       exporter: new AdmissionBackedGeometryExportAdapter({

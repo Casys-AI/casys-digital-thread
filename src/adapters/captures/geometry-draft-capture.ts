@@ -1,5 +1,6 @@
 /**
- * Draft geometry capture for the `design.preview-geometry@1` tool (D2).
+ * Draft geometry capture for admitted export, later sealed by
+ * `design.write-geometry@1` (D2).
  *
  * WHY A SEPARATE DRAFT STORE — the preview run calls `build123d_export`
  * before any human MRTR decision.  Its output MUST never appear in a

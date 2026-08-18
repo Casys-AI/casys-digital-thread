@@ -400,9 +400,9 @@ const OPERATIONS = [
     ],
   },
   /**
-   * Geometry preview — planning-only until `project_geometry_preview` MCP tool
-   * is wired as its executor.  The tool is a pure draft builder; it must NOT
-   * publish to the ThreadSnapshot (D2 decision).
+   * Geometry preview — planning-only historical descriptor. It is not a
+   * product entry and has no executor. `queueRun` refuses it. Canonical
+   * drafts come from `project_admitted_geometry_export`.
    */
   {
     id: DESIGN_PREVIEW_GEOMETRY_OPERATION.id,

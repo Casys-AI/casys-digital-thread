@@ -40,9 +40,11 @@ from UI copy or tool descriptions.
 - `sysml-source-capture/1.0` is the renderer envelope.
   `architecture-sysml-source-analysis-capture/1.0` is the agent-authored CAS. They are
   not interchangeable.
-- Legacy `project_geometry_preview` + `design.write-geometry@1` is the MCP sandbox path.
-  `compile.seal-admission@1` + `design.execute-build123d@1` is the local microVM path. A
-  successful isolated execution is **not** canonical geometry.
+- `project_admitted_geometry_export` + `design.write-geometry@1` is the canonical
+  STEP path. It reopens parameterized `compile.seal-admission@1` bytes.
+  `project_geometry_preview` is retired. `compile.seal-admission@1` +
+  `design.execute-build123d@1` is the local microVM path. A successful isolated
+  execution is **not** canonical geometry.
   `design.seal-isolated-geometry@1` seals that execution as a Thread document only.
 - `verify.run-fea-static-proof@1`, `@2`, and `@3` are distinct authorities. Do not
   reroute one plan to another.

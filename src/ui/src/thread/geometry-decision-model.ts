@@ -1,8 +1,9 @@
 /**
  * Browser-safe model for a human geometry-sealing decision (design.write-geometry@1).
  *
- * WHY THIS MODULE EXISTS — the MRTR proposal produced by `project_geometry_preview`
- * carries a flat key-value parameter list (matching the `encodeGeometryDecisionParameters`
+ * WHY THIS MODULE EXISTS — the MRTR proposal produced by
+ * `project_admitted_geometry_export` carries a flat key-value parameter list
+ * (matching the `encodeGeometryDecisionParameters`
  * convention from the domain layer).  This module re-parses those parameters into
  * typed view objects so the Workbench can display the draft digest, the architecture
  * basis, and the asset counts without depending on the server-side domain layer.
@@ -423,9 +424,7 @@ function hex64(
   const s = String(raw);
   if (!FINGERPRINT_RE.test(s)) {
     throw new Error(
-      `${key} must be a 64-char lowercase hex SHA-256 (got: ${
-        s.slice(0, 16)
-      }…)`,
+      `${key} must be a 64-char lowercase hex SHA-256 (got: ${s.slice(0, 16)}…)`,
     );
   }
   return s;
@@ -508,14 +507,10 @@ function parseFormats(
   trimLegacyWhitespace = false,
 ): string[] {
   const parts = raw.split(",");
-  const formats = trimLegacyWhitespace
-    ? parts.map((value) => value.trim())
-    : parts;
+  const formats = trimLegacyWhitespace ? parts.map((value) => value.trim()) : parts;
   if (
     formats.length === 0 || new Set(formats).size !== formats.length ||
-    formats.some((format) =>
-      format !== "step" && format !== "gltf" && format !== "stl"
-    )
+    formats.some((format) => format !== "step" && format !== "gltf" && format !== "stl")
   ) {
     throw new Error(`${key} must contain unique step, gltf, or stl values`);
   }
@@ -573,9 +568,7 @@ function assertV2IdentityContract(
     partDefinitions.map((definition) => definition.elementId),
     "PartDefinition elementId",
   );
-  const crossKindCollision = [...definitionIds].find((id) =>
-    componentIds.has(id)
-  );
+  const crossKindCollision = [...definitionIds].find((id) => componentIds.has(id));
   if (crossKindCollision) {
     throw new Error(
       `Semantic elementId ${crossKindCollision} is reused across PartUsage and PartDefinition`,

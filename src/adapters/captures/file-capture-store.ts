@@ -268,8 +268,8 @@ export const GEOMETRY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<"geometry-captu
 export const GEOMETRY_CAPTURE_URI_PREFIX = "casys://geometry-capture/" as const;
 
 /**
- * Draft geometry captures (JSON) produced by the `design.preview-geometry@1`
- * MCP tool before a human MRTR decision.
+ * Draft geometry captures (JSON) produced by admitted geometry export, later
+ * sealed by `design.write-geometry@1`.
  *
  * These captures are NEVER addressable from a ThreadSnapshot (D2 decision).
  * The write executor (design.write-geometry@1) reads from this store only to
