@@ -44,6 +44,15 @@ export interface RegisteredEngineeringOperation {
   readonly resolvedOperationPlan?: "2.0";
   readonly decisionEvidenceScope?: "thread-entity-bindings";
   readonly requiresAdditiveChange?: true;
+  /**
+   * When set, every work item for this operation must `dependsOn` the unique
+   * existing work item of that registered operation. Enforced at
+   * `project_change_append`, before MRTR or queue.
+   */
+  readonly requiresDependsOnOperation?: {
+    readonly id: string;
+    readonly version: string;
+  };
   readonly mustOrigin?: "human";
   readonly bindings: readonly RegisteredEngineeringOperationBinding[];
 }

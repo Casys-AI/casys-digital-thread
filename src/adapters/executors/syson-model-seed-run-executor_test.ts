@@ -48,6 +48,10 @@ const V3_SEED_OPERATION: RegisteredEngineeringOperation = {
   workItemKind: "architect",
   riskClass: "consequential",
   execution: "trusted",
+  requiresDependsOnOperation: {
+    id: "baseline.from-approved-brief",
+    version: "1",
+  },
   bindings: [{ name: "approvedBrief", allowedSourceKinds: ["approved-brief"] }],
 };
 const TEST_OPERATION_REGISTRY: EngineeringProjectPlanOperationRegistry = {

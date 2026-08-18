@@ -540,6 +540,7 @@ export class SysonModelSeedRunExecutor {
       item.id === baselineRun.workItemId
     )!;
     if (!workItem.dependsOnWorkItemIds.includes(baselineWorkItem.id)) {
+      // Append already refuses this. Kept for work items accepted before that guard.
       throw invalidSeedLineage(
         "The SysON model seed must explicitly depend on the approved-brief documentary baseline work item.",
       );

@@ -102,6 +102,10 @@ const OPERATIONS = [
     // execution, after the baseline has locked the plan against republication.
     // requiresAdditiveChange lets publishPlan catch this before any run runs.
     requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: "baseline.from-approved-brief",
+      version: "1",
+    },
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],

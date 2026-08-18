@@ -569,7 +569,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_technical_source_capture",
     "project_vector_correction_review",
     "project_work_item_abandon",
-    "project_work_item_reconcile_successor",
     "project_work_item_supersede_unstarted",
   ]);
   assertEquals(app.hasResource(CONSOLE_RESOURCE_URI), false);
@@ -631,7 +630,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_technical_source_capture",
       "project_vector_correction_review",
       "project_work_item_abandon",
-      "project_work_item_reconcile_successor",
       "project_work_item_supersede_unstarted",
     ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");

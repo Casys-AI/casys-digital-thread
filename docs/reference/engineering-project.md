@@ -128,10 +128,12 @@ Lookalike pairs and grants: [agent workspace](agent-workspace.md#3-lookalike-tra
 geometry. `verify.run-fea-static-proof@3` must not consume a `@2` plan.
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
-`architecture.seed-syson-model@2` may be added by one append-only project change. The
-change's exact current snapshot is provenance, not a SysON runtime argument. Its
-execution requires exact documentary r1. The agent must not assume a later snapshot is
-equivalent: queueing derives and records the exact basis for each bounded run.
+`architecture.seed-syson-model@2` may be added by one append-only project change. That
+seed work item must `dependsOn` the unique `baseline.from-approved-brief@1` work item;
+`project_change_append` refuses the omission. The change's exact current snapshot is
+provenance, not a SysON runtime argument. Its execution requires exact documentary r1.
+The agent must not assume a later snapshot is equivalent: queueing derives and records
+the exact basis for each bounded run.
 
 These references deliberately expose no provider, tool name, raw input, workflow, or
 evidence payload. Publishing rejects unknown revisions, wrong starting points,

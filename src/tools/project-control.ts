@@ -54,7 +54,6 @@ import {
   READ_ONLY_ANNOTATIONS,
   REVIEW_INTENT_ACKNOWLEDGEMENT_ANNOTATIONS,
   THREAD_ENTITY_KINDS,
-  THREAD_ENTITY_REFERENCE_SCHEMA,
   THREAD_SNAPSHOT_REF_SCHEMA,
 } from "./project-control/mcp-tool-schemas.ts";
 import {
@@ -404,48 +403,6 @@ export function registerProjectControlTools(
   });
 
   app.registerTool(
-    projectWorkItemReconcileSuccessorTool,
-    async (args, context) => {
-      const common = commonMutation(args);
-      const failedWorkItemId = requiredString(
-        args.failedWorkItemId,
-        "failedWorkItemId",
-      );
-      const failedRunId = requiredString(args.failedRunId, "failedRunId");
-      const successorRunId = requiredString(args.successorRunId, "successorRunId");
-      const successorRunSnapshot = threadSnapshotReference(
-        args.successorRunSnapshot,
-        "successorRunSnapshot",
-      );
-      const successorEvidenceRefs = threadEntityReferenceList(
-        args.successorEvidenceRefs,
-        "successorEvidenceRefs",
-      );
-      const rationale = requiredString(args.rationale, "rationale");
-      // The MCP surface always uses direct reconciliation: the successor run
-      // result is already the project thread head and no separate closeout
-      // snapshot is produced. The full closeout path (with successorSnapshot)
-      // is only available through the command service directly.
-      const snapshot = await dependencies.commands.reconcileWorkItemWithSuccessor(
-        agentOrigin(context),
-        {
-          ...common,
-          failedWorkItemId,
-          failedRunId,
-          successorRunId,
-          successorRunSnapshot,
-          successorEvidenceRefs,
-          rationale,
-        },
-      );
-      return projectResult(
-        `Work item ${failedWorkItemId} is now closed as superseded. Its anchoring run ${failedRunId} keeps its durable status (failed, or cancelled before any claim) in history; the successor run ${successorRunId} retains its own evidence at project revision ${snapshot.revision}.`,
-        snapshot,
-      );
-    },
-  );
-
-  app.registerTool(
     projectWorkItemSupersedeUnstartedTool,
     async (args, context) => {
       return await handleUnstartedWorkItemSupersession(args, context, dependencies);
@@ -602,7 +559,7 @@ const projectPlanPublishTool: MCPTool = {
 const projectChangeAppendTool: MCPTool = {
   name: "project_change_append",
   description:
-    "Append the next bounded, reviewed engineering change after an existing exact ThreadSnapshot. The supplied baseSnapshot must exactly equal the project's current declared thread head; each work item must cite a reviewed registered operation and state-reference bindings. This never revises an existing phase, work item, decision, run or evidence record; it never calls a provider, approves a decision, queues work, or creates technical evidence. It cannot pre-plan later work whose basis does not yet exist.",
+    "Append the next bounded, reviewed engineering change after an existing exact ThreadSnapshot. The supplied baseSnapshot must exactly equal the project's current declared thread head; each work item must cite a reviewed registered operation and state-reference bindings. architecture.seed-syson-model@2 must list the unique baseline.from-approved-brief@1 work item in dependsOnWorkItemIds. This never revises an existing phase, work item, decision, run or evidence record; it never calls a provider, approves a decision, queues work, or creates technical evidence. It cannot pre-plan later work whose basis does not yet exist.",
   inputSchema: mutationSchema({
     baseSnapshot: THREAD_SNAPSHOT_REF_SCHEMA,
     phases: {
@@ -806,51 +763,6 @@ const projectAgentRunExecuteTool: MCPTool = {
   }, ["runId"]),
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: PROJECT_EXECUTION_ANNOTATIONS,
-};
-
-const projectWorkItemReconcileSuccessorTool: MCPTool = {
-  name: "project_work_item_reconcile_successor",
-  description:
-    "Close a failed, evidence-free work item by recording that an independently completed successor run has already delivered the equivalent result. Both histories stay intact: the failed run remains failed and the successor retains its own completed work item and evidence. The successor run snapshot must be the current project thread head (direct reconciliation — no separate closeout snapshot is produced). Only valid when the failed work item is in ready status with no evidence.",
-  inputSchema: mutationSchema({
-    failedWorkItemId: {
-      type: "string",
-      minLength: 1,
-      description: "Id of the work item that failed and must be closed.",
-    },
-    failedRunId: {
-      type: "string",
-      minLength: 1,
-      description: "Id of the evidence-free failed agent run for that work item.",
-    },
-    successorRunId: {
-      type: "string",
-      minLength: 1,
-      description:
-        "Id of the independently completed successor run that delivered the equivalent result.",
-    },
-    successorRunSnapshot: THREAD_SNAPSHOT_REF_SCHEMA,
-    successorEvidenceRefs: {
-      type: "array",
-      minItems: 1,
-      items: THREAD_ENTITY_REFERENCE_SCHEMA,
-      description: "Exact evidence refs from the completed successor run.",
-    },
-    rationale: {
-      type: "string",
-      minLength: 1,
-      description: "Reason why the successor result closes the original work item.",
-    },
-  }, [
-    "failedWorkItemId",
-    "failedRunId",
-    "successorRunId",
-    "successorRunSnapshot",
-    "successorEvidenceRefs",
-    "rationale",
-  ]),
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: PROJECT_MUTATION_ANNOTATIONS,
 };
 
 const projectWorkItemSupersedeUnstartedTool: MCPTool = {
@@ -2431,16 +2343,6 @@ function threadEntityReference(
     kind: kind as ThreadEntityKind,
     id: requiredString(record.id, `${name}.id`),
   };
-}
-
-function threadEntityReferenceList(
-  value: unknown,
-  name: string,
-): EngineeringThreadEntityRef[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new TypeError(`${name} must be a non-empty array`);
-  }
-  return value.map((item, index) => threadEntityReference(item, `${name}[${index}]`));
 }
 
 function stringList(value: unknown, name: string): string[] {

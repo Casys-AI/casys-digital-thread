@@ -624,7 +624,7 @@ Deno.test("appendChange refuses one MRTR decision shared by two appended work it
     id: "seed-syson-one",
     phaseId: "phase-architecture",
     owner: "agent" as const,
-    dependsOnWorkItemIds: [],
+    dependsOnWorkItemIds: [baselineWorkItemId],
     decisionIds: [decisionId],
     operation: {
       id: "architecture.seed-syson-model",
@@ -1253,6 +1253,98 @@ Deno.test(
         }),
       "invalid_input",
     );
+  },
+);
+
+Deno.test(
+  "appendChange refuses a SysON seed that does not depend on the unique baseline work item",
+  async () => {
+    const store = new MemoryProjectStore();
+    const briefs = serviceFor(store);
+    const approved = await approvedProject(briefs);
+    const commands = new EngineeringProjectCommandService(
+      store,
+      undefined,
+      () => "2026-08-03T09:00:00.000Z",
+      { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+      { validateInitial: () => Promise.resolve() },
+    );
+    let project = await commands.publishPlan(
+      AGENT,
+      baselinePlanCommand("publish-baseline-for-seed-depends", approved.revision),
+    );
+    const baselineWorkItemId = "record-approved-brief";
+    const runId = "run:baseline-for-seed-depends";
+    project = await commands.queueRun(AGENT, {
+      ...context("queue-baseline-for-seed-depends", project.revision),
+      runId,
+      workItemId: baselineWorkItemId,
+      summary: "Queue the exact approved documentary baseline.",
+      basis: project.plan!.basis,
+    });
+    project = await commands.claimRun(AGENT, {
+      ...context("claim-baseline-for-seed-depends", project.revision),
+      runId,
+      summary: "Claim the exact approved documentary baseline.",
+    });
+    project = await commands.publishRun(AGENT, {
+      ...context("publish-run-for-seed-depends", project.revision),
+      runId,
+      summary: "Publish the exact approved documentary baseline.",
+    });
+    const baselineSnapshot = {
+      snapshotId: "project-v3:documentary-baseline:r1",
+      revision: 1,
+      subjectId: project.project.subjectId,
+    };
+    project = await commands.completeRun(AGENT, {
+      ...context("complete-baseline-for-seed-depends", project.revision),
+      runId,
+      summary: "Complete the exact approved documentary baseline.",
+      resultSnapshot: baselineSnapshot,
+      evidenceRefs: [{
+        snapshotId: baselineSnapshot.snapshotId,
+        snapshotRevision: baselineSnapshot.revision,
+        kind: "artifact",
+        id: "approved-brief-baseline",
+      }],
+    });
+
+    const error = await assertRejects(
+      () =>
+        commands.appendChange(AGENT, {
+          ...context("append-seed-without-baseline-dep", project.revision),
+          baseSnapshot: baselineSnapshot,
+          phases: [{
+            id: "phase-seed",
+            name: "Seed",
+            description: "Create the SysON container.",
+          }],
+          workItems: [{
+            id: "wi-seed",
+            phaseId: "phase-seed",
+            owner: "agent",
+            dependsOnWorkItemIds: [],
+            decisionIds: [],
+            operation: {
+              id: "architecture.seed-syson-model",
+              version: "2",
+              bindings: [{
+                name: "approvedBrief",
+                source: { kind: "approved-brief" },
+              }],
+            },
+          }],
+          requiredDecisions: [],
+        }),
+      EngineeringProjectCommandError,
+    );
+    assertEquals(error.code, "invalid_input");
+    assertStringIncludes(
+      error.message,
+      "must depend on baseline.from-approved-brief@1 work item",
+    );
+    assertEquals((await store.get(PROJECT_ID))?.revision, project.revision);
   },
 );
 

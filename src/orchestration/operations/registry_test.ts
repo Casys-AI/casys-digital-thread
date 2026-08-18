@@ -60,6 +60,15 @@ Deno.test("the intake registry starts a new idea from the approved project brief
   assertEquals(getRegisteredIntakeOperation("existing-product"), undefined);
 });
 
+Deno.test("the SysON seed must depend on the unique approved-brief baseline work item", () => {
+  const seed = getRegisteredEngineeringOperation(SYSON_MODEL_SEED_OPERATION)!;
+  assertEquals(seed.requiresAdditiveChange, true);
+  assertEquals(seed.requiresDependsOnOperation, {
+    id: "baseline.from-approved-brief",
+    version: "1",
+  });
+});
+
 Deno.test("operation lookup is exact and fails closed for unknown revisions", () => {
   assertEquals(
     getRegisteredEngineeringOperation({

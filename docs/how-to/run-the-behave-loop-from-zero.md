@@ -64,8 +64,10 @@ One question at a time (`project_question_propose` / `project_answer_record`).
 
 1. `baseline.from-approved-brief@1` — Thread r1, no provider.
 2. `project_change_append` — seed work item **and** its required decision in the
-   **same** append. Human approves. Queue. Execute `architecture.seed-syson-model@2`. r2
-   is a blank container, not an architecture.
+   **same** append. `dependsOnWorkItemIds` must name the unique
+   `baseline.from-approved-brief@1` work item; append refuses the omission. Human
+   approves. Queue. Execute `architecture.seed-syson-model@2`. r2 is a blank
+   container, not an architecture.
 
 ## 4. Architecture and requirements
 

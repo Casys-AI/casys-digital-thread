@@ -328,6 +328,10 @@ export interface EngineeringProjectPlanOperationRegistry {
        * republication.  See RegisteredEngineeringOperation.requiresAdditiveChange.
        */
       readonly requiresAdditiveChange?: true;
+      readonly requiresDependsOnOperation?: {
+        readonly id: string;
+        readonly version: string;
+      };
     };
     readonly bindings: readonly EngineeringOperationInputBinding[];
   };
@@ -699,6 +703,11 @@ export class EngineeringProjectCommandService {
             allWorkItemIds,
             decisionIds,
             decisionsById,
+          );
+          assertRequiredDependsOnOperation(
+            item,
+            resolved.operation,
+            [...draft.workItems, ...command.workItems],
           );
           return {
             ...item,
@@ -1463,7 +1472,7 @@ export class EngineeringProjectCommandService {
           );
         }
         // Equivalent operations are always safe. A different operation is
-        // forbidden on the MCP-exposed direct form and requires a code-owned,
+        // forbidden on the direct recovery form and requires a code-owned,
         // injected proof on the full closeout form. The mere presence of a
         // direct-child snapshot proves topology, not semantic compatibility.
         if (failedWork.operation !== undefined) {
@@ -2578,6 +2587,45 @@ function assertPlanGateClaimsResolve(
         );
       }
     }
+  }
+}
+
+function assertRequiredDependsOnOperation(
+  item: {
+    readonly id: string;
+    readonly dependsOnWorkItemIds: readonly string[];
+  },
+  operation: {
+    readonly id: string;
+    readonly version: string;
+    readonly requiresDependsOnOperation?: {
+      readonly id: string;
+      readonly version: string;
+    };
+  },
+  allWorkItems: readonly {
+    readonly id: string;
+    readonly operation?: { readonly id: string; readonly version: string };
+  }[],
+): void {
+  const required = operation.requiresDependsOnOperation;
+  if (!required) return;
+  const matches = allWorkItems.filter((candidate) =>
+    candidate.operation?.id === required.id &&
+    candidate.operation.version === required.version
+  );
+  if (matches.length !== 1) {
+    invalidInput(
+      `Operation ${operation.id}@${operation.version} must depend on the unique ` +
+        `${required.id}@${required.version} work item. Found ${matches.length}.`,
+    );
+  }
+  const requiredId = matches[0]!.id;
+  if (!item.dependsOnWorkItemIds.includes(requiredId)) {
+    invalidInput(
+      `Operation ${operation.id}@${operation.version} must depend on ` +
+        `${required.id}@${required.version} work item ${requiredId}.`,
+    );
   }
 }
 

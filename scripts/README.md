@@ -10,9 +10,12 @@ local container images as stated below.
 
 ## runners/ — write immutable local state
 
-There are currently no runnable local-state writers. Provider-backed engineering writes
-are admitted through registered MCP operations; their immutable records remain under
-`state/local/`.
+Registered MCP operations remain the canonical writers. This directory holds operator
+recovery that must not appear on the agent MCP path.
+
+| Script                                    | Task or registration           | Effect | Scope                                                                                          |
+| ----------------------------------------- | ------------------------------ | ------ | ---------------------------------------------------------------------------------------------- |
+| `runners/reconcile-work-item-successor.ts` | `recover:work-item-successor`  | write  | Close a leftover ready work item behind a completed successor. Inspect by default; `--apply` writes. |
 
 ## gates/ — verification and qualification entry points
 
