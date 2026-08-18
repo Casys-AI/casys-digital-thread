@@ -407,10 +407,9 @@ It does **not** prove:
 
 ## Compare the preview paths
 
-| Command                     | Address                  | Purpose                                      |
-| --------------------------- | ------------------------ | -------------------------------------------- |
-| `deno task preview:thread`  | `http://127.0.0.1:5173/` | Native product shell over persisted evidence |
-| `deno task preview:browser` | `http://127.0.0.1:3021/` | Console MCP App against the Console server   |
+| Command                    | Address                  | Purpose                                      |
+| -------------------------- | ------------------------ | -------------------------------------------- |
+| `deno task preview:thread` | `http://127.0.0.1:5173/` | Native product shell over persisted evidence |
 
 MCP Apps remains useful for one rich tool result or for embedding the complete Workbench
 once in an agent host. It is not used to compose the first-party product page.

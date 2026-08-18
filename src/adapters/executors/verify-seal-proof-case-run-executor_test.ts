@@ -41,6 +41,11 @@ import {
   VERIFY_SEAL_PROOF_CASE_OPERATION,
 } from "../../domain/analysis/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../../domain/analysis/mechanical-proof-case.ts";
+import {
+  compileSensitivityCatalogOfferFromAdmission,
+  SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
+} from "../../domain/analysis/sensitivity-catalog-from-proof.ts";
+import { fingerprintTechnicalSourceText } from "../../domain/analysis/technical-compilation.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
@@ -65,6 +70,7 @@ import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
 } from "../captures/file-capture-store.ts";
 import { FileEngineeringProjectRevisionStore } from "../stores/engineering-project-store.ts";
 import { FileEngineeringProjectRunLease } from "../stores/file-engineering-project-run-lease.ts";
@@ -1315,9 +1321,356 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "verify-seal-proof-case executor publishes the exact signed sensitivity catalog opt-in",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-fea-seal-sensitivity-catalog-",
+    });
+    try {
+      const sourceText =
+        "from build123d import Box\nthickness = 10\nresult = Box(20, 10, thickness)\n";
+      const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+      const admissionDocument = await linkedAdmissionDocument(sourceText);
+      const admissionArtifact = makeAdmissionArtifact("9".repeat(64));
+      const geomArtifact = makeGeomArtifact();
+      const reqArtifact = makeReqArtifact();
+      const base = await buildSealFixtureBase(directory, {
+        geomArtifact,
+        reqArtifact,
+        extraArtifacts: [admissionArtifact],
+      });
+      const baseProof = makeTestCase(
+        base.r2Snapshot.id,
+        undefined,
+        base.r2Snapshot.id,
+        base.r2Snapshot.revision,
+      );
+      if (baseProof.cadSource.kind !== "parametric") {
+        throw new Error("Expected a parametric proof fixture.");
+      }
+      const proofCase = validateMechanicalProofCase({
+        ...baseProof,
+        cadSource: {
+          ...baseProof.cadSource,
+          generator: {
+            ...baseProof.cadSource.generator,
+            definition: {
+              ...baseProof.cadSource.generator.definition,
+              sha256: sourceFingerprint.digest,
+              bytes: new TextEncoder().encode(sourceText).byteLength,
+            },
+          },
+        },
+        requirements: baseProof.requirements.map((requirement, index) => ({
+          ...requirement,
+          feature: index === 0 ? "maxDisplacement" : "maxVonMises",
+        })),
+      });
+      const proofDigest = (await sha256Fingerprint(proofCase)).digest;
+      const offer = compileSensitivityCatalogOfferFromAdmission({
+        proofCase,
+        proofDigest,
+        admissionArtifact: {
+          id: admissionArtifact.id,
+          fingerprint: admissionArtifact.fingerprint,
+        },
+        document: admissionDocument as never,
+      });
+      assertEquals(offer.status, "ready-for-opt-in");
+      if (offer.status !== "ready-for-opt-in") return;
+      const offerDigest = (await sha256Fingerprint(offer)).digest;
+      const params = encodeFeaProofDecisionParameters(
+        proofDigest,
+        proofCase,
+        { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
+        { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        {
+          schemaVersion: offer.schemaVersion,
+          digest: offerDigest,
+          admissionArtifact: {
+            id: admissionArtifact.id,
+            fingerprint: admissionArtifact.fingerprint,
+          },
+        },
+      );
+      const fixture = await appendSealRun(base, {
+        proofCase,
+        proofDigest,
+        params,
+      });
+      const offerCaptures = new FileCaptureStore({
+        ...SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
+        directory: `${directory}/sensitivity-catalog-offers`,
+      });
+      const executor = new VerifySealProofCaseRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        proofCaseCaptures: new FileCaptureStore({
+          ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/fea-proof-captures`,
+        }),
+        sensitivityCatalogOffers: offerCaptures,
+        admissions: {
+          read: () =>
+            Promise.resolve({
+              document: admissionDocument,
+            } as never),
+        },
+        geometryCaptures: makeGeomCaptureStub() as never,
+        requirementsCaptures: makeReqCaptureStub(
+          "maxDisplacement",
+          "maxVonMises",
+        ) as never,
+        seedCaptures: makeSeedCaptureStub() as never,
+        canonicalAssetReader: makeCanonicalAssetReader() as never,
+        lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        readTextFile: makeReadStub(proofCase),
+      });
+      const completed = await executor.execute(AGENT, {
+        commandId: "agent-seal-with-sensitivity-catalog",
+        projectId: PROJECT_ID,
+        expectedRevision: fixture.queued.revision,
+        issuedAt: NOW,
+        runId: fixture.runId,
+      });
+      const run = completed.agentRuns.find((item) => item.id === fixture.runId)!;
+      const resultSnapshot = await fixture.snapshots.get(
+        run.resultSnapshot!.snapshotId,
+      );
+      assertExists(resultSnapshot);
+      validateThreadSnapshot(resultSnapshot);
+      const catalogArtifact = resultSnapshot.artifacts.find((artifact) =>
+        artifact.uri?.startsWith(
+          "casys://sensitivity-catalog-offer-capture/sha256/",
+        )
+      );
+      assertExists(catalogArtifact);
+      assertEquals(catalogArtifact.version, offerDigest);
+      assertEquals(
+        catalogArtifact.inputArtifactIds.includes(admissionArtifact.id),
+        true,
+      );
+      const raw = await offerCaptures.read(catalogArtifact.fingerprint);
+      assertExists(raw);
+      const capture = JSON.parse(raw);
+      assertEquals(
+        capture.schemaVersion,
+        SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
+      );
+      assertEquals(capture.offerDigest, offerDigest);
+      assertEquals(capture.offer.step, { status: "not-compiled" });
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "verify-seal-proof-case executor fails closed on every signed catalog authority drift",
+  async () => {
+    const cases = [
+      {
+        name: "altered offer digest",
+        options: { signedDigest: "f".repeat(64) },
+        message: "does not match the human-signed digest",
+      },
+      {
+        name: "changed admission fingerprint",
+        options: {
+          signedAdmissionFingerprint: {
+            algorithm: "sha256" as const,
+            digest: "e".repeat(64),
+          },
+        },
+        message: "admission artifact is absent or has drifted",
+      },
+      {
+        name: "unavailable admission",
+        options: { admissionMode: "unavailable" as const },
+        message: "admission is unavailable",
+      },
+      {
+        name: "missing catalog capture store",
+        options: { omitOfferStore: true },
+        message: "no admission reader or catalog-offer capture store",
+      },
+      {
+        name: "recompiled non-ready offer",
+        options: { admissionMode: "unlinked" as const },
+        message: "offer no longer compiles: admission-unlinked",
+      },
+    ];
+    for (const testCase of cases) {
+      const directory = await Deno.makeTempDir({
+        prefix: "casys-fea-seal-catalog-fail-closed-",
+      });
+      try {
+        const harness = await sensitivityOptInHarness(
+          directory,
+          testCase.options,
+        );
+        await assertRejects(
+          () => harness.executor.execute(AGENT, harness.command),
+          EngineeringProjectCommandError,
+          testCase.message,
+        );
+        assertEquals(
+          harness.snapshotSaves(),
+          0,
+          `${testCase.name} must not publish a Thread snapshot`,
+        );
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
+    }
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Fixture helpers
 // ---------------------------------------------------------------------------
+
+interface SensitivityOptInHarnessOptions {
+  readonly signedDigest?: string;
+  readonly signedAdmissionFingerprint?: ContentFingerprint;
+  readonly admissionMode?: "valid" | "unavailable" | "unlinked";
+  readonly omitOfferStore?: boolean;
+}
+
+async function sensitivityOptInHarness(
+  directory: string,
+  options: SensitivityOptInHarnessOptions,
+) {
+  const sourceText =
+    "from build123d import Box\nthickness = 10\nresult = Box(20, 10, thickness)\n";
+  const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+  const admissionDocument = await linkedAdmissionDocument(sourceText);
+  const admissionArtifact = makeAdmissionArtifact("9".repeat(64));
+  const geomArtifact = makeGeomArtifact();
+  const reqArtifact = makeReqArtifact();
+  const base = await buildSealFixtureBase(directory, {
+    geomArtifact,
+    reqArtifact,
+    extraArtifacts: [admissionArtifact],
+  });
+  const baseProof = makeTestCase(
+    base.r2Snapshot.id,
+    undefined,
+    base.r2Snapshot.id,
+    base.r2Snapshot.revision,
+  );
+  if (baseProof.cadSource.kind !== "parametric") {
+    throw new Error("Expected a parametric proof fixture.");
+  }
+  const proofCase = validateMechanicalProofCase({
+    ...baseProof,
+    cadSource: {
+      ...baseProof.cadSource,
+      generator: {
+        ...baseProof.cadSource.generator,
+        definition: {
+          ...baseProof.cadSource.generator.definition,
+          sha256: sourceFingerprint.digest,
+          bytes: new TextEncoder().encode(sourceText).byteLength,
+        },
+      },
+    },
+    requirements: baseProof.requirements.map((requirement, index) => ({
+      ...requirement,
+      feature: index === 0 ? "maxDisplacement" : "maxVonMises",
+    })),
+  });
+  const proofDigest = (await sha256Fingerprint(proofCase)).digest;
+  const offer = compileSensitivityCatalogOfferFromAdmission({
+    proofCase,
+    proofDigest,
+    admissionArtifact: {
+      id: admissionArtifact.id,
+      fingerprint: admissionArtifact.fingerprint,
+    },
+    document: admissionDocument as never,
+  });
+  if (offer.status !== "ready-for-opt-in") {
+    throw new Error(`Expected a ready catalog offer, got ${offer.status}.`);
+  }
+  const offerDigest = (await sha256Fingerprint(offer)).digest;
+  const params = encodeFeaProofDecisionParameters(
+    proofDigest,
+    proofCase,
+    { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
+    { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+    {
+      schemaVersion: offer.schemaVersion,
+      digest: options.signedDigest ?? offerDigest,
+      admissionArtifact: {
+        id: admissionArtifact.id,
+        fingerprint: options.signedAdmissionFingerprint ??
+          admissionArtifact.fingerprint,
+      },
+    },
+  );
+  const fixture = await appendSealRun(base, {
+    proofCase,
+    proofDigest,
+    params,
+  });
+  const offerCaptures = new FileCaptureStore({
+    ...SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
+    directory: `${directory}/sensitivity-catalog-offers`,
+  });
+  let snapshotSaves = 0;
+  const snapshots = {
+    get: (snapshotId: string) => fixture.snapshots.get(snapshotId),
+    save: (snapshot: ThreadSnapshot) => {
+      snapshotSaves += 1;
+      return fixture.snapshots.save(snapshot);
+    },
+  };
+  const unavailable = options.admissionMode === "unavailable";
+  const reopenedDocument = options.admissionMode === "unlinked"
+    ? await linkedAdmissionDocument(
+      "from build123d import Box\nother = 10\nresult = Box(20, 10, other)\n",
+    )
+    : admissionDocument;
+  const executor = new VerifySealProofCaseRunExecutor({
+    projects: fixture.projects,
+    commands: fixture.commands,
+    snapshots: snapshots as never,
+    proofCaseCaptures: new FileCaptureStore({
+      ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+      directory: `${directory}/fea-proof-captures`,
+    }),
+    ...(options.omitOfferStore ? {} : { sensitivityCatalogOffers: offerCaptures }),
+    admissions: {
+      read: () =>
+        Promise.resolve(
+          unavailable ? undefined : { document: reopenedDocument } as never,
+        ),
+    },
+    geometryCaptures: makeGeomCaptureStub() as never,
+    requirementsCaptures: makeReqCaptureStub(
+      "maxDisplacement",
+      "maxVonMises",
+    ) as never,
+    seedCaptures: makeSeedCaptureStub() as never,
+    canonicalAssetReader: makeCanonicalAssetReader() as never,
+    lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+    readTextFile: makeReadStub(proofCase),
+  });
+  return {
+    executor,
+    command: {
+      commandId: "agent-seal-catalog-fail-closed",
+      projectId: PROJECT_ID,
+      expectedRevision: fixture.queued.revision,
+      issuedAt: NOW,
+      runId: fixture.runId,
+    },
+    snapshotSaves: () => snapshotSaves,
+  };
+}
 
 interface SealFixture {
   projects: FileEngineeringProjectRevisionStore;
@@ -1351,7 +1704,11 @@ interface SealFixtureBase {
  */
 async function buildSealFixtureBase(
   directory: string,
-  opts: { geomArtifact: ThreadArtifact; reqArtifact: ThreadArtifact },
+  opts: {
+    geomArtifact: ThreadArtifact;
+    reqArtifact: ThreadArtifact;
+    extraArtifacts?: readonly ThreadArtifact[];
+  },
 ): Promise<SealFixtureBase> {
   let tick = 0;
   const baseTime = Date.parse("2026-08-09T10:00:00.000Z");
@@ -1467,6 +1824,7 @@ async function buildSealFixtureBase(
     opts.geomArtifact,
     opts.reqArtifact,
     makeStepArtifact(),
+    ...(opts.extraArtifacts ?? []),
   ]);
   await snapshots.save(r2Snapshot);
 
@@ -1749,6 +2107,100 @@ function makeStepArtifact(): ThreadArtifact {
   };
 }
 
+function makeAdmissionArtifact(digest: string): ThreadArtifact {
+  return {
+    id: `technical-compilation-admission-${digest}`,
+    name: "Parameterized Build123d admission",
+    kind: "document",
+    version: digest,
+    fingerprint: { algorithm: "sha256", digest },
+    uri: `casys://technical-compilation-admission-capture/sha256/${digest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "compile.seal-admission@1",
+      runId: "run-admission-test",
+    },
+    inputArtifactIds: [],
+    freshness: {
+      status: "fresh",
+      changedAt: NOW,
+      invalidatedByChangeIds: [],
+    },
+  };
+}
+
+async function linkedAdmissionDocument(sourceText: string) {
+  const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+  const parameter = {
+    id: "parameter.thickness",
+    kind: "parameter" as const,
+    name: "thickness",
+    span: {
+      start: { line: 2, column: 0 },
+      end: { line: 2, column: 9 },
+    },
+  };
+  const result = {
+    id: "artifact.result",
+    kind: "artifact" as const,
+    name: "result",
+  };
+  const analysis = {
+    schemaVersion: "source-analysis/1.0" as const,
+    source: {
+      id: "source.cad",
+      role: "cad-script" as const,
+      language: "python" as const,
+      fingerprint: sourceFingerprint,
+    },
+    analyzer: { id: "build123d-qualified-lezer", version: "1.6.0" },
+    policy: {
+      profile: "build123d-closed-subset-v1",
+      status: "passed" as const,
+      findings: [],
+    },
+    symbols: [parameter, result],
+    dependencies: [{
+      id: "dependency.thickness.result",
+      kind: "structural-incidence" as const,
+      fromSymbolId: parameter.id,
+      toSymbolId: result.id,
+    }],
+    unresolvedConstructs: [],
+  };
+  const bindings = [{
+    id: "binding.thickness",
+    sourceId: "source.cad",
+    sourceSymbolId: parameter.id,
+    sysmlElementId: "sysml.thickness",
+    sysmlElementKind: "AttributeUsage",
+    relation: "parameterizes" as const,
+  }, {
+    id: "binding.result",
+    sourceId: "source.cad",
+    sourceSymbolId: result.id,
+    sysmlElementId: TARGET_ELEMENT_ID,
+    sysmlElementKind: "PartDefinition",
+    relation: "represents" as const,
+  }];
+  return {
+    projections: [{
+      target: "build123d-source" as const,
+      status: "ready-for-review" as const,
+      sources: [{
+        sourceText,
+        analysis,
+        analysisFingerprint: {
+          algorithm: "sha256" as const,
+          digest: "f".repeat(64),
+        },
+        bindings,
+      }],
+    }],
+  };
+}
+
 /**
  * Extend a snapshot with additional artifacts via the extension mechanism.
  * This returns a new valid snapshot at revision + 1.
@@ -1802,7 +2254,10 @@ function makeGeomCaptureStub(): { read: () => Promise<string> } {
 }
 
 /** Minimal requirements capture with consistent oracle requirements. */
-function makeReqCaptureStub(): { read: () => Promise<string> } {
+function makeReqCaptureStub(
+  displacementMetric = "u.max",
+  stressMetric = "sigma.max",
+): { read: () => Promise<string> } {
   const content = JSON.stringify({
     schemaVersion: REQUIREMENTS_CAPTURE_SCHEMA,
     containerComponent: CONTAINER_COMPONENT,
@@ -1815,14 +2270,14 @@ function makeReqCaptureStub(): { read: () => Promise<string> } {
       {
         id: "R-DISP",
         name: "Maximum displacement",
-        metric: "u.max",
+        metric: displacementMetric,
         operator: "<=",
         limit: { value: 1.0, unit: "mm" },
       },
       {
         id: "R-STRESS",
         name: "Maximum von Mises stress",
-        metric: "sigma.max",
+        metric: stressMetric,
         operator: "<=",
         limit: { value: 180000000, unit: "Pa" },
       },

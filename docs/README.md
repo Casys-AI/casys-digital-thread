@@ -30,9 +30,9 @@ not paraphrased.
   starts the single-shell Preact product surface, follows a project from its living
   brief into activity and evidence, and explains why the cockpit observes while the
   paired conversation controls bounded provider work.
-- [Preview the MCP console in a local browser](how-to/preview-console.md) explains the
-  `127.0.0.1:3021` harness, how to confirm that it is live, and what it intentionally
-  does not do.
+- [The Console browser preview is retired](how-to/preview-console.md) records that the
+  `:3021` Fleet / Runs / Workbench page is gone. Use `preview:thread` for the cockpit
+  and `console_snapshot` for fleet health.
 - [Add a result-viewer MCP App](how-to/add-mcp-app.md) scaffolds, builds, registers, and
   verifies a standard structured-result view without broadening its server grants.
 - [Add a recorded analysis engine](how-to/add-a-recorded-analysis-engine.md) gives the

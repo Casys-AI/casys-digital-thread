@@ -14,8 +14,7 @@ import {
 import { deterministicJson } from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 
-export const CORRECTED_SOURCE_CAPTURE_SCHEMA =
-  "corrected-source-capture/1.0" as const;
+export const CORRECTED_SOURCE_CAPTURE_SCHEMA = "corrected-source-capture/1.0" as const;
 
 export interface CorrectedSourceCapture {
   readonly schemaVersion: typeof CORRECTED_SOURCE_CAPTURE_SCHEMA;

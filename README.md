@@ -72,7 +72,7 @@ Agents working in this repo start at [AGENTS.md](AGENTS.md) and
 state the authority split and the lookalike operations that must not be merged.
 
 Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno + Node.js
-for rebuilding the console.
+for rebuilding the native cockpit.
 
 ```bash
 # 1. Bring up SysON + the engineering and ERP MCP services
@@ -80,7 +80,7 @@ docker compose up -d          # SysON UI: http://localhost:8180
 
 # 2. Start the Console and project-control MCP server.
 npm --prefix src/ui ci
-npm --prefix src/ui run build
+npm --prefix src/ui run build:thread
 deno task start
 ```
 
@@ -116,11 +116,11 @@ their identity-bound MCP tools, never directly by the cockpit.
 
 ## Console and native Workbench
 
-The console exposes one MCP App at `ui://casys-digital-thread/console`. Fleet and Runs
-compare the declared fleet with live MCP and Docker observations; those Console actions
-remain read-only. Runs also discovers persisted Modelica records through its two
-read-only tools; it never reads the sidecar's Docker volume. The same MCP server exposes
-a separate, revision-bound project-control surface for agents. It can read a project,
+The Console MCP server is the agent and ops control plane, not a human dashboard. The
+former Fleet / Runs / Workbench MCP App at `ui://casys-digital-thread/console` is
+retired. Fleet health remains a read-only tool (`console_snapshot`) that compares the
+declared fleet with live MCP and Docker observations. The same MCP server exposes a
+separate, revision-bound project-control surface for agents. It can read a project,
 publish its bounded path, propose decisions, request the person's exact confirmation in
 the conversation, and queue or execute only registered, server-owned operations.
 Elicitation preserves human authority without moving command input into the cockpit; it
@@ -130,18 +130,15 @@ itself.
 
 ```bash
 npm --prefix src/ui ci
-npm --prefix src/ui run build
+npm --prefix src/ui run build:thread
 deno task start                  # http://127.0.0.1:3020/mcp
-# In a second terminal, browser host for the existing MCP App:
-deno task preview:browser        # http://127.0.0.1:3021/
 # Canonical product shell: one Project tab from first brief to technical proof.
 deno task preview:cockpit --port=5175  # http://127.0.0.1:5175/
 # Direct thread preview remains available for development and diagnosis.
 deno task preview:thread              # http://127.0.0.1:5173/
 ```
 
-The browser host relays the Console's read-only tools to the live MCP server. It is a
-local MCP Apps test harness, not the product Workbench.
+`deno task preview:browser` refuses: the `:3021` harness is not a product page.
 
 The product surface is one native Preact cockpit. Its **Project** tab begins as the
 living project brief and evolves into the project path and current engineering record;
@@ -229,7 +226,7 @@ keeps the checked-in bracket run explicitly labelled as demo. The documentation 
 organized with [Diátaxis](https://diataxis.fr/): start at the
 [documentation map](docs/README.md), follow the
 [product direction](docs/explanations/product-direction.md), follow the
-[browser-preview how-to](docs/how-to/preview-console.md), use the
+[retired Console preview note](docs/how-to/preview-console.md), use the
 [native Workbench preview](docs/how-to/preview-native-workbench.md), or inspect the
 [CM-01 archive](docs/legacy/cm01-v3.md). Look up exact paths and ports in the
 [workspace reference](docs/reference/workspace-map.md). The
@@ -256,7 +253,7 @@ model, and security boundary.
 | `docs/legacy/`                                | Non-executable historical dossiers; never active configuration or admission                                              |
 | `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                                                                    |
 | `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                                                      |
-| `docs/reference/console.md`                   | Console resource, tools, truth model, limitations, and security boundary                                                 |
+| `docs/reference/console.md`                   | Console ops tools, truth model, limitations, and security boundary                                                       |
 | `docs/explanations/positioning.md`            | Explanation: industry & SOTA positioning and references                                                                  |
 | `examples/bracket/`                           | The end-to-end walkthrough with real numbers                                                                             |
 

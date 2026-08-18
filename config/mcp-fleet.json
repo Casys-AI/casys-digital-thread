@@ -2,7 +2,6 @@
   "schemaVersion": "1.0",
   "version": 1,
   "console": {
-    "resourceUri": "ui://casys-digital-thread/console",
     "snapshotTool": "console_snapshot",
     "readOnly": true
   },

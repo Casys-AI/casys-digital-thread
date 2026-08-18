@@ -13,6 +13,7 @@ import {
   compileTechnicalSources,
   fingerprintTechnicalCompilationBasis,
   fingerprintTechnicalSysmlAnchor,
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_INPUT_SCHEMA,
   type TechnicalCompilationResult,
 } from "../../domain/analysis/technical-compilation.ts";
@@ -201,6 +202,15 @@ Deno.test("fixed catalogue exposes only the real qualified build123d frontend", 
     () => new FixedTechnicalCompilationProfileCatalogProvider({ profiles: [] }),
     TypeError,
   );
+});
+
+Deno.test("profile-2 admission accepts every qualified finite decimal spelling", async () => {
+  for (const literal of ["1_000", ".5", "+1", "1e-3"]) {
+    const compiled = await compileFixture(
+      `from build123d import Box\nthickness = ${literal}\nresult = Box(20, 10, thickness)\n`,
+    );
+    assertEquals(compiled.document.status, "ready-for-review", literal);
+  }
 });
 
 Deno.test("file draft store is deterministic, project-scoped, and hides its CAS URI", async () => {
@@ -430,12 +440,14 @@ async function withDraftHarness(
   }
 }
 
-async function compileFixture(): Promise<TechnicalCompilationResult> {
+async function compileFixture(
+  sourceText = SOURCE_TEXT,
+): Promise<TechnicalCompilationResult> {
   const analysis = await new QualifiedBuild123dSourceAnalyzer().analyze({
     sourceId: "source.support",
     role: "cad-script",
     language: "python",
-    sourceText: SOURCE_TEXT,
+    sourceText,
   });
   const sysmlArtifactFingerprint = {
     algorithm: "sha256" as const,
@@ -481,7 +493,7 @@ async function compileFixture(): Promise<TechnicalCompilationResult> {
     basis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
     sources: [{
-      sourceText: SOURCE_TEXT,
+      sourceText,
       analysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
     }],
@@ -489,13 +501,13 @@ async function compileFixture(): Promise<TechnicalCompilationResult> {
       id: `binding.${index}`,
       sourceId: analysis.source.id,
       sourceSymbolId: symbol.id,
-      sysmlElementId: sysmlAnchor.elements[index].id,
-      sysmlElementKind: sysmlAnchor.elements[index].kind,
+      sysmlElementId: sysmlAnchor.elements[index + 1].id,
+      sysmlElementKind: sysmlAnchor.elements[index + 1].kind,
       relation: symbol.kind === "artifact" ? "represents" : "parameterizes",
     })),
     profileRequests: [{
       profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-      profileVersion: "1.0.0",
+      profileVersion: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
       sourceIds: [analysis.source.id],
     }],
   }, INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG);

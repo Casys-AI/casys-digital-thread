@@ -39,6 +39,31 @@ Deno.test(
 );
 
 Deno.test(
+  "source surgery shares the qualified decimal grammar and normalization",
+  () => {
+    for (
+      const [literal, expected] of [
+        ["1_000", 1_000],
+        [".5", 0.5],
+        ["+1", 1],
+        ["1e-3", 0.001],
+      ] as const
+    ) {
+      const source = `size_z = ${literal}\nresult = Box(size_z)\n`;
+      const binding = locateModuleLevelNumericBinding(source, {
+        start: { line: 1, column: 0 },
+        end: { line: 1, column: 6 },
+      }, "size_z");
+      assertEquals(binding.value, expected);
+      assertEquals(
+        substituteModuleLevelNumericLiteral(source, binding.valueSpan, 2),
+        "size_z = 2\nresult = Box(size_z)\n",
+      );
+    }
+  },
+);
+
+Deno.test(
   "substituteModuleLevelNumericLiteral refuses a span that is not a finite numeric literal",
   () => {
     const source = "size_z = BASE\n";

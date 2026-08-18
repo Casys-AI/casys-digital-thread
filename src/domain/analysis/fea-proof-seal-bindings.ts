@@ -48,6 +48,7 @@ export type FeaProofSealBindingDiagnosticCode =
   | "project-state-mismatch"
   | "basis-not-current"
   | "compiled-identities-conflict"
+  | "sensitivity-catalog-unavailable"
   | "proposal-grammar-rejected";
 
 export interface FeaProofSealBindingDiagnostic {

@@ -256,6 +256,7 @@ import {
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
   PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
   SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
@@ -297,10 +298,7 @@ import {
 } from "./src/orchestration/operations/recorded-analysis.ts";
 import type { FleetManifest, RunDetail } from "./src/contracts/console.ts";
 import type { ObservedRunCatalog } from "./src/application/control-plane/ports.ts";
-import {
-  CONSOLE_RESOURCE_URI,
-  registerControlPlaneTools,
-} from "./src/tools/register.ts";
+import { registerControlPlaneTools } from "./src/tools/register.ts";
 import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,
@@ -695,7 +693,6 @@ export async function createConsoleServer(
     registerProjectBriefTools(app, { ...projectBrief, approvalMode });
   }
   if (cockpitFocus) registerCockpitFocusTools(app, cockpitFocus);
-  registerConsoleViewer(app);
   return { app, controlPlane };
 }
 
@@ -1481,17 +1478,23 @@ async function createProjectControl(
     requirementsReviewer: proofSealRequirementsReviewer,
     geometryCaptures,
     stepAssets: feaProofStepAssets,
+    admissions: technicalCompilationAdmissions,
   });
   const feaRecordedRunReview = new PrepareProjectFeaRecordedRunReview({
     snapshots: activeThreadSnapshots,
     admissionReviewer: recordedPlanResolver,
     projects: runtime.projects,
   });
+  const sensitivityCatalogOfferCaptures = new FileCaptureStore(
+    SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
+  );
   const genericVerifySealProofCase = new VerifySealProofCaseRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
     snapshots: activeThreadSnapshots,
     proofCaseCaptures: feaProofCaptures,
+    sensitivityCatalogOffers: sensitivityCatalogOfferCaptures,
+    admissions: technicalCompilationAdmissions,
     geometryCaptures,
     requirementsCaptures,
     seedCaptures: sysonModelSeedCaptures,
@@ -1530,6 +1533,8 @@ async function createProjectControl(
     projects: runtime.projects,
     catalogReader: proofCaseCatalogReader,
     admissions: technicalCompilationAdmissions,
+    catalogOffers: sensitivityCatalogOfferCaptures,
+    proofCaptures: feaProofCaptures,
   });
   const correctedAdmissionReview = new PrepareProjectCorrectedAdmissionReview({
     snapshots: activeThreadSnapshots,
@@ -2236,25 +2241,6 @@ function createObservedRunCatalog(
   return new ModelicaRunObserver({ mcpUrl: modelicaMcpUrl });
 }
 
-export function registerConsoleViewer(app: McpApp): boolean {
-  const summary = app.registerViewers({
-    prefix: "casys-digital-thread",
-    viewers: ["console"],
-    moduleUrl: import.meta.url,
-    exists: fileExists,
-    readFile: Deno.readTextFile,
-  });
-  if (
-    summary.registered.length > 0 &&
-    !app.hasResource(CONSOLE_RESOURCE_URI)
-  ) {
-    throw new Error(
-      `Console viewer registered under an unexpected URI; expected ${CONSOLE_RESOURCE_URI}`,
-    );
-  }
-  return summary.registered.length === 1;
-}
-
 if (import.meta.main) {
   const cli = parseConsoleCli(Deno.args);
   const port = cli.port ?? integerEnv("MCP_PORT") ?? DEFAULT_PORT;
@@ -2492,12 +2478,4 @@ function env(name: string): string | undefined {
 function ephemeralMrtrSigningKey(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
-}
-
-function fileExists(path: string): boolean {
-  try {
-    return Deno.statSync(path).isFile;
-  } catch {
-    return false;
-  }
 }

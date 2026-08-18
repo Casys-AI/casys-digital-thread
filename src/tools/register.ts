@@ -1,6 +1,7 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import type { ControlPlane } from "../application/control-plane/control-plane.ts";
 
+/** Retired human MCP App URI. The server must not register this resource. */
 export const CONSOLE_RESOURCE_URI = "ui://casys-digital-thread/console";
 
 const READ_ONLY_ANNOTATIONS = {
@@ -76,11 +77,6 @@ const consoleSnapshotTool: MCPTool = {
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: READ_ONLY_ANNOTATIONS,
-  _meta: {
-    ui: {
-      resourceUri: CONSOLE_RESOURCE_URI,
-    },
-  },
 };
 
 const serverDetailTool: MCPTool = {

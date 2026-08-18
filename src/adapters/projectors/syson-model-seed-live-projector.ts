@@ -12,7 +12,7 @@ import type { RecordingMcpToolEvent } from "../recording-mcp-tool-client.ts";
  * the person oriented without claiming a model contains architecture yet.
  */
 export function createSysonModelSeedLiveProjector(
-  runId: string,
+  runId: string,  
 ): (event: RecordingMcpToolEvent) => LiveThreadGraphPatch {
   const nodes = new Map<string, ThreadGraphNode>();
 

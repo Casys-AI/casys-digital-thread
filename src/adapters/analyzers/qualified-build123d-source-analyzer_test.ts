@@ -751,6 +751,27 @@ result = Box(1, 2, 3)
   }
 });
 
+Deno.test("qualified finite decimal spellings share one parser grammar", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  for (const literal of ["1_000", ".5", "+1", "1e-3"]) {
+    const bundle = await analyzer.analyze({
+      ...INPUT,
+      sourceText: `from build123d import Box
+candidate = ${literal}
+result = Box(1, 2, candidate)
+`,
+    });
+    assertEquals(bundle.policy.status, "passed", literal);
+    assertEquals(bundle.unresolvedConstructs, [], literal);
+    assert(
+      bundle.symbols.some((symbol) =>
+        symbol.kind === "parameter" && symbol.name === "candidate"
+      ),
+      `${literal} must remain a parser-reported parameter`,
+    );
+  }
+});
+
 Deno.test("branches and dynamic attribute or starred calls cannot look fully qualified", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
   const sources = [

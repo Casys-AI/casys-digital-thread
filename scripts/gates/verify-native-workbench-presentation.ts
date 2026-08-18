@@ -57,9 +57,7 @@ export function evaluatePresentationBoundary(
 }
 
 function findMarkers(bundle: string): string[] {
-  return FORBIDDEN_NATIVE_BUNDLE_MARKERS.filter((marker) =>
-    bundle.includes(marker)
-  );
+  return FORBIDDEN_NATIVE_BUNDLE_MARKERS.filter((marker) => bundle.includes(marker));
 }
 
 function findMcpViewImports(source: string): string[] {

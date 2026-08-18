@@ -94,7 +94,7 @@ family from timestamps.
 ## 6. Proof, then stop or join
 
 ```text
-project_fea_proof_seal_review          # catalog id → fea.proof.*
+project_fea_proof_seal_review          # catalog id → fea.proof.*; optional signed catalog offer
   → verify.seal-proof-case@1
 project_fea_recorded_run_review        # sealed document → proofCase + STEP
   → verify.run-fea-static-proof@2
@@ -105,23 +105,29 @@ Do not type `fea.proof.*` by hand. Do not invent `fea.run.*`. Do not bind the as
 It is not the isolated `@3` authority. How-to:
 [Compile FEA parameters](compile-fea-parameters.md).
 
+For a new parameterized project, set `sensitivityCatalogOptIn: true` only when the
+review returns `sensitivityCatalog.status = ready-for-opt-in`. The same MRTR then signs
+the exact admission join and the seal publishes a separate catalog-offer artifact.
+Omission is proof-only. A legacy `project_geometry_preview → design.write-geometry@1`
+STEP has no compilation admission to join and cannot be used as a substitute.
+
 Oracle `pass` or publishable `fail` stay literal.
 
 Optional experience, not a second proof:
 
 ```text
-project_sensitivity_study_seal_review   # catalog id → sensitivity.case.*
+project_sensitivity_study_seal_review   # signed offer or catalog id → sensitivity.case.*
   → analyze.seal-sensitivity-study@1
   → analyze.run-fea-sensitivity@1
   → project_sensitivity_base_evaluation_review
   → verify.evaluate-sensitivity-base@1   # only if ready
 ```
 
-Do not invent the case. How-to:
-[Compile sensitivity-study parameters](compile-sensitivity-parameters.md).
-`desk-lamp-dl06` has no reviewed sensitivity template (`catalog-absent` on
-`project_sensitivity_study_seal_review`). Restart `:3020` so a newly
-registered compiler is listed.
+The signed catalog offer is the precursor. The same review tool compiles the missing
+`step` from the sealed proof mesh; it does not invent the case and it is not retired.
+How-to: [Compile sensitivity-study parameters](compile-sensitivity-parameters.md).
+Without that unique offer, `desk-lamp-dl06` stays `catalog-absent`. Restart `:3020` so a
+newly registered compiler is listed.
 
 Study metric ids must Object.is-equal Thread requirement metrics. The live lesson on
 historical **dl05 r16** is `assembly_max_*` vs `maxDisplacement` / `maxVonMises` →

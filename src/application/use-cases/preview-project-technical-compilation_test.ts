@@ -19,6 +19,7 @@ import {
   fingerprintTechnicalCompilationBasis,
   fingerprintTechnicalSourceText,
   fingerprintTechnicalSysmlAnchor,
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
   type TechnicalCompilationBasis,
   type TechnicalCompilationProfileCatalog,
@@ -164,13 +165,15 @@ class FakeDraftStore implements TechnicalCompilationDraftStore {
   }
 }
 
-async function harness(): Promise<Harness> {
-  const sourceText = [
-    "from build123d import Box",
-    "thickness = 2.0",
-    "result = Box(20, 10, thickness)",
-    "",
-  ].join("\n");
+async function harness(options: { readonly photo?: boolean } = {}): Promise<Harness> {
+  const sourceText = options.photo
+    ? "from build123d import Box\nresult = Box(20, 10, 2)\n"
+    : [
+      "from build123d import Box",
+      "thickness = 2.0",
+      "result = Box(20, 10, thickness)",
+      "",
+    ].join("\n");
   const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
   const analysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
@@ -186,8 +189,27 @@ async function harness(): Promise<Harness> {
       status: "passed",
       findings: [],
     },
-    symbols: [{ id: "cad.thickness", kind: "parameter", name: "thickness" }],
-    dependencies: [],
+    symbols: options.photo
+      ? [{ id: "cad.result", kind: "artifact", name: "result" }]
+      : [{
+        id: "cad.thickness",
+        kind: "parameter",
+        name: "thickness",
+        span: {
+          start: { line: 2, column: 0 },
+          end: { line: 2, column: 9 },
+        },
+      }, {
+        id: "cad.result",
+        kind: "artifact",
+        name: "result",
+      }],
+    dependencies: options.photo ? [] : [{
+      id: "dependency.cad.thickness.result",
+      kind: "structural-incidence",
+      fromSymbolId: "cad.thickness",
+      toSymbolId: "cad.result",
+    }],
     unresolvedConstructs: [],
   };
   const source: TechnicalCompilationSource = {
@@ -239,7 +261,7 @@ async function harness(): Promise<Harness> {
     schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
     profiles: [{
       id: "profile.build123d",
-      version: "1.0.0",
+      version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
       target: "build123d-source",
       sourceRole: "cad-script",
       language: "python",
@@ -260,7 +282,7 @@ async function harness(): Promise<Harness> {
       schemaVersion: "opaque-capture-ref/1.0",
       captureId: "capture.source.cad",
     }],
-    bindings: [{
+    bindings: options.photo ? [] : [{
       id: "binding.cad.thickness",
       sourceId: "source.cad",
       sourceSymbolId: "cad.thickness",
@@ -270,7 +292,7 @@ async function harness(): Promise<Harness> {
     }],
     profileRequests: [{
       profileId: "profile.build123d",
-      profileVersion: "1.0.0",
+      profileVersion: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
       sourceIds: ["source.cad"],
     }],
   };
@@ -638,6 +660,23 @@ Deno.test("unresolved and rejected previews expose no draft or sealing parameter
   assert(!Object.hasOwn(rejectedResult, "decisionParameters"));
   assertEquals(rejected.draftStore.saves, 0);
 });
+
+Deno.test(
+  "constructor-only CAD preview emits no draft or admission parameters",
+  async () => {
+    const photo = await harness({ photo: true });
+    const result = await photo.service.execute(photo.command);
+    assertEquals(result.status, "unresolved");
+    assert(
+      result.document.diagnostics.some((diagnostic) =>
+        diagnostic.code === "source.no-named-numeric-lever"
+      ),
+    );
+    assert(!Object.hasOwn(result, "draft"));
+    assert(!Object.hasOwn(result, "decisionParameters"));
+    assertEquals(photo.draftStore.saves, 0);
+  },
+);
 
 Deno.test("preview fails closed when save receipt or exact CAS reread drifts", async () => {
   const wrongReceipt = await harness();

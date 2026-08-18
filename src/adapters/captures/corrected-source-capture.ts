@@ -1,8 +1,8 @@
 export {
-  CORRECTED_SOURCE_CAPTURE_SCHEMA,
   canonicalCorrectedSourceCaptureText,
-  validateCorrectedSourceCapture,
+  CORRECTED_SOURCE_CAPTURE_SCHEMA,
   type CorrectedSourceCapture,
+  validateCorrectedSourceCapture,
 } from "../../domain/analysis/corrected-source-capture.ts";
 
 export const CORRECTED_SOURCE_CAPTURE_URI_PREFIX =

@@ -13,6 +13,9 @@ import {
   QualifiedBuild123dSourceAnalyzer,
 } from "../analyzers/qualified-build123d-source-analyzer.ts";
 import {
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+} from "../../domain/analysis/technical-compilation.ts";
+import {
   FixedTechnicalSourceAnalysisProfileRegistry,
   TechnicalSourceAnalysisCaptureService,
   type TechnicalSourceAnalysisProfile,
@@ -26,7 +29,7 @@ export const INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES = 262_144;
 export const INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE:
   TechnicalSourceAnalysisProfile = validateTechnicalSourceAnalysisProfile({
     id: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-    version: "1.0.0",
+    version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
     role: "cad-script",
     language: "python",
     analyzer: {

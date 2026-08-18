@@ -434,7 +434,12 @@ interface Fixture {
 }
 
 async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
-  const sourceText = "from build123d import Box\nresult = Box(20, 10, 2)\n";
+  const sourceText = [
+    "from build123d import Box",
+    "thickness = 2",
+    "result = Box(20, 10, thickness)",
+    "",
+  ].join("\n");
   const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
   const analysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
@@ -450,8 +455,24 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
       status: "passed",
       findings: [],
     },
-    symbols: [{ id: "artifact:box", kind: "artifact", name: "result" }],
-    dependencies: [],
+    symbols: [
+      { id: "artifact:box", kind: "artifact", name: "result" },
+      {
+        id: "parameter:thickness",
+        kind: "parameter",
+        name: "thickness",
+        span: {
+          start: { line: 2, column: 0 },
+          end: { line: 2, column: 9 },
+        },
+      },
+    ],
+    dependencies: [{
+      id: "dependency:thickness:result",
+      kind: "structural-incidence",
+      fromSymbolId: "parameter:thickness",
+      toSymbolId: "artifact:box",
+    }],
     unresolvedConstructs: [],
   };
   const analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
@@ -530,6 +551,10 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
       id: "sysml.part.box",
       kind: "PartUsage",
       provenance: sysmlProvenance,
+    }, {
+      id: "sysml.attribute.thickness",
+      kind: "AttributeUsage",
+      provenance: sysmlProvenance,
     }],
   };
   const compilationBasis = {
@@ -558,14 +583,24 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     basis: compilationBasis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(compilationBasis),
     sources: [{ sourceText, analysis, analysisFingerprint }],
-    bindings: [{
-      id: "binding.result",
-      sourceId: analysis.source.id,
-      sourceSymbolId: analysis.symbols[0]!.id,
-      sysmlElementId: "sysml.part.box",
-      sysmlElementKind: "PartUsage",
-      relation: "represents",
-    }],
+    bindings: [
+      {
+        id: "binding.result",
+        sourceId: analysis.source.id,
+        sourceSymbolId: analysis.symbols[0]!.id,
+        sysmlElementId: "sysml.part.box",
+        sysmlElementKind: "PartUsage",
+        relation: "represents",
+      },
+      {
+        id: "binding.thickness",
+        sourceId: analysis.source.id,
+        sourceSymbolId: "parameter:thickness",
+        sysmlElementId: "sysml.attribute.thickness",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      },
+    ],
     profileRequests: [{
       profileId: compilationProfile.id,
       profileVersion: compilationProfile.version,

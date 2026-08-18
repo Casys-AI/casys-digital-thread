@@ -17,6 +17,21 @@ import type {
   EngineeringThreadSnapshotRef,
 } from "../../../domain/project/engineering-project.ts";
 import type { FeaProofSealBindingDiagnostic } from "../../../domain/analysis/fea-proof-seal-bindings.ts";
+import type { SensitivityCatalogOffer } from "../../../domain/analysis/sensitivity-catalog-from-proof.ts";
+
+export type FeaProofSensitivityCatalog =
+  | SensitivityCatalogOffer
+  | {
+    readonly status: "admission-absent";
+    readonly message: string;
+  }
+  | {
+    readonly status:
+      | "admission-ambiguous"
+      | "admission-unavailable"
+      | "admission-unlinked";
+    readonly message: string;
+  };
 
 export interface ProjectFeaProofSealReviewCommand {
   readonly projectId: string;
@@ -24,6 +39,8 @@ export interface ProjectFeaProofSealReviewCommand {
   readonly basis?: EngineeringThreadSnapshotBasis;
   /** When omitted, the unique catalogued case for this project is selected. */
   readonly caseId?: string;
+  /** Explicit opt-in; omission and false do not authorize a catalog artifact. */
+  readonly sensitivityCatalogOptIn?: boolean;
 }
 
 export interface FeaProofSealReviewSelection {
@@ -91,6 +108,11 @@ export type ProjectFeaProofSealReviewResult =
     /** Compiled `fea.proof.*`; grants no approval. */
     readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
     readonly next: FeaProofSealReviewNext;
+    /**
+     * Opt-in compiled from the sealed proof plus a unique admission lever.
+     * Never written into `fea.proof.*`. Absence of a lever does not block FEA.
+     */
+    readonly sensitivityCatalog: FeaProofSensitivityCatalog;
   }
   | {
     readonly status: "unresolved" | "unavailable";

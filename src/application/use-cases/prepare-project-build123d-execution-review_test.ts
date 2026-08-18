@@ -333,7 +333,12 @@ Deno.test("reader and profile failures are normalized without leaking causes or 
 });
 
 async function harness(): Promise<Harness> {
-  const sourceText = "from build123d import Box\nresult = Box(20, 10, 2)\n";
+  const sourceText = [
+    "from build123d import Box",
+    "thickness = 2",
+    "result = Box(20, 10, thickness)",
+    "",
+  ].join("\n");
   const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
   const analysis: SourceAnalysisBundle = {
     schemaVersion: "source-analysis/1.0",
@@ -352,12 +357,28 @@ async function harness(): Promise<Harness> {
       status: "passed",
       findings: [],
     },
-    symbols: [{
-      id: "artifact:qualified-box",
-      kind: "artifact",
-      name: "result",
+    symbols: [
+      {
+        id: "artifact:qualified-box",
+        kind: "artifact",
+        name: "result",
+      },
+      {
+        id: "parameter:thickness",
+        kind: "parameter",
+        name: "thickness",
+        span: {
+          start: { line: 2, column: 0 },
+          end: { line: 2, column: 9 },
+        },
+      },
+    ],
+    dependencies: [{
+      id: "dependency:thickness:result",
+      kind: "structural-incidence",
+      fromSymbolId: "parameter:thickness",
+      toSymbolId: "artifact:qualified-box",
     }],
-    dependencies: [],
     unresolvedConstructs: [],
   };
   const analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
@@ -380,6 +401,11 @@ async function harness(): Promise<Harness> {
     elements: [
       { id: "sysml.package.main", kind: "Package", provenance },
       { id: "sysml.part.box", kind: "PartUsage", provenance },
+      {
+        id: "sysml.attribute.thickness",
+        kind: "AttributeUsage",
+        provenance,
+      },
     ],
   };
   const basis: TechnicalCompilationBasis = {
@@ -411,14 +437,24 @@ async function harness(): Promise<Harness> {
     basis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
     sources: [{ sourceText, analysis, analysisFingerprint }],
-    bindings: [{
-      id: "binding.result",
-      sourceId: analysis.source.id,
-      sourceSymbolId: analysis.symbols[0]!.id,
-      sysmlElementId: "sysml.part.box",
-      sysmlElementKind: "PartUsage",
-      relation: "represents",
-    }],
+    bindings: [
+      {
+        id: "binding.result",
+        sourceId: analysis.source.id,
+        sourceSymbolId: analysis.symbols[0]!.id,
+        sysmlElementId: "sysml.part.box",
+        sysmlElementKind: "PartUsage",
+        relation: "represents",
+      },
+      {
+        id: "binding.thickness",
+        sourceId: analysis.source.id,
+        sourceSymbolId: "parameter:thickness",
+        sysmlElementId: "sysml.attribute.thickness",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      },
+    ],
     profileRequests: [{
       profileId: compilationProfile.id,
       profileVersion: compilationProfile.version,

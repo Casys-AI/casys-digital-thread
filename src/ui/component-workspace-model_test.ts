@@ -111,10 +111,8 @@ Deno.test("projected r5 geometry resolves from exact capture-to-binary traces", 
   const snapshot = minimalSnapshot();
   const captureDigest =
     "39d5a031fcf2ed7926ac7e17fecb7ee7e55587fe5112588814c0d256afdbb04a";
-  const glbDigest =
-    "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
-  const stepDigest =
-    "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
+  const glbDigest = "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
+  const stepDigest = "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
   const capture = projectedGeometryCapture(captureDigest);
   const glb = projectedGeometryBinary(
     captureDigest,
@@ -757,8 +755,7 @@ Deno.test("per-part mesh binding resolves via resolveCadSurface as a part surfac
     revision: "a".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "a".repeat(64),
-    uri:
-      "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
+    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
@@ -807,8 +804,7 @@ Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported fr
     revision: "b".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "b".repeat(64),
-    uri:
-      "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
+    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
@@ -1014,8 +1010,7 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
       status: "pass",
       observationIds: [],
       violationIds: [],
-      rationale:
-        "Fixture requirement for Boiler, must not appear for DripTray.",
+      rationale: "Fixture requirement for Boiler, must not appear for DripTray.",
     },
   ];
 

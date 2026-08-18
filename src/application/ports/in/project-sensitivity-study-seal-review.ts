@@ -3,11 +3,13 @@
  * the canonical `analyze.seal-sensitivity-study@1` MRTR parameters.
  *
  * The caller names the project. The catalog id and Thread basis are optional:
- * omitted `caseId` selects the unique catalogued template for that project;
- * omitted `basis` selects the unique current Thread tip from the project
- * ledger. That is not `latest`. No JSON, path, mesh, load, box, hash or
- * cadSource is accepted. A mismatch against Thread yields `unresolved` or
- * `unavailable` with diagnostics and no parameters.
+ * omitted `caseId` selects the unique catalogued template for that project, or
+ * the unique signed catalog-offer on the current tip when the catalog does
+ * not uniquely select (absent or ambiguous); omitted `basis` selects the
+ * unique current Thread tip from the project ledger. That is not `latest`.
+ * No JSON, path, mesh, load, box, hash or cadSource is accepted. A mismatch
+ * against Thread yields `unresolved` or `unavailable` with diagnostics and
+ * no parameters.
  */
 
 import type {
@@ -16,6 +18,7 @@ import type {
   EngineeringThreadSnapshotBasis,
   EngineeringThreadSnapshotRef,
 } from "../../../domain/project/engineering-project.ts";
+import type { SensitivityStudySealAuthorityKind } from "../../../domain/analysis/sensitivity-catalog-offer-join.ts";
 import type { SensitivityStudySealDiagnostic } from "../../../domain/analysis/sensitivity-study-seal-bindings.ts";
 import type { SensitivityCadSource } from "../../../domain/analysis/sensitivity-study-v2.ts";
 
@@ -23,7 +26,7 @@ export interface ProjectSensitivityStudySealReviewCommand {
   readonly projectId: string;
   /** When omitted, the unique current Thread tip on the project is selected. */
   readonly basis?: EngineeringThreadSnapshotBasis;
-  /** When omitted, the unique catalogued template for this project is selected. */
+  /** When omitted, the unique catalogued template or signed catalog-offer is selected. */
   readonly caseId?: string;
 }
 
@@ -35,6 +38,7 @@ export interface SensitivityStudySealReviewSelection {
   readonly cadSource: SensitivityCadSource;
   readonly workItemId: string;
   readonly decisionId: string;
+  readonly authority: SensitivityStudySealAuthorityKind;
 }
 
 export interface SensitivityStudySealReviewNext {

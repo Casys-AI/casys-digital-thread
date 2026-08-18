@@ -8,13 +8,17 @@ There is no `fea.run.*` grammar. `@1`, `@2` and `@3` stay distinct.
 ## The short path
 
 ```jsonc
-{ "projectId": "desk-lamp-dl06" } // both tools
+{ "projectId": "desk-lamp-dl06" } // proof only; both tools
+{ "projectId": "new-project", "sensitivityCatalogOptIn": true } // proof + exact catalog offer
 ```
 
 1. `project_fea_proof_seal_review` — after geometry + requirements exist. Read
    `selected` first. Paste `next.append.arguments` into `project_change_append`, then
    `next.propose.arguments` into `project_decision_propose`. The catalog-owned
-   `workItemId` and `decisionId` are already compiled; do not rename them.
+   `workItemId` and `decisionId` are already compiled; do not rename them. Omission or
+   `false` seals only the proof. Send `sensitivityCatalogOptIn: true` only when
+   `sensitivityCatalog.status` is `ready-for-opt-in`: the returned `decisionParameters`
+   then sign the offer digest and exact admission identity in this same MRTR.
 2. After that seal is on the Thread tip: `project_fea_recorded_run_review`. Same two
    argument envelopes. `geometry` is the canonical part STEP, not a cad-model or the
    isolated `@3` authority. Cad-models are in `rejectedLookalikes`. The proposal
@@ -26,6 +30,24 @@ sealed proof document.
 
 Name those fields only when several cases, tips or seals exist.
 
+## Sensitivity catalog opt-in
+
+The review derives the offer from facts the server can reopen. It requires exactly one
+causal numeric lever in one ready Build123d admission, exact source fingerprint and byte
+count equality with the proof's parametric CAD definition, and a unique `result` binding
+to the proof target. The live metric contract supplies units (`maxVonMises` is `MPa`);
+the caller supplies none of these values.
+
+After approval, `verify.seal-proof-case@1` recompiles the offer from the signed
+admission and publishes a separate `sensitivity-catalog-offer` artifact derived from
+both the sealed proof and that admission. The offer keeps `step.status = not-compiled`.
+`project_sensitivity_study_seal_review` is the next hop: it compiles that missing step
+from the sealed proof mesh. It does not invent a catalog JSON.
+
+Heron remains unlinked until a new parameterized admission exactly matches its proof CAD
+definition and target. Its historical `design.write-geometry@1` STEP is a separate
+legacy artifact, not an admission substitute.
+
 ## What the caller may not send
 
 Material, mesh, loads, boxes, hashes, SysON UUIDs, a JSON path, or `latest`.
@@ -36,18 +58,19 @@ Material, mesh, loads, boxes, hashes, SysON UUIDs, a JSON path, or `latest`.
 conflict, and a readable consistent geometry/STEP source. Anything else is a contractual
 label, never a softened `resolved`.
 
-| Code                                                                   | Status        | Meaning                                   |
-| ---------------------------------------------------------------------- | ------------- | ----------------------------------------- |
-| `catalog-absent` / `catalog-ambiguous`                                 | `unresolved`  | No unique catalog declaration             |
-| `catalog-unavailable` / `catalog-integrity-failed`                     | `unresolved`  | Declared catalog source unreadable/bad    |
-| `basis-latest` / `basis-absent` / `basis-ambiguous` / `basis-mismatch` | `unresolved`  | Thread tip                                |
-| `basis-not-current` / `project-state-unavailable`                      | `unavailable` | Historical or missing project head        |
-| `project-state-mismatch` / `compiled-identities-conflict`              | `unresolved`  | Incompatible or already-used identities   |
-| `geometry-capture-unavailable` / `step-unavailable`                    | `unavailable` | Geometry capture or canonical STEP unread |
-| `geometry-capture-invalid` / `step-mismatch`                           | `unresolved`  | Capture/STEP inconsistent with the case   |
-| `step-absent` / `geometry-absent` / `requirements-absent`              | `unresolved`  | Seal too early                            |
-| `proof-absent` / `proof-not-document`                                  | `unresolved`  | Run before a seal, or cad-model as proof  |
-| `geometry-is-cad-model`                                                | `unresolved`  | `@2` `geometry` must be STEP              |
+| Code                                                                   | Status        | Meaning                                    |
+| ---------------------------------------------------------------------- | ------------- | ------------------------------------------ |
+| `catalog-absent` / `catalog-ambiguous`                                 | `unresolved`  | No unique catalog declaration              |
+| `catalog-unavailable` / `catalog-integrity-failed`                     | `unresolved`  | Declared catalog source unreadable/bad     |
+| `basis-latest` / `basis-absent` / `basis-ambiguous` / `basis-mismatch` | `unresolved`  | Thread tip                                 |
+| `basis-not-current` / `project-state-unavailable`                      | `unavailable` | Historical or missing project head         |
+| `project-state-mismatch` / `compiled-identities-conflict`              | `unresolved`  | Incompatible or already-used identities    |
+| `geometry-capture-unavailable` / `step-unavailable`                    | `unavailable` | Geometry capture or canonical STEP unread  |
+| `geometry-capture-invalid` / `step-mismatch`                           | `unresolved`  | Capture/STEP inconsistent with the case    |
+| `step-absent` / `geometry-absent` / `requirements-absent`              | `unresolved`  | Seal too early                             |
+| `proof-absent` / `proof-not-document`                                  | `unresolved`  | Run before a seal, or cad-model as proof   |
+| `geometry-is-cad-model`                                                | `unresolved`  | `@2` `geometry` must be STEP               |
+| `sensitivity-catalog-unavailable`                                      | `unresolved`  | Requested opt-in has no exact causal offer |
 
 An unresolved or unavailable review returns no parameters, bindings, or `next`. Reopen
 the current head instead of adapting an old append.

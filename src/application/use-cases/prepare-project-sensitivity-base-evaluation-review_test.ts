@@ -107,7 +107,7 @@ async function harness(options: {
   };
 }
 
-async function buildBriefOnlyWorld() {
+function buildBriefOnlyWorld() {
   const briefId = "artifact.brief";
   const briefFp = { algorithm: "sha256" as const, digest: "1".repeat(64) };
   const snapshot = validateThreadSnapshot({

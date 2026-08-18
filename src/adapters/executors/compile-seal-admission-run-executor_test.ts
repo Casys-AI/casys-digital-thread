@@ -367,6 +367,7 @@ interface ExecuteFixtureOptions {
   readonly foreignEvidence?: boolean;
   readonly sourceProvenanceDrift?: boolean;
   readonly unresolvedDraft?: boolean;
+  readonly forgedPhotoDraft?: boolean;
   readonly resolverDrift?: "missing" | "root" | "editing-context" | "elements";
   readonly ackLostOnce?: boolean;
   readonly freshMissOnce?: boolean;
@@ -518,6 +519,17 @@ Deno.test("compile seal refuses foreign MRTR, source provenance drift, and unres
     });
   }
 });
+
+Deno.test(
+  "compile seal re-derives the lever diagnostic and rejects a forged ready photo draft",
+  async () => {
+    await withExecuteFixture({ forgedPhotoDraft: true }, async (fixture) => {
+      await assertRejects(() => fixture.executor.execute(EXEC_AGENT, fixture.command));
+      assertEquals(fixture.snapshots.successorIds, []);
+      assertEquals(fixture.captures.saves, 0);
+    });
+  },
+);
 
 Deno.test("compile seal recovers ACK loss, fresh-read miss, and publish ACK loss on one immutable successor", async () => {
   for (
@@ -759,7 +771,9 @@ async function buildExecuteFixture(
   const reference = await captureService.capture({
     profileId: INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0].id,
     sourceId: "source.cad",
-    sourceText: SOURCE_TEXT,
+    sourceText: options.forgedPhotoDraft
+      ? "from build123d import Box\nresult = Box(20, 10, 2)\n"
+      : SOURCE_TEXT,
   });
   const reopened = await captureService.reopen(reference);
   const source: TechnicalCompilationSource = {
@@ -908,7 +922,7 @@ async function buildExecuteFixture(
       : "parameterizes" as const,
   }));
   const profile = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0];
-  const compiled = await compileTechnicalSources({
+  let compiled = await compileTechnicalSources({
     schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
     basis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
@@ -920,7 +934,23 @@ async function buildExecuteFixture(
       sourceIds: [source.analysis.source.id],
     }],
   }, INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG);
-  if (compiled.document.status !== "ready-for-review") {
+  if (options.forgedPhotoDraft) {
+    const forged = {
+      ...structuredClone(compiled.document),
+      status: "ready-for-review" as const,
+      diagnostics: [],
+      projections: compiled.document.projections.map((projection) => ({
+        ...structuredClone(projection),
+        status: "ready-for-review" as const,
+        diagnostics: [],
+      })),
+    };
+    compiled = {
+      document: forged,
+      // Deliberately hash the forged bytes without invoking the validator.
+      fingerprint: await sha256Fingerprint(forged),
+    };
+  } else if (compiled.document.status !== "ready-for-review") {
     throw new Error(`fixture compiled as ${compiled.document.status}`);
   }
   const referenceFingerprint = await sha256Fingerprint(reference);

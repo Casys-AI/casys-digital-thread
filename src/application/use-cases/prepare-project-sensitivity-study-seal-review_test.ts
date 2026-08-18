@@ -1,8 +1,24 @@
 import { assertEquals, assertExists } from "@std/assert";
 import type { ReopenedTechnicalCompilationAdmission } from "../ports/out/technical-compilation-admission-reader.ts";
+import { parseFeaProofCaseCapture } from "../../domain/analysis/fea-proof-case-capture.ts";
+import { canonicalProofText } from "../../domain/analysis/fea-proof-proposal.ts";
+import {
+  type MechanicalProofCase,
+  validateMechanicalProofCase,
+} from "../../domain/analysis/mechanical-proof-case.ts";
+import {
+  compileSensitivityCatalogOfferFromAdmission,
+  SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
+} from "../../domain/analysis/sensitivity-catalog-from-proof.ts";
 import {
   parseSensitivityStudyDecisionParameters,
 } from "../../domain/analysis/sensitivity-study-proposal.ts";
+import { fingerprintTechnicalSourceText } from "../../domain/analysis/technical-compilation.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
@@ -26,8 +42,10 @@ const REAL_CATALOG = {
 };
 
 const UNIQUE_ISOLATED_CATALOG = {
-  async read(path: string): Promise<string | undefined> {
-    if (!path.endsWith("dl05-arm-thickness-isolated.json")) return undefined;
+  read(path: string): Promise<string | undefined> {
+    if (!path.endsWith("dl05-arm-thickness-isolated.json")) {
+      return Promise.resolve(undefined);
+    }
     return REAL_CATALOG.read(path);
   },
 };
@@ -342,6 +360,264 @@ Deno.test("sensitivity-study seal review is unresolved when compiled identities 
   );
 });
 
+Deno.test(
+  "sensitivity-study seal review compiles a sealable case from the unique signed catalog offer",
+  async () => {
+    const fixture = await signedOfferFixture();
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(fixture.snapshot),
+      projects: new MemoryProjects(fixture.snapshot, "desk-lamp-dl06"),
+      catalogReader: REAL_CATALOG,
+      admissions: fixture.admissions,
+      catalogOffers: fixture.catalogOffers,
+      proofCaptures: fixture.proofCaptures,
+    });
+    const result = await review.execute({
+      projectId: "desk-lamp-dl06",
+      basis: fixture.basis,
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.caseId, "desk-lamp-dl06-arm-cantilever-arm_thickness");
+    assertEquals(result.selected.authority, "signed-offer");
+    const parsed = parseSensitivityStudyDecisionParameters(
+      result.decisionParameters,
+    );
+    assertEquals(parsed.id, "desk-lamp-dl06-arm-cantilever-arm_thickness");
+    assertEquals(parsed.step, { value: 3, unit: "mm" });
+    assertEquals(parsed.baseValue, { value: 10, unit: "mm" });
+    assertEquals(parsed.target.semanticKey, "arm_thickness");
+    assertEquals(parsed.solver.mesh.targetSizeMm, 3);
+    assertEquals(parsed.cadSource.artifactUri, fixture.cadSourceUri);
+    assertEquals(
+      result.next.append.arguments.workItems[0]?.id,
+      "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness",
+    );
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review stays catalog-absent for dl06 when no signed offer exists",
+  async () => {
+    const snapshot = basisSnapshot({
+      projectId: "desk-lamp-dl06",
+      subjectId: "project:desk-lamp-dl06",
+    });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot, "desk-lamp-dl06"),
+      catalogReader: REAL_CATALOG,
+      admissions: MATCHING_ADMISSIONS,
+    });
+    const result = await review.execute({
+      projectId: "desk-lamp-dl06",
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: snapshot.id,
+        revision: snapshot.revision,
+        subjectId: "project:desk-lamp-dl06",
+      },
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.diagnostics.map((item) => item.code), ["catalog-absent"]);
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review keeps a named historical catalog id even when an offer is present",
+  async () => {
+    const snapshot = basisSnapshot({ extraOffer: true });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      catalogReader: REAL_CATALOG,
+      admissions: MATCHING_ADMISSIONS,
+    });
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      caseId: CASE_ID,
+      basis: basisRef(),
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.caseId, CASE_ID);
+    assertEquals(result.selected.authority, "catalog");
+    const parsed = parseSensitivityStudyDecisionParameters(
+      result.decisionParameters,
+    );
+    assertEquals(parsed.step, { value: 1, unit: "mm" });
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review falls through catalog-ambiguous to a unique signed offer",
+  async () => {
+    const snapshot = basisSnapshot({ extraOffer: true });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      catalogReader: REAL_CATALOG,
+      admissions: MATCHING_ADMISSIONS,
+    });
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      basis: basisRef(),
+    });
+    assertEquals(result.status, "unavailable");
+    assertEquals(result.decisionParameters, undefined);
+    assertEquals(
+      result.diagnostics.map((item) => item.code),
+      ["catalog-offer-unavailable"],
+    );
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review is catalog-offer-ambiguous when several signed offers exist",
+  async () => {
+    const fixture = await signedOfferFixture({ extraOffer: true });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(fixture.snapshot),
+      projects: new MemoryProjects(fixture.snapshot, "desk-lamp-dl06"),
+      catalogReader: REAL_CATALOG,
+      admissions: fixture.admissions,
+      catalogOffers: fixture.catalogOffers,
+      proofCaptures: fixture.proofCaptures,
+    });
+    const result = await review.execute({
+      projectId: "desk-lamp-dl06",
+      basis: fixture.basis,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.decisionParameters, undefined);
+    assertEquals(
+      result.diagnostics.map((item) => item.code),
+      ["catalog-offer-ambiguous"],
+    );
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review fails closed when the signed offer no longer compiles",
+  async () => {
+    const fixture = await signedOfferFixture({
+      admissionSource: "from build123d import Box\nresult = Box(220, 20, 10)\n",
+    });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(fixture.snapshot),
+      projects: new MemoryProjects(fixture.snapshot, "desk-lamp-dl06"),
+      catalogReader: REAL_CATALOG,
+      admissions: fixture.admissions,
+      catalogOffers: fixture.catalogOffers,
+      proofCaptures: fixture.proofCaptures,
+    });
+    const result = await review.execute({
+      projectId: "desk-lamp-dl06",
+      basis: fixture.basis,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.decisionParameters, undefined);
+    assertEquals(
+      result.diagnostics.map((item) => item.code),
+      ["catalog-offer-admission-unlinked"],
+    );
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review refuses a named caseId that is not the compiled offer id",
+  async () => {
+    const fixture = await signedOfferFixture();
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(fixture.snapshot),
+      projects: new MemoryProjects(fixture.snapshot, "desk-lamp-dl06"),
+      catalogReader: REAL_CATALOG,
+      admissions: fixture.admissions,
+      catalogOffers: fixture.catalogOffers,
+      proofCaptures: fixture.proofCaptures,
+    });
+    const result = await review.execute({
+      projectId: "desk-lamp-dl06",
+      caseId: "invented-dl06-case",
+      basis: fixture.basis,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(
+      result.diagnostics.map((item) => item.code),
+      ["catalog-offer-case-mismatch"],
+    );
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review is catalog-offer-integrity-failed for a truncated offer and does not throw",
+  async () => {
+    const fixture = await signedOfferFixture({ truncatedOffer: true });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(fixture.snapshot),
+      projects: new MemoryProjects(fixture.snapshot, "desk-lamp-dl06"),
+      catalogReader: REAL_CATALOG,
+      admissions: fixture.admissions,
+      catalogOffers: fixture.catalogOffers,
+      proofCaptures: fixture.proofCaptures,
+    });
+    const result = await review.execute({
+      projectId: "desk-lamp-dl06",
+      basis: fixture.basis,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.decisionParameters, undefined);
+    assertEquals(
+      result.diagnostics.map((item) => item.code),
+      ["catalog-offer-integrity-failed"],
+    );
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review accepts several proof captures of the same digest",
+  async () => {
+    const fixture = await signedOfferFixture({ extraProofSameDigest: true });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(fixture.snapshot),
+      projects: new MemoryProjects(fixture.snapshot, "desk-lamp-dl06"),
+      catalogReader: REAL_CATALOG,
+      admissions: fixture.admissions,
+      catalogOffers: fixture.catalogOffers,
+      proofCaptures: fixture.proofCaptures,
+    });
+    const result = await review.execute({
+      projectId: "desk-lamp-dl06",
+      basis: fixture.basis,
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.selected.authority, "signed-offer");
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review ignores an invalid sibling proof when one digest matches",
+  async () => {
+    const fixture = await signedOfferFixture({ invalidProofSibling: true });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(fixture.snapshot),
+      projects: new MemoryProjects(fixture.snapshot, "desk-lamp-dl06"),
+      catalogReader: REAL_CATALOG,
+      admissions: fixture.admissions,
+      catalogOffers: fixture.catalogOffers,
+      proofCaptures: fixture.proofCaptures,
+    });
+    const result = await review.execute({
+      projectId: "desk-lamp-dl06",
+      basis: fixture.basis,
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.selected.authority, "signed-offer");
+  },
+);
+
 Deno.test("sensitivity-study seal review is unavailable when the matching admission cannot be reopened", async () => {
   const snapshot = basisSnapshot();
   const review = new PrepareProjectSensitivityStudySealReview({
@@ -377,6 +653,7 @@ function basisSnapshot(
   options: {
     readonly omitAdmission?: boolean;
     readonly lookalikesOnly?: boolean;
+    readonly extraOffer?: boolean;
     readonly projectId?: string;
     readonly subjectId?: string;
   } = {},
@@ -410,6 +687,20 @@ function basisSnapshot(
         mediaType: "application/json",
         tool: "compile.seal-admission@1",
       }),
+      ...(options.extraOffer
+        ? [artifact(
+          "sensitivity-catalog-offer-ignored",
+          "Ignored offer",
+          "document",
+          "e".repeat(64),
+          {
+            uri: "casys://sensitivity-catalog-offer-capture/sha256/" +
+              "e".repeat(64),
+            mediaType: "application/json",
+            tool: "verify.seal-proof-case@1",
+          },
+        )]
+        : []),
     ];
   const modelArtifactId = artifacts[0]!.id;
   return validateThreadSnapshot({
@@ -541,5 +832,337 @@ class MemorySnapshots {
   save() {
     this.saves += 1;
     return Promise.reject(new Error("review must not persist a Thread snapshot"));
+  }
+}
+
+const LINKED_SOURCE_TEXT =
+  "from build123d import Box\narm_thickness = 10\nresult = Box(220, 20, arm_thickness)\n";
+const DL06_TARGET_ELEMENT_ID = "7dda85d1-764e-4329-95ea-09052355cc47";
+
+async function signedOfferFixture(
+  options: {
+    readonly extraOffer?: boolean;
+    readonly admissionSource?: string;
+    readonly truncatedOffer?: boolean;
+    readonly extraProofSameDigest?: boolean;
+    readonly invalidProofSibling?: boolean;
+  } = {},
+) {
+  const sourceText = LINKED_SOURCE_TEXT;
+  const proofCase = await linkedProofCase(sourceText);
+  const admissionDocument = await linkedAdmissionDocument(sourceText);
+  const liveDocument = await linkedAdmissionDocument(
+    options.admissionSource ?? sourceText,
+  );
+  const offer = compileSensitivityCatalogOfferFromAdmission({
+    proofCase,
+    proofDigest: (await sha256Fingerprint(proofCase)).digest,
+    admissionArtifact: {
+      id: ADMISSION_ID,
+      fingerprint: { algorithm: "sha256", digest: ADMISSION_DIGEST },
+    },
+    document: admissionDocument as never,
+  });
+  if (offer.status !== "ready-for-opt-in") {
+    throw new Error(`Expected a ready offer, got ${offer.status}.`);
+  }
+  const sealedOffer = options.truncatedOffer
+    ? (() => {
+      const { authority: _dropped, ...truncated } = offer;
+      return truncated;
+    })()
+    : offer;
+  const offerDigest = (await sha256Fingerprint(sealedOffer)).digest;
+  const proofCaptureRecord = {
+    schemaVersion: "fea-proof-case-capture/1.0",
+    operation: { id: "verify.seal-proof-case", version: "1" },
+    trustedRunId: "run-seal",
+    proofDigest: (await sha256Fingerprint(proofCase)).digest,
+    canonicalProofText: canonicalProofText(proofCase),
+    geometryArtifact: {
+      id: "geometry-1",
+      fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      producerRunId: "run-geom",
+    },
+    stepArtifact: {
+      id: "step-1",
+      fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+      producerRunId: "run-geom",
+      bytes: proofCase.expectedCadArtifact.bytes,
+    },
+    requirementsArtifact: {
+      id: "req-1",
+      fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+      producerRunId: "run-req",
+    },
+    requirementsElementId: proofCase.requirementsSource.elementId,
+    seedIdentity: {
+      editingContextId: proofCase.requirementsSource.editingContextId,
+      elementId: proofCase.requirementsSource.elementId,
+    },
+    sealedAt: AT,
+  };
+  const proofCaptureText = deterministicJson(proofCaptureRecord);
+  await parseFeaProofCaseCapture(proofCaptureText);
+  const proofCaptureFp = await sha256Fingerprint(JSON.parse(proofCaptureText));
+  const proofArtifactId = `fea-proof-${proofCaptureFp.digest}`;
+  const offerCaptureRecord = {
+    schemaVersion: SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
+    operation: { id: "verify.seal-proof-case", version: "1" },
+    trustedRunId: "run-seal",
+    sealedAt: AT,
+    offerDigest,
+    offer: sealedOffer,
+  };
+  const offerCaptureText = deterministicJson(offerCaptureRecord);
+  const offerCaptureFp = await sha256Fingerprint(JSON.parse(offerCaptureText));
+  const offerArtifactId = `sensitivity-catalog-offer-${offerCaptureFp.digest}`;
+  const artifacts = [
+    artifact(ADMISSION_ID, "Compilation admission", "document", ADMISSION_DIGEST, {
+      uri: `casys://technical-compilation-admission-capture/sha256/${ADMISSION_DIGEST}`,
+      mediaType: "application/json",
+      tool: "compile.seal-admission@1",
+    }),
+    artifact(proofArtifactId, "FEA proof", "document", proofCaptureFp.digest, {
+      uri: `casys://fea-proof-case-capture/sha256/${proofCaptureFp.digest}`,
+      mediaType: "application/json",
+      tool: "verify.seal-proof-case@1",
+    }),
+    {
+      ...artifact(offerArtifactId, "Catalog offer", "document", offerCaptureFp.digest, {
+        uri:
+          `casys://sensitivity-catalog-offer-capture/sha256/${offerCaptureFp.digest}`,
+        mediaType: "application/json",
+        tool: "verify.seal-proof-case@1",
+      }),
+      version: offerDigest,
+    },
+    ...(options.extraOffer
+      ? [artifact(
+        "sensitivity-catalog-offer-sibling",
+        "Sibling offer",
+        "document",
+        "e".repeat(64),
+        {
+          uri: "casys://sensitivity-catalog-offer-capture/sha256/" + "e".repeat(64),
+          mediaType: "application/json",
+          tool: "verify.seal-proof-case@1",
+        },
+      )]
+      : []),
+    ...(options.extraProofSameDigest
+      ? [artifact(
+        "fea-proof-duplicate",
+        "FEA proof duplicate",
+        "document",
+        "9".repeat(64),
+        {
+          uri: "casys://fea-proof-case-capture/sha256/" + "9".repeat(64),
+          mediaType: "application/json",
+          tool: "verify.seal-proof-case@1",
+        },
+      )]
+      : []),
+    ...(options.invalidProofSibling
+      ? [artifact(
+        "fea-proof-invalid",
+        "Invalid FEA proof",
+        "document",
+        "f".repeat(64),
+        {
+          uri: "casys://fea-proof-case-capture/sha256/" + "f".repeat(64),
+          mediaType: "application/json",
+          tool: "verify.seal-proof-case@1",
+        },
+      )]
+      : []),
+  ];
+  const snapshot = validateThreadSnapshot({
+    schemaVersion: "1.0",
+    id: "snap-sensitivity-offer",
+    revision: 7,
+    generatedAt: AT,
+    subject: {
+      id: "project:desk-lamp-dl06",
+      name: "Heron",
+      kind: "system",
+      version: "r7",
+      modelArtifactId: ADMISSION_ID,
+    },
+    freshness: fresh(),
+    changeSet: {
+      id: "change-set.sensitivity-offer",
+      name: "Signed catalog offer",
+      status: "applied",
+      createdAt: AT,
+      appliedAt: AT,
+      changes: artifacts.map((item) => ({
+        id: `change.${item.id}`,
+        kind: "created" as const,
+        target: { kind: "artifact" as const, id: item.id },
+        summary: `Created ${item.id}.`,
+        afterFingerprint: item.fingerprint,
+      })),
+    },
+    artifacts,
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: artifacts.map((item) => ({
+      id: `prov-${item.id}`,
+      relation: "changes" as const,
+      from: { kind: "change" as const, id: `change.${item.id}` },
+      to: { kind: "artifact" as const, id: item.id },
+      rationale: `Created ${item.id}.`,
+    })),
+    proposedActions: [],
+  });
+  return {
+    snapshot,
+    basis: {
+      kind: "thread-snapshot" as const,
+      snapshotId: snapshot.id,
+      revision: snapshot.revision,
+      subjectId: snapshot.subject.id,
+    },
+    catalogOffers: new MemoryCaptures([[offerCaptureFp.digest, offerCaptureText]]),
+    proofCaptures: new MemoryCaptures([
+      [proofCaptureFp.digest, proofCaptureText],
+      ...(options.extraProofSameDigest
+        ? [["9".repeat(64), proofCaptureText] as const]
+        : []),
+      ...(options.invalidProofSibling ? [["f".repeat(64), "{not-json"] as const] : []),
+    ]),
+    admissions: {
+      read: () =>
+        Promise.resolve({
+          document: liveDocument,
+        } as unknown as ReopenedTechnicalCompilationAdmission),
+    },
+    cadSourceUri: `thread-artifact://desk-lamp-dl06/${ADMISSION_ID}`,
+  };
+}
+
+async function linkedProofCase(sourceText: string): Promise<MechanicalProofCase> {
+  const base = validateMechanicalProofCase(
+    JSON.parse(
+      await Deno.readTextFile(
+        new URL(
+          "../../../config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
+          import.meta.url,
+        ),
+      ),
+    ),
+  );
+  if (base.cadSource.kind !== "parametric") {
+    throw new Error("Expected a parametric dl06 proof.");
+  }
+  const fingerprint = await fingerprintTechnicalSourceText(sourceText);
+  return validateMechanicalProofCase({
+    ...base,
+    cadSource: {
+      ...base.cadSource,
+      generator: {
+        ...base.cadSource.generator,
+        definition: {
+          mediaType: "text/x-python",
+          sha256: fingerprint.digest,
+          bytes: new TextEncoder().encode(sourceText).byteLength,
+        },
+      },
+    },
+  });
+}
+
+async function linkedAdmissionDocument(sourceText: string) {
+  const hasLever = sourceText.includes("arm_thickness = 10");
+  const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+  const parameter = {
+    id: "parameter.arm-thickness",
+    kind: "parameter" as const,
+    name: "arm_thickness",
+    span: {
+      start: { line: 2, column: 0 },
+      end: { line: 2, column: 13 },
+    },
+  };
+  const result = {
+    id: "artifact.result",
+    kind: "artifact" as const,
+    name: "result",
+  };
+  const analysis = {
+    schemaVersion: "source-analysis/1.0" as const,
+    source: {
+      id: "source.cad",
+      role: "cad-script" as const,
+      language: "python" as const,
+      fingerprint: sourceFingerprint,
+    },
+    analyzer: { id: "build123d-qualified-lezer", version: "1.6.0" },
+    policy: {
+      profile: "build123d-closed-subset-v1",
+      status: "passed" as const,
+      findings: [],
+    },
+    symbols: hasLever ? [parameter, result] : [result],
+    dependencies: hasLever
+      ? [{
+        id: "dependency.arm-thickness.result",
+        kind: "structural-incidence" as const,
+        fromSymbolId: parameter.id,
+        toSymbolId: result.id,
+      }]
+      : [],
+    unresolvedConstructs: [],
+  };
+  const bindings = [
+    ...(hasLever
+      ? [{
+        id: "binding.arm-thickness",
+        sourceId: "source.cad",
+        sourceSymbolId: parameter.id,
+        sysmlElementId: "sysml.attribute.arm-thickness",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes" as const,
+      }]
+      : []),
+    {
+      id: "binding.result",
+      sourceId: "source.cad",
+      sourceSymbolId: result.id,
+      sysmlElementId: DL06_TARGET_ELEMENT_ID,
+      sysmlElementKind: "PartDefinition",
+      relation: "represents" as const,
+    },
+  ];
+  return {
+    inputManifest: {
+      sources: [{
+        sourceText,
+        analysis,
+      }],
+      bindings,
+    },
+    projections: [{
+      target: "build123d-source" as const,
+      status: "ready-for-review" as const,
+      sources: [{
+        sourceText,
+        analysis,
+        analysisFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+        bindings,
+      }],
+    }],
+  };
+}
+
+class MemoryCaptures {
+  constructor(private readonly items: ReadonlyArray<readonly [string, string]>) {}
+  read(fingerprint: ContentFingerprint) {
+    const found = this.items.find((item) => item[0] === fingerprint.digest);
+    return Promise.resolve(found?.[1]);
   }
 }

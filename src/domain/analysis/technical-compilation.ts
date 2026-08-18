@@ -25,6 +25,7 @@ import {
   safeId,
   safeVersion,
 } from "../kernel/case-validation.ts";
+import { listGeometryAffectingNamedNumericLevers } from "./named-cad-levers.ts";
 import {
   fingerprintSourceAnalysisBundle,
   type SourceAnalysisBundle,
@@ -37,6 +38,12 @@ export const TECHNICAL_COMPILATION_INPUT_SCHEMA =
 export const TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA =
   "technical-compilation-profile-catalog/1.0" as const;
 export const TECHNICAL_COMPILATION_SCHEMA = "technical-compilation/1.0" as const;
+/**
+ * Profile semantics 2.0 add the causal named-lever admission gate.
+ * Embedded 1.x profiles retain their original replay semantics so immutable,
+ * already-sealed compilation documents remain readable.
+ */
+export const PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION = "2.0.0" as const;
 
 export type TechnicalCompilationTarget =
   | "build123d-source"
@@ -59,6 +66,7 @@ export type TechnicalCompilationDiagnosticCode =
   | "profile.not-found"
   | "source.analyzer-mismatch"
   | "source.analysis-policy-mismatch"
+  | "source.no-named-numeric-lever"
   | "source.profile-incompatible"
   | "source.policy-rejected"
   | "source.unresolved-construct";
@@ -1235,6 +1243,24 @@ function diagnoseSource(
       });
     }
   }
+  // Behave CAD compiler invariant for the parameterized profile: every new
+  // build123d admission needs a named module-level numeric lever. Historical
+  // 1.x documents replay under their sealed profile semantics.
+  if (
+    profile.target === "build123d-source" &&
+    profile.version === PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION &&
+    listGeometryAffectingNamedNumericLevers(
+        source.sourceText,
+        source.analysis,
+        bindings,
+      ).length === 0
+  ) {
+    diagnostics.push({
+      code: "source.no-named-numeric-lever",
+      profileRef: requestedProfileRef,
+      subjectRef: sourceFacts.id,
+    });
+  }
 }
 
 function statusFromDiagnostics(
@@ -1273,6 +1299,7 @@ const DIAGNOSTIC_CODES = new Set<TechnicalCompilationDiagnosticCode>([
   "profile.not-found",
   "source.analyzer-mismatch",
   "source.analysis-policy-mismatch",
+  "source.no-named-numeric-lever",
   "source.profile-incompatible",
   "source.policy-rejected",
   "source.unresolved-construct",

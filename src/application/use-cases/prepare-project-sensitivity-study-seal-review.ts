@@ -1,12 +1,17 @@
 /**
- * Provider-free compilation of one catalogued sensitivity-study template into
+ * Provider-free compilation of one sensitivity-study template into
  * `analyze.seal-sensitivity-study@1` MRTR parameters.
  *
- * The server reopens the catalogued template and the resolved Thread basis.
- * cadSource is the unique readable `compile.seal-admission@1` admission whose
- * source binds the template `target.semanticKey`. The caller never supplies
- * case bytes, hashes or solver numbers. This writes no project or Thread
- * state and grants no MRTR authority.
+ * A named historical catalog id, or the unique catalogued template for the
+ * project, still wins. When the catalog does not uniquely select (absent or
+ * ambiguous), a unique signed `sensitivity-catalog-offer` on the current tip
+ * is reopened, recompiled, and lowered into a
+ * `sensitivity-study-case-template/2.0` — including the code-owned mesh-sized
+ * step. cadSource is that offer's signed `compile.seal-admission@1`
+ * admission, or the unique readable admission that binds a catalogued
+ * semanticKey. The caller never supplies case bytes, hashes or solver
+ * numbers. This writes no project or Thread state and grants no MRTR
+ * authority.
  */
 
 import type {
@@ -16,6 +21,17 @@ import type {
 } from "../ports/in/project-sensitivity-study-seal-review.ts";
 import type { CataloguedMechanicalProofCaseReader } from "../ports/out/catalogued-mechanical-proof-case-reader.ts";
 import type { TechnicalCompilationAdmissionReader } from "../ports/out/technical-compilation-admission-reader.ts";
+import { parseFeaProofCaseCapture } from "../../domain/analysis/fea-proof-case-capture.ts";
+import { compileSensitivityCatalogOfferFromAdmission } from "../../domain/analysis/sensitivity-catalog-from-proof.ts";
+import { parseSensitivityCatalogOfferCapture } from "../../domain/analysis/sensitivity-catalog-offer-capture.ts";
+import {
+  bindSignedCatalogOffer,
+  bindSignedOfferAdmissionArtifact,
+  joinProofCaptureForOfferDigest,
+  selectUniqueSignedCatalogOffer,
+  shouldOpenSignedCatalogOffer,
+} from "../../domain/analysis/sensitivity-catalog-offer-join.ts";
+import { assertSensitivityLiveMethod } from "../../domain/analysis/sensitivity-live-method.ts";
 import {
   isKnownSensitivityStudyCaseId,
   selectUniqueCataloguedSensitivityCase,
@@ -25,7 +41,9 @@ import {
 } from "../../domain/analysis/sensitivity-study-case-catalog.ts";
 import {
   listCompileAdmissionArtifacts,
+  listFeaProofCaseArtifacts,
   listRejectedCadSourceLookalikes,
+  listSensitivityCatalogOfferArtifacts,
   matchAdmittedSensitivityParameter,
   sensitivityCadSourceUri,
   type SensitivityStudySealDiagnostic,
@@ -51,6 +69,7 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
@@ -83,11 +102,17 @@ export class ProjectSensitivityStudySealReviewError extends Error {
   }
 }
 
+export interface ContentAddressedCaptureReader {
+  read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+}
+
 export interface PrepareProjectSensitivityStudySealReviewDependencies {
   readonly snapshots: FeaReviewSnapshotStore;
   readonly projects?: FeaReviewProjectReader;
   readonly catalogReader: CataloguedMechanicalProofCaseReader;
   readonly admissions: TechnicalCompilationAdmissionReader;
+  readonly catalogOffers?: ContentAddressedCaptureReader;
+  readonly proofCaptures?: ContentAddressedCaptureReader;
 }
 
 export class PrepareProjectSensitivityStudySealReview
@@ -96,12 +121,16 @@ export class PrepareProjectSensitivityStudySealReview
   readonly #projects: FeaReviewProjectReader | undefined;
   readonly #catalogReader: CataloguedMechanicalProofCaseReader;
   readonly #admissions: TechnicalCompilationAdmissionReader;
+  readonly #catalogOffers: ContentAddressedCaptureReader | undefined;
+  readonly #proofCaptures: ContentAddressedCaptureReader | undefined;
 
   constructor(dependencies: PrepareProjectSensitivityStudySealReviewDependencies) {
     this.#snapshots = dependencies.snapshots;
     this.#projects = dependencies.projects;
     this.#catalogReader = dependencies.catalogReader;
     this.#admissions = dependencies.admissions;
+    this.#catalogOffers = dependencies.catalogOffers;
+    this.#proofCaptures = dependencies.proofCaptures;
   }
 
   async execute(value: unknown): Promise<ProjectSensitivityStudySealReviewResult> {
@@ -143,42 +172,59 @@ export class PrepareProjectSensitivityStudySealReview
     }
     const { basis, snapshot, project } = opened;
 
-    const catalogued = await this.#openCataloguedCase(
+    const selectedCase = await this.#openCase(
       command.projectId,
       command.caseId,
+      basis,
+      snapshot,
     );
-    if (catalogued.status === "unresolved") {
-      return unresolved(catalogued.caseId, catalogued.diagnostics, basis);
-    }
-    if (catalogued.status !== "ok") {
-      return unresolved(command.caseId ?? "", [{
-        code: catalogued.status === "catalog_unavailable"
-          ? "catalog-unavailable"
-          : "catalog-integrity-failed",
-        artifactId: null,
-        message: catalogued.message,
-      }], basis);
+    if (selectedCase.status !== "ok") {
+      if (
+        selectedCase.status === "catalog_unavailable" ||
+        selectedCase.status === "catalog_integrity_failed"
+      ) {
+        return unresolved(command.caseId ?? "", [{
+          code: selectedCase.status === "catalog_unavailable"
+            ? "catalog-unavailable"
+            : "catalog-integrity-failed",
+          artifactId: null,
+          message: selectedCase.message,
+        }], basis);
+      }
+      return notAppendable(
+        selectedCase.status,
+        selectedCase.caseId,
+        selectedCase.diagnostics,
+        basis,
+      );
     }
 
     const identity = identityDiagnostics(
-      catalogued.template,
+      selectedCase.template,
       command.projectId,
       snapshot,
+      selectedCase.source,
     );
     if (identity.length > 0) {
-      return unresolved(catalogued.caseId, identity, basis);
+      return unresolved(selectedCase.caseId, identity, basis);
     }
 
-    const admission = await this.#resolveUniqueAdmission(
-      command.projectId,
-      basis,
-      snapshot,
-      catalogued.template,
-    );
+    const admission = selectedCase.source === "signed-offer"
+      ? {
+        status: "ok" as const,
+        artifact: selectedCase.artifact,
+        cadSource: selectedCase.cadSource,
+      }
+      : await this.#resolveUniqueAdmission(
+        command.projectId,
+        basis,
+        snapshot,
+        selectedCase.template,
+      );
     if (admission.status !== "ok") {
       return notAppendable(
         admission.status,
-        catalogued.caseId,
+        selectedCase.caseId,
         [admission.diagnostic],
         basis,
       );
@@ -186,20 +232,23 @@ export class PrepareProjectSensitivityStudySealReview
 
     try {
       const compiled = await compileSealParameters(
-        catalogued.template,
+        selectedCase.template,
         admission.cadSource,
       );
       const selected = {
-        caseId: catalogued.caseId,
+        caseId: selectedCase.caseId,
         caseDigest: compiled.caseDigest,
         basis,
         admissionArtifactId: admission.artifact.id,
         cadSource: admission.cadSource,
-        ...sensitivityStudySealIdentities(catalogued.caseId),
+        authority: selectedCase.source,
+        ...sensitivityStudySealIdentities(selectedCase.caseId),
       };
-      const summary =
-        `Seal catalogued sensitivity study ${selected.caseId} against Thread r${basis.revision} ` +
-        `(admission ${selected.admissionArtifactId}).`;
+      const fromOffer = selectedCase.source === "signed-offer";
+      const summary = fromOffer
+        ? `Seal sensitivity study ${selected.caseId} compiled from the signed catalog offer against Thread r${basis.revision} (admission ${selected.admissionArtifactId}).`
+        : `Seal catalogued sensitivity study ${selected.caseId} against Thread r${basis.revision} ` +
+          `(admission ${selected.admissionArtifactId}).`;
       const phaseId = `phase-${selected.workItemId}`;
       const nextState = validateFeaReviewNextState({
         project,
@@ -212,14 +261,14 @@ export class PrepareProjectSensitivityStudySealReview
       if (nextState.status !== "ready") {
         return notAppendable(
           nextState.status,
-          catalogued.caseId,
+          selectedCase.caseId,
           [nextState.diagnostic],
           basis,
         );
       }
       return deepFreeze({
         status: "resolved" as const,
-        caseId: catalogued.caseId,
+        caseId: selectedCase.caseId,
         diagnostics: [],
         basis,
         selected,
@@ -232,17 +281,19 @@ export class PrepareProjectSensitivityStudySealReview
           expectedRevision: nextState.expectedRevision,
           phaseId,
           phaseName: "Seal sensitivity study declaration",
-          phaseDescription:
-            "Seal the catalogued sensitivity-study-case/2.0 without calling a provider.",
+          phaseDescription: fromOffer
+            ? "Seal the sensitivity-study-case/2.0 compiled from the signed catalog offer without calling a provider."
+            : "Seal the catalogued sensitivity-study-case/2.0 without calling a provider.",
           workItemId: selected.workItemId,
           decisionId: selected.decisionId,
           decisionTitle: "Approve sensitivity-study seal",
-          decisionQuestion:
-            "Approve sealing this exact catalogued sensitivity study against the current Thread admission?",
+          decisionQuestion: fromOffer
+            ? "Approve sealing this exact sensitivity study compiled from the signed catalog offer against the signed Thread admission?"
+            : "Approve sealing this exact catalogued sensitivity study against the current Thread admission?",
         }),
       });
     } catch (error) {
-      return unresolved(catalogued.caseId, [{
+      return unresolved(selectedCase.caseId, [{
         code: "proposal-grammar-rejected",
         artifactId: null,
         message: error instanceof Error
@@ -252,12 +303,42 @@ export class PrepareProjectSensitivityStudySealReview
     }
   }
 
+  async #openCase(
+    projectId: string,
+    caseId: string | undefined,
+    basis: EngineeringThreadSnapshotBasis,
+    snapshot: ThreadSnapshot,
+  ): Promise<OpenedSensitivityStudyCase> {
+    const catalogued = await this.#openCataloguedCase(projectId, caseId);
+    if (
+      !shouldOpenSignedCatalogOffer({
+        namedCaseId: caseId,
+        catalogStatus: catalogued.status === "ok" ||
+            catalogued.status === "catalog_unavailable" ||
+            catalogued.status === "catalog_integrity_failed"
+          ? catalogued.status
+          : "unresolved",
+      })
+    ) {
+      return catalogued;
+    }
+    const offered = await this.#openOfferedCase(
+      projectId,
+      caseId,
+      basis,
+      snapshot,
+    );
+    if (offered.status !== "absent") return offered;
+    return catalogued;
+  }
+
   async #openCataloguedCase(
     projectId: string,
     caseId: string | undefined,
   ): Promise<
     | {
       readonly status: "ok";
+      readonly source: "catalog";
       readonly caseId: string;
       readonly template: SensitivityStudyCaseTemplate;
     }
@@ -299,7 +380,12 @@ export class PrepareProjectSensitivityStudySealReview
             `Catalog source for "${selected.caseId}" declares case id "${template.id}".`,
         };
       }
-      return { status: "ok", caseId: selected.caseId, template };
+      return {
+        status: "ok",
+        source: "catalog",
+        caseId: selected.caseId,
+        template,
+      };
     } catch {
       return {
         status: "catalog_integrity_failed",
@@ -449,7 +535,241 @@ export class PrepareProjectSensitivityStudySealReview
       },
     };
   }
+
+  async #openOfferedCase(
+    projectId: string,
+    caseId: string | undefined,
+    basis: EngineeringThreadSnapshotBasis,
+    snapshot: ThreadSnapshot,
+  ): Promise<
+    | OpenedSignedOfferCase
+    | {
+      readonly status: "unresolved" | "unavailable";
+      readonly caseId: string;
+      readonly diagnostics: readonly SensitivityStudySealDiagnostic[];
+    }
+    | { readonly status: "absent" }
+  > {
+    const selected = selectUniqueSignedCatalogOffer(
+      listSensitivityCatalogOfferArtifacts(snapshot),
+    );
+    if (selected.status === "absent") return { status: "absent" };
+    if (selected.status === "ambiguous") {
+      return offeredFailure("unresolved", caseId, {
+        code: "catalog-offer-ambiguous",
+        artifactId: null,
+        message: `Several signed sensitivity catalog offers are on the current tip: ${
+          selected.artifacts.map((item) => item.id).join(", ")
+        }. Name is not enough; uniqueness failed.`,
+      });
+    }
+    const catalogOffers = this.#catalogOffers;
+    const proofCaptures = this.#proofCaptures;
+    if (!catalogOffers || !proofCaptures) {
+      return offeredFailure("unavailable", caseId, {
+        code: "catalog-offer-unavailable",
+        artifactId: selected.artifact.id,
+        message:
+          "A signed sensitivity catalog offer is on the current tip, but the review has no offer or proof capture reader.",
+      });
+    }
+    const offerArtifact = selected.artifact;
+    let raw: string | undefined;
+    try {
+      raw = await catalogOffers.read(offerArtifact.fingerprint);
+    } catch {
+      return offeredFailure("unavailable", caseId, {
+        code: "catalog-offer-unavailable",
+        artifactId: offerArtifact.id,
+        message:
+          "The signed sensitivity catalog offer could not be reopened. Uniqueness of the case join is unproven.",
+      });
+    }
+    if (raw === undefined) {
+      return offeredFailure("unavailable", caseId, {
+        code: "catalog-offer-unavailable",
+        artifactId: offerArtifact.id,
+        message:
+          "The signed sensitivity catalog offer is registered on the tip but its capture is unavailable.",
+      });
+    }
+    let capture;
+    try {
+      capture = await parseSensitivityCatalogOfferCapture(raw);
+    } catch (error) {
+      return offeredFailure("unresolved", caseId, {
+        code: "catalog-offer-integrity-failed",
+        artifactId: offerArtifact.id,
+        message: error instanceof Error
+          ? error.message
+          : "The signed sensitivity catalog offer capture is invalid.",
+      });
+    }
+    const proofJoin = await this.#reopenUniqueProofForOffer(
+      capture.offer.authority.proofDigest,
+      snapshot,
+      proofCaptures,
+    );
+    if (proofJoin.status !== "ok") {
+      return offeredFailure(proofJoin.status, caseId, proofJoin.diagnostic);
+    }
+    const { proofCapture } = proofJoin;
+    const signedAdmission = capture.offer.authority.admissionArtifact;
+    const boundAdmission = bindSignedOfferAdmissionArtifact({
+      admissionArtifact: snapshot.artifacts.find((artifact) =>
+        artifact.id === signedAdmission.id
+      ),
+      signedAdmission,
+    });
+    if (boundAdmission.status !== "ok") {
+      return offeredFailure("unresolved", caseId, boundAdmission.diagnostic);
+    }
+    const admissionArtifact = boundAdmission.artifact;
+    let reopened;
+    try {
+      reopened = await this.#admissions.read({
+        projectId,
+        basis,
+        artifactId: admissionArtifact.id,
+        artifactFingerprint: admissionArtifact.fingerprint,
+      });
+    } catch {
+      return offeredFailure("unavailable", caseId, {
+        code: "admission-unavailable",
+        artifactId: admissionArtifact.id,
+        message:
+          "The signed catalog-offer admission could not be reopened. No decisionParameters.",
+      });
+    }
+    if (!reopened) {
+      return offeredFailure("unavailable", caseId, {
+        code: "admission-unavailable",
+        artifactId: admissionArtifact.id,
+        message:
+          "The signed catalog-offer admission is unavailable. No decisionParameters.",
+      });
+    }
+    const bound = await bindSignedCatalogOffer({
+      offerArtifact,
+      offerDigest: capture.offerDigest,
+      recompiled: compileSensitivityCatalogOfferFromAdmission({
+        proofCase: proofCapture.proofCase,
+        proofDigest: proofCapture.proofDigest,
+        admissionArtifact: {
+          id: admissionArtifact.id,
+          fingerprint: admissionArtifact.fingerprint,
+        },
+        document: reopened.document,
+      }),
+      proofCase: proofCapture.proofCase,
+      proofDigest: proofCapture.proofDigest,
+      admissionArtifact,
+      namedCaseId: caseId,
+      projectId,
+      subjectId: snapshot.subject.id,
+    });
+    if (bound.status !== "ok") {
+      return offeredFailure("unresolved", caseId, bound.diagnostic);
+    }
+    return {
+      status: "ok",
+      source: "signed-offer",
+      caseId: bound.caseId,
+      template: bound.template,
+      artifact: admissionArtifact,
+      cadSource: bound.cadSource,
+    };
+  }
+
+  async #reopenUniqueProofForOffer(
+    proofDigest: string,
+    snapshot: ThreadSnapshot,
+    proofCaptures: ContentAddressedCaptureReader,
+  ): Promise<
+    | {
+      readonly status: "ok";
+      readonly proofArtifact: ThreadArtifact;
+      readonly proofCapture: Awaited<ReturnType<typeof parseFeaProofCaseCapture>>;
+    }
+    | {
+      readonly status: "unresolved" | "unavailable";
+      readonly diagnostic: SensitivityStudySealDiagnostic;
+    }
+  > {
+    const candidates = listFeaProofCaseArtifacts(snapshot);
+    if (candidates.length === 0) {
+      return {
+        status: "unresolved",
+        diagnostic: {
+          code: "catalog-offer-integrity-failed",
+          artifactId: null,
+          message:
+            "The current tip has no sealed FEA proof capture for the signed catalog offer.",
+        },
+      };
+    }
+    const attempts = [];
+    for (const artifact of candidates) {
+      let proofText: string | undefined;
+      try {
+        proofText = await proofCaptures.read(artifact.fingerprint);
+      } catch {
+        attempts.push({ status: "unread" as const, artifact });
+        continue;
+      }
+      if (proofText === undefined) {
+        attempts.push({ status: "unread" as const, artifact });
+        continue;
+      }
+      try {
+        const proofCapture = await parseFeaProofCaseCapture(proofText);
+        if (proofCapture.proofDigest === proofDigest) {
+          attempts.push({
+            status: "matched" as const,
+            artifact,
+            proofCapture,
+          });
+        } else {
+          attempts.push({ status: "other" as const, artifact });
+        }
+      } catch {
+        attempts.push({ status: "invalid" as const, artifact });
+      }
+    }
+    const joined = joinProofCaptureForOfferDigest(attempts);
+    if (joined.status !== "ok") return joined;
+    return {
+      status: "ok",
+      proofArtifact: joined.artifact,
+      proofCapture: joined.proofCapture,
+    };
+  }
 }
+
+type OpenedSignedOfferCase = {
+  readonly status: "ok";
+  readonly source: "signed-offer";
+  readonly caseId: string;
+  readonly template: SensitivityStudyCaseTemplate;
+  readonly artifact: ThreadArtifact;
+  readonly cadSource: SensitivityCadSource;
+};
+
+type OpenedSensitivityStudyCase =
+  | {
+    readonly status: "ok";
+    readonly source: "catalog";
+    readonly caseId: string;
+    readonly template: SensitivityStudyCaseTemplate;
+  }
+  | OpenedSignedOfferCase
+  | {
+    readonly status: "unresolved" | "unavailable";
+    readonly caseId: string;
+    readonly diagnostics: readonly SensitivityStudySealDiagnostic[];
+  }
+  | { readonly status: "catalog_unavailable"; readonly message: string }
+  | { readonly status: "catalog_integrity_failed"; readonly message: string };
 
 async function compileSealParameters(
   template: SensitivityStudyCaseTemplate,
@@ -462,6 +782,7 @@ async function compileSealParameters(
   >["decisionParameters"];
 }> {
   const studyCase = assembleSensitivityStudyCaseV2(template, cadSource);
+  assertSensitivityLiveMethod(studyCase);
   const caseDigest = (await sha256Fingerprint(studyCase)).digest;
   const decisionParameters = encodeSensitivityStudyDecisionParameters(
     caseDigest,
@@ -600,13 +921,15 @@ function identityDiagnostics(
   template: SensitivityStudyCaseTemplate,
   projectId: string,
   snapshot: ThreadSnapshot,
+  source: "catalog" | "signed-offer",
 ): SensitivityStudySealDiagnostic[] {
+  const label = source === "signed-offer" ? "Signed-offer case" : "Catalogued case";
   const diagnostics: SensitivityStudySealDiagnostic[] = [];
   if (template.project.id !== projectId) {
     diagnostics.push({
       code: "project-mismatch",
       artifactId: null,
-      message: `Catalogued case project.id "${template.project.id}" does not match ` +
+      message: `${label} project.id "${template.project.id}" does not match ` +
         `requested projectId "${projectId}".`,
     });
   }
@@ -615,11 +938,27 @@ function identityDiagnostics(
       code: "subject-mismatch",
       artifactId: null,
       message:
-        `Catalogued case project.subjectId "${template.project.subjectId}" does not match ` +
+        `${label} project.subjectId "${template.project.subjectId}" does not match ` +
         `Thread subject "${snapshot.subject.id}".`,
     });
   }
   return diagnostics;
+}
+
+function offeredFailure(
+  status: "unresolved" | "unavailable",
+  caseId: string | undefined,
+  diagnostic: SensitivityStudySealDiagnostic,
+): {
+  readonly status: "unresolved" | "unavailable";
+  readonly caseId: string;
+  readonly diagnostics: readonly SensitivityStudySealDiagnostic[];
+} {
+  return {
+    status,
+    caseId: caseId ?? "",
+    diagnostics: [diagnostic],
+  };
 }
 
 function unresolved(

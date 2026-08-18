@@ -42,6 +42,7 @@ import {
   validateMicrosandboxLocalRuntimeIdentity,
 } from "../../domain/analysis/local-isolation-runtime.ts";
 import {
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
   type TechnicalCompilationProfile,
   validateTechnicalCompilationProfileCatalog,
@@ -334,7 +335,7 @@ function requireExpectedCompilationProfile(): TechnicalCompilationProfile {
   const matches = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles.filter(
     (profile) =>
       profile.id === BUILD123D_EXECUTION_PROFILE.id &&
-      profile.version === BUILD123D_EXECUTION_PROFILE.version &&
+      profile.version === PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION &&
       profile.target === "build123d-source",
   );
   if (matches.length !== 1) {

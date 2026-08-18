@@ -19,11 +19,22 @@ const REJECTED_CAD_SOURCE_TOOLS = new Set([
   "design.execute-build123d@1",
 ]);
 
+export const SENSITIVITY_CATALOG_OFFER_CAPTURE_URI_PREFIX =
+  "casys://sensitivity-catalog-offer-capture/" as const;
+export const FEA_PROOF_CASE_CAPTURE_URI_PREFIX =
+  "casys://fea-proof-case-capture/" as const;
+export const VERIFY_SEAL_PROOF_CASE_TOOL = "verify.seal-proof-case@1" as const;
+
 export type SensitivityStudySealDiagnosticCode =
   | "catalog-absent"
   | "catalog-ambiguous"
   | "catalog-unavailable"
   | "catalog-integrity-failed"
+  | "catalog-offer-ambiguous"
+  | "catalog-offer-unavailable"
+  | "catalog-offer-integrity-failed"
+  | "catalog-offer-admission-unlinked"
+  | "catalog-offer-case-mismatch"
   | "basis-latest"
   | "basis-mismatch"
   | "basis-absent"
@@ -86,6 +97,33 @@ export function listRejectedCadSourceLookalikes(
   return snapshot.artifacts.filter(isRejectedCadSourceLookalike);
 }
 
+export function isSensitivityCatalogOfferArtifact(
+  artifact: ThreadArtifact,
+): boolean {
+  return artifact.kind === "document" &&
+    artifact.producer.tool === VERIFY_SEAL_PROOF_CASE_TOOL &&
+    (artifact.uri?.startsWith(SENSITIVITY_CATALOG_OFFER_CAPTURE_URI_PREFIX) ??
+      false);
+}
+
+export function isFeaProofCaseArtifact(artifact: ThreadArtifact): boolean {
+  return artifact.kind === "document" &&
+    artifact.producer.tool === VERIFY_SEAL_PROOF_CASE_TOOL &&
+    (artifact.uri?.startsWith(FEA_PROOF_CASE_CAPTURE_URI_PREFIX) ?? false);
+}
+
+export function listSensitivityCatalogOfferArtifacts(
+  snapshot: ThreadSnapshot,
+): readonly ThreadArtifact[] {
+  return snapshot.artifacts.filter(isSensitivityCatalogOfferArtifact);
+}
+
+export function listFeaProofCaseArtifacts(
+  snapshot: ThreadSnapshot,
+): readonly ThreadArtifact[] {
+  return snapshot.artifacts.filter(isFeaProofCaseArtifact);
+}
+
 export function matchAdmittedSensitivityParameter(
   sources: readonly SensitivityAdmissionSourceView[],
   semanticKey: string,
@@ -128,7 +166,7 @@ export function matchAdmittedSensitivityParameter(
         status: "unbound",
         code: "admission-parameter-mismatch",
         message:
-          "The admitted source parameter does not equal the catalogued case baseValue.",
+          "The admitted source parameter does not equal the study template baseValue.",
       };
     }
     return { status: "matched" };

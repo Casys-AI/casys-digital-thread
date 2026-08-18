@@ -8,7 +8,23 @@
 
 import type { SourceAnalysisSpan } from "./source-analysis.ts";
 
-const NUMERIC_LITERAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const QUALIFIED_DIGITS = String.raw`[0-9](?:_?[0-9])*`;
+const QUALIFIED_INTEGER = String.raw`(?:0|[1-9](?:_?[0-9])*)`;
+const QUALIFIED_EXPONENT = String.raw`[eE][+-]?${QUALIFIED_DIGITS}`;
+const QUALIFIED_UNSIGNED_DECIMAL = String
+  .raw`(?:${QUALIFIED_INTEGER}(?:\.${QUALIFIED_DIGITS}?)?(?:${QUALIFIED_EXPONENT})?|\.${QUALIFIED_DIGITS}(?:${QUALIFIED_EXPONENT})?)`;
+const QUALIFIED_UNSIGNED_DECIMAL_LITERAL = new RegExp(
+  `^${QUALIFIED_UNSIGNED_DECIMAL}$`,
+);
+const QUALIFIED_SIGNED_DECIMAL_LITERAL = new RegExp(
+  `^[+-]?${QUALIFIED_UNSIGNED_DECIMAL}$`,
+);
+
+/** Exact decimal-token grammar owned jointly by analysis and source surgery. */
+export function isQualifiedUnsignedDecimalLiteral(text: string): boolean {
+  return QUALIFIED_UNSIGNED_DECIMAL_LITERAL.test(text) &&
+    Number.isFinite(Number(text.replaceAll("_", "")));
+}
 
 export function sourceSpanOffsets(
   sourceText: string,
@@ -78,7 +94,9 @@ export function locateModuleLevelNumericBinding(
   if (sourceText[index] === "+" || sourceText[index] === "-") {
     index += 1;
   }
-  while (index < sourceText.length && /[0-9.eE]/.test(sourceText[index]!)) {
+  while (
+    index < sourceText.length && /[0-9_+\-.eE]/.test(sourceText[index]!)
+  ) {
     index += 1;
   }
   const literal = sourceText.slice(literalStart, index);
@@ -112,12 +130,12 @@ export function substituteModuleLevelNumericLiteral(
 }
 
 function parseNumericLiteralText(text: string): number {
-  if (!NUMERIC_LITERAL.test(text)) {
+  if (!QUALIFIED_SIGNED_DECIMAL_LITERAL.test(text)) {
     throw new TypeError(
       `spanned text ${JSON.stringify(text)} is not a finite numeric literal.`,
     );
   }
-  const value = Number(text);
+  const value = Number(text.replaceAll("_", ""));
   if (!Number.isFinite(value)) {
     throw new TypeError(
       `spanned text ${JSON.stringify(text)} is not a finite numeric literal.`,

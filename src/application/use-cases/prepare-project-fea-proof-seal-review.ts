@@ -8,6 +8,7 @@
  */
 
 import type {
+  FeaProofSensitivityCatalog,
   ProjectFeaProofSealReviewCommand,
   ProjectFeaProofSealReviewResult,
   ProjectFeaProofSealReviewUseCase,
@@ -15,6 +16,7 @@ import type {
 import type { CanonicalAssetReader } from "../ports/out/canonical-asset-reader.ts";
 import type { CataloguedMechanicalProofCaseReader } from "../ports/out/catalogued-mechanical-proof-case-reader.ts";
 import type { FeaProofSealRequirementsReviewer } from "../ports/out/fea-proof-seal-requirements-reviewer.ts";
+import type { TechnicalCompilationAdmissionReader } from "../ports/out/technical-compilation-admission-reader.ts";
 import {
   FEA_PROOF_CASE_SOURCES,
   feaProofCaseSourcePath,
@@ -27,6 +29,7 @@ import {
 } from "../../domain/analysis/fea-proof-seal-bindings.ts";
 import {
   encodeFeaProofDecisionParameters,
+  type FeaProofDecisionParameters,
   feaProofDecisionParametersToMap,
   parseFeaProofDecisionParameters,
   sealProofCaseWorkItemOperation,
@@ -35,6 +38,8 @@ import {
   type MechanicalProofCase,
   validateMechanicalProofCase,
 } from "../../domain/analysis/mechanical-proof-case.ts";
+import { compileSensitivityCatalogOfferFromAdmission } from "../../domain/analysis/sensitivity-catalog-from-proof.ts";
+import { listCompileAdmissionArtifacts } from "../../domain/analysis/sensitivity-study-seal-bindings.ts";
 import {
   closedRecord,
   deepFreeze,
@@ -46,6 +51,7 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../domain/project/engineering-project.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import {
   admitFeaProofSealSource,
   type FeaProofSealGeometryCaptureReader,
@@ -84,6 +90,8 @@ export interface PrepareProjectFeaProofSealReviewDependencies {
   readonly requirementsReviewer: FeaProofSealRequirementsReviewer;
   readonly geometryCaptures: FeaProofSealGeometryCaptureReader;
   readonly stepAssets: CanonicalAssetReader;
+  /** Optional: without it the FEA review stays resolved as admission-absent. */
+  readonly admissions?: TechnicalCompilationAdmissionReader;
 }
 
 export class PrepareProjectFeaProofSealReview
@@ -94,6 +102,7 @@ export class PrepareProjectFeaProofSealReview
   readonly #requirementsReviewer: FeaProofSealRequirementsReviewer;
   readonly #geometryCaptures: FeaProofSealGeometryCaptureReader;
   readonly #stepAssets: CanonicalAssetReader;
+  readonly #admissions: TechnicalCompilationAdmissionReader | undefined;
 
   constructor(dependencies: PrepareProjectFeaProofSealReviewDependencies) {
     this.#snapshots = dependencies.snapshots;
@@ -102,6 +111,7 @@ export class PrepareProjectFeaProofSealReview
     this.#requirementsReviewer = dependencies.requirementsReviewer;
     this.#geometryCaptures = dependencies.geometryCaptures;
     this.#stepAssets = dependencies.stepAssets;
+    this.#admissions = dependencies.admissions;
   }
 
   async execute(value: unknown): Promise<ProjectFeaProofSealReviewResult> {
@@ -177,11 +187,38 @@ export class PrepareProjectFeaProofSealReview
       return unresolved(catalogued.caseId, resolved.diagnostics, basis);
     }
     try {
-      const compiled = await compileSealParameters(
+      let compiled = await compileSealParameters(
         catalogued.proofCase,
         resolved.bindings.geometryArtifact,
         resolved.bindings.requirementsArtifact,
       );
+      const sensitivityCatalog = await this.#sensitivityCatalog(
+        snapshot,
+        catalogued.proofCase,
+        compiled.proofDigest,
+        command.projectId,
+        basis,
+      );
+      if (command.sensitivityCatalogOptIn === true) {
+        if (sensitivityCatalog.status !== "ready-for-opt-in") {
+          return unresolved(catalogued.caseId, [{
+            code: "sensitivity-catalog-unavailable",
+            artifactId: null,
+            message:
+              `Sensitivity catalog opt-in was requested, but the compiled offer is ${sensitivityCatalog.status}: ${sensitivityCatalog.message}`,
+          }], basis);
+        }
+        compiled = await compileSealParameters(
+          catalogued.proofCase,
+          resolved.bindings.geometryArtifact,
+          resolved.bindings.requirementsArtifact,
+          {
+            schemaVersion: sensitivityCatalog.schemaVersion,
+            digest: (await sha256Fingerprint(sensitivityCatalog)).digest,
+            admissionArtifact: sensitivityCatalog.authority.admissionArtifact,
+          },
+        );
+      }
       const parsed = parseFeaProofDecisionParameters(
         feaProofDecisionParametersToMap(compiled.decisionParameters),
       );
@@ -236,6 +273,7 @@ export class PrepareProjectFeaProofSealReview
         basis,
         selected,
         decisionParameters: compiled.decisionParameters,
+        sensitivityCatalog,
         next: feaReviewNext({
           basis,
           operation: sealProofCaseWorkItemOperation(),
@@ -319,6 +357,69 @@ export class PrepareProjectFeaProofSealReview
       };
     }
   }
+
+  async #sensitivityCatalog(
+    snapshot: ThreadSnapshot,
+    proofCase: MechanicalProofCase,
+    proofDigest: string,
+    projectId: string,
+    basis: EngineeringThreadSnapshotBasis,
+  ): Promise<FeaProofSensitivityCatalog> {
+    if (!this.#admissions) {
+      return {
+        status: "admission-absent",
+        message:
+          "No compilation-admission reader is bound; the FEA seal cannot see admitted CAD source text. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
+      };
+    }
+    const candidates = listCompileAdmissionArtifacts(snapshot);
+    if (candidates.length === 0) {
+      return {
+        status: "admission-absent",
+        message:
+          "The current Thread tip has no compile.seal-admission@1 admission. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
+      };
+    }
+    if (candidates.length > 1) {
+      return {
+        status: "admission-ambiguous",
+        message:
+          "Several compile.seal-admission@1 admissions are on the current tip. The server does not pick a lever source. The proof-case review stays resolved.",
+      };
+    }
+    const artifact = candidates[0]!;
+    let reopened;
+    try {
+      reopened = await this.#admissions.read({
+        projectId,
+        basis,
+        artifactId: artifact.id,
+        artifactFingerprint: artifact.fingerprint,
+      });
+    } catch {
+      return {
+        status: "admission-unavailable",
+        message:
+          "The unique compile.seal-admission@1 admission could not be reopened. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
+      };
+    }
+    if (!reopened) {
+      return {
+        status: "admission-unavailable",
+        message:
+          "The unique compile.seal-admission@1 admission could not be reopened. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
+      };
+    }
+    return compileSensitivityCatalogOfferFromAdmission({
+      proofCase,
+      proofDigest,
+      admissionArtifact: {
+        id: artifact.id,
+        fingerprint: artifact.fingerprint,
+      },
+      document: reopened.document,
+    });
+  }
 }
 
 async function compileSealParameters(
@@ -328,6 +429,9 @@ async function compileSealParameters(
     readonly id: string;
     readonly fingerprint: ContentFingerprint;
   },
+  sensitivityCatalog?: NonNullable<
+    FeaProofDecisionParameters["sensitivityCatalog"]
+  >,
 ): Promise<{
   readonly proofDigest: string;
   readonly decisionParameters: Extract<
@@ -341,6 +445,7 @@ async function compileSealParameters(
     proofCase,
     geometryArtifact,
     requirementsArtifact,
+    sensitivityCatalog,
   );
   const reparsed = parseFeaProofDecisionParameters(
     feaProofDecisionParametersToMap(decisionParameters),
@@ -350,6 +455,7 @@ async function compileSealParameters(
     proofCase,
     reparsed.geometryArtifact,
     reparsed.requirementsArtifact,
+    reparsed.sensitivityCatalog,
   );
   if (deterministicJson(reencoded) !== deterministicJson(decisionParameters)) {
     throw new TypeError("FEA proof-case MRTR replay is not canonical.");
@@ -360,7 +466,7 @@ async function compileSealParameters(
 function parseCommand(value: unknown): ProjectFeaProofSealReviewCommand {
   const command = closedRecord(
     value,
-    ["projectId", "basis", "caseId"],
+    ["projectId", "basis", "caseId", "sensitivityCatalogOptIn"],
     ["projectId"],
     "$feaProofSealReview",
   );
@@ -368,12 +474,23 @@ function parseCommand(value: unknown): ProjectFeaProofSealReviewCommand {
     command.basis,
     "$feaProofSealReview.basis",
   );
+  if (
+    command.sensitivityCatalogOptIn !== undefined &&
+    typeof command.sensitivityCatalogOptIn !== "boolean"
+  ) {
+    throw new TypeError(
+      "$feaProofSealReview.sensitivityCatalogOptIn must be boolean.",
+    );
+  }
   return deepFreeze({
     projectId: safeId(command.projectId, "$feaProofSealReview.projectId"),
     ...(basis ? { basis } : {}),
     ...(command.caseId === undefined
       ? {}
       : { caseId: safeId(command.caseId, "$feaProofSealReview.caseId") }),
+    ...(command.sensitivityCatalogOptIn === undefined
+      ? {}
+      : { sensitivityCatalogOptIn: command.sensitivityCatalogOptIn }),
   });
 }
 

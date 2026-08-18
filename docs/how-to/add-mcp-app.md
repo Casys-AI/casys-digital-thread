@@ -89,5 +89,6 @@ browser must not call the provider MCP directly.
    the initiating `structuredContent`.
 5. Exercise every declared follow-up call and confirm undeclared calls are denied.
 
-For the existing Console host boundary, see the
-[browser preview guide](preview-console.md).
+The first-party Console MCP App and its `:3021` harness are retired. Provider result
+viewers stay on their own servers; the product page is the
+[native Workbench](preview-native-workbench.md).

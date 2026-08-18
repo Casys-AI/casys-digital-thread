@@ -552,9 +552,7 @@ Deno.test("focusing a compact SysML member restores the exact usage-definition p
     );
     assertEquals(detail.isFiltered, true);
     assertEquals(
-      detail.nodes.map((candidate) =>
-        `${candidate.ref.kind}:${candidate.ref.id}`
-      )
+      detail.nodes.map((candidate) => `${candidate.ref.kind}:${candidate.ref.id}`)
         .sort(),
       [
         "part-definition:def-root",

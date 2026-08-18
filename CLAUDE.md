@@ -27,7 +27,7 @@ Runtime backend : **Deno** (tâches dans `deno.json`). Bundles UI : **npm + Vite
 ```bash
 docker compose up -d              # topologie provider ; SysON UI sur :8180
 npm --prefix src/ui ci
-npm --prefix src/ui run build     # bundle Console MCP App → src/ui/dist/console/
+npm --prefix src/ui run build:thread # bundle cockpit → src/ui/dist/thread/
 deno task start                   # serveur MCP Console + project control, :3020/mcp
 deno task dev                     # idem avec --watch
 deno task start:yolo              # loopback : auto-confirme les MRTR positifs
@@ -57,10 +57,12 @@ deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env
 Surfaces interactives locales (chacune rebuild son bundle puis sert un BFF loopback) :
 
 ```bash
-deno task preview:browser     # :3021 — harness navigateur de la Console MCP App
 deno task preview:thread      # :5173 — cockpit projet natif (reads/SSE passifs)
 deno task preview:cockpit     # :5175 — même cockpit, port de démonstration
 ```
+
+`deno task preview:browser` refuse : l'ancienne Console MCP App (`:3021`) n'est plus
+une page produit. La santé de flotte reste `console_snapshot` sur `:3020/mcp`.
 
 Sondes diagnostiques, sans écriture ni révision :
 

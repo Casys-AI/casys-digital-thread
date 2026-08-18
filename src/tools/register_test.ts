@@ -533,22 +533,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_work_item_reconcile_successor",
     "project_work_item_supersede_unstarted",
   ]);
-  try {
-    const built = Deno.statSync("src/ui/dist/console/index.html").isFile;
-    if (built) {
-      assertEquals(app.hasResource(CONSOLE_RESOURCE_URI), true);
-      const content = await app.readResourceContent(CONSOLE_RESOURCE_URI);
-      assert(content);
-      assertEquals(content.uri, CONSOLE_RESOURCE_URI);
-      assert(content.text.includes("<html"));
-      assertEquals(
-        (content as unknown as Record<string, unknown>)._meta,
-        undefined,
-      );
-    }
-  } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
-  }
+  assertEquals(app.hasResource(CONSOLE_RESOURCE_URI), false);
 
   const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
   const port = (listener.addr as Deno.NetAddr).port;
@@ -612,13 +597,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");
     assert(snapshotTool);
-    assertEquals(
-      ((snapshotTool._meta as Record<string, unknown>).ui as Record<
-        string,
-        unknown
-      >).resourceUri,
-      CONSOLE_RESOURCE_URI,
-    );
+    assertEquals(snapshotTool._meta, undefined);
     assertEquals(snapshotTool.annotations, {
       readOnlyHint: true,
       destructiveHint: false,
@@ -656,6 +635,28 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "runId",
     ]);
     assertEquals(executeSchema.additionalProperties, false);
+    const proofSealReviewTool = tools.find((tool) =>
+      tool.name === "project_fea_proof_seal_review"
+    );
+    assert(proofSealReviewTool);
+    const proofSealReviewSchema = proofSealReviewTool.inputSchema as Record<
+      string,
+      unknown
+    >;
+    const proofSealReviewProperties = proofSealReviewSchema.properties as Record<
+      string,
+      unknown
+    >;
+    assertEquals(
+      Object.keys(proofSealReviewProperties).sort(),
+      ["basis", "caseId", "projectId", "sensitivityCatalogOptIn"],
+    );
+    assertEquals(proofSealReviewProperties.sensitivityCatalogOptIn, {
+      type: "boolean",
+      description:
+        "Explicit opt-in to seal the causally joined sensitivity catalog offer with the FEA proof. Omit or send false to seal only the proof.",
+    });
+    assertEquals(proofSealReviewSchema.additionalProperties, false);
     for (
       const forbiddenProperty of [
         "provider",

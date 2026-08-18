@@ -54,6 +54,6 @@ exercise that complete local microVM path end to end.
 
 | Script                             | Task                                 | Risk  |
 | ---------------------------------- | ------------------------------------ | ----- |
-| `serve/console-browser-harness.ts` | `preview:browser`                    | read  |
+| `serve/console-browser-harness.ts` | `preview:browser` (retired; refuses) | read  |
 | `serve/serve-native-workbench.ts`  | `preview:thread` / `preview:cockpit` | read  |
 | `serve/supervise-agent-stack.ts`   | `start:agent`                        | write |

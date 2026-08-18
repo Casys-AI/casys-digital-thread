@@ -1,6 +1,6 @@
 import type { IsoDateTime } from "../domain/kernel/primitives.ts";
 
-/** Browser-safe DTOs shared by the Console BFF and its MCP App. */
+/** Fleet and run DTOs for the `console_*` ops tools. Not a human page. */
 
 export type ConsoleMode = "live" | "mixed" | "demo";
 

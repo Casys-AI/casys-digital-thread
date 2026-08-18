@@ -1,42 +1,48 @@
 # Reference: MCP console
 
-The Console MCP App is a read-only observer for the engineering fleet and indexed
-evidence. Its resource is `ui://casys-digital-thread/console`; its operational snapshot
-contract is `2.0`. The same MCP server exposes the conversation-owned project-control
-tools used by the agent. Those tools mutate project revisions or dispatch registered
-operations; the cockpit itself remains a passive projection.
+The Console MCP server (`:3020/mcp`) is the agent and ops control plane. It is not a
+human dashboard. The former MCP App at `ui://casys-digital-thread/console` (Fleet /
+Runs / Workbench, `preview:browser` on `:3021`) is retired. Product inspection is the
+native cockpit (`preview:thread` / `preview:cockpit`). The operational snapshot
+contract remains `2.0` on the `console_*` tools. The same MCP server exposes the
+conversation-owned project-control tools used by the agent. Those tools mutate project
+revisions or dispatch registered operations; the cockpit itself remains a passive
+projection.
 
 ## Surfaces
 
-- **Fleet** compares [`config/mcp-fleet.json`](../../config/mcp-fleet.json) with live
-  MCP discovery and read-only Docker observations.
-- **Runs** keeps execution, evidence, and requirement-verdict states separate.
-- **Workbench** renders the native linked-thread projection. It does not mount provider
-  Apps or call provider MCPs from the browser.
+The human Fleet / Runs / Workbench page is retired. Fleet health is a tool read, not a
+sixth cockpit tab:
+
+- `console_snapshot` compares [`config/mcp-fleet.json`](../../config/mcp-fleet.json)
+  with live MCP discovery and read-only Docker observations (`healthy` / `degraded` /
+  `unavailable`, image and tool drift).
+- `console_run_list` / `console_run_detail` keep execution, evidence, and
+  requirement-verdict states separate for the indexed control-plane catalog. Project
+  Activity / Evidence / Execution already cover project-bound runs.
 
 ## Endpoints
 
 ```bash
-deno task start             # http://127.0.0.1:3020/mcp
-deno task preview:browser   # http://127.0.0.1:3021/
+deno task start                        # http://127.0.0.1:3020/mcp
 deno task preview:cockpit --port=5175  # canonical product shell
 deno task preview:thread               # 5173, direct development preview
 ```
 
-The browser harness relays only the Console's reviewed read operations. The canonical
-cockpit keeps one **Project** tab from the first living brief through the technical
-record. Its direct previews passively read persisted state through GET and SSE. Neither
-path starts CAD, meshing, FEA, Modelica, or a SysON mutation on page load.
+`deno task preview:browser` refuses: the `:3021` harness is not a product page. The
+canonical cockpit keeps one **Project** tab from the first living brief through the
+technical record. Its direct previews passively read persisted state through GET and
+SSE. Neither path starts CAD, meshing, FEA, Modelica, or a SysON mutation on page load.
 
 ## Tools
 
-| Tool                    | Audience       | Meaning                                                        |
-| ----------------------- | -------------- | -------------------------------------------------------------- |
-| `console_snapshot`      | Any MCP client | Fleet observations and run summaries                           |
-| `console_server_detail` | Any MCP client | Desired state, observation, drift, image and trust information |
-| `console_run_list`      | Any MCP client | Indexed engineering-run summaries                              |
-| `console_run_detail`    | Any MCP client | Evidence, observations, comparisons and provenance             |
-| `console_refresh`       | MCP App only   | Explicitly refresh the read-only probes                        |
+| Tool                    | Audience          | Meaning                                                              |
+| ----------------------- | ----------------- | -------------------------------------------------------------------- |
+| `console_snapshot`      | Any MCP client    | Fleet observations and run summaries                                 |
+| `console_server_detail` | Any MCP client    | Desired state, observation, drift, image and trust information       |
+| `console_run_list`      | Any MCP client    | Indexed engineering-run summaries                                    |
+| `console_run_detail`    | Any MCP client    | Evidence, observations, comparisons and provenance                   |
+| `console_refresh`       | App-only leftover | Explicitly refresh the read-only probes; no shipped App calls it     |
 
 `console_snapshot` no longer carries dashboard-panel declarations. Product state lives
 in the canonical [`ThreadSnapshot`](thread-snapshot.md) and its native Workbench

@@ -122,13 +122,13 @@ unchanged; `@2` is a successor vertical, not a reinterpretation of old captures.
   select a raw provider transport or inject its wire envelope.
 - Execution revalidates the stored plan and its referenced records. An opaque plan id is
   a lookup handle, not proof of authority.
-- Graphology is a read/navigation projection. The BFF still emits analysis edges
-  with `origin: "analysis"` so Product and tests can inspect the index. The
-  Evidence canvas omits that overlay and loads the Thread dossier
-  (provenance + structure) into a `MultiDirectedGraph`, so parallel recorded
-  relations stay inspectable rather than collapsed. Sensitivity and other
-  `AnalysisGraph` islands remain a semantic index, not a second painted graph.
-  Canonical relations and evidence remain domain records and thread captures.
+- Graphology is a read/navigation projection. The BFF still emits analysis edges with
+  `origin: "analysis"` so Product and tests can inspect the index. The Evidence canvas
+  omits that overlay and loads the Thread dossier (provenance + structure) into a
+  `MultiDirectedGraph`, so parallel recorded relations stay inspectable rather than
+  collapsed. Sensitivity and other `AnalysisGraph` islands remain a semantic index, not
+  a second painted graph. Canonical relations and evidence remain domain records and
+  thread captures.
 
 ## Hexagonal placement
 
@@ -347,13 +347,13 @@ they consume projections from the same compilation.
 The implementation deliberately shares control-plane contracts, not one universal solver
 protocol. The boundary is split as follows:
 
-| Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The only registered compilation profile is the qualified Build123d closed subset (`Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Rectangle`, `Circle`, `Ellipse`, `RegularPolygon`, `Pos`, `Rot`, `Compound`, named `Pos`/`Rot` bindings and `Plane.XY\|…\|ZY *` shape, `scale(solid, scalar)`, `fillet(solid, scalar)` or `fillet(solid.edges(), radius=scalar or positional)`, `chamfer(solid, scalar)` or `chamfer(solid.edges(), scalar)`, `extrude(sketch, amount=scalar or positional, optional taper=scalar)`, `offset(solid, amount)`, `revolve(sketch, Axis.X\|Y\|Z)`, math `pi`/`e`/`tau`) |
-| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                       | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                                                                                                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Admission              | Pure `technical-compilation/1.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal                                  | The current registered Build123d profile is 2.0 over the qualified closed subset; it additionally requires a finite module-level numeric parameter, unique `parameterizes` binding and causal reachability to `result`. Dead or constructor-only dimensions are unresolved. Embedded profile-1 documents retain historical replay semantics |
+| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                                                                                                                                                                                                                   |
+| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                                                                                                                                                                                                               |
+| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                                                                                                                                                                                                                       |
+| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                       | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist                                                                                                                                                                                             |
 
 “Interchangeable” therefore applies at explicit seams. A new sandbox backend implements
 `EphemeralExecutionBackend`; a new output format supplies a code-owned manifest and
@@ -576,33 +576,33 @@ case/proof digest; each seal assertion keeps its run-scoped capture fingerprint 
 evidence, so repeated seals can merge as parallel assertion occurrences without changing
 semantic identity. The live producer is `analyze.run-fea-sensitivity@1` after
 `analyze.seal-sensitivity-study@1`. Seal parameters come from the read-only
-`project_sensitivity_study_seal_review` compiler (catalog template + unique
-`compile.seal-admission@1` admission). The caller never invents
-`sensitivity.case.*` or a `cadSource`. A project without a reviewed template
-(`desk-lamp-dl06`) stays `catalog-absent`. After its two solver runs, the sensitivity path
-creates one observed `measured-local-sensitivity` assertion per declared response
-metric, including the reviewed finite-difference case, base and stepped results,
-derivative, local scope and the one exact persisted sensitivity-capture fingerprint. The
-provider responses and STEP handoff digests are normalized inside that capture; they are
-not represented as synthetic `solver-result` artifacts or as independent evidence bytes.
-The case identifies its driver, but no component-to-driver assertion is emitted until
-exact architecture/source binding evidence exists. Consequently the global graph shows
-the qualified measurement while component facets remain empty. The snapshot extension
+`project_sensitivity_study_seal_review` compiler (catalog template, or unique signed
+catalog-offer + its signed `compile.seal-admission@1` admission when the catalog does
+not uniquely select). The caller never invents `sensitivity.case.*` or a `cadSource`.
+A project without a reviewed catalog JSON and without a unique signed offer
+(`desk-lamp-dl06` before the FEA opt-in) stays `catalog-absent`. After its two solver runs, the sensitivity path creates one observed
+`measured-local-sensitivity` assertion per declared response metric, including the
+reviewed finite-difference case, base and stepped results, derivative, local scope and
+the one exact persisted sensitivity-capture fingerprint. The provider responses and STEP
+handoff digests are normalized inside that capture; they are not represented as
+synthetic `solver-result` artifacts or as independent evidence bytes. The case
+identifies its driver, but no component-to-driver assertion is emitted until exact
+architecture/source binding evidence exists. Consequently the global graph shows the
+qualified measurement while component facets remain empty. The snapshot extension
 publishes that graph as `ThreadSnapshot/1.1`; its browser projection is explicitly
 `origin: "analysis"`. No analysis edge grants MCP, provider, admission or decision
 authority.
 
 `verify.evaluate-sensitivity-base@1` is the missing join between
-`analyze.run-fea-sensitivity@1` observations and Thread requirements. It never
-invents a metric alias. A study whose metric ids do not Object.is-equal the
-requirement metrics stays `UNLINKED` for the whole set. Proof-run evaluations
-(`calculix-observation-*`) are a different authority and cannot authorize a
-correction.
+`analyze.run-fea-sensitivity@1` observations and Thread requirements. It never invents a
+metric alias. A study whose metric ids do not Object.is-equal the requirement metrics
+stays `UNLINKED` for the whole set. Proof-run evaluations (`calculix-observation-*`) are
+a different authority and cannot authorize a correction.
 
 `design.apply-vector-correction@1` seals a Thread document of one bounded first-order
 proposal. The capture declares `grants: none`. It is not a CAD admission, a SysON write,
-or a mandate for a successor execution. `compile.capture-corrected-source@1`
-then substitutes the signed `z*` into the parent admission source. The later
+or a mandate for a successor execution. `compile.capture-corrected-source@1` then
+substitutes the signed `z*` into the parent admission source. The later
 `compile.seal-admission@1` stays its own MRTR. The AnalysisGraph edge
 `measured-local-sensitivity` remains an inspectable fact, not an execution gate.
 Thread-entity bindings are identities only: `assertPlanBindingsResolve` does not resolve
@@ -641,20 +641,20 @@ qualified assertions with exact evidence; Graphology remains a read-only project
 
 ## Three judgement branches
 
-Behave, make, and buy share the canonical STEP and part identities. They do
-not share verdicts. Product wording:
+Behave, make, and buy share the canonical STEP and part identities. They do not share
+verdicts. Product wording:
 [Three judgement branches](../explanations/product-direction.md#three-judgement-branches).
 Exact ops: [agent workspace golden path](agent-workspace.md#7-golden-path-generic-v3).
 
-| This | Is not |
-| --- | --- |
-| Study-base `fail` → `design.apply-vector-correction@1` | A DFM fail, a proof-run `@2` fail, or a BOM gap |
-| `industrialize.run-dfm-checks@1` | A CalculiX consumer, a `z*` grant, or isolated-geometry DFM |
-| A missing ERP / BOM binding | An implied part, a cost, or a fabricate verdict |
-| A new `design.write-geometry@1` STEP | A silent refresh of old FEA, DFM, or BOM facts |
+| This                                                   | Is not                                                      |
+| ------------------------------------------------------ | ----------------------------------------------------------- |
+| Study-base `fail` → `design.apply-vector-correction@1` | A DFM fail, a proof-run `@2` fail, or a BOM gap             |
+| `industrialize.run-dfm-checks@1`                       | A CalculiX consumer, a `z*` grant, or isolated-geometry DFM |
+| A missing ERP / BOM binding                            | An implied part, a cost, or a fabricate verdict             |
+| A new `design.write-geometry@1` STEP                   | A silent refresh of old FEA, DFM, or BOM facts              |
 
-Constrained vehicles have played **behave**. Opening make or buy now is later
-V1 work, not a hole in the current authority boundary.
+Constrained vehicles have played **behave**. Opening make or buy now is later V1 work,
+not a hole in the current authority boundary.
 
 ## Implementation status
 

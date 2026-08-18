@@ -63,6 +63,7 @@ import {
 import {
   type EngineeringProjectRevisionStore,
 } from "../../application/ports/out/engineering-project-revision-store.ts";
+import type { TechnicalCompilationAdmissionReader } from "../../application/ports/out/technical-compilation-admission-reader.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -91,11 +92,16 @@ import {
   validateMechanicalProofCase,
 } from "../../domain/analysis/mechanical-proof-case.ts";
 import { buildMechanicalProofCaseAnalysisGraph } from "../../domain/analysis/mechanical-proof-case-analysis-graph.ts";
+import {
+  compileSensitivityCatalogOfferFromAdmission,
+  SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
+} from "../../domain/analysis/sensitivity-catalog-from-proof.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
   ThreadArtifactConsumption,
   ThreadEntityKind,
+  ThreadProvenanceLink,
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
 import {
@@ -224,6 +230,8 @@ export interface VerifySealProofCaseRunExecutorDependencies {
   readonly commands: EngineeringProjectCommandService;
   readonly snapshots: ThreadSnapshotStore;
   readonly proofCaseCaptures: FileCaptureStore<"fea-proof-case">;
+  readonly sensitivityCatalogOffers?: FileCaptureStore<"sensitivity-catalog-offer">;
+  readonly admissions?: TechnicalCompilationAdmissionReader;
   readonly geometryCaptures: FileCaptureStore<"geometry-capture">;
   readonly requirementsCaptures: FileCaptureStore<"requirements-capture">;
   readonly seedCaptures: FileCaptureStore<"syson-model-seed">;
@@ -247,6 +255,10 @@ export class VerifySealProofCaseRunExecutor {
   readonly #commands: EngineeringProjectCommandService;
   readonly #snapshots: ThreadSnapshotStore;
   readonly #proofCaseCaptures: FileCaptureStore<"fea-proof-case">;
+  readonly #sensitivityCatalogOffers:
+    | FileCaptureStore<"sensitivity-catalog-offer">
+    | undefined;
+  readonly #admissions: TechnicalCompilationAdmissionReader | undefined;
   readonly #geometryCaptures: FileCaptureStore<"geometry-capture">;
   readonly #requirementsCaptures: FileCaptureStore<"requirements-capture">;
   readonly #seedCaptures: FileCaptureStore<"syson-model-seed">;
@@ -259,6 +271,8 @@ export class VerifySealProofCaseRunExecutor {
     this.#commands = deps.commands;
     this.#snapshots = deps.snapshots;
     this.#proofCaseCaptures = deps.proofCaseCaptures;
+    this.#sensitivityCatalogOffers = deps.sensitivityCatalogOffers;
+    this.#admissions = deps.admissions;
     this.#geometryCaptures = deps.geometryCaptures;
     this.#requirementsCaptures = deps.requirementsCaptures;
     this.#seedCaptures = deps.seedCaptures;
@@ -471,6 +485,16 @@ export class VerifySealProofCaseRunExecutor {
         decisionParams,
         validatedCase,
       );
+      const sensitivityCatalog = await this.#sealSensitivityCatalogOffer({
+        projectId: command.projectId,
+        basis: currentBasis,
+        snapshot: currentBasisSnapshot,
+        decisionParams,
+        proofCase: validatedCase,
+        proofDigest,
+        trustedRunId: run.id,
+        sealedAt,
+      });
 
       // Step 12 — build capture record; sha256Fingerprint; CAS save.
       const captureRecord = {
@@ -544,6 +568,28 @@ export class VerifySealProofCaseRunExecutor {
           invalidatedByChangeIds: [],
         },
       };
+      const sensitivityCatalogArtifact: ThreadArtifact | undefined =
+        sensitivityCatalog === undefined ? undefined : {
+          id:
+            `sensitivity-catalog-offer-${sensitivityCatalog.captureFingerprint.digest}`,
+          name:
+            `Sensitivity catalog opt-in: ${validatedCase.id} r${validatedCase.revision}`,
+          kind: "document",
+          version: sensitivityCatalog.offerDigest,
+          fingerprint: sensitivityCatalog.captureFingerprint,
+          uri: sensitivityCatalog.captureUri,
+          mediaType: "application/json",
+          producer: operationRef,
+          inputArtifactIds: [
+            artifact.id,
+            sensitivityCatalog.admissionArtifact.id,
+          ],
+          freshness: {
+            status: "fresh",
+            changedAt: sealedAt,
+            invalidatedByChangeIds: [],
+          },
+        };
 
       // Three full triplets: {consumption verified + derived_from + uses}
       // for each of {geometry, requirements, STEP}.
@@ -580,8 +626,26 @@ export class VerifySealProofCaseRunExecutor {
           status: "verified",
         },
       ];
+      if (sensitivityCatalogArtifact && sensitivityCatalog) {
+        consumptions.push({
+          id: `consume-proof-${artifact.id}-by-${sensitivityCatalogArtifact.id}`,
+          artifactId: artifact.id,
+          consumer: operationRef,
+          observedFingerprint: artifact.fingerprint,
+          verifiedAt: sealedAt,
+          status: "verified",
+        }, {
+          id:
+            `consume-admission-${sensitivityCatalog.admissionArtifact.id}-by-${sensitivityCatalogArtifact.id}`,
+          artifactId: sensitivityCatalog.admissionArtifact.id,
+          consumer: operationRef,
+          observedFingerprint: sensitivityCatalog.admissionArtifact.fingerprint,
+          verifiedAt: sealedAt,
+          status: "verified",
+        });
+      }
 
-      const provenance = [
+      const provenance: ThreadProvenanceLink[] = [
         // Geometry: derived_from + uses
         {
           id: `derived-from-geometry-${captureFp.digest}`,
@@ -634,6 +698,46 @@ export class VerifySealProofCaseRunExecutor {
             "The executor read and hash-verified the STEP bytes via the canonical asset reader.",
         },
       ];
+      if (sensitivityCatalogArtifact && sensitivityCatalog) {
+        const proofConsumption = consumptions[consumptions.length - 2]!;
+        const admissionConsumption = consumptions[consumptions.length - 1]!;
+        provenance.push({
+          id: `derived-from-proof-${artifact.id}-by-${sensitivityCatalogArtifact.id}`,
+          relation: "derived_from",
+          from: { kind: "artifact", id: sensitivityCatalogArtifact.id },
+          to: { kind: "artifact", id: artifact.id },
+          rationale:
+            "The signed sensitivity catalog offer is compiled from this exact sealed FEA proof declaration.",
+        }, {
+          id:
+            `derived-from-admission-${sensitivityCatalog.admissionArtifact.id}-by-${sensitivityCatalogArtifact.id}`,
+          relation: "derived_from",
+          from: { kind: "artifact", id: sensitivityCatalogArtifact.id },
+          to: {
+            kind: "artifact",
+            id: sensitivityCatalog.admissionArtifact.id,
+          },
+          rationale:
+            "The signed sensitivity catalog offer derives its unique causal lever from the exact compilation admission.",
+        }, {
+          id: `uses-${proofConsumption.id}`,
+          relation: "uses",
+          from: { kind: "consumption", id: proofConsumption.id },
+          to: { kind: "artifact", id: artifact.id },
+          rationale:
+            "The executor sealed and consumed the exact proof declaration while compiling the catalog offer.",
+        }, {
+          id: `uses-${admissionConsumption.id}`,
+          relation: "uses",
+          from: { kind: "consumption", id: admissionConsumption.id },
+          to: {
+            kind: "artifact",
+            id: sensitivityCatalog.admissionArtifact.id,
+          },
+          rationale:
+            "The executor reopened the signed compilation admission and recompiled the exact catalog offer.",
+        });
+      }
 
       const extensionId = `verify-seal-proof-case-${run.id}`;
       const extension: ThreadSnapshotExtension = {
@@ -641,7 +745,10 @@ export class VerifySealProofCaseRunExecutor {
         name: `Sealed FEA proof case: ${validatedCase.id} r${validatedCase.revision}`,
         subjectId: currentBasis.subjectId,
         capturedAt: sealedAt,
-        artifacts: [artifact],
+        artifacts: [
+          artifact,
+          ...(sensitivityCatalogArtifact ? [sensitivityCatalogArtifact] : []),
+        ],
         consumptions,
         observations: [],
         requirements: [],
@@ -714,6 +821,14 @@ export class VerifySealProofCaseRunExecutor {
               kind: "artifact" as ThreadEntityKind,
               id: artifact.id,
             },
+            ...(sensitivityCatalogArtifact
+              ? [{
+                snapshotId: snapshot.id,
+                snapshotRevision: snapshot.revision,
+                kind: "artifact" as ThreadEntityKind,
+                id: sensitivityCatalogArtifact.id,
+              }]
+              : []),
           ],
         });
       } else if (run.status !== "completed") {
@@ -822,6 +937,121 @@ export class VerifySealProofCaseRunExecutor {
     }
 
     return { validatedCase, proofText, proofDigest };
+  }
+
+  async #sealSensitivityCatalogOffer(input: {
+    readonly projectId: string;
+    readonly basis: EngineeringThreadSnapshotBasis;
+    readonly snapshot: ThreadSnapshot;
+    readonly decisionParams: FeaProofDecisionParameters;
+    readonly proofCase: MechanicalProofCase;
+    readonly proofDigest: string;
+    readonly trustedRunId: string;
+    readonly sealedAt: string;
+  }): Promise<
+    | {
+      readonly offerDigest: string;
+      readonly captureFingerprint: ContentFingerprint;
+      readonly captureUri: string;
+      readonly admissionArtifact: ThreadArtifact;
+    }
+    | undefined
+  > {
+    const signed = input.decisionParams.sensitivityCatalog;
+    if (signed === undefined) return undefined;
+    if (!this.#admissions || !this.#sensitivityCatalogOffers) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "Sensitivity catalog opt-in is signed, but the executor has no admission reader or catalog-offer capture store.",
+      );
+    }
+    const admissionArtifact = input.snapshot.artifacts.find((artifact) =>
+      artifact.id === signed.admissionArtifact.id
+    );
+    if (
+      !admissionArtifact ||
+      admissionArtifact.kind !== "document" ||
+      admissionArtifact.producer.tool !== "compile.seal-admission@1" ||
+      !fingerprintsEqual(
+        admissionArtifact.fingerprint,
+        signed.admissionArtifact.fingerprint,
+      )
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The signed sensitivity catalog admission artifact is absent or has drifted.",
+      );
+    }
+    let reopened;
+    try {
+      reopened = await this.#admissions.read({
+        projectId: input.projectId,
+        basis: input.basis,
+        artifactId: admissionArtifact.id,
+        artifactFingerprint: admissionArtifact.fingerprint,
+      });
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `The signed sensitivity catalog admission could not be reopened: ${
+          errorMessage(error)
+        }`,
+      );
+    }
+    if (!reopened) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The signed sensitivity catalog admission is unavailable.",
+      );
+    }
+    const offer = compileSensitivityCatalogOfferFromAdmission({
+      proofCase: input.proofCase,
+      proofDigest: input.proofDigest,
+      admissionArtifact: {
+        id: admissionArtifact.id,
+        fingerprint: admissionArtifact.fingerprint,
+      },
+      document: reopened.document,
+    });
+    if (offer.status !== "ready-for-opt-in") {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `The signed sensitivity catalog offer no longer compiles: ${offer.status}.`,
+      );
+    }
+    const offerFingerprint = await sha256Fingerprint(offer);
+    if (offerFingerprint.digest !== signed.digest) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The recompiled sensitivity catalog offer does not match the human-signed digest.",
+      );
+    }
+    const captureRecord = {
+      schemaVersion: SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
+      operation: VERIFY_SEAL_PROOF_CASE_OPERATION,
+      trustedRunId: input.trustedRunId,
+      sealedAt: input.sealedAt,
+      offerDigest: offerFingerprint.digest,
+      offer,
+    };
+    const captureFingerprint = await sha256Fingerprint(captureRecord);
+    const captureText = deterministicJson(captureRecord);
+    const saved = await this.#sensitivityCatalogOffers.save(
+      captureFingerprint,
+      captureText,
+    );
+    const readBack = await this.#sensitivityCatalogOffers.read(captureFingerprint);
+    if (readBack !== captureText) {
+      throw new Error(
+        "Sensitivity catalog offer was not durably readable after save.",
+      );
+    }
+    return {
+      offerDigest: offerFingerprint.digest,
+      captureFingerprint,
+      captureUri: saved.uri,
+      admissionArtifact,
+    };
   }
 
   // ── Private: geometry verification ────────────────────────────────────────

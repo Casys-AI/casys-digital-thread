@@ -104,7 +104,10 @@ Deno.test("initial capture service persists and replays the exact qualified fron
 
     assertEquals(reopened.sourceText, SOURCE_TEXT);
     assertEquals(reference.profile.id, QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE);
-    assertEquals(reference.profile.version, "1.0.0");
+    assertEquals(
+      reference.profile.version,
+      INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.version,
+    );
     assertEquals(reference.analysis.analyzer, {
       id: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.analyzer.id,
       version: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.analyzer.version,

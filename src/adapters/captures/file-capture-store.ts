@@ -380,6 +380,15 @@ export const SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Sensitivity study case",
 };
 
+export const SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "sensitivity-catalog-offer"
+> = {
+  kind: "sensitivity-catalog-offer",
+  directory: "state/local/sensitivity-catalog-offer-captures",
+  uriNamespace: "sensitivity-catalog-offer-capture",
+  label: "Sensitivity catalog offer",
+};
+
 export const SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "sensitivity-study"
 > = {

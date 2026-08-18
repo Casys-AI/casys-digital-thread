@@ -98,13 +98,18 @@ const BASIS_SCHEMA = {
 const projectFeaProofSealReviewTool: MCPTool = {
   name: "project_fea_proof_seal_review",
   description:
-    "Compile verify.seal-proof-case@1 MRTR parameters and catalog-owned work/decision identities. Name the project; caseId and basis are optional (unique catalog case, unique current Thread tip — not latest). Only an appendable review against the exact current project head is resolved and carries next.append / next.propose. A historical basis, conflicting identity, or unreadable geometry/STEP source is unavailable or unresolved — never resolved. The caller never supplies material, mesh, loads, hashes or SysON UUIDs. Read-only: no project, Thread, MRTR or solver authority.",
+    "Compile verify.seal-proof-case@1 MRTR parameters and catalog-owned work/decision identities. Name the project; caseId and basis are optional (unique catalog case, unique current Thread tip — not latest). sensitivityCatalogOptIn is an explicit false-by-default request: true is accepted only when one exact causal admission lever joins the proof CAD definition and target, then the offer digest and admission identity are added to the same MRTR. Only an appendable review against the exact current project head is resolved and carries next.append / next.propose. A historical basis, conflicting identity, or unreadable geometry/STEP source is unavailable or unresolved — never resolved. The caller never supplies material, mesh, loads, hashes or SysON UUIDs. Read-only: no project, Thread, MRTR or solver authority.",
   inputSchema: {
     type: "object",
     properties: {
       projectId: PROJECT_ID,
       caseId: CASE_ID_SCHEMA,
       basis: BASIS_SCHEMA,
+      sensitivityCatalogOptIn: {
+        type: "boolean",
+        description:
+          "Explicit opt-in to seal the causally joined sensitivity catalog offer with the FEA proof. Omit or send false to seal only the proof.",
+      },
     },
     required: ["projectId"],
     additionalProperties: false,

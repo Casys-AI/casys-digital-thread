@@ -2,10 +2,19 @@ import { assertEquals, assertExists } from "@std/assert";
 import { parseFeaProofDecisionParameters } from "../../domain/analysis/fea-proof-proposal.ts";
 import { feaProofDecisionParametersToMap } from "../../domain/analysis/fea-proof-proposal.ts";
 import { sha256Hex } from "../../domain/kernel/deterministic-json.ts";
+import { fingerprintTechnicalSourceText } from "../../domain/analysis/technical-compilation.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import type {
+  ReopenedTechnicalCompilationAdmission,
+  TechnicalCompilationAdmissionReader,
+  TechnicalCompilationAdmissionReadRequest,
+} from "../ports/out/technical-compilation-admission-reader.ts";
 import { PrepareProjectFeaProofSealReview } from "./prepare-project-fea-proof-seal-review.ts";
+
+const ADMISSION_ID = "admission-compile-1";
+const ADMISSION_DIGEST = "d".repeat(64);
 
 const AT = "2026-08-16T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl06";
@@ -17,6 +26,9 @@ const TARGET_ELEMENT_ID = "7dda85d1-764e-4329-95ea-09052355cc47";
 const STEP_BYTES = 15460;
 const STEP_BYTES_DATA = new Uint8Array(STEP_BYTES);
 const STEP_DIGEST = await sha256Hex(STEP_BYTES_DATA);
+const LINKED_SOURCE_TEXT =
+  "from build123d import Box\narm_thickness = 10\nresult = Box(220, 20, arm_thickness)\n";
+const PHOTO_SOURCE_TEXT = "from build123d import Box\nresult = Box(20, 10, 5)\n";
 const CATALOG_READER = {
   async read(path: string): Promise<string | undefined> {
     try {
@@ -32,6 +44,8 @@ const CATALOG_READER = {
     }
   },
 };
+const LINKED_CATALOG_READER = catalogReaderForSource(LINKED_SOURCE_TEXT);
+const PHOTO_CATALOG_READER = catalogReaderForSource(PHOTO_SOURCE_TEXT);
 const ADMITTED_GEOMETRY = {
   read: () =>
     Promise.resolve(JSON.stringify({
@@ -50,6 +64,32 @@ const ADMITTED_GEOMETRY = {
 const ADMITTED_STEP = {
   read: () => Promise.resolve(STEP_BYTES_DATA),
 };
+
+function catalogReaderForSource(sourceText: string) {
+  return {
+    async read(path: string): Promise<string | undefined> {
+      const raw = await CATALOG_READER.read(path);
+      if (raw === undefined) return undefined;
+      const parsed = JSON.parse(raw) as {
+        cadSource: {
+          kind: string;
+          generator: {
+            definition: { mediaType: string; sha256: string; bytes: number };
+          };
+        };
+      };
+      const fingerprint = await fingerprintTechnicalSourceText(sourceText);
+      parsed.cadSource.kind = "parametric";
+      parsed.cadSource.generator.definition = {
+        mediaType: "text/x-python",
+        sha256: fingerprint.digest,
+        bytes: new TextEncoder().encode(sourceText).byteLength,
+      };
+      return JSON.stringify(parsed);
+    },
+  };
+}
+
 const REQUIREMENTS_REVIEWER = {
   review({ snapshot }: { readonly snapshot: ThreadSnapshot }) {
     const artifact = snapshot.artifacts.find((item) =>
@@ -119,7 +159,152 @@ Deno.test("fea proof-case seal review compiles fea.proof.* from the catalog and 
   assertEquals(parsed.step.digest, STEP_DIGEST);
   assertEquals(parsed.geometryArtifact.id, `geometry-${GEOM_DIGEST}`);
   assertEquals(parsed.requirementsArtifact.id, "req-Arm-test");
+  assertEquals(parsed.sensitivityCatalog, undefined);
+  assertEquals(result.sensitivityCatalog.status, "admission-absent");
 });
+
+Deno.test(
+  "fea proof-case seal review offers a ready-for-opt-in catalog from a unique cotée admission",
+  async () => {
+    const snapshot = basisSnapshot({ withAdmission: true });
+    const review = new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      catalogReader: LINKED_CATALOG_READER,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: ADMITTED_GEOMETRY,
+      stepAssets: ADMITTED_STEP,
+      admissions: new FakeAdmissionReader(LINKED_SOURCE_TEXT),
+    });
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      caseId: CASE_ID,
+      basis: basisRef(),
+      sensitivityCatalogOptIn: true,
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.sensitivityCatalog.status, "ready-for-opt-in");
+    if (result.sensitivityCatalog.status !== "ready-for-opt-in") return;
+    assertEquals(result.sensitivityCatalog.optInDefault, false);
+    assertEquals(result.sensitivityCatalog.lever, {
+      semanticKey: "arm_thickness",
+      value: 10,
+    });
+    assertEquals(
+      result.sensitivityCatalog.metrics.map((metric) => metric.id).sort(),
+      ["maxDisplacement", "maxVonMises"],
+    );
+    assertEquals(
+      result.sensitivityCatalog.metrics.find((metric) => metric.id === "maxVonMises")
+        ?.unit,
+      "MPa",
+    );
+    assertEquals(
+      result.sensitivityCatalog.authority.resultBinding.modelElementId,
+      TARGET_ELEMENT_ID,
+    );
+    assertEquals(result.sensitivityCatalog.solver.mesh.targetSize, {
+      value: 3,
+      unit: "mm",
+    });
+    assertEquals(result.sensitivityCatalog.solver.loads[0]?.force, {
+      value: [0, 0, -10],
+      unit: "N",
+    });
+    assertEquals(result.sensitivityCatalog.step.status, "not-compiled");
+    const parsed = parseFeaProofDecisionParameters(
+      feaProofDecisionParametersToMap(result.decisionParameters),
+    );
+    assertEquals(parsed.id, CASE_ID);
+    assertEquals(
+      parsed.sensitivityCatalog?.admissionArtifact.id,
+      ADMISSION_ID,
+    );
+  },
+);
+
+Deno.test(
+  "fea proof-case seal review stays resolved when the admission is only a photo",
+  async () => {
+    const snapshot = basisSnapshot({ withAdmission: true });
+    const review = new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      catalogReader: PHOTO_CATALOG_READER,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: ADMITTED_GEOMETRY,
+      stepAssets: ADMITTED_STEP,
+      admissions: new FakeAdmissionReader(PHOTO_SOURCE_TEXT),
+    });
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      caseId: CASE_ID,
+      basis: basisRef(),
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.sensitivityCatalog.status, "no-named-lever");
+    assertExists(result.decisionParameters);
+    assertExists(result.next);
+  },
+);
+
+Deno.test(
+  "fea proof-case seal review refuses an opt-in joined to a different CAD definition",
+  async () => {
+    const snapshot = basisSnapshot({ withAdmission: true });
+    const review = new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      catalogReader: CATALOG_READER,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: ADMITTED_GEOMETRY,
+      stepAssets: ADMITTED_STEP,
+      admissions: new FakeAdmissionReader(LINKED_SOURCE_TEXT),
+    });
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      caseId: CASE_ID,
+      basis: basisRef(),
+      sensitivityCatalogOptIn: true,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.decisionParameters, undefined);
+    assertEquals(
+      result.diagnostics.map((diagnostic) => diagnostic.code),
+      ["sensitivity-catalog-unavailable"],
+    );
+  },
+);
+
+Deno.test(
+  "fea proof-case seal review preserves an admission reopening failure as unavailable",
+  async () => {
+    const snapshot = basisSnapshot({ withAdmission: true });
+    const review = new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      catalogReader: LINKED_CATALOG_READER,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: ADMITTED_GEOMETRY,
+      stepAssets: ADMITTED_STEP,
+      admissions: {
+        read(): Promise<undefined> {
+          throw new Error("CAS unavailable");
+        },
+      },
+    });
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      caseId: CASE_ID,
+      basis: basisRef(),
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.sensitivityCatalog.status, "admission-unavailable");
+  },
+);
 
 Deno.test("fea proof-case seal review auto-select ignores a broken sibling catalog entry", async () => {
   const snapshot = basisSnapshot();
@@ -133,12 +318,12 @@ Deno.test("fea proof-case seal review auto-select ignores a broken sibling catal
     const review = new PrepareProjectFeaProofSealReview({
       snapshots: new MemorySnapshots(snapshot),
       catalogReader: {
-        async read(path: string) {
+        read(path: string): Promise<string | undefined> {
           if (!path.endsWith("desk-lamp-dl06-arm-cantilever.json")) {
             if (sibling === "throw") {
               throw new Error("sibling catalog source is unreadable");
             }
-            return sibling;
+            return Promise.resolve(sibling);
           }
           return CATALOG_READER.read(path);
         },
@@ -426,7 +611,7 @@ function basisRef() {
 }
 
 function basisSnapshot(
-  options: { readonly omitStep?: boolean } = {},
+  options: { readonly omitStep?: boolean; readonly withAdmission?: boolean } = {},
 ): ThreadSnapshot {
   const geomId = `geometry-${GEOM_DIGEST}`;
   const stepId = `cad-asset-${GEOM_DIGEST}-definition-0-0-${STEP_DIGEST}`;
@@ -446,6 +631,16 @@ function basisSnapshot(
         mediaType: "model/step",
       }),
     ]),
+    ...(options.withAdmission
+      ? [
+        artifact(ADMISSION_ID, "Compilation admission", "document", ADMISSION_DIGEST, {
+          uri:
+            `casys://technical-compilation-admission-capture/sha256/${ADMISSION_DIGEST}`,
+          mediaType: "application/json",
+          tool: "compile.seal-admission@1",
+        }),
+      ]
+      : []),
   ];
   return validateThreadSnapshot({
     schemaVersion: "1.0",
@@ -494,9 +689,13 @@ function basisSnapshot(
 function artifact(
   id: string,
   name: string,
-  kind: "cad-model" | "sysml-model" | "step",
+  kind: "cad-model" | "sysml-model" | "step" | "document",
   digest: string,
-  extra: { readonly uri: string; readonly mediaType: string },
+  extra: {
+    readonly uri: string;
+    readonly mediaType: string;
+    readonly tool?: string;
+  },
 ) {
   return {
     id,
@@ -508,12 +707,107 @@ function artifact(
     mediaType: extra.mediaType,
     producer: {
       serverId: "digital-thread",
-      tool: kind === "step" ? "design.write-geometry@1" : "design.write-geometry@1",
+      tool: extra.tool ?? "design.write-geometry@1",
       runId: "run-geom",
     },
     inputArtifactIds: [] as string[],
     freshness: fresh(),
   };
+}
+
+class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
+  constructor(private readonly sourceText: string) {}
+
+  async read(
+    _request: TechnicalCompilationAdmissionReadRequest,
+  ): Promise<ReopenedTechnicalCompilationAdmission | undefined> {
+    const hasLever = this.sourceText.includes("arm_thickness = 10");
+    const sourceFingerprint = await fingerprintTechnicalSourceText(this.sourceText);
+    const parameter = {
+      id: "parameter.arm-thickness",
+      kind: "parameter" as const,
+      name: "arm_thickness",
+      span: {
+        start: { line: 2, column: 0 },
+        end: { line: 2, column: 13 },
+      },
+    };
+    const result = {
+      id: "artifact.result",
+      kind: "artifact" as const,
+      name: "result",
+    };
+    const analysis = {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id: "source.cad",
+        role: "cad-script",
+        language: "python",
+        fingerprint: sourceFingerprint,
+      },
+      analyzer: {
+        id: "build123d-qualified-lezer",
+        version: "1.6.0",
+      },
+      policy: {
+        profile: "build123d-closed-subset-v1",
+        status: "passed",
+        findings: [],
+      },
+      symbols: hasLever ? [parameter, result] : [result],
+      dependencies: hasLever
+        ? [{
+          id: "dependency.arm-thickness.result",
+          kind: "structural-incidence",
+          fromSymbolId: parameter.id,
+          toSymbolId: result.id,
+        }]
+        : [],
+      unresolvedConstructs: [],
+    };
+    const bindings = [
+      ...(hasLever
+        ? [{
+          id: "binding.arm-thickness",
+          sourceId: "source.cad",
+          sourceSymbolId: parameter.id,
+          sysmlElementId: "sysml.attribute.arm-thickness",
+          sysmlElementKind: "AttributeUsage",
+          relation: "parameterizes",
+        }]
+        : []),
+      {
+        id: "binding.result",
+        sourceId: "source.cad",
+        sourceSymbolId: result.id,
+        sysmlElementId: TARGET_ELEMENT_ID,
+        sysmlElementKind: "PartDefinition",
+        relation: "represents",
+      },
+    ];
+    const projectionSource = {
+      sourceText: this.sourceText,
+      analysis,
+      analysisFingerprint: { algorithm: "sha256", digest: "2".repeat(64) },
+      bindings,
+    };
+    return {
+      document: {
+        inputManifest: {
+          sources: [{
+            sourceText: this.sourceText,
+            analysis,
+          }],
+          bindings,
+        },
+        projections: [{
+          target: "build123d-source",
+          status: "ready-for-review",
+          sources: [projectionSource],
+        }],
+      },
+    } as unknown as ReopenedTechnicalCompilationAdmission;
+  }
 }
 
 function fresh() {

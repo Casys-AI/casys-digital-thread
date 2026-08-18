@@ -281,9 +281,7 @@ Deno.test("folding never emits a stub whose endpoints are the same node", () => 
     false,
   );
   assertEquals(
-    model.stubs.some((stub) =>
-      stub.from.id === "admission" && stub.to.id === "eval"
-    ),
+    model.stubs.some((stub) => stub.from.id === "admission" && stub.to.id === "eval"),
     true,
   );
 });
@@ -324,9 +322,7 @@ Deno.test("intentionally isolated component is flagged but nodes remain in data"
   });
 
   assertEquals(model.components.length, 2);
-  const thermal = model.components.find((c) =>
-    c.allNodeRefKeys.has("artifact:T")
-  );
+  const thermal = model.components.find((c) => c.allNodeRefKeys.has("artifact:T"));
   assertEquals(thermal?.intentionallyIsolated, true);
   // Thermal node still in raw data.
   assertEquals(model.rawNodeCount, 3);

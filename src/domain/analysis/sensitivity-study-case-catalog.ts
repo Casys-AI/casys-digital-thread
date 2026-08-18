@@ -9,7 +9,8 @@
  * EXTENSION RULE — a new study case adds exactly one entry here and one JSON
  * template at the declared path. Tests that stub file contents still resolve a
  * catalogued id; they do not invent a new one. desk-lamp-dl06 / Heron has no
- * reviewed template.
+ * reviewed catalog JSON; a signed catalog-offer on the Thread tip is a
+ * different authority.
  */
 
 export const SENSITIVITY_STUDY_CASE_SOURCES: ReadonlyMap<string, string> = new Map([
@@ -65,8 +66,9 @@ export function selectUniqueCataloguedSensitivityCase(
       caseIds: [],
       message:
         `No catalogued sensitivity-study template binds project.id "${projectId}". ` +
-        "Name an exact caseId or add a reviewed template to the catalog. " +
-        "desk-lamp-dl06 has no reviewed sensitivity case.",
+        "Name an exact caseId, add a reviewed template to the catalog, or seal a unique " +
+        "sensitivity catalog offer with the FEA proof. " +
+        "desk-lamp-dl06 has no reviewed catalog JSON.",
     };
   }
   const caseIds = matches.map((item) => item.caseId);
@@ -80,7 +82,7 @@ export function selectUniqueCataloguedSensitivityCase(
   };
 }
 
-/** Catalog-owned append identities. The caller never supplies these ids. */
+/** Server-owned append identities compiled from the case id. */
 export function sensitivityStudySealIdentities(caseId: string): {
   readonly workItemId: string;
   readonly decisionId: string;

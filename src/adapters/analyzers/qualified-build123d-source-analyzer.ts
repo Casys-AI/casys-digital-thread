@@ -69,6 +69,9 @@ import {
   validateSourceAnalysisBundle,
 } from "../../domain/analysis/source-analysis.ts";
 import {
+  isQualifiedUnsignedDecimalLiteral,
+} from "../../domain/analysis/sensitivity-source-substitution.ts";
+import {
   GeometryScriptValidationError,
   validateGeometryScript,
 } from "../../domain/engineering/geometry-script-validation.ts";
@@ -2251,7 +2254,7 @@ function parseStaticExpression(
   mathScalars: ReadonlyMap<string, ImportedName>,
 ): StaticExpression | undefined {
   if (node.name === "Number") {
-    return isQualifiedDecimalLiteral(currentText(node))
+    return isQualifiedUnsignedDecimalLiteral(currentText(node))
       ? { shape: "scalar", references: [] }
       : undefined;
   }
@@ -2305,23 +2308,6 @@ function parseStaticExpression(
     return { shape: "list", references };
   }
   return undefined;
-}
-
-/**
- * Lezer intentionally recovers some malformed Python numbers as `Number`
- * nodes, and D4 is a reachability guard rather than a CPython lexer.  The
- * qualified subset therefore applies its own closed decimal grammar.  A
- * leading sign is represented by `UnaryExpression`, never by this token.
- */
-function isQualifiedDecimalLiteral(text: string): boolean {
-  const digits = String.raw`[0-9](?:_?[0-9])*`;
-  const integer = String.raw`(?:0|[1-9](?:_?[0-9])*)`;
-  const exponent = String.raw`[eE][+-]?${digits}`;
-  const decimal = new RegExp(
-    String
-      .raw`^(?:${integer}(?:\.${digits}?)?(?:${exponent})?|\.${digits}(?:${exponent})?)$`,
-  );
-  return decimal.test(text) && Number.isFinite(Number(text.replaceAll("_", "")));
 }
 
 function parseNamedImport(

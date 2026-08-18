@@ -6,6 +6,7 @@ import {
   fingerprintTechnicalCompilationDocument,
   fingerprintTechnicalSourceText,
   fingerprintTechnicalSysmlAnchor,
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_INPUT_SCHEMA,
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
   validateTechnicalCompilationDocument,
@@ -60,9 +61,39 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
       }]
       : [],
     symbols: [
-      { id: "cad.param.a", kind: "parameter", name: "thickness" },
-      { id: "cad.param.b", kind: "parameter", name: "thickness" },
+      {
+        id: "cad.param.a",
+        kind: "parameter",
+        name: "thickness_a",
+        span: {
+          start: { line: 2, column: 0 },
+          end: { line: 2, column: 11 },
+        },
+      },
+      {
+        id: "cad.param.b",
+        kind: "parameter",
+        name: "thickness_b",
+        span: {
+          start: { line: 3, column: 0 },
+          end: { line: 3, column: 11 },
+        },
+      },
       { id: "cad.result", kind: "artifact", name: "result" },
+    ],
+    dependencies: [
+      {
+        id: "dependency.cad.a.result",
+        kind: "structural-incidence",
+        fromSymbolId: "cad.param.a",
+        toSymbolId: "cad.result",
+      },
+      {
+        id: "dependency.cad.b.result",
+        kind: "structural-incidence",
+        fromSymbolId: "cad.param.b",
+        toSymbolId: "cad.result",
+      },
     ],
     unresolvedConstructs: options.cadUnresolved
       ? [{
@@ -84,6 +115,7 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
       { id: "modelica.power", kind: "parameter", name: "power" },
       { id: "modelica.balance", kind: "equation", name: "balance" },
     ],
+    dependencies: [],
     unresolvedConstructs: [],
   });
 
@@ -173,7 +205,7 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
         },
         {
           profileId: "profile.build123d",
-          profileVersion: "1.0.0",
+          profileVersion: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
           sourceIds: ["source.cad"],
         },
       ],
@@ -203,7 +235,7 @@ async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
         },
         {
           id: "profile.build123d",
-          version: "1.0.0",
+          version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
           target: "build123d-source",
           sourceRole: "cad-script",
           language: "python",
@@ -225,6 +257,7 @@ async function sourceUnit(options: {
   readonly policyStatus: string;
   readonly findings: readonly unknown[];
   readonly symbols: readonly unknown[];
+  readonly dependencies: readonly unknown[];
   readonly unresolvedConstructs: readonly unknown[];
 }): Promise<Record<string, unknown>> {
   const sourceFingerprint = await fingerprintTechnicalSourceText(options.sourceText);
@@ -243,7 +276,7 @@ async function sourceUnit(options: {
       findings: options.findings,
     },
     symbols: options.symbols,
-    dependencies: [],
+    dependencies: options.dependencies,
     unresolvedConstructs: options.unresolvedConstructs,
   };
   return {
@@ -331,7 +364,7 @@ Deno.test("technical compiler rejects prose, solver input, and surplus execution
   );
 });
 
-Deno.test("technical compiler uses exact ids even when source display names are homonyms", async () => {
+Deno.test("technical compiler preserves exact source ids and display names", async () => {
   const { input, catalog } = await fixture();
   const result = await compileTechnicalSources(input, catalog);
   const projection = result.document.projections.find((item) =>
@@ -352,7 +385,7 @@ Deno.test("technical compiler uses exact ids even when source display names are 
     projection.sources[0].analysis.symbols
       .filter((symbol) => symbol.kind === "parameter")
       .map((symbol) => symbol.name),
-    ["thickness", "thickness"],
+    ["thickness_a", "thickness_b"],
   );
 });
 
@@ -564,6 +597,147 @@ Deno.test("technical compiler rejects foreign, kind-drifted, and duplicate bindi
     "binding source/symbol pairs must not contain duplicates",
   );
 });
+
+Deno.test(
+  "photo CAD without a named numeric lever stays unresolved on build123d-source only",
+  async () => {
+    const base = await fixture();
+    const input = structuredClone(base.input);
+    const cad = values(input.sources).map(record).find((source) =>
+      record(record(source.analysis).source).id === "source.cad"
+    );
+    assert(cad);
+    const photo = "from build123d import Box\nresult = Box(20, 10, 5)\n";
+    cad.sourceText = photo;
+    const analysis = record(cad.analysis);
+    record(analysis.source).fingerprint = await fingerprintTechnicalSourceText(
+      photo,
+    );
+    cad.analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
+
+    const result = await compileTechnicalSources(input, base.catalog);
+    assertEquals(result.document.status, "unresolved");
+    assert(
+      result.document.diagnostics.some((diagnostic) =>
+        diagnostic.code === "source.no-named-numeric-lever" &&
+        diagnostic.profileRef ===
+          `profile.build123d@${PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION}` &&
+        diagnostic.subjectRef === "source.cad"
+      ),
+    );
+    const build123d = result.document.projections.find((item) =>
+      item.target === "build123d-source"
+    );
+    const calculix = result.document.projections.find((item) =>
+      item.target === "calculix-source-candidate"
+    );
+    const modelica = result.document.projections.find((item) =>
+      item.target === "modelica-source-qualification"
+    );
+    assert(build123d);
+    assert(calculix);
+    assert(modelica);
+    assertEquals(build123d.status, "unresolved");
+    assertEquals(calculix.status, "ready-for-review");
+    assertEquals(modelica.status, "ready-for-review");
+  },
+);
+
+Deno.test(
+  "a sealed build123d profile 1 document keeps its historical photo replay semantics",
+  async () => {
+    const base = await fixture();
+    const input = structuredClone(base.input);
+    const catalog = structuredClone(base.catalog);
+    const request = values(input.profileRequests).map(record).find((item) =>
+      item.profileId === "profile.build123d"
+    );
+    const profile = values(catalog.profiles).map(record).find((item) =>
+      item.id === "profile.build123d"
+    );
+    assert(request);
+    assert(profile);
+    request.profileVersion = "1.0.0";
+    profile.version = "1.0.0";
+
+    const cad = values(input.sources).map(record).find((source) =>
+      record(record(source.analysis).source).id === "source.cad"
+    );
+    assert(cad);
+    const photo = "from build123d import Box\nresult = Box(20, 10, 5)\n";
+    cad.sourceText = photo;
+    const analysis = record(cad.analysis);
+    record(analysis.source).fingerprint = await fingerprintTechnicalSourceText(
+      photo,
+    );
+    analysis.symbols = [{ id: "cad.result", kind: "artifact", name: "result" }];
+    analysis.dependencies = [];
+    cad.analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
+    input.bindings = values(input.bindings).filter((binding) =>
+      record(binding).sourceId !== "source.cad"
+    );
+
+    const compiled = await compileTechnicalSources(input, catalog);
+    assertEquals(compiled.document.status, "ready-for-review");
+    const reopened = await validateTechnicalCompilationDocument(compiled.document);
+    assertEquals(reopened.status, "ready-for-review");
+    assertEquals(
+      reopened.diagnostics.some((item) =>
+        item.code === "source.no-named-numeric-lever"
+      ),
+      false,
+    );
+  },
+);
+
+Deno.test(
+  "a bound numeric literal that cannot reach result does not satisfy the CAD lever invariant",
+  async () => {
+    const base = await fixture();
+    const input = structuredClone(base.input);
+    const cad = values(input.sources).map(record).find((source) =>
+      record(record(source.analysis).source).id === "source.cad"
+    );
+    assert(cad);
+    const sourceText = [
+      "from build123d import Box",
+      "unused = 1",
+      "result = Box(20, 10, 5)",
+      "",
+    ].join("\n");
+    cad.sourceText = sourceText;
+    const analysis = record(cad.analysis);
+    record(analysis.source).fingerprint = await fingerprintTechnicalSourceText(
+      sourceText,
+    );
+    analysis.symbols = [{
+      id: "cad.param.a",
+      kind: "parameter",
+      name: "unused",
+      span: {
+        start: { line: 2, column: 0 },
+        end: { line: 2, column: 6 },
+      },
+    }, {
+      id: "cad.result",
+      kind: "artifact",
+      name: "result",
+    }];
+    analysis.dependencies = [];
+    cad.analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
+    input.bindings = values(input.bindings).filter((binding) =>
+      record(binding).sourceSymbolId !== "cad.param.b"
+    );
+
+    const compiled = await compileTechnicalSources(input, base.catalog);
+    assertEquals(compiled.document.status, "unresolved");
+    assert(
+      compiled.document.diagnostics.some((diagnostic) =>
+        diagnostic.code === "source.no-named-numeric-lever"
+      ),
+    );
+  },
+);
 
 Deno.test("missing explicit binding and analyzer uncertainty remain unresolved", async () => {
   const base = await fixture({ cadUnresolved: true });
@@ -896,7 +1070,7 @@ result = Box(width, height, 3)
       })),
       profileRequests: [{
         profileId: "profile.build123d.real",
-        profileVersion: "1.0.0",
+        profileVersion: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
         sourceIds: [analysis.source.id],
       }],
     };
@@ -904,7 +1078,7 @@ result = Box(width, height, 3)
       schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
       profiles: [{
         id: "profile.build123d.real",
-        version: "1.0.0",
+        version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
         target: "build123d-source",
         sourceRole: "cad-script",
         language: "python",

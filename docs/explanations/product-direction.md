@@ -153,21 +153,45 @@ to V1.
 
 ## Three judgement branches
 
-One dossier, three questions. They share brief, architecture, part identities and
-the canonical `design.write-geometry@1` STEP. They do not share verdicts.
+One dossier, three questions. They share brief, architecture, part identities and the
+canonical `design.write-geometry@1` STEP. They do not share verdicts.
 
-| Branch | Question | What judges it today | What a fail may do |
-| --- | --- | --- | --- |
-| **Behave** | Does this design behave? | CalculiX proof `@2` / `@3`, Modelica simulation, study-base join | Only a study-base `fail` may authorize `design.apply-vector-correction@1` then a new CAD |
-| **Make** | Can we fabricate this STEP? | Measured DFM (`industrialize.run-dfm-checks@1`); printability / print-estimate stay documentary | Named violation only. Does not authorize a `z*` or a geometry write |
-| **Buy** | What is the configuration and cost? | Intended ERPNext / BOM / cost evidence | No registered BOM seal yet. A missing binding is a missing binding |
+| Branch     | Question                            | What judges it today                                                                            | What a fail may do                                                                       |
+| ---------- | ----------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Behave** | Does this design behave?            | CalculiX proof `@2` / `@3`, Modelica simulation, study-base join                                | Only a study-base `fail` may authorize `design.apply-vector-correction@1` then a new CAD |
+| **Make**   | Can we fabricate this STEP?         | Measured DFM (`industrialize.run-dfm-checks@1`); printability / print-estimate stay documentary | Named violation only. Does not authorize a `z*` or a geometry write                      |
+| **Buy**    | What is the configuration and cost? | Intended ERPNext / BOM / cost evidence                                                          | No registered BOM seal yet. A missing binding is a missing binding                       |
 
-A new canonical STEP supersedes prior behave / make / buy evidence of that
-geometry. Re-runs are new reviewed operations. One branch's `pass` never
-proves another.
+A new canonical STEP supersedes prior behave / make / buy evidence of that geometry.
+Re-runs are new reviewed operations. One branch's `pass` never proves another.
 
-The constrained vehicles (`desk-lamp-dl04` / `desk-lamp-dl05`) have played
-**behave**. Make and buy stay later V1 work. Do not open those branches to
-make the current head look complete. A missing DFM or BOM card means that
-work was not run. A new live project follows
-[Run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md).
+New behave CAD is born parameterized. The technical compiler admits a `build123d-source`
+under the current profile 2.0 only when at least one finite module-level numeric
+parameter is parser-reported, bound through `parameterizes`, and causally reaches the
+unique `result` artifact. A dead assignment or a hash-sealed photo of constructor
+literals is not a dimensioned drawing and cannot feed the sensitivity grid. This is the
+behave CAD compiler invariant for every new admission, not a project-specific rule.
+Embedded profile-1 compilation documents retain their historical replay semantics;
+already-sealed STEP photos, including Heron `design.write-geometry@1`, are not
+rewritten. The gate is on new profile-2 compilation and admission only. Modelica
+qualification is out of this rule.
+
+The sensitivity catalog is not a forgotten `config/` file. When the human validates that
+project's FEA proof case, the server may offer one false-by-default opt-in compiled from
+the exact proof facts plus the unique causally joined admission lever. The offer
+requires the admission source fingerprint and bytes to match the proof CAD definition
+and its `result` binding to represent the proof target. The same FEA-seal MRTR signs the
+offer digest and admission identity. Execution reopens and recompiles both authorities
+before publishing a separate catalog-offer artifact derived from the proof and
+admission. No exact join → no checkbox. No opt-in → no artifact. The offer still leaves
+`step` uncompiled. `project_sensitivity_study_seal_review` is the next authority: it
+reopens that unique signed offer and copies the sealed proof mesh target size as the
+first-order-forward step. Mesh, loads and metric ids stay copied facts. Historical
+`config/sensitivity-study-cases/*.json` templates remain for already-catalogued
+vehicles. The review, seal and run tools stay; what becomes historical is authoring a
+new catalog JSON for a project that already has a unique signed offer.
+
+The constrained vehicles (`desk-lamp-dl04` / `desk-lamp-dl05`) have played **behave**.
+Make and buy stay later V1 work. Do not open those branches to make the current head
+look complete. A missing DFM or BOM card means that work was not run. A new live project
+follows [Run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md).

@@ -4,6 +4,7 @@ import type {
   TechnicalCompilationProfileCatalogProvider,
 } from "../../application/ports/out/technical-compilation-profile-catalog-provider.ts";
 import {
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
   type TechnicalCompilationProfileCatalog,
   validateTechnicalCompilationProfileCatalog,
@@ -30,7 +31,7 @@ export const INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG:
     schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
     profiles: [{
       id: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-      version: "1.0.0",
+      version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
       target: "build123d-source",
       sourceRole: "cad-script",
       language: "python",

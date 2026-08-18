@@ -28,6 +28,7 @@ import {
   type MechanicalCadSource,
   type MechanicalProofCase,
 } from "./mechanical-proof-case.ts";
+import { SENSITIVITY_CATALOG_OFFER_SCHEMA } from "./sensitivity-catalog-from-proof.ts";
 
 // ── Operation identity ───────────────────────────────────────────────────────
 
@@ -171,6 +172,14 @@ export interface FeaProofDecisionParameters {
   readonly supports: readonly FeaProofSupportParams[];
   readonly loads: readonly FeaProofLoadParams[];
   readonly requirements: readonly FeaProofRequirementParams[];
+  readonly sensitivityCatalog?: {
+    readonly schemaVersion: typeof SENSITIVITY_CATALOG_OFFER_SCHEMA;
+    readonly digest: string;
+    readonly admissionArtifact: {
+      readonly id: string;
+      readonly fingerprint: ContentFingerprint;
+    };
+  };
 }
 
 // ── Canonical proof text ──────────────────────────────────────────────────────
@@ -207,6 +216,7 @@ export function encodeFeaProofDecisionParameters(
     readonly id: string;
     readonly fingerprint: ContentFingerprint;
   },
+  sensitivityCatalog?: FeaProofDecisionParameters["sensitivityCatalog"],
 ): ReadonlyArray<{ key: string; label: string; value: string | number | boolean }> {
   assertFingerprint(proofDigest, "proofDigest");
   assertFingerprint(
@@ -360,6 +370,33 @@ export function encodeFeaProofDecisionParameters(
   }
 
   encodeCadSource(p, proofCase.cadSource);
+  if (sensitivityCatalog !== undefined) {
+    assertFingerprint(sensitivityCatalog.digest, "sensitivityCatalog.digest");
+    assertFingerprint(
+      sensitivityCatalog.admissionArtifact.fingerprint.digest,
+      "sensitivityCatalog.admissionArtifact.fingerprint",
+    );
+    p(
+      "sensitivity.catalog.schemaVersion",
+      "Sensitivity catalog schema version",
+      SENSITIVITY_CATALOG_OFFER_SCHEMA,
+    );
+    p(
+      "sensitivity.catalog.digest",
+      "Sensitivity catalog SHA-256",
+      sensitivityCatalog.digest,
+    );
+    p(
+      "sensitivity.catalog.admissionArtifact.id",
+      "Sensitivity catalog admission artifact ID",
+      sensitivityCatalog.admissionArtifact.id,
+    );
+    p(
+      "sensitivity.catalog.admissionArtifact.fingerprint",
+      "Sensitivity catalog admission artifact SHA-256",
+      sensitivityCatalog.admissionArtifact.fingerprint.digest,
+    );
+  }
 
   return result;
 }
@@ -577,6 +614,24 @@ export function parseFeaProofDecisionParameters(
   }
 
   const cadSource = parseCadSource(str, posInt, finiteNum, expected, params);
+  let sensitivityCatalog: FeaProofDecisionParameters["sensitivityCatalog"];
+  if (params.has("sensitivity.catalog.schemaVersion")) {
+    const catalogSchema = str("sensitivity.catalog.schemaVersion");
+    if (catalogSchema !== SENSITIVITY_CATALOG_OFFER_SCHEMA) {
+      invalid(
+        "invalid_schema",
+        `sensitivity.catalog.schemaVersion must be ${SENSITIVITY_CATALOG_OFFER_SCHEMA}.`,
+      );
+    }
+    sensitivityCatalog = {
+      schemaVersion: SENSITIVITY_CATALOG_OFFER_SCHEMA,
+      digest: fp("sensitivity.catalog.digest").digest,
+      admissionArtifact: {
+        id: str("sensitivity.catalog.admissionArtifact.id"),
+        fingerprint: fp("sensitivity.catalog.admissionArtifact.fingerprint"),
+      },
+    };
+  }
 
   // Reject any key that was not consumed above.
   for (const key of params.keys()) {
@@ -613,6 +668,7 @@ export function parseFeaProofDecisionParameters(
     supports,
     loads,
     requirements,
+    ...(sensitivityCatalog === undefined ? {} : { sensitivityCatalog }),
   };
 }
 
