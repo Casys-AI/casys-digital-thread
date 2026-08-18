@@ -89,6 +89,11 @@ feraient déborder la cellule de grille. */
   box-shadow: var(--shadow-card);
 } /* --- Contrôles legacy : boutons ------------------------------------------- */
 
+/* Vignette d'épine (page Project) : les 390px du viewer de review
+(feuille 11) sont trop hauts pour la piste de 17rem. */
+.thread-workbench .thread-spine-geometry .geometry-draft-canvas-shell {
+  height: 220px;
+}
 .thread-workbench button {
   border-radius: var(--radius-sm);
   font-family: var(--sans);

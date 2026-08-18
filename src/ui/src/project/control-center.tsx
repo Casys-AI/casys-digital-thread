@@ -94,38 +94,59 @@ export function ReviewNotifications({
               : "Past reviews remain in Activity."}
           </p>
         </div>
-        <dl className="flex shrink-0 gap-6">
+        <dl className="grid shrink-0 grid-cols-3 divide-x divide-border">
           <div
-            className="flex flex-col-reverse text-right"
+            className="flex flex-col-reverse px-4 text-right first:pl-0 last:pr-0"
             data-tone={nextReview ? "attention" : "quiet"}
           >
             <dt className="text-xs text-muted-foreground">To review</dt>
             <dd className="m-0">
-              <strong className="text-xl font-semibold tabular-nums">
+              <strong
+                className={cn(
+                  "text-xl font-semibold tabular-nums",
+                  needsReviewCount === 0
+                    ? "text-muted-foreground/50"
+                    : "text-warning",
+                )}
+              >
                 {needsReviewCount}
               </strong>
             </dd>
           </div>
           <div
-            className="flex flex-col-reverse text-right"
+            className="flex flex-col-reverse px-4 text-right first:pl-0 last:pr-0"
             data-tone={pendingResultCount > 0 ? "preparing" : "quiet"}
           >
             <dt className="text-xs text-muted-foreground">Result pending</dt>
             <dd className="m-0">
-              <strong className="text-xl font-semibold tabular-nums">
+              <strong
+                className={cn(
+                  "text-xl font-semibold tabular-nums",
+                  pendingResultCount === 0
+                    ? "text-muted-foreground/50"
+                    : "text-brand",
+                )}
+              >
                 {pendingResultCount}
               </strong>
             </dd>
           </div>
           <div
-            className="flex flex-col-reverse text-right"
+            className="flex flex-col-reverse px-4 text-right first:pl-0 last:pr-0"
             data-tone={revisionRequestedCount > 0 ? "attention" : "quiet"}
           >
             <dt className="text-xs text-muted-foreground">
               Revision requested
             </dt>
             <dd className="m-0">
-              <strong className="text-xl font-semibold tabular-nums">
+              <strong
+                className={cn(
+                  "text-xl font-semibold tabular-nums",
+                  revisionRequestedCount === 0
+                    ? "text-muted-foreground/50"
+                    : "text-warning",
+                )}
+              >
                 {revisionRequestedCount}
               </strong>
             </dd>
@@ -158,6 +179,9 @@ function ReviewInboxHandoff({
   onOpenActivity?: (decisionId?: string) => void;
   onOpenReview?: (kind: ProjectReviewKind) => void;
 }): JSX.Element {
+  // La teinte suit la branche, pas le tone : "revision requested" partage le
+  // tone `required` avec "result pending" mais reste un signal warning,
+  // aligné sur son compteur.
   const state = nextReview
     ? {
       tone: "proposed",
@@ -166,6 +190,7 @@ function ReviewInboxHandoff({
       detail: "Inspect the exact preview, then validate or request a revision.",
       action: "Inspect exact preview",
       icon: "!",
+      iconTone: "bg-warning/15 text-warning",
     }
     : pendingResultCount > 0
     ? {
@@ -175,6 +200,7 @@ function ReviewInboxHandoff({
       detail: "Activity will show the result when it is published.",
       action: "See activity",
       icon: "···",
+      iconTone: "bg-brand/10 text-brand",
     }
     : revisionRequestedCount > 0
     ? {
@@ -184,6 +210,7 @@ function ReviewInboxHandoff({
       detail: "The decision record does not prove that a run is active.",
       action: "See activity",
       icon: "↺",
+      iconTone: "bg-warning/15 text-warning",
     }
     : {
       tone: "approved",
@@ -192,13 +219,8 @@ function ReviewInboxHandoff({
       detail: "Use Activity to follow the project.",
       action: "See activity",
       icon: "✓",
+      iconTone: "bg-success/10 text-success",
     };
-
-  const iconTone = state.tone === "proposed"
-    ? "text-warning"
-    : state.tone === "required"
-    ? "text-brand"
-    : "text-success";
 
   return (
     <section
@@ -209,7 +231,7 @@ function ReviewInboxHandoff({
       <span
         aria-hidden="true"
         className={`grid size-8 shrink-0 place-items-center rounded-md ` +
-          `bg-background text-sm font-medium ${iconTone}`}
+          `text-sm font-medium ${state.iconTone}`}
       >
         {state.icon}
       </span>

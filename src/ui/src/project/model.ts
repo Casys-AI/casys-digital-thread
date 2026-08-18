@@ -166,6 +166,36 @@ export interface ProjectPath {
   readonly pendingDecisions: readonly EngineeringDecision[];
 }
 
+/**
+ * Compresse le passé de l'épine : au-delà d'un seuil d'affichage, la série
+ * initiale de gates satisfaites se replie en une rangée-résumé, en gardant
+ * les dernières satisfaites visibles pour le contexte. La phase active, une
+ * phase bloquée ou toute gate non satisfaite ne sont jamais repliées — le
+ * repli s'arrête à la première non-satisfaite.
+ */
+export function splitLeadingSatisfiedGates<
+  T extends { readonly status: EngineeringPhaseStatus },
+>(
+  phases: readonly T[],
+): { readonly collapsed: readonly T[]; readonly visible: readonly T[] } {
+  const displayThreshold = 8;
+  const keepVisible = 2;
+  const minCollapsed = 3;
+  if (phases.length <= displayThreshold) {
+    return { collapsed: [], visible: phases };
+  }
+  let leading = 0;
+  while (phases[leading]?.status === "completed") {
+    leading++;
+  }
+  const collapsedEnd = leading - keepVisible;
+  if (collapsedEnd < minCollapsed) return { collapsed: [], visible: phases };
+  return {
+    collapsed: phases.slice(0, collapsedEnd),
+    visible: phases.slice(collapsedEnd),
+  };
+}
+
 export function buildProjectBrief(
   snapshot: EngineeringProjectSnapshot,
 ): ProjectBrief {
