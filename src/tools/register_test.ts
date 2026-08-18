@@ -469,6 +469,45 @@ Deno.test("Build123d execution registration stays unavailable until the explicit
   );
 });
 
+Deno.test(
+  "sandbox-composed MCP lists admitted export and does not list geometry preview",
+  async () => {
+    const temporaryDirectory = await Deno.makeTempDir({
+      prefix: "casys-sandbox-tools-",
+    });
+    try {
+      const { app } = await createConsoleServer({
+        manifest: {
+          version: 1,
+          servers: [{
+            id: "build123d-sandbox",
+            displayName: "build123d sandbox",
+            role: "sandbox",
+            serviceName: "mcp-build123d-sandbox",
+            transport: "streamable-http",
+            mcpUrl: "http://127.0.0.1:3998/mcp",
+            healthUrl: "http://127.0.0.1:3998/health",
+            image: "example.test/sandbox:1",
+            required: false,
+            expectedTools: ["build123d_export"],
+          }],
+        },
+        runs: [runFixture()],
+        probe: healthyProbe(),
+        docker: unavailableDocker(),
+        logger: () => {},
+        activeProjectDirectory: `${temporaryDirectory}/projects`,
+        projectReviewIntentDirectory: `${temporaryDirectory}/review-intents`,
+      });
+      const names = app.getToolNames();
+      assertEquals(names.includes("project_admitted_geometry_export"), true);
+      assertEquals(names.includes("project_geometry_preview"), false);
+    } finally {
+      await Deno.remove(temporaryDirectory, { recursive: true });
+    }
+  },
+);
+
 Deno.test("control-plane MCP tools are namespaced, read-only, and return structured roots", async () => {
   const temporaryDirectory = await Deno.makeTempDir({
     prefix: "casys-project-tools-",
