@@ -47,16 +47,27 @@ Deno.test("parseArchitectureProposalParameters: missing system.name is rejected"
   assertEquals(error.code, "missing_system");
 });
 
-Deno.test("parseArchitectureProposalParameters: no components is rejected as empty_proposal", () => {
-  const error = assertThrows(
-    () =>
-      parseArchitectureProposalParameters([
-        { key: "architecture.package", label: "Package", value: "DroneV4" },
-        { key: "system.name", label: "System", value: "DroneSystem" },
-      ]),
-    ArchitectureProposalParseError,
-  ) as ArchitectureProposalParseError;
-  assertEquals(error.code, "empty_proposal");
+Deno.test("parseArchitectureProposalParameters: a system-only proposal is the unique PartDefinition", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "Cantilever" },
+    { key: "system.name", label: "System", value: "CantileverArm" },
+    { key: "attribute.thickness.name", label: "Thickness", value: "thickness" },
+    {
+      key: "attribute.thickness.parent",
+      label: "Thickness parent",
+      value: "CantileverArm",
+    },
+  ]);
+  assertEquals(proposal.components, []);
+  assertEquals(proposal.attributes, [{
+    name: "thickness",
+    parentName: "CantileverArm",
+  }]);
+  const sysml = renderArchitectureSysml(proposal);
+  assertEquals(sysml.includes("  part def CantileverArm {"), true);
+  assertEquals(sysml.includes("    attribute thickness;"), true);
+  assertEquals(sysml.includes("part def "), true);
+  assertEquals([...sysml.matchAll(/part def /g)].length, 1);
 });
 
 Deno.test("parseArchitectureProposalParameters: unknown key is rejected", () => {

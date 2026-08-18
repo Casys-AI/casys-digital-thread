@@ -168,10 +168,29 @@ const COMPONENT_DECLARATION_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+const ATTRIBUTE_DECLARATION_SCHEMA = {
+  type: "object",
+  properties: {
+    slug: {
+      ...BRIEF_ITEM_ID_SCHEMA,
+      description: "Attribute slug used by the attribute.<slug>.<field> grammar.",
+    },
+    name: { type: "string", minLength: 1, maxLength: 256 },
+    parent: { type: "string", minLength: 1, maxLength: 256 },
+    sourceItemId: {
+      ...BRIEF_ITEM_ID_SCHEMA,
+      description:
+        "Exact approved-brief item stating this AttributeUsage. It must not be an exclusion or an open-question.",
+    },
+  },
+  required: ["slug", "name", "sourceItemId"],
+  additionalProperties: false,
+} as const;
+
 const projectBriefArchitectureReviewTool: MCPTool = {
   name: "project_brief_architecture_review",
   description:
-    "Compile reviewed brief architecture into the canonical model.write-architecture@1 MRTR parameters. The server reopens the exact human-approved canonical brief itself and checks every declaration against it: an absent item, an item that is an exclusion or an open-question, an unsourced item, a duplicate slug, or an envelope the architecture grammar refuses (unknown parent, cycle, duplicate usage) yields an unresolved result with diagnostics and no parameters. The caller may name only the package, the system, the component rows and the brief items; parameter keys, labels and structural admissibility remain server-owned. This read-only surface writes no EngineeringProject or Thread state, calls no SysON, and grants no MRTR or dispatch authority. It does not read the item prose, so it never asserts that a declared name restates its statement — the signing human does.",
+    "Compile reviewed brief architecture into the canonical model.write-architecture@1 MRTR parameters. The server reopens the exact human-approved canonical brief itself and checks every declaration against it: an absent item, an item that is an exclusion or an open-question, an unsourced item, a duplicate slug, or an envelope the architecture grammar refuses (unknown parent, cycle, duplicate usage) yields an unresolved result with diagnostics and no parameters. The caller may name only the package, the system, optional component rows, optional AttributeUsage rows and the brief items; parameter keys, labels and structural admissibility remain server-owned. Zero components is a single-part system. This read-only surface writes no EngineeringProject or Thread state, calls no SysON, and grants no MRTR or dispatch authority. It does not read the item prose, so it never asserts that a declared name restates its statement — the signing human does.",
   inputSchema: {
     type: "object",
     properties: {
@@ -188,8 +207,13 @@ const projectBriefArchitectureReviewTool: MCPTool = {
       },
       components: {
         type: "array",
-        minItems: 1,
+        minItems: 0,
         items: COMPONENT_DECLARATION_SCHEMA,
+      },
+      attributes: {
+        type: "array",
+        minItems: 0,
+        items: ATTRIBUTE_DECLARATION_SCHEMA,
       },
     },
     required: [

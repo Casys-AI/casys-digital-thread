@@ -20,7 +20,7 @@ import {
 
 export const RENDERED_ARCHITECTURE_SYSML_ANALYZER_ID =
   "rendered-architecture-sysml" as const;
-export const RENDERED_ARCHITECTURE_SYSML_ANALYZER_VERSION = "1.0.0" as const;
+export const RENDERED_ARCHITECTURE_SYSML_ANALYZER_VERSION = "1.1.0" as const;
 export const RENDERED_ARCHITECTURE_SYSML_ANALYSIS_PROFILE =
   "server-rendered-architecture-sysml-v1" as const;
 
@@ -48,11 +48,15 @@ export class RenderedArchitectureSysmlAnalyzer
     for (const [index, entry] of rendered.manifest.entries.entries()) {
       const kind = entry.kind === "package"
         ? "artifact" as const
+        : entry.kind === "attribute"
+        ? "parameter" as const
         : "component" as const;
       const name = entry.kind === "package"
         ? entry.packageName
         : entry.kind === "part-definition"
         ? entry.definitionName!
+        : entry.kind === "attribute"
+        ? entry.attributeName!
         : entry.usageName!;
       const id = await tupleId("symbol", {
         entry: entryIdentity(entry),
@@ -154,6 +158,7 @@ function entryIdentity(
     parentName: entry.parentName,
     definitionName: entry.definitionName,
     usageName: entry.usageName,
+    attributeName: entry.attributeName,
     targetName: entry.targetName,
     span: entry.span,
   };

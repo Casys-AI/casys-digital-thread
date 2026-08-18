@@ -113,6 +113,27 @@ Omit `parent` and the production parser anchors the component to `system.name`. 
 that names neither the system nor another declared component is refused by the grammar,
 along with cycles and duplicate usages under one parent.
 
+Zero `components` is a single-part system: the system name is the unique PartDefinition.
+Optional `attributes` compile `attribute.<slug>.name` / `attribute.<slug>.parent` for
+later unique `parameterizes` joins.
+
+```jsonc
+{
+  "projectId": "cantilever-arm-ca01",
+  "packageName": "Cantilever",
+  "packageSourceItemId": "objective",
+  "systemName": "CantileverArm",
+  "systemSourceItemId": "mission",
+  "components": [],
+  "attributes": [{
+    "slug": "thickness",
+    "name": "thickness",
+    "parent": "CantileverArm",
+    "sourceItemId": "constraint-thickness"
+  }]
+}
+```
+
 ## Reading an unresolved result
 
 `status` is `unresolved` whenever anything was refused, and **no** `decisionParameters`

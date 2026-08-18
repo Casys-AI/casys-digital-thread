@@ -210,13 +210,6 @@ export function parseArchitectureProposalParameters(
     );
   }
 
-  if (componentFields.size === 0) {
-    throw new ArchitectureProposalParseError(
-      "empty_proposal",
-      "The architecture proposal declares no components.",
-    );
-  }
-
   const components: ArchitectureComponent[] = [];
 
   for (const [slug, fields] of componentFields) {

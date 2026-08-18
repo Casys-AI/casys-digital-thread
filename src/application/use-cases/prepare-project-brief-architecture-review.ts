@@ -3,8 +3,9 @@
  * `model.write-architecture@1` MRTR parameters.
  *
  * The server owns the parameter envelope: the caller declares the package,
- * the system and typed component occurrences, each citing the exact brief
- * item that states it, and this use case reopens the human-approved
+ * the system, optional component occurrences and optional AttributeUsage
+ * rows, each citing the exact brief item that states it, and this use case
+ * reopens the human-approved
  * canonical brief, checks every declaration against it, and assembles the
  * parameters through the production grammar itself. It writes no project or
  * Thread state, calls no provider, and approves nothing.
@@ -17,6 +18,7 @@
  */
 
 import type {
+  BriefArchitectureAttributeDeclaration,
   BriefArchitectureComponentDeclaration,
   BriefArchitectureDiagnostic,
   BriefArchitectureProvenanceEntry,
@@ -28,6 +30,7 @@ import type { EngineeringProjectRevisionStore } from "../ports/out/engineering-p
 import { approvedBriefBasisForProject } from "./project/engineering-project-command-service.ts";
 import {
   arrayOf,
+  closedRecord,
   deepFreeze,
   exactRecord,
   nonEmptyText,
@@ -173,6 +176,38 @@ export class PrepareProjectBriefArchitectureReview
       }
     }
 
+    const seenAttributeSlugs = new Set<string>();
+    for (const attribute of command.attributes ?? []) {
+      if (seenAttributeSlugs.has(attribute.slug)) {
+        diagnostics.push({
+          code: "duplicate-attribute-slug",
+          slug: attribute.slug,
+          sourceItemId: attribute.sourceItemId,
+          message: `Attribute slug "${attribute.slug}" is declared more than once; ` +
+            "each attribute must own exactly one slug.",
+        });
+        continue;
+      }
+      seenAttributeSlugs.add(attribute.slug);
+
+      const item = resolveItem(brief, attribute.sourceItemId);
+      if (!item) {
+        diagnostics.push({
+          code: "brief-item-absent",
+          slug: attribute.slug,
+          sourceItemId: attribute.sourceItemId,
+          message: `Attribute "${attribute.slug}" names brief item ` +
+            `"${attribute.sourceItemId}", which the approved brief does not contain.`,
+        });
+        continue;
+      }
+      collectItemDiagnostics(item, attribute.slug, diagnostics);
+      for (const parameter of attributeParameters(attribute)) {
+        parameters.push(parameter);
+        provenance.push(provenanceFor(parameter.key, item));
+      }
+    }
+
     /**
      * The production parser is the only authority on the envelope: reusing it
      * here means an invalid identifier, an unknown parent or an unknown key is
@@ -300,6 +335,24 @@ function componentParameters(
   return parameters;
 }
 
+function attributeParameters(
+  attribute: BriefArchitectureAttributeDeclaration,
+): readonly EngineeringDecisionProposalParameter[] {
+  const parameters: EngineeringDecisionProposalParameter[] = [{
+    key: `attribute.${attribute.slug}.name`,
+    label: `Attribute ${attribute.slug} name`,
+    value: attribute.name,
+  }];
+  if (attribute.parent !== undefined) {
+    parameters.push({
+      key: `attribute.${attribute.slug}.parent`,
+      label: `Attribute ${attribute.slug} parent`,
+      value: attribute.parent,
+    });
+  }
+  return parameters;
+}
+
 function provenanceFor(
   parameterKey: string,
   item: ProjectBriefItem,
@@ -313,23 +366,34 @@ function provenanceFor(
 }
 
 function parseCommand(value: unknown): ProjectBriefArchitectureReviewCommand {
-  const root = exactRecord(value, [
-    "projectId",
-    "packageName",
-    "packageSourceItemId",
-    "systemName",
-    "systemSourceItemId",
-    "components",
-  ], "$briefArchitectureReview");
+  const root = closedRecord(
+    value,
+    [
+      "projectId",
+      "packageName",
+      "packageSourceItemId",
+      "systemName",
+      "systemSourceItemId",
+      "components",
+      "attributes",
+    ],
+    [
+      "projectId",
+      "packageName",
+      "packageSourceItemId",
+      "systemName",
+      "systemSourceItemId",
+      "components",
+    ],
+    "$briefArchitectureReview",
+  );
   const components = arrayOf(
     root.components,
     "$briefArchitectureReview.components",
   );
-  if (components.length === 0) {
-    throw new TypeError(
-      "$briefArchitectureReview.components must declare at least one component.",
-    );
-  }
+  const attributes = root.attributes === undefined
+    ? []
+    : arrayOf(root.attributes, "$briefArchitectureReview.attributes");
   return {
     projectId: safeId(root.projectId, "$briefArchitectureReview.projectId"),
     packageName: nonEmptyText(
@@ -351,6 +415,14 @@ function parseCommand(value: unknown): ProjectBriefArchitectureReviewCommand {
     components: components.map((item, index) =>
       parseDeclaration(item, `$briefArchitectureReview.components[${index}]`)
     ),
+    ...(attributes.length === 0 ? {} : {
+      attributes: attributes.map((item, index) =>
+        parseAttributeDeclaration(
+          item,
+          `$briefArchitectureReview.attributes[${index}]`,
+        )
+      ),
+    }),
   };
 }
 
@@ -370,6 +442,28 @@ function parseDeclaration(
     slug: safeId(root.slug, `${path}.slug`),
     name: nonEmptyText(root.name, `${path}.name`),
     usage: nonEmptyText(root.usage, `${path}.usage`),
+    ...(root.parent !== undefined
+      ? { parent: nonEmptyText(root.parent, `${path}.parent`) }
+      : {}),
+    sourceItemId: safeId(root.sourceItemId, `${path}.sourceItemId`),
+  };
+}
+
+function parseAttributeDeclaration(
+  value: unknown,
+  path: string,
+): BriefArchitectureAttributeDeclaration {
+  const record = value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+  if (!record) throw new TypeError(`${path} must be an object.`);
+  const keys = Object.hasOwn(record, "parent")
+    ? ["slug", "name", "parent", "sourceItemId"]
+    : ["slug", "name", "sourceItemId"];
+  const root = exactRecord(value, keys, path);
+  return {
+    slug: safeId(root.slug, `${path}.slug`),
+    name: nonEmptyText(root.name, `${path}.name`),
     ...(root.parent !== undefined
       ? { parent: nonEmptyText(root.parent, `${path}.parent`) }
       : {}),

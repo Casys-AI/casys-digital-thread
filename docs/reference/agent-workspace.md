@@ -140,10 +140,10 @@ How-to: [Author architecture SysML](../how-to/author-architecture-sysml.md).
 
 ### Brief compilation (approved brief → proposal grammar)
 
-| Tool                                | Writes | Grant                                                      |
-| ----------------------------------- | ------ | ---------------------------------------------------------- |
-| `project_brief_architecture_review` | None   | `decisionParameters` for `model.write-architecture@1` only |
-| `project_brief_requirements_review` | None   | `decisionParameters` for `model.write-requirements@1` only |
+| Tool                                | Writes | Grant                                                                                                                                              |
+| ----------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project_brief_architecture_review` | None   | `decisionParameters` for `model.write-architecture@1` only. Zero components is a single-part system; optional `attributes` compile AttributeUsage. |
+| `project_brief_requirements_review` | None   | `decisionParameters` for `model.write-requirements@1` only                                                                                         |
 
 The server reopens the exact human-approved canonical brief itself; no brief bytes,
 parameter keys, structural admissibility or unit admissibility come from the caller.

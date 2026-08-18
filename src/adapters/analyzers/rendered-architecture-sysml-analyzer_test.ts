@@ -118,3 +118,36 @@ Deno.test("rendered SysML analyzer represents an enrichment usage target as an a
   assertEquals(bundle.dependencies.length, 1);
   assertEquals(bundle.dependencies[0]?.kind, "structural-incidence");
 });
+
+Deno.test("rendered SysML analyzer names a system-only AttributeUsage", async () => {
+  const rendered = renderArchitectureSysmlWithManifest(
+    parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "Cantilever" },
+      { key: "system.name", label: "System", value: "CantileverArm" },
+      {
+        key: "attribute.thickness.name",
+        label: "Thickness",
+        value: "thickness",
+      },
+      {
+        key: "attribute.thickness.parent",
+        label: "Thickness parent",
+        value: "CantileverArm",
+      },
+    ]),
+  );
+  const sourceId = await sysmlRenderedSourceIdFor(
+    rendered.manifest.selector,
+    "run-1",
+    { id: "model.write-architecture", version: "1" },
+  );
+  const bundle = await new RenderedArchitectureSysmlAnalyzer().analyzeRendered({
+    sourceId,
+    rendered,
+  });
+  assertEquals(
+    bundle.symbols.map((symbol) => `${symbol.kind}:${symbol.name}`).sort(),
+    ["artifact:Cantilever", "component:CantileverArm", "parameter:thickness"],
+  );
+  assertEquals(bundle.unresolvedConstructs, []);
+});

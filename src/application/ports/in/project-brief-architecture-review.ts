@@ -2,8 +2,9 @@
  * Inward port for compiling reviewed brief architecture into the canonical
  * `model.write-architecture@1` MRTR parameters.
  *
- * The caller declares the package, the system and one typed component row per
- * retained occurrence, and names the exact brief item that states each one.
+ * The caller declares the package, the system, optional typed component rows
+ * and optional AttributeUsage rows, and names the exact brief item that
+ * states each one. Zero components is a single-part system.
  * The server reopens the human-approved canonical brief itself: no brief
  * bytes, SysML text, provider, tool or parameter envelope is accepted from
  * the caller. A declaration whose brief item is absent, non-committing or
@@ -36,6 +37,15 @@ export interface BriefArchitectureComponentDeclaration {
   readonly sourceItemId: string;
 }
 
+/** One reviewed AttributeUsage transcribed from an exact brief item. */
+export interface BriefArchitectureAttributeDeclaration {
+  readonly slug: string;
+  readonly name: string;
+  /** Owning PartDefinition. Omitted: the production parser defaults to `system.name`. */
+  readonly parent?: string;
+  readonly sourceItemId: string;
+}
+
 export interface ProjectBriefArchitectureReviewCommand {
   readonly projectId: string;
   readonly packageName: string;
@@ -45,6 +55,7 @@ export interface ProjectBriefArchitectureReviewCommand {
   /** Exact brief item that states the architecture system. */
   readonly systemSourceItemId: string;
   readonly components: readonly BriefArchitectureComponentDeclaration[];
+  readonly attributes?: readonly BriefArchitectureAttributeDeclaration[];
 }
 
 /**
@@ -64,6 +75,7 @@ export type BriefArchitectureDiagnosticCode =
   | "brief-item-not-committing"
   | "brief-item-unsourced"
   | "duplicate-component-slug"
+  | "duplicate-attribute-slug"
   | "proposal-grammar-rejected";
 
 export interface BriefArchitectureDiagnostic {

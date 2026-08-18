@@ -58,6 +58,37 @@ Deno.test(
 );
 
 Deno.test(
+  "brief architecture review compiles a system-only part with a unique AttributeUsage",
+  async () => {
+    const review = await reviewFor(await approvedProjectStore());
+
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      packageName: "Cantilever",
+      packageSourceItemId: "objective",
+      systemName: "CantileverArm",
+      systemSourceItemId: "mission-articulated-arm",
+      components: [],
+      attributes: [{
+        slug: "thickness",
+        name: "thickness",
+        parent: "CantileverArm",
+        sourceItemId: "constraint-thickness",
+      }],
+    });
+
+    assertEquals(result.status, "resolved");
+    assertExists(result.decisionParameters);
+    const parsed = parseArchitectureProposalParameters(result.decisionParameters);
+    assertEquals(parsed.components, []);
+    assertEquals(parsed.attributes, [{
+      name: "thickness",
+      parentName: "CantileverArm",
+    }]);
+  },
+);
+
+Deno.test(
   "brief architecture review refuses a component whose brief item the approved brief does not contain",
   async () => {
     const review = await reviewFor(await approvedProjectStore());
@@ -190,6 +221,12 @@ function briefItems(): readonly ProjectBriefItem[] {
       id: "constraint-arm",
       kind: "constraint",
       statement: "The arm is a retained structural component of the system.",
+      sourceRefs: source,
+    },
+    {
+      id: "constraint-thickness",
+      kind: "constraint",
+      statement: "The arm thickness is a named numeric handle of the part.",
       sourceRefs: source,
     },
     {
