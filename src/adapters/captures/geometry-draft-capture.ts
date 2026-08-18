@@ -46,6 +46,10 @@ import type {
   GeometryExportFormat,
   GeometryManifest,
 } from "../../domain/engineering/geometry-proposal.ts";
+import {
+  type GeometryDraftAdmission,
+  parseGeometryDraftAdmission,
+} from "../../domain/engineering/geometry-draft-admission.ts";
 import { assertGeometryManifestArtifactIdentities } from "../../domain/engineering/geometry-proposal.ts";
 import { validateGeometryScript } from "../../domain/engineering/geometry-script-validation.ts";
 import {
@@ -143,6 +147,7 @@ export interface GeometryDraftCapture {
   readonly components: ReadonlyArray<GeometryComponentBinding>;
   readonly assemblyFiles: ReadonlyArray<GeometryDraftAssemblyFile>;
   readonly partMeshes: ReadonlyArray<GeometryDraftPartMesh>;
+  readonly admission?: GeometryDraftAdmission;
   readonly fingerprint: ContentFingerprint;
 }
 
@@ -151,6 +156,8 @@ export interface GeometryDraftCaptureInput {
   readonly script: string;
   /** Manifest built from the operation parameters; components remain binding metadata. */
   readonly manifest: GeometryManifest;
+  /** Required later by `design.write-geometry@1`. Preview drafts omit it. */
+  readonly admission?: GeometryDraftAdmission;
 }
 
 export interface GeometryDraftCaptureOptions {
@@ -249,6 +256,7 @@ export interface GeometryBundleDraftCapture {
   readonly occurrences: ReadonlyArray<GeometryBundleOccurrence>;
   /** Exact ordered N+1 call plan executed under producer.runId. */
   readonly providerCalls: ReadonlyArray<GeometryBundleDraftProviderCall>;
+  readonly admission?: GeometryDraftAdmission;
   readonly fingerprint: ContentFingerprint;
 }
 
@@ -261,6 +269,8 @@ export interface GeometryBundleDraftCaptureInput {
     readonly elementId: string;
     readonly script: string;
   }>;
+  /** Required later by `design.write-geometry@1`. Preview drafts omit it. */
+  readonly admission?: GeometryDraftAdmission;
 }
 
 /** Persisted binary metadata that the seal must re-prove against local bytes. */
@@ -402,6 +412,7 @@ export async function captureGeometryDraft(
 
   // Step 6: build + save the JSON capture.
   const capturedAt = now();
+  const admission = stampDraftAdmission(input.admission, scriptHash);
   const unsigned = {
     schemaVersion: GEOMETRY_DRAFT_CAPTURE_SCHEMA,
     kind: "geometry-draft" as const,
@@ -423,6 +434,7 @@ export async function captureGeometryDraft(
     components: [...manifest.components],
     assemblyFiles: Object.freeze(assemblyFiles),
     partMeshes: Object.freeze(partMeshes),
+    ...(admission === undefined ? {} : { admission }),
   };
   // Fingerprint the unsigned object so SHA-256(deterministicJson(unsigned))
   // matches SHA-256(captureText bytes) — the invariant FileCaptureStore.save
@@ -655,6 +667,7 @@ export async function captureGeometryBundleDraft(
   // Deliberately permits equal content hashes across distinct definitions.
   // Identity is the exact PartDefinition id, not the content-addressed blob.
   assertGeometryBundleManifest(completedManifest, { requireCompleted: true });
+  const admission = stampDraftAdmission(input.admission, assemblyScriptHash);
 
   // No local binary is exposed until the complete N+1 response set validates.
   for (
@@ -709,6 +722,7 @@ export async function captureGeometryBundleDraft(
         formats: [...manifest.partExportFormats],
       })),
     ],
+    ...(admission === undefined ? {} : { admission }),
   };
   const fingerprint = await sha256Fingerprint(unsigned);
   const captureText = deterministicJson(unsigned);
@@ -1386,6 +1400,20 @@ async function materializeToDraftAssets(
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
+
+function stampDraftAdmission(
+  admission: GeometryDraftAdmission | undefined,
+  scriptHash: ContentFingerprint,
+): GeometryDraftAdmission | undefined {
+  if (admission === undefined) return undefined;
+  const parsed = parseGeometryDraftAdmission(admission);
+  if (!fingerprintsEqual(parsed.sourceFingerprint, scriptHash)) {
+    throw new TypeError(
+      "Geometry draft admission source fingerprint must equal the captured script hash.",
+    );
+  }
+  return parsed;
+}
 
 async function sha256FingerprintOfText(text: string): Promise<ContentFingerprint> {
   const bytes = new TextEncoder().encode(text);

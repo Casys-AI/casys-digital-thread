@@ -17,8 +17,11 @@ import {
   ADMITTED_GEOMETRY_EXPORT_FORMATS,
 } from "./admission-backed-geometry-export-adapter.ts";
 
+import { GEOMETRY_DRAFT_ADMISSION_SCHEMA } from "../../domain/engineering/geometry-draft-admission.ts";
+
 const HEX64 = "a".repeat(64);
-const ADMITTED_SCRIPT = `from build123d import Box\nresult = Box(10, 10, 10)\n`;
+const ADMITTED_SCRIPT =
+  "from build123d import Box\nthickness = 10\nresult = Box(10, 10, thickness)\n";
 
 function assemblyGltfResponse(digest = HEX64): McpToolResult {
   return {
@@ -67,13 +70,19 @@ function sourceAnalysisFor(directory: string) {
   } as const;
 }
 
-function request() {
+async function request() {
   return {
     script: ADMITTED_SCRIPT,
     architectureBasis: {
       snapshotId: "snapshot.8",
       revision: 8,
       artifactFingerprint: { algorithm: "sha256" as const, digest: HEX64 },
+    },
+    admission: {
+      schemaVersion: GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+      artifactId: `technical-compilation-admission-${HEX64}`,
+      fingerprint: { algorithm: "sha256" as const, digest: HEX64 },
+      sourceFingerprint: await fingerprintTechnicalSourceText(ADMITTED_SCRIPT),
     },
   };
 }
@@ -98,7 +107,7 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
       previewRunId: "admitted-geometry:test-001",
     });
 
-    const draft = await adapter.export(request());
+    const draft = await adapter.export(await request());
 
     assertEquals(calls.length, 1);
     assertEquals(calls[0]?.name, "build123d_export");
@@ -125,9 +134,17 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
       digest: draft.draftDigest,
     });
     if (!persisted) throw new Error("expected persisted geometry draft");
-    const parsed = JSON.parse(persisted) as { kind: string; script: string };
+    const parsed = JSON.parse(persisted) as {
+      kind: string;
+      script: string;
+      admission?: { artifactId: string };
+    };
     assertEquals(parsed.kind, "geometry-draft");
     assertEquals(parsed.script, ADMITTED_SCRIPT);
+    assertEquals(
+      parsed.admission?.artifactId,
+      `technical-compilation-admission-${HEX64}`,
+    );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
@@ -151,44 +168,29 @@ Deno.test("admission-backed export refuses caller-selected provider fields and e
       materializeAsset: noopMaterialize,
     });
 
+    const valid = await request();
     await assertRejects(
-      () =>
-        adapter.export({
-          ...request(),
-          provider: "caller-selected",
-        } as never),
+      () => adapter.export({ ...valid, provider: "caller-selected" } as never),
       TypeError,
     );
     await assertRejects(
-      () =>
-        adapter.export({
-          ...request(),
-          tool: "build123d_export",
-        } as never),
+      () => adapter.export({ ...valid, tool: "build123d_export" } as never),
       TypeError,
     );
     await assertRejects(
-      () =>
-        adapter.export({
-          ...request(),
-          path: "/exports/caller.step",
-        } as never),
+      () => adapter.export({ ...valid, path: "/exports/caller.step" } as never),
       TypeError,
     );
     await assertRejects(
-      () =>
-        adapter.export({
-          ...request(),
-          image: "caller-image",
-        } as never),
+      () => adapter.export({ ...valid, image: "caller-image" } as never),
       TypeError,
     );
     await assertRejects(
       () =>
         adapter.export({
           script: "",
-          architectureBasis: request().architectureBasis,
-        }),
+          architectureBasis: valid.architectureBasis,
+        } as never),
       TypeError,
     );
     assertEquals(calls, 0);
@@ -214,7 +216,7 @@ Deno.test("admission-backed export uses the server-fixed sandbox service and ass
       build123dService: "mcp-build123d-sandbox",
       materializeAsset: noopMaterialize,
     });
-    await adapter.export(request());
+    await adapter.export(await request());
     assertEquals(names, ["geometry-preview-assembly"]);
     assertEquals(ADMITTED_GEOMETRY_EXPORT_FORMATS, ["gltf"]);
   } finally {

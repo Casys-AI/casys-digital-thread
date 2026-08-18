@@ -100,6 +100,10 @@ import {
   geometryBundleManifestFromDraft,
   LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
 } from "../captures/geometry-draft-capture.ts";
+import {
+  GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+  type GeometryDraftAdmission,
+} from "../../domain/engineering/geometry-draft-admission.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
@@ -153,6 +157,44 @@ const acceptingSysmlSourceAnalysisReader: SysmlSourceAnalysisReader = {
   },
 };
 const PROJECT_ID = "project:geo-test-01";
+const PARAMETERIZED_ASSEMBLY = [
+  "from build123d import Box",
+  "thickness = 10",
+  "result = Box(10, 10, thickness)",
+  "",
+].join("\n");
+const PARAMETERIZED_FRAME = [
+  "from build123d import Box",
+  "size = 8",
+  "result = Box(size, size, size)",
+  "",
+].join("\n");
+const PARAMETERIZED_BOLT = [
+  "from build123d import Cylinder",
+  "radius = 2",
+  "height = 8",
+  "result = Cylinder(radius, height)",
+  "",
+].join("\n");
+const PARAMETERIZED_UPGRADE = [
+  "from build123d import Box",
+  "thickness = 12",
+  "result = Box(12, 12, thickness)",
+  "",
+].join("\n");
+
+async function draftAdmissionFor(script: string): Promise<GeometryDraftAdmission> {
+  const sourceFingerprint = {
+    algorithm: "sha256" as const,
+    digest: await sha256Bytes(new TextEncoder().encode(script)),
+  };
+  return {
+    schemaVersion: GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+    artifactId: `technical-compilation-admission-${HEX64_B}`,
+    fingerprint: { algorithm: "sha256", digest: HEX64_B },
+    sourceFingerprint,
+  };
+}
 
 /** Tests deliberately corrupt cloned snapshots; production snapshots stay readonly. */
 type DeepMutable<T> = T extends readonly (infer Item)[] ? DeepMutable<Item>[]
@@ -1085,6 +1127,7 @@ async function buildGeoFixture(
     bundlePartGltf?: boolean;
     bundleCoverageDefect?: "omit-usage" | "omit-definition";
     bundleAssetDefect?: "empty" | "size-mismatch";
+    omitAdmission?: boolean;
   },
 ): Promise<GeoFixture> {
   let tick = 0;
@@ -1652,15 +1695,18 @@ async function buildGeoFixture(
           callToolTextResult: () => Promise.reject(new Error("unexpected")),
         },
         {
-          assemblyScript: "from build123d import Box\nresult = Box(10, 10, 10)\n",
+          assemblyScript: PARAMETERIZED_ASSEMBLY,
           manifest: draftManifest,
           partDefinitionScripts: [{
             elementId: "part-definition:frame",
-            script: "from build123d import Box\nresult = Box(8, 8, 8)\n",
+            script: PARAMETERIZED_FRAME,
           }, {
             elementId: "part-definition:bolt",
-            script: "from build123d import Cylinder\nresult = Cylinder(2, 8)\n",
+            script: PARAMETERIZED_BOLT,
           }],
+          ...(opts.omitAdmission
+            ? {}
+            : { admission: await draftAdmissionFor(PARAMETERIZED_ASSEMBLY) }),
         },
         draftCaptures,
         {
@@ -1747,8 +1793,11 @@ async function buildGeoFixture(
           callToolTextResult: () => Promise.reject(new Error("unexpected")),
         },
         {
-          script: "from build123d import Box\nresult = Box(10, 10, 10)\n",
+          script: PARAMETERIZED_ASSEMBLY,
           manifest: draftManifest,
+          ...(opts.omitAdmission
+            ? {}
+            : { admission: await draftAdmissionFor(PARAMETERIZED_ASSEMBLY) }),
         },
         draftCaptures,
         {
@@ -1783,6 +1832,7 @@ async function buildGeoFixture(
             containerPath: `/exports/geometry-preview-assembly.${opts.legacyDraftPath}`,
           })),
           partMeshes: draft.partMeshes,
+          ...(draft.admission === undefined ? {} : { admission: draft.admission }),
         };
         const legacyFingerprint = await sha256Fingerprint(legacyDraft);
         await draftCaptures.save(
@@ -2168,8 +2218,9 @@ async function queueSuccessiveGeometrySeal(
       callToolTextResult: () => Promise.reject(new Error("unexpected")),
     },
     {
-      script: "from build123d import Box\nresult = Box(10, 10, 10)\n",
+      script: PARAMETERIZED_ASSEMBLY,
       manifest,
+      admission: await draftAdmissionFor(PARAMETERIZED_ASSEMBLY),
     },
     fixture.draftCaptures,
     {
@@ -2381,12 +2432,13 @@ async function queueGeometryBundleUpgrade(
       callToolTextResult: () => Promise.reject(new Error("unexpected")),
     },
     {
-      assemblyScript: "from build123d import Box\nresult = Box(12, 12, 12)\n",
+      assemblyScript: PARAMETERIZED_UPGRADE,
       manifest,
       partDefinitionScripts: [{
         elementId: "part-definition:frame",
-        script: "from build123d import Box\nresult = Box(8, 8, 8)\n",
+        script: PARAMETERIZED_FRAME,
       }],
+      admission: await draftAdmissionFor(PARAMETERIZED_UPGRADE),
     },
     fixture.draftCaptures,
     {
@@ -2544,6 +2596,26 @@ async function assertGeometrySealRejectedBeforeCanonicalWrites(
 }
 
 // ── Integration: executor refusal paths ──────────────────────────────────────
+
+Deno.test(
+  "geometry seal refuses a preview draft without an admission join",
+  async () => {
+    const tmpDir = await Deno.makeTempDir({ prefix: "geo-no-admission-" });
+    try {
+      const fixture = await buildGeoFixture(tmpDir, {
+        mode: "happy",
+        omitAdmission: true,
+      });
+      await assertGeometrySealRejectedBeforeCanonicalWrites(
+        fixture,
+        tmpDir,
+        "admission_required",
+      );
+    } finally {
+      await Deno.remove(tmpDir, { recursive: true });
+    }
+  },
+);
 
 Deno.test(
   "design-write-geometry rejects persisted MRTR summary or parameter mutation before promotion",

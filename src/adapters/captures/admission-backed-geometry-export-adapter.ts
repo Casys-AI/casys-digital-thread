@@ -14,6 +14,9 @@ import type {
 } from "../../application/ports/out/admitted-geometry-exporter.ts";
 import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import {
+  parseGeometryDraftAdmission,
+} from "../../domain/engineering/geometry-draft-admission.ts";
+import {
   GEOMETRY_MANIFEST_SCHEMA,
   type GeometryExportFormat,
   type GeometryManifest,
@@ -58,7 +61,7 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
     const manifest = admittedManifest(request);
     const draft = await captureGeometryDraft(
       this.dependencies.client,
-      { script: request.script, manifest },
+      { script: request.script, manifest, admission: request.admission },
       this.dependencies.draftCaptures,
       this.options(),
     );
@@ -109,7 +112,7 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
 function parseRequest(value: unknown): AdmittedGeometryExportRequest {
   const request = exactRecord(
     value,
-    ["script", "architectureBasis"],
+    ["script", "architectureBasis", "admission"],
     "$admittedGeometryExportRequest",
   );
   if (typeof request.script !== "string" || request.script.length === 0) {
@@ -164,6 +167,10 @@ function parseRequest(value: unknown): AdmittedGeometryExportRequest {
         digest: fingerprint.digest,
       },
     },
+    admission: parseGeometryDraftAdmission(
+      request.admission,
+      "$admittedGeometryExportRequest.admission",
+    ),
   };
 }
 

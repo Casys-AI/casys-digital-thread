@@ -2216,12 +2216,7 @@ function composePrivateBuild123dGeometrySurfaces(
     directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
   });
   return {
-    geometryPreview: new CaptureBackedProjectGeometryPreviewAdapter({
-      client,
-      draftCaptures,
-      sourceAnalysis: geometrySourceAnalysis,
-      build123dService: "mcp-build123d-sandbox",
-    }),
+    geometryPreview: undefined,
     admittedGeometryExport: new ExportAdmittedProjectGeometry({
       admissions,
       exporter: new AdmissionBackedGeometryExportAdapter({

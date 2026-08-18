@@ -8,6 +8,7 @@
  */
 
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import type { GeometryDraftAdmission } from "../../../domain/engineering/geometry-draft-admission.ts";
 import type { GeometryExportFormat } from "../../../domain/engineering/geometry-proposal.ts";
 
 /** Exact admitted source plus the current Thread architecture identity. */
@@ -18,6 +19,7 @@ export interface AdmittedGeometryExportRequest {
     readonly revision: number;
     readonly artifactFingerprint: ContentFingerprint;
   };
+  readonly admission: GeometryDraftAdmission;
 }
 
 export interface AdmittedGeometryExportedFile {

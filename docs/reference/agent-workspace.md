@@ -63,7 +63,7 @@ These pairs look related and are **not** substitutes.
 | `model.seal-architecture-sysml@1`                         | Provider-free Thread-document seal of closed-subset analysis                                     | SysON insertion, `@2` architecture write, or `compile.seal-admission@1` |
 | `sysml-source-capture/1.0`                                | Renderer envelope for the SysON write                                                            | Agent-authored UTF-8 authority                                          |
 | `architecture-sysml-source-analysis-capture/1.0`          | Agent-authored closed-subset CAS                                                                 | A renderer manifest                                                     |
-| `project_geometry_preview` + `design.write-geometry@1`    | Historical MCP sandbox preview then hash seal                                                    | Isolated compiler execution                                             |
+| `project_geometry_preview` + `design.write-geometry@1`    | Retired product entry. Preview is not registered. `write-geometry` refuses a draft without an admission stamp | Isolated compiler execution or a photo STEP                             |
 | `compile.seal-admission@1` + `design.execute-build123d@1` | Provider-free admission then local microVM draft execution                                       | Canonical geometry promotion                                            |
 | `design.seal-isolated-geometry@1`                         | Provider-free Thread-document seal of isolated execution                                         | Canonical STEP, cad-model, `write-geometry`, or FEA geometry            |
 | `verify.run-fea-static-proof@1`                           | Historical generic MCP FEA                                                                       | The current recorded or isolated successors                             |
@@ -242,15 +242,16 @@ current tip is enough for this compiler; the review / seal / run tools stay.
 | `project_sensitivity_base_evaluation_review` | None                     | Ready only if study metrics join Thread requirements exactly       |
 | `project_corrected_admission_review`         | None                     | Parameters for `compile.seal-admission@1` from a corrected source  |
 | `project_modelica_qualified_kit_run_review`  | None                     | Parameters for the one local Modelica kit                          |
-| `project_geometry_preview`                   | Geometry draft (sandbox) | Historical MCP path; registered only if sandbox is composed        |
+| `project_geometry_preview`                   | None                     | Not registered. Not a product entry                                |
 
 The current Build123d compilation profile is 2.0. A source is reviewable only when a
 parser-reported finite module-level numeric parameter is bound through `parameterizes`
 and causally reaches the unique `result` artifact. Dead assignments and constructor-only
 dimensions fail with `source.no-named-numeric-lever`. Embedded profile-1 documents
 remain readable for historical replay; this does not let a new profile-2 admission use
-the old predicate. `project_geometry_preview → design.write-geometry@1` remains a
-separate explicit legacy path, not a `compile.seal-admission@1` bypass.
+the old predicate. `project_admitted_geometry_export → design.write-geometry@1` is
+the only canonical STEP path. A draft without the admission stamp, or without a
+named numeric lever, is `admission_required`.
 
 ## 5. Registered operations
 
@@ -395,7 +396,7 @@ flowchart TD
   seed --> arch["model.write-architecture@1 → SysON architecture"]
   seed --> sealSysml["model.seal-architecture-sysml@1 → Thread document only"]
   arch --> req["model.write-requirements@1"]
-  arch --> geomA["legacy: preview + design.write-geometry@1"]
+  arch --> geomA["admission → admitted export → design.write-geometry@1"]
   arch --> geomB["compile.seal-admission@1 → design.execute-build123d@1 draft"]
   geomB --> sealGeom["design.seal-isolated-geometry@1 → Thread document only"]
   geomA --> proof["verify.seal-proof-case@1"]

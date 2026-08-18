@@ -31,6 +31,7 @@ import {
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
 } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { GEOMETRY_DRAFT_ADMISSION_SCHEMA } from "../../domain/engineering/geometry-draft-admission.ts";
 import {
   parseGeometryDecisionParameters,
 } from "../../domain/engineering/geometry-proposal.ts";
@@ -125,6 +126,12 @@ Deno.test("admitted geometry export reopens one sealed source and never accepts 
   assertEquals(fixture.exporter.calls, [{
     script: fixture.admittedSource,
     architectureBasis: replay.manifest.architectureBasis,
+    admission: {
+      schemaVersion: GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+      artifactId: fixture.command.artifactId,
+      fingerprint: fixture.command.artifactFingerprint,
+      sourceFingerprint: fixture.reopened.admission.sources[0]!.sourceFingerprint,
+    },
   }]);
   assertDeeplyFrozen(result);
 

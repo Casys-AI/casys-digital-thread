@@ -37,6 +37,10 @@ import {
 } from "../../domain/analysis/technical-compilation-proposal.ts";
 import { BUILD123D_EXECUTION_COMPILED_ADMISSION_SCHEMA } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { validateContentFingerprint } from "../../domain/analysis/isolated-code-execution.ts";
+import { listGeometryAffectingNamedNumericLevers } from "../../domain/analysis/named-cad-levers.ts";
+import {
+  GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+} from "../../domain/engineering/geometry-draft-admission.ts";
 import {
   encodeGeometryDecisionParameters,
   GEOMETRY_MANIFEST_SCHEMA,
@@ -63,6 +67,7 @@ export type ProjectAdmittedGeometryExportErrorCode =
   | "admission_not_found"
   | "admission_resolution_failed"
   | "admission_integrity_failed"
+  | "admission_not_parameterized"
   | "export_failed";
 
 /** Stable application error. Provider details, storage paths and causes stay internal. */
@@ -134,10 +139,32 @@ export class ExportAdmittedProjectGeometry
       artifactFingerprint: compilation.admission.basis.sysml.artifactFingerprint,
     });
     const script = compilation.projection.sources[0]!.sourceText;
+    const admittedSource = compilation.projection.sources[0]!;
+    if (
+      listGeometryAffectingNamedNumericLevers(
+        admittedSource.sourceText,
+        admittedSource.analysis,
+        admittedSource.bindings,
+      ).length === 0
+    ) {
+      throw exportError(
+        "admission_not_parameterized",
+        "The sealed admission has no causal named numeric CAD lever.",
+      );
+    }
 
     let draft: AdmittedGeometryExportDraft;
     try {
-      draft = await this.#exporter.export({ script, architectureBasis });
+      draft = await this.#exporter.export({
+        script,
+        architectureBasis,
+        admission: {
+          schemaVersion: GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+          artifactId: command.artifactId,
+          fingerprint: command.artifactFingerprint,
+          sourceFingerprint: compilation.source.sourceFingerprint,
+        },
+      });
     } catch {
       throw exportError(
         "export_failed",

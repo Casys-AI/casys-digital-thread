@@ -80,7 +80,7 @@ Two paths. They are not substitutes.
 
 | Path                    | Ops                                                                                           | What a success is        |
 | ----------------------- | --------------------------------------------------------------------------------------------- | ------------------------ |
-| Canonical (proof input) | `project_geometry_preview` + `design.write-geometry@1`                                        | Thread STEP / cad-model  |
+| Canonical (proof input) | capture → compilation preview → `compile.seal-admission@1` → `project_admitted_geometry_export` → `design.write-geometry@1` | Thread STEP / cad-model  |
 | Isolated draft          | `compile.seal-admission@1` + `design.execute-build123d@1` + `design.seal-isolated-geometry@1` | Thread **document** only |
 
 The proof case must name the canonical STEP. A successful isolated run is not Product
@@ -108,8 +108,9 @@ It is not the isolated `@3` authority. How-to:
 For a new parameterized project, set `sensitivityCatalogOptIn: true` only when the
 review returns `sensitivityCatalog.status = ready-for-opt-in`. The same MRTR then signs
 the exact admission join and the seal publishes a separate catalog-offer artifact.
-Omission is proof-only. A legacy `project_geometry_preview → design.write-geometry@1`
-STEP has no compilation admission to join and cannot be used as a substitute.
+Omission is proof-only. `project_geometry_preview` is not a product entry.
+`design.write-geometry@1` refuses a draft that was not exported from a
+parameterized `compile.seal-admission@1`.
 
 Oracle `pass` or publishable `fail` stay literal.
 

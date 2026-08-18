@@ -146,14 +146,12 @@ private provider MCP clients for admitted project runs.
 
 ## Implemented legacy CAD preview and promotion vertical
 
-The following MCP-backed CAD path remains the historical preview and canonical-promotion
-route. Its tools, schemas and persisted project state have not yet been migrated or
-removed, so they remain supported and readable. It is not the newer local microVM
-execution path and must not be used as evidence that the isolated compiler route
-produced or promoted canonical geometry. The agent calls the single
-`project_geometry_preview` Digital Thread tool with native Python/build123d text. There
-is no parser tool to call and no intermediate DSL to author. The backend performs this
-exact order:
+The following MCP-backed CAD path remains the historical sandbox export used by
+`project_admitted_geometry_export`. `project_geometry_preview` is not a product
+entry. `design.write-geometry@1` seals only a draft stamped from
+`compile.seal-admission@1`. It is not the local microVM execution path and must
+not be used as evidence that isolated execution produced canonical geometry.
+The backend performs this exact order:
 
 ```text
 validate the bounded execution surface (D4)

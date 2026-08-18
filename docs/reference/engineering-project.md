@@ -230,8 +230,9 @@ lineage. Legacy detached `requirements-capture/1.0` records are not silently enr
 This operation records model requirements; it does not evaluate them, invent
 measurements, or publish a pass/fail verdict.
 
-Geometry is a two-step boundary. `project_geometry_preview` is planning-only and runs
-agent-proposed, validated source only in `build123d-sandbox`. Legacy
+Geometry is a two-step boundary. Canonical drafts come from
+`project_admitted_geometry_export` after `compile.seal-admission@1`.
+`project_geometry_preview` is not a product entry. Legacy
 `geometry-draft-capture/1.1` remains readable and assembly-only. A complete bundle uses
 `geometry-draft-capture/2.0`: one exact assembly source plus one exact source per unique
 SysML `PartDefinition`, dispatched as an isolated N+1 sequence after every source and

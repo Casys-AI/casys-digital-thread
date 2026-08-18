@@ -173,8 +173,9 @@ literals is not a dimensioned drawing and cannot feed the sensitivity grid. This
 behave CAD compiler invariant for every new admission, not a project-specific rule.
 Embedded profile-1 compilation documents retain their historical replay semantics;
 already-sealed STEP photos, including Heron `design.write-geometry@1`, are not
-rewritten. The gate is on new profile-2 compilation and admission only. Modelica
-qualification is out of this rule.
+rewritten. New canonical STEP comes only from `project_admitted_geometry_export`
+after a parameterized admission. `design.write-geometry@1` refuses a preview
+photo draft (`admission_required`). Modelica qualification is out of this rule.
 
 The sensitivity catalog is not a forgotten `config/` file. When the human validates that
 project's FEA proof case, the server may offer one false-by-default opt-in compiled from

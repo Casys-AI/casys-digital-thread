@@ -49,6 +49,7 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import { exactRecord } from "../../domain/kernel/case-validation.ts";
+import { requireCanonicalGeometryDraftAdmission } from "../../domain/engineering/geometry-draft-admission.ts";
 import {
   type AnyGeometryManifest,
   DESIGN_WRITE_GEOMETRY_OPERATION,
@@ -2451,6 +2452,16 @@ async function loadReviewedGeometryDraft(
       "invalid_transition",
       "Draft capture byte-level fingerprint mismatch: the bytes read from the draft " +
         "store do not hash to the signed draft digest. Operator inspection required.",
+    );
+  }
+  try {
+    requireCanonicalGeometryDraftAdmission(draftRecord);
+  } catch (error) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `admission_required: design.write-geometry@1 can only seal a draft exported from compile.seal-admission@1 with a named numeric CAD lever. ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
 

@@ -607,13 +607,16 @@ wrong hash the expected one, and every downstream consumer would then authentica
 wrong bytes perfectly. The server lifts sandbox bytes out with `docker compose cp` plus
 fail-closed SHA-256 verification, exactly as it does for attested assets.
 
-`project_geometry_preview` (registered only when the `build123d-sandbox` fleet entry is
-configured) calls `build123d_export` on the sandbox instance, attests each binary's
-SHA-256, and stores the draft JSON capture in `state/local/geometry-draft-captures/`
-with the raw binaries under `state/local/geometry-draft-assets/<digest>`. V1 is the
-legacy assembly-only call. V2 validates the declared bundle's complete identity/source
-contract first, then makes one run-scoped assembly call plus exactly one call per unique
-PartDefinition; repeated PartUsages reuse the definition export. The later seal rereads
+`project_admitted_geometry_export` (composed when the `build123d-sandbox` fleet
+entry is configured) reopens a sealed admission and calls `build123d_export` on
+the sandbox instance. It attests each binary's SHA-256 and stores the draft JSON
+capture, stamped with the admission identity, in
+`state/local/geometry-draft-captures/` with the raw binaries under
+`state/local/geometry-draft-assets/<digest>`. `project_geometry_preview` is not
+registered. V1 is the assembly-only call. V2 validates the declared bundle's
+complete identity/source contract first, then makes one run-scoped assembly call
+plus exactly one call per unique PartDefinition; repeated PartUsages reuse the
+definition export. The later seal rereads
 the architecture capture to prove that declaration exhaustive. A placement is local to
 the PartDefinition that owns its PartUsage, so parent reuse repeats that placement on
 each expanded path. The preview returns a `draftDigest` and the flat
