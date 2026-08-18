@@ -641,12 +641,24 @@ Deno.test(
   },
 );
 
-Deno.test("design.preview-geometry@1 remains planning-only and is not a trusted executor", () => {
-  const registered = getRegisteredEngineeringOperation(
-    DESIGN_PREVIEW_GEOMETRY_OPERATION,
-  )!;
-  assertEquals(registered.execution, "planning-only");
-  assertEquals(registered.riskClass, "low");
+Deno.test("design.preview-geometry@1 is neither lookupable nor queueable", () => {
+  assertEquals(
+    getRegisteredEngineeringOperation(DESIGN_PREVIEW_GEOMETRY_OPERATION),
+    undefined,
+  );
+  const error = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...DESIGN_PREVIEW_GEOMETRY_OPERATION,
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        },
+        stage: "queue",
+        basisKind: "thread-snapshot",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(error.code, "unknown_operation");
 });
 
 Deno.test("operation declarations cannot mutate the code-owned registry", () => {

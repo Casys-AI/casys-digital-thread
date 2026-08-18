@@ -15,6 +15,7 @@ import {
 } from "../kernel/deterministic-json.ts";
 import {
   arrayOf,
+  closedRecord,
   deepFreeze,
   exactRecord,
   literalValue,
@@ -25,7 +26,7 @@ import {
   safeId,
   safeVersion,
 } from "../kernel/case-validation.ts";
-import { listGeometryAffectingNamedNumericLevers } from "./named-cad-levers.ts";
+import { listAnalysisReachableNamedNumericLevers } from "./named-cad-levers.ts";
 import {
   fingerprintSourceAnalysisBundle,
   type SourceAnalysisBundle,
@@ -86,6 +87,11 @@ export interface TechnicalSysmlElementRef {
   readonly kind: string;
   /** Exact immutable capture whose provider readback attests this element. */
   readonly provenance: TechnicalSysmlElementProvenance;
+  /**
+   * Capture-attested label used only for unique compile joins.
+   * Absent on historical documents; never invented by the compiler.
+   */
+  readonly name?: string;
 }
 
 export interface TechnicalSysmlElementProvenance {
@@ -926,14 +932,24 @@ function parseSysmlElement(
   value: unknown,
   path: string,
 ): TechnicalSysmlElementRef {
-  const element = exactRecord(value, ["id", "kind", "provenance"], path);
-  return {
+  const element = closedRecord(
+    value,
+    ["id", "kind", "provenance", "name"],
+    ["id", "kind", "provenance"],
+    path,
+  );
+  const parsed: TechnicalSysmlElementRef = {
     id: safeId(element.id, `${path}.id`),
     kind: safeId(element.kind, `${path}.kind`),
     provenance: parseSysmlElementProvenance(
       element.provenance,
       `${path}.provenance`,
     ),
+  };
+  if (!Object.hasOwn(element, "name")) return parsed;
+  return {
+    ...parsed,
+    name: nonEmptyText(element.name, `${path}.name`),
   };
 }
 
@@ -1243,16 +1259,14 @@ function diagnoseSource(
       });
     }
   }
-  // Behave CAD compiler invariant for the parameterized profile: every new
-  // build123d admission needs a named module-level numeric lever. Historical
-  // 1.x documents replay under their sealed profile semantics.
+  // Capture-time handle: a named literal must reach result. SysML binding is
+  // a separate `binding.missing` fact. Historical 1.x documents replay as-is.
   if (
     profile.target === "build123d-source" &&
     profile.version === PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION &&
-    listGeometryAffectingNamedNumericLevers(
+    listAnalysisReachableNamedNumericLevers(
         source.sourceText,
         source.analysis,
-        bindings,
       ).length === 0
   ) {
     diagnostics.push({

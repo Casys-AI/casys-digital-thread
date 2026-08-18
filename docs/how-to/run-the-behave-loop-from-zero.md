@@ -78,10 +78,10 @@ recorded in provenance. Do not invent another.
 
 Two paths. They are not substitutes.
 
-| Path                    | Ops                                                                                           | What a success is        |
-| ----------------------- | --------------------------------------------------------------------------------------------- | ------------------------ |
+| Path                    | Ops                                                                                                                         | What a success is        |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
 | Canonical (proof input) | capture → compilation preview → `compile.seal-admission@1` → `project_admitted_geometry_export` → `design.write-geometry@1` | Thread STEP / cad-model  |
-| Isolated draft          | `compile.seal-admission@1` + `design.execute-build123d@1` + `design.seal-isolated-geometry@1` | Thread **document** only |
+| Isolated draft          | `compile.seal-admission@1` + `design.execute-build123d@1` + `design.seal-isolated-geometry@1`                               | Thread **document** only |
 
 The proof case must name the canonical STEP. A successful isolated run is not Product
 authority and not a DFM target.
@@ -108,9 +108,14 @@ It is not the isolated `@3` authority. How-to:
 For a new parameterized project, set `sensitivityCatalogOptIn: true` only when the
 review returns `sensitivityCatalog.status = ready-for-opt-in`. The same MRTR then signs
 the exact admission join and the seal publishes a separate catalog-offer artifact.
-Omission is proof-only. `project_geometry_preview` is not a product entry.
-`design.write-geometry@1` refuses a draft that was not exported from a
-parameterized `compile.seal-admission@1`.
+Omission is proof-only. `project_geometry_preview` and `design.preview-geometry@1` are
+not product entries. `project_technical_source_capture` returns `parser` and `levers` as
+separate facts. `parser.status: passed` is not admission. A constructor photo is
+`levers.status: unresolved`. Pass `projectId` and `result.reference` only to
+`project_technical_compilation_preview`. The server joins the current Thread tip and
+unique SysML names. Unresolved previews name those joins in `gaps`. It does not invent a
+lever or an AttributeUsage. `design.write-geometry@1` refuses a draft that was not
+exported from a parameterized `compile.seal-admission@1`.
 
 Oracle `pass` or publishable `fail` stay literal.
 

@@ -31,6 +31,7 @@ import {
 import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
 import {
+  architectureWriteSelector,
   type InsertionItem,
   parseArchitectureProposalParameters,
 } from "../../domain/engineering/architecture-proposal.ts";
@@ -1110,26 +1111,6 @@ function executionCommand(
   };
 }
 
-function selectorForWriteItem(item: InsertionItem, packageName: string) {
-  if (item.kind === "full-package") {
-    return { kind: "full-package" as const, packageName };
-  }
-  if (item.kind === "part-def") {
-    return {
-      kind: "part-def" as const,
-      packageName,
-      componentName: item.componentName,
-    };
-  }
-  return {
-    kind: "usage" as const,
-    packageName,
-    componentName: item.componentName,
-    usageName: item.usageName,
-    parentName: item.parentName,
-  };
-}
-
 async function currentWalInput(
   fixture: Pick<ArchFixture, "sysmlSourceAnalysis">,
   input: {
@@ -1144,7 +1125,7 @@ async function currentWalInput(
     items.map((item) =>
       fixture.sysmlSourceAnalysis.capture({
         proposal,
-        selector: selectorForWriteItem(item, proposal.packageName),
+        selector: architectureWriteSelector(item, proposal.packageName),
         runId: input.runId,
         operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
       })
@@ -2842,7 +2823,7 @@ Deno.test(
         items.map((item) =>
           fixture.sysmlSourceAnalysis.capture({
             proposal: alternative,
-            selector: selectorForWriteItem(item, alternative.packageName),
+            selector: architectureWriteSelector(item, alternative.packageName),
             runId: fixture.queued.runId,
             operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
           })

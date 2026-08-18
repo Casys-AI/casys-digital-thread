@@ -1,7 +1,8 @@
 import { assertEquals } from "@std/assert";
 import type { SourceAnalysisBundle } from "./source-analysis.ts";
 import {
-  diagnoseBehaveCadLevers,
+  diagnoseAnalysisReachableCadLevers,
+  listAnalysisReachableNamedNumericLevers,
   listGeometryAffectingNamedNumericLevers,
   listNamedNumericLevers,
 } from "./named-cad-levers.ts";
@@ -41,40 +42,75 @@ Deno.test(
 );
 
 Deno.test(
-  "diagnoseBehaveCadLevers is unresolved when the source is only a constructor photo",
+  "diagnoseAnalysisReachableCadLevers is unresolved when the source is only a constructor photo",
   () => {
     const photo = "from build123d import Box\nresult = Box(20, 10, 5)\n";
-    const diagnosis = diagnoseBehaveCadLevers(
+    const diagnosis = diagnoseAnalysisReachableCadLevers(
       photo,
       analysis([artifactSymbol()], []),
-      [represents("artifact.result")],
     );
     assertEquals(diagnosis.status, "unresolved");
+    if (diagnosis.status !== "unresolved") return;
     assertEquals(diagnosis.code, "source.no-named-numeric-lever");
     assertEquals(diagnosis.levers, []);
   },
 );
 
 Deno.test(
-  "diagnoseBehaveCadLevers is ok when a bound literal reaches result",
+  "diagnoseAnalysisReachableCadLevers is ok when a literal reaches result without SysML binding",
   () => {
     const source = "thickness = 2.0\nresult = Box(20, 10, thickness)\n";
-    const diagnosis = diagnoseBehaveCadLevers(
+    const diagnosis = diagnoseAnalysisReachableCadLevers(
       source,
       analysis(
         [parameterSymbol("parameter.thickness", "thickness"), artifactSymbol()],
         [dependency("parameter.thickness", "artifact.result")],
       ),
-      [
-        parameterizes("parameter.thickness"),
-        represents("artifact.result"),
-      ],
     );
     assertEquals(diagnosis.status, "ok");
-    assertEquals(diagnosis.levers, [
-      causalLever("parameter.thickness", "thickness", 2),
-    ]);
-    assertEquals(diagnosis.code, undefined);
+    if (diagnosis.status !== "ok") return;
+    assertEquals(diagnosis.levers, [{ semanticKey: "thickness", value: 2 }]);
+  },
+);
+
+Deno.test(
+  "a reachable literal without parameterizes is not a bound CAD handle",
+  () => {
+    const source = "thickness = 2.0\nresult = Box(20, 10, thickness)\n";
+    const bundle = analysis(
+      [parameterSymbol("parameter.thickness", "thickness"), artifactSymbol()],
+      [dependency("parameter.thickness", "artifact.result")],
+    );
+    assertEquals(
+      listAnalysisReachableNamedNumericLevers(source, bundle).map((lever) =>
+        lever.semanticKey
+      ),
+      ["thickness"],
+    );
+    assertEquals(
+      listGeometryAffectingNamedNumericLevers(source, bundle, [
+        represents("artifact.result"),
+      ]),
+      [],
+    );
+  },
+);
+
+Deno.test(
+  "diagnoseAnalysisReachableCadLevers is not-applicable on non-CAD analysis",
+  () => {
+    const bundle = analysis([artifactSymbol()], []);
+    const modelica = {
+      ...bundle,
+      source: {
+        ...bundle.source,
+        role: "modelica-model" as const,
+        language: "modelica" as const,
+      },
+    };
+    assertEquals(diagnoseAnalysisReachableCadLevers("model X end X;", modelica), {
+      status: "not-applicable",
+    });
   },
 );
 
@@ -90,20 +126,17 @@ Deno.test(
       ] as const
     ) {
       const source = `thickness = ${literal}\nresult = Box(20, 10, thickness)\n`;
-      const diagnosis = diagnoseBehaveCadLevers(
+      const diagnosis = diagnoseAnalysisReachableCadLevers(
         source,
         analysis(
           [parameterSymbol("parameter.thickness", "thickness"), artifactSymbol()],
           [dependency("parameter.thickness", "artifact.result")],
         ),
-        [
-          parameterizes("parameter.thickness"),
-          represents("artifact.result"),
-        ],
       );
       assertEquals(diagnosis.status, "ok");
+      if (diagnosis.status !== "ok") return;
       assertEquals(diagnosis.levers, [
-        causalLever("parameter.thickness", "thickness", expected),
+        { semanticKey: "thickness", value: expected },
       ]);
     }
   },

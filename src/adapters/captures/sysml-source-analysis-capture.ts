@@ -8,6 +8,7 @@ import { exactRecord, safeId } from "../../domain/kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
   type ArchitectureProposal,
+  parseArchitectureSysmlSelector,
   renderArchitectureSysmlWithManifest,
   type RenderedArchitectureSysml,
   type SysmlArchitectureSourceSelector,
@@ -110,7 +111,10 @@ export class SysmlSourceAnalysisCaptureService {
     readonly runId: string;
     readonly operation: SysmlSourceOperation;
   }): Promise<SysmlSourceAnalysisReference> {
-    const selector = parseSelector(input.selector, "$input.selector");
+    const selector = parseArchitectureSysmlSelector(
+      input.selector,
+      "$input.selector",
+    );
     const rendered = validateRenderedArchitectureSysml(
       renderArchitectureSysmlWithManifest(input.proposal, selector),
     );
@@ -394,7 +398,10 @@ export async function validateSysmlSourceCapture(
   ) {
     throw new TypeError("Unsupported SysML source capture envelope.");
   }
-  const selector = parseSelector(raw.selector, "$sysmlSourceCapture.selector");
+  const selector = parseArchitectureSysmlSelector(
+    raw.selector,
+    "$sysmlSourceCapture.selector",
+  );
   const rendered = validateRenderedArchitectureSysml({
     sourceText: raw.sourceText,
     manifest: raw.manifest,
@@ -446,42 +453,6 @@ async function sameSource(
   }
 }
 
-function parseSelector(value: unknown, path: string): SysmlArchitectureSourceSelector {
-  const record = value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
-  if (record?.kind === "full-package") {
-    const raw = exactRecord(value, ["kind", "packageName"], path);
-    return Object.freeze({
-      kind: "full-package",
-      packageName: sysmlName(raw.packageName, `${path}.packageName`),
-    });
-  }
-  if (record?.kind === "part-def") {
-    const raw = exactRecord(value, ["kind", "packageName", "componentName"], path);
-    return Object.freeze({
-      kind: "part-def",
-      packageName: sysmlName(raw.packageName, `${path}.packageName`),
-      componentName: sysmlName(raw.componentName, `${path}.componentName`),
-    });
-  }
-  const raw = exactRecord(value, [
-    "kind",
-    "packageName",
-    "componentName",
-    "usageName",
-    "parentName",
-  ], path);
-  if (raw.kind !== "usage") throw new TypeError(`${path}.kind is unsupported.`);
-  return Object.freeze({
-    kind: "usage",
-    packageName: sysmlName(raw.packageName, `${path}.packageName`),
-    componentName: sysmlName(raw.componentName, `${path}.componentName`),
-    usageName: sysmlUsageName(raw.usageName, `${path}.usageName`),
-    parentName: sysmlName(raw.parentName, `${path}.parentName`),
-  });
-}
-
 function selectorPackageName(selector: SysmlArchitectureSourceSelector): string {
   return selector.packageName;
 }
@@ -506,7 +477,7 @@ function parseReference(value: unknown, path: string): SysmlSourceAnalysisRefere
   ], path);
   return Object.freeze({
     sourceId: safeId(raw.sourceId, `${path}.sourceId`),
-    selector: parseSelector(raw.selector, `${path}.selector`),
+    selector: parseArchitectureSysmlSelector(raw.selector, `${path}.selector`),
     runId: safeId(raw.runId, `${path}.runId`),
     operation: parseOperation(raw.operation, `${path}.operation`),
     sourceFingerprint: parseFingerprint(
@@ -531,20 +502,6 @@ function parseFingerprint(value: unknown, path: string): ContentFingerprint {
     !/^[a-f0-9]{64}$/.test(raw.digest)
   ) throw new TypeError(`${path} must be a SHA-256 fingerprint.`);
   return Object.freeze({ algorithm: "sha256", digest: raw.digest });
-}
-
-function sysmlName(value: unknown, path: string): string {
-  if (typeof value !== "string" || !/^[A-Za-z][A-Za-z0-9_]*$/.test(value)) {
-    throw new TypeError(`${path} must be a SysML identifier.`);
-  }
-  return value;
-}
-
-function sysmlUsageName(value: unknown, path: string): string {
-  if (typeof value !== "string" || !/^[a-z][A-Za-z0-9_]*$/.test(value)) {
-    throw new TypeError(`${path} must be a SysML usage identifier.`);
-  }
-  return value;
 }
 
 function sameFingerprint(left: ContentFingerprint, right: ContentFingerprint): boolean {

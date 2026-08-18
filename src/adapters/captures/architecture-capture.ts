@@ -34,6 +34,13 @@ export interface ArchitectureCapturePartDefinition {
   readonly kind: "PartDefinition";
   readonly label: string;
   readonly usages: readonly ArchitectureCapturePartUsage[];
+  readonly attributes?: readonly ArchitectureCaptureAttribute[];
+}
+
+export interface ArchitectureCaptureAttribute {
+  readonly id: string;
+  readonly kind: "AttributeUsage";
+  readonly label: string;
 }
 
 export interface ArchitectureCapturePartUsage {
@@ -181,7 +188,14 @@ export function parseArchitectureCapturePartDefinitions(
   const definitionLabels = new Set<string>();
   const partDefinitions = raw.map((rawPart, index) => {
     const part = exactObject(rawPart, `${path}[${index}]`);
-    exactKeys(part, ["id", "kind", "label", "usages"], `${path}[${index}]`);
+    const hasAttributes = Object.hasOwn(part, "attributes");
+    exactKeys(
+      part,
+      hasAttributes
+        ? ["id", "kind", "label", "usages", "attributes"]
+        : ["id", "kind", "label", "usages"],
+      `${path}[${index}]`,
+    );
     const id = exactNonEmpty(part.id, `${path}[${index}].id`);
     const label = exactNonEmpty(part.label, `${path}[${index}].label`);
     if (
@@ -236,7 +250,53 @@ export function parseArchitectureCapturePartDefinitions(
         ),
       };
     });
-    return { id, kind: "PartDefinition" as const, label, usages };
+    const attributeLabels = new Set<string>();
+    if (hasAttributes && !Array.isArray(part.attributes)) {
+      throw new Error(`${path}[${index}].attributes must be an array.`);
+    }
+    const attributes = hasAttributes
+      ? (part.attributes as unknown[]).map((rawAttribute, attributeIndex) => {
+        const attribute = exactObject(
+          rawAttribute,
+          `${path}[${index}].attributes[${attributeIndex}]`,
+        );
+        exactKeys(
+          attribute,
+          ["id", "kind", "label"],
+          `${path}[${index}].attributes[${attributeIndex}]`,
+        );
+        const attributeId = exactNonEmpty(
+          attribute.id,
+          `${path}[${index}].attributes[${attributeIndex}].id`,
+        );
+        const attributeLabel = exactNonEmpty(
+          attribute.label,
+          `${path}[${index}].attributes[${attributeIndex}].label`,
+        );
+        if (
+          attribute.kind !== "AttributeUsage" || semanticIds.has(attributeId) ||
+          attributeLabels.has(attributeLabel)
+        ) {
+          throw new Error(
+            `Architecture capture AttributeUsage ${index}/${attributeIndex} is ambiguous.`,
+          );
+        }
+        semanticIds.add(attributeId);
+        attributeLabels.add(attributeLabel);
+        return {
+          id: attributeId,
+          kind: "AttributeUsage" as const,
+          label: attributeLabel,
+        };
+      })
+      : [];
+    return {
+      id,
+      kind: "PartDefinition" as const,
+      label,
+      usages,
+      ...(attributes.length > 0 ? { attributes } : {}),
+    };
   });
 
   const definitionsById = new Map(partDefinitions.map((part) => [part.id, part]));

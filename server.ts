@@ -97,6 +97,7 @@ import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "./src/adapters/anal
 import { PrepareProjectModelicaQualifiedKitRunReview } from "./src/application/use-cases/prepare-project-modelica-qualified-kit-run-review.ts";
 import { ExecuteIsolatedModelicaRun } from "./src/application/use-cases/execute-isolated-modelica-run.ts";
 import type { ProjectTechnicalSourceCaptureUseCase } from "./src/application/ports/in/project-technical-source-capture.ts";
+import { assembleTechnicalSourceCaptureReview } from "./src/domain/analysis/technical-source-capture-review.ts";
 import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/analysis/source-analysis-frontend-registry.ts";
 import { RenderedArchitectureSysmlAnalyzer } from "./src/adapters/analyzers/rendered-architecture-sysml-analyzer.ts";
 import { SysmlSourceAnalysisCaptureService } from "./src/adapters/captures/sysml-source-analysis-capture.ts";
@@ -807,10 +808,15 @@ async function createProjectControl(
     technicalSourceAnalysis,
   );
   const technicalSourceCapture: ProjectTechnicalSourceCaptureUseCase = {
-    capture: async (command) =>
-      structuredClone(
-        await technicalSourceAnalysis.capture(command),
-      ) as unknown as Readonly<Record<string, unknown>>,
+    capture: async (command) => {
+      const reference = await technicalSourceAnalysis.capture(command);
+      const reopened = await technicalSourceAnalysis.reopen(reference);
+      return assembleTechnicalSourceCaptureReview(
+        reference,
+        reopened.sourceText,
+        reopened.analysis,
+      );
+    },
   };
   const architectureSysmlDirectory = `${recordedAnalysisDirectory}/architecture-sysml`;
   const architectureSysmlSourceAnalysis =
@@ -1211,6 +1217,7 @@ async function createProjectControl(
     sourceReader: technicalCompilationSources,
     profileCatalog: technicalCompilationProfiles,
     draftStore: technicalCompilationDrafts,
+    projects: runtime.projects,
   });
   const compileSealAdmission = new CompileSealAdmissionRunExecutor({
     projects: runtime.projects,

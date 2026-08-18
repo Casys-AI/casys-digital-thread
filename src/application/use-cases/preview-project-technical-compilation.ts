@@ -26,7 +26,6 @@ import {
   compileTechnicalSources,
   fingerprintTechnicalCompilationBasis,
   TECHNICAL_COMPILATION_INPUT_SCHEMA,
-  type TechnicalBindingRelation,
   type TechnicalCompilationBasis,
   type TechnicalCompilationInput,
   type TechnicalCompilationProfileRequest,
@@ -36,12 +35,23 @@ import {
   validateTechnicalCompilationProfileCatalog,
 } from "../../domain/analysis/technical-compilation.ts";
 import {
+  deriveTechnicalCompilationProfileRequests,
+  deriveUniqueTechnicalCompilationBindings,
+} from "../../domain/analysis/technical-compilation-join.ts";
+import { assembleTechnicalCompilationJoinGaps } from "../../domain/analysis/technical-compilation-preview-review.ts";
+import type { EngineeringProjectRevisionStore } from "../ports/out/engineering-project-revision-store.ts";
+import {
+  parseExactThreadSnapshotBasis,
+  selectCurrentThreadTip,
+} from "../../domain/project/thread-tip.ts";
+import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import {
   arrayOf,
+  closedRecord,
   deepFreeze,
   exactRecord,
   literalValue,
@@ -87,6 +97,8 @@ export interface PreviewProjectTechnicalCompilationDependencies {
   readonly sourceReader: TechnicalCompilationSourceReader;
   readonly profileCatalog: TechnicalCompilationProfileCatalogProvider;
   readonly draftStore: TechnicalCompilationDraftStore;
+  /** Required to resolve an omitted basis to the unique current Thread tip. */
+  readonly projects?: Pick<EngineeringProjectRevisionStore, "get">;
 }
 
 /**
@@ -104,12 +116,14 @@ export class PreviewProjectTechnicalCompilation
   readonly #sourceReader: TechnicalCompilationSourceReader;
   readonly #profileCatalog: TechnicalCompilationProfileCatalogProvider;
   readonly #draftStore: TechnicalCompilationDraftStore;
+  readonly #projects: Pick<EngineeringProjectRevisionStore, "get"> | undefined;
 
   constructor(dependencies: PreviewProjectTechnicalCompilationDependencies) {
     this.#basisResolver = dependencies.basisResolver;
     this.#sourceReader = dependencies.sourceReader;
     this.#profileCatalog = dependencies.profileCatalog;
     this.#draftStore = dependencies.draftStore;
+    this.#projects = dependencies.projects;
   }
 
   async execute(value: unknown): Promise<ProjectTechnicalCompilationPreviewResult> {
@@ -124,11 +138,16 @@ export class PreviewProjectTechnicalCompilation
       );
     }
 
+    let requestedBasis = command.basis;
+    if (requestedBasis === undefined) {
+      requestedBasis = await this.#resolveCurrentThreadTip(command.projectId);
+    }
+
     let basis: TechnicalCompilationBasis | undefined;
     try {
       basis = await this.#basisResolver.resolve({
         projectId: command.projectId,
-        basis: command.basis,
+        basis: requestedBasis,
       });
     } catch (cause) {
       throw previewError(
@@ -145,9 +164,9 @@ export class PreviewProjectTechnicalCompilation
     }
     if (
       basis.thread.projectId !== command.projectId ||
-      basis.thread.snapshotId !== command.basis.snapshotId ||
-      basis.thread.revision !== command.basis.revision ||
-      basis.thread.subjectId !== command.basis.subjectId
+      basis.thread.snapshotId !== requestedBasis.snapshotId ||
+      basis.thread.revision !== requestedBasis.revision ||
+      basis.thread.subjectId !== requestedBasis.subjectId
     ) {
       throw previewError(
         "basis_mismatch",
@@ -189,7 +208,7 @@ export class PreviewProjectTechnicalCompilation
         try {
           reopened = await this.#sourceReader.read({
             projectId: command.projectId,
-            basis: command.basis,
+            basis: requestedBasis,
             reference,
             referenceFingerprint: sourceReferenceFingerprints[index],
           });
@@ -231,16 +250,6 @@ export class PreviewProjectTechnicalCompilation
       );
     }
 
-    try {
-      assertCommandReferencesResolve(command, basis, reopenedSources);
-    } catch (cause) {
-      throw previewError(
-        "invalid_request",
-        "Bindings and profile requests must use exact reopened source, symbol, and SysML ids.",
-        cause,
-      );
-    }
-
     let catalog;
     try {
       catalog = validateTechnicalCompilationProfileCatalog(
@@ -254,13 +263,34 @@ export class PreviewProjectTechnicalCompilation
       );
     }
 
+    const joinSources = reopenedSources.map((item) => item.source);
+    let profileRequests: ReturnType<typeof deriveTechnicalCompilationProfileRequests>;
+    let bindings: ReturnType<typeof deriveUniqueTechnicalCompilationBindings>;
+    try {
+      profileRequests = deriveTechnicalCompilationProfileRequests(
+        joinSources,
+        catalog,
+      );
+      bindings = deriveUniqueTechnicalCompilationBindings(
+        joinSources,
+        basis.sysmlAnchor.elements,
+      );
+      assertDerivedReferencesResolve(bindings, profileRequests, basis, reopenedSources);
+    } catch (cause) {
+      throw previewError(
+        "configuration_failure",
+        "The server-owned compilation join could not uniquely select profiles or SysML bindings.",
+        cause,
+      );
+    }
+
     const compilerInput: TechnicalCompilationInput = {
       schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
       basis,
       basisFingerprint,
-      sources: reopenedSources.map((item) => item.source),
-      bindings: command.bindings,
-      profileRequests: command.profileRequests,
+      sources: joinSources,
+      bindings,
+      profileRequests,
     };
 
     let compiled;
@@ -274,11 +304,18 @@ export class PreviewProjectTechnicalCompilation
       );
     }
 
+    const gaps = assembleTechnicalCompilationJoinGaps(
+      compiled.document.diagnostics,
+      joinSources,
+      basis.sysmlAnchor.elements,
+    );
+
     if (compiled.document.status !== "ready-for-review") {
       return deepFreeze({
         status: compiled.document.status,
         document: compiled.document,
         fingerprint: compiled.fingerprint,
+        gaps,
       });
     }
 
@@ -306,9 +343,42 @@ export class PreviewProjectTechnicalCompilation
       status: "ready-for-review",
       document: compiled.document,
       fingerprint: compiled.fingerprint,
+      gaps,
       draft: expectedReference,
       decisionParameters,
     });
+  }
+
+  async #resolveCurrentThreadTip(
+    projectId: string,
+  ): Promise<EngineeringThreadSnapshotBasis> {
+    if (!this.#projects) {
+      throw previewError(
+        "configuration_failure",
+        "Current Thread tip resolution is unavailable.",
+      );
+    }
+    let project;
+    try {
+      project = await this.#projects.get(projectId);
+    } catch (cause) {
+      throw previewError(
+        "basis_resolution_failed",
+        "The exact Thread/SysML basis reader failed.",
+        cause,
+      );
+    }
+    if (!project || project.project.id !== projectId) {
+      throw previewError(
+        "basis_not_found",
+        "The exact declared Thread/SysML basis could not be reopened.",
+      );
+    }
+    const tip = selectCurrentThreadTip(project.threadSnapshots);
+    if (tip.status !== "ok") {
+      throw previewError("basis_not_found", tip.diagnostic.message);
+    }
+    return tip.basis;
   }
 
   async #saveAndVerifyDraft(
@@ -442,9 +512,10 @@ async function validateDraftSourceCaptures(
 }
 
 function parseCommand(value: unknown): ProjectTechnicalCompilationPreviewCommand {
-  const root = exactRecord(
+  const root = closedRecord(
     value,
-    ["projectId", "basis", "sourceRefs", "bindings", "profileRequests"],
+    ["projectId", "basis", "sourceRefs"],
+    ["projectId", "sourceRefs"],
     "$command",
   );
   const sourceRefs = boundedCardinality(
@@ -458,65 +529,13 @@ function parseCommand(value: unknown): ProjectTechnicalCompilationPreviewCommand
         `$command.sourceRefs[${index}]`,
       )
     );
-  const bindings = boundedCardinality(
-    arrayOf(root.bindings, "$command.bindings"),
-    TECHNICAL_COMPILATION_ADMISSION_LIMITS.maxBindings,
-    "$command.bindings",
-  )
-    .map((binding, index) => parseBinding(binding, `$command.bindings[${index}]`))
-    .sort(compareById);
-  rejectDuplicates(bindings.map((binding) => binding.id), "$command.bindings ids");
-  rejectDuplicates(
-    bindings.map((binding) =>
-      deterministicJson([binding.sourceId, binding.sourceSymbolId])
-    ),
-    "$command binding source/symbol pairs",
-  );
-  const profileRequests = boundedCardinality(
-    nonEmptyArray(
-      root.profileRequests,
-      "$command.profileRequests",
-    ),
-    TECHNICAL_COMPILATION_ADMISSION_LIMITS.maxCompilationProfileRequests,
-    "$command.profileRequests",
-  )
-    .map((request, index) =>
-      parseProfileRequest(request, `$command.profileRequests[${index}]`)
-    )
-    .sort(compareProfileRequests);
-  rejectDuplicates(
-    profileRequests.map((request) => `${request.profileId}@${request.profileVersion}`),
-    "$command.profileRequests id/version pairs",
-  );
   return deepFreeze({
     projectId: safeId(root.projectId, "$command.projectId"),
-    basis: parseThreadBasis(root.basis, "$command.basis"),
+    ...(root.basis === undefined
+      ? {}
+      : { basis: parseExactThreadSnapshotBasis(root.basis, "$command.basis") }),
     sourceRefs,
-    bindings,
-    profileRequests,
   });
-}
-
-function parseThreadBasis(
-  value: unknown,
-  path: string,
-): EngineeringThreadSnapshotBasis {
-  const basis = exactRecord(
-    value,
-    ["kind", "snapshotId", "revision", "subjectId"],
-    path,
-  );
-  literalValue(basis.kind, "thread-snapshot", `${path}.kind`);
-  const snapshotId = safeId(basis.snapshotId, `${path}.snapshotId`);
-  if (snapshotId.toLowerCase() === "latest") {
-    throw new TypeError(`${path}.snapshotId must not use a latest alias.`);
-  }
-  return {
-    kind: "thread-snapshot",
-    snapshotId,
-    revision: positiveInteger(basis.revision, `${path}.revision`),
-    subjectId: safeId(basis.subjectId, `${path}.subjectId`),
-  };
 }
 
 function opaqueReference(
@@ -592,59 +611,6 @@ function cloneJsonReference(
   }
 }
 
-function parseBinding(value: unknown, path: string): TechnicalSemanticBinding {
-  const binding = exactRecord(
-    value,
-    [
-      "id",
-      "sourceId",
-      "sourceSymbolId",
-      "sysmlElementId",
-      "sysmlElementKind",
-      "relation",
-    ],
-    path,
-  );
-  return {
-    id: safeId(binding.id, `${path}.id`),
-    sourceId: safeId(binding.sourceId, `${path}.sourceId`),
-    sourceSymbolId: safeId(binding.sourceSymbolId, `${path}.sourceSymbolId`),
-    sysmlElementId: safeId(binding.sysmlElementId, `${path}.sysmlElementId`),
-    sysmlElementKind: safeId(
-      binding.sysmlElementKind,
-      `${path}.sysmlElementKind`,
-    ),
-    relation: bindingRelation(binding.relation, `${path}.relation`),
-  };
-}
-
-function parseProfileRequest(
-  value: unknown,
-  path: string,
-): TechnicalCompilationProfileRequest {
-  const request = exactRecord(
-    value,
-    ["profileId", "profileVersion", "sourceIds"],
-    path,
-  );
-  const sourceIds = boundedCardinality(
-    nonEmptyArray(request.sourceIds, `${path}.sourceIds`),
-    TECHNICAL_COMPILATION_ADMISSION_LIMITS.maxSourceIdsPerProfileRequest,
-    `${path}.sourceIds`,
-  )
-    .map((sourceId, index) => safeId(sourceId, `${path}.sourceIds[${index}]`))
-    .sort(compareText);
-  rejectDuplicates(sourceIds, `${path}.sourceIds`);
-  return {
-    profileId: safeId(request.profileId, `${path}.profileId`),
-    profileVersion: safeVersion(
-      request.profileVersion,
-      `${path}.profileVersion`,
-    ),
-    sourceIds,
-  };
-}
-
 function boundedCardinality(
   values: unknown[],
   maximum: number,
@@ -654,16 +620,6 @@ function boundedCardinality(
     throw new TypeError(`${path} must contain at most ${maximum} entries.`);
   }
   return values;
-}
-
-function bindingRelation(value: unknown, path: string): TechnicalBindingRelation {
-  if (
-    value !== "represents" && value !== "parameterizes" &&
-    value !== "satisfies" && value !== "constrains"
-  ) {
-    throw new TypeError(`${path} is not a supported binding relation.`);
-  }
-  return value;
 }
 
 function validateReopenedSource(
@@ -781,8 +737,9 @@ function parseSourceProvenance(
   });
 }
 
-function assertCommandReferencesResolve(
-  command: ProjectTechnicalCompilationPreviewCommand,
+function assertDerivedReferencesResolve(
+  bindings: readonly TechnicalSemanticBinding[],
+  profileRequests: readonly TechnicalCompilationProfileRequest[],
   basis: TechnicalCompilationBasis,
   reopenedSources: readonly ReopenedTechnicalCompilationSource[],
 ): void {
@@ -792,7 +749,7 @@ function assertCommandReferencesResolve(
   const elementById = new Map(
     basis.sysmlAnchor.elements.map((element) => [element.id, element]),
   );
-  for (const binding of command.bindings) {
+  for (const binding of bindings) {
     const source = sourceById.get(binding.sourceId);
     if (!source) {
       throw new TypeError(
@@ -813,7 +770,7 @@ function assertCommandReferencesResolve(
       );
     }
   }
-  for (const request of command.profileRequests) {
+  for (const request of profileRequests) {
     for (const sourceId of request.sourceIds) {
       if (!sourceById.has(sourceId)) {
         throw new TypeError(
@@ -1044,23 +1001,9 @@ function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function compareById<T extends { readonly id: string }>(left: T, right: T): number {
-  return compareText(left.id, right.id);
-}
-
 function compareBySourceId<T extends { readonly sourceId: string }>(
   left: T,
   right: T,
 ): number {
   return compareText(left.sourceId, right.sourceId);
-}
-
-function compareProfileRequests(
-  left: TechnicalCompilationProfileRequest,
-  right: TechnicalCompilationProfileRequest,
-): number {
-  return compareText(
-    `${left.profileId}@${left.profileVersion}`,
-    `${right.profileId}@${right.profileVersion}`,
-  );
 }

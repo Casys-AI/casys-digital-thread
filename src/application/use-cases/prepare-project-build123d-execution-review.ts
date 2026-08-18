@@ -65,7 +65,7 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../domain/project/engineering-project.ts";
+import { parseExactThreadSnapshotBasis } from "../../domain/project/thread-tip.ts";
 import {
   BUILD123D_EXECUTION_PROFILE_SCHEMA,
   type Build123dExecutionProfile,
@@ -209,7 +209,7 @@ function parseCommand(value: unknown): ProjectBuild123dExecutionReviewCommand {
     command.projectId,
     "$build123dExecutionReview.projectId",
   );
-  const basis = parseThreadBasis(
+  const basis = parseExactThreadSnapshotBasis(
     command.basis,
     "$build123dExecutionReview.basis",
   );
@@ -228,28 +228,6 @@ function parseCommand(value: unknown): ProjectBuild123dExecutionReviewCommand {
     throw new TypeError("The admission artifact id must derive from its hash.");
   }
   return deepFreeze({ projectId, basis, artifactId, artifactFingerprint });
-}
-
-function parseThreadBasis(
-  value: unknown,
-  path: string,
-): EngineeringThreadSnapshotBasis {
-  const basis = exactRecord(
-    value,
-    ["kind", "snapshotId", "revision", "subjectId"],
-    path,
-  );
-  literalValue(basis.kind, "thread-snapshot", `${path}.kind`);
-  const snapshotId = safeId(basis.snapshotId, `${path}.snapshotId`);
-  if (snapshotId.toLowerCase() === "latest") {
-    throw new TypeError(`${path}.snapshotId must name an exact snapshot.`);
-  }
-  return deepFreeze({
-    kind: "thread-snapshot",
-    snapshotId,
-    revision: positiveInteger(basis.revision, `${path}.revision`),
-    subjectId: safeId(basis.subjectId, `${path}.subjectId`),
-  });
 }
 
 async function reopenReadyBuild123dCompilation(

@@ -26,8 +26,6 @@ import { validateContentFingerprint } from "../../domain/analysis/isolated-code-
 import {
   deepFreeze,
   exactRecord,
-  literalValue,
-  positiveInteger,
   safeId,
 } from "../../domain/kernel/case-validation.ts";
 import {
@@ -35,7 +33,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../domain/project/engineering-project.ts";
+import { parseExactThreadSnapshotBasis } from "../../domain/project/thread-tip.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
@@ -168,7 +166,7 @@ function parseCommand(value: unknown): ProjectIsolatedGeometrySealReviewCommand 
     command.projectId,
     "$isolatedGeometrySealReview.projectId",
   );
-  const basis = parseThreadBasis(
+  const basis = parseExactThreadSnapshotBasis(
     command.basis,
     "$isolatedGeometrySealReview.basis",
   );
@@ -184,28 +182,6 @@ function parseCommand(value: unknown): ProjectIsolatedGeometrySealReviewCommand 
     throw new TypeError("The execution capture artifact id must derive from its hash.");
   }
   return deepFreeze({ projectId, basis, artifactId, artifactFingerprint });
-}
-
-function parseThreadBasis(
-  value: unknown,
-  path: string,
-): EngineeringThreadSnapshotBasis {
-  const basis = exactRecord(
-    value,
-    ["kind", "snapshotId", "revision", "subjectId"],
-    path,
-  );
-  literalValue(basis.kind, "thread-snapshot", `${path}.kind`);
-  const snapshotId = safeId(basis.snapshotId, `${path}.snapshotId`);
-  if (snapshotId.toLowerCase() === "latest") {
-    throw new TypeError(`${path}.snapshotId must name an exact snapshot.`);
-  }
-  return deepFreeze({
-    kind: "thread-snapshot",
-    snapshotId,
-    revision: positiveInteger(basis.revision, `${path}.revision`),
-    subjectId: safeId(basis.subjectId, `${path}.subjectId`),
-  });
 }
 
 async function readSnapshot(

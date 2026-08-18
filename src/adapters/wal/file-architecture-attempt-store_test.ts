@@ -1,6 +1,9 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
-import type { InsertionItem } from "../../domain/engineering/architecture-proposal.ts";
+import {
+  architectureWriteSelector,
+  type InsertionItem,
+} from "../../domain/engineering/architecture-proposal.ts";
 import type { SysmlSourceAnalysisReference } from "../captures/sysml-source-analysis-capture.ts";
 import {
   ArchitectureWriteOutcomeUnknownError,
@@ -40,25 +43,6 @@ function sourceReference(options: {
   };
 }
 
-function selectorForItem(
-  item: InsertionItem,
-  packageName = PACKAGE_NAME,
-): SysmlSourceAnalysisReference["selector"] {
-  if (item.kind === "full-package") {
-    return { kind: "full-package", packageName };
-  }
-  if (item.kind === "part-def") {
-    return { kind: "part-def", packageName, componentName: item.componentName };
-  }
-  return {
-    kind: "usage",
-    packageName,
-    componentName: item.componentName,
-    usageName: item.usageName,
-    parentName: item.parentName,
-  };
-}
-
 async function input(options: {
   readonly projectId?: string;
   readonly runId?: string;
@@ -74,7 +58,7 @@ async function input(options: {
   const sourceAnalyses = options.sourceAnalyses ??
     items.map((item, index) =>
       sourceReference({
-        selector: selectorForItem(item, packageName),
+        selector: architectureWriteSelector(item, packageName),
         runId,
         fingerprintDigit: options.fingerprintDigit,
         sourceSuffix: `${options.fingerprintDigit ?? "a"}-${index}`,
@@ -256,7 +240,7 @@ Deno.test("architecture WAL requires exact ordered selector coverage", async () 
     ] as const;
     const ordered = items.map((item, index) =>
       sourceReference({
-        selector: selectorForItem(item),
+        selector: architectureWriteSelector(item, PACKAGE_NAME),
         sourceSuffix: `ordered-${index}`,
       })
     );

@@ -507,12 +507,35 @@ function architectureElements(
   provenance: TechnicalSysmlElementProvenance,
 ): readonly TechnicalSysmlElementRef[] {
   const elements: TechnicalSysmlElementRef[] = [
-    { id: capture.package.id, kind: "Package", provenance },
+    {
+      id: capture.package.id,
+      kind: "Package",
+      name: capture.package.label,
+      provenance,
+    },
   ];
   for (const definition of capture.partDefinitions) {
-    elements.push({ id: definition.id, kind: definition.kind, provenance });
+    elements.push({
+      id: definition.id,
+      kind: definition.kind,
+      name: definition.label,
+      provenance,
+    });
     for (const usage of definition.usages) {
-      elements.push({ id: usage.id, kind: usage.kind, provenance });
+      elements.push({
+        id: usage.id,
+        kind: usage.kind,
+        name: usage.label,
+        provenance,
+      });
+    }
+    for (const attribute of definition.attributes ?? []) {
+      elements.push({
+        id: attribute.id,
+        kind: attribute.kind,
+        name: attribute.label,
+        provenance,
+      });
     }
   }
   elements.sort((left, right) =>

@@ -235,6 +235,74 @@ Deno.test("parseArchitectureProposalParameters: valid nominal proposal produces 
   assertEquals(motor?.parentName, "Wing");
 });
 
+Deno.test("parseArchitectureProposalParameters: unique attribute is owned by its parent PartDefinition", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "Lamp" },
+    { key: "system.name", label: "System", value: "LampSystem" },
+    { key: "component.arm.name", label: "Arm", value: "Arm" },
+    { key: "component.arm.usage", label: "Arm usage", value: "arm" },
+    { key: "attribute.thickness.name", label: "Thickness", value: "thickness" },
+    { key: "attribute.thickness.parent", label: "Thickness parent", value: "Arm" },
+  ]);
+  assertEquals(proposal.attributes, [{ name: "thickness", parentName: "Arm" }]);
+  const sysml = renderArchitectureSysml(proposal);
+  assertEquals(
+    sysml.includes("    attribute thickness;"),
+    true,
+  );
+  assertEquals(sysml.includes("  part def Arm {"), true);
+});
+
+Deno.test("parseArchitectureProposalParameters: duplicate attribute name is rejected", () => {
+  const error = assertThrows(
+    () =>
+      parseArchitectureProposalParameters([
+        { key: "architecture.package", label: "Package", value: "Lamp" },
+        { key: "system.name", label: "System", value: "LampSystem" },
+        { key: "component.arm.name", label: "Arm", value: "Arm" },
+        { key: "component.arm.usage", label: "Arm usage", value: "arm" },
+        { key: "attribute.a.name", label: "A", value: "thickness" },
+        { key: "attribute.a.parent", label: "A parent", value: "Arm" },
+        { key: "attribute.b.name", label: "B", value: "thickness" },
+        { key: "attribute.b.parent", label: "B parent", value: "LampSystem" },
+      ]),
+    ArchitectureProposalParseError,
+  ) as ArchitectureProposalParseError;
+  assertEquals(error.code, "duplicate_attribute");
+});
+
+Deno.test("planArchitectureInsertion: missing attribute is an enrichment write", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "Lamp" },
+    { key: "system.name", label: "System", value: "LampSystem" },
+    { key: "component.arm.name", label: "Arm", value: "Arm" },
+    { key: "component.arm.usage", label: "Arm usage", value: "arm" },
+    { key: "attribute.thickness.name", label: "Thickness", value: "thickness" },
+    { key: "attribute.thickness.parent", label: "Thickness parent", value: "Arm" },
+  ]);
+  const existing: ExistingArchitectureStructure = {
+    packageId: "pkg",
+    packageLabel: "Lamp",
+    partDefs: [{
+      id: "pd-system",
+      label: "LampSystem",
+      usages: [{ label: "arm", targetLabel: "Arm" }],
+    }, {
+      id: "pd-arm",
+      label: "Arm",
+      usages: [],
+      attributes: [],
+    }],
+  };
+  const plan = planArchitectureInsertion(existing, proposal);
+  assertEquals(plan.mode, "enrichment");
+  assertEquals(plan.toInsert, [{
+    kind: "attribute",
+    attributeName: "thickness",
+    parentName: "Arm",
+  }]);
+});
+
 Deno.test("parseArchitectureProposalParameters: component without explicit parent defaults to system", () => {
   const proposal = parseArchitectureProposalParameters([
     { key: "architecture.package", label: "Package", value: "DroneV4" },
@@ -348,6 +416,16 @@ Deno.test("rendered architecture SysML supports exactly the registered enrichmen
     { key: "system.name", label: "System", value: "DroneSystem" },
     { key: "component.wing.name", label: "Wing", value: "Wing" },
     { key: "component.wing.usage", label: "Wing usage", value: "wing" },
+    {
+      key: "attribute.span.name",
+      label: "Span",
+      value: "span",
+    },
+    {
+      key: "attribute.span.parent",
+      label: "Span parent",
+      value: "Wing",
+    },
   ]);
   const partDef = renderArchitectureSysmlWithManifest(proposal, {
     kind: "part-def",
@@ -361,10 +439,18 @@ Deno.test("rendered architecture SysML supports exactly the registered enrichmen
     usageName: "wing",
     parentName: "DroneSystem",
   });
+  const attribute = renderArchitectureSysmlWithManifest(proposal, {
+    kind: "attribute",
+    packageName: "DroneV4",
+    parentName: "Wing",
+    attributeName: "span",
+  });
   assertEquals(partDef.sourceText, "part def Wing {}");
   assertEquals(usage.sourceText, "part wing : Wing;");
+  assertEquals(attribute.sourceText, "attribute span;");
   assertEquals(validateRenderedArchitectureSysml(partDef), partDef);
   assertEquals(validateRenderedArchitectureSysml(usage), usage);
+  assertEquals(validateRenderedArchitectureSysml(attribute), attribute);
 });
 
 Deno.test("rendered architecture SysML rejects tampered source or manifest spans", () => {
@@ -663,7 +749,12 @@ Deno.test(
     // The plan must report a mistyped_usage conflict, not schedule an insertion.
     assertEquals(plan.conflicts.length, 1, "must report exactly one conflict");
     assertEquals(plan.conflicts[0]?.code, "mistyped_usage");
-    assertEquals(plan.conflicts[0]?.componentName, "Wing");
+    assertEquals(
+      plan.conflicts[0]?.code === "mistyped_usage"
+        ? plan.conflicts[0].componentName
+        : undefined,
+      "Wing",
+    );
     assertEquals(
       plan.toInsert.some((i) => i.kind === "usage"),
       false,
@@ -704,7 +795,12 @@ Deno.test(
     assertEquals(plan.toInsert.length, 0);
     assertEquals(plan.conflicts.length, 1);
     assertEquals(plan.conflicts[0]?.code, "ambiguous_usage");
-    assertEquals(plan.conflicts[0]?.componentName, "Wing");
+    assertEquals(
+      plan.conflicts[0]?.code === "ambiguous_usage"
+        ? plan.conflicts[0].componentName
+        : undefined,
+      "Wing",
+    );
   },
 );
 

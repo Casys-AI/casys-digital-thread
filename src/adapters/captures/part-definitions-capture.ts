@@ -152,6 +152,22 @@ export function toArchitectureCapturePartDefinitions(
           targetLabel: usage.targetLabel,
         };
       }),
+      ...((part.attributes ?? []).length > 0
+        ? {
+          attributes: (part.attributes ?? []).map((attribute, attributeIndex) => {
+            if (!attribute.id || !attribute.label) {
+              throw new Error(
+                `Live AttributeUsage ${index}/${attributeIndex} is missing a sealed identity.`,
+              );
+            }
+            return {
+              id: attribute.id,
+              kind: "AttributeUsage" as const,
+              label: attribute.label,
+            };
+          }),
+        }
+        : {}),
     };
   });
 }

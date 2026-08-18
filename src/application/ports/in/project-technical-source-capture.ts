@@ -4,7 +4,12 @@
  * The MCP surface may select only a server-registered capture profile and
  * supply source identity plus unchanged UTF-8 text. Profile resolution,
  * parsing, CAS persistence, and replay stay behind this provider-free port.
+ *
+ * The use case returns a review envelope. Compilation preview accepts only
+ * `review.reference`, never the whole review.
  */
+
+import type { TechnicalSourceCaptureReview } from "../../../domain/analysis/technical-source-capture-review.ts";
 
 export interface ProjectTechnicalSourceCaptureCommand {
   readonly profileId: string;
@@ -12,16 +17,8 @@ export interface ProjectTechnicalSourceCaptureCommand {
   readonly sourceText: string;
 }
 
-/**
- * Opaque, immutable locator returned by the capture boundary.
- *
- * Callers must preserve and pass the complete JSON object back unchanged. It
- * grants no project, Thread, MRTR, provider, or execution authority.
- */
-export type ProjectTechnicalSourceCaptureReference = Readonly<object>;
-
 export interface ProjectTechnicalSourceCaptureUseCase {
   capture(
     command: ProjectTechnicalSourceCaptureCommand,
-  ): Promise<ProjectTechnicalSourceCaptureReference>;
+  ): Promise<TechnicalSourceCaptureReview>;
 }

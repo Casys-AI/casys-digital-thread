@@ -58,18 +58,22 @@ Deno.test("technical basis resolver reopens exact project Thread and canonical S
   assertEquals(resolved?.sysmlAnchor.elements, [{
     id: "package-basis-test",
     kind: "Package",
+    name: "BasisPackage",
     provenance: architectureProvenance,
   }, {
     id: "part-definition-frame",
     kind: "PartDefinition",
+    name: "Frame",
     provenance: architectureProvenance,
   }, {
     id: "part-definition-system",
     kind: "PartDefinition",
+    name: "BasisSystem",
     provenance: architectureProvenance,
   }, {
     id: "part-usage-frame",
     kind: "PartUsage",
+    name: "frame",
     provenance: architectureProvenance,
   }]);
 });

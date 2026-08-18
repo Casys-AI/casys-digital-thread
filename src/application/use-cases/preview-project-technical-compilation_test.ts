@@ -30,6 +30,7 @@ import {
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_LIMITS,
 } from "../../domain/analysis/technical-compilation-proposal.ts";
+import { TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY } from "../../domain/analysis/technical-compilation-preview-review.ts";
 import {
   PreviewProjectTechnicalCompilation,
   ProjectTechnicalCompilationPreviewError,
@@ -165,7 +166,12 @@ class FakeDraftStore implements TechnicalCompilationDraftStore {
   }
 }
 
-async function harness(options: { readonly photo?: boolean } = {}): Promise<Harness> {
+async function harness(
+  options: {
+    readonly photo?: boolean;
+    readonly unmatchedAttribute?: boolean;
+  } = {},
+): Promise<Harness> {
   const sourceText = options.photo
     ? "from build123d import Box\nresult = Box(20, 10, 2)\n"
     : [
@@ -238,6 +244,7 @@ async function harness(options: { readonly photo?: boolean } = {}): Promise<Harn
       {
         id: "sysml.thickness",
         kind: "AttributeUsage",
+        name: options.unmatchedAttribute ? "width" : "thickness",
         provenance: sysmlProvenance,
       },
     ],
@@ -282,19 +289,6 @@ async function harness(options: { readonly photo?: boolean } = {}): Promise<Harn
       schemaVersion: "opaque-capture-ref/1.0",
       captureId: "capture.source.cad",
     }],
-    bindings: options.photo ? [] : [{
-      id: "binding.cad.thickness",
-      sourceId: "source.cad",
-      sourceSymbolId: "cad.thickness",
-      sysmlElementId: "sysml.thickness",
-      sysmlElementKind: "AttributeUsage",
-      relation: "parameterizes",
-    }],
-    profileRequests: [{
-      profileId: "profile.build123d",
-      profileVersion: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
-      sourceIds: ["source.cad"],
-    }],
   };
   const basisResolver = new FakeBasisResolver(basis);
   const sourceReader = new FakeSourceReader(source);
@@ -319,6 +313,7 @@ Deno.test("preview reopens server facts, saves and rereads a deterministic provi
 
   assertEquals(result.status, "ready-for-review");
   if (result.status !== "ready-for-review") throw new Error("unreachable");
+  assertEquals(result.gaps, []);
   assertEquals(fixture.basisResolver.calls, 1);
   assertEquals(fixture.sourceReader.calls.length, 1);
   assertEquals(fixture.draftStore.saves, 1);
@@ -456,33 +451,6 @@ Deno.test("preview rejects admission cardinality overflow before resolver or sou
         }),
       );
     },
-    (command) => {
-      const binding = (command.bindings as Record<string, unknown>[])[0];
-      command.bindings = Array.from(
-        { length: TECHNICAL_COMPILATION_ADMISSION_LIMITS.maxBindings + 1 },
-        (_, index) => ({ ...binding, id: `binding.${index}` }),
-      );
-    },
-    (command) => {
-      const request = (command.profileRequests as Record<string, unknown>[])[0];
-      command.profileRequests = Array.from(
-        {
-          length: TECHNICAL_COMPILATION_ADMISSION_LIMITS.maxCompilationProfileRequests +
-            1,
-        },
-        (_, index) => ({ ...request, profileId: `profile.${index}` }),
-      );
-    },
-    (command) => {
-      const request = (command.profileRequests as Record<string, unknown>[])[0];
-      request.sourceIds = Array.from(
-        {
-          length: TECHNICAL_COMPILATION_ADMISSION_LIMITS.maxSourceIdsPerProfileRequest +
-            1,
-        },
-        (_, index) => `source.${index}`,
-      );
-    },
   ];
 
   for (const mutate of cases) {
@@ -597,21 +565,14 @@ Deno.test("preview maps basis and source reader failures without leaking adapter
   assertEquals(sourceFailure.draftStore.saves, 0);
 });
 
-Deno.test("preview rejects foreign binding and requested source ids as request errors", async () => {
+Deno.test("preview rejects caller-supplied bindings and profileRequests", async () => {
   for (
     const mutate of [
       (command: Record<string, unknown>) => {
-        (command.bindings as Record<string, unknown>[])[0].sourceSymbolId =
-          "symbol.foreign";
+        command.bindings = [];
       },
       (command: Record<string, unknown>) => {
-        (command.bindings as Record<string, unknown>[])[0].sysmlElementId =
-          "sysml.foreign";
-      },
-      (command: Record<string, unknown>) => {
-        (command.profileRequests as Record<string, unknown>[])[0].sourceIds = [
-          "source.foreign",
-        ];
+        command.profileRequests = [];
       },
     ]
   ) {
@@ -641,21 +602,46 @@ Deno.test("preview rejects tampered source provenance before draft or MRTR deriv
 });
 
 Deno.test("unresolved and rejected previews expose no draft or sealing parameters", async () => {
-  const unresolved = await harness();
-  const unresolvedCommand = structuredClone(unresolved.command);
-  unresolvedCommand.bindings = [];
-  const unresolvedResult = await unresolved.service.execute(unresolvedCommand);
+  const unresolved = await harness({ unmatchedAttribute: true });
+  const unresolvedResult = await unresolved.service.execute(unresolved.command);
   assertEquals(unresolvedResult.status, "unresolved");
   assert(!Object.hasOwn(unresolvedResult, "draft"));
   assert(!Object.hasOwn(unresolvedResult, "decisionParameters"));
+  assertEquals(unresolvedResult.gaps, [{
+    code: "binding.missing",
+    relation: "parameterizes",
+    sourceId: "source.cad",
+    symbolName: "thickness",
+    symbolKind: "parameter",
+    reason: "no-unique-AttributeUsage",
+    candidateCount: 0,
+    recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.noUniqueAttributeUsage,
+  }]);
   assertEquals(unresolved.draftStore.saves, 0);
 
   const rejected = await harness();
-  const rejectedCommand = structuredClone(rejected.command);
-  (rejectedCommand.profileRequests as Record<string, unknown>[])[0].profileId =
-    "profile.unknown";
-  const rejectedResult = await rejected.service.execute(rejectedCommand);
+  const rejectedCatalog = {
+    schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+    profiles: [{
+      id: "profile.build123d",
+      version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+      target: "build123d-source" as const,
+      sourceRole: "cad-script" as const,
+      language: "python" as const,
+      analyzer: { id: "other.ast", version: "9.9.9" },
+      analysisPolicyProfile: "policy.python-safe",
+      requiredBindingSymbolKinds: ["parameter" as const],
+    }],
+  };
+  const rejectedService = new PreviewProjectTechnicalCompilation({
+    basisResolver: rejected.basisResolver,
+    sourceReader: rejected.sourceReader,
+    profileCatalog: new FakeCatalogProvider(rejectedCatalog),
+    draftStore: rejected.draftStore,
+  });
+  const rejectedResult = await rejectedService.execute(rejected.command);
   assertEquals(rejectedResult.status, "rejected");
+  assertEquals(rejectedResult.gaps, []);
   assert(!Object.hasOwn(rejectedResult, "draft"));
   assert(!Object.hasOwn(rejectedResult, "decisionParameters"));
   assertEquals(rejected.draftStore.saves, 0);
@@ -672,6 +658,11 @@ Deno.test(
         diagnostic.code === "source.no-named-numeric-lever"
       ),
     );
+    assertEquals(
+      result.gaps.map((gap) => gap.code),
+      ["source.no-named-numeric-lever"],
+    );
+    assertEquals(result.gaps[0]?.sourceId, "source.cad");
     assert(!Object.hasOwn(result, "draft"));
     assert(!Object.hasOwn(result, "decisionParameters"));
     assertEquals(photo.draftStore.saves, 0);
@@ -753,6 +744,71 @@ Deno.test("derived draft id supports the full valid project-id bound", async () 
     `technical-compilation:${projectId}:${result.fingerprint.digest}`,
   );
   assert(result.draft.draftId.length > 256);
+});
+
+Deno.test("omitted basis uses the unique current Thread tip", async () => {
+  const fixture = await harness();
+  const command = {
+    projectId: fixture.command.projectId,
+    sourceRefs: fixture.command.sourceRefs,
+  };
+  const withoutProjects = new PreviewProjectTechnicalCompilation({
+    basisResolver: fixture.basisResolver,
+    sourceReader: fixture.sourceReader,
+    profileCatalog: new FakeCatalogProvider({
+      schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+      profiles: [{
+        id: "profile.build123d",
+        version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+        target: "build123d-source",
+        sourceRole: "cad-script",
+        language: "python",
+        analyzer: { id: "test.ast", version: "1.0.0" },
+        analysisPolicyProfile: "policy.python-safe",
+        requiredBindingSymbolKinds: ["parameter"],
+      }],
+    }),
+    draftStore: fixture.draftStore,
+  });
+  const missing = await assertRejects(
+    () => withoutProjects.execute(command),
+    ProjectTechnicalCompilationPreviewError,
+  );
+  assertEquals(missing.code, "configuration_failure");
+
+  const withTip = await harness();
+  const service = new PreviewProjectTechnicalCompilation({
+    basisResolver: withTip.basisResolver,
+    sourceReader: withTip.sourceReader,
+    profileCatalog: new FakeCatalogProvider({
+      schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+      profiles: [{
+        id: "profile.build123d",
+        version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+        target: "build123d-source",
+        sourceRole: "cad-script",
+        language: "python",
+        analyzer: { id: "test.ast", version: "1.0.0" },
+        analysisPolicyProfile: "policy.python-safe",
+        requiredBindingSymbolKinds: ["parameter"],
+      }],
+    }),
+    draftStore: withTip.draftStore,
+    projects: {
+      get: () =>
+        Promise.resolve({
+          project: { id: "project.drip-tray" },
+          threadSnapshots: [{
+            snapshotId: "snapshot.7",
+            revision: 7,
+            subjectId: "subject.drip-tray",
+          }],
+        } as never),
+    },
+  });
+  const result = await service.execute(command);
+  assertEquals(result.status, "ready-for-review");
+  assertEquals(withTip.basisResolver.calls, 1);
 });
 
 function recursiveKeys(value: unknown, into = new Set<string>()): Set<string> {

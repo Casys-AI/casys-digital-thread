@@ -20,13 +20,11 @@ import { VECTOR_CORRECTION_UNLINKED_LABEL } from "../../domain/analysis/vector-c
 import {
   deepFreeze,
   exactRecord,
-  literalValue,
-  positiveInteger,
   safeId,
 } from "../../domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../domain/project/engineering-project.ts";
+import { parseExactThreadSnapshotBasis } from "../../domain/project/thread-tip.ts";
 import type {
   RequirementEvaluation,
   ThreadArtifact,
@@ -193,7 +191,10 @@ function parseCommand(value: unknown): ProjectVectorCorrectionReviewCommand {
     "$vectorCorrectionReview",
   );
   const projectId = safeId(command.projectId, "$vectorCorrectionReview.projectId");
-  const basis = parseThreadBasis(command.basis, "$vectorCorrectionReview.basis");
+  const basis = parseExactThreadSnapshotBasis(
+    command.basis,
+    "$vectorCorrectionReview.basis",
+  );
   return deepFreeze({
     projectId,
     basis,
@@ -205,28 +206,6 @@ function parseCommand(value: unknown): ProjectVectorCorrectionReviewCommand {
       command.studyArtifactId,
       "$vectorCorrectionReview.studyArtifactId",
     ),
-  });
-}
-
-function parseThreadBasis(
-  value: unknown,
-  path: string,
-): EngineeringThreadSnapshotBasis {
-  const basis = exactRecord(
-    value,
-    ["kind", "snapshotId", "revision", "subjectId"],
-    path,
-  );
-  literalValue(basis.kind, "thread-snapshot", `${path}.kind`);
-  const snapshotId = safeId(basis.snapshotId, `${path}.snapshotId`);
-  if (snapshotId.toLowerCase() === "latest") {
-    throw new TypeError(`${path}.snapshotId must name an exact snapshot.`);
-  }
-  return deepFreeze({
-    kind: "thread-snapshot",
-    snapshotId,
-    revision: positiveInteger(basis.revision, `${path}.revision`),
-    subjectId: safeId(basis.subjectId, `${path}.subjectId`),
   });
 }
 

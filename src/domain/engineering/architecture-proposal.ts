@@ -41,11 +41,20 @@ export interface ArchitectureComponent {
   readonly parentName: string;
 }
 
+/** One reviewed AttributeUsage owned by a PartDefinition. */
+export interface ArchitectureAttribute {
+  /** camelCase SysML identifier, e.g. "thickness". */
+  readonly name: string;
+  /** PartDefinition that owns the attribute (system.name or a component name). */
+  readonly parentName: string;
+}
+
 /** Parsed, hierarchy-typed representation of the human-reviewed MRTR proposal. */
 export interface ArchitectureProposal {
   readonly packageName: string;
   readonly system: { readonly name: string };
   readonly components: readonly ArchitectureComponent[];
+  readonly attributes?: readonly ArchitectureAttribute[];
 }
 
 // ── Error types ──────────────────────────────────────────────────────────────
@@ -60,7 +69,9 @@ export type ArchitectureProposalParseErrorCode =
   | "usage_same_as_name"
   | "non_string_value"
   | "duplicate_usage"
+  | "duplicate_attribute"
   | "missing_parent"
+  | "missing_attribute_parent"
   | "cycle_detected";
 
 /** Structured parse failure — code is stable, message is diagnostic only. */
@@ -85,6 +96,7 @@ export class ArchitectureProposalParseError extends Error {
 const SYSML_IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*$/;
 const SYSML_USAGE_IDENTIFIER = /^[a-z][A-Za-z0-9_]*$/;
 const COMPONENT_KEY = /^component\.([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z]+)$/;
+const ATTRIBUTE_KEY = /^attribute\.([A-Za-z][A-Za-z0-9_]*)\.(name|parent)$/;
 
 // ── Parser ───────────────────────────────────────────────────────────────────
 
@@ -112,6 +124,7 @@ export function parseArchitectureProposalParameters(
     string,
     { name?: string; usage?: string; parent?: string }
   >();
+  const attributeFields = new Map<string, { name?: string; parent?: string }>();
 
   for (const param of parameters) {
     if (typeof param.value !== "string") {
@@ -132,11 +145,22 @@ export function parseArchitectureProposalParameters(
       continue;
     }
 
+    const attributeMatch = ATTRIBUTE_KEY.exec(param.key);
+    if (attributeMatch) {
+      const slug = attributeMatch[1]!;
+      const field = attributeMatch[2]!;
+      const entry = attributeFields.get(slug) ?? {};
+      if (field === "name") entry.name = value;
+      else entry.parent = value;
+      attributeFields.set(slug, entry);
+      continue;
+    }
+
     const match = COMPONENT_KEY.exec(param.key);
     if (!match) {
       throw new ArchitectureProposalParseError(
         "unknown_key",
-        `Unknown architecture parameter key "${param.key}". Allowed keys: architecture.package, system.name, component.<slug>.(name|usage|parent).`,
+        `Unknown architecture parameter key "${param.key}". Allowed keys: architecture.package, system.name, component.<slug>.(name|usage|parent), attribute.<slug>.(name|parent).`,
         { key: param.key },
       );
     }
@@ -275,7 +299,52 @@ export function parseArchitectureProposalParameters(
 
   detectCycles(systemName, components);
 
-  return { packageName, system: { name: systemName }, components };
+  const definitionNames = new Set<string>([
+    systemName,
+    ...components.map((component) => component.name),
+  ]);
+  const attributes: ArchitectureAttribute[] = [];
+  const attributeNames = new Set<string>();
+  for (const [slug, fields] of attributeFields) {
+    if (!fields.name || !fields.name.trim()) {
+      throw new ArchitectureProposalParseError(
+        "invalid_identifier",
+        `Attribute "${slug}" is missing its "name" field.`,
+        { slug },
+      );
+    }
+    if (!SYSML_USAGE_IDENTIFIER.test(fields.name)) {
+      throw new ArchitectureProposalParseError(
+        "invalid_identifier",
+        `Attribute "${slug}" name "${fields.name}" is not a valid SysML usage identifier (^[a-z][A-Za-z0-9_]*$).`,
+        { slug, value: fields.name },
+      );
+    }
+    const parentName = fields.parent ?? systemName;
+    if (!definitionNames.has(parentName)) {
+      throw new ArchitectureProposalParseError(
+        "missing_attribute_parent",
+        `Attribute "${fields.name}" references unknown parent "${parentName}".`,
+        { name: fields.name, parent: parentName },
+      );
+    }
+    if (attributeNames.has(fields.name)) {
+      throw new ArchitectureProposalParseError(
+        "duplicate_attribute",
+        `Duplicate attribute "${fields.name}" in the proposal.`,
+        { name: fields.name },
+      );
+    }
+    attributeNames.add(fields.name);
+    attributes.push({ name: fields.name, parentName });
+  }
+
+  return {
+    packageName,
+    system: { name: systemName },
+    components,
+    attributes,
+  };
 }
 
 function detectCycles(
@@ -351,10 +420,16 @@ export type SysmlArchitectureSourceSelector =
     readonly componentName: string;
     readonly usageName: string;
     readonly parentName: string;
+  }
+  | {
+    readonly kind: "attribute";
+    readonly packageName: string;
+    readonly parentName: string;
+    readonly attributeName: string;
   };
 
 export interface RenderedArchitectureSysmlEntry {
-  readonly kind: "package" | "part-definition" | "part-usage";
+  readonly kind: "package" | "part-definition" | "part-usage" | "attribute";
   readonly selector: SysmlArchitectureSourceSelector;
   readonly packageName: string;
   readonly parentName?: string;
@@ -363,6 +438,7 @@ export interface RenderedArchitectureSysmlEntry {
   readonly bodyStyle?: "block" | "empty";
   readonly usageName?: string;
   readonly targetName?: string;
+  readonly attributeName?: string;
   readonly span: SysmlSourceSpan;
 }
 
@@ -418,6 +494,14 @@ export function renderArchitectureSysmlWithManifest(
       usageName: normalized.usageName,
       targetName: normalized.componentName,
     });
+  } else if (normalized.kind === "attribute") {
+    add(`attribute ${normalized.attributeName};`, {
+      kind: "attribute",
+      selector: normalized,
+      packageName: normalized.packageName,
+      parentName: normalized.parentName,
+      attributeName: normalized.attributeName,
+    });
   } else {
     add(`package ${proposal.packageName} {`, {
       kind: "package",
@@ -433,7 +517,13 @@ export function renderArchitectureSysmlWithManifest(
       const usages = proposal.components.filter((component) =>
         component.parentName === definitionName
       );
-      if (usages.length === 0 && definitionName !== proposal.system.name) {
+      const attributes = proposalAttributes(proposal).filter((attribute) =>
+        attribute.parentName === definitionName
+      );
+      if (
+        usages.length === 0 && attributes.length === 0 &&
+        definitionName !== proposal.system.name
+      ) {
         add(`  part def ${definitionName} {}`, {
           kind: "part-definition",
           selector: normalized,
@@ -458,6 +548,15 @@ export function renderArchitectureSysmlWithManifest(
           parentName: definitionName,
           usageName: usage.usageName,
           targetName: usage.name,
+        });
+      }
+      for (const attribute of attributes) {
+        add(`    attribute ${attribute.name};`, {
+          kind: "attribute",
+          selector: normalized,
+          packageName: proposal.packageName,
+          parentName: definitionName,
+          attributeName: attribute.name,
         });
       }
       add("  }");
@@ -531,6 +630,19 @@ function normalizeSysmlSelector(
     }
     return Object.freeze({ ...selector });
   }
+  if (selector.kind === "attribute") {
+    if (
+      !proposalAttributes(proposal).some((attribute) =>
+        attribute.name === selector.attributeName &&
+        attribute.parentName === selector.parentName
+      )
+    ) {
+      throw new TypeError(
+        "SysML attribute selector is not one exact proposal attribute.",
+      );
+    }
+    return Object.freeze({ ...selector });
+  }
   if (
     !proposal.components.some((component) =>
       component.name === selector.componentName &&
@@ -552,7 +664,10 @@ function parseRenderedArchitectureManifest(
   if (raw.schemaVersion !== "rendered-architecture-sysml-manifest/1.0") {
     throw new TypeError("Unsupported rendered SysML manifest schema.");
   }
-  const selector = parseSysmlSelector(raw.selector, "$renderedSysml.manifest.selector");
+  const selector = parseArchitectureSysmlSelector(
+    raw.selector,
+    "$renderedSysml.manifest.selector",
+  );
   if (!Array.isArray(raw.entries) || raw.entries.length === 0) {
     throw new TypeError("Rendered SysML manifest must contain entries.");
   }
@@ -566,7 +681,7 @@ function parseRenderedArchitectureManifest(
   });
 }
 
-function parseSysmlSelector(
+export function parseArchitectureSysmlSelector(
   value: unknown,
   path: string,
 ): SysmlArchitectureSourceSelector {
@@ -586,6 +701,20 @@ function parseSysmlSelector(
       kind: "part-def",
       packageName: sysmlName(raw.packageName, `${path}.packageName`),
       componentName: sysmlName(raw.componentName, `${path}.componentName`),
+    });
+  }
+  if (record?.kind === "attribute") {
+    const raw = exactRecord(value, [
+      "kind",
+      "packageName",
+      "parentName",
+      "attributeName",
+    ], path);
+    return Object.freeze({
+      kind: "attribute",
+      packageName: sysmlName(raw.packageName, `${path}.packageName`),
+      parentName: sysmlName(raw.parentName, `${path}.parentName`),
+      attributeName: sysmlUsageName(raw.attributeName, `${path}.attributeName`),
     });
   }
   const raw = exactRecord(value, [
@@ -621,8 +750,14 @@ function parseRenderedEntry(
   if (record.kind === "part-usage") {
     fields.push("parentName", "usageName", "targetName");
   }
+  if (record.kind === "attribute") {
+    fields.push("parentName", "attributeName");
+  }
   const raw = exactRecord(value, fields, path);
-  const entrySelector = parseSysmlSelector(raw.selector, `${path}.selector`);
+  const entrySelector = parseArchitectureSysmlSelector(
+    raw.selector,
+    `${path}.selector`,
+  );
   if (deterministicJson(entrySelector) !== deterministicJson(selector)) {
     throw new TypeError(`${path}.selector must equal manifest selector.`);
   }
@@ -642,6 +777,16 @@ function parseRenderedEntry(
       packageName,
       definitionName: sysmlName(raw.definitionName, `${path}.definitionName`),
       bodyStyle: raw.bodyStyle,
+      span,
+    };
+  }
+  if (raw.kind === "attribute") {
+    return {
+      kind: "attribute",
+      selector,
+      packageName,
+      parentName: sysmlName(raw.parentName, `${path}.parentName`),
+      attributeName: sysmlUsageName(raw.attributeName, `${path}.attributeName`),
       span,
     };
   }
@@ -703,6 +848,16 @@ function sourceFromManifest(manifest: RenderedArchitectureSysmlManifest): string
     assertManifestSpans(sourceText, entries);
     return sourceText;
   }
+  if (manifest.selector.kind === "attribute") {
+    if (
+      entries.length !== 1 || entries[0]?.kind !== "attribute" ||
+      entries[0].attributeName !== manifest.selector.attributeName ||
+      entries[0].parentName !== manifest.selector.parentName
+    ) throw new TypeError("Attribute manifest is not exact.");
+    const sourceText = `attribute ${manifest.selector.attributeName};`;
+    assertManifestSpans(sourceText, entries);
+    return sourceText;
+  }
   if (entries[0]?.kind !== "package") {
     throw new TypeError("Full-package manifest must start with package.");
   }
@@ -728,9 +883,17 @@ function sourceFromManifest(manifest: RenderedArchitectureSysmlManifest): string
       entries[index]?.kind === "part-usage" &&
       entries[index]?.parentName === definition.definitionName
     ) usages.push(entries[index++]!);
-    if (usages.length > 0 && definition.bodyStyle !== "block") {
+    const attributes: RenderedArchitectureSysmlEntry[] = [];
+    while (
+      entries[index]?.kind === "attribute" &&
+      entries[index]?.parentName === definition.definitionName
+    ) attributes.push(entries[index++]!);
+    if (
+      (usages.length > 0 || attributes.length > 0) &&
+      definition.bodyStyle !== "block"
+    ) {
       throw new TypeError(
-        "A PartDefinition with usages must use the block write form.",
+        "A PartDefinition with usages or attributes must use the block write form.",
       );
     }
     for (const usage of usages) {
@@ -746,12 +909,18 @@ function sourceFromManifest(manifest: RenderedArchitectureSysmlManifest): string
       usageNamesByParent.add(identity);
       usageTargetNames.add(usage.targetName!);
     }
-    if (usages.length === 0 && definition.bodyStyle === "empty") {
+    if (
+      usages.length === 0 && attributes.length === 0 &&
+      definition.bodyStyle === "empty"
+    ) {
       lines.push(`  part def ${definition.definitionName} {}`);
     } else {
       lines.push(`  part def ${definition.definitionName} {`);
       for (const usage of usages) {
         lines.push(`    part ${usage.usageName} : ${usage.targetName};`);
+      }
+      for (const attribute of attributes) {
+        lines.push(`    attribute ${attribute.attributeName};`);
       }
       lines.push("  }");
     }
@@ -778,6 +947,8 @@ function assertManifestSpans(
       ? `package ${entry.packageName} {`
       : entry.kind === "part-definition"
       ? `part def ${entry.definitionName}`
+      : entry.kind === "attribute"
+      ? `attribute ${entry.attributeName};`
       : `part ${entry.usageName} : ${entry.targetName};`;
     const offset = lines.slice(nextLine).findIndex((line) =>
       line.trimStart().startsWith(needle)
@@ -814,6 +985,12 @@ function sysmlUsageName(value: unknown, path: string): string {
   return value;
 }
 
+function proposalAttributes(
+  proposal: ArchitectureProposal,
+): readonly ArchitectureAttribute[] {
+  return proposal.attributes ?? [];
+}
+
 // ── Insertion plan ───────────────────────────────────────────────────────────
 
 /**
@@ -840,6 +1017,13 @@ export interface ExistingPartUsage {
   readonly targetKind?: string;
 }
 
+/** A reviewed AttributeUsage child extracted from a PartDef. */
+export interface ExistingAttribute {
+  readonly id?: string;
+  readonly kind?: string;
+  readonly label: string;
+}
+
 /** A PartDef element extracted from the live SysON model. */
 export interface ExistingPartDef {
   readonly id: string;
@@ -848,6 +1032,7 @@ export interface ExistingPartDef {
   readonly label: string;
   /** Child usages with their type targets. */
   readonly usages: readonly ExistingPartUsage[];
+  readonly attributes?: readonly ExistingAttribute[];
 }
 
 /**
@@ -905,6 +1090,11 @@ export type ArchitectureInsertionConflict =
     readonly code: "ambiguous_usage";
     readonly componentName: string;
     readonly message: string;
+  }
+  | {
+    readonly code: "ambiguous_attribute";
+    readonly attributeName: string;
+    readonly message: string;
   };
 
 /**
@@ -916,6 +1106,8 @@ export type ArchitectureInsertionConflict =
  *   architecture package element.
  * "usage" — enrichment mode: insert one `part <usageName> : <name>;` under the
  *   named parent's PartDef element.
+ * "attribute" — enrichment mode: insert one `attribute <name>;` under the
+ *   named parent's PartDef element.
  */
 export type InsertionItem =
   | { readonly kind: "full-package" }
@@ -925,7 +1117,40 @@ export type InsertionItem =
     readonly componentName: string;
     readonly usageName: string;
     readonly parentName: string;
+  }
+  | {
+    readonly kind: "attribute";
+    readonly attributeName: string;
+    readonly parentName: string;
   };
+
+/** Selector for one planned SysML write. The adapter capture reuses this. */
+export function architectureWriteSelector(
+  item: InsertionItem,
+  packageName: string,
+): SysmlArchitectureSourceSelector {
+  if (item.kind === "full-package") {
+    return { kind: "full-package", packageName };
+  }
+  if (item.kind === "part-def") {
+    return { kind: "part-def", packageName, componentName: item.componentName };
+  }
+  if (item.kind === "attribute") {
+    return {
+      kind: "attribute",
+      packageName,
+      parentName: item.parentName,
+      attributeName: item.attributeName,
+    };
+  }
+  return {
+    kind: "usage",
+    packageName,
+    componentName: item.componentName,
+    usageName: item.usageName,
+    parentName: item.parentName,
+  };
+}
 
 export interface ArchitectureInsertionPlan {
   readonly mode: "initial" | "enrichment";
@@ -1075,6 +1300,28 @@ export function planArchitectureInsertion(
         parentName: component.parentName,
       });
     }
+  }
+
+  for (const attribute of proposalAttributes(proposal)) {
+    const parentPartDef = partDefByLabel.get(attribute.parentName);
+    const existing = (parentPartDef?.attributes ?? []).filter((item) =>
+      item.label === attribute.name
+    );
+    if (existing.length > 1) {
+      conflicts.push({
+        code: "ambiguous_attribute",
+        attributeName: attribute.name,
+        message: `Attribute "${attribute.name}" appears ${existing.length} times ` +
+          `under "${attribute.parentName}". A unique name is required.`,
+      });
+      continue;
+    }
+    if (existing.length === 1) continue;
+    toInsert.push({
+      kind: "attribute",
+      attributeName: attribute.name,
+      parentName: attribute.parentName,
+    });
   }
 
   return { mode: "enrichment", toInsert, adopted, conflicts };

@@ -52,6 +52,7 @@ import {
 } from "../../domain/engineering/syson-model-seed.ts";
 import {
   type ArchitectureProposal,
+  architectureWriteSelector,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
   planArchitectureInsertion,
@@ -785,19 +786,31 @@ export class ModelWriteArchitectureRunExecutor {
             },
           }
           : {}),
-        partDefinitions: verified.partDefs.map((pd) => ({
-          id: pd.id,
-          kind: "PartDefinition",
-          label: pd.label,
-          usages: pd.usages.map((usage) => ({
-            id: usage.id,
-            kind: "PartUsage",
-            label: usage.label,
-            targetId: usage.targetId,
-            targetKind: "PartDefinition",
-            targetLabel: usage.targetLabel,
-          })),
-        })),
+        partDefinitions: verified.partDefs.map((pd) => {
+          const attributes = (pd.attributes ?? []).flatMap((attribute) =>
+            attribute.id
+              ? [{
+                id: attribute.id,
+                kind: "AttributeUsage" as const,
+                label: attribute.label,
+              }]
+              : []
+          );
+          return {
+            id: pd.id,
+            kind: "PartDefinition",
+            label: pd.label,
+            usages: pd.usages.map((usage) => ({
+              id: usage.id,
+              kind: "PartUsage",
+              label: usage.label,
+              targetId: usage.targetId,
+              targetKind: "PartDefinition",
+              targetLabel: usage.targetLabel,
+            })),
+            ...(attributes.length > 0 ? { attributes } : {}),
+          };
+        }),
         insertedAt: capturedAt,
         ...(sealedSources.length > 0
           ? { sourceAnalyses: sealedSources.map((source) => source.reference) }
@@ -1162,28 +1175,15 @@ export class ModelWriteArchitectureRunExecutor {
     runId: string,
   ): Promise<readonly VerifiedSysmlSourceAnalysis[]> {
     const selectors = mode === "initial"
-      ? [{ kind: "full-package" as const, packageName: proposal.packageName }]
+      ? [architectureWriteSelector({ kind: "full-package" }, proposal.packageName)]
       : items.map((item) => {
-        if (item.kind === "part-def") {
-          return {
-            kind: "part-def" as const,
-            packageName: proposal.packageName,
-            componentName: item.componentName,
-          };
+        if (item.kind === "full-package") {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            "An enrichment plan must not contain a full-package SysML write.",
+          );
         }
-        if (item.kind === "usage") {
-          return {
-            kind: "usage" as const,
-            packageName: proposal.packageName,
-            componentName: item.componentName,
-            usageName: item.usageName,
-            parentName: item.parentName,
-          };
-        }
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "An enrichment plan must not contain a full-package SysML write.",
-        );
+        return architectureWriteSelector(item, proposal.packageName);
       });
     const references = await Promise.all(
       selectors.map((selector) =>
@@ -1359,13 +1359,43 @@ export class ModelWriteArchitectureRunExecutor {
             `"${item.parentName}" has no resolved ID after insertion.`,
         );
       }
-      const sysml = sourceTextForSelector(sources, {
-        kind: "usage",
-        packageName: sources[0]?.reference.selector.packageName ?? "",
-        componentName: item.componentName,
-        usageName: item.usageName,
-        parentName: item.parentName,
+      const sysml = sourceTextForSelector(
+        sources,
+        architectureWriteSelector(
+          item,
+          sources[0]?.reference.selector.packageName ?? "",
+        ),
+      );
+      const result = await this.#syson.callTool({
+        name: "syson_element_insert_sysml",
+        arguments: {
+          editing_context_id: editingContextId,
+          parent_id: parentId,
+          sysml_text: sysml,
+        },
       });
+      verifyInsertionAck(result.structuredContent, parentId);
+      onAcknowledged();
+    }
+
+    // Phase D: insert reviewed AttributeUsage under the owning PartDefinition.
+    for (const item of items) {
+      if (item.kind !== "attribute") continue;
+      const parentId = partDefIdByLabel.get(item.parentName);
+      if (!parentId) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          `Cannot insert attribute "${item.attributeName}": parent part-def ` +
+            `"${item.parentName}" has no resolved ID after insertion.`,
+        );
+      }
+      const sysml = sourceTextForSelector(
+        sources,
+        architectureWriteSelector(
+          item,
+          sources[0]?.reference.selector.packageName ?? "",
+        ),
+      );
       const result = await this.#syson.callTool({
         name: "syson_element_insert_sysml",
         arguments: {

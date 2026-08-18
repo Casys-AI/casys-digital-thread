@@ -27,10 +27,11 @@ import {
 } from "./geometry-bundle.ts";
 
 /**
- * Reviewed operation references — the same pattern as MODEL_WRITE_ARCHITECTURE_OPERATION
- * in architecture-proposal.ts.  These constants live in the domain layer so that the
- * orchestration registry can import them without creating a dependency on the adapter
- * layer (which would be a layering violation).
+ * Reviewed operation identities live in the domain so the registry can import
+ * them without depending on adapters.
+ *
+ * `design.preview-geometry@1` is a retired identity. The live registry does
+ * not list it. Canonical drafts come from `project_admitted_geometry_export`.
  */
 export const DESIGN_PREVIEW_GEOMETRY_OPERATION = {
   id: "design.preview-geometry",

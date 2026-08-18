@@ -60,7 +60,7 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../domain/project/engineering-project.ts";
+import { parseExactThreadSnapshotBasis } from "../../domain/project/thread-tip.ts";
 
 export type ProjectAdmittedGeometryExportErrorCode =
   | "invalid_request"
@@ -204,7 +204,10 @@ function parseCommand(value: unknown): ProjectAdmittedGeometryExportCommand {
     command.projectId,
     "$admittedGeometryExport.projectId",
   );
-  const basis = parseThreadBasis(command.basis, "$admittedGeometryExport.basis");
+  const basis = parseExactThreadSnapshotBasis(
+    command.basis,
+    "$admittedGeometryExport.basis",
+  );
   const artifactFingerprint = validateContentFingerprint(
     command.artifactFingerprint,
     "$admittedGeometryExport.artifactFingerprint",
@@ -220,28 +223,6 @@ function parseCommand(value: unknown): ProjectAdmittedGeometryExportCommand {
     throw new TypeError("The admission artifact id must derive from its hash.");
   }
   return deepFreeze({ projectId, basis, artifactId, artifactFingerprint });
-}
-
-function parseThreadBasis(
-  value: unknown,
-  path: string,
-): EngineeringThreadSnapshotBasis {
-  const basis = exactRecord(
-    value,
-    ["kind", "snapshotId", "revision", "subjectId"],
-    path,
-  );
-  literalValue(basis.kind, "thread-snapshot", `${path}.kind`);
-  const snapshotId = safeId(basis.snapshotId, `${path}.snapshotId`);
-  if (snapshotId.toLowerCase() === "latest") {
-    throw new TypeError(`${path}.snapshotId must name an exact snapshot.`);
-  }
-  return deepFreeze({
-    kind: "thread-snapshot",
-    snapshotId,
-    revision: positiveInteger(basis.revision, `${path}.revision`),
-    subjectId: safeId(basis.subjectId, `${path}.subjectId`),
-  });
 }
 
 async function reopenReadyBuild123dCompilation(

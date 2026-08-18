@@ -9,10 +9,7 @@ import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineering/part-definitions-capture.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
-import {
-  DESIGN_PREVIEW_GEOMETRY_OPERATION,
-  DESIGN_WRITE_GEOMETRY_OPERATION,
-} from "../../domain/engineering/geometry-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/engineering/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
 import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/analysis/apply-correction-source.ts";
@@ -398,30 +395,6 @@ const OPERATIONS = [
         allowedThreadEntityKinds: ["artifact"],
       },
     ],
-  },
-  /**
-   * Geometry preview — planning-only historical descriptor. It is not a
-   * product entry and has no executor. `queueRun` refuses it. Canonical
-   * drafts come from `project_admitted_geometry_export`.
-   */
-  {
-    id: DESIGN_PREVIEW_GEOMETRY_OPERATION.id,
-    version: DESIGN_PREVIEW_GEOMETRY_OPERATION.version,
-    startingPoint: "idea-or-spec",
-    allowedBasisKinds: ["thread-snapshot"],
-    title: "Preview the proposed geometry bundle",
-    description:
-      "Execute the reviewed assembly source and one independent build123d source per exact SysML PartDefinition " +
-      "in the isolated preview sandbox against the current architecture basis, materialize a draft with " +
-      "identity-bound binary assets and occurrence placements, and propose a geometry MRTR for human review. " +
-      "Does not publish to the ThreadSnapshot — the draft is a workspace artefact only.",
-    workItemKind: "design",
-    riskClass: "low",
-    execution: "planning-only",
-    bindings: [{
-      name: "approvedBrief",
-      allowedSourceKinds: ["approved-brief"],
-    }],
   },
   /**
    * Geometry seal — trusted executor `design.write-geometry@1`.

@@ -94,8 +94,6 @@ export class PrepareProjectCorrectedAdmissionReview
       projectId: command.projectId,
       basis: command.basis,
       sourceRefs: [capture.sourceRef],
-      bindings: parent.document.inputManifest.bindings,
-      profileRequests: parent.document.inputManifest.profileRequests,
     });
     if (preview.status !== "ready-for-review") {
       return unresolved(

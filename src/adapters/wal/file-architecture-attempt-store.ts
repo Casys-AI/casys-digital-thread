@@ -12,6 +12,7 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import {
+  architectureWriteSelector,
   type InsertionItem,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
 } from "../../domain/engineering/architecture-proposal.ts";
@@ -681,7 +682,9 @@ function exactSourceAnalyses(
   if (new Set(selectorKeys).size !== selectorKeys.length) {
     throw new Error("Architecture write-attempt repeats a SysML source selector.");
   }
-  const expectedSelectors = items.map((item) => selectorForItem(item, packageName));
+  const expectedSelectors = items.map((item) =>
+    architectureWriteSelector(item, packageName)
+  );
   if (
     deterministicJson(sourceAnalyses.map((reference) => reference.selector)) !==
       deterministicJson(expectedSelectors)
@@ -723,6 +726,18 @@ function exactInsertionItems(value: unknown): readonly InsertionItem[] {
         parentName: sysmlName(item.parentName, `items[${index}].parentName`),
       };
     }
+    if (item.kind === "attribute") {
+      exactKeys(
+        item,
+        ["kind", "attributeName", "parentName"],
+        `items[${index}]`,
+      );
+      return {
+        kind: "attribute",
+        attributeName: usageName(item.attributeName, `items[${index}].attributeName`),
+        parentName: sysmlName(item.parentName, `items[${index}].parentName`),
+      };
+    }
     throw new Error(`Architecture write-attempt items[${index}] has unknown kind.`);
   });
   const fullPackageCount = items.filter((item) => item.kind === "full-package").length;
@@ -730,29 +745,6 @@ function exactInsertionItems(value: unknown): readonly InsertionItem[] {
     throw new Error("Architecture write-attempt full-package plan is not exact.");
   }
   return Object.freeze(items);
-}
-
-function selectorForItem(item: InsertionItem, packageName: string) {
-  if (item.kind === "full-package") {
-    return {
-      kind: "full-package" as const,
-      packageName,
-    };
-  }
-  if (item.kind === "part-def") {
-    return {
-      kind: "part-def" as const,
-      packageName,
-      componentName: item.componentName,
-    };
-  }
-  return {
-    kind: "usage" as const,
-    packageName,
-    componentName: item.componentName,
-    usageName: item.usageName,
-    parentName: item.parentName,
-  };
 }
 
 export async function architectureWritePlanDigest(input: {

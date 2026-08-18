@@ -23,6 +23,8 @@ import type {
   ProjectTechnicalSourceCaptureCommand,
   ProjectTechnicalSourceCaptureUseCase,
 } from "../../application/ports/in/project-technical-source-capture.ts";
+import { compilationPreviewContent } from "../../domain/analysis/technical-compilation-preview-review.ts";
+import { captureReviewContent } from "../../domain/analysis/technical-source-capture-review.ts";
 import {
   FINGERPRINT_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
@@ -56,11 +58,10 @@ export function registerProjectTechnicalCompilationTools(
     const capture = dependencies.technicalSourceCapture;
     app.registerTool(projectTechnicalSourceCaptureTool, async (args) => {
       const command = technicalSourceCaptureCommand(args);
-      const reference = await capture.capture(command);
+      const review = await capture.capture(command);
       return {
-        content:
-          `Technical source ${command.sourceId} was captured as exact UTF-8 bytes, analysed under server-registered profile ${command.profileId}, and reread from draft CAS. Preserve the returned reference verbatim. This creates no EngineeringProject or Thread state, no MRTR decision, and no execution authority.`,
-        structuredContent: reference as Readonly<Record<string, unknown>>,
+        content: captureReviewContent(review),
+        structuredContent: review as unknown as Readonly<Record<string, unknown>>,
       };
     });
   }
@@ -70,9 +71,13 @@ export function registerProjectTechnicalCompilationTools(
     app.registerTool(projectTechnicalCompilationPreviewTool, async (args) => {
       const command = technicalCompilationPreviewCommand(args);
       const result = await preview.execute(command);
-      const content = result.status === "ready-for-review"
-        ? `Technical compilation ${result.draft.draftId} is ready for review and was reread from draft CAS. Its document and exact draft reference are not EngineeringProject or Thread state, an MRTR decision, or execution authority. Construct a later MRTR proposal only from decisionParameters returned by this preview; if none are present, do not invent them.`
-        : `Technical compilation preview is ${result.status}. No reviewable draft was created. The returned document is diagnostic only and creates no EngineeringProject or Thread state, MRTR decision, or execution authority.`;
+      const content = compilationPreviewContent({
+        status: result.status,
+        ...(result.status === "ready-for-review"
+          ? { draftId: result.draft.draftId }
+          : {}),
+        gaps: result.gaps,
+      });
       return {
         content,
         // Preserve every use-case-owned review field verbatim, including
@@ -240,47 +245,6 @@ const TECHNICAL_THREAD_BASIS_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-const TECHNICAL_BINDING_SCHEMA = {
-  type: "object",
-  properties: {
-    id: TECHNICAL_ID_SCHEMA,
-    sourceId: TECHNICAL_ID_SCHEMA,
-    sourceSymbolId: TECHNICAL_ID_SCHEMA,
-    sysmlElementId: TECHNICAL_ID_SCHEMA,
-    sysmlElementKind: TECHNICAL_ID_SCHEMA,
-    relation: {
-      type: "string",
-      enum: ["represents", "parameterizes", "satisfies", "constrains"],
-    },
-  },
-  required: [
-    "id",
-    "sourceId",
-    "sourceSymbolId",
-    "sysmlElementId",
-    "sysmlElementKind",
-    "relation",
-  ],
-  additionalProperties: false,
-} as const;
-
-const TECHNICAL_PROFILE_REQUEST_SCHEMA = {
-  type: "object",
-  properties: {
-    profileId: TECHNICAL_ID_SCHEMA,
-    profileVersion: TECHNICAL_VERSION_SCHEMA,
-    sourceIds: {
-      type: "array",
-      minItems: 1,
-      maxItems: 32,
-      uniqueItems: true,
-      items: TECHNICAL_ID_SCHEMA,
-    },
-  },
-  required: ["profileId", "profileVersion", "sourceIds"],
-  additionalProperties: false,
-} as const;
-
 const DRAFT_CAS_WRITE_ANNOTATIONS = {
   readOnlyHint: false,
   destructiveHint: false,
@@ -288,10 +252,72 @@ const DRAFT_CAS_WRITE_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
+const CAD_LEVER_DIAGNOSIS_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      properties: { status: { const: "not-applicable" } },
+      required: ["status"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        status: { const: "ok" },
+        levers: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              semanticKey: TECHNICAL_ID_SCHEMA,
+              value: { type: "number" },
+            },
+            required: ["semanticKey", "value"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["status", "levers"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        status: { const: "unresolved" },
+        code: { const: "source.no-named-numeric-lever" },
+        levers: { type: "array", maxItems: 0 },
+        message: { type: "string", minLength: 1 },
+      },
+      required: ["status", "code", "levers", "message"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: "technical-source-capture-review/1.0" },
+    reference: TECHNICAL_SOURCE_CAPTURE_REFERENCE_SCHEMA,
+    parser: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["passed", "rejected"] },
+        profile: TECHNICAL_ID_SCHEMA,
+      },
+      required: ["status", "profile"],
+      additionalProperties: false,
+    },
+    levers: CAD_LEVER_DIAGNOSIS_SCHEMA,
+  },
+  required: ["schemaVersion", "reference", "parser", "levers"],
+  additionalProperties: false,
+} as const;
+
 const projectTechnicalSourceCaptureTool: MCPTool = {
   name: "project_technical_source_capture",
   description:
-    "Capture exact agent-authored technical source bytes and their server-selected parser analysis in immutable draft CAS. The caller may select only a registered profile id and source id; language, analyzer and policy remain server-owned. The returned object is an opaque reference to preserve verbatim for project_technical_compilation_preview. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
+    "Capture exact agent-authored technical source bytes and their server-selected parser analysis in immutable draft CAS. parser.status is the closed-subset parser only; it is not admission. levers.status is the behave-CAD handle diagnosis (reachable named numeric literals). Pass result.reference, never this whole review object, to project_technical_compilation_preview. The caller may select only a registered profile id and source id; language, analyzer and policy remain server-owned. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
   inputSchema: {
     type: "object",
     properties: {
@@ -308,14 +334,14 @@ const projectTechnicalSourceCaptureTool: MCPTool = {
     required: ["profileId", "sourceId", "sourceText"],
     additionalProperties: false,
   },
-  outputSchema: TECHNICAL_SOURCE_CAPTURE_REFERENCE_SCHEMA,
+  outputSchema: TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA,
   annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
 };
 
 const projectTechnicalCompilationPreviewTool: MCPTool = {
   name: "project_technical_compilation_preview",
   description:
-    "Compile exact draft-CAS technical source references against one exact Thread/SysML basis using only server-owned analysis and qualification profiles. This is provider-free and performs no technical execution. A ready result contains the exact review draft and compilation document. Construct a later MRTR proposal only from decisionParameters returned by the use case; never invent missing parameters. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
+    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference; never pass the capture review envelope, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft and compilation document. Construct a later MRTR proposal only from decisionParameters returned by the use case; never invent missing parameters. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
   inputSchema: {
     type: "object",
     properties: {
@@ -327,20 +353,11 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
         maxItems: 32,
         uniqueItems: true,
         items: TECHNICAL_SOURCE_CAPTURE_REFERENCE_SCHEMA,
-      },
-      bindings: {
-        type: "array",
-        maxItems: 256,
-        items: TECHNICAL_BINDING_SCHEMA,
-      },
-      profileRequests: {
-        type: "array",
-        minItems: 1,
-        maxItems: 32,
-        items: TECHNICAL_PROFILE_REQUEST_SCHEMA,
+        description:
+          "technical-source-analysis-capture/1.0 locators from project_technical_source_capture result.reference. Never pass the capture review envelope.",
       },
     },
-    required: ["projectId", "basis", "sourceRefs", "bindings", "profileRequests"],
+    required: ["projectId", "sourceRefs"],
     additionalProperties: false,
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,
@@ -446,8 +463,8 @@ function technicalCompilationPreviewCommand(
 ): ProjectTechnicalCompilationPreviewCommand {
   exactKeys(
     value,
-    ["projectId", "basis", "sourceRefs", "bindings", "profileRequests"],
-    [],
+    ["projectId", "sourceRefs"],
+    ["basis"],
     "technicalCompilationPreview",
   );
   if (!Array.isArray(value.sourceRefs) || value.sourceRefs.length === 0) {
@@ -456,29 +473,13 @@ function technicalCompilationPreviewCommand(
   if (value.sourceRefs.length > 32) {
     throw new TypeError("sourceRefs must not exceed 32 entries");
   }
-  if (!Array.isArray(value.bindings)) {
-    throw new TypeError("bindings must be an array");
-  }
-  if (value.bindings.length > 256) {
-    throw new TypeError("bindings must not exceed 256 entries");
-  }
-  if (!Array.isArray(value.profileRequests) || value.profileRequests.length === 0) {
-    throw new TypeError("profileRequests must be a non-empty array");
-  }
-  if (value.profileRequests.length > 32) {
-    throw new TypeError("profileRequests must not exceed 32 entries");
-  }
   return {
     projectId: technicalId(value.projectId, "projectId"),
-    basis: technicalThreadBasis(value.basis, "basis"),
+    ...(value.basis === undefined
+      ? {}
+      : { basis: technicalThreadBasis(value.basis, "basis") }),
     sourceRefs: value.sourceRefs.map((reference, index) =>
       technicalSourceCaptureReference(reference, `sourceRefs[${index}]`)
-    ),
-    bindings: value.bindings.map((binding, index) =>
-      technicalBinding(binding, `bindings[${index}]`)
-    ),
-    profileRequests: value.profileRequests.map((request, index) =>
-      technicalProfileRequest(request, `profileRequests[${index}]`)
     ),
   };
 }
@@ -561,7 +562,7 @@ function modelicaQualifiedKitRunReviewCommand(
 function technicalThreadBasis(
   value: unknown,
   name: string,
-): ProjectTechnicalCompilationPreviewCommand["basis"] {
+): NonNullable<ProjectTechnicalCompilationPreviewCommand["basis"]> {
   const basis = exactRecord(value, name);
   exactKeys(basis, ["kind", "snapshotId", "revision", "subjectId"], [], name);
   if (basis.kind !== "thread-snapshot") {
@@ -579,70 +580,16 @@ function technicalThreadBasis(
   };
 }
 
-function technicalBinding(
-  value: unknown,
-  name: string,
-): ProjectTechnicalCompilationPreviewCommand["bindings"][number] {
-  const binding = exactRecord(value, name);
-  exactKeys(
-    binding,
-    [
-      "id",
-      "sourceId",
-      "sourceSymbolId",
-      "sysmlElementId",
-      "sysmlElementKind",
-      "relation",
-    ],
-    [],
-    name,
-  );
-  return {
-    id: technicalId(binding.id, `${name}.id`),
-    sourceId: technicalId(binding.sourceId, `${name}.sourceId`),
-    sourceSymbolId: technicalId(binding.sourceSymbolId, `${name}.sourceSymbolId`),
-    sysmlElementId: technicalId(binding.sysmlElementId, `${name}.sysmlElementId`),
-    sysmlElementKind: technicalId(
-      binding.sysmlElementKind,
-      `${name}.sysmlElementKind`,
-    ),
-    relation: oneOf(
-      binding.relation,
-      ["represents", "parameterizes", "satisfies", "constrains"] as const,
-      `${name}.relation`,
-    ),
-  };
-}
-
-function technicalProfileRequest(
-  value: unknown,
-  name: string,
-): ProjectTechnicalCompilationPreviewCommand["profileRequests"][number] {
-  const request = exactRecord(value, name);
-  exactKeys(request, ["profileId", "profileVersion", "sourceIds"], [], name);
-  if (!Array.isArray(request.sourceIds) || request.sourceIds.length === 0) {
-    throw new TypeError(`${name}.sourceIds must be a non-empty array`);
-  }
-  if (request.sourceIds.length > 32) {
-    throw new TypeError(`${name}.sourceIds must not exceed 32 entries`);
-  }
-  return {
-    profileId: technicalId(request.profileId, `${name}.profileId`),
-    profileVersion: exactNonEmptyText(
-      request.profileVersion,
-      `${name}.profileVersion`,
-    ),
-    sourceIds: request.sourceIds.map((sourceId, index) =>
-      technicalId(sourceId, `${name}.sourceIds[${index}]`)
-    ),
-  };
-}
-
 function technicalSourceCaptureReference(
   value: unknown,
   name: string,
 ): Readonly<Record<string, unknown>> {
   const reference = exactRecord(value, name);
+  if (reference.schemaVersion === "technical-source-capture-review/1.0") {
+    throw new TypeError(
+      `${name} is a technical-source-capture-review/1.0 envelope. Pass result.reference, never the review object.`,
+    );
+  }
   exactKeys(
     reference,
     ["schemaVersion", "kind", "profile", "source", "analysis"],

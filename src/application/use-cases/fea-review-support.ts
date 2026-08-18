@@ -1,18 +1,11 @@
 /**
- * Shared FEA review parsing and Thread-tip resolution.
+ * Shared FEA review parsing and next-hop compilation.
  *
- * Omitting `basis` is not `latest`. The server names the unique current
- * Thread tip from the project ledger. Several tips at the same max revision,
- * or no tip, stay unresolved.
+ * The unique current Thread tip lives in `domain/project/thread-tip.ts`.
+ * Omitting `basis` is not `latest`.
  */
 
-import {
-  deepFreeze,
-  exactRecord,
-  literalValue,
-  positiveInteger,
-  safeId,
-} from "../../domain/kernel/case-validation.ts";
+import { deepFreeze } from "../../domain/kernel/case-validation.ts";
 import type {
   EngineeringDecisionProposalParameter,
   EngineeringOperationRef,
@@ -23,6 +16,11 @@ import type {
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
+import {
+  isLatestSnapshotId,
+  parseThreadSnapshotBasis,
+  selectCurrentThreadTip,
+} from "../../domain/project/thread-tip.ts";
 
 export type FeaReviewBasisDiagnosticCode =
   | "basis-latest"
@@ -49,30 +47,10 @@ export function parseOptionalThreadBasis(
   path: string,
 ): EngineeringThreadSnapshotBasis | undefined {
   if (value === undefined) return undefined;
-  return parseThreadBasis(value, path);
+  return parseThreadSnapshotBasis(value, path);
 }
 
-export function parseThreadBasis(
-  value: unknown,
-  path: string,
-): EngineeringThreadSnapshotBasis {
-  const basis = exactRecord(
-    value,
-    ["kind", "snapshotId", "revision", "subjectId"],
-    path,
-  );
-  literalValue(basis.kind, "thread-snapshot", `${path}.kind`);
-  return deepFreeze({
-    kind: "thread-snapshot",
-    snapshotId: safeId(basis.snapshotId, `${path}.snapshotId`),
-    revision: positiveInteger(basis.revision, `${path}.revision`),
-    subjectId: safeId(basis.subjectId, `${path}.subjectId`),
-  });
-}
-
-export function isLatestSnapshotId(snapshotId: string): boolean {
-  return snapshotId.toLowerCase() === "latest";
-}
+export { parseThreadSnapshotBasis as parseThreadBasis };
 
 export function sameExactBasis(
   snapshot: ThreadSnapshot,
@@ -81,50 +59,6 @@ export function sameExactBasis(
   return snapshot.id === basis.snapshotId &&
     snapshot.revision === basis.revision &&
     snapshot.subject.id === basis.subjectId;
-}
-
-export function selectCurrentThreadTip(
-  refs: readonly EngineeringThreadSnapshotRef[],
-):
-  | { readonly status: "ok"; readonly basis: EngineeringThreadSnapshotBasis }
-  | { readonly status: "unresolved"; readonly diagnostic: FeaReviewBasisDiagnostic } {
-  if (refs.length === 0) {
-    return {
-      status: "unresolved",
-      diagnostic: {
-        code: "basis-absent",
-        artifactId: null,
-        message:
-          "The project has no Thread snapshot yet. Run the approved-brief baseline first, or name an exact basis.",
-      },
-    };
-  }
-  let maxRevision = 0;
-  for (const ref of refs) {
-    if (ref.revision > maxRevision) maxRevision = ref.revision;
-  }
-  const tips = refs.filter((ref) => ref.revision === maxRevision);
-  if (tips.length !== 1) {
-    return {
-      status: "unresolved",
-      diagnostic: {
-        code: "basis-ambiguous",
-        artifactId: null,
-        message:
-          `The project has ${tips.length} Thread snapshots at revision ${maxRevision}. Name the exact basis.`,
-      },
-    };
-  }
-  const tip = tips[0]!;
-  return {
-    status: "ok",
-    basis: deepFreeze({
-      kind: "thread-snapshot",
-      snapshotId: tip.snapshotId,
-      revision: tip.revision,
-      subjectId: tip.subjectId,
-    }),
-  };
 }
 
 export async function resolveFeaReviewBasis(input: {

@@ -465,7 +465,12 @@ Deno.test(
       "ctx-1",
       [{ id: "sys-1", label: "SealedLamp" }],
     );
-    assertEquals(result, [{ id: "sys-1", label: "LiveLamp", usages: [] }]);
+    assertEquals(result, [{
+      id: "sys-1",
+      label: "LiveLamp",
+      usages: [],
+      attributes: [],
+    }]);
   },
 );
 

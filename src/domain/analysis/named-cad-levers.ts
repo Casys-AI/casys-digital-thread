@@ -18,13 +18,30 @@ export interface NamedNumericLever {
   readonly value: number;
 }
 
-export interface GeometryAffectingNamedNumericLever extends NamedNumericLever {
+export interface AnalysisReachableNamedNumericLever extends NamedNumericLever {
   readonly sourceId: string;
   readonly sourceSymbolId: string;
-  readonly parameterBindingId: string;
-  readonly parameterSysmlElementId: string;
   readonly resultSymbolId: string;
 }
+
+export interface GeometryAffectingNamedNumericLever
+  extends AnalysisReachableNamedNumericLever {
+  readonly parameterBindingId: string;
+  readonly parameterSysmlElementId: string;
+}
+
+export type CadLeverCaptureDiagnosis =
+  | { readonly status: "not-applicable" }
+  | {
+    readonly status: "ok";
+    readonly levers: readonly NamedNumericLever[];
+  }
+  | {
+    readonly status: "unresolved";
+    readonly code: "source.no-named-numeric-lever";
+    readonly levers: readonly [];
+    readonly message: string;
+  };
 
 export interface NamedCadLeverBinding {
   readonly id: string;
@@ -71,18 +88,16 @@ export function listNamedNumericLevers(
 }
 
 /**
- * Keep only literal parameters that the qualified analysis proves can reach
- * `result` and that the compilation binds as a SysML parameter.
+ * Literal parameters the qualified analysis proves can reach `result`.
  *
- * WHY NOT TEXT ALONE — `unused = 1` is named and numeric but is not a CAD
- * handle. The analyzer owns source structure and dependency facts; the
- * compiler owns the cross-model binding.
+ * This is the capture-time handle. It does not require a SysML binding.
+ * `unused = 1` is not included: the analyzer owns reachability.
  */
-export function listGeometryAffectingNamedNumericLevers(
+export function listAnalysisReachableNamedNumericLevers(
   sourceText: string,
   analysis: SourceAnalysisBundle,
-  bindings: readonly NamedCadLeverBinding[],
-): readonly GeometryAffectingNamedNumericLever[] {
+): readonly AnalysisReachableNamedNumericLever[] {
+  if (analysis.source.role !== "cad-script") return deepFreeze([]);
   const resultSymbols = analysis.symbols.filter((symbol) =>
     symbol.kind === "artifact" && symbol.name === "result"
   );
@@ -94,16 +109,10 @@ export function listGeometryAffectingNamedNumericLevers(
     targets.push(dependency.toSymbolId);
     outgoing.set(dependency.fromSymbolId, targets);
   }
-  const levers: GeometryAffectingNamedNumericLever[] = [];
+  const levers: AnalysisReachableNamedNumericLever[] = [];
   for (const symbol of analysis.symbols) {
-    const parameterBindings = bindings.filter((binding) =>
-      binding.sourceId === analysis.source.id &&
-      binding.sourceSymbolId === symbol.id &&
-      binding.relation === "parameterizes"
-    );
     if (
       symbol.kind !== "parameter" || symbol.span === undefined ||
-      parameterBindings.length !== 1 ||
       !reachesSymbol(symbol.id, resultId, outgoing)
     ) continue;
     try {
@@ -118,8 +127,6 @@ export function listGeometryAffectingNamedNumericLevers(
           value: binding.value,
           sourceId: analysis.source.id,
           sourceSymbolId: symbol.id,
-          parameterBindingId: parameterBindings[0]!.id,
-          parameterSysmlElementId: parameterBindings[0]!.sysmlElementId,
           resultSymbolId: resultId,
         });
       }
@@ -127,6 +134,67 @@ export function listGeometryAffectingNamedNumericLevers(
       // The parser fact is not a bare finite literal, so it is not a lever.
     }
   }
+  return deepFreeze(sortReachableLevers(levers));
+}
+
+/**
+ * Reachable literals that compilation binds uniquely through `parameterizes`.
+ *
+ * The compiler owns the cross-model binding. A missing binding is
+ * `binding.missing`, not `source.no-named-numeric-lever`.
+ */
+export function listGeometryAffectingNamedNumericLevers(
+  sourceText: string,
+  analysis: SourceAnalysisBundle,
+  bindings: readonly NamedCadLeverBinding[],
+): readonly GeometryAffectingNamedNumericLever[] {
+  const levers: GeometryAffectingNamedNumericLever[] = [];
+  for (const lever of listAnalysisReachableNamedNumericLevers(sourceText, analysis)) {
+    const parameterBindings = bindings.filter((binding) =>
+      binding.sourceId === lever.sourceId &&
+      binding.sourceSymbolId === lever.sourceSymbolId &&
+      binding.relation === "parameterizes"
+    );
+    if (parameterBindings.length !== 1) continue;
+    levers.push({
+      ...lever,
+      parameterBindingId: parameterBindings[0]!.id,
+      parameterSysmlElementId: parameterBindings[0]!.sysmlElementId,
+    });
+  }
+  return deepFreeze(levers);
+}
+
+/** Capture-time diagnosis: parser-reachable handles only. Bindings are compile. */
+export function diagnoseAnalysisReachableCadLevers(
+  sourceText: string,
+  analysis: SourceAnalysisBundle,
+): CadLeverCaptureDiagnosis {
+  if (analysis.source.role !== "cad-script") {
+    return deepFreeze({ status: "not-applicable" as const });
+  }
+  const levers = listAnalysisReachableNamedNumericLevers(sourceText, analysis);
+  if (levers.length > 0) {
+    return deepFreeze({
+      status: "ok" as const,
+      levers: levers.map((lever) => ({
+        semanticKey: lever.semanticKey,
+        value: lever.value,
+      })),
+    });
+  }
+  return deepFreeze({
+    status: "unresolved" as const,
+    code: "source.no-named-numeric-lever" as const,
+    levers: [],
+    message:
+      "This CAD source has no module-level named numeric literal that reaches result. A constructor photo is not a behave handle.",
+  });
+}
+
+function sortReachableLevers(
+  levers: AnalysisReachableNamedNumericLever[],
+): AnalysisReachableNamedNumericLever[] {
   levers.sort((left, right) =>
     left.semanticKey < right.semanticKey
       ? -1
@@ -140,34 +208,7 @@ export function listGeometryAffectingNamedNumericLevers(
       ? 1
       : 0
   );
-  return deepFreeze(levers);
-}
-
-export function diagnoseBehaveCadLevers(
-  sourceText: string,
-  analysis: SourceAnalysisBundle,
-  bindings: readonly NamedCadLeverBinding[],
-): {
-  readonly status: "ok" | "unresolved";
-  readonly code?: "source.no-named-numeric-lever";
-  readonly levers: readonly NamedNumericLever[];
-  readonly message?: string;
-} {
-  const levers = listGeometryAffectingNamedNumericLevers(
-    sourceText,
-    analysis,
-    bindings,
-  );
-  if (levers.length > 0) {
-    return deepFreeze({ status: "ok" as const, levers });
-  }
-  return deepFreeze({
-    status: "unresolved" as const,
-    code: "source.no-named-numeric-lever" as const,
-    levers,
-    message:
-      "A new behave CAD admission must declare at least one module-level named numeric lever. A hash-sealed photo of constructor literals is not enough.",
-  });
+  return levers;
 }
 
 function startsIndented(lineText: string): boolean {

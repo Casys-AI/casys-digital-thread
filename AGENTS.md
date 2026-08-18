@@ -23,12 +23,12 @@ from UI copy or tool descriptions.
    — capture → analysis → MRTR → dispatch
 3. [Workspace map](docs/reference/workspace-map.md) — files, CAS roots, local ports
 4. [CLAUDE.md](CLAUDE.md) — commands, hexagonal rules, CM-01 retirement
-5. [Run the behave loop from zero](docs/how-to/run-the-behave-loop-from-zero.md)
-   — new project, behave only. Do not repair dl05. Do not open make/buy.
-6. [Walk the post-proof loop](docs/how-to/walk-the-post-proof-loop.md) — join,
-   fail-only correction, `z*`, reseal. Historical **dl05 r16** is `UNLINKED`
-   (`assembly_max_*`). A later join on that atelier can be `pass` (Thread r19).
-   Do not invent a mapping or a fail.
+5. [Run the behave loop from zero](docs/how-to/run-the-behave-loop-from-zero.md) — new
+   project, behave only. Do not repair dl05. Do not open make/buy.
+6. [Walk the post-proof loop](docs/how-to/walk-the-post-proof-loop.md) — join, fail-only
+   correction, `z*`, reseal. Historical **dl05 r16** is `UNLINKED` (`assembly_max_*`). A
+   later join on that atelier can be `pass` (Thread r19). Do not invent a mapping or a
+   fail.
 7. [Three judgement branches](docs/explanations/product-direction.md#three-judgement-branches)
    — one STEP, three questions; verdicts do not cross.
 
@@ -40,18 +40,29 @@ from UI copy or tool descriptions.
 - `sysml-source-capture/1.0` is the renderer envelope.
   `architecture-sysml-source-analysis-capture/1.0` is the agent-authored CAS. They are
   not interchangeable.
-- `project_admitted_geometry_export` + `design.write-geometry@1` is the canonical
-  STEP path. It reopens parameterized `compile.seal-admission@1` bytes.
-  `project_geometry_preview` is retired. `compile.seal-admission@1` +
-  `design.execute-build123d@1` is the local microVM path. A successful isolated
-  execution is **not** canonical geometry.
+- `project_admitted_geometry_export` + `design.write-geometry@1` is the canonical STEP
+  path. It reopens parameterized `compile.seal-admission@1` bytes.
+  `project_geometry_preview` and `design.preview-geometry@1` are not registered.
+  `compile.seal-admission@1` + `design.execute-build123d@1` is the local microVM path. A
+  successful isolated execution is **not** canonical geometry.
   `design.seal-isolated-geometry@1` seals that execution as a Thread document only.
+- `project_technical_source_capture` returns `technical-source-capture-review/1.0`:
+  `parser`, `levers`, and an opaque `reference`. `parser.status` is not admission. Pass
+  `result.reference` only. A constructor photo is `levers.unresolved`. A reachable
+  literal without `parameterizes` is compile `binding.missing`, not
+  `source.no-named-numeric-lever`.
+- `project_technical_compilation_preview` takes `projectId` + `result.reference`. The
+  server selects the current Thread tip, the unique catalog profile, and unique SysML
+  joins. Do not pass bindings or profileRequests. Unresolved previews hoist `gaps`
+  (name, relation, recovery). The compilation document keeps its closed diagnostic
+  record. The server does not invent a named CAD lever or an AttributeUsage. Declare CAD
+  handles on `model.write-architecture@1` with `attribute.<slug>.name` and
+  `attribute.<slug>.parent`.
 - `verify.run-fea-static-proof@1`, `@2`, and `@3` are distinct authorities. Do not
   reroute one plan to another.
-- `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>`
-  only. A proof-run `@2` evaluation cannot authorize
-  `design.apply-vector-correction@1`. `compile.capture-corrected-source@1` is
-  not `compile.seal-admission@1`.
+- `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>` only.
+  A proof-run `@2` evaluation cannot authorize `design.apply-vector-correction@1`.
+  `compile.capture-corrected-source@1` is not `compile.seal-admission@1`.
 - CM-01 is retired. Do not replay retired fixtures as live evidence.
 - A `verify.run-fea-static-proof@2` success is only a captured, reread Thread revision.
   This atelier may hold such receipts for `desk-lamp-dl04` and `desk-lamp-dl05` under

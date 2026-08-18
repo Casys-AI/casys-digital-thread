@@ -739,6 +739,79 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "a reachable named literal without parameterizes is binding.missing, not a missing lever",
+  async () => {
+    const base = await fixture();
+    const input = structuredClone(base.input);
+    const cad = values(input.sources).map(record).find((source) =>
+      record(record(source.analysis).source).id === "source.cad"
+    );
+    assert(cad);
+    const sourceText = [
+      "from build123d import Box",
+      "thickness = 2",
+      "result = Box(20, 10, thickness)",
+      "",
+    ].join("\n");
+    cad.sourceText = sourceText;
+    const analysis = record(cad.analysis);
+    record(analysis.source).fingerprint = await fingerprintTechnicalSourceText(
+      sourceText,
+    );
+    analysis.symbols = [{
+      id: "cad.param.a",
+      kind: "parameter",
+      name: "thickness",
+      span: {
+        start: { line: 2, column: 0 },
+        end: { line: 2, column: 9 },
+      },
+    }, {
+      id: "cad.result",
+      kind: "artifact",
+      name: "result",
+    }];
+    analysis.dependencies = [{
+      id: "dependency.cad.a.result",
+      kind: "structural-incidence",
+      fromSymbolId: "cad.param.a",
+      toSymbolId: "cad.result",
+    }];
+    cad.analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
+    input.bindings = values(input.bindings).filter((binding) =>
+      record(binding).sourceId !== "source.cad" ||
+      record(binding).sourceSymbolId === "cad.result"
+    );
+
+    const compiled = await compileTechnicalSources(input, base.catalog);
+    assertEquals(compiled.document.status, "unresolved");
+    assertEquals(
+      compiled.document.diagnostics.map((diagnostic) => ({
+        code: diagnostic.code,
+        profileRef: diagnostic.profileRef,
+        subjectRef: diagnostic.subjectRef,
+      })).sort((left, right) =>
+        left.profileRef < right.profileRef
+          ? -1
+          : left.profileRef > right.profileRef
+          ? 1
+          : 0
+      ),
+      [{
+        code: "binding.missing",
+        profileRef:
+          `profile.build123d@${PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION}`,
+        subjectRef: "source.cad:cad.param.a",
+      }, {
+        code: "binding.missing",
+        profileRef: "profile.calculix@1.0.0",
+        subjectRef: "source.cad:cad.param.a",
+      }],
+    );
+  },
+);
+
 Deno.test("missing explicit binding and analyzer uncertainty remain unresolved", async () => {
   const base = await fixture({ cadUnresolved: true });
   const input = structuredClone(base.input);

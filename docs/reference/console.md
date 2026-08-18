@@ -82,8 +82,8 @@ not grant MRTR or provider authority. Full grants:
 | ------------------------------------------- | -------------- | ----------------------------------------------------------------------------------- |
 | `project_architecture_sysml_source_capture` | Draft CAS      | Exact agent-authored closed-subset SysML + analysis. Not `sysml-source-capture/1.0` |
 | `project_architecture_sysml_preview`        | Diagnostic     | Tokenize/parse/analyse. `decisionParameters` only from a reopened passed capture    |
-| `project_technical_source_capture`          | Draft CAS      | Exact technical source + server-owned analysis                                      |
-| `project_technical_compilation_preview`     | Review draft   | Provider-free compilation against an exact Thread/SysML basis                       |
+| `project_technical_source_capture`          | Draft CAS      | Review: parser vs levers vs opaque reference. Pass `result.reference` only          |
+| `project_technical_compilation_preview`     | Review draft   | `projectId` + `result.reference`. Server tip, profile, unique SysML join            |
 | `project_admitted_geometry_export`          | Geometry draft | Export one sealed Build123d admission through the sandbox. Not isolated execution   |
 | `project_build123d_execution_review`        | Read           | MRTR parameters for `design.execute-build123d@1`. No capability                     |
 | `project_isolated_geometry_seal_review`     | Read           | MRTR parameters for `design.seal-isolated-geometry@1`. No STEP bytes                |

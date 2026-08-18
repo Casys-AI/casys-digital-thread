@@ -136,22 +136,22 @@ The source, assertion, graph, admission and resolved-plan contracts live in
 `src/domain/analysis/` and import no MCP, storage, provider, UI, Graphology or SysML
 code. Language frontends and provider lowerings are adapters. The agent-facing
 project-control tools validate MCP input and call inward-facing use cases; they do not
-own provider clients or CAS stores. `ProjectGeometryPreviewUseCase` lives under
-`src/application/ports/in/`, while exact operation dispatch lives under
+own provider clients or CAS stores. Capture returns
+`technical-source-capture-review/1.0` (`parser`, `levers`, opaque `reference`).
+Compilation preview accepts only `result.reference`. Unresolved previews hoist join
+`gaps` beside the closed compilation document. Exact operation dispatch lives under
 `src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
-contract in `src/application/ports/in/project-run-executor.ts`. The legacy
-capture-backed geometry adapter owns source capture, analysis and its private build123d
-MCP dispatch. Concrete registered executors remain the only components allowed to call
-private provider MCP clients for admitted project runs.
+contract in `src/application/ports/in/project-run-executor.ts`. Canonical CAD drafts
+come from `project_admitted_geometry_export`. Concrete registered executors remain the
+only components allowed to call private provider MCP clients for admitted project runs.
 
 ## Implemented legacy CAD preview and promotion vertical
 
 The following MCP-backed CAD path remains the historical sandbox export used by
-`project_admitted_geometry_export`. `project_geometry_preview` is not a product
-entry. `design.write-geometry@1` seals only a draft stamped from
-`compile.seal-admission@1`. It is not the local microVM execution path and must
-not be used as evidence that isolated execution produced canonical geometry.
-The backend performs this exact order:
+`project_admitted_geometry_export`. `project_geometry_preview` is not a product entry.
+`design.write-geometry@1` seals only a draft stamped from `compile.seal-admission@1`. It
+is not the local microVM execution path and must not be used as evidence that isolated
+execution produced canonical geometry. The backend performs this exact order:
 
 ```text
 validate the bounded execution surface (D4)
@@ -576,20 +576,20 @@ semantic identity. The live producer is `analyze.run-fea-sensitivity@1` after
 `analyze.seal-sensitivity-study@1`. Seal parameters come from the read-only
 `project_sensitivity_study_seal_review` compiler (catalog template, or unique signed
 catalog-offer + its signed `compile.seal-admission@1` admission when the catalog does
-not uniquely select). The caller never invents `sensitivity.case.*` or a `cadSource`.
-A project without a reviewed catalog JSON and without a unique signed offer
-(`desk-lamp-dl06` before the FEA opt-in) stays `catalog-absent`. After its two solver runs, the sensitivity path creates one observed
-`measured-local-sensitivity` assertion per declared response metric, including the
-reviewed finite-difference case, base and stepped results, derivative, local scope and
-the one exact persisted sensitivity-capture fingerprint. The provider responses and STEP
-handoff digests are normalized inside that capture; they are not represented as
-synthetic `solver-result` artifacts or as independent evidence bytes. The case
-identifies its driver, but no component-to-driver assertion is emitted until exact
-architecture/source binding evidence exists. Consequently the global graph shows the
-qualified measurement while component facets remain empty. The snapshot extension
-publishes that graph as `ThreadSnapshot/1.1`; its browser projection is explicitly
-`origin: "analysis"`. No analysis edge grants MCP, provider, admission or decision
-authority.
+not uniquely select). The caller never invents `sensitivity.case.*` or a `cadSource`. A
+project without a reviewed catalog JSON and without a unique signed offer
+(`desk-lamp-dl06` before the FEA opt-in) stays `catalog-absent`. After its two solver
+runs, the sensitivity path creates one observed `measured-local-sensitivity` assertion
+per declared response metric, including the reviewed finite-difference case, base and
+stepped results, derivative, local scope and the one exact persisted sensitivity-capture
+fingerprint. The provider responses and STEP handoff digests are normalized inside that
+capture; they are not represented as synthetic `solver-result` artifacts or as
+independent evidence bytes. The case identifies its driver, but no component-to-driver
+assertion is emitted until exact architecture/source binding evidence exists.
+Consequently the global graph shows the qualified measurement while component facets
+remain empty. The snapshot extension publishes that graph as `ThreadSnapshot/1.1`; its
+browser projection is explicitly `origin: "analysis"`. No analysis edge grants MCP,
+provider, admission or decision authority.
 
 `verify.evaluate-sensitivity-base@1` is the missing join between
 `analyze.run-fea-sensitivity@1` observations and Thread requirements. It never invents a

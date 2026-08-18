@@ -31,6 +31,7 @@
 import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 import type {
   ExistingArchitectureStructure,
+  ExistingAttribute,
   ExistingPartDef,
   ExistingPartUsage,
 } from "../../domain/engineering/architecture-proposal.ts";
@@ -141,26 +142,19 @@ export async function extractArchitectureStructure(
   // typed PartDefinition element with its real label.
   for (const child of packageChildren) {
     if (!semanticKind(child.kind, "PartDefinition")) continue;
-    const partDefChildren = await callChildren(syson, editingContextId, child.id);
-    const usages: ExistingPartUsage[] = [];
-    for (const usage of partDefChildren) {
-      if (!semanticKind(usage.kind, "PartUsage")) continue;
-      const target = await resolveFeatureTypingTarget(
-        syson,
-        editingContextId,
-        usage,
-        child.label,
-      );
-      usages.push({
-        id: usage.id,
-        kind: usage.kind,
-        label: usage.label,
-        targetId: target.id,
-        targetKind: target.kind,
-        targetLabel: target.label,
-      });
-    }
-    partDefs.push({ id: child.id, kind: child.kind, label: child.label, usages });
+    const owned = await collectOwnedPartFeatures(
+      syson,
+      editingContextId,
+      child.id,
+      child.label,
+    );
+    partDefs.push({
+      id: child.id,
+      kind: child.kind,
+      label: child.label,
+      usages: owned.usages,
+      attributes: owned.attributes,
+    });
   }
 
   return {
@@ -188,29 +182,17 @@ export async function extractPartDefinitionStructures(
   const extracted: ExistingPartDef[] = [];
   for (const partDef of partDefs) {
     const live = await callElementGet(syson, editingContextId, partDef.id);
-    const partDefChildren = await callChildren(syson, editingContextId, live.id);
-    const usages: ExistingPartUsage[] = [];
-    for (const usage of partDefChildren) {
-      if (!semanticKind(usage.kind, "PartUsage")) continue;
-      const target = await resolveFeatureTypingTarget(
-        syson,
-        editingContextId,
-        usage,
-        live.label,
-      );
-      usages.push({
-        id: usage.id,
-        kind: usage.kind,
-        label: usage.label,
-        targetId: target.id,
-        targetKind: target.kind,
-        targetLabel: target.label,
-      });
-    }
+    const owned = await collectOwnedPartFeatures(
+      syson,
+      editingContextId,
+      live.id,
+      live.label,
+    );
     extracted.push({
       id: live.id,
       label: live.label,
-      usages,
+      usages: owned.usages,
+      attributes: owned.attributes,
     });
   }
   return extracted;
@@ -222,6 +204,46 @@ interface SysonChild {
   readonly id: string;
   readonly kind: string;
   readonly label: string;
+}
+
+async function collectOwnedPartFeatures(
+  syson: McpToolClient,
+  editingContextId: string,
+  partDefId: string,
+  partDefLabel: string,
+): Promise<{
+  readonly usages: ExistingPartUsage[];
+  readonly attributes: ExistingAttribute[];
+}> {
+  const children = await callChildren(syson, editingContextId, partDefId);
+  const usages: ExistingPartUsage[] = [];
+  const attributes: ExistingAttribute[] = [];
+  for (const child of children) {
+    if (semanticKind(child.kind, "AttributeUsage")) {
+      attributes.push({
+        id: child.id,
+        kind: child.kind,
+        label: child.label,
+      });
+      continue;
+    }
+    if (!semanticKind(child.kind, "PartUsage")) continue;
+    const target = await resolveFeatureTypingTarget(
+      syson,
+      editingContextId,
+      child,
+      partDefLabel,
+    );
+    usages.push({
+      id: child.id,
+      kind: child.kind,
+      label: child.label,
+      targetId: target.id,
+      targetKind: target.kind,
+      targetLabel: target.label,
+    });
+  }
+  return { usages, attributes };
 }
 
 async function callElementGet(
