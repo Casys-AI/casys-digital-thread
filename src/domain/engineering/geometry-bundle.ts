@@ -169,11 +169,18 @@ export function assertGeometryBundleManifest(
       "Geometry bundle PartDefinition exports must include STEP.",
     );
   }
-  if (manifest.components.length === 0) {
-    invalid("invalid_identity", "Geometry bundle components must not be empty.");
-  }
   if (manifest.partDefinitions.length === 0) {
     invalid("invalid_identity", "Geometry bundle partDefinitions must not be empty.");
+  }
+  const systemOnly = isSystemOnlyGeometryBundle(manifest);
+  if (manifest.components.length === 0 && !systemOnly) {
+    invalid("invalid_identity", "Geometry bundle components must not be empty.");
+  }
+  if (systemOnly && manifest.occurrences.length !== 0) {
+    invalid(
+      "invalid_identity",
+      "A system-only geometry bundle cannot declare occurrences.",
+    );
   }
 
   const componentIds = new Set<string>();
@@ -241,17 +248,19 @@ export function assertGeometryBundleManifest(
     triple(occurrence.placement.translationMm, `occurrences[${index}].translationMm`);
     triple(occurrence.placement.rotationDeg, `occurrences[${index}].rotationDeg`);
   }
-  if (!sameSet(componentIds, occurrenceUsageIds)) {
-    invalid(
-      "invalid_identity",
-      "Geometry bundle occurrences must cover every component PartUsage exactly once.",
-    );
-  }
-  if (!sameSet(definitionIds, referencedDefinitionIds)) {
-    invalid(
-      "invalid_identity",
-      "Every geometry PartDefinition must be referenced by at least one occurrence.",
-    );
+  if (!systemOnly) {
+    if (!sameSet(componentIds, occurrenceUsageIds)) {
+      invalid(
+        "invalid_identity",
+        "Geometry bundle occurrences must cover every component PartUsage exactly once.",
+      );
+    }
+    if (!sameSet(definitionIds, referencedDefinitionIds)) {
+      invalid(
+        "invalid_identity",
+        "Every geometry PartDefinition must be referenced by at least one occurrence.",
+      );
+    }
   }
 
   if (manifest.scriptHash) fingerprint(manifest.scriptHash, "assembly scriptHash");
@@ -283,6 +292,123 @@ export function assertGeometryBundleManifest(
           `Completed geometry bundle PartDefinition ${index} requires script and file hashes.`,
         );
       }
+    }
+  }
+}
+
+/**
+ * A single-part system: the unique PartDefinition is the geometry target and
+ * there is no PartUsage table. Assembly bytes are that part's bytes.
+ */
+export function isSystemOnlyGeometryBundle(
+  manifest: Pick<GeometryBundleManifest, "components" | "partDefinitions">,
+): boolean {
+  return manifest.components.length === 0 &&
+    manifest.partDefinitions.length === 1;
+}
+
+/** Architecture identities a v2 bundle must cover. Labels are not joins. */
+export interface GeometryBundleArchitectureCoverage {
+  readonly partDefinitions: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly usages: readonly {
+      readonly id: string;
+      readonly label: string;
+      readonly targetId: string;
+    }[];
+  }[];
+}
+
+/**
+ * Join a signed v2 bundle to the captured architecture.
+ *
+ * Zero PartUsages is a single-part system: the unique system PartDefinition is
+ * the geometry target. Otherwise PartDefinitions are usage targets only; the
+ * unused system root stays the assembly.
+ */
+export function assertGeometryBundleArchitectureCoverage(
+  manifest: GeometryBundleManifest,
+  architecture: GeometryBundleArchitectureCoverage,
+): void {
+  assertGeometryBundleManifest(manifest);
+  const definitionsById = new Map(
+    architecture.partDefinitions.map((definition) => [definition.id, definition]),
+  );
+  const allUsages = new Map<
+    string,
+    { readonly label: string; readonly targetId: string }
+  >();
+  for (const definition of architecture.partDefinitions) {
+    for (const usage of definition.usages) {
+      allUsages.set(usage.id, { label: usage.label, targetId: usage.targetId });
+    }
+  }
+
+  if (allUsages.size === 0) {
+    if (architecture.partDefinitions.length !== 1) {
+      invalid(
+        "invalid_identity",
+        "A system-only architecture must contain exactly one PartDefinition.",
+      );
+    }
+    if (manifest.components.length !== 0 || manifest.occurrences.length !== 0) {
+      invalid(
+        "invalid_identity",
+        "A system-only geometry bundle must not declare PartUsages.",
+      );
+    }
+    const only = architecture.partDefinitions[0]!;
+    if (
+      manifest.partDefinitions.length !== 1 ||
+      manifest.partDefinitions[0]!.elementId !== only.id ||
+      manifest.partDefinitions[0]!.label !== only.label
+    ) {
+      invalid(
+        "invalid_identity",
+        "A system-only geometry bundle must name the unique system PartDefinition.",
+      );
+    }
+    return;
+  }
+
+  const manifestUsageIds = new Set(
+    manifest.components.map((component) => component.elementId),
+  );
+  if (!sameSet(manifestUsageIds, new Set(allUsages.keys()))) {
+    invalid(
+      "invalid_identity",
+      "Geometry bundle PartUsage identities must exactly cover every PartUsage in the captured architecture.",
+    );
+  }
+  const capturedTargetDefinitionIds = new Set(
+    [...allUsages.values()].map((usage) => usage.targetId),
+  );
+  const manifestDefinitionIds = new Set(
+    manifest.partDefinitions.map((definition) => definition.elementId),
+  );
+  if (!sameSet(manifestDefinitionIds, capturedTargetDefinitionIds)) {
+    invalid(
+      "invalid_identity",
+      "Geometry bundle PartDefinition identities must exactly cover the definitions targeted by captured PartUsages; the system root is the separate assembly.",
+    );
+  }
+  for (const definition of manifest.partDefinitions) {
+    const captured = definitionsById.get(definition.elementId);
+    if (!captured || captured.label !== definition.label) {
+      invalid(
+        "invalid_identity",
+        `Geometry PartDefinition "${definition.elementId}" is not the exact captured architecture definition.`,
+      );
+    }
+  }
+  for (const occurrence of manifest.occurrences) {
+    const captured = allUsages.get(occurrence.usageElementId);
+    if (!captured || captured.targetId !== occurrence.partDefinitionElementId) {
+      invalid(
+        "invalid_identity",
+        `Geometry occurrence "${occurrence.usageElementId}" does not target captured PartDefinition "${occurrence.partDefinitionElementId}".`,
+      );
     }
   }
 }

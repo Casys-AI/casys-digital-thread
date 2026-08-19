@@ -40,9 +40,12 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import {
+  type ArchitecturePartGraph,
   ExportAdmittedProjectGeometry,
   ProjectAdmittedGeometryExportError,
 } from "./export-admitted-project-geometry.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import { GEOMETRY_BUNDLE_MANIFEST_SCHEMA } from "../../domain/engineering/geometry-bundle.ts";
 
 interface Harness {
   readonly service: ExportAdmittedProjectGeometry;
@@ -51,6 +54,8 @@ interface Harness {
   readonly admittedSource: string;
   readonly reader: FakeAdmissionReader;
   readonly exporter: FakeExporter;
+  readonly architecture: FakeArchitectureReader;
+  readonly snapshots: FakeSnapshots;
 }
 
 class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
@@ -70,20 +75,76 @@ class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
   }
 }
 
+class FakeArchitectureReader {
+  failure?: Error;
+  missing = false;
+  graph: ArchitecturePartGraph = {
+    partDefinitions: [{
+      id: "sysml.part.box",
+      label: "Box",
+      usages: [],
+    }],
+  };
+
+  read(): Promise<ArchitecturePartGraph | undefined> {
+    if (this.failure) return Promise.reject(this.failure);
+    if (this.missing) return Promise.resolve(undefined);
+    return Promise.resolve(structuredClone(this.graph));
+  }
+}
+
+class FakeSnapshots {
+  failure?: Error;
+  snapshot: ThreadSnapshot = {
+    id: "snapshot.8",
+    revision: 8,
+    subject: { id: "subject.box" },
+    artifacts: [],
+    changeSet: { changes: [] },
+  } as unknown as ThreadSnapshot;
+
+  get(id: string): Promise<ThreadSnapshot | undefined> {
+    if (this.failure) return Promise.reject(this.failure);
+    return Promise.resolve(id === this.snapshot.id ? this.snapshot : undefined);
+  }
+}
+
 class FakeExporter implements AdmittedGeometryExporter {
   readonly calls: AdmittedGeometryExportRequest[] = [];
   failure?: Error;
   draft: AdmittedGeometryExportDraft = {
     draftDigest: "d".repeat(64),
     scriptHash: { algorithm: "sha256", digest: "e".repeat(64) },
-    exportFormats: ["gltf"],
+    exportFormats: ["step", "gltf"],
+    partExportFormats: ["step", "gltf"],
     assemblyFiles: [{
+      format: "step",
+      name: "geometry-preview-assembly",
+      bytes: 2048,
+      digest: "a".repeat(64),
+    }, {
       format: "gltf",
       name: "geometry-preview-assembly",
       bytes: 1024,
       digest: "f".repeat(64),
     }],
     partMeshes: [],
+    partDefinitions: [{
+      elementId: "sysml.part.box",
+      label: "Box",
+      scriptHash: { algorithm: "sha256", digest: "e".repeat(64) },
+      files: [{
+        format: "step",
+        name: "geometry-preview-definition-000",
+        bytes: 2048,
+        digest: "a".repeat(64),
+      }, {
+        format: "gltf",
+        name: "geometry-preview-definition-000",
+        bytes: 1024,
+        digest: "f".repeat(64),
+      }],
+    }],
     sourceAnalysis: {
       sourceId: "geometry-source:assembly",
       selector: { kind: "assembly" },
@@ -96,7 +157,15 @@ class FakeExporter implements AdmittedGeometryExporter {
   export(request: AdmittedGeometryExportRequest): Promise<AdmittedGeometryExportDraft> {
     this.calls.push(structuredClone(request));
     if (this.failure) return Promise.reject(this.failure);
-    return Promise.resolve(structuredClone(this.draft));
+    return Promise.resolve({
+      ...structuredClone(this.draft),
+      partDefinitions: [{
+        ...this.draft.partDefinitions[0]!,
+        elementId: request.representedPart.elementId,
+        label: request.representedPart.label,
+      }],
+      ...(request.predecessor ? { predecessor: request.predecessor } : {}),
+    });
   }
 }
 
@@ -113,15 +182,23 @@ Deno.test("admitted geometry export reopens one sealed source and never accepts 
   assertEquals(result.draftDigest, fixture.exporter.draft.draftDigest);
   assertEquals(result.assemblyFiles, fixture.exporter.draft.assemblyFiles);
   assertEquals(result.partMeshes, []);
+  assertEquals(result.partDefinitions[0]?.elementId, "sysml.part.box");
   assertEquals(result.sourceAnalysis, fixture.exporter.draft.sourceAnalysis);
   assertEquals(replay.draftDigest, fixture.exporter.draft.draftDigest);
+  assertEquals(replay.manifest.schemaVersion, GEOMETRY_BUNDLE_MANIFEST_SCHEMA);
   assertEquals(replay.manifest.architectureBasis, {
     snapshotId: fixture.command.basis.snapshotId,
     revision: fixture.command.basis.revision,
     artifactFingerprint: fixture.reopened.admission.basis.sysml.artifactFingerprint,
   });
   assertEquals(replay.manifest.components, []);
-  assertEquals(replay.manifest.exportFormats, ["gltf"]);
+  assertEquals(replay.manifest.exportFormats, ["step", "gltf"]);
+  assertEquals(
+    replay.manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA
+      ? replay.manifest.partDefinitions[0]?.elementId
+      : undefined,
+    "sysml.part.box",
+  );
   assertEquals(fixture.reader.calls, [fixture.command]);
   assertEquals(fixture.exporter.calls, [{
     script: fixture.admittedSource,
@@ -132,6 +209,7 @@ Deno.test("admitted geometry export reopens one sealed source and never accepts 
       fingerprint: fixture.command.artifactFingerprint,
       sourceFingerprint: fixture.reopened.admission.sources[0]!.sourceFingerprint,
     },
+    representedPart: { elementId: "sysml.part.box", label: "Box" },
   }]);
   assertDeeplyFrozen(result);
 
@@ -283,6 +361,66 @@ Deno.test("reader and exporter failures are normalized without leaking causes or
   assertEquals(exportError.message.includes("credential"), false);
 });
 
+Deno.test("a multi-part architecture cannot enter singular admitted export", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = {
+    partDefinitions: [{
+      id: "sysml.part.box",
+      label: "Box",
+      usages: [{ id: "usage.arm", label: "arm", targetId: "sysml.part.box" }],
+    }],
+  };
+  await assertExportError(
+    () => fixture.service.execute(fixture.command),
+    "architecture_not_system_only",
+  );
+  assertEquals(fixture.exporter.calls.length, 0);
+});
+
+Deno.test("missing architecture stops before provider export", async () => {
+  const fixture = await harness();
+  fixture.architecture.missing = true;
+  await assertExportError(
+    () => fixture.service.execute(fixture.command),
+    "architecture_unavailable",
+  );
+  assertEquals(fixture.exporter.calls.length, 0);
+});
+
+Deno.test("an existing unique geometry tip becomes the signed predecessor", async () => {
+  const fixture = await harness();
+  const digest = "9".repeat(64);
+  fixture.snapshots.snapshot = {
+    ...fixture.snapshots.snapshot,
+    artifacts: [{
+      id: `geometry-${digest}`,
+      kind: "cad-model",
+      uri: `casys://geometry-capture/sha256/${digest}`,
+      fingerprint: { algorithm: "sha256", digest },
+    }],
+  } as unknown as ThreadSnapshot;
+  const result = await fixture.service.execute(fixture.command);
+  assertEquals(fixture.exporter.calls[0]?.predecessor, {
+    artifactId: `geometry-${digest}`,
+    fingerprint: { algorithm: "sha256", digest },
+  });
+  const replay = parseGeometryDecisionParameters(
+    new Map(result.decisionParameters.map((parameter) => [
+      parameter.key,
+      parameter.value,
+    ])),
+  );
+  assertEquals(
+    replay.manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA
+      ? replay.manifest.predecessor
+      : undefined,
+    {
+      artifactId: `geometry-${digest}`,
+      fingerprint: { algorithm: "sha256", digest },
+    },
+  );
+});
+
 async function harness(): Promise<Harness> {
   const admittedSource = [
     "from build123d import Box",
@@ -351,7 +489,7 @@ async function harness(): Promise<Harness> {
     rootElementKind: "Package" as const,
     elements: [
       { id: "sysml.package.main", kind: "Package", provenance },
-      { id: "sysml.part.box", kind: "PartUsage", provenance },
+      { id: "sysml.part.box", kind: "PartDefinition", provenance },
       {
         id: "sysml.attribute.thickness",
         kind: "AttributeUsage",
@@ -394,7 +532,7 @@ async function harness(): Promise<Harness> {
         sourceId: analysis.source.id,
         sourceSymbolId: analysis.symbols[0]!.id,
         sysmlElementId: "sysml.part.box",
-        sysmlElementKind: "PartUsage",
+        sysmlElementKind: "PartDefinition",
         relation: "represents",
       },
       {
@@ -518,16 +656,22 @@ async function harness(): Promise<Harness> {
   };
   const reader = new FakeAdmissionReader(reopened);
   const exporter = new FakeExporter();
+  const architecture = new FakeArchitectureReader();
+  const snapshots = new FakeSnapshots();
   return {
     service: new ExportAdmittedProjectGeometry({
       admissions: reader,
       exporter,
+      architecture,
+      snapshots,
     }),
     command,
     reopened,
     admittedSource,
     reader,
     exporter,
+    architecture,
+    snapshots,
   };
 }
 

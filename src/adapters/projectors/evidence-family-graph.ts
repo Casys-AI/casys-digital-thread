@@ -17,13 +17,15 @@ import type {
  * This is intentionally a read-only presentation transform over the already
  * projected canonical graph. It forms a family from an explicit provenance
  * `supersedes` edge, or from a `derived_from` edge whose both endpoints are
- * architecture-capture artefacts (the Thread predecessor of a later tip).
- * Labels, fingerprints, dates and identifier fragments never decide
- * membership.
+ * architecture-capture artefacts or both requirements-capture artefacts
+ * (the Thread predecessor of a later tip). Labels, fingerprints, dates and
+ * identifier fragments never decide membership.
  */
 export interface EvidenceFamilyGraphOptions {
   /** Artifact ids whose capture URI is `casys://architecture-capture/`. */
   readonly architectureCaptureIds?: ReadonlySet<string>;
+  /** Artifact ids whose capture URI is `casys://requirements-capture/`. */
+  readonly requirementsCaptureIds?: ReadonlySet<string>;
 }
 
 export function projectEvidenceFamilyGraph(
@@ -37,12 +39,15 @@ export function projectEvidenceFamilyGraph(
   const correctionDeclarations = correctionDeclarationRefs(graph, nodeByRef);
   const architectureCaptureIds = options.architectureCaptureIds ??
     new Set<string>();
+  const requirementsCaptureIds = options.requirementsCaptureIds ??
+    new Set<string>();
   const candidateTransitions = graph.edges.filter((edge) =>
     isEligibleVersionTransition(
       edge,
       nodeByRef,
       correctionDeclarations,
       architectureCaptureIds,
+      requirementsCaptureIds,
     )
   );
   // A fan-out is not a single-current version family. Rather than collapse an
@@ -135,14 +140,19 @@ function isEligibleVersionTransition(
   nodeByRef: ReadonlyMap<string, ThreadGraphNode>,
   correctionDeclarations: ReadonlySet<string>,
   architectureCaptureIds: ReadonlySet<string>,
+  requirementsCaptureIds: ReadonlySet<string>,
 ): boolean {
   if (edge.origin !== "provenance") return false;
-  const architecturePredecessor = edge.relation === "derived_from" &&
+  const attestedPredecessor = edge.relation === "derived_from" &&
     edge.from.kind === "artifact" &&
     edge.to.kind === "artifact" &&
-    architectureCaptureIds.has(edge.from.id) &&
-    architectureCaptureIds.has(edge.to.id);
-  if (edge.relation !== "supersedes" && !architecturePredecessor) {
+    sameCaptureLineage(
+      edge.from.id,
+      edge.to.id,
+      architectureCaptureIds,
+      requirementsCaptureIds,
+    );
+  if (edge.relation !== "supersedes" && !attestedPredecessor) {
     return false;
   }
   const historical = nodeByRef.get(refKey(edge.from));
@@ -163,6 +173,17 @@ function isEligibleVersionTransition(
       historical.artifactKind === successor.artifactKind;
   }
   return historical.entityKind === "requirement";
+}
+
+function sameCaptureLineage(
+  fromId: string,
+  toId: string,
+  architectureCaptureIds: ReadonlySet<string>,
+  requirementsCaptureIds: ReadonlySet<string>,
+): boolean {
+  return (architectureCaptureIds.has(fromId) &&
+    architectureCaptureIds.has(toId)) ||
+    (requirementsCaptureIds.has(fromId) && requirementsCaptureIds.has(toId));
 }
 
 /**

@@ -398,9 +398,8 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
           {snapshot.subject.label}
         </strong>
         <small className="mt-1 block text-xs text-muted-foreground">
-          {snapshot.components.components.filter((component) =>
-            component.kind === "part"
-          ).length} {terminology.countLabel}
+          {declaredSysmlCount(snapshot.components.components)}{" "}
+          {terminology.countLabel}
         </small>
       </button>
 
@@ -516,6 +515,17 @@ function SysmlRequirementRow(
       <Badge variant={variant}>{req.status}</Badge>
     </div>
   );
+}
+
+function declaredSysmlCount(components: readonly ThreadComponent[]): number {
+  const parts = components.filter((component) => component.kind === "part");
+  if (parts.length > 0) return parts.length;
+  return components.filter((component) =>
+    component.kind === "assembly" &&
+    component.bindings.some((binding) =>
+      binding.provider === "syson" && binding.kind === "part-definition"
+    )
+  ).length;
 }
 
 function sysonTerminology(

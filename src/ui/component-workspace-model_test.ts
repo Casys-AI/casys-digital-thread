@@ -111,8 +111,10 @@ Deno.test("projected r5 geometry resolves from exact capture-to-binary traces", 
   const snapshot = minimalSnapshot();
   const captureDigest =
     "39d5a031fcf2ed7926ac7e17fecb7ee7e55587fe5112588814c0d256afdbb04a";
-  const glbDigest = "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
-  const stepDigest = "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
+  const glbDigest =
+    "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
+  const stepDigest =
+    "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
   const capture = projectedGeometryCapture(captureDigest);
   const glb = projectedGeometryBinary(
     captureDigest,
@@ -692,6 +694,111 @@ Deno.test("multiple active geometry captures require one exact projected superse
   assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
 });
 
+Deno.test("a system-only v2 catalog admits the unique definition STEP as the assembly result", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "a".repeat(64);
+  const assemblyStep = projectedV2GeometryBinary(
+    captureDigest,
+    "b".repeat(64),
+    "step",
+    "step",
+    { scope: "assembly", formatIndex: 0 },
+  );
+  const definitionStep = projectedV2GeometryBinary(
+    captureDigest,
+    "c".repeat(64),
+    "step",
+    "step",
+    { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+  );
+  const capture = projectedGeometryCapture(captureDigest);
+  snapshot.artifacts.push(capture, assemblyStep, definitionStep);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, assemblyStep.id),
+    projectedTrace(capture.id, definitionStep.id),
+  );
+  snapshot.components.components = [{
+    id: "system-root",
+    label: "CantileverArm",
+    kind: "assembly",
+    quantity: 1,
+    bindings: [{
+      provider: "digital-thread",
+      kind: "artifact",
+      id: assemblyStep.id,
+      label: "Authoritative assembly STEP",
+      evidenceArtifactId: capture.id,
+      status: "verified",
+    }, {
+      provider: "syson",
+      kind: "part-definition",
+      id: "part-def-arm",
+      label: "CantileverArm",
+      evidenceArtifactId: "architecture-1",
+      status: "verified",
+    }],
+  }];
+
+  const sealed = resolveSealedAssemblyGeometry(snapshot);
+  assertEquals(sealed?.captureArtifact.id, capture.id);
+  assertEquals(sealed?.independentPartDefinitionGeometryCount, 1);
+  assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
+});
+
+Deno.test("a system-only catalog still refuses several unsigned definition STEPs", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "d".repeat(64);
+  const assemblyStep = projectedV2GeometryBinary(
+    captureDigest,
+    "e".repeat(64),
+    "step",
+    "step",
+    { scope: "assembly", formatIndex: 0 },
+  );
+  const firstDefinition = projectedV2GeometryBinary(
+    captureDigest,
+    "f".repeat(64),
+    "step",
+    "step",
+    { scope: "definition", definitionIndex: 0, fileIndex: 0 },
+  );
+  const secondDefinition = projectedV2GeometryBinary(
+    captureDigest,
+    "1".repeat(64),
+    "step",
+    "step",
+    { scope: "definition", definitionIndex: 1, fileIndex: 0 },
+  );
+  const capture = projectedGeometryCapture(captureDigest);
+  snapshot.artifacts.push(
+    capture,
+    assemblyStep,
+    firstDefinition,
+    secondDefinition,
+  );
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, assemblyStep.id),
+    projectedTrace(capture.id, firstDefinition.id),
+    projectedTrace(capture.id, secondDefinition.id),
+  );
+  snapshot.components.components = [{
+    id: "system-root",
+    label: "System",
+    kind: "assembly",
+    quantity: 1,
+    bindings: [{
+      provider: "digital-thread",
+      kind: "artifact",
+      id: assemblyStep.id,
+      label: "Authoritative assembly STEP",
+      evidenceArtifactId: capture.id,
+      status: "verified",
+    }],
+  }];
+
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+});
+
 Deno.test("an incomplete active geometry projection is a motivated blocker", () => {
   const snapshot = minimalSnapshot();
   const digest = "c".repeat(64);
@@ -755,7 +862,8 @@ Deno.test("per-part mesh binding resolves via resolveCadSurface as a part surfac
     revision: "a".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "a".repeat(64),
-    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
+    uri:
+      "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
@@ -804,7 +912,8 @@ Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported fr
     revision: "b".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "b".repeat(64),
-    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
+    uri:
+      "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
@@ -1010,7 +1119,8 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
       status: "pass",
       observationIds: [],
       violationIds: [],
-      rationale: "Fixture requirement for Boiler, must not appear for DripTray.",
+      rationale:
+        "Fixture requirement for Boiler, must not appear for DripTray.",
     },
   ];
 

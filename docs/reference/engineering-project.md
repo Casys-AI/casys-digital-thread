@@ -234,17 +234,19 @@ measurements, or publish a pass/fail verdict.
 
 Geometry is a two-step boundary. Canonical drafts come from
 `project_admitted_geometry_export` after `compile.seal-admission@1`.
-`project_geometry_preview` is not a product entry. Legacy
-`geometry-draft-capture/1.1` remains readable and assembly-only. A complete bundle uses
-`geometry-draft-capture/2.0`: one exact assembly source plus one exact source per unique
-SysML `PartDefinition`, dispatched as an isolated N+1 sequence after every source and
-identity validates. Its manifest requires authoritative STEP for the assembly and each
-definition, and an exhaustive, identity-based `PartUsage -> PartDefinition -> placement`
-table in a right-handed millimetre frame with extrinsic X/Y/Z degree rotations. The
-placement is local to the PartDefinition that owns the PartUsage; reusing that parent
-repeats the local placement on each expanded product path without duplicating the
-semantic PartUsage declaration. build123d's `gltf` token is accepted only with its
-actual binary `.glb` output.
+`project_geometry_preview` is not a product entry. Legacy `geometry-draft-capture/1.1`
+remains readable and assembly-only. A complete bundle uses `geometry-draft-capture/2.1`:
+one exact assembly source plus one exact source per unique SysML `PartDefinition`,
+dispatched as an isolated N+1 sequence after every source and identity validates. Its
+manifest requires authoritative STEP for the assembly and each definition. A system-only
+architecture (zero PartUsages, one PartDefinition) is a valid v2 bundle: empty
+components and occurrences, and that unique PartDefinition is the FEA target. Otherwise
+the manifest carries an exhaustive, identity-based
+`PartUsage -> PartDefinition -> placement` table in a right-handed millimetre frame with
+extrinsic X/Y/Z degree rotations. The placement is local to the PartDefinition that owns
+the PartUsage; reusing that parent repeats the local placement on each expanded product
+path without duplicating the semantic PartUsage declaration. build123d's `gltf` token is
+accepted only with its actual binary `.glb` output.
 
 The preview returns flat decision parameters for a fresh human review. Only
 `design.write-geometry@1` may seal those approved hashes. `geometry-manifest/1.0`

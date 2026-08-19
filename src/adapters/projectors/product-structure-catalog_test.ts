@@ -825,9 +825,8 @@ Deno.test(
 );
 
 Deno.test(
-  "resolveGenericProductStructureCatalog returns unavailable for only-system capture (no components)",
+  "resolveGenericProductStructureCatalog projects a system-only capture as the assembly",
   async () => {
-    // A capture with a single declaration (just the system) has no components.
     const captureRecord = makeCaptureRecord({
       declarations: [{ id: "sys-def-001", label: "SystemUnit" }],
     });
@@ -840,8 +839,44 @@ Deno.test(
       reader,
     );
 
-    assertEquals(catalog?.components, []);
-    assertStringIncludes(catalog?.rationale ?? "", "no component declarations");
+    assertEquals(catalog?.components.length, 1);
+    assertEquals(catalog?.components[0]?.id, `${SUBJECT_ID}:system`);
+    assertEquals(catalog?.components[0]?.kind, "assembly");
+    assertEquals(catalog?.components[0]?.label, "SystemUnit");
+    assertEquals(catalog?.components[0]?.bindings[0]?.id, "sys-def-001");
+    assertStringIncludes(catalog?.rationale ?? "", "single-part system");
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog keeps a system-only AttributeUsage as architecture, not a component",
+  async () => {
+    const captureRecord = makeCaptureRecord({
+      declarations: [{ id: "sys-def-001", label: "SystemUnit" }],
+    });
+    const part = (captureRecord.partDefinitions as Array<Record<string, unknown>>)[0]!;
+    part.attributes = [{
+      id: "attr-thickness",
+      kind: "AttributeUsage",
+      label: "thickness",
+    }];
+    const captureFp = await sha256Fingerprint(captureRecord);
+    const snapshot = snapshotWithArchArtifact(captureFp);
+    const reader = makeReader(captureFp, captureRecord);
+
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      reader,
+    );
+
+    assertEquals(catalog?.components.length, 1);
+    assertEquals(catalog?.components[0]?.kind, "assembly");
+    assertEquals(
+      catalog?.components[0]?.bindings.some((binding) =>
+        binding.id === "attr-thickness"
+      ),
+      false,
+    );
   },
 );
 

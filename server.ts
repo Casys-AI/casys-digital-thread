@@ -32,6 +32,7 @@ import {
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/captures/file-capture-store.ts";
+import { parseExactArchitectureCapture } from "./src/adapters/captures/architecture-capture.ts";
 import { FileCataloguedMechanicalProofCaseReader } from "./src/adapters/captures/file-catalogued-mechanical-proof-case-reader.ts";
 import { CaptureBackedFeaProofSealRequirementsReviewer } from "./src/adapters/captures/capture-backed-fea-proof-seal-requirements-reviewer.ts";
 import { PythonCadSourceAnalyzer } from "./src/adapters/analyzers/python-cad-source-analyzer.ts";
@@ -1985,6 +1986,8 @@ async function createProjectControl(
         build123dSandboxMcpUrl,
         geometrySourceAnalysis,
         technicalCompilationAdmissions,
+        threadSnapshots,
+        genericArchitectureCaptures,
       ),
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,
@@ -2198,6 +2201,8 @@ function composePrivateBuild123dGeometrySurfaces(
   build123dSandboxMcpUrl: string | undefined,
   geometrySourceAnalysis: GeometrySourceAnalysisCaptureDependencies,
   admissions: CaptureBackedTechnicalCompilationAdmissionReader,
+  snapshots: Pick<FileThreadSnapshotStore, "get">,
+  architectureCaptures: FileCaptureStore<"architecture-capture">,
 ): Pick<ProjectControlToolDependencies, "admittedGeometryExport"> {
   if (!build123dSandboxMcpUrl) {
     return { admittedGeometryExport: undefined };
@@ -2213,6 +2218,35 @@ function composePrivateBuild123dGeometrySurfaces(
   return {
     admittedGeometryExport: new ExportAdmittedProjectGeometry({
       admissions,
+      snapshots,
+      architecture: {
+        async read(fingerprint) {
+          const text = await architectureCaptures.read(fingerprint);
+          if (!text) return undefined;
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            return undefined;
+          }
+          try {
+            const capture = parseExactArchitectureCapture(parsed);
+            return {
+              partDefinitions: capture.partDefinitions.map((definition) => ({
+                id: definition.id,
+                label: definition.label,
+                usages: definition.usages.map((usage) => ({
+                  id: usage.id,
+                  label: usage.label,
+                  targetId: usage.targetId,
+                })),
+              })),
+            };
+          } catch {
+            return undefined;
+          }
+        },
+      },
       exporter: new AdmissionBackedGeometryExportAdapter({
         client,
         draftCaptures,

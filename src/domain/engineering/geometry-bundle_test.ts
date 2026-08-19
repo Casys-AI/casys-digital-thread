@@ -1,5 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
+  assertGeometryBundleArchitectureCoverage,
   assertGeometryBundleManifest,
   encodeGeometryBundleDecisionParameters,
   GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
@@ -139,6 +140,123 @@ Deno.test("geometry bundle rejects cross-kind semantic identity collisions", () 
       }),
     GeometryBundleError,
     "reused across PartUsage and PartDefinition",
+  );
+});
+
+function systemOnlyManifest(): GeometryBundleManifest {
+  return {
+    schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+    architectureBasis: {
+      snapshotId: "snapshot:architecture",
+      revision: 3,
+      artifactFingerprint: { algorithm: "sha256", digest: A },
+    },
+    components: [],
+    unitSystem: "mm",
+    placementConvention: GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+    exportFormats: ["step", "gltf"],
+    partExportFormats: ["step", "gltf"],
+    scriptHash: { algorithm: "sha256", digest: B },
+    artifactHashes: {
+      assemblyFiles: [{
+        format: "step",
+        name: "geometry-preview-assembly",
+        fingerprint: { algorithm: "sha256", digest: A },
+      }, {
+        format: "gltf",
+        name: "geometry-preview-assembly",
+        fingerprint: { algorithm: "sha256", digest: B },
+      }],
+      partMeshes: [],
+    },
+    partDefinitions: [{
+      elementId: "definition:arm",
+      label: "CantileverArm",
+      scriptHash: { algorithm: "sha256", digest: C },
+      files: [{
+        format: "step",
+        name: "geometry-preview-definition-000",
+        fingerprint: { algorithm: "sha256", digest: A },
+      }, {
+        format: "gltf",
+        name: "geometry-preview-definition-000",
+        fingerprint: { algorithm: "sha256", digest: B },
+      }],
+    }],
+    occurrences: [],
+  };
+}
+
+Deno.test("geometry bundle permits a system-only unique PartDefinition", () => {
+  const manifest = systemOnlyManifest();
+  assertGeometryBundleManifest(manifest, { requireCompleted: true });
+  const encoded = encodeGeometryBundleDecisionParameters(C, manifest);
+  const parsed = parseGeometryBundleDecisionParameters(
+    new Map(encoded.map(({ key, value }) => [key, value])),
+  );
+  assertEquals(parsed, { draftDigest: C, manifest });
+  assertGeometryBundleArchitectureCoverage(manifest, {
+    partDefinitions: [{
+      id: "definition:arm",
+      label: "CantileverArm",
+      usages: [],
+    }],
+  });
+});
+
+Deno.test("geometry bundle rejects empty components when several PartDefinitions exist", () => {
+  const manifest = completeManifest();
+  const secondDefinition = {
+    ...manifest.partDefinitions[0]!,
+    elementId: "definition:second",
+    label: "Second Definition",
+  };
+  assertThrows(
+    () =>
+      assertGeometryBundleManifest({
+        ...manifest,
+        components: [],
+        partDefinitions: [...manifest.partDefinitions, secondDefinition],
+        occurrences: [],
+      }),
+    GeometryBundleError,
+    "components must not be empty",
+  );
+});
+
+Deno.test("geometry bundle rejects a leftover occurrence on a system-only part", () => {
+  const manifest = systemOnlyManifest();
+  assertThrows(
+    () =>
+      assertGeometryBundleManifest({
+        ...manifest,
+        occurrences: [{
+          usageElementId: "usage:invented",
+          partDefinitionElementId: "definition:arm",
+          placement: { translationMm: [0, 0, 0], rotationDeg: [0, 0, 0] },
+        }],
+      }),
+    GeometryBundleError,
+    "cannot declare occurrences",
+  );
+});
+
+Deno.test("system-only coverage refuses an unused second architecture PartDefinition", () => {
+  assertThrows(
+    () =>
+      assertGeometryBundleArchitectureCoverage(systemOnlyManifest(), {
+        partDefinitions: [{
+          id: "definition:arm",
+          label: "CantileverArm",
+          usages: [],
+        }, {
+          id: "definition:other",
+          label: "Other",
+          usages: [],
+        }],
+      }),
+    GeometryBundleError,
+    "exactly one PartDefinition",
   );
 });
 

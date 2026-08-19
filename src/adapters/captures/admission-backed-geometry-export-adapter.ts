@@ -16,20 +16,24 @@ import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.
 import {
   parseGeometryDraftAdmission,
 } from "../../domain/engineering/geometry-draft-admission.ts";
+import type { GeometryExportFormat } from "../../domain/engineering/geometry-proposal.ts";
 import {
-  GEOMETRY_MANIFEST_SCHEMA,
-  type GeometryExportFormat,
-  type GeometryManifest,
-} from "../../domain/engineering/geometry-proposal.ts";
-import { exactRecord } from "../../domain/kernel/case-validation.ts";
-import { captureGeometryDraft } from "./geometry-draft-capture.ts";
+  GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+  GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+  type GeometryBundleManifest,
+} from "../../domain/engineering/geometry-bundle.ts";
+import { closedRecord, exactRecord } from "../../domain/kernel/case-validation.ts";
+import { captureGeometryBundleDraft } from "./geometry-draft-capture.ts";
 import type { FileCaptureStore } from "./file-capture-store.ts";
 import type { GeometrySourceAnalysisCaptureDependencies } from "./geometry-source-analysis-capture.ts";
 
-/** Server-fixed assembly formats. Callers cannot select them. */
+/** Server-fixed assembly and PartDefinition formats. Callers cannot select them. */
 export const ADMITTED_GEOMETRY_EXPORT_FORMATS: readonly GeometryExportFormat[] = [
+  "step",
   "gltf",
 ];
+export const ADMITTED_GEOMETRY_PART_EXPORT_FORMATS: readonly GeometryExportFormat[] =
+  ADMITTED_GEOMETRY_EXPORT_FORMATS;
 
 export interface AdmissionBackedGeometryExportDependencies {
   readonly client: McpToolClient;
@@ -58,18 +62,28 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
         "Admitted geometry assets must be materialized from mcp-build123d-sandbox.",
       );
     }
-    const manifest = admittedManifest(request);
-    const draft = await captureGeometryDraft(
+    const manifest = admittedBundleManifest(request);
+    const draft = await captureGeometryBundleDraft(
       this.dependencies.client,
-      { script: request.script, manifest, admission: request.admission },
+      {
+        assemblyScript: request.script,
+        manifest,
+        partDefinitionScripts: [{
+          elementId: request.representedPart.elementId,
+          script: request.script,
+        }],
+        admission: request.admission,
+      },
       this.dependencies.draftCaptures,
       this.options(),
     );
+    const assemblyAnalysis = draft.sourceAnalyses.assembly;
     return Object.freeze({
       draftDigest: draft.fingerprint.digest,
-      scriptHash: draft.scriptHash,
-      exportFormats: [...draft.exportFormats],
-      assemblyFiles: draft.assemblyFiles.map((file) =>
+      scriptHash: draft.assembly.scriptHash,
+      exportFormats: [...draft.assembly.exportFormats],
+      partExportFormats: [...draft.partExportFormats],
+      assemblyFiles: draft.assembly.files.map((file) =>
         Object.freeze({
           format: file.format,
           name: file.name,
@@ -77,20 +91,29 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
           digest: file.fingerprint.digest,
         })
       ),
-      partMeshes: draft.partMeshes.map((mesh) =>
+      partMeshes: Object.freeze([]),
+      partDefinitions: draft.partDefinitions.map((definition) =>
         Object.freeze({
-          usageName: mesh.usageName,
-          name: mesh.name,
-          bytes: mesh.bytes,
-          digest: mesh.fingerprint.digest,
+          elementId: definition.elementId,
+          label: definition.label,
+          scriptHash: definition.scriptHash,
+          files: definition.files.map((file) =>
+            Object.freeze({
+              format: file.format,
+              name: file.name,
+              bytes: file.bytes,
+              digest: file.fingerprint.digest,
+            })
+          ),
         })
       ),
+      ...(draft.predecessor ? { predecessor: draft.predecessor } : {}),
       sourceAnalysis: Object.freeze({
-        sourceId: draft.sourceAnalysis.sourceId,
-        selector: draft.sourceAnalysis.selector,
-        sourceDigest: draft.sourceAnalysis.sourceFingerprint.digest,
-        sourceCaptureDigest: draft.sourceAnalysis.sourceCaptureFingerprint.digest,
-        analysisDigest: draft.sourceAnalysis.analysisFingerprint.digest,
+        sourceId: assemblyAnalysis.sourceId,
+        selector: assemblyAnalysis.selector,
+        sourceDigest: assemblyAnalysis.sourceFingerprint.digest,
+        sourceCaptureDigest: assemblyAnalysis.sourceCaptureFingerprint.digest,
+        analysisDigest: assemblyAnalysis.analysisFingerprint.digest,
       }),
     });
   }
@@ -110,9 +133,10 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
 }
 
 function parseRequest(value: unknown): AdmittedGeometryExportRequest {
-  const request = exactRecord(
+  const request = closedRecord(
     value,
-    ["script", "architectureBasis", "admission"],
+    ["script", "architectureBasis", "admission", "representedPart", "predecessor"],
+    ["script", "architectureBasis", "admission", "representedPart"],
     "$admittedGeometryExportRequest",
   );
   if (typeof request.script !== "string" || request.script.length === 0) {
@@ -157,6 +181,30 @@ function parseRequest(value: unknown): AdmittedGeometryExportRequest {
       "$admittedGeometryExportRequest.architectureBasis.revision must be a positive integer.",
     );
   }
+  const representedPart = exactRecord(
+    request.representedPart,
+    ["elementId", "label"],
+    "$admittedGeometryExportRequest.representedPart",
+  );
+  if (
+    typeof representedPart.elementId !== "string" ||
+    representedPart.elementId.trim() === ""
+  ) {
+    throw new TypeError(
+      "$admittedGeometryExportRequest.representedPart.elementId must be a non-empty id.",
+    );
+  }
+  if (
+    typeof representedPart.label !== "string" ||
+    representedPart.label.trim() === ""
+  ) {
+    throw new TypeError(
+      "$admittedGeometryExportRequest.representedPart.label must be a non-empty label.",
+    );
+  }
+  const predecessor = request.predecessor === undefined
+    ? undefined
+    : parsePredecessor(request.predecessor);
   return {
     script: request.script,
     architectureBasis: {
@@ -171,17 +219,70 @@ function parseRequest(value: unknown): AdmittedGeometryExportRequest {
       request.admission,
       "$admittedGeometryExportRequest.admission",
     ),
+    representedPart: {
+      elementId: representedPart.elementId,
+      label: representedPart.label,
+    },
+    ...(predecessor ? { predecessor } : {}),
   };
 }
 
-function admittedManifest(
-  request: AdmittedGeometryExportRequest,
-): GeometryManifest {
+function parsePredecessor(value: unknown): NonNullable<
+  AdmittedGeometryExportRequest["predecessor"]
+> {
+  const predecessor = exactRecord(
+    value,
+    ["artifactId", "fingerprint"],
+    "$admittedGeometryExportRequest.predecessor",
+  );
+  if (
+    typeof predecessor.artifactId !== "string" ||
+    predecessor.artifactId.trim() === ""
+  ) {
+    throw new TypeError(
+      "$admittedGeometryExportRequest.predecessor.artifactId must be a non-empty id.",
+    );
+  }
+  const fingerprint = exactRecord(
+    predecessor.fingerprint,
+    ["algorithm", "digest"],
+    "$admittedGeometryExportRequest.predecessor.fingerprint",
+  );
+  if (fingerprint.algorithm !== "sha256") {
+    throw new TypeError(
+      "$admittedGeometryExportRequest.predecessor.fingerprint.algorithm must be sha256.",
+    );
+  }
+  if (
+    typeof fingerprint.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fingerprint.digest)
+  ) {
+    throw new TypeError(
+      "$admittedGeometryExportRequest.predecessor.fingerprint.digest must be SHA-256 hex.",
+    );
+  }
   return {
-    schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
+    artifactId: predecessor.artifactId,
+    fingerprint: { algorithm: "sha256", digest: fingerprint.digest },
+  };
+}
+
+function admittedBundleManifest(
+  request: AdmittedGeometryExportRequest,
+): GeometryBundleManifest {
+  return {
+    schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
     architectureBasis: request.architectureBasis,
+    ...(request.predecessor ? { predecessor: request.predecessor } : {}),
     components: [],
     unitSystem: "mm",
+    placementConvention: GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
     exportFormats: [...ADMITTED_GEOMETRY_EXPORT_FORMATS],
+    partExportFormats: [...ADMITTED_GEOMETRY_PART_EXPORT_FORMATS],
+    partDefinitions: [{
+      elementId: request.representedPart.elementId,
+      label: request.representedPart.label,
+    }],
+    occurrences: [],
   };
 }

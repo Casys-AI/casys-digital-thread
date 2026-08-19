@@ -133,6 +133,22 @@ export function deriveUniqueTechnicalCompilationBindings(
   return deepFreeze(bindings);
 }
 
+/**
+ * Unique `represents` PartDefinition, or nothing. A PartUsage target is not
+ * a geometry identity.
+ */
+export function selectUniqueRepresentedPartDefinition(
+  bindings: readonly TechnicalSemanticBinding[],
+): { readonly elementId: string } | undefined {
+  const matches = bindings.filter((binding) =>
+    binding.relation === "represents" &&
+    binding.sysmlElementKind === "PartDefinition"
+  );
+  if (matches.length !== 1) return undefined;
+  const elementId = matches[0]!.sysmlElementId.trim();
+  return elementId === "" ? undefined : { elementId };
+}
+
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }

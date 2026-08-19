@@ -5,8 +5,9 @@ import {
   isKnownFeaProofCaseId,
   selectUniqueCataloguedProofCase,
 } from "./fea-proof-case-catalog.ts";
+import { validateMechanicalProofCase } from "./mechanical-proof-case.ts";
 
-Deno.test("the FEA proof-case catalog names only reviewed files and refuses unknown ids before I/O", () => {
+Deno.test("the FEA proof-case catalog names only reviewed files and refuses unknown ids before I/O", async () => {
   assertEquals(isKnownFeaProofCaseId("desk-lamp-dl06-arm-cantilever"), true);
   assertEquals(
     feaProofCaseSourcePath("desk-lamp-dl06-arm-cantilever"),
@@ -15,6 +16,19 @@ Deno.test("the FEA proof-case catalog names only reviewed files and refuses unkn
   assertEquals(isKnownFeaProofCaseId("cm-01-retired-replay"), false);
   assertEquals(feaProofCaseSourcePath("cm-01-retired-replay"), undefined);
   assertEquals(FEA_PROOF_CASE_SOURCES.has("desk-lamp-dl04-arm-cantilever"), true);
+  assertEquals(
+    isKnownFeaProofCaseId("cantilever-arm-ca01-arm-cantilever"),
+    true,
+  );
+  const ca01 = validateMechanicalProofCase(
+    JSON.parse(
+      await Deno.readTextFile(
+        "config/mechanical-proof-cases/cantilever-arm-ca01-arm-cantilever.json",
+      ),
+    ),
+  );
+  assertEquals(ca01.id, "cantilever-arm-ca01-arm-cantilever");
+  assertEquals(ca01.project.id, "cantilever-arm-ca01");
 });
 
 Deno.test("unique catalog selection stays unresolved when several cases share a project", () => {

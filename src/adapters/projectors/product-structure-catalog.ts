@@ -376,11 +376,41 @@ function buildCatalog(
     );
   }
   const systemDecl = systemDeclarations[0]!;
+  const systemId = `${subjectId}:system`;
+  const systemComponent = {
+    id: systemId,
+    label: systemDecl.label,
+    kind: "assembly" as const,
+    quantity: 1,
+    bindings: [
+      {
+        provider: "syson" as const,
+        kind: "part-definition" as const,
+        id: systemDecl.id,
+        label: systemDecl.label,
+        evidenceArtifactId,
+      },
+    ],
+  };
   if (systemDecl.usages.length === 0) {
-    return unavailable(
+    if (capture.partDefinitions.length !== 1) {
+      return unavailable(
+        subjectId,
+        "A system-only architecture must contain exactly one PartDefinition.",
+      );
+    }
+    return validateThreadComponentCatalog({
+      schemaVersion: "thread-components/1.0",
+      authority: "workspace-declared",
       subjectId,
-      "The architecture capture has no component declarations beyond the system itself.",
-    );
+      rationale:
+        "This Product Structure is derived at read time from the exact hashed " +
+        "architecture capture produced by the generic model.write-architecture@1 run. " +
+        "Zero PartUsages is a single-part system: the unique system PartDefinition is " +
+        "the assembly. No ERP identity or provider binding is inferred.",
+      systemViews: {},
+      components: [systemComponent],
+    });
   }
 
   const byId = new Map(
@@ -390,7 +420,6 @@ function buildCatalog(
   );
   const components: Array<Record<string, unknown>> = [];
   const reachableDefinitions = new Set<string>([systemDecl.id]);
-  const systemId = `${subjectId}:system`;
   const visit = (
     parent: typeof systemDecl,
     parentId: string,
@@ -459,21 +488,7 @@ function buildCatalog(
         "only from an exact active geometry bundle capture.",
       systemViews: {},
       components: [
-        {
-          id: systemId,
-          label: systemDecl.label,
-          kind: "assembly",
-          quantity: 1,
-          bindings: [
-            {
-              provider: "syson",
-              kind: "part-definition",
-              id: systemDecl.id,
-              label: systemDecl.label,
-              evidenceArtifactId,
-            },
-          ],
-        },
+        systemComponent,
         ...components,
       ],
     });
@@ -592,11 +607,46 @@ async function parseAndVerifyCapture(
       throw new Error(`Architecture capture declaration[${i}] is not an object.`);
     }
     const decl = raw as Record<string, unknown>;
-    assertOnlyKeys(decl, ["id", "kind", "label", "usages"]);
+    const hasAttributes = Object.hasOwn(decl, "attributes");
+    assertOnlyKeys(
+      decl,
+      hasAttributes
+        ? ["id", "kind", "label", "usages", "attributes"]
+        : ["id", "kind", "label", "usages"],
+    );
     if (decl.kind !== "PartDefinition") {
       throw new Error(
         `Architecture capture declaration[${i}] is not a PartDefinition.`,
       );
+    }
+    if (hasAttributes) {
+      if (!Array.isArray(decl.attributes)) {
+        throw new Error(
+          `Architecture capture declaration[${i}].attributes is not an array.`,
+        );
+      }
+      for (const [attrIndex, rawAttr] of decl.attributes.entries()) {
+        if (!rawAttr || typeof rawAttr !== "object" || Array.isArray(rawAttr)) {
+          throw new Error(
+            `Architecture capture declaration[${i}].attributes[${attrIndex}] is not an object.`,
+          );
+        }
+        const attr = rawAttr as Record<string, unknown>;
+        assertOnlyKeys(attr, ["id", "kind", "label"]);
+        if (attr.kind !== "AttributeUsage") {
+          throw new Error(
+            `Architecture capture declaration[${i}].attributes[${attrIndex}] is not an AttributeUsage.`,
+          );
+        }
+        nonEmptyString(
+          attr.id,
+          `declaration[${i}].attributes[${attrIndex}].id`,
+        );
+        nonEmptyString(
+          attr.label,
+          `declaration[${i}].attributes[${attrIndex}].label`,
+        );
+      }
     }
     return {
       id: nonEmptyString(decl.id, `declaration[${i}].id`),

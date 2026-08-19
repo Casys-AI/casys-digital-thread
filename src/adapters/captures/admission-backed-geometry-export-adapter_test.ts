@@ -23,21 +23,23 @@ const HEX64 = "a".repeat(64);
 const ADMITTED_SCRIPT =
   "from build123d import Box\nthickness = 10\nresult = Box(10, 10, thickness)\n";
 
-function assemblyGltfResponse(digest = HEX64): McpToolResult {
+function exportResponse(
+  formats: readonly string[],
+  name: string,
+  digest = HEX64,
+): McpToolResult {
   return {
     structuredContent: {
       schemaVersion: "1.0",
       kind: "export",
       metrics: {},
-      files: [
-        {
-          format: "gltf",
-          path: "/exports/geometry-preview-assembly.glb",
-          bytes: 1024,
-          sha256: digest,
-          viewer: "model-viewer",
-        },
-      ],
+      files: formats.map((format) => ({
+        format,
+        path: `/exports/${name}.${format === "gltf" ? "glb" : format}`,
+        bytes: 1024,
+        sha256: digest,
+        ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+      })),
     },
     text: "",
   };
@@ -84,6 +86,10 @@ async function request() {
       fingerprint: { algorithm: "sha256" as const, digest: HEX64 },
       sourceFingerprint: await fingerprintTechnicalSourceText(ADMITTED_SCRIPT),
     },
+    representedPart: {
+      elementId: "sysml.part.box",
+      label: "Box",
+    },
   };
 }
 
@@ -94,7 +100,13 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
     const client = {
       callTool: (call: McpToolCall): Promise<McpToolResult> => {
         calls.push(call);
-        return Promise.resolve(assemblyGltfResponse());
+        const args = call.arguments as Record<string, unknown>;
+        return Promise.resolve(
+          exportResponse(
+            args.formats as string[],
+            String(args.name),
+          ),
+        );
       },
       callToolTextResult: stubCallToolTextResult,
     };
@@ -109,21 +121,30 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
 
     const draft = await adapter.export(await request());
 
-    assertEquals(calls.length, 1);
+    assertEquals(calls.length, 2);
     assertEquals(calls[0]?.name, "build123d_export");
+    assertEquals(calls[1]?.name, "build123d_export");
     assertEquals(calls[0]?.arguments, {
       script: ADMITTED_SCRIPT,
       formats: [...ADMITTED_GEOMETRY_EXPORT_FORMATS],
-      name: "geometry-preview-assembly",
+      name: String((calls[0]?.arguments as Record<string, unknown>).name),
       timeout_ms: 120000,
     });
-    assertEquals(draft.exportFormats, ["gltf"]);
-    assertEquals(draft.assemblyFiles, [{
-      format: "gltf",
-      name: "geometry-preview-assembly",
-      bytes: 1024,
-      digest: HEX64,
-    }]);
+    assertEquals(
+      String((calls[0]?.arguments as Record<string, unknown>).name)
+        .endsWith("-assembly"),
+      true,
+    );
+    assertEquals(
+      String((calls[1]?.arguments as Record<string, unknown>).name)
+        .endsWith("-definition-000"),
+      true,
+    );
+    assertEquals(draft.exportFormats, ["step", "gltf"]);
+    assertEquals(draft.partExportFormats, ["step", "gltf"]);
+    assertEquals(draft.assemblyFiles.map((file) => file.format), ["step", "gltf"]);
+    assertEquals(draft.partDefinitions.length, 1);
+    assertEquals(draft.partDefinitions[0]?.elementId, "sysml.part.box");
     assertEquals(draft.partMeshes, []);
     assertEquals(
       draft.scriptHash,
@@ -136,11 +157,13 @@ Deno.test("admission-backed export sends exact admitted bytes to private build12
     if (!persisted) throw new Error("expected persisted geometry draft");
     const parsed = JSON.parse(persisted) as {
       kind: string;
-      script: string;
+      schemaVersion?: string;
+      assembly?: { script: string };
       admission?: { artifactId: string };
     };
     assertEquals(parsed.kind, "geometry-draft");
-    assertEquals(parsed.script, ADMITTED_SCRIPT);
+    assertEquals(parsed.schemaVersion, "geometry-draft-capture/2.1");
+    assertEquals(parsed.assembly?.script, ADMITTED_SCRIPT);
     assertEquals(
       parsed.admission?.artifactId,
       `technical-compilation-admission-${HEX64}`,
@@ -156,9 +179,12 @@ Deno.test("admission-backed export refuses caller-selected provider fields and e
     let calls = 0;
     const adapter = new AdmissionBackedGeometryExportAdapter({
       client: {
-        callTool: () => {
+        callTool: (call) => {
           calls += 1;
-          return Promise.resolve(assemblyGltfResponse());
+          const args = call.arguments as Record<string, unknown>;
+          return Promise.resolve(
+            exportResponse(args.formats as string[], String(args.name)),
+          );
         },
         callToolTextResult: stubCallToolTextResult,
       },
@@ -206,8 +232,11 @@ Deno.test("admission-backed export uses the server-fixed sandbox service and ass
     const adapter = new AdmissionBackedGeometryExportAdapter({
       client: {
         callTool: (call) => {
-          names.push(String((call.arguments as Record<string, unknown>).name));
-          return Promise.resolve(assemblyGltfResponse());
+          const args = call.arguments as Record<string, unknown>;
+          names.push(String(args.name));
+          return Promise.resolve(
+            exportResponse(args.formats as string[], String(args.name)),
+          );
         },
         callToolTextResult: stubCallToolTextResult,
       },
@@ -217,8 +246,10 @@ Deno.test("admission-backed export uses the server-fixed sandbox service and ass
       materializeAsset: noopMaterialize,
     });
     await adapter.export(await request());
-    assertEquals(names, ["geometry-preview-assembly"]);
-    assertEquals(ADMITTED_GEOMETRY_EXPORT_FORMATS, ["gltf"]);
+    assertEquals(names.length, 2);
+    assertEquals(names[0]?.endsWith("-assembly"), true);
+    assertEquals(names[1]?.endsWith("-definition-000"), true);
+    assertEquals(ADMITTED_GEOMETRY_EXPORT_FORMATS, ["step", "gltf"]);
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }

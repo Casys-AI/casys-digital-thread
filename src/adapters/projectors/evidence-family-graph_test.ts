@@ -301,6 +301,53 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "requirements-capture derived_from wraps predecessor and tip as one current family",
+  () => {
+    const graph: ThreadGraph = {
+      nodes: [
+        artifact("requirements-v1", "sysml-model", "fresh"),
+        artifact("requirements-v2", "sysml-model", "fresh"),
+        artifact("architecture-v1", "sysml-model", "fresh"),
+      ],
+      edges: [
+        edge(
+          "v1-to-v2",
+          ref("artifact", "requirements-v1"),
+          ref("artifact", "requirements-v2"),
+          "derived_from",
+        ),
+        edge(
+          "architecture-to-v2",
+          ref("artifact", "architecture-v1"),
+          ref("artifact", "requirements-v2"),
+          "derived_from",
+        ),
+      ],
+    };
+
+    const projection = projectEvidenceFamilyGraph(graph, asOf(), {
+      requirementsCaptureIds: new Set(["requirements-v1", "requirements-v2"]),
+    });
+    const family = familyWithCurrent(projection.families, "requirements-v2");
+
+    assertEquals(family.historicalRefs.map((item) => item.id), [
+      "requirements-v1",
+    ]);
+    assertEquals(family.currentRefs.map((item) => item.id), ["requirements-v2"]);
+    assertEquals(family.status, "current");
+    assertEquals(family.artifactKind, "sysml-model");
+    assertEquals(
+      projection.families.some((candidate) =>
+        [...candidate.historicalRefs, ...candidate.currentRefs].some((item) =>
+          item.id === "architecture-v1"
+        )
+      ),
+      false,
+    );
+  },
+);
+
 Deno.test("a direct supersession cycle stays review-required without a current claim", () => {
   const graph: ThreadGraph = {
     nodes: [artifact("one", "step"), artifact("two", "step")],

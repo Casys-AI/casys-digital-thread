@@ -20,6 +20,16 @@ export interface AdmittedGeometryExportRequest {
     readonly artifactFingerprint: ContentFingerprint;
   };
   readonly admission: GeometryDraftAdmission;
+  /** Unique represents PartDefinition. Server-derived; callers cannot choose it. */
+  readonly representedPart: {
+    readonly elementId: string;
+    readonly label: string;
+  };
+  /** Unique active geometry tip when one already exists. */
+  readonly predecessor?: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+  };
 }
 
 export interface AdmittedGeometryExportedFile {
@@ -37,6 +47,7 @@ export interface AdmittedGeometryExportDraft {
   readonly draftDigest: string;
   readonly scriptHash: ContentFingerprint;
   readonly exportFormats: readonly GeometryExportFormat[];
+  readonly partExportFormats: readonly GeometryExportFormat[];
   readonly assemblyFiles: readonly AdmittedGeometryExportedFile[];
   readonly partMeshes: readonly {
     readonly usageName: string;
@@ -44,6 +55,16 @@ export interface AdmittedGeometryExportDraft {
     readonly bytes: number;
     readonly digest: string;
   }[];
+  readonly partDefinitions: readonly {
+    readonly elementId: string;
+    readonly label: string;
+    readonly scriptHash: ContentFingerprint;
+    readonly files: readonly AdmittedGeometryExportedFile[];
+  }[];
+  readonly predecessor?: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+  };
   readonly sourceAnalysis: {
     readonly sourceId: string;
     readonly selector: unknown;

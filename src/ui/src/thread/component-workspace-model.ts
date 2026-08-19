@@ -448,7 +448,15 @@ function exactV2CatalogDefinitionCount(
   const parts = snapshot.components.components.filter((component) =>
     component.kind === "part"
   );
-  if (parts.length === 0) return undefined;
+  const definitionSteps = records.filter((record) =>
+    record.scope === "definition" && record.format === "STEP"
+  );
+  if (parts.length === 0) {
+    // A system-only catalog has no PartUsage. The unique definition STEP is
+    // the system PartDefinition; Product must not invent a child occurrence.
+    if (definitionSteps.length !== 1) return undefined;
+    return 1;
+  }
   const boundDefinitionStepIds = new Set<string>();
   for (const part of parts) {
     const record = exactStepBinding(part);

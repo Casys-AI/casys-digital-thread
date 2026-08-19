@@ -19,6 +19,7 @@ import {
 } from "../../domain/thread/thread-component-catalog.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../captures/file-capture-store.ts";
+import { REQUIREMENTS_CAPTURE_URI_PREFIX } from "../../domain/thread/requirements-tip.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 import type { AnalysisGraph } from "../../domain/analysis/analysis-graph.ts";
 import { isStudyBaseEvaluation } from "../../domain/analysis/sensitivity-base-evaluation.ts";
@@ -83,6 +84,7 @@ export function projectThreadWorkbenchSnapshot(
     revision: snapshot.revision,
   }, {
     architectureCaptureIds: architectureCaptureIds(snapshot),
+    requirementsCaptureIds: requirementsCaptureIds(snapshot),
   });
 
   return {
@@ -1549,6 +1551,14 @@ function architectureCaptureIds(snapshot: ThreadSnapshot): ReadonlySet<string> {
   return new Set(
     snapshot.artifacts
       .filter((artifact) => artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX))
+      .map((artifact) => artifact.id),
+  );
+}
+
+function requirementsCaptureIds(snapshot: ThreadSnapshot): ReadonlySet<string> {
+  return new Set(
+    snapshot.artifacts
+      .filter((artifact) => artifact.uri?.startsWith(REQUIREMENTS_CAPTURE_URI_PREFIX))
       .map((artifact) => artifact.id),
   );
 }

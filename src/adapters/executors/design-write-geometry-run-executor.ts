@@ -61,6 +61,7 @@ import {
   parseGeometryDecisionParameters,
 } from "../../domain/engineering/geometry-proposal.ts";
 import {
+  assertGeometryBundleArchitectureCoverage,
   GEOMETRY_ARCHITECTURE_CAPTURE_USE_RATIONALE,
   GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE,
   GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
@@ -69,6 +70,7 @@ import {
   GEOMETRY_PREDECESSOR_CAPTURE_USE_RATIONALE,
   GEOMETRY_PREDECESSOR_DERIVATION_RATIONALE,
   GEOMETRY_PREDECESSOR_SUPERSEDES_RATIONALE,
+  GeometryBundleError,
 } from "../../domain/engineering/geometry-bundle.ts";
 import type {
   ContentFingerprint,
@@ -1338,9 +1340,6 @@ async function assertComponentBindingsMatchArchitecture(
     capture.insertedAt,
   );
   const definitions = capture.partDefinitions;
-  const definitionsById = new Map(
-    definitions.map((definition) => [definition.id, definition]),
-  );
   const allUsages = new Map<
     string,
     { readonly label: string; readonly targetId: string }
@@ -1370,58 +1369,26 @@ async function assertComponentBindingsMatchArchitecture(
     }
   }
   if (params.manifest.schemaVersion === "geometry-manifest/2.0") {
-    const manifestUsageIds = new Set(
-      params.manifest.components.map((component) => component.elementId),
-    );
-    if (
-      manifestUsageIds.size !== allUsages.size ||
-      [...allUsages.keys()].some((id) => !manifestUsageIds.has(id))
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "D5 violation: geometry bundle PartUsage identities must exactly cover every " +
-          "PartUsage in the captured architecture.",
-      );
-    }
-    const capturedTargetDefinitionIds = new Set(
-      [...allUsages.values()].map((usage) => usage.targetId),
-    );
-    const manifestDefinitionIds = new Set(
-      params.manifest.partDefinitions.map((definition) => definition.elementId),
-    );
-    if (
-      manifestDefinitionIds.size !== capturedTargetDefinitionIds.size ||
-      [...capturedTargetDefinitionIds].some((id) => !manifestDefinitionIds.has(id))
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "D5 violation: geometry bundle PartDefinition identities must exactly cover " +
-          "the definitions targeted by captured PartUsages; the system root is the " +
-          "separate assembly.",
-      );
-    }
-    for (const definition of params.manifest.partDefinitions) {
-      const captured = definitionsById.get(definition.elementId);
-      if (!captured || captured.label !== definition.label) {
+    try {
+      assertGeometryBundleArchitectureCoverage(params.manifest, {
+        partDefinitions: definitions.map((definition) => ({
+          id: definition.id,
+          label: definition.label,
+          usages: definition.usages.map((usage) => ({
+            id: usage.id,
+            label: usage.label,
+            targetId: usage.targetId,
+          })),
+        })),
+      });
+    } catch (error) {
+      if (error instanceof GeometryBundleError) {
         throw new EngineeringProjectCommandError(
           "invalid_transition",
-          `D5 violation: geometry PartDefinition "${definition.elementId}" is not ` +
-            "the exact captured architecture definition.",
+          `D5 violation: ${error.message}`,
         );
       }
-    }
-    for (const occurrence of params.manifest.occurrences) {
-      const captured = allUsages.get(occurrence.usageElementId);
-      if (
-        !captured ||
-        captured.targetId !== occurrence.partDefinitionElementId
-      ) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          `D5 violation: geometry occurrence "${occurrence.usageElementId}" does not ` +
-            `target captured PartDefinition "${occurrence.partDefinitionElementId}".`,
-        );
-      }
+      throw error;
     }
   }
 }

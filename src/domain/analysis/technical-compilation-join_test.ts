@@ -3,6 +3,7 @@ import type { SourceAnalysisBundle } from "./source-analysis.ts";
 import {
   deriveTechnicalCompilationProfileRequests,
   deriveUniqueTechnicalCompilationBindings,
+  selectUniqueRepresentedPartDefinition,
 } from "./technical-compilation-join.ts";
 import {
   PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
@@ -65,6 +66,35 @@ Deno.test("absent or ambiguous compilation profiles fail closed", () => {
       ),
     TypeError,
     "no unique compilation profile",
+  );
+});
+
+Deno.test("selectUniqueRepresentedPartDefinition keeps only a unique PartDefinition represents", () => {
+  const represented = {
+    id: "binding:source.cad:artifact.result:represents",
+    sourceId: "source.cad",
+    sourceSymbolId: "artifact.result",
+    sysmlElementId: "sysml.arm",
+    sysmlElementKind: "PartDefinition" as const,
+    relation: "represents" as const,
+  };
+  assertEquals(
+    selectUniqueRepresentedPartDefinition([represented]),
+    { elementId: "sysml.arm" },
+  );
+  assertEquals(
+    selectUniqueRepresentedPartDefinition([{
+      ...represented,
+      sysmlElementKind: "PartUsage",
+    }]),
+    undefined,
+  );
+  assertEquals(
+    selectUniqueRepresentedPartDefinition([
+      represented,
+      { ...represented, id: "binding:other", sysmlElementId: "sysml.other" },
+    ]),
+    undefined,
   );
 });
 

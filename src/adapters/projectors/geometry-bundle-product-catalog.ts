@@ -1021,6 +1021,13 @@ function attachExactCadBindings(
 ): ThreadComponentCatalog {
   const components = catalog.components.map((component) => {
     if (component.kind === "assembly") {
+      const definition = component.bindings.find((binding) =>
+        binding.provider === "syson" && binding.kind === "part-definition"
+      );
+      const definitionPreview = definition &&
+          bundle.glbByDefinitionId.has(definition.id)
+        ? glbPreview(bundle.glbByDefinitionId.get(definition.id)!)
+        : undefined;
       return {
         ...component,
         bindings: [
@@ -1031,6 +1038,7 @@ function attachExactCadBindings(
             bundle.primary.id,
           ),
         ],
+        ...(definitionPreview ? { preview: definitionPreview } : {}),
       };
     }
     const definition = exactBinding(

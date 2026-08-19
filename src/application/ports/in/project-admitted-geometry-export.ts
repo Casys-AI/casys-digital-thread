@@ -45,6 +45,11 @@ export interface ProjectAdmittedGeometryExportResult {
     readonly bytes: number;
     readonly digest: string;
   }[];
+  readonly partDefinitions: readonly {
+    readonly elementId: string;
+    readonly label: string;
+    readonly files: readonly ProjectAdmittedGeometryExportFile[];
+  }[];
   readonly sourceAnalysis: ProjectAdmittedGeometryExportSourceAnalysis;
   /** Canonical MRTR scalars for a later `design.write-geometry@1` proposal. */
   readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];

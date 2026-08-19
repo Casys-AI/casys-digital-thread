@@ -32,6 +32,10 @@ export const FEA_PROOF_CASE_SOURCES: ReadonlyMap<string, string> = new Map([
     "desk-lamp-dl06-arm-cantilever",
     "config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
   ],
+  [
+    "cantilever-arm-ca01-arm-cantilever",
+    "config/mechanical-proof-cases/cantilever-arm-ca01-arm-cantilever.json",
+  ],
 ]);
 
 export function feaProofCaseSourcePath(caseId: string): string | undefined {

@@ -37,21 +37,27 @@ import {
 } from "../../domain/analysis/technical-compilation-proposal.ts";
 import { BUILD123D_EXECUTION_COMPILED_ADMISSION_SCHEMA } from "../../domain/analysis/build123d-execution-proposal.ts";
 import { validateContentFingerprint } from "../../domain/analysis/isolated-code-execution.ts";
+import { selectUniqueRepresentedPartDefinition } from "../../domain/analysis/technical-compilation-join.ts";
 import { listGeometryAffectingNamedNumericLevers } from "../../domain/analysis/named-cad-levers.ts";
 import {
   GEOMETRY_DRAFT_ADMISSION_SCHEMA,
 } from "../../domain/engineering/geometry-draft-admission.ts";
 import {
-  encodeGeometryDecisionParameters,
-  GEOMETRY_MANIFEST_SCHEMA,
-  type GeometryManifest,
-} from "../../domain/engineering/geometry-proposal.ts";
+  encodeGeometryBundleDecisionParameters,
+  GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+  GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+  type GeometryBundleManifest,
+} from "../../domain/engineering/geometry-bundle.ts";
+import {
+  archivedRefKeys,
+  type ThreadSnapshot,
+} from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import {
   deepFreeze,
   exactRecord,
   literalValue,
   nonEmptyText,
-  positiveInteger,
   safeId,
 } from "../../domain/kernel/case-validation.ts";
 import {
@@ -68,7 +74,29 @@ export type ProjectAdmittedGeometryExportErrorCode =
   | "admission_resolution_failed"
   | "admission_integrity_failed"
   | "admission_not_parameterized"
+  | "admission_not_represented"
+  | "architecture_unavailable"
+  | "architecture_not_system_only"
+  | "snapshot_not_found"
+  | "geometry_tip_ambiguous"
   | "export_failed";
+
+/** Captured PartDefinition graph needed to author a system-only v2 draft. */
+export interface ArchitecturePartGraph {
+  readonly partDefinitions: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly usages: readonly {
+      readonly id: string;
+      readonly label: string;
+      readonly targetId: string;
+    }[];
+  }[];
+}
+
+export interface ArchitecturePartGraphReader {
+  read(fingerprint: ContentFingerprint): Promise<ArchitecturePartGraph | undefined>;
+}
 
 /** Stable application error. Provider details, storage paths and causes stay internal. */
 export class ProjectAdmittedGeometryExportError extends Error {
@@ -84,16 +112,22 @@ export class ProjectAdmittedGeometryExportError extends Error {
 export interface ExportAdmittedProjectGeometryDependencies {
   readonly admissions: TechnicalCompilationAdmissionReader;
   readonly exporter: AdmittedGeometryExporter;
+  readonly snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly architecture: ArchitecturePartGraphReader;
 }
 
 export class ExportAdmittedProjectGeometry
   implements ProjectAdmittedGeometryExportUseCase {
   readonly #admissions: TechnicalCompilationAdmissionReader;
   readonly #exporter: AdmittedGeometryExporter;
+  readonly #snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly #architecture: ArchitecturePartGraphReader;
 
   constructor(dependencies: ExportAdmittedProjectGeometryDependencies) {
     this.#admissions = dependencies.admissions;
     this.#exporter = dependencies.exporter;
+    this.#snapshots = dependencies.snapshots;
+    this.#architecture = dependencies.architecture;
   }
 
   async execute(value: unknown): Promise<ProjectAdmittedGeometryExportResult> {
@@ -152,6 +186,76 @@ export class ExportAdmittedProjectGeometry
         "The sealed admission has no causal named numeric CAD lever.",
       );
     }
+    const represented = selectUniqueRepresentedPartDefinition(
+      compilation.admission.bindings,
+    );
+    if (!represented) {
+      throw exportError(
+        "admission_not_represented",
+        "The sealed admission has no unique represents PartDefinition.",
+      );
+    }
+
+    let architectureGraph: ArchitecturePartGraph | undefined;
+    try {
+      architectureGraph = await this.#architecture.read(
+        compilation.admission.basis.sysml.artifactFingerprint,
+      );
+    } catch {
+      throw exportError(
+        "architecture_unavailable",
+        "The architecture capture for the sealed admission could not be reopened.",
+      );
+    }
+    if (!architectureGraph) {
+      throw exportError(
+        "architecture_unavailable",
+        "The architecture capture for the sealed admission is unavailable.",
+      );
+    }
+    const representedPart = selectSystemOnlyRepresentedPart(
+      architectureGraph,
+      represented.elementId,
+    );
+    if (!representedPart) {
+      throw exportError(
+        "architecture_not_system_only",
+        "Admitted geometry export requires a system-only architecture whose unique PartDefinition is the represents target.",
+      );
+    }
+
+    let snapshot: ThreadSnapshot | undefined;
+    try {
+      snapshot = await this.#snapshots.get(command.basis.snapshotId);
+    } catch {
+      throw exportError(
+        "snapshot_not_found",
+        "The named Thread basis snapshot could not be reopened.",
+      );
+    }
+    if (!snapshot) {
+      throw exportError(
+        "snapshot_not_found",
+        "The named Thread basis snapshot is unavailable.",
+      );
+    }
+    if (
+      snapshot.id !== command.basis.snapshotId ||
+      snapshot.revision !== command.basis.revision ||
+      snapshot.subject.id !== command.basis.subjectId
+    ) {
+      throw exportError(
+        "admission_integrity_failed",
+        "The named Thread basis snapshot does not match the requested identity.",
+      );
+    }
+    const predecessor = selectActiveGeometryPredecessor(snapshot);
+    if (predecessor.status === "ambiguous") {
+      throw exportError(
+        "geometry_tip_ambiguous",
+        "More than one active canonical geometry capture exists.",
+      );
+    }
 
     let draft: AdmittedGeometryExportDraft;
     try {
@@ -164,6 +268,15 @@ export class ExportAdmittedProjectGeometry
           fingerprint: command.artifactFingerprint,
           sourceFingerprint: compilation.source.sourceFingerprint,
         },
+        representedPart,
+        ...(predecessor.status === "ok"
+          ? {
+            predecessor: {
+              artifactId: predecessor.artifactId,
+              fingerprint: predecessor.fingerprint,
+            },
+          }
+          : {}),
       });
     } catch {
       throw exportError(
@@ -426,14 +539,33 @@ async function reopenReadyBuild123dCompilation(
 
 function assembleResult(
   draft: AdmittedGeometryExportDraft,
-  architectureBasis: GeometryManifest["architectureBasis"],
+  architectureBasis: GeometryBundleManifest["architectureBasis"],
 ): ProjectAdmittedGeometryExportResult {
-  const manifest: GeometryManifest = {
-    schemaVersion: GEOMETRY_MANIFEST_SCHEMA,
+  if (draft.partMeshes.length !== 0) {
+    throw new TypeError(
+      "A system-only admitted draft cannot carry legacy part meshes.",
+    );
+  }
+  const manifest: GeometryBundleManifest = {
+    schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
     architectureBasis,
+    ...(draft.predecessor ? { predecessor: draft.predecessor } : {}),
     components: [],
     unitSystem: "mm",
+    placementConvention: GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
     exportFormats: [...draft.exportFormats],
+    partExportFormats: [...draft.partExportFormats],
+    partDefinitions: draft.partDefinitions.map((definition) => ({
+      elementId: definition.elementId,
+      label: definition.label,
+      scriptHash: definition.scriptHash,
+      files: definition.files.map((file) => ({
+        format: file.format,
+        name: file.name,
+        fingerprint: { algorithm: "sha256", digest: file.digest },
+      })),
+    })),
+    occurrences: [],
     scriptHash: draft.scriptHash,
     artifactHashes: {
       assemblyFiles: draft.assemblyFiles.map((file) => ({
@@ -441,24 +573,66 @@ function assembleResult(
         name: file.name,
         fingerprint: { algorithm: "sha256", digest: file.digest },
       })),
-      partMeshes: draft.partMeshes.map((mesh) => ({
-        semanticKey: mesh.usageName,
-        name: mesh.name,
-        fingerprint: { algorithm: "sha256", digest: mesh.digest },
-      })),
+      partMeshes: [],
     },
   };
-  const decisionParameters = encodeGeometryDecisionParameters(
+  const decisionParameters = encodeGeometryBundleDecisionParameters(
     draft.draftDigest,
     manifest,
   );
   return deepFreeze({
     draftDigest: draft.draftDigest,
     assemblyFiles: draft.assemblyFiles,
-    partMeshes: draft.partMeshes,
+    partMeshes: [],
+    partDefinitions: draft.partDefinitions.map((definition) => ({
+      elementId: definition.elementId,
+      label: definition.label,
+      files: definition.files,
+    })),
     sourceAnalysis: draft.sourceAnalysis,
     decisionParameters,
   });
+}
+
+function selectSystemOnlyRepresentedPart(
+  architecture: ArchitecturePartGraph,
+  elementId: string,
+): { readonly elementId: string; readonly label: string } | undefined {
+  if (architecture.partDefinitions.length !== 1) return undefined;
+  const only = architecture.partDefinitions[0]!;
+  if (
+    only.id !== elementId ||
+    only.label.trim() === "" ||
+    only.usages.length !== 0 ||
+    architecture.partDefinitions.some((definition) => definition.usages.length > 0)
+  ) {
+    return undefined;
+  }
+  return { elementId: only.id, label: only.label };
+}
+
+function selectActiveGeometryPredecessor(snapshot: ThreadSnapshot):
+  | { readonly status: "absent" }
+  | {
+    readonly status: "ok";
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+  }
+  | { readonly status: "ambiguous" } {
+  const archived = archivedRefKeys(snapshot);
+  const active = snapshot.artifacts.filter((artifact) =>
+    artifact.kind === "cad-model" &&
+    artifact.uri?.startsWith("casys://geometry-capture/") &&
+    !archived.has(`artifact:${artifact.id}`)
+  );
+  if (active.length === 0) return { status: "absent" };
+  if (active.length > 1) return { status: "ambiguous" };
+  const artifact = active[0]!;
+  return {
+    status: "ok",
+    artifactId: artifact.id,
+    fingerprint: artifact.fingerprint,
+  };
 }
 
 function exportError(

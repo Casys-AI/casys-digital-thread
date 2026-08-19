@@ -1332,16 +1332,28 @@ async function materializeToDraftAssets(
     ],
     stdout: "null",
     stderr: "piped",
+    signal: AbortSignal.timeout(60_000),
   });
 
   let output: Deno.CommandOutput;
   try {
     output = await command.output();
   } catch (error) {
+    const timedOut = error instanceof DOMException && error.name === "TimeoutError" ||
+      error instanceof Error && error.name === "TimeoutError";
     throw new GeometryDraftMaterializationError(
       "copy_failed",
-      { sha256, containerPath, service, error: String(error) },
-      `docker compose cp failed for geometry draft asset ${sha256}: ${String(error)}`,
+      {
+        sha256,
+        containerPath,
+        service,
+        error: timedOut ? "timeout" : String(error),
+      },
+      timedOut
+        ? `docker compose cp timed out for geometry draft asset ${sha256}`
+        : `docker compose cp failed for geometry draft asset ${sha256}: ${
+          String(error)
+        }`,
     );
   }
 
