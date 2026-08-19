@@ -22,7 +22,7 @@ import {
   validateTechnicalSourceAnalysisProfile,
 } from "../captures/technical-source-analysis-capture.ts";
 import type { FileByteStore } from "../captures/file-byte-store.ts";
-import { qualifiedModelicaSourceAnalysisRegistration } from "./modelica-source-analysis-composition.ts";
+import { qualifiedModelicaSourceAnalysisRegistration } from "../modelica/source/source-analysis-composition.ts";
 
 export const INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES = 262_144;
 

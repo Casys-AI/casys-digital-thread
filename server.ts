@@ -63,23 +63,23 @@ import {
   ModelSealArchitectureSysmlRunExecutor,
 } from "./src/adapters/executors/model-seal-architecture-sysml-run-executor.ts";
 import type { Build123dExecutionServerOptions } from "./src/adapters/execution/build123d-execution-composition.ts";
-import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/execution/admitted-modelica-execution-composition.ts";
-import { createAdmittedModelicaExecutionComposition } from "./src/adapters/execution/admitted-modelica-execution-composition.ts";
-import { PrepareProjectAdmittedModelicaRunReview } from "./src/application/use-cases/prepare-project-admitted-modelica-run-review.ts";
+import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
+import { createAdmittedModelicaExecutionComposition } from "./src/adapters/modelica/admitted/execution-composition.ts";
+import { PrepareProjectAdmittedModelicaRunReview } from "./src/application/use-cases/modelica/admitted/prepare-run-review.ts";
 import {
   DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
   DesignSealIsolatedGeometryRunExecutor,
 } from "./src/adapters/executors/design-seal-isolated-geometry-run-executor.ts";
-import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/execution/modelica-isolated-execution-composition.ts";
+import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/execution/calculix-isolated-execution-composition.ts";
-import { CodeOwnedModelicaQualifiedKitBundleFactory } from "./src/adapters/execution/code-owned-modelica-qualified-kit-bundle-factory.ts";
+import { CodeOwnedModelicaQualifiedKitBundleFactory } from "./src/adapters/modelica/qualified-kit/bundle-factory.ts";
 import {
   FileModelicaMicrosandboxQualificationStore,
   PublicationBackedModelicaMicrosandboxQualificationAuthority,
-} from "./src/adapters/captures/modelica-microsandbox-qualification.ts";
+} from "./src/adapters/modelica/qualified-kit/microsandbox-qualification.ts";
 import { FileIsolatedOutputCas } from "./src/adapters/captures/file-isolated-output-cas.ts";
-import { FileModelicaIsolatedExecutionCaptureStore } from "./src/adapters/captures/modelica-isolated-execution-evidence.ts";
-import { ProjectThreadModelicaQualifiedKitReviewBasisAuthority } from "./src/adapters/stores/project-thread-modelica-qualified-kit-review-basis-authority.ts";
+import { FileModelicaIsolatedExecutionCaptureStore } from "./src/adapters/modelica/qualified-kit/isolated-execution-evidence.ts";
+import { ProjectThreadModelicaQualifiedKitReviewBasisAuthority } from "./src/adapters/modelica/qualified-kit/review-basis-authority.ts";
 import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/preview-project-technical-compilation.ts";
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/prepare-project-isolated-geometry-seal-review.ts";
@@ -98,8 +98,8 @@ import {
   CompileCaptureCorrectedSourceRunExecutor,
 } from "./src/adapters/executors/compile-capture-corrected-source-run-executor.ts";
 import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "./src/adapters/analyzers/qualified-build123d-source-analyzer.ts";
-import { PrepareProjectModelicaQualifiedKitRunReview } from "./src/application/use-cases/prepare-project-modelica-qualified-kit-run-review.ts";
-import { ExecuteIsolatedModelicaRun } from "./src/application/use-cases/execute-isolated-modelica-run.ts";
+import { PrepareProjectModelicaQualifiedKitRunReview } from "./src/application/use-cases/modelica/qualified-kit/prepare-run-review.ts";
+import { ExecuteIsolatedModelicaRun } from "./src/application/use-cases/modelica/qualified-kit/execute-isolated-run.ts";
 import type { ProjectTechnicalSourceCaptureUseCase } from "./src/application/ports/in/project-technical-source-capture.ts";
 import { assembleTechnicalSourceCaptureReview } from "./src/domain/analysis/technical-source-capture-review.ts";
 import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/analysis/source-analysis-frontend-registry.ts";
@@ -153,16 +153,16 @@ import { VERIFY_RUN_FEA_STATIC_PROOF_OPERATION } from "./src/adapters/executors/
 import {
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
   SimulateSealSimulationCaseRunExecutor,
-} from "./src/adapters/executors/simulate-seal-simulation-case-run-executor.ts";
+} from "./src/adapters/modelica/recorded/v1/seal-case-executor.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
   SimulateRunModelicaScenarioRunExecutor,
-} from "./src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts";
+} from "./src/adapters/modelica/recorded/v1/run-scenario-executor.ts";
 import { validateFeaExecutionPolicy } from "./src/domain/analysis/fea-execution-policy.ts";
-import { validateSimulationExecutionPolicy } from "./src/domain/analysis/simulation-execution-policy.ts";
+import { validateSimulationExecutionPolicy } from "./src/domain/modelica/recorded/simulation-execution-policy.ts";
 import { FileCanonicalAssetReader } from "./src/adapters/assets/canonical-asset-reader.ts";
-import { SimulateSealSimulationCaseV2RunExecutor } from "./src/adapters/executors/simulate-seal-simulation-case-v2-run-executor.ts";
-import { SimulateRunModelicaScenarioV2RunExecutor } from "./src/adapters/executors/simulate-run-modelica-scenario-v2-run-executor.ts";
+import { SimulateSealSimulationCaseV2RunExecutor } from "./src/adapters/modelica/recorded/v2/seal-case-executor.ts";
+import { SimulateRunModelicaScenarioV2RunExecutor } from "./src/adapters/modelica/recorded/v2/run-scenario-executor.ts";
 import { VerifyRunFeaStaticProofV2RunExecutor } from "./src/adapters/executors/verify-run-fea-static-proof-v2-run-executor.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
@@ -175,20 +175,20 @@ import {
 import {
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
   SimulateRunQualifiedModelicaKitRunExecutor,
-} from "./src/adapters/executors/simulate-run-qualified-modelica-kit-run-executor.ts";
+} from "./src/adapters/modelica/qualified-kit/run-executor.ts";
 import {
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
   SimulateRunAdmittedModelicaRunExecutor,
-} from "./src/adapters/executors/simulate-run-admitted-modelica-run-executor.ts";
+} from "./src/adapters/modelica/admitted/run-executor.ts";
 import { VerifyRunFeaStaticProofV3RunExecutor } from "./src/adapters/executors/verify-run-fea-static-proof-v3-run-executor.ts";
 import { DockerVolumeAssetStager } from "./src/adapters/executors/container-asset-stager.ts";
 import { FileFeaStaticProofAttemptStore } from "./src/adapters/wal/file-fea-static-proof-attempt-store.ts";
-import { FileModelicaScenarioAttemptStore } from "./src/adapters/wal/file-modelica-scenario-attempt-store.ts";
-import { FileModelicaQualifiedSealAttemptStore } from "./src/adapters/wal/file-modelica-qualified-seal-attempt-store.ts";
-import { FileModelicaRecordedScenarioAttemptStore } from "./src/adapters/wal/file-modelica-recorded-scenario-attempt-store.ts";
+import { FileModelicaScenarioAttemptStore } from "./src/adapters/modelica/recorded/v1/scenario-attempt-store.ts";
+import { FileModelicaQualifiedSealAttemptStore } from "./src/adapters/modelica/recorded/v2/qualified-seal-attempt-store.ts";
+import { FileModelicaRecordedScenarioAttemptStore } from "./src/adapters/modelica/recorded/v2/recorded-scenario-attempt-store.ts";
 import { FileCalculixRecordedStaticAttemptStore } from "./src/adapters/wal/file-calculix-recorded-static-attempt-store.ts";
-import { McpModelicaProvider } from "./src/adapters/providers/modelica/mcp-modelica-provider.ts";
-import { McpModelicaResumableAdapter } from "./src/adapters/providers/modelica/mcp-modelica-resumable-adapter.ts";
+import { McpModelicaProvider } from "./src/adapters/modelica/recorded/v1/provider.ts";
+import { McpModelicaResumableAdapter } from "./src/adapters/modelica/recorded/v2/resumable-adapter.ts";
 import { McpCalculixStaticStructuralSolver } from "./src/adapters/providers/calculix/mcp-calculix-static-structural-solver.ts";
 import { McpCalculixSensitivitySolver } from "./src/adapters/providers/calculix/mcp-calculix-sensitivity-solver.ts";
 import { IsolatedStepSolverStager } from "./src/adapters/assets/isolated-step-solver-stager.ts";
@@ -242,7 +242,7 @@ import { parseSysonModelSeedCapture } from "./src/domain/engineering/syson-model
 import { findArchitectureArtifact } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
 import { McpCalculixRecordedStaticAdapter } from "./src/adapters/providers/calculix/mcp-calculix-recorded-static-adapter.ts";
 import { FileByteStore } from "./src/adapters/captures/file-byte-store.ts";
-import { ModelicaQualifiedSourceCaptureService } from "./src/adapters/captures/modelica-qualified-source-capture.ts";
+import { ModelicaQualifiedSourceCaptureService } from "./src/adapters/modelica/recorded/v2/qualified-source-capture.ts";
 import { ProviderResourceCaptureService } from "./src/adapters/captures/provider-resource-capture-service.ts";
 import { RecordedAnalysisCasReader } from "./src/adapters/captures/recorded-analysis-cas-reader.ts";
 import {
@@ -273,7 +273,7 @@ import {
 } from "./src/adapters/captures/file-capture-store.ts";
 import { FileRequirementsAttemptStore } from "./src/adapters/wal/file-requirements-attempt-store.ts";
 import { FileBuild123dExecutionAttemptStore } from "./src/adapters/wal/file-build123d-execution-attempt-store.ts";
-import { FileModelicaIsolatedExecutionAttemptStore } from "./src/adapters/wal/file-modelica-isolated-execution-attempt-store.ts";
+import { FileModelicaIsolatedExecutionAttemptStore } from "./src/adapters/modelica/qualified-kit/attempt-store.ts";
 import { FileCalculixIsolatedProductAttemptStore } from "./src/adapters/wal/file-calculix-isolated-product-attempt-store.ts";
 import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/captures/file-capture-store.ts";
 import { RegisteredProjectRunExecutor } from "./src/application/use-cases/registered-project-run-executor.ts";
@@ -293,7 +293,7 @@ import {
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
 } from "./src/adapters/stores/engineering-thread-snapshot-resolver.ts";
-import { ModelicaRunObserver } from "./src/adapters/historical/modelica-run-observer.ts";
+import { ModelicaRunObserver } from "./src/adapters/modelica/recorded/v1/run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
 import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
@@ -985,7 +985,7 @@ async function createProjectControl(
   const modelicaIsolatedExecution = options.modelicaIsolatedExecution === undefined
     ? undefined
     : await (await import(
-      "./src/adapters/execution/modelica-isolated-execution-composition.ts"
+      "./src/adapters/modelica/qualified-kit/execution-composition.ts"
     )).createModelicaIsolatedExecutionComposition(
       options.modelicaIsolatedExecution,
       {

@@ -3,22 +3,22 @@
 import {
   FileModelicaMicrosandboxQualificationStore,
   PublicationBackedModelicaMicrosandboxQualificationAuthority,
-} from "../../src/adapters/captures/modelica-microsandbox-qualification.ts";
+} from "../../src/adapters/modelica/qualified-kit/microsandbox-qualification.ts";
 import {
   MODELICA_MICROSANDBOX_WORKER_IMAGE,
-} from "../../src/adapters/execution/fixed-modelica-isolated-execution-profile.ts";
-import { createModelicaIsolatedExecutionComposition } from "../../src/adapters/execution/modelica-isolated-execution-composition.ts";
+} from "../../src/adapters/modelica/qualified-kit/execution-profile.ts";
+import { createModelicaIsolatedExecutionComposition } from "../../src/adapters/modelica/qualified-kit/execution-composition.ts";
 import {
   createModelicaMicrosandboxQualificationKit,
   MODELICA_QUALIFIED_KIT_DENO_LOCK_SHA256,
   MODELICA_QUALIFIED_KIT_WORKER_CONTRACT_SHA256,
   MODELICA_QUALIFIED_KIT_WRAPPER_SHA256,
-} from "../../src/adapters/execution-profiles/modelica-qualified-kit-v1/qualification-kit.ts";
+} from "../../src/adapters/modelica/qualified-kit/kit-v1/qualification-kit.ts";
 import { FileIsolatedOutputCas } from "../../src/adapters/captures/file-isolated-output-cas.ts";
 import {
   createModelicaMicrosandboxQualificationCapture,
-} from "../../src/domain/analysis/modelica-microsandbox-qualification.ts";
-import { validateModelicaIsolatedRun } from "../../src/domain/analysis/modelica-isolated-execution.ts";
+} from "../../src/domain/modelica/qualified-kit/microsandbox-qualification.ts";
+import { validateModelicaIsolatedRun } from "../../src/domain/modelica/qualified-kit/isolated-execution.ts";
 import {
   ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
   isolatedCodeExecutionReceiptRecord,

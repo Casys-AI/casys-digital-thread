@@ -21,7 +21,7 @@ import {
 } from "../../src/adapters/providers/calculix/mcp-calculix-recorded-static-adapter.ts";
 import {
   McpModelicaResumableAdapter,
-} from "../../src/adapters/providers/modelica/mcp-modelica-resumable-adapter.ts";
+} from "../../src/adapters/modelica/recorded/v2/resumable-adapter.ts";
 import type {
   CalculixRecordedStaticCapturedEvidence,
   CalculixRecordedStaticCapturedResource,
@@ -39,7 +39,7 @@ import type {
   ModelicaResumableManifestSelection,
   ModelicaResumableRequest,
   ModelicaResumableSubmission,
-} from "../../src/domain/analysis/modelica-resumable-capabilities.ts";
+} from "../../src/domain/modelica/recorded/resumable-capabilities.ts";
 import {
   fingerprintResourceBytes,
   type ProviderResourceReader,

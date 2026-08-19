@@ -14,11 +14,11 @@ import type {
 import type {
   ProjectModelicaQualifiedKitRunReviewCommand,
   ProjectModelicaQualifiedKitRunReviewUseCase,
-} from "../../application/ports/in/project-modelica-qualified-kit-run-review.ts";
+} from "../../application/ports/in/modelica/qualified-kit-run-review.ts";
 import type {
   ProjectAdmittedModelicaRunReviewCommand,
   ProjectAdmittedModelicaRunReviewUseCase,
-} from "../../application/ports/in/project-admitted-modelica-run-review.ts";
+} from "../../application/ports/in/modelica/admitted-run-review.ts";
 import type {
   ProjectTechnicalCompilationPreviewCommand,
   ProjectTechnicalCompilationPreviewUseCase,

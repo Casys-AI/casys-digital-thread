@@ -11,7 +11,7 @@ import { FileProjectReviewIntentStore } from "../adapters/stores/file-project-re
 import {
   DESIGN_EXECUTE_BUILD123D_OPERATION,
 } from "../domain/analysis/build123d-execution-proposal.ts";
-import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../domain/modelica/qualified-kit/run-proposal.ts";
 import { VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION } from "../orchestration/operations/recorded-analysis.ts";
 import type { ProjectRunExecutor } from "../application/ports/in/project-run-executor.ts";
 import type {

@@ -455,6 +455,24 @@ Hexagonal. Dependencies point inward. Adapters never become domain authority.
 | UI          | `src/ui/src/`                                         | `src/contracts/` | Command authority, MCP credentials           |
 | Tests       | `*_test.ts` colocated; UI tests at `src/ui/*_test.ts` | `@std/assert`    | Preact render tests                          |
 
+Second axis: **authority context**, not pipeline verb. Layers stay at
+`src/{domain,application,adapters}/` so the import gate remains prefix-true.
+A new Modelica, CAD or FEA module does **not** land in `domain/analysis/` or a
+flat `adapters/captures/`. File census: [workspace source map](workspace-source-map.md).
+
+| Context        | Domain root              | Do not merge                                              |
+| -------------- | ------------------------ | --------------------------------------------------------- |
+| `modelica`     | `src/domain/modelica/`   | `admitted/` ≠ `qualified-kit/` ≠ `recorded/`              |
+| `project`      | `src/domain/project/`    | Ledger and brief; not Thread bytes                        |
+| `thread`       | `src/domain/thread/`     | Canonical snapshot; not a project command                 |
+| `kernel`       | `src/domain/kernel/`     | Shared primitives only                                    |
+| shared compile | `src/domain/analysis/`   | Isolation + admission used by CAD **and** Modelica; later |
+
+The same Modelica split lives under `src/adapters/modelica/` and
+`src/application/{ports,use-cases}/modelica/`. Later contexts (`cad`, `fea`,
+`architecture`, `sensitivity`, `make`) follow the same rule: folder = authority,
+lookalikes stay in sibling directories.
+
 New non-test module → add it to the `deno.json` `check` file list. The omission is
 silent.
 

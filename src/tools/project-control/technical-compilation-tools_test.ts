@@ -3,8 +3,8 @@ import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import type { ProjectAdmittedGeometryExportResult } from "../../application/ports/in/project-admitted-geometry-export.ts";
 import type { ProjectBuild123dExecutionReviewResult } from "../../application/ports/in/project-build123d-execution-review.ts";
 import type { ProjectIsolatedGeometrySealReviewResult } from "../../application/ports/in/project-isolated-geometry-seal-review.ts";
-import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../application/ports/in/project-modelica-qualified-kit-run-review.ts";
-import type { ProjectAdmittedModelicaRunReviewResult } from "../../application/ports/in/project-admitted-modelica-run-review.ts";
+import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../application/ports/in/modelica/qualified-kit-run-review.ts";
+import type { ProjectAdmittedModelicaRunReviewResult } from "../../application/ports/in/modelica/admitted-run-review.ts";
 import { registerProjectTechnicalCompilationTools } from "./technical-compilation-tools.ts";
 
 const ARTIFACT_DIGEST = "a".repeat(64);

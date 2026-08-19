@@ -66,9 +66,9 @@ import {
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-} from "../../src/domain/analysis/simulation-case-proposal.ts";
-import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../src/domain/analysis/modelica-qualified-kit-run-proposal.ts";
-import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../src/domain/analysis/modelica-admitted-run-proposal.ts";
+} from "../../src/domain/modelica/recorded/simulation-case-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../src/domain/modelica/qualified-kit/run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../src/domain/modelica/admitted/run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../src/domain/thread/thread-retirement.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,

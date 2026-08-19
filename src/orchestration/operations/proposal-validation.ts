@@ -26,11 +26,11 @@ import {
   parseSimulationCaseDecisionParameters,
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
   simulationCaseDecisionParametersToMap,
-} from "../../domain/analysis/simulation-case-proposal.ts";
+} from "../../domain/modelica/recorded/simulation-case-proposal.ts";
 import {
   parseSimulationCaseV2DecisionParameters,
   simulationCaseV2DecisionParametersToMap,
-} from "../../domain/analysis/simulation-case-v2-proposal.ts";
+} from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "./recorded-analysis.ts";
 import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
@@ -77,11 +77,11 @@ import {
 import {
   parseModelicaQualifiedKitRunAdmissionParameters,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
-} from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+} from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import {
   parseModelicaAdmittedRunAdmissionParameters,
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
-} from "../../domain/analysis/modelica-admitted-run-proposal.ts";
+} from "../../domain/modelica/admitted/run-proposal.ts";
 import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,

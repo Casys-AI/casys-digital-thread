@@ -73,10 +73,11 @@ vocabulary:
 3. `src/adapters/mcp/http-mcp-resource-reader.ts` reads one exact provider resource; it
    exposes no discovery authority. `src/adapters/captures/` saves/rereads bytes, ledger
    and manifest.
-4. `src/adapters/providers/modelica/` and `src/adapters/providers/calculix/` own fixed
+4. `src/adapters/modelica/recorded/` and `src/adapters/providers/calculix/` own fixed
    MCP tools and envelopes. Executors cannot construct arbitrary provider arguments.
 5. `src/adapters/wal/` owns the durable post-dispatch state. `src/adapters/executors/`
-   owns the fixed sequence and canonical ThreadSnapshot write.
+   owns the fixed sequence and canonical ThreadSnapshot write. Modelica WAL and
+   executors live under `src/adapters/modelica/`.
 
 Before non-idempotent dispatch, the WAL records intent. A known Modelica request or
 CalculiX run is read back, never submitted or solved again. Once solver resources,

@@ -31,9 +31,9 @@
 | ERP manufacturing truth      | ERPNext database, reached only through `mcp-erpnext`                                                                                                                                                     |
 | FEA proof (seal)             | [`src/adapters/executors/verify-seal-proof-case-run-executor.ts`](../../src/adapters/executors/verify-seal-proof-case-run-executor.ts)                                                                   |
 | FEA proof (run)              | [`src/adapters/executors/verify-run-fea-static-proof-run-executor.ts`](../../src/adapters/executors/verify-run-fea-static-proof-run-executor.ts)                                                         |
-| Modelica scenario (seal)     | [`src/adapters/executors/simulate-seal-simulation-case-run-executor.ts`](../../src/adapters/executors/simulate-seal-simulation-case-run-executor.ts)                                                     |
-| Modelica scenario (run)      | [`src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts`](../../src/adapters/executors/simulate-run-modelica-scenario-run-executor.ts)                                                   |
-| Recorded Modelica `@2`       | [`src/adapters/executors/simulate-run-modelica-scenario-v2-run-executor.ts`](../../src/adapters/executors/simulate-run-modelica-scenario-v2-run-executor.ts)                                             |
+| Modelica scenario (seal)     | [`src/adapters/modelica/recorded/v1/seal-case-executor.ts`](../../src/adapters/modelica/recorded/v1/seal-case-executor.ts)                                                     |
+| Modelica scenario (run)      | [`src/adapters/modelica/recorded/v1/run-scenario-executor.ts`](../../src/adapters/modelica/recorded/v1/run-scenario-executor.ts)                                                   |
+| Recorded Modelica `@2`       | [`src/adapters/modelica/recorded/v2/run-scenario-executor.ts`](../../src/adapters/modelica/recorded/v2/run-scenario-executor.ts)                                             |
 | Recorded CalculiX `@2`       | [`src/adapters/executors/verify-run-fea-static-proof-v2-run-executor.ts`](../../src/adapters/executors/verify-run-fea-static-proof-v2-run-executor.ts)                                                   |
 
 A reviewed subject manifest is the sole cross-provider join authority for its project.

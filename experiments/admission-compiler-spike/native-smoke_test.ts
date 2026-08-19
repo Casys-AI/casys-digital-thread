@@ -11,7 +11,7 @@ import type {
   ModelicaResumableManifest,
   ModelicaResumableRequest,
   ModelicaResumableSubmission,
-} from "../../src/domain/analysis/modelica-resumable-capabilities.ts";
+} from "../../src/domain/modelica/recorded/resumable-capabilities.ts";
 import {
   createProviderResourceRead,
   type ExpectedProviderResource,

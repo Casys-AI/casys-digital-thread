@@ -151,7 +151,7 @@ transformation: `apply: (v) => v + 273.15`.
 
 Modelica already publishes `degC` observations (`temperature_final`, `targetTemperature`
 in
-[`modelica-isolated-execution.ts`](../../src/domain/analysis/modelica-isolated-execution.ts)).
+[`modelica-isolated-execution.ts`](../../src/domain/modelica/qualified-kit/isolated-execution.ts)).
 Those observations can now be compared against a `K`-based SysON requirement via the
 compilation boundary: `normaliseThreshold(22, "degC")` → `{ value: 295.15, unit: "K" }`.
 

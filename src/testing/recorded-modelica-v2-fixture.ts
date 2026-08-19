@@ -18,13 +18,13 @@ import {
   canonicalSimulationCaseV2Text,
   type SimulationCaseV2,
   validateSimulationCaseV2,
-} from "../domain/analysis/simulation-case-v2.ts";
+} from "../domain/modelica/recorded/simulation-case-v2.ts";
 import {
   encodeSimulationCaseV2DecisionParameters,
-} from "../domain/analysis/simulation-case-v2-proposal.ts";
+} from "../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import {
   simulationCaseV2CatalogKey,
-} from "../domain/analysis/simulation-case-v2-catalog.ts";
+} from "../domain/modelica/recorded/simulation-case-v2-catalog.ts";
 import {
   canonicalModelicaResumableProviderJson,
   fingerprintModelicaResumableProviderJson,
@@ -34,7 +34,7 @@ import {
   type ModelicaResumableCompletedRun,
   type ModelicaResumableRequest,
   type ModelicaResumableSubmission,
-} from "../domain/analysis/modelica-resumable-capabilities.ts";
+} from "../domain/modelica/recorded/resumable-capabilities.ts";
 import {
   createProviderResourceRead,
   type ExpectedProviderResource,
@@ -50,14 +50,14 @@ import {
 } from "../adapters/captures/file-capture-store.ts";
 import { FileByteStore } from "../adapters/captures/file-byte-store.ts";
 import { ProviderResourceCaptureService } from "../adapters/captures/provider-resource-capture-service.ts";
-import { ModelicaQualifiedSourceCaptureService } from "../adapters/captures/modelica-qualified-source-capture.ts";
+import { ModelicaQualifiedSourceCaptureService } from "../adapters/modelica/recorded/v2/qualified-source-capture.ts";
 import { FileEngineeringProjectRevisionStore } from "../adapters/stores/engineering-project-store.ts";
 import { FileEngineeringProjectRunLease } from "../adapters/stores/file-engineering-project-run-lease.ts";
 import { FileThreadSnapshotStore } from "../adapters/stores/file-thread-snapshot-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../adapters/validators/engineering-project-completion-evidence-validator.ts";
-import { FileModelicaQualifiedSealAttemptStore } from "../adapters/wal/file-modelica-qualified-seal-attempt-store.ts";
-import { FileModelicaRecordedScenarioAttemptStore } from "../adapters/wal/file-modelica-recorded-scenario-attempt-store.ts";
+import { FileModelicaQualifiedSealAttemptStore } from "../adapters/modelica/recorded/v2/qualified-seal-attempt-store.ts";
+import { FileModelicaRecordedScenarioAttemptStore } from "../adapters/modelica/recorded/v2/recorded-scenario-attempt-store.ts";
 import { CaptureBackedRunPlanSealer } from "../adapters/plans/capture-backed-run-plan-sealer.ts";
 import { RecordedOperationPlanResolver } from "../adapters/plans/recorded-operation-plan-resolver.ts";
 import {
@@ -66,9 +66,9 @@ import {
   parseManifestEnvelope,
   parseRequestEnvelope,
   verifyCapturedModelicaResumableEvidence,
-} from "../adapters/providers/modelica/mcp-modelica-resumable-adapter.ts";
+} from "../adapters/modelica/recorded/v2/resumable-adapter.ts";
 import { ApprovedBriefBaselineRunExecutor } from "../adapters/executors/approved-brief-baseline-run-executor.ts";
-import { SimulateSealSimulationCaseV2RunExecutor } from "../adapters/executors/simulate-seal-simulation-case-v2-run-executor.ts";
+import { SimulateSealSimulationCaseV2RunExecutor } from "../adapters/modelica/recorded/v2/seal-case-executor.ts";
 import {
   RECORDED_ANALYSIS_OPERATION_DESCRIPTORS,
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,

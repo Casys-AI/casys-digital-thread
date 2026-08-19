@@ -3,7 +3,7 @@ import {
   canonicalModelicaQualifiedManifestDocumentText,
   canonicalModelicaResumableProviderJson,
   fingerprintModelicaResumableProviderJson,
-} from "../../domain/analysis/modelica-resumable-capabilities.ts";
+} from "../../domain/modelica/recorded/resumable-capabilities.ts";
 import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
 import { validateResolvedOperationPlanV2 } from "../../domain/analysis/resolved-operation-plan-v2.ts";
 import {
@@ -14,7 +14,7 @@ import { validateMechanicalProofCase } from "../../domain/analysis/mechanical-pr
 import {
   canonicalSimulationCaseV2Text,
   validateSimulationCaseV2,
-} from "../../domain/analysis/simulation-case-v2.ts";
+} from "../../domain/modelica/recorded/simulation-case-v2.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -31,10 +31,10 @@ import type {
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import {
   canonicalModelicaQualifiedSourceCaptureText,
-} from "../captures/modelica-qualified-source-capture.ts";
+} from "../modelica/recorded/v2/qualified-source-capture.ts";
 import {
   canonicalModelicaSimulationCaseQualificationCaptureText,
-} from "../captures/modelica-simulation-case-qualification-capture.ts";
+} from "../modelica/recorded/v2/simulation-case-qualification-capture.ts";
 import type { CanonicalAssetReader } from "../../application/ports/out/canonical-asset-reader.ts";
 import {
   RecordedOperationPlanResolver,

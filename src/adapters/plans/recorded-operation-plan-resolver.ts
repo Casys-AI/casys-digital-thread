@@ -20,7 +20,7 @@ import {
   type ModelicaQualifiedManifestDocument,
   type ModelicaResumableResource,
   validateModelicaQualifiedManifestDocument,
-} from "../../domain/analysis/modelica-resumable-capabilities.ts";
+} from "../../domain/modelica/recorded/resumable-capabilities.ts";
 import {
   fingerprintResourceBytes,
 } from "../../domain/analysis/provider-resource-reader.ts";
@@ -40,7 +40,7 @@ import {
   canonicalSimulationCaseV2Text,
   type SimulationCaseV2,
   validateSimulationCaseV2,
-} from "../../domain/analysis/simulation-case-v2.ts";
+} from "../../domain/modelica/recorded/simulation-case-v2.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -75,14 +75,14 @@ import {
   type ModelicaQualifiedSourceCaptureDocument,
   type ModelicaQualifiedSourceRole,
   validateModelicaQualifiedSourceCaptureDocument,
-} from "../captures/modelica-qualified-source-capture.ts";
+} from "../modelica/recorded/v2/qualified-source-capture.ts";
 import {
   canonicalModelicaSimulationCaseQualificationCaptureText,
   decodeExactUtf8,
   type ModelicaQualificationCasReference,
   type ModelicaSimulationCaseQualificationCapture,
   validateModelicaSimulationCaseQualificationCapture,
-} from "../captures/modelica-simulation-case-qualification-capture.ts";
+} from "../modelica/recorded/v2/simulation-case-qualification-capture.ts";
 
 const MODELICA_OPERATION = {
   id: "simulate.run-modelica-scenario",

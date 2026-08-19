@@ -6,7 +6,7 @@ import {
 import {
   QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
   QualifiedModelicaSourceAnalyzer,
-} from "../analyzers/qualified-modelica-source-analyzer.ts";
+} from "../modelica/source/qualified-source-analyzer.ts";
 import {
   TechnicalSourceAnalysisProfileNotRegisteredError,
 } from "../captures/technical-source-analysis-capture.ts";
@@ -23,7 +23,7 @@ import {
 import {
   QUALIFIED_MODELICA_MAX_SOURCE_BYTES,
   QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE,
-} from "./modelica-source-analysis-composition.ts";
+} from "../modelica/source/source-analysis-composition.ts";
 
 const SOURCE_TEXT = [
   "from build123d import Box",

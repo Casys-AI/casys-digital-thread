@@ -24,8 +24,8 @@ import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/analysis/
 import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
 } from "../../domain/engineering/geometry-proposal.ts";
-import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
-import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/analysis/modelica-admitted-run-proposal.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,

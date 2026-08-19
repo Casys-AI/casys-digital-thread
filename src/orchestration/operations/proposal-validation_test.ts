@@ -12,17 +12,17 @@ import {
   SYSON_MODEL_SEED_OPERATION,
 } from "../../domain/engineering/syson-model-seed-proposal.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
-import { validateSimulationCase } from "../../domain/analysis/simulation-case.ts";
+import { validateSimulationCase } from "../../domain/modelica/recorded/simulation-case.ts";
 import {
   encodeSimulationCaseDecisionParameters,
-} from "../../domain/analysis/simulation-case-proposal.ts";
-import { validateSimulationCaseV2 } from "../../domain/analysis/simulation-case-v2.ts";
+} from "../../domain/modelica/recorded/simulation-case-proposal.ts";
+import { validateSimulationCaseV2 } from "../../domain/modelica/recorded/simulation-case-v2.ts";
 import {
   encodeSimulationCaseV2DecisionParameters,
-} from "../../domain/analysis/simulation-case-v2-proposal.ts";
+} from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import {
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-} from "../../domain/analysis/simulation-case-proposal.ts";
+} from "../../domain/modelica/recorded/simulation-case-proposal.ts";
 import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "./recorded-analysis.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,

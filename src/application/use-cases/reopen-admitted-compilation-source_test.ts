@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { MODELICA_QUALIFIED_MODEL_SOURCE } from "../../adapters/execution-profiles/modelica-qualified-kit-v1/run.ts";
-import { QualifiedModelicaSourceAnalyzer } from "../../adapters/analyzers/qualified-modelica-source-analyzer.ts";
+import { MODELICA_QUALIFIED_MODEL_SOURCE } from "../../adapters/modelica/qualified-kit/kit-v1/run.ts";
+import { QualifiedModelicaSourceAnalyzer } from "../../adapters/modelica/source/qualified-source-analyzer.ts";
 import type {
   ReopenedTechnicalCompilationAdmission,
   TechnicalCompilationAdmissionReader,

@@ -53,10 +53,10 @@ ENV DENO_DIR=/opt/casys/deno-cache \
     TMPDIR=/tmp
 
 COPY --chmod=0555 \
-  src/adapters/execution-profiles/modelica-qualified-kit-v1/run.ts \
+  src/adapters/modelica/qualified-kit/kit-v1/run.ts \
   /opt/casys/profiles/modelica-qualified-kit-v1/run.ts
 COPY --chmod=0444 \
-  src/adapters/execution-profiles/modelica-qualified-kit-v1/worker-contract.ts \
+  src/adapters/modelica/qualified-kit/kit-v1/worker-contract.ts \
   /opt/casys/profiles/modelica-qualified-kit-v1/worker-contract.ts
 COPY --chmod=0444 \
   images/modelica-microsandbox-worker/deno.lock \
@@ -77,10 +77,10 @@ RUN echo "${DENO_LOCK_SHA256}  /opt/casys/profiles/modelica-qualified-kit-v1/den
 # Second worker in the same image. Kit ENTRYPOINT is unchanged. Admitted runs
 # select this wrapper through backend args, not a second image name.
 COPY --chmod=0555 \
-  src/adapters/execution-profiles/modelica-closed-subset-v1/run.ts \
+  src/adapters/modelica/admitted/closed-subset-v1/run.ts \
   /opt/casys/profiles/modelica-closed-subset-v1/run.ts
 COPY --chmod=0444 \
-  src/adapters/execution-profiles/modelica-closed-subset-v1/worker-contract.ts \
+  src/adapters/modelica/admitted/closed-subset-v1/worker-contract.ts \
   /opt/casys/profiles/modelica-closed-subset-v1/worker-contract.ts
 RUN deno cache --no-config \
       --lock=/opt/casys/profiles/modelica-qualified-kit-v1/deno.lock \

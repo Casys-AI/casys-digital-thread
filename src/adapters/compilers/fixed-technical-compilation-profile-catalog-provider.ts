@@ -18,7 +18,7 @@ import {
   QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
   QUALIFIED_MODELICA_SOURCE_ANALYZER_ID,
   QUALIFIED_MODELICA_SOURCE_ANALYZER_VERSION,
-} from "../analyzers/qualified-modelica-source-analyzer.ts";
+} from "../modelica/source/qualified-source-analyzer.ts";
 
 /**
  * Registrations correspond to real parser-backed closed subsets: the
