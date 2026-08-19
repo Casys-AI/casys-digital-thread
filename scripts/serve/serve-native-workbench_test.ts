@@ -92,7 +92,7 @@ Deno.test("native Workbench startup requires a durable focus or explicit target"
     }),
     {
       hostname: "127.0.0.1",
-      port: 5173,
+      port: 5175,
       noSeed: true,
       workspaceId: "primary",
       projectId: undefined,

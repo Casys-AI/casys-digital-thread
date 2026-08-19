@@ -163,7 +163,7 @@ export function defaultAgentStackConfig(): AgentStackConfig {
     uiHostname: "127.0.0.1",
     mcpPort: 3020,
     cockpitPort: 5175,
-    uiPort: 5174,
+    uiPort: 5173,
     cockpitHealthPath: "/healthz",
     cockpitReviewIntentDirectory: "state/local/project-review-intents",
     workspaceId: "primary",
@@ -638,7 +638,7 @@ Endpoints:
   --cockpit-hostname HOST     Cockpit BFF bind hostname (default: 127.0.0.1)
   --cockpit-port PORT         Agent-focused cockpit port (default: 5175)
   --ui-hostname HOST          Vite bind hostname (default: 127.0.0.1)
-  --ui-port PORT              Vite port (default: 5174)
+  --ui-port PORT              Vite port (default: 5173)
   --workspace-id ID           Focused cockpit workspace (default: primary)
   --cockpit-health-path PATH  Readiness path (default: /healthz)
 

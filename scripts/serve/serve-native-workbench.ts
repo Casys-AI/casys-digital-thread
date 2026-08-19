@@ -241,7 +241,7 @@ export function resolveNativeWorkbenchStartupTarget(
     explicitProjectId === undefined && explicitSubjectId === undefined;
   return {
     hostname,
-    port: integerArgument("port", cliArgs) ?? 5173,
+    port: integerArgument("port", cliArgs) ?? 5175,
     noSeed: true,
     workspaceId,
     projectId: focusOnly ? undefined : resolveNativeWorkbenchProjectId(

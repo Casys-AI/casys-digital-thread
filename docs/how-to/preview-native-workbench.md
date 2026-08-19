@@ -43,10 +43,11 @@ card means the run was not persisted, not that it passed.
 deno task preview:thread
 ```
 
-The task builds the dedicated single-file Preact shell and starts the Deno BFF at:
+The task starts Vite with HMR at the human URL and the read-only Deno BFF behind it:
 
 ```text
-http://127.0.0.1:5173/
+http://127.0.0.1:5173/          Vite cockpit (default)
+http://127.0.0.1:5175/          BFF API / SSE; `preview:cockpit` frozen shell
 ```
 
 No Docker service, Console MCP server, MCP Apps host, or provider MCP is required to
@@ -410,7 +411,7 @@ It does **not** prove:
 
 | Command                    | Address                  | Purpose                                      |
 | -------------------------- | ------------------------ | -------------------------------------------- |
-| `deno task preview:thread` | `http://127.0.0.1:5173/` | Native product shell over persisted evidence |
+| `deno task preview:thread` | `http://127.0.0.1:5173/` | Vite HMR cockpit; `/api` proxies to :5175 |
 
 MCP Apps remains useful for one rich tool result or for embedding the complete Workbench
 once in an agent host. It is not used to compose the first-party product page.

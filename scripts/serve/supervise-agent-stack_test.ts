@@ -27,6 +27,8 @@ Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
 
   const commands = buildAgentStackCommands(config);
 
+  assertEquals(defaultAgentStackConfig().uiPort, 5173);
+  assertEquals(defaultAgentStackConfig().cockpitPort, 5175);
   assertEquals(commands.map((command) => command.name), ["cockpit", "mcp"]);
   const [cockpit, mcp] = commands;
   assertEquals(cockpit.command, "/bin/deno");

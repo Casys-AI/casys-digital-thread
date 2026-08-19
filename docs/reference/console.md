@@ -25,8 +25,8 @@ sixth cockpit tab:
 
 ```bash
 deno task start                        # http://127.0.0.1:3020/mcp
-deno task preview:cockpit --port=5175  # canonical product shell
-deno task preview:thread               # 5173, direct development preview
+deno task preview:cockpit              # 5175, frozen single-file BFF
+deno task preview:thread               # 5173 Vite HMR → BFF 5175
 ```
 
 `deno task preview:browser` refuses: the `:3021` harness is not a product page. The

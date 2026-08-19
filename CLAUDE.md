@@ -57,8 +57,8 @@ deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env
 Surfaces interactives locales (chacune rebuild son bundle puis sert un BFF loopback) :
 
 ```bash
-deno task preview:thread      # :5173 — cockpit projet natif (reads/SSE passifs)
-deno task preview:cockpit     # :5175 — même cockpit, port de démonstration
+deno task preview:thread      # :5173 Vite HMR → BFF :5175 (reads/SSE passifs)
+deno task preview:cockpit     # :5175 — même BFF, bundle singlefile figé
 ```
 
 `deno task preview:browser` refuse : l'ancienne Console MCP App (`:3021`) n'est plus

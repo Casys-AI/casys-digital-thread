@@ -23,9 +23,23 @@ function trimGeneratedHtml(): Plugin {
   };
 }
 
+function workbenchRootRewrite(): Plugin {
+  return {
+    name: "workbench-root-rewrite",
+    configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        if (request.url === "/" || request.url === "") {
+          request.url = "/native-workbench.html";
+        }
+        next();
+      });
+    },
+  };
+}
+
 const root = dirname(fileURLToPath(import.meta.url));
 const workbenchBffPort = environmentPort("CASYS_COCKPIT_BFF_PORT", 5175);
-const nativeUiPort = environmentPort("CASYS_COCKPIT_UI_PORT", 5174);
+const nativeUiPort = environmentPort("CASYS_COCKPIT_UI_PORT", 5173);
 const workbenchBffOrigin = `http://127.0.0.1:${workbenchBffPort}`;
 
 function environmentPort(name: string, fallback: number): number {
@@ -42,7 +56,12 @@ function environmentPort(name: string, fallback: number): number {
 }
 
 export default defineConfig({
-  plugins: [tailwindcss(), viteSingleFile(), trimGeneratedHtml()],
+  plugins: [
+    tailwindcss(),
+    viteSingleFile(),
+    trimGeneratedHtml(),
+    workbenchRootRewrite(),
+  ],
   base: "./",
   server: {
     host: "127.0.0.1",

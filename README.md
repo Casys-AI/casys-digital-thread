@@ -133,9 +133,8 @@ npm --prefix src/ui ci
 npm --prefix src/ui run build:thread
 deno task start                  # http://127.0.0.1:3020/mcp
 # Canonical product shell: one Project tab from first brief to technical proof.
-deno task preview:cockpit --port=5175  # http://127.0.0.1:5175/
-# Direct thread preview remains available for development and diagnosis.
-deno task preview:thread              # http://127.0.0.1:5173/
+deno task preview:cockpit              # http://127.0.0.1:5175/ frozen BFF
+deno task preview:thread               # http://127.0.0.1:5173/ Vite HMR → BFF :5175
 ```
 
 `deno task preview:browser` refuses: the `:3021` harness is not a product page.
