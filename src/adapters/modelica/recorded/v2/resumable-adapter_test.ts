@@ -3,7 +3,7 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
-import { fingerprintResourceBytes } from "../../../../domain/analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
 import {
   canonicalModelicaQualifiedManifestDocumentText,
   canonicalModelicaResumableProviderJson,

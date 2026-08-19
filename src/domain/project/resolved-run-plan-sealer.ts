@@ -8,7 +8,7 @@ import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type {
   ResolvedOperationPlanRef,
   ResolvedOperationPlanV2,
-} from "../analysis/resolved-operation-plan-v2.ts";
+} from "../compile/rop/resolved-operation-plan-v2.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectPreviousSnapshot,

@@ -1,14 +1,17 @@
 import type { JSX } from "react";
+import type {
+  CockpitFleetProjection,
+} from "../../../contracts/cockpit-fleet.ts";
 import { recordStatusVariant } from "./record-status.ts";
 import type {
   EngineeringAgentRun,
+  EngineeringDecision,
   EngineeringProjectSnapshot,
-  EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { cn } from "../lib/utils.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.tsx";
+import { Card, CardContent, CardHeader } from "../ui/card.tsx";
 import {
   agentRunRecordedAt,
   agentRunSummary,
@@ -17,12 +20,21 @@ import {
   projectPulseStatus,
   selectCurrentProjectFocus,
   workOwnerLabel,
-  workStatusLabel,
 } from "./model.ts";
+import {
+  buildOperationsFleetView,
+  type FleetCardView,
+} from "./operations-fleet-model.ts";
 
 type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
-export function ProjectWorkRibbon({ project }: {
+// ---------------------------------------------------------------------------
+// Work ribbon
+// ---------------------------------------------------------------------------
+
+export function ProjectWorkRibbon({
+  project,
+}: {
   project: EngineeringProjectSnapshot;
 }): JSX.Element {
   const brief = buildProjectBrief(project);
@@ -30,10 +42,8 @@ export function ProjectWorkRibbon({ project }: {
   const currentFocus = selectCurrentProjectFocus(project);
   const decisionToReview = currentFocus.proposedDecision;
   const decisionBeingPrepared = currentFocus.work?.decisionIds
-    .map((id) => project.decisions.find((decision) => decision.id === id))
-    .find((decision) =>
-      decision?.status === "required" || decision?.status === "rejected"
-    );
+    .map((id) => project.decisions.find((d) => d.id === id))
+    .find((d) => d?.status === "required" || d?.status === "rejected");
   const blocker = brief.openBlockers[0];
   const decisionBadge = decisionToReview
     ? { variant: "warning" as const, label: "Needs review" }
@@ -51,12 +61,12 @@ export function ProjectWorkRibbon({ project }: {
       className="grid grid-cols-1 gap-3 md:grid-cols-3"
       aria-label="Shared work plan"
     >
-      <div className="rounded-lg border border-border bg-card p-3">
+      <Card className="gap-0 p-3 shadow-sm">
         <AgentNowRibbon project={project} presentation={agentNow} />
-      </div>
-      <div className="rounded-lg border border-border bg-card p-3">
+      </Card>
+      <Card className="gap-0 p-3 shadow-sm">
         <RibbonFacts
-          label={decisionToReview ? "Agent question" : "Decision status"}
+          label="AGENT QUESTION"
           value={decisionToReview?.title ??
             (decisionBeingPrepared
               ? "Agent proposal in preparation"
@@ -64,20 +74,21 @@ export function ProjectWorkRibbon({ project }: {
           detail={decisionToReview?.question ??
             (decisionBeingPrepared
               ? `The agent still owes you a concrete proposal for ${decisionBeingPrepared.title}.`
-              : "Discuss any change of intent with the agent; this cockpit follows the recorded plan.")}
+              : "Discuss any change of intent with the agent; " +
+                "this cockpit follows the recorded plan.")}
           badge={decisionBadge.label}
           badgeVariant={decisionBadge.variant}
         />
-      </div>
-      <div className="rounded-lg border border-border bg-card p-3">
+      </Card>
+      <Card className="gap-0 p-3 shadow-sm">
         <RibbonFacts
-          label="Open blocker"
+          label="OPEN BLOCKER"
           value={blocker?.title ?? "Clear"}
           detail={blocker?.description ?? "No open blocker is recorded."}
           badge={blockerBadge.label}
           badgeVariant={blockerBadge.variant}
         />
-      </div>
+      </Card>
     </section>
   );
 }
@@ -93,7 +104,7 @@ function AgentNowRibbon({
   if (presentation.kind === "active-run") {
     return (
       <RibbonFacts
-        label="Agent now"
+        label="AGENT NOW"
         value={workTitle(project, presentation.run)}
         detail={agentRunSummary(project, presentation.run)}
         badge={pulse.label}
@@ -104,7 +115,7 @@ function AgentNowRibbon({
   if (presentation.kind === "current-work") {
     return (
       <RibbonFacts
-        label="Agent now"
+        label="AGENT NOW"
         value={presentation.work.title}
         detail={`Current work · ${workOwnerLabel(presentation.work.owner)}`}
         badge={pulse.label}
@@ -115,7 +126,7 @@ function AgentNowRibbon({
   if (presentation.kind === "last-settled-run") {
     return (
       <RibbonFacts
-        label="Last agent run"
+        label="AGENT NOW"
         value={workTitle(project, presentation.run)}
         detail={`${presentation.run.status.replaceAll("-", " ")} · ${
           formatDateTime(agentRunRecordedAt(presentation.run))
@@ -127,7 +138,7 @@ function AgentNowRibbon({
   }
   return (
     <RibbonFacts
-      label="Agent now"
+      label="AGENT NOW"
       value="No active run"
       detail="The project records no current agent execution."
       badge={pulse.label}
@@ -151,13 +162,19 @@ function RibbonFacts({
 }): JSX.Element {
   return (
     <>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="font-mono text-[9px] uppercase tracking-[.1em] text-muted-foreground">
+        {label}
+      </p>
       <p className="mt-1.5 text-sm font-medium">{value}</p>
       <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
       <Badge className="mt-2" variant={badgeVariant}>{badge}</Badge>
     </>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Exported helpers (used in other components and tests)
+// ---------------------------------------------------------------------------
 
 export function agentRunJournalItemName(
   title: string,
@@ -171,32 +188,91 @@ function sentenceLabel(value: string): string {
   return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
+// ---------------------------------------------------------------------------
+// Operations view
+// ---------------------------------------------------------------------------
+
 export function ProjectOperations({
   project,
   thread,
+  fleet,
+  onOpenWork,
 }: {
   project: EngineeringProjectSnapshot;
   thread: ThreadWorkbenchSnapshot;
+  /** Declared fleet topology; absent when the BFF serves no manifest. */
+  fleet?: CockpitFleetProjection;
+  /** Opens the Work space (run journal cross-link). */
+  onOpenWork?: () => void;
 }): JSX.Element {
-  const systems = uniqueSystems(thread);
+  const view = buildOperationsFleetView(fleet, thread, project);
+  const pendingDecisions = project.decisions.filter(
+    (d) => d.status === "proposed" || d.status === "required",
+  );
+  const activeRuns = project.agentRuns.filter(
+    (r) => r.status === "queued" || r.status === "running",
+  );
+  const runningCount = activeRuns.filter(
+    (r) => r.status === "running",
+  ).length;
+  const queuedCount = activeRuns.filter(
+    (r) => r.status === "queued",
+  ).length;
+
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <Card aria-labelledby="project-runs-title">
-        <CardHeader className="flex-row items-start justify-between gap-4">
-          <div className="min-w-0 space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Project executions
-            </p>
-            <CardTitle id="project-runs-title" className="text-base">
-              Agent run journal
-            </CardTitle>
-          </div>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            <span className="font-mono">{project.agentRuns.length}</span>{" "}
-            recorded
-          </span>
-        </CardHeader>
-        <CardContent>
+    <div className="space-y-4">
+      {/* Compact header */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
+        <p className="font-mono text-[10px] tabular-nums text-foreground">
+          <span>{view.summary.declared}</span>
+          {" declared surfaces · "}
+          <span>{view.summary.observed}</span>
+          {" with recorded evidence · "}
+          <span>{view.summary.running}</span>
+          {" running"}
+        </p>
+        <p className="shrink-0 font-mono text-[10px] text-muted-foreground">
+          read-only projection · fleet health lives in
+          {" console_snapshot"}
+        </p>
+      </div>
+
+      {/* Fleet cards */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+        {view.cards.map((card) => (
+          <FleetServerCard
+            key={card.id}
+            card={card}
+          />
+        ))}
+      </div>
+      {view.declaredIdle.length > 0 && (
+        <p className="font-mono text-[10px] text-muted-foreground">
+          {"declared · no project records — "}
+          {view.declaredIdle.join(", ")}
+        </p>
+      )}
+
+      {/* MRTR + Queue */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_1fr]">
+        <MrtrCard decisions={pendingDecisions} />
+        <QueueCard
+          runs={activeRuns}
+          runningCount={runningCount}
+          queuedCount={queuedCount}
+          onOpenWork={onOpenWork}
+          project={project}
+        />
+      </div>
+
+      {/* Full run journal — collapsed by default */}
+      <details className="rounded-lg border border-border bg-card overflow-hidden">
+        <summary className="cursor-pointer px-4 py-3 font-mono text-[10px] text-muted-foreground select-none">
+          {"Full run journal · "}
+          <span className="tabular-nums">{project.agentRuns.length}</span>
+          {" recorded"}
+        </summary>
+        <div className="px-4 pb-4">
           {project.agentRuns.length
             ? (
               <ol className="divide-y divide-border">
@@ -206,14 +282,19 @@ export function ProjectOperations({
                     <li
                       key={run.id}
                       data-state={run.status}
-                      aria-label={agentRunJournalItemName(title, run.status)}
+                      aria-label={agentRunJournalItemName(
+                        title,
+                        run.status,
+                      )}
                       className="py-4 first:pt-0 last:pb-0"
                     >
                       <div className="min-w-0">
                         <p className="flex items-start gap-2 text-sm font-semibold">
                           <Badge
                             aria-hidden="true"
-                            variant={recordStatusVariant(run.status)}
+                            variant={recordStatusVariant(
+                              run.status,
+                            )}
                           >
                             {sentenceLabel(run.status)}
                           </Badge>
@@ -228,7 +309,7 @@ export function ProjectOperations({
                             {formatDateTime(run.queuedAt)}
                           </span>
                           {" · "}
-                          <span className="font-mono">
+                          <span className="font-mono tabular-nums">
                             {run.evidenceRefs.length}
                           </span>{" "}
                           published evidence ref
@@ -246,124 +327,246 @@ export function ProjectOperations({
                 No agent run is recorded.
               </p>
             )}
-        </CardContent>
-      </Card>
+        </div>
+      </details>
 
-      <Card aria-labelledby="project-tools-title">
-        <CardHeader className="flex-row items-start justify-between gap-4">
-          <div className="min-w-0 space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Engineering surfaces
-            </p>
-            <CardTitle id="project-tools-title" className="text-base">
-              Tools contributing evidence
-            </CardTitle>
-          </div>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            <span className="font-mono">{systems.length}</span> observed
-          </span>
-        </CardHeader>
-        <CardContent>
-          {systems.length
-            ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {systems.map((system, index) => (
-                  <article
-                    key={system.id}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
-                  >
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{system.label}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {system.stages}{" "}
-                        projected stage{system.stages === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <i
-                      data-state={system.freshness}
-                      aria-label={system.freshness}
-                      className={cn(
-                        "size-2 shrink-0 rounded-full",
-                        freshnessDotClass(system.freshness),
-                      )}
-                    />
-                  </article>
-                ))}
-              </div>
-            )
-            : (
-              <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
-                No tool contribution is projected in the current thread.
-              </p>
-            )}
-        </CardContent>
-      </Card>
-
-      <Card className="lg:col-span-2" aria-labelledby="project-plan-title">
-        <CardHeader className="flex-row items-start justify-between gap-4">
-          <div className="min-w-0 space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Shared plan
-            </p>
-            <CardTitle id="project-plan-title" className="text-base">
-              Declared work items
-            </CardTitle>
-          </div>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            <span className="font-mono">{project.workItems.length}</span> items
-          </span>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {project.workItems.map((item) => (
-              <WorkItemRow
-                key={item.id}
-                item={item}
-                project={project}
-              />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Page footer */}
+      <p className="font-mono text-[10px] text-muted-foreground">
+        declared fleet · config/mcp-fleet.json · no
+        {" LLM inside any tool"}
+      </p>
     </div>
   );
 }
 
-function WorkItemRow({ item, project }: {
-  item: EngineeringWorkItem;
-  project: EngineeringProjectSnapshot;
+// ---------------------------------------------------------------------------
+// Fleet server card
+// ---------------------------------------------------------------------------
+
+function FleetServerCard({
+  card,
+}: {
+  card: FleetCardView;
 }): JSX.Element {
-  const phase = project.phases.find((candidate) =>
-    candidate.id === item.phaseId
-  );
+  const isRunning = card.state === "running";
+  const hasEvidence = card.lastEvidenceAt !== undefined;
   return (
     <article
-      data-state={item.status}
-      className="flex items-start justify-between gap-3 rounded-lg border border-border bg-card p-3"
+      data-state={card.state}
+      className={cn(
+        "rounded-lg p-2.5",
+        isRunning
+          ? "border border-brand/40 bg-brand/5"
+          : hasEvidence
+          ? "border border-border bg-card shadow-sm"
+          : "border border-dashed border-border bg-card",
+      )}
     >
-      <div className="min-w-0">
-        <p
-          className={cn(
-            "text-xs text-muted-foreground",
-            !phase?.name && "font-mono",
-          )}
-        >
-          {phase?.name ?? item.phaseId}
-        </p>
-        <p className="mt-1 text-sm font-semibold">{item.title}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {workOwnerLabel(item.owner)} · {item.kind}
-        </p>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-foreground leading-none">
+          {card.displayName}
+        </span>
+        <StatusDot freshness={card.freshness} />
       </div>
-      <Badge variant={recordStatusVariant(item.status)}>
-        {sentenceLabel(workStatusLabel(item.status))}
-      </Badge>
+      {card.role && (
+        <p className="mt-1 font-mono text-[9.5px] text-muted-foreground">
+          {card.role}
+        </p>
+      )}
+      <p className="mt-1.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+        {hasEvidence
+          ? `last evidence ${formatDateTime(card.lastEvidenceAt!)}`
+          : "no recorded evidence"}
+      </p>
+      <p className="mt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+        <span>{card.stageCount}</span>
+        {card.stageCount === 1 ? " stage" : " stages"}
+      </p>
     </article>
   );
 }
+
+function StatusDot({
+  freshness,
+}: {
+  freshness: FleetCardView["freshness"];
+}): JSX.Element {
+  if (freshness === "running") {
+    return (
+      <i
+        aria-label="running"
+        className="size-2.5 shrink-0 rounded-full border-2 border-brand bg-transparent"
+      />
+    );
+  }
+  return (
+    <i
+      aria-label={freshness}
+      className={cn(
+        "size-2 shrink-0 rounded-full",
+        freshness === "fresh" && "bg-success",
+        freshness === "stale" && "bg-warning",
+        freshness === "failed" && "bg-destructive",
+      )}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MRTR card
+// ---------------------------------------------------------------------------
+
+function MrtrCard({
+  decisions,
+}: {
+  decisions: readonly EngineeringDecision[];
+}): JSX.Element {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+        <span className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground">
+          PENDING HUMAN CONFIRMATIONS · MRTR
+        </span>
+        {decisions.length > 0 && (
+          <span className="shrink-0 font-mono text-[10px] text-warning">
+            {decisions.length} {decisions.length === 1 ? "WAITING" : "WAITING"}
+          </span>
+        )}
+      </CardHeader>
+      <CardContent className="px-3 py-2.5 space-y-2">
+        {decisions.length > 0
+          ? decisions.map((d) => <DecisionRow key={d.id} decision={d} />)
+          : (
+            <p className="text-sm text-muted-foreground">
+              No confirmation is waiting.
+            </p>
+          )}
+        <p className="text-[11px] text-muted-foreground leading-snug pt-1">
+          Signed retry via{" "}
+          <span className="font-mono text-[10px]">elicitation</span>{" "}
+          in the paired conversation — the cockpit only projects the pending
+          state.
+        </p>
+      </CardContent>
+      <div className="border-t border-border bg-muted/30 px-3 py-1.5 font-mono text-[9.5px] text-muted-foreground">
+        MRTR · human-only rejection and cancellation
+      </div>
+    </Card>
+  );
+}
+
+function DecisionRow({
+  decision,
+}: {
+  decision: EngineeringDecision;
+}): JSX.Element {
+  const isProposed = decision.status === "proposed";
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Badge variant={isProposed ? "warning" : "secondary"}>
+        {isProposed ? "Needs review" : "Pending"}
+      </Badge>
+      <span className="text-sm font-medium text-foreground min-w-0">
+        {decision.title}
+      </span>
+      <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+        {formatDateTime(decision.requestedAt)}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Queue card
+// ---------------------------------------------------------------------------
+
+function QueueCard({
+  runs,
+  runningCount,
+  queuedCount,
+  onOpenWork,
+  project,
+}: {
+  runs: readonly EngineeringAgentRun[];
+  runningCount: number;
+  queuedCount: number;
+  onOpenWork?: () => void;
+  project: EngineeringProjectSnapshot;
+}): JSX.Element {
+  return (
+    <Card className="overflow-hidden flex flex-col">
+      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+        <span className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground">
+          QUEUE
+        </span>
+        <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+          {runningCount} {runningCount === 1 ? "RUNNING" : "RUNNING"}·
+          {queuedCount} {queuedCount === 1 ? "QUEUED" : "QUEUED"}
+        </span>
+      </CardHeader>
+      <CardContent className="flex-1 px-0 py-1">
+        {runs.length > 0
+          ? (
+            <ul>
+              {runs.map((run) => (
+                <QueueRow key={run.id} run={run} project={project} />
+              ))}
+            </ul>
+          )
+          : (
+            <p className="px-3 py-4 text-sm text-muted-foreground">
+              No run is queued or running.
+            </p>
+          )}
+      </CardContent>
+      <div className="border-t border-border bg-muted/30 px-3 py-1.5">
+        <button
+          type="button"
+          onClick={() => onOpenWork?.()}
+          className="font-medium text-sm text-brand hover:underline cursor-pointer bg-transparent border-0 p-0"
+        >
+          Run journal in Work →
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function QueueRow({
+  run,
+  project,
+}: {
+  run: EngineeringAgentRun;
+  project: EngineeringProjectSnapshot;
+}): JSX.Element {
+  const isRunning = run.status === "running";
+  const title = workTitle(project, run);
+  const timeLabel = isRunning
+    ? `running since ${formatDateTime(runningStartTime(run))}`
+    : `queued ${formatDateTime(run.queuedAt)}`;
+  return (
+    <li className="grid grid-cols-[14px_1fr_auto] gap-x-2 px-3 py-1.5">
+      <span
+        className={cn(
+          "font-mono text-[10px] leading-5",
+          isRunning ? "text-brand" : "text-muted-foreground",
+        )}
+      >
+        {isRunning ? "▸" : "⧗"}
+      </span>
+      <span className="text-[11.5px] text-foreground leading-5 truncate">
+        {title}
+      </span>
+      <span className="font-mono text-[10px] text-muted-foreground tabular-nums leading-5 shrink-0">
+        {timeLabel}
+      </span>
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Run lifecycle (used in journal)
+// ---------------------------------------------------------------------------
 
 function AgentRunLifecycle({ run }: { run: EngineeringAgentRun }): JSX.Element {
   const history = run.statusHistory?.length ? run.statusHistory : [{
@@ -376,7 +579,8 @@ function AgentRunLifecycle({ run }: { run: EngineeringAgentRun }): JSX.Element {
   return (
     <details className="mt-2">
       <summary className="cursor-pointer text-xs text-muted-foreground">
-        {history.length} lifecycle transition{history.length === 1 ? "" : "s"}
+        {history.length} lifecycle transition
+        {history.length === 1 ? "" : "s"}
       </summary>
       <ol className="mt-2 space-y-2">
         {history.map((transition) => (
@@ -388,9 +592,9 @@ function AgentRunLifecycle({ run }: { run: EngineeringAgentRun }): JSX.Element {
               {sentenceLabel(transition.status)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {transition.actor.origin} ·{" "}
+              {transition.actor.origin}·
               <span className="font-mono">{transition.actor.id}</span>
-              {" · "}
+              {" · "}
               <span className="font-mono">
                 {formatDateTime(transition.at)}
               </span>
@@ -437,45 +641,23 @@ function AgentRunLifecycle({ run }: { run: EngineeringAgentRun }): JSX.Element {
   );
 }
 
-function freshnessDotClass(
-  freshness: "fresh" | "stale" | "running" | "failed",
-): string {
-  if (freshness === "failed") return "bg-destructive";
-  if (freshness === "stale" || freshness === "running") return "bg-warning";
-  return "bg-success";
-}
+// ---------------------------------------------------------------------------
+// Private utilities
+// ---------------------------------------------------------------------------
 
 function workTitle(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
 ): string {
-  return project.workItems.find((item) => item.id === run.workItemId)?.title ??
-    run.workItemId;
+  return project.workItems.find((item) => item.id === run.workItemId)
+    ?.title ?? run.workItemId;
 }
 
-function uniqueSystems(thread: ThreadWorkbenchSnapshot): Array<{
-  id: string;
-  label: string;
-  stages: number;
-  freshness: "fresh" | "stale" | "running" | "failed";
-}> {
-  const systems = new Map<string, ReturnType<typeof uniqueSystems>[number]>();
-  for (const stage of thread.flow) {
-    const id = stage.system.toLowerCase();
-    const existing = systems.get(id);
-    if (existing) {
-      existing.stages += 1;
-      if (stage.freshness !== "fresh") existing.freshness = stage.freshness;
-      continue;
-    }
-    systems.set(id, {
-      id,
-      label: stage.system,
-      stages: 1,
-      freshness: stage.freshness,
-    });
-  }
-  return [...systems.values()];
+function runningStartTime(run: EngineeringAgentRun): string {
+  const transition = run.statusHistory?.find(
+    (t) => t.status === "running",
+  );
+  return transition?.at ?? run.startedAt ?? run.queuedAt;
 }
 
 function formatDateTime(value: string): string {

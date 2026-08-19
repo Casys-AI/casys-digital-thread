@@ -10,15 +10,15 @@ import type { RegisteredProjectRunExecutorCommand } from "../../../application/p
 import type {
   IsolatedCodeRunner,
   IsolatedOutputPublicationReader,
-} from "../../../application/ports/out/isolated-code-runner.ts";
+} from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
-import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/technical-compilation-admission-reader.ts";
+import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import type { AdmittedModelicaExecutionProfileCatalog } from "../../../application/ports/out/modelica/admitted-execution-profile-catalog.ts";
 import { PrepareProjectAdmittedModelicaRunReview } from "../../../application/use-cases/modelica/admitted/prepare-run-review.ts";
 import {
   isolatedRequestFromAdmittedSource,
   ReopenAdmittedCompilationSource,
-} from "../../../application/use-cases/reopen-admitted-compilation-source.ts";
+} from "../../../application/use-cases/compile/admission/reopen-admitted-compilation-source.ts";
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
@@ -35,7 +35,7 @@ import {
   type IsolatedCodeExecutionReceipt,
   isolatedCodeExecutionReceiptRecord,
   type IsolatedCodeExecutionRequest,
-} from "../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   type ModelicaAdmittedRunAdmission,
   parseModelicaAdmittedRunAdmissionParameters,
@@ -68,19 +68,19 @@ import {
 } from "../../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
-import type { EngineeringProjectRunLease } from "../../stores/file-engineering-project-run-lease.ts";
-import { assertThreadSnapshotLineageIntact } from "../../stores/thread-snapshot-lineage.ts";
+import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
+import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
 import {
   requireBasis,
   requiredStart,
   requireRun,
   snapshotRef,
   unexpectedStatus,
-} from "../../executors/executor-run-helpers.ts";
+} from "../../shared/executor-run-helpers.ts";
 import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
-} from "../../executors/thread-write-basis-guard.ts";
+} from "../../shared/thread-write-basis-guard.ts";
 
 export { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION };
 

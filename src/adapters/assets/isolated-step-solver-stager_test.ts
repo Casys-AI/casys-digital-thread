@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../domain/compile/source/provider-resource-reader.ts";
 import { IsolatedStepSolverStager } from "./isolated-step-solver-stager.ts";
 
 Deno.test("isolated STEP cache rereads the exact published bytes", async () => {

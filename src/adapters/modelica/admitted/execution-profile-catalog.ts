@@ -22,7 +22,7 @@ import {
   validateIsolatedCodePolicyRef,
   validateIsolatedCodeProfileRef,
   validateIsolatedCodeRuntimeAttestation,
-} from "../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   MODELICA_ADMITTED_EXECUTION_PROFILE,
   MODELICA_ADMITTED_OUTPUT_MANIFEST,
@@ -34,12 +34,12 @@ import {
   type MicrosandboxLocalRuntimeIdentity,
   pinnedOciImageReference,
   validateMicrosandboxLocalRuntimeIdentity,
-} from "../../../domain/analysis/local-isolation-runtime.ts";
+} from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 import {
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
   type TechnicalCompilationProfile,
   validateTechnicalCompilationProfileCatalog,
-} from "../../../domain/analysis/technical-compilation.ts";
+} from "../../../domain/compile/admission/technical-compilation.ts";
 import {
   deepFreeze,
   exactRecord,
@@ -54,7 +54,7 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import { QUALIFIED_MODELICA_MAX_SOURCE_BYTES } from "../source/source-analysis-composition.ts";
-import { INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG } from "../../compilers/fixed-technical-compilation-profile-catalog-provider.ts";
+import { INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG } from "../../compile/admission/fixed-technical-compilation-profile-catalog-provider.ts";
 
 export const MODELICA_ADMITTED_OUTPUT_VALIDATOR_REF = Object.freeze({
   id: "modelica-closed-subset-result-normalizer",

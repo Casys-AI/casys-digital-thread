@@ -1,24 +1,27 @@
 /**
  * Sigma.js exploration renderer for the Evidence graph.
  *
- * Navigation contract (non-negotiable, identical to the SVG canvas):
- *   - clic noeud  → selectVerificationGraphItem({kind:"node", ref})
- *   - clic fond   → selectVerificationGraphItem(undefined) + inspector fermé
- *   - double-clic → recentrage caméra seulement (pas d'expansion)
+ * Navigation contract (4b, full canvas only):
+ *   - clic noeud     → inspect the recorded item (no local expansion)
+ *   - double-clic    → local neighbourhood around that item
+ *   - clic fond      → full map + inspector closed
+ *   - compact feed   → single click stays in Activity; double-clic recenters
  *
  * Ce composant est mince : toute la logique métier vit dans
  * evidence-exploration-model.ts et evidence-canvas-model.ts.
  */
 
 import type { JSX } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Sigma from "sigma";
 import {
+  buildEvidenceMinimapView,
   buildExplorationModel,
   buildExplorationRelationRecords,
   DISPLAY_KIND_LABELS,
   type DisplayKind,
   displayKindOf,
+  type EvidenceMinimapView,
   evidenceSystemFamily,
   type ExplorationLegendItem,
   isDisplayKindVisible,
@@ -31,12 +34,31 @@ import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import { Button } from "../ui/button.tsx";
 import type { ThreadGraphRef } from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
-import { isUiOnlyPresentationEdge } from "./cad-presentation-projection.ts";
+import { isUiOnlyPresentationEdge } from "../cad/cad-presentation-projection.ts";
+
+/** Returns the most frequently occurring color in the map, or the fallback. */
+function dominantColor(
+  colorFrequencies: Map<string, number> | undefined,
+  fallback: string,
+): string {
+  if (!colorFrequencies || colorFrequencies.size === 0) return fallback;
+  let best = fallback;
+  let bestCount = 0;
+  for (const [color, count] of colorFrequencies) {
+    if (count > bestCount) {
+      bestCount = count;
+      best = color;
+    }
+  }
+  return best;
+}
 
 const legendRowClass =
-  "flex items-center justify-between rounded-md px-2 py-1.5 text-sm";
-const legendCountClass = "text-xs text-muted-foreground tabular-nums";
-const legendTitleClass = "text-xs font-medium text-muted-foreground";
+  "flex items-center justify-between gap-2 rounded-sm px-1 py-[3px] text-[11.5px] leading-tight";
+const legendCountClass =
+  "font-mono text-[10px] text-muted-foreground tabular-nums";
+const legendTitleClass =
+  "mb-0.5 font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground";
 
 export interface EvidenceExplorationProps {
   evidenceModel: EvidenceGraphModel;
@@ -47,6 +69,13 @@ export interface EvidenceExplorationProps {
   focus?: ThreadGraphRef;
   /** Fires on clickNode or clickStage (undefined = background click). */
   onSelectionChange?: (selection: ThreadGraphSelection | undefined) => void;
+  /**
+   * Full-map projection used only to draw the local-view minimap. Positions
+   * come from the same dagre layout as the recorded graph — never a sketch.
+   */
+  fullMapProjection?: EvidenceCanvasProjection;
+  /** Double-click on the full canvas enters the local neighbourhood. */
+  onEnterLocalView?: (ref: ThreadGraphRef) => void;
   /**
    * Visible neighbour depth in the LOCAL view (Obsidian-style). The layout is
    * computed once at the projection's max depth; this value only drives sigma
@@ -88,13 +117,20 @@ export function EvidenceExploration({
   selection,
   focus: _focus,
   onSelectionChange,
+  fullMapProjection,
+  onEnterLocalView,
   compact = false,
 }: EvidenceExplorationProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma<SigmaNodeAttrs, SigmaEdgeAttrs>>();
+  // Bumped when Sigma actually mounts (after the stage has a non-zero box).
+  // The selection reducers depend on this so they re-bind on a delayed mount.
+  const [sigmaEpoch, setSigmaEpoch] = useState(0);
   // Keep a stable ref to the callback to avoid re-creating sigma on each render.
   const onSelectionChangeRef = useRef(onSelectionChange);
   onSelectionChangeRef.current = onSelectionChange;
+  const onEnterLocalViewRef = useRef(onEnterLocalView);
+  onEnterLocalViewRef.current = onEnterLocalView;
 
   // Build the exploration model once per projection change.
   // Tokens are read inside useMemo so they match the current theme.
@@ -109,97 +145,110 @@ export function EvidenceExploration({
     return buildExplorationModel(evidenceModel, projection, tokens, compact);
   }, [evidenceModel, projection, compact]);
 
-  // Mount sigma, bind events, clean up on unmount.
+  // Mount sigma only once the stage has a real box. A 0×0 container throws
+  // ("Container has no height") and that uncaught effect error unmounts the
+  // whole cockpit — Overview included.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const sigma = new Sigma(
-      explorationModel.graph,
-      container,
-      {
-        renderLabels: true,
-        labelFont: "Inter, -apple-system, Segoe UI, Helvetica, sans-serif",
-        labelSize: 11,
-        labelColor: { attribute: "color" },
-        defaultNodeColor: explorationModel.tokens.muted,
-        defaultEdgeColor: explorationModel.tokens.lineStrong,
-        // Reduce edge arrow to keep the atelier aesthetic compact.
-        defaultEdgeType: "arrow",
-        // Sigma disables edge hit-testing by default. The full Exploration
-        // canvas exposes recorded handoffs in the inspector, so enable the
-        // events there. The compact Activity preview deliberately remains a
-        // node-only preview (its callback cannot inspect edges).
-        enableEdgeEvents: !compact,
-        minCameraRatio: 0.3,
-        maxCameraRatio: 6,
-        // compact=true (feed vignette): always show labels.
-        //   labelRenderedSizeThreshold:0 — every node passes the size gate.
-        //   labelGridCellSize:10 — fine-grain grid so sigma renders a label per
-        //     10×10 px cell; at compact dagre spacing (nodesep=20, ranksep=50)
-        //     the bounded depth-2 view fits in ~300 px and each cell holds at
-        //     most one node → all labels visible without collision culling.
-        //   labelDensity:1 — disable the random density thinning sigma applies
-        //     on top of the grid (default 0.07 shows ~7% of eligible labels).
-        // compact=false (full-map): labels appear only for nodes ≥10 rendered
-        //   pixels; density and grid defaults keep the full canvas legible at
-        //   the overview zoom level.
-        labelRenderedSizeThreshold: compact ? 0 : 10,
-        labelGridCellSize: compact ? 10 : 100,
-        labelDensity: compact ? 1 : 0.07,
-        stagePadding: 30,
-      },
-    );
-    sigmaRef.current = sigma;
+    let sigma: Sigma<SigmaNodeAttrs, SigmaEdgeAttrs> | undefined;
+    let cancelled = false;
 
-    // clickNode → selectVerificationGraphItem
-    sigma.on("clickNode", ({ node: nodeKey }) => {
-      const attrs = explorationModel.graph.getNodeAttributes(nodeKey);
-      if (!attrs) return;
-      onSelectionChangeRef.current?.({
-        kind: "node",
-        ref: attrs.node.ref,
-      });
-    });
-
-    // Relations are first-class evidence. A redundant structural/provenance
-    // pair may share one Sigma route, whose primary assertion opens the same
-    // exact inspector as the Carte renderer. Every member remains separately
-    // selectable in the accessible evidence table below.
-    if (!compact) {
-      sigma.on("clickEdge", ({ edge: edgeKey }) => {
-        const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
-        if (!attrs || isUiOnlyPresentationEdge(attrs.edge)) return;
+    const bindEvents = (
+      instance: Sigma<SigmaNodeAttrs, SigmaEdgeAttrs>,
+    ) => {
+      instance.on("clickNode", ({ node: nodeKey }) => {
+        const attrs = explorationModel.graph.getNodeAttributes(nodeKey);
+        if (!attrs) return;
         onSelectionChangeRef.current?.({
-          kind: "edge",
-          id: attrs.edgeId,
-          occurrence: { key: attrs.occurrenceKey, edge: attrs.edge },
+          kind: "node",
+          ref: attrs.node.ref,
         });
       });
-    }
 
-    // clickStage (background) → reset selection. Ignore the first tick after
-    // mount: choosing a version remounts Sigma under an already-pressed
-    // pointer and would otherwise treat that click as a stage reset.
-    const ignoreStageUntil = performance.now() + 400;
-    sigma.on("clickStage", () => {
-      if (performance.now() < ignoreStageUntil) return;
-      onSelectionChangeRef.current?.(undefined);
-    });
+      if (!compact) {
+        instance.on("clickEdge", ({ edge: edgeKey }) => {
+          const attrs = explorationModel.graph.getEdgeAttributes(edgeKey);
+          if (!attrs || isUiOnlyPresentationEdge(attrs.edge)) return;
+          onSelectionChangeRef.current?.({
+            kind: "edge",
+            id: attrs.edgeId,
+            occurrence: { key: attrs.occurrenceKey, edge: attrs.edge },
+          });
+        });
+      }
 
-    // doubleClickNode → recentre camera, no expansion
-    sigma.on("doubleClickNode", ({ node: nodeKey, event }) => {
-      event.preventSigmaDefault();
-      const nodePosition = sigma.getNodeDisplayData(nodeKey);
-      if (!nodePosition) return;
-      sigma.getCamera().animate(
-        { x: nodePosition.x, y: nodePosition.y, ratio: 0.4 },
-        { duration: 300 },
-      );
+      const ignoreStageUntil = performance.now() + 400;
+      instance.on("clickStage", () => {
+        if (performance.now() < ignoreStageUntil) return;
+        onSelectionChangeRef.current?.(undefined);
+      });
+
+      instance.on("doubleClickNode", ({ node: nodeKey, event }) => {
+        event.preventSigmaDefault();
+        const attrs = explorationModel.graph.getNodeAttributes(nodeKey);
+        if (!compact && attrs && onEnterLocalViewRef.current) {
+          onEnterLocalViewRef.current(attrs.node.ref);
+          return;
+        }
+        const nodePosition = instance.getNodeDisplayData(nodeKey);
+        if (!nodePosition) return;
+        instance.getCamera().animate(
+          { x: nodePosition.x, y: nodePosition.y, ratio: 0.4 },
+          { duration: 300 },
+        );
+      });
+    };
+
+    const tryMount = () => {
+      if (cancelled || sigma) return;
+      if (container.clientHeight < 1 || container.clientWidth < 1) return;
+      try {
+        sigma = new Sigma(
+          explorationModel.graph,
+          container,
+          {
+            renderLabels: true,
+            labelFont: "Inter, -apple-system, Segoe UI, Helvetica, sans-serif",
+            labelSize: 11,
+            labelColor: { attribute: "color" },
+            defaultNodeColor: explorationModel.tokens.muted,
+            defaultEdgeColor: explorationModel.tokens.lineStrong,
+            defaultEdgeType: "arrow",
+            enableEdgeEvents: !compact,
+            minCameraRatio: 0.3,
+            maxCameraRatio: 6,
+            labelRenderedSizeThreshold: compact ? 0 : 10,
+            labelGridCellSize: compact ? 10 : 100,
+            labelDensity: compact ? 1 : 0.07,
+            stagePadding: 30,
+          },
+        );
+      } catch {
+        // Layout still unresolved (or Sigma rejected a degenerate box). Wait
+        // for the next resize instead of throwing through React.
+        return;
+      }
+      sigmaRef.current = sigma;
+      bindEvents(sigma);
+      setSigmaEpoch((epoch) => epoch + 1);
+    };
+
+    tryMount();
+    const observer = new ResizeObserver(() => {
+      if (!sigma) {
+        tryMount();
+        return;
+      }
+      sigma.refresh();
     });
+    observer.observe(container);
 
     return () => {
-      sigma.kill();
+      cancelled = true;
+      observer.disconnect();
+      sigma?.kill();
       sigmaRef.current = undefined;
     };
   }, [explorationModel, compact]);
@@ -269,7 +318,14 @@ export function EvidenceExploration({
         };
     });
     sigma.refresh();
-  }, [selection, explorationModel, displayDepth, visibleKinds, projection]);
+  }, [
+    selection,
+    explorationModel,
+    displayDepth,
+    visibleKinds,
+    projection,
+    sigmaEpoch,
+  ]);
 
   // Truthful legend counters: when the visible-depth or type filter hides nodes,
   // the TYPES, OUTILS and COMPOSANTES counts must reflect what is on screen,
@@ -292,9 +348,13 @@ export function EvidenceExploration({
     if (!filtersActive) {
       // Compute kindLegend from all visible nodes in the full projection.
       const kindCounts = new Map<DisplayKind, number>();
+      const kindColors = new Map<DisplayKind, Map<string, number>>();
       explorationModel.graph.forEachNode((_key, attrs) => {
         const dk = displayKindOf(attrs.node);
         kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
+        const cMap = kindColors.get(dk) ?? new Map<string, number>();
+        cMap.set(attrs.color, (cMap.get(attrs.color) ?? 0) + 1);
+        kindColors.set(dk, cMap);
       });
       const kl = ([...kindCounts.entries()] as [DisplayKind, number][])
         .filter(([, count]) => count > 0)
@@ -302,6 +362,10 @@ export function EvidenceExploration({
           kind,
           label: DISPLAY_KIND_LABELS[kind],
           count,
+          color: dominantColor(
+            kindColors.get(kind),
+            explorationModel.tokens.muted,
+          ),
         }));
       return {
         legend: explorationModel.legend,
@@ -313,6 +377,7 @@ export function EvidenceExploration({
     const visibleSystemsByFamily = new Map<string, Set<string>>();
     const componentCounts = new Map<number, number>();
     const kindCounts = new Map<DisplayKind, number>();
+    const kindColors = new Map<DisplayKind, Map<string, number>>();
     explorationModel.graph.forEachNode((key, attrs) => {
       if (!isVisible(key, attrs)) return;
       const system = evidenceSystemFamily(attrs.node.system);
@@ -328,6 +393,9 @@ export function EvidenceExploration({
       }
       const dk = displayKindOf(attrs.node);
       kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
+      const cMap = kindColors.get(dk) ?? new Map<string, number>();
+      cMap.set(attrs.color, (cMap.get(attrs.color) ?? 0) + 1);
+      kindColors.set(dk, cMap);
     });
     const kl = ([...kindCounts.entries()] as [DisplayKind, number][])
       .filter(([, count]) => count > 0)
@@ -335,6 +403,10 @@ export function EvidenceExploration({
         kind,
         label: DISPLAY_KIND_LABELS[kind],
         count,
+        color: dominantColor(
+          kindColors.get(kind),
+          explorationModel.tokens.muted,
+        ),
       }));
     return {
       systemLegend: explorationModel.systemLegend
@@ -392,27 +464,32 @@ export function EvidenceExploration({
     return { nodes, edges };
   }, [explorationModel, displayDepth, visibleKinds, projection]);
 
+  const minimap = useMemo(() => {
+    if (compact || !fullMapProjection || !projection.isFiltered) {
+      return undefined;
+    }
+    const fullMapModel = buildExplorationModel(
+      evidenceModel,
+      fullMapProjection,
+      explorationModel.tokens,
+    );
+    const localRefKeys = new Set(
+      projection.nodes.map((node) => `${node.ref.kind}:${node.ref.id}`),
+    );
+    return buildEvidenceMinimapView(fullMapModel, localRefKeys);
+  }, [
+    compact,
+    evidenceModel,
+    explorationModel.tokens,
+    fullMapProjection,
+    projection,
+  ]);
+
   return (
-    <div className="evidence-exploration">
-      <div
-        className="evidence-exploration-stage"
-        ref={containerRef}
-        aria-label={compact
-          ? "Evidence preview graph — select a node with the pointer; inspect relations in Evidence"
-          : "Evidence exploration graph — sigma renderer"}
-        role={compact ? undefined : "application"}
-        tabIndex={compact ? undefined : 0}
-        onKeyDown={(event) => {
-          // Sigma owns its canvas; provide a predictable keyboard escape
-          // route back to the surrounding inspection controls.
-          if (!compact && event.key === "Escape") {
-            onSelectionChange?.(undefined);
-          }
-        }}
-      />
+    <div className="evidence-exploration relative flex min-h-[540px] overflow-hidden rounded-lg border border-border bg-card max-[720px]:flex-col">
       {!compact && (
         <aside
-          className="flex w-[260px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-border bg-background px-3 py-4 text-xs max-[720px]:w-full max-[720px]:flex-none max-[720px]:flex-row max-[720px]:flex-wrap max-[720px]:border-l-0 max-[720px]:border-t"
+          className="flex w-[208px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-muted/30 px-2.5 py-3 text-[11.5px] max-[720px]:w-full max-[720px]:flex-none max-[720px]:flex-row max-[720px]:flex-wrap max-[720px]:border-r-0 max-[720px]:border-b"
           aria-label="Evidence legend"
         >
           {systemLegend.length > 0 && (
@@ -429,7 +506,7 @@ export function EvidenceExploration({
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <span
-                      className="size-2 shrink-0 rounded-full"
+                      className="size-[7px] shrink-0 rounded-[2px]"
                       style={{ background: item.color }}
                       aria-hidden="true"
                     />
@@ -449,7 +526,14 @@ export function EvidenceExploration({
                   className={legendRowClass}
                   aria-label={`${item.label} — ${item.count} visible items`}
                 >
-                  <span className="truncate">{item.label}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="size-[7px] shrink-0 rounded-[2px]"
+                      style={{ background: item.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </span>
                   <span className={legendCountClass}>{item.count}</span>
                 </span>
               ))}
@@ -475,7 +559,111 @@ export function EvidenceExploration({
           />
         </aside>
       )}
+      <div className="evidence-exploration-stage-wrap">
+        {!compact && (
+          <div className="absolute inset-x-0 top-0 z-[1] flex items-center justify-between border-b border-border bg-card px-3 py-2">
+            <span className="font-mono text-[9.5px] font-medium uppercase tracking-[.1em] text-muted-foreground">
+              EVIDENCE GRAPH · DAGRE LR
+            </span>
+            <span className="font-mono text-[9.5px] text-muted-foreground/70">
+              origins left · verdicts right
+            </span>
+          </div>
+        )}
+        <div
+          className="evidence-exploration-stage"
+          ref={containerRef}
+          aria-label={compact
+            ? "Evidence preview graph — select a node with the pointer; inspect relations in Evidence"
+            : "Evidence exploration graph — sigma renderer"}
+          role={compact ? undefined : "application"}
+          tabIndex={compact ? undefined : 0}
+          onKeyDown={(event) => {
+            // Sigma owns its canvas; provide a predictable keyboard escape
+            // route back to the surrounding inspection controls.
+            if (!compact && event.key === "Escape") {
+              onSelectionChange?.(undefined);
+            }
+          }}
+        />
+        {minimap && (
+          <EvidenceMinimap
+            view={minimap}
+            onOpenFullMap={() => onSelectionChange?.(undefined)}
+          />
+        )}
+        {!compact && (
+          <div className="absolute inset-x-0 bottom-0 z-[1] flex items-center justify-between border-t border-border bg-card px-3 py-1.5">
+            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+              {navigation.nodes.length} nodes shown
+              {projection.isFiltered && displayDepth !== undefined &&
+                ` · depth ${displayDepth}`}
+            </span>
+            {projection.isFiltered && (
+              <button
+                type="button"
+                className="font-mono text-[10px] font-medium text-brand hover:underline"
+                onClick={() => onSelectionChange?.(undefined)}
+              >
+                Full map →
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+function EvidenceMinimap({
+  view,
+  onOpenFullMap,
+}: {
+  view: EvidenceMinimapView;
+  onOpenFullMap: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className="evidence-minimap absolute top-2.5 right-2.5 z-[2] w-[132px] cursor-pointer overflow-hidden rounded-md border border-border bg-card/90 p-0 text-left shadow-sm hover:border-brand/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      aria-label={`Full map · ${view.nodeCount} items · ${view.edgeCount} relations. Select to leave the local view.`}
+      onClick={onOpenFullMap}
+    >
+      <span className="flex items-center justify-between px-[7px] pb-0.5 pt-[3px] font-mono text-[7.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <span>Full map</span>
+        <span>
+          {view.nodeCount} n · {view.edgeCount} e
+        </span>
+      </span>
+      <svg
+        viewBox={`0 0 ${view.width} ${view.height}`}
+        className="block w-full"
+        aria-hidden="true"
+      >
+        {view.localBounds && (
+          <rect
+            x={view.localBounds.x}
+            y={view.localBounds.y}
+            width={view.localBounds.width}
+            height={view.localBounds.height}
+            fill="color-mix(in oklab, var(--color-brand) 8%, transparent)"
+            stroke="var(--color-brand)"
+            strokeWidth="1"
+            strokeDasharray="3 2"
+            rx="2"
+          />
+        )}
+        {view.nodes.map((node) => (
+          <circle
+            key={node.key}
+            cx={node.x}
+            cy={node.y}
+            r="2"
+            fill={node.color}
+          />
+        ))}
+      </svg>
+    </button>
   );
 }
 
@@ -498,28 +686,28 @@ function ExplorationKeyboardNavigation({
 }): JSX.Element {
   return (
     <details className="mt-1 w-full max-[720px]:basis-full">
-      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+      <summary className="cursor-pointer font-mono text-[9px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
         Accessible evidence table ({nodes.length} items · {edges.length}{" "}
         relations)
       </summary>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="mt-1.5 text-[11px] text-muted-foreground">
         Use Tab to reach a record, then press Enter to inspect it. A shared
         canvas route is listed here once per exact recorded assertion.
       </p>
-      <div className="mt-2 max-h-[420px] overflow-x-auto overflow-y-auto rounded-lg border border-border">
-        <table className="w-full text-sm">
+      <div className="mt-1.5 max-h-[420px] overflow-x-auto overflow-y-auto rounded-md border border-border">
+        <table className="w-full text-[11.5px]">
           <caption className="sr-only">
             Visible evidence items and relations
           </caption>
-          <thead className="text-xs text-muted-foreground">
+          <thead className="font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
             <tr className="border-b border-border">
-              <th scope="col" className="px-3 py-2 text-left font-medium">
+              <th scope="col" className="px-2 py-1.5 text-left">
                 Type
               </th>
-              <th scope="col" className="px-3 py-2 text-left font-medium">
+              <th scope="col" className="px-2 py-1.5 text-left">
                 Record
               </th>
-              <th scope="col" className="px-3 py-2 text-left font-medium">
+              <th scope="col" className="px-2 py-1.5 text-left">
                 Action
               </th>
             </tr>
@@ -530,9 +718,9 @@ function ExplorationKeyboardNavigation({
                 key={node.key}
                 className="border-b border-border last:border-0"
               >
-                <td className="px-3 py-2">Item</td>
-                <td className="px-3 py-2">{node.label}</td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-1.5">Item</td>
+                <td className="px-2 py-1.5">{node.label}</td>
+                <td className="px-2 py-1.5">
                   <Button
                     variant="outline"
                     size="sm"
@@ -550,8 +738,8 @@ function ExplorationKeyboardNavigation({
                 key={edge.key}
                 className="border-b border-border last:border-0"
               >
-                <td className="px-3 py-2">Relation</td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-1.5">Relation</td>
+                <td className="px-2 py-1.5">
                   <span aria-hidden="true">{edge.label}</span>
                   {edge.visualRouteLabel && (
                     <span aria-hidden="true">
@@ -560,7 +748,7 @@ function ExplorationKeyboardNavigation({
                   )}
                   <span className="sr-only">{edge.accessibleLabel}</span>
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2 py-1.5">
                   <Button
                     variant="outline"
                     size="sm"

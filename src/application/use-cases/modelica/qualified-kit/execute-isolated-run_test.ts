@@ -13,22 +13,22 @@ import {
 } from "../../../../adapters/modelica/qualified-kit/kit-v1/run.ts";
 import { FileModelicaIsolatedExecutionAttemptStore } from "../../../../adapters/modelica/qualified-kit/attempt-store.ts";
 import { FileModelicaIsolatedExecutionCaptureStore } from "../../../../adapters/modelica/qualified-kit/isolated-execution-evidence.ts";
-import { FileEngineeringProjectRunLease } from "../../../../adapters/stores/file-engineering-project-run-lease.ts";
+import { FileEngineeringProjectRunLease } from "../../../../adapters/shared/stores/file-engineering-project-run-lease.ts";
 import type { ModelicaIsolatedExecutionAttemptStore } from "../../../ports/out/modelica/isolated-execution-attempt-store.ts";
 import type { ModelicaIsolatedExecutionCaptureStore } from "../../../ports/out/modelica/isolated-execution-evidence-store.ts";
 import type {
   ModelicaIsolatedExecutionProfile,
   ModelicaIsolatedExecutionProfileCatalog,
 } from "../../../ports/out/modelica/isolated-execution-profile.ts";
-import type { IsolatedCodeExecutionRequest } from "../../../../domain/analysis/isolated-code-execution.ts";
+import type { IsolatedCodeExecutionRequest } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   createIsolatedCodeExecutionReceipt,
   createIsolatedOutputProducerGenerationAdvance,
   createIsolatedOutputPublicationRef,
   fingerprintIsolatedOutputPublicationManifest,
   validateIsolatedCodeExecutionRequest,
-} from "../../../../domain/analysis/isolated-code-execution.ts";
-import { fingerprintResourceBytes } from "../../../../domain/analysis/provider-resource-reader.ts";
+} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
+import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
   sha256Fingerprint,

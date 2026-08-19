@@ -63,6 +63,11 @@ export interface ThreadFeedProps {
   followLive: boolean;
   streamStatus: ThreadStreamStatus | "snapshot";
   /**
+   * Recorded snapshot identity for the feed footer (`<id>@<revision>`).
+   * Absent hides the footer — the feed never invents an identity.
+   */
+  threadIdentity?: { id: string; revision: string };
+  /**
    * When provided, the active card's lineage is rendered as a local sigma
    * view (one instance only, mounted on expand and killed on collapse) instead
    * of the SVG canvas. Reuses the same EvidenceExploration component and
@@ -137,6 +142,7 @@ export function ThreadFeed({
   selection,
   followLive,
   streamStatus,
+  threadIdentity,
   evidenceModel,
   filterComponentId,
   anchorage,
@@ -214,37 +220,46 @@ export function ThreadFeed({
     );
   }
 
+  // Chronological day groups (mockup 7a): a mono header per recorded day,
+  // counting only that day's recorded facts. Entries stay in timeline order.
+  type FeedRow =
+    | {
+      kind: "day";
+      key: string;
+      label: string;
+      count: number;
+      first: boolean;
+    }
+    | { kind: "entry"; entry: (typeof entries)[number]; index: number };
+  const rows: FeedRow[] = [];
+  let currentDay: Extract<FeedRow, { kind: "day" }> | undefined;
+  let entryIndex = 0;
+  for (const entry of entries) {
+    const recordedAt = entry.kind === "review"
+      ? entry.recordedAt
+      : entry.node.recordedAt;
+    const label = feedDayLabel(recordedAt);
+    if (!currentDay || currentDay.label !== label) {
+      currentDay = {
+        kind: "day",
+        key: `day:${label}:${rows.length}`,
+        label,
+        count: 0,
+        first: rows.length === 0,
+      };
+      rows.push(currentDay);
+    }
+    currentDay.count += 1;
+    rows.push({ kind: "entry", entry, index: entryIndex });
+    entryIndex += 1;
+  }
+
   return (
     <div
       className="thread-feed"
       data-follow-live={followLive ? "true" : "false"}
       data-stream={streamStatus}
     >
-      <div className="mb-2.5 flex items-center justify-between rounded-lg border border-border bg-card px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={livePulseClass(streamStatus, followLive)}
-            aria-hidden="true"
-          />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">
-              {streamLabel(streamStatus, followLive)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {entries.length} meaningful events · support records on demand
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          aria-pressed={followLive}
-          onClick={() => onFollowLiveChange(!followLive)}
-        >
-          {followLive ? "Pause follow" : "Resume live"}
-        </Button>
-      </div>
-
       {filterOptions && onFilterChange && (
         <div
           className="thread-feed-component-filter flex items-center gap-2"
@@ -294,7 +309,34 @@ export function ThreadFeed({
       )}
 
       <ol className="thread-feed-list" aria-label="Linked engineering activity">
-        {entries.map((entry, index) => {
+        {rows.map((row) => {
+          if (row.kind === "day") {
+            return (
+              <li key={row.key} className="thread-feed-dayhead">
+                <span>
+                  {row.label} · {row.count} recorded fact
+                  {row.count === 1 ? "" : "s"}
+                </span>
+                {row.first && (
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={livePulseClass(streamStatus, followLive)}
+                      aria-hidden="true"
+                    />
+                    <button
+                      type="button"
+                      aria-pressed={followLive}
+                      className="cursor-pointer font-mono text-[10px] uppercase tracking-[.08em] text-muted-foreground hover:text-foreground"
+                      onClick={() => onFollowLiveChange(!followLive)}
+                    >
+                      {followLive ? "Pause follow" : "Resume live"}
+                    </button>
+                  </span>
+                )}
+              </li>
+            );
+          }
+          const { entry, index } = row;
           if (entry.kind === "review") {
             const status = activityReviewStatus(entry.review);
             const transmissionState = transmissionFor(entry.review);
@@ -352,7 +394,9 @@ export function ThreadFeed({
             transmissionState,
           );
           const active = isActivityEntryExpanded(focus, node);
-          const lineage = active ? traceThreadLineage(nodes, edges, focus) : undefined;
+          const lineage = active
+            ? traceThreadLineage(nodes, edges, focus)
+            : undefined;
           // True upstream+downstream count for the collapsed card badge:
           // uses the raw graph lineage (full depth, not bounded).
           const lineageCount = lineage
@@ -367,6 +411,10 @@ export function ThreadFeed({
             ? compactLineageCounters(evidenceModel, node.ref)
             : undefined;
           const currency = activityCurrency(node, familyGraph);
+          // 7a: a pending decision reads as ONE warning-bordered card —
+          // the fact button and its review composer share the outline.
+          const needsReviewBorder = reviewDisplayStatus === "to-review" ||
+            reviewDisplayStatus === "revision-requested";
 
           return (
             <li
@@ -400,28 +448,24 @@ export function ThreadFeed({
                 <button
                   type="button"
                   className={cn(
-                    "grid w-full grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border bg-card p-4 text-left shadow-sm",
+                    "grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-lg border bg-card p-4 text-left shadow-sm",
                     "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    needsReviewBorder ? "border-warning/40" : "border-border",
                     active && "rounded-b-none bg-muted/50",
+                    attachedReview && "rounded-b-none",
                   )}
                   aria-expanded={active}
                   onClick={() => onSelectNode(node, "feed")}
                 >
-                  <span
-                    className="grid size-9 place-items-center rounded-md border border-border bg-muted font-mono text-xs"
-                    data-system={systemKey(node.system)}
-                  >
-                    {providerMark(node.system)}
-                  </span>
                   <span className="grid min-w-0 gap-1">
-                    <span className="truncate text-xs font-medium text-muted-foreground">
-                      {node.system} · {activityKindLabel(node)}
+                    <span className="thread-feed-eyebrow truncate">
+                      {activityKindLabel(node)}
                     </span>
                     <span className="truncate text-sm font-semibold">
                       {node.label}
                     </span>
                     <span className="truncate font-mono text-xs text-muted-foreground">
-                      {node.summary}
+                      {node.system} · {node.summary}
                     </span>
                   </span>
                   <span className="grid justify-items-end gap-1 text-xs">
@@ -443,9 +487,33 @@ export function ThreadFeed({
                     >
                       {currency}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      {lineageCount} linked
-                    </span>
+                    {isVerdictNode(node) && onOpenEvidenceAnchored
+                      ? (
+                        <span
+                          role="link"
+                          tabIndex={0}
+                          className="cursor-pointer text-xs font-medium text-brand"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenEvidenceAnchored(node.ref);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") {
+                              return;
+                            }
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onOpenEvidenceAnchored(node.ref);
+                          }}
+                        >
+                          Lineage →
+                        </span>
+                      )
+                      : (
+                        <span className="text-xs text-muted-foreground">
+                          {lineageCount} linked
+                        </span>
+                      )}
                   </span>
                 </button>
 
@@ -483,8 +551,10 @@ export function ThreadFeed({
                         {compact
                           ? (
                             <span className="text-xs text-muted-foreground">
-                              {compact.total} items · depth 2 · {compact.upstream}{" "}
-                              upstream / {compact.downstream} downstream
+                              {compact.total} items · depth 2 ·{" "}
+                              {compact.upstream} upstream / {compact.downstream}
+                              {" "}
+                              downstream
                             </span>
                           )
                           : (
@@ -508,13 +578,14 @@ export function ThreadFeed({
                       nodes={nodes}
                       edges={edges}
                       focus={node.ref}
-                      onSelectNode={(related) => onSelectNode(related, "lineage")}
+                      onSelectNode={(related) =>
+                        onSelectNode(related, "lineage")}
                     />
                     {lineageCount === 0
                       ? (
                         <p className="px-8 py-8 text-sm text-muted-foreground">
-                          This fact is recorded, but no causal relation connects it to
-                          another fact yet.
+                          This fact is recorded, but no causal relation connects
+                          it to another fact yet.
                         </p>
                       )
                       : evidenceModel
@@ -523,7 +594,8 @@ export function ThreadFeed({
                           evidenceModel={evidenceModel}
                           focusRef={node.ref}
                           selection={selection}
-                          onSelectNode={(related) => onSelectNode(related, "lineage")}
+                          onSelectNode={(related) =>
+                            onSelectNode(related, "lineage")}
                           ariaLabel={`Complete recorded lineage for ${node.label}`}
                         />
                       )
@@ -534,9 +606,7 @@ export function ThreadFeed({
                             ...lineage.upstream.map((step) => step.node),
                             node,
                             ...lineage.feedback.map((step) => step.node),
-                            ...lineage.downstream.map((step) =>
-                              step.node
-                            ),
+                            ...lineage.downstream.map((step) => step.node),
                           ]}
                           edges={lineage.edges}
                           focus={node.ref}
@@ -571,6 +641,12 @@ export function ThreadFeed({
           );
         })}
       </ol>
+      {threadIdentity && (
+        <p className="mt-3.5 font-mono text-[10px] text-muted-foreground">
+          {feedStreamFooterLabel(streamStatus, followLive)} ·{" "}
+          {threadIdentity.id}@{threadIdentity.revision}
+        </p>
+      )}
     </div>
   );
 }
@@ -645,8 +721,8 @@ function FeedLineageGraph({
   if (neighborhood.nodes.length === 0) {
     return (
       <p className="px-8 py-8 text-sm text-muted-foreground">
-        This fact is recorded, but it is not currently present in the evidence graph (it
-        may be a folded historical version).
+        This fact is recorded, but it is not currently present in the evidence
+        graph (it may be a folded historical version).
       </p>
     );
   }
@@ -719,30 +795,40 @@ function freshnessClass(freshness: string): string {
   return "text-muted-foreground";
 }
 
-function streamLabel(
+/** A recorded verdict offers its lineage instead of a link counter. */
+function isVerdictNode(node: ThreadGraphNode): boolean {
+  return node.entityKind === "evaluation" || node.entityKind === "violation";
+}
+
+/**
+ * Day header of the 7a feed. "Today" is resolved against the reader's clock,
+ * never stamped into the record.
+ */
+function feedDayLabel(value: string | undefined): string {
+  if (!value) return "Not dated";
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "Not dated";
+  const now = new Date();
+  const sameDay = date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  const formatted = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  }).format(date);
+  return sameDay ? `Today · ${formatted}` : formatted;
+}
+
+/** Live transport state for the feed footer; never an invented behaviour. */
+function feedStreamFooterLabel(
   status: ThreadStreamStatus | "snapshot",
   followLive: boolean,
 ): string {
   if (!followLive) return "History paused";
-  if (status === "connecting") return "Connecting evidence stream";
-  if (status === "reconnecting") return "Reconnecting evidence stream";
-  if (status === "snapshot") return "Snapshot history";
-  return "Following live evidence";
-}
-
-function providerMark(system: string): string {
-  const normalized = system.toLowerCase();
-  if (normalized.includes("build123d")) return "B3";
-  if (normalized.includes("calculix")) return "CX";
-  if (normalized.includes("modelica")) return "MO";
-  if (normalized.includes("erpnext")) return "ER";
-  if (normalized.includes("syson")) return "SY";
-  if (normalized.includes("digital-thread")) return "DT";
-  return system.slice(0, 2).toUpperCase();
-}
-
-function systemKey(system: string): string {
-  return system.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  if (status === "live") return "SSE live";
+  if (status === "reconnecting") return "SSE reconnecting";
+  if (status === "connecting") return "SSE connecting";
+  return "Snapshot history";
 }
 
 function formatFeedTime(value: string | undefined): string {

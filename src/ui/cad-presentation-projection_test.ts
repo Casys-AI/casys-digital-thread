@@ -3,7 +3,7 @@ import {
   cadPresentationSiblingOf,
   compactCadPresentationPairs,
   isUiOnlyCadPresentationEdge,
-} from "./src/thread/cad-presentation-projection.ts";
+} from "./src/cad/cad-presentation-projection.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,

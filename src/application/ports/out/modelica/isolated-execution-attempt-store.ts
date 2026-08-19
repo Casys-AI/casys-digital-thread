@@ -7,7 +7,7 @@ import type {
   IsolatedCodePolicyRef,
   IsolatedCodeProfileRef,
   IsolatedOutputProducerGenerationAdvance,
-} from "../../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import type {
   ModelicaIsolatedEvidence,
   ModelicaIsolatedInputBundle,

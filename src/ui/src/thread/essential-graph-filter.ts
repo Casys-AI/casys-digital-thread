@@ -10,13 +10,17 @@
  *
  * Why a separate module:
  *   - graph.tsx is a .tsx file; models cannot import from it.
- *   - evidence-exploration-model.ts has no Preact dependency.
+ *   - evidence-exploration-model.ts has no React dependency.
  *   - Predicates extracted here are testable without a browser.
  *
- * This module is pure domain (no I/O, no Preact, no browser APIs).
+ * This module is pure domain (no I/O, no React, no browser APIs).
  */
 
-import type { ThreadGraphEdge, ThreadGraphNode, ThreadGraphRef } from "./types.ts";
+import type {
+  ThreadGraphEdge,
+  ThreadGraphNode,
+  ThreadGraphRef,
+} from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Structural predicates

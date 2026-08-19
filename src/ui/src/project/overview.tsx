@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from "react";
+import type { JSX } from "react";
 import { recordStatusVariant } from "./record-status.ts";
 import type {
   EngineeringAgentRun,
@@ -9,29 +9,34 @@ import type {
   EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
-import { productDefinitionSummary } from "../thread/product-anchor-model.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
 import {
   resolveSealedAssemblyGeometry,
   sealedAssemblyGlbAsset,
 } from "../thread/component-workspace-model.ts";
+import { OverviewThreadHero } from "./overview-thread-hero.tsx";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
+import { Button } from "../ui/button.tsx";
+import { Card, CardContent } from "../ui/card.tsx";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui/collapsible.tsx";
-import { DecisionCenter } from "./control-center.tsx";
-import { ProjectBriefRecord } from "./brief-record.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
   hasDistinctProjectObjectiveStatement,
+  type ProductWorkspaceFacet,
   type ProjectDeepLinkTarget,
 } from "./navigation-model.ts";
+import { buildRequirementMatrix } from "./product-requirements-model.ts";
+import {
+  buildProjectReviewRecords,
+  currentProjectReview,
+} from "./review-decision-model.ts";
 import {
   agentRunRecordedAt,
-  agentRunSummary,
   buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
@@ -41,30 +46,29 @@ import {
   projectStatusTone,
   selectCurrentProjectFocus,
   splitLeadingSatisfiedGates,
-  verificationChainDetail,
   workOwnerLabel,
-  workStatusLabel,
 } from "./model.ts";
 
 export interface ProjectOverviewProps {
   readonly project: EngineeringProjectSnapshot;
   readonly thread: ThreadWorkbenchSnapshot;
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
+  readonly onOpenProductFacet?: (facet: ProductWorkspaceFacet) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
   readonly onOpenDeepLink?: (target: ProjectDeepLinkTarget) => void;
   readonly onOpenEvidence?: (reference: EngineeringThreadEntityRef) => void;
 }
 
 /**
- * Grammaire de la page : une épine de gammes. Les phases ne sont pas une
- * carte parmi d'autres — elles sont l'axe vertical gauche, et la colonne
- * droite porte ce qui attend l'humain (Review) puis le pouls (Now). Le
- * record est un index de pied, pas une rangée de cartes.
+ * Grammaire 2a : thread-first. Une bannière de review, le bandeau de
+ * gates branché sur le graphe enregistré (ThreadGraph, pas un SVG inventé),
+ * les tuiles de verdict, Now en feed, GLB en vignette.
  */
 export function ProjectOverview({
   project,
   thread,
   onNavigate,
+  onOpenProductFacet,
   onOpenActivity,
   onOpenDeepLink,
   onOpenEvidence,
@@ -72,6 +76,7 @@ export function ProjectOverview({
   const brief = buildProjectBrief(project);
   const currentWork = buildCurrentProjectWork(project);
   const projectPath = buildProjectPath(project, thread);
+  const requirementMatrix = buildRequirementMatrix(thread);
   const currentFocus = selectCurrentProjectFocus(project);
   const openBlocker = brief.openBlockers[0];
   const statusTone = projectStatusTone(projectPath.status);
@@ -87,15 +92,15 @@ export function ProjectOverview({
   // min-content à toute la colonne (piège grid).
   return (
     <main
-      className="grid grid-cols-[minmax(0,1fr)] gap-6"
+      className="overview-2a grid grid-cols-[minmax(0,1fr)] gap-3"
       id="project-workspace-panel"
     >
       <section
-        className="flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-start md:justify-between"
+        className="flex flex-col items-start justify-between gap-6 pb-3 md:flex-row md:items-end"
         aria-labelledby="project-objective-title"
       >
-        <div className="min-w-0 [&>h3]:m-0 [&>h3]:max-w-3xl [&>h3]:text-balance [&>h3]:text-2xl [&>h3]:font-semibold [&>h3]:leading-snug [&>h3]:tracking-tight">
-          <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+        <div className="min-w-0 [&>h3]:m-0 [&>h3]:max-w-[620px] [&>h3]:text-balance [&>h3]:text-[19px] [&>h3]:font-semibold [&>h3]:leading-snug [&>h3]:tracking-tight">
+          <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
             Project objective
           </p>
           <h3 id="project-objective-title">
@@ -110,26 +115,17 @@ export function ProjectOverview({
             </blockquote>
           )}
         </div>
-        {
-          /* Cartouche : l'objet d'identité du sujet — statut, gates et
-            révision exacte dans une grille à filets, comme le cartouche
-            d'un plan technique. */
-        }
         <div
-          className="flex min-w-0 flex-col items-start gap-1.5 md:items-end"
+          className="flex shrink-0 flex-col items-start gap-1.5 md:items-end"
           data-tone={statusTone}
           aria-label={`Project status: ${statusLabel}`}
         >
-          {
-            /* La colonne Status est la seule à rétrécir : les libellés de
-              statut longs s'ellipsent au lieu de faire déborder le header. */
-          }
-          <dl className="grid max-w-full grid-cols-[minmax(0,1.4fr)_auto_auto] divide-x divide-border overflow-hidden rounded-md border border-border bg-card">
-            <div className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
-              <dt className="text-[10px] font-medium text-muted-foreground">
+          <dl className="grid max-w-full grid-cols-[minmax(0,1.4fr)_auto_auto] divide-x divide-border overflow-hidden rounded-lg border border-border bg-card">
+            <div className="flex min-w-0 flex-col gap-px px-3 py-1.5">
+              <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
                 Status
               </dt>
-              <dd className="m-0 flex items-center gap-1.5 text-sm font-medium">
+              <dd className="m-0 flex items-center gap-1.5 text-[13px] font-medium">
                 <i
                   aria-hidden="true"
                   className={cn(
@@ -142,19 +138,29 @@ export function ProjectOverview({
                 </span>
               </dd>
             </div>
-            <div className="flex flex-col gap-0.5 px-3 py-2">
-              <dt className="text-[10px] font-medium text-muted-foreground">
-                Macro gates
+            <div className="flex flex-col gap-px px-3 py-1.5">
+              <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
+                Verdicts
               </dt>
-              <dd className="m-0 font-mono text-sm tabular-nums">
-                {projectPath.completedPhases}/{projectPath.phases.length}
+              <dd className="m-0 font-mono text-[13px] tabular-nums">
+                <span className="text-success">
+                  {requirementMatrix.counts.pass} pass
+                </span>
+                {requirementMatrix.counts.fail > 0
+                  ? ` · ${requirementMatrix.counts.fail} fail`
+                  : ""}
+                {requirementMatrix.counts.unresolved > 0
+                  ? ` · ${requirementMatrix.counts.unresolved} unresolved`
+                  : requirementMatrix.counts.all === 0
+                  ? " · none recorded"
+                  : ""}
               </dd>
             </div>
-            <div className="flex flex-col gap-0.5 px-3 py-2">
-              <dt className="text-[10px] font-medium text-muted-foreground">
+            <div className="flex flex-col gap-px px-3 py-1.5">
+              <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
                 Snapshot
               </dt>
-              <dd className="m-0 font-mono text-sm tabular-nums">
+              <dd className="m-0 font-mono text-[13px] tabular-nums">
                 @{project.revision}
               </dd>
             </div>
@@ -167,59 +173,37 @@ export function ProjectOverview({
         </div>
       </section>
 
-      <div className="grid gap-6 md:grid-cols-[17rem_minmax(0,1fr)]">
-        {
-          /* Colonne droite d'abord dans le DOM : en mobile (une colonne),
-            Review et Now précèdent l'épine — l'ordre de lecture suit le
-            devoir avant la position. */
-        }
-        <div className="flex min-w-0 flex-col gap-5 md:col-start-2 md:row-start-1">
-          <DecisionCenter
-            project={project}
-            thread={thread}
-            onOpenActivity={onOpenActivity}
-            onOpenReview={(kind) => onOpenDeepLink?.(reviewDeepLinkTarget(kind))}
-            onOpenEvidence={onOpenEvidence}
-          />
-          <NowPanel
-            project={project}
-            activeRun={currentFocus.activeRun}
-            focusWork={currentFocus.work}
-            lastSettledRun={brief.lastSettledRun}
-            nextWork={currentWork.nextWork[0]}
-            openBlocker={openBlocker}
-            onNavigate={onNavigate}
-          />
-        </div>
+      <OverviewReviewBanner
+        project={project}
+        thread={thread}
+        onOpenActivity={onOpenActivity}
+        onOpenDeepLink={onOpenDeepLink}
+        onOpenEvidence={onOpenEvidence}
+      />
 
-        <section
-          className="md:col-start-1 md:row-start-1 [&>h3]:m-0 [&>h3]:mb-4 [&>h3]:text-base [&>h3]:font-semibold [&>h3]:tracking-tight"
-          aria-labelledby="project-phase-title"
-        >
-          <h3 id="project-phase-title">Project path</h3>
+      <Card className="gap-0 overflow-hidden py-0 shadow-sm">
+        <section aria-labelledby="project-phase-title">
+          <h3 id="project-phase-title" className="sr-only">Project path</h3>
           {/* display:grid retire le rôle liste sous VoiceOver/Safari. */}
-          <ol className="grid" role="list">
+          <ol
+            className="flex items-center gap-0 overflow-x-auto px-4 py-2.5 tabular-nums"
+            role="list"
+          >
             {collapsedGates.length > 0 && (
               <li
                 data-state="completed"
-                className="grid grid-cols-[0.75rem_minmax(0,1fr)] gap-x-3"
+                className="flex min-w-0 shrink-0 items-center"
               >
-                <span className="flex flex-col items-center">
-                  <span
-                    aria-hidden="true"
-                    className="mt-1 size-3 shrink-0 rounded-full bg-success"
-                  />
-                  <span
-                    aria-hidden="true"
-                    className="w-0.5 flex-1 rounded-full bg-success/40"
-                  />
-                </span>
-                <Collapsible className="group min-w-0 pb-3">
-                  <CollapsibleTrigger className="cursor-pointer text-sm font-medium">
+                <span
+                  aria-hidden="true"
+                  className="size-2.5 shrink-0 rounded-full bg-success"
+                />
+                <Collapsible className="group mx-2 min-w-0">
+                  <CollapsibleTrigger className="cursor-pointer font-mono text-[10.5px] font-medium uppercase tracking-wide">
                     {collapsedGates.length} earlier gates satisfied
                     <svg
                       aria-hidden="true"
-                      className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+                      className="ml-1 inline size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -241,12 +225,16 @@ export function ProjectOverview({
                           className="flex min-w-0 items-start justify-between gap-2"
                         >
                           <div className="min-w-0">
-                            <span className="text-sm">{item.phase.name}</span>
+                            <span className="text-sm">
+                              {item.phase.name}
+                            </span>
                             <p className="font-mono text-xs tabular-nums text-muted-foreground">
                               {phaseCounterLabel(item)}
                             </p>
                           </div>
-                          <Badge variant={recordStatusVariant(item.status)}>
+                          <Badge
+                            variant={recordStatusVariant(item.status)}
+                          >
                             {phaseStatusLabel(item.status)}
                           </Badge>
                         </li>
@@ -254,6 +242,10 @@ export function ProjectOverview({
                     </ol>
                   </CollapsibleContent>
                 </Collapsible>
+                <span
+                  aria-hidden="true"
+                  className="mx-2.5 h-0.5 w-8 shrink-0 rounded-full bg-success/40"
+                />
               </li>
             )}
             {visiblePhases.map((item, index) => (
@@ -264,97 +256,95 @@ export function ProjectOverview({
               />
             ))}
           </ol>
-          {
-            /* L'épine se termine dans le produit — seulement quand la
-              géométrie scellée existe : un placeholder rappellerait un
-              manque pendant toutes les phases amont. */
-          }
-          {sealedAssemblyGlb?.uri && (
-            <div className="mt-6 flex flex-col gap-2">
-              {
-                /* « preview » : le GLB est le dérivé de présentation du STEP
-                  scellé, pas le sceau lui-même. */
-              }
-              <p className="text-xs font-medium text-muted-foreground">
+        </section>
+        <OverviewThreadHero
+          thread={thread}
+          onOpenEvidence={() => onNavigate("verification")}
+        />
+      </Card>
+
+      <OverviewVerdictTiles
+        thread={thread}
+        onOpenRequirements={() =>
+          onOpenProductFacet?.("requirements") ?? onNavigate("product")}
+      />
+
+      <div
+        className={cn(
+          "grid items-start gap-3.5",
+          sealedAssemblyGlb?.uri && "lg:grid-cols-[minmax(0,1fr)_340px]",
+        )}
+      >
+        <Card className="gap-0 overflow-hidden py-0 shadow-sm">
+          <NowPanel
+            project={project}
+            activeRun={currentFocus.activeRun}
+            focusWork={currentFocus.work}
+            lastSettledRun={brief.lastSettledRun}
+            nextWork={currentWork.nextWork[0]}
+            openBlocker={openBlocker}
+            onNavigate={onNavigate}
+          />
+        </Card>
+        {sealedAssemblyGlb?.uri && (
+          <Card className="gap-0 overflow-hidden py-0 shadow-sm">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <p className="m-0 font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
                 Sealed assembly preview · GLB
               </p>
-              <div className="thread-spine-geometry overflow-hidden rounded-lg border border-border bg-card shadow-sm">
-                <GltfAssetCanvas
-                  url={sealedAssemblyGlb.uri}
-                  ariaLabel="Interactive sealed assembly geometry"
-                  loadingLabel="Loading sealed model…"
-                  errorLabel="Sealed model unavailable"
-                />
-              </div>
+              <span className="font-mono text-[9.5px] text-muted-foreground">
+                {sealedAssembly?.assemblyFormats.join(" · ") || "GLB"}
+              </span>
             </div>
-          )}
-        </section>
+            <div className="h-[158px] overflow-hidden bg-muted/30">
+              <GltfAssetCanvas
+                url={sealedAssemblyGlb.uri}
+                ariaLabel="Interactive sealed assembly geometry"
+                loadingLabel="Loading sealed model…"
+                errorLabel="Sealed model unavailable"
+              />
+            </div>
+            <div className="flex justify-between border-t border-border bg-muted/30 px-3 py-2 font-mono text-[10px] tabular-nums text-muted-foreground">
+              <span>{sealedAssembly?.captureArtifact.label}</span>
+              <span>
+                {thread.components.components.length} recorded components
+              </span>
+            </div>
+          </Card>
+        )}
       </div>
-
-      <section
-        className="border-t border-border pt-5"
-        aria-labelledby="evidence-overview-title"
-      >
-        <h3
-          id="evidence-overview-title"
-          className="m-0 mb-3 text-xs font-medium text-muted-foreground"
+      <p className="m-0 font-mono text-[10px] text-muted-foreground">
+        {project.id}@{project.revision}
+        {" · "}
+        {thread.id}
+        {" · "}
+        {project.project.subjectId}
+        {" — "}
+        <button
+          type="button"
+          className="text-brand"
+          onClick={() =>
+            onOpenProductFacet?.("structure") ?? onNavigate("product")}
         >
-          Technical record
-        </h3>
-        <div className="grid gap-x-8 gap-y-4 md:grid-cols-3">
-          <RecordRoute
-            title="Product"
-            detail={productDefinitionSummary(thread)}
-            action="Explore product"
-            href="#product"
-            onOpen={() => onNavigate("product")}
-          />
-          <RecordRoute
-            title="Evidence"
-            detail={verificationChainDetail(thread)}
-            action="Trace evidence"
-            href="#verification"
-            onOpen={() => onNavigate("verification")}
-          />
-          <RecordRoute
-            title="Activity"
-            detail={`${thread.graph.nodes.length} recorded facts. Latest change: ${thread.change.title}.`}
-            action="Follow activity"
-            href="#work"
-            onOpen={() => onNavigate("work")}
-          />
-        </div>
-        <details className="mt-4 text-xs text-muted-foreground">
-          <summary className="cursor-pointer">
-            Exact project and thread revisions
-          </summary>
-          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-            <div>
-              <dt>Project snapshot</dt>
-              <dd className="font-mono text-xs">
-                {project.id}@{project.revision}
-              </dd>
-            </div>
-            <div>
-              <dt>Thread projection</dt>
-              <dd className="font-mono text-xs">{thread.id}</dd>
-            </div>
-            <div>
-              <dt>Subject</dt>
-              <dd className="font-mono text-xs">
-                {project.project.subjectId}
-              </dd>
-            </div>
-          </dl>
-        </details>
-      </section>
-      <div
-        id={project.framing?.proposalReview?.status === "pending"
-          ? "current-brief-record"
-          : "review-brief"}
-      >
-        <ProjectBriefRecord project={project} />
-      </div>
+          Product
+        </button>
+        {" · "}
+        <button
+          type="button"
+          className="text-brand"
+          onClick={() => onNavigate("verification")}
+        >
+          Evidence
+        </button>
+        {" · "}
+        <button
+          type="button"
+          className="text-brand"
+          onClick={() => onNavigate("work")}
+        >
+          Activity
+        </button>
+      </p>
     </main>
   );
 }
@@ -374,56 +364,33 @@ function SpinePhase(
     <li
       data-state={item.status}
       aria-current={item.status === "active" ? "step" : undefined}
-      className="relative grid grid-cols-[0.75rem_minmax(0,1fr)] gap-x-3"
+      className="flex min-w-0 flex-1 items-center"
     >
-      {
-        /* La coupe : un trait au bord droit du li, à hauteur du nœud actif,
-          qui traverse la gouttière (gap-6 = w-6) vers le panneau. Si la
-          phase active est plus basse que Review+Now, il pointe vers le
-          canvas — limite assumée. */
-      }
-      {open && (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "absolute -right-6 top-[9px] hidden h-0.5 w-6 md:block",
-            item.status === "blocked" ? "bg-destructive" : "bg-success",
-          )}
-        />
-      )}
-      <span className="flex flex-col items-center">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "mt-1 size-3 shrink-0 rounded-full",
-            phaseNodeClass(item.status),
-          )}
-        />
-        {!isLast && (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "w-0.5 flex-1 rounded-full",
-              item.status === "completed" ? "bg-success/40" : "bg-border",
-            )}
-          />
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-2.5 shrink-0 rounded-full",
+          phaseNodeClass(item.status),
         )}
-      </span>
+      />
       {open
         ? (
-          <div
-            className={cn("flex min-w-0 flex-col gap-0.5", !isLast && "pb-5")}
-          >
-            <span className="text-sm font-medium">{item.phase.name}</span>
-            <p className={cn("text-xs", phaseStatusTextClass(item.status))}>
-              {phaseStatusLabel(item.status)}
-            </p>
-            <p className="font-mono text-xs tabular-nums text-muted-foreground">
-              {phaseCounterLabel(item)}
-            </p>
+          <div className="mx-1.5 min-w-0">
+            <span
+              className={cn(
+                "font-mono text-[10.5px] font-semibold uppercase tracking-wide",
+                phaseStatusTextClass(item.status),
+              )}
+            >
+              {item.phase.name}{" "}
+              <span className="text-success">
+                {item.completedWorkItems}/{item.totalWorkItems}{" "}
+                {phaseStatusLabel(item.status)}
+              </span>
+            </span>
             {item.lifecycle && (
               <p
-                className="text-xs text-muted-foreground"
+                className="m-0 font-mono text-[9px] text-muted-foreground"
                 data-state={item.lifecycle.state}
               >
                 {item.lifecycle.affectedComponentIds.length > 0
@@ -439,27 +406,186 @@ function SpinePhase(
         // jamais ici, le remap de lifecycleEffectivePhaseStatus le fait
         // passer en `blocked`, donc la phase s'ouvre.
         : (
-          <div className={cn("min-w-0", !isLast && "pb-3")}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">{item.phase.name}</span>
-              <Badge variant={recordStatusVariant(item.status)}>
-                {phaseStatusLabel(item.status)}
-              </Badge>
-            </div>
-            <p className="font-mono text-xs tabular-nums text-muted-foreground">
-              {phaseCounterLabel(item)}
-            </p>
+          <div className="mx-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="font-mono text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
+              {item.phase.name}{" "}
+              <span className="text-muted-foreground/80">
+                {item.completedWorkItems}/{item.totalWorkItems}
+              </span>
+            </span>
+            <Badge variant={recordStatusVariant(item.status)}>
+              {phaseStatusLabel(item.status)}
+            </Badge>
           </div>
         )}
+      {!isLast && (
+        <span
+          aria-hidden="true"
+          className={cn(
+            "mx-2.5 h-0.5 min-w-8 flex-1 rounded-full",
+            item.status === "completed" ? "bg-success/40" : "bg-border",
+          )}
+        />
+      )}
     </li>
   );
 }
 
+function OverviewReviewBanner({
+  project,
+  thread,
+  onOpenActivity,
+  onOpenDeepLink,
+  onOpenEvidence,
+}: {
+  project: EngineeringProjectSnapshot;
+  thread: ThreadWorkbenchSnapshot;
+  onOpenActivity?: (decisionId?: string) => void;
+  onOpenDeepLink?: (target: ProjectDeepLinkTarget) => void;
+  onOpenEvidence?: (reference: EngineeringThreadEntityRef) => void;
+}): JSX.Element {
+  const records = buildProjectReviewRecords(project, thread);
+  const nextReview = currentProjectReview(records);
+  const needsReviewCount =
+    records.filter((record) => record.state === "needs-review").length;
+  const pendingResultCount =
+    records.filter((record) => record.state === "approved-awaiting-result")
+      .length;
+  return (
+    <Card
+      className={cn(
+        "gap-0 py-0 shadow-sm",
+        nextReview && "border-warning/40",
+      )}
+    >
+      <CardContent className="flex flex-wrap items-center justify-between gap-4 px-3.5 py-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <i
+            aria-hidden="true"
+            className={cn(
+              "size-1.5 shrink-0 rounded-full",
+              nextReview ? "bg-warning" : "bg-muted-foreground",
+            )}
+          />
+          <span className="shrink-0 text-[13px] font-semibold">
+            {nextReview
+              ? "Needs your review"
+              : "No proposal is waiting for review"}
+          </span>
+          <span className="truncate text-xs text-muted-foreground">
+            {nextReview ? nextReview.title : "Past reviews remain in Activity."}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="font-mono text-[10px] uppercase text-muted-foreground">
+            {needsReviewCount} waiting · {pendingResultCount} pending
+          </span>
+          {nextReview?.resultEvidence && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7"
+              onClick={() => onOpenEvidence?.(nextReview.resultEvidence!)}
+            >
+              Open published result
+            </Button>
+          )}
+          <Button
+            size="sm"
+            className="h-7 bg-zinc-900 px-3 text-xs text-zinc-50 hover:bg-zinc-800"
+            onClick={() => {
+              if (nextReview) {
+                onOpenDeepLink?.(reviewDeepLinkTarget(nextReview.id));
+                onOpenActivity?.(nextReview.decision?.id);
+                return;
+              }
+              onOpenActivity?.();
+            }}
+          >
+            Open in Activity
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewVerdictTiles({
+  thread,
+  onOpenRequirements,
+}: {
+  thread: ThreadWorkbenchSnapshot;
+  onOpenRequirements: () => void;
+}): JSX.Element | null {
+  const matrix = buildRequirementMatrix(thread);
+  if (matrix.rows.length === 0) return null;
+  return (
+    <section aria-labelledby="overview-verdicts-title">
+      <div className="mb-3 flex items-end justify-between gap-4">
+        <h3
+          id="overview-verdicts-title"
+          className="m-0 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground"
+        >
+          Recorded verdicts
+        </h3>
+        <Button
+          variant="link"
+          size="sm"
+          className="h-auto px-0"
+          onClick={onOpenRequirements}
+        >
+          Open requirements →
+        </Button>
+      </div>
+      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
+        {matrix.rows.map((row) => (
+          <Card
+            key={row.id}
+            className={cn(
+              "gap-0 py-0 shadow-sm",
+              row.status === "unresolved" && "border-dashed border-brand/50",
+            )}
+          >
+            <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate font-mono text-[10px] font-medium text-brand">
+                  {row.id}
+                </span>
+                <Badge variant={recordStatusVariant(row.status)}>
+                  {row.status}
+                </Badge>
+              </div>
+              <p className="m-0 truncate text-xs font-medium">{row.label}</p>
+              <p className="m-0 truncate font-mono text-xs tabular-nums text-muted-foreground">
+                {row.lastVerdict}
+              </p>
+              <div
+                aria-hidden="true"
+                className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted"
+              >
+                <div
+                  className={cn(
+                    "h-full rounded-full",
+                    row.status === "pass" && "w-full bg-success",
+                    row.status === "fail" && "w-full bg-warning",
+                    row.status === "unresolved" &&
+                      "w-full bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_12px)] opacity-40",
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /**
- * Le pouls en trois lignes, posé nu sur le canvas comme l'épine : Review
- * reste la seule surface blanche de la page — la seule chose qui demande
- * quelque chose à l'humain. Une ligne Blockers n'existe que s'il y a un
- * blocker ouvert.
+ * Le pouls en feed mono 4 colonnes. Review est la bannière au-dessus —
+ * Now expose les entrées enregistrées : run actif, dernier run settled,
+ * prochain work item, blocker ouvert. Glyphes : ▸ brand (running),
+ * ✓ success (settled/sealed), ⧗ muted (queued), • destructive (blocked).
  */
 function NowPanel({
   project,
@@ -478,170 +604,152 @@ function NowPanel({
   openBlocker?: EngineeringBlocker;
   onNavigate: (view: ProjectWorkspaceView) => void;
 }): JSX.Element {
+  const liveRunCount = project.agentRuns.filter(
+    (r) => r.status === "running",
+  ).length;
+
+  type FeedEntry = {
+    time?: string;
+    glyph: "running" | "settled" | "queued" | "blocked";
+    description: string;
+    tag?: string;
+  };
+  const feed: FeedEntry[] = [];
+
+  if (activeRun) {
+    const wi = project.workItems.find((w) => w.id === activeRun.workItemId);
+    feed.push({
+      time: activeRun.startedAt ?? activeRun.queuedAt ??
+        agentRunRecordedAt(activeRun),
+      glyph: "running",
+      description: wi?.title ?? activeRun.workItemId,
+      tag: "Agent",
+    });
+  } else if (focusWork) {
+    feed.push({
+      glyph: "queued",
+      description: focusWork.title,
+      tag: workOwnerLabel(focusWork.owner),
+    });
+  }
+
+  if (lastSettledRun) {
+    const wi = project.workItems.find(
+      (w) => w.id === lastSettledRun.workItemId,
+    );
+    feed.push({
+      time: agentRunRecordedAt(lastSettledRun),
+      glyph: "settled",
+      description: wi?.title ?? lastSettledRun.workItemId,
+      tag: sentenceLabel(lastSettledRun.status),
+    });
+  }
+
+  if (nextWork) {
+    feed.push({
+      glyph: "queued",
+      description: nextWork.title,
+      tag: workOwnerLabel(nextWork.owner),
+    });
+  }
+
+  if (openBlocker) {
+    feed.push({
+      glyph: "blocked",
+      description: openBlocker.title,
+      tag: sentenceLabel(openBlocker.kind),
+    });
+  }
+
   return (
-    <section
-      aria-label="Current project control"
-      className="flex flex-col gap-3"
-    >
-      <p className="text-xs font-medium text-muted-foreground">Now</p>
-      <div className="grid divide-y divide-border">
-        <NowRow title="Agent now">
-          {activeRun
-            ? <AgentRunLine run={activeRun} project={project} />
-            : focusWork
-            ? <WorkItemLine item={focusWork} />
-            : lastSettledRun
-            ? <AgentRunLine run={lastSettledRun} project={project} settled />
-            : (
-              <p className="text-sm text-muted-foreground">
-                No active work or agent run is recorded.
-              </p>
-            )}
-        </NowRow>
-        <NowRow title="Up next">
-          {nextWork
-            ? <WorkItemLine item={nextWork} />
-            : (
-              <p className="text-sm text-muted-foreground">
-                No further current work is recorded. Historical retries remain in
-                Activity.
-              </p>
-            )}
-        </NowRow>
-        {openBlocker && (
-          <NowRow title="Blockers">
-            <BlockerLine blocker={openBlocker} />
-          </NowRow>
+    <section aria-label="Current project control">
+      <div className="flex items-center justify-between border-b border-border px-3.5 py-2">
+        <p className="m-0 font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+          NOW
+        </p>
+        {liveRunCount > 0 && (
+          <span className="flex items-center gap-1.5 font-mono text-[9.5px] text-brand">
+            <i
+              aria-hidden="true"
+              className="size-[5px] rounded-full bg-brand"
+            />
+            {liveRunCount} RUN LIVE
+          </span>
         )}
       </div>
-      <a
-        href="#work"
-        className="group flex items-center gap-1 self-start text-sm font-medium text-brand hover:underline"
-        onClick={(event) => {
-          if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-          event.preventDefault();
-          onNavigate("work");
-        }}
-      >
-        Open activity
-        <span
-          aria-hidden="true"
-          className="transition-transform group-hover:translate-x-0.5"
+      <div className="py-1 tabular-nums" title="Agent now">
+        {feed.length === 0
+          ? (
+            <p className="px-3.5 py-2 text-sm text-muted-foreground">
+              No active work or agent run is recorded.
+            </p>
+          )
+          : feed.map((entry, i) => <NowFeedRow key={i} entry={entry} />)}
+      </div>
+      <div className="border-t border-border bg-muted/30 px-3.5 py-1.5">
+        <a
+          href="#work"
+          className="text-[12px] font-medium text-brand hover:underline"
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+            event.preventDefault();
+            onNavigate("work");
+          }}
         >
-          →
-        </span>
-      </a>
+          Open activity →
+        </a>
+      </div>
     </section>
   );
 }
 
-function NowRow(
-  { title, children }: { title: string; children: ReactNode },
-): JSX.Element {
-  return (
-    <div className="grid gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0 sm:grid-cols-[5.5rem_minmax(0,1fr)]">
-      <p className="text-xs font-medium text-muted-foreground sm:pt-0.5">
-        {title}
-      </p>
-      <div className="min-w-0">{children}</div>
-    </div>
-  );
-}
-
-function AgentRunLine({ run, project, settled }: {
-  run: EngineeringAgentRun;
-  project: EngineeringProjectSnapshot;
-  /** A settled run is history, never presented as in-flight activity. */
-  settled?: boolean;
+function NowFeedRow({ entry }: {
+  entry: {
+    time?: string;
+    glyph: "running" | "settled" | "queued" | "blocked";
+    description: string;
+    tag?: string;
+  };
 }): JSX.Element {
-  const workItem = project.workItems.find((item) => item.id === run.workItemId);
+  const glyph = entry.glyph === "running"
+    ? "▸"
+    : entry.glyph === "settled"
+    ? "✓"
+    : entry.glyph === "blocked"
+    ? "•"
+    : "⧗";
   return (
-    <div className="min-w-0" data-state={run.status}>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={recordStatusVariant(run.status)}>
-          {sentenceLabel(run.status)}
-        </Badge>
-        <span className="text-sm font-medium">
-          {workItem?.title ?? run.workItemId}
-        </span>
-      </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {agentRunSummary(project, run)}
-      </p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        {settled
-          ? `Last agent run · ${formatShortTime(agentRunRecordedAt(run))}`
-          : `Agent run · ${formatShortTime(run.startedAt ?? run.queuedAt)}`}
-      </p>
-    </div>
-  );
-}
-
-function WorkItemLine({ item }: { item: EngineeringWorkItem }): JSX.Element {
-  return (
-    <div className="min-w-0" data-state={item.status}>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={recordStatusVariant(item.status)}>
-          {sentenceLabel(workStatusLabel(item.status))}
-        </Badge>
-        <span className="text-sm font-medium">{item.title}</span>
-      </div>
-      <p className="mt-1 text-sm text-muted-foreground">{item.description}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        {workOwnerLabel(item.owner)} · {item.kind}
-      </p>
-    </div>
-  );
-}
-
-function BlockerLine(
-  { blocker }: { blocker: EngineeringBlocker },
-): JSX.Element {
-  return (
-    <div className="min-w-0" data-state="blocked">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="destructive">{sentenceLabel(blocker.kind)}</Badge>
-        <span className="text-sm font-medium">{blocker.title}</span>
-      </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {blocker.description}
-      </p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        Open since {formatShortDate(blocker.openedAt)}
-      </p>
-    </div>
-  );
-}
-
-function RecordRoute({ title, detail, action, href, onOpen }: {
-  title: string;
-  detail: string;
-  action: string;
-  href: string;
-  onOpen: () => void;
-}): JSX.Element {
-  return (
-    <a
-      href={href}
-      className="group flex min-w-0 flex-col gap-1"
-      onClick={(event) => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-        event.preventDefault();
-        onOpen();
-      }}
-    >
-      <span className="text-sm font-semibold">{title}</span>
-      <span className="text-sm text-muted-foreground">{detail}</span>
-      <span className="mt-1 flex items-center gap-1 text-sm font-medium text-brand">
-        {action}
-        <span
-          aria-hidden="true"
-          className="transition-transform group-hover:translate-x-0.5"
-        >
-          →
-        </span>
+    <div className="grid grid-cols-[42px_14px_minmax(0,1fr)_auto] items-baseline gap-x-2 px-3.5 py-[5px]">
+      <span className="pt-px font-mono text-[10.5px] text-muted-foreground">
+        {entry.time ? formatShortTime(entry.time) : ""}
       </span>
-    </a>
+      <span
+        className={cn(
+          "font-mono text-[10.5px] font-medium",
+          entry.glyph === "running" && "text-brand",
+          entry.glyph === "settled" && "text-success",
+          entry.glyph === "queued" && "text-muted-foreground",
+          entry.glyph === "blocked" && "text-destructive",
+        )}
+      >
+        {glyph}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 truncate text-[12px]",
+          entry.glyph === "running"
+            ? "text-foreground"
+            : "text-muted-foreground",
+        )}
+      >
+        {entry.description}
+      </span>
+      {entry.tag && (
+        <span className="font-mono text-[10px] text-muted-foreground">
+          {entry.tag}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -712,15 +820,6 @@ function projectPhaseLifecycleLabel(
   if (lifecycle.state === "current") return `${subject} updated`;
   if (lifecycle.state === "attention") return `${subject} needs review`;
   return `${subject} retained`;
-}
-
-function formatShortDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-  }).format(date);
 }
 
 function formatShortTime(value: string): string {

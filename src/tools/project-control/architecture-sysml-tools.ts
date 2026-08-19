@@ -1,10 +1,10 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import type {
   ProjectArchitectureSysmlPreviewUseCase,
-} from "../../application/ports/in/project-architecture-sysml-preview.ts";
+} from "../../application/ports/in/architecture/agent-seal/project-architecture-sysml-preview.ts";
 import type {
   ProjectArchitectureSysmlSourceCaptureUseCase,
-} from "../../application/ports/in/project-architecture-sysml-source-capture.ts";
+} from "../../application/ports/in/architecture/agent-seal/project-architecture-sysml-source-capture.ts";
 import { FINGERPRINT_SCHEMA, OBJECT_OUTPUT_SCHEMA } from "./mcp-tool-schemas.ts";
 
 export interface ProjectArchitectureSysmlToolDependencies {

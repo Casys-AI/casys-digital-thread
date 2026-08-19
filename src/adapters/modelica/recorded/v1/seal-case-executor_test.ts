@@ -52,13 +52,13 @@ import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../../../orchestra
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-} from "../../../captures/file-capture-store.ts";
-import { FileEngineeringProjectRevisionStore } from "../../../stores/engineering-project-store.ts";
-import { FileEngineeringProjectRunLease } from "../../../stores/file-engineering-project-run-lease.ts";
-import { FileThreadSnapshotStore } from "../../../stores/file-thread-snapshot-store.ts";
+} from "../../../shared/cas/file-capture-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../../../shared/stores/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "../../../shared/stores/file-engineering-project-run-lease.ts";
+import { FileThreadSnapshotStore } from "../../../shared/stores/file-thread-snapshot-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../../../validators/engineering-project-completion-evidence-validator.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../../../validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { ApprovedBriefBaselineRunExecutor } from "../../../executors/approved-brief-baseline-run-executor.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../../../project/engineering-project-initial-baseline-evidence-validator.ts";
+import { ApprovedBriefBaselineRunExecutor } from "../../../project/approved-brief-baseline-run-executor.ts";
 import { approvedBriefSourceAnalysisFixture } from "../../../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   SimulateSealSimulationCaseRunExecutor,

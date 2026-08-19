@@ -13,15 +13,15 @@ import {
   type ProjectReviewIntentRecord,
   validateProjectReviewIntent,
 } from "../../src/domain/project/project-review-intent.ts";
-import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
-import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
+import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/shared/stores/file-thread-snapshot-store.ts";
 import {
   FileProjectReviewIntentStore,
   ProjectReviewIntentConflictError,
-} from "../../src/adapters/stores/file-project-review-intent-store.ts";
-import { FileCockpitFocusStore } from "../../src/adapters/stores/file-cockpit-focus-store.ts";
+} from "../../src/adapters/shared/stores/file-project-review-intent-store.ts";
+import { FileCockpitFocusStore } from "../../src/adapters/project/file-cockpit-focus-store.ts";
 import type { ProjectReviewIntentStore } from "../../src/application/ports/out/project-review-intent-store.ts";
-import type { CockpitFocusStore } from "../../src/application/ports/out/cockpit-focus-store.ts";
+import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
@@ -30,39 +30,37 @@ import {
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
-} from "../../src/adapters/captures/file-capture-store.ts";
+} from "../../src/adapters/shared/cas/file-capture-store.ts";
 import {
   requireSysmlSourceAnalysis,
   type SysmlSourceAnalysisReader,
-} from "../../src/adapters/captures/sysml-source-analysis-capture.ts";
-import { GEOMETRY_DRAFT_ASSETS_DIR } from "../../src/adapters/captures/geometry-draft-capture.ts";
-import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
+} from "../../src/adapters/architecture/renderer/sysml-source-analysis-capture.ts";
+import { GEOMETRY_DRAFT_ASSETS_DIR } from "../../src/adapters/cad/canonical/geometry-draft-capture.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
 import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
   type EngineeringWorkbenchSnapshot,
   projectEngineeringPlanningWorkbenchSnapshot,
   projectEngineeringWorkbenchSnapshot,
-} from "../../src/adapters/projectors/engineering-workbench-projector.ts";
+} from "../../src/adapters/thread/engineering-workbench-projector.ts";
 import {
   type ExactThreadSnapshotReader,
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
-} from "../../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
-import { threadSnapshotDescendsFrom } from "../../src/adapters/stores/thread-snapshot-lineage.ts";
-import {
-  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
-  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
-} from "../../src/orchestration/operations/inspection-drone-v4.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/engineering/architecture-proposal.ts";
-import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/engineering/geometry-proposal.ts";
-import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/engineering/requirements-proposal.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/engineering/syson-model-seed.ts";
-import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/analysis/technical-compilation-proposal.ts";
-import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/analysis/build123d-execution-proposal.ts";
+} from "../../src/adapters/shared/stores/engineering-thread-snapshot-resolver.ts";
+import { threadSnapshotDescendsFrom } from "../../src/adapters/shared/stores/thread-snapshot-lineage.ts";
+import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
+import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../src/domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/architecture/renderer/architecture-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/cad/canonical/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-proposal.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/architecture/seed/syson-model-seed.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/compile/admission/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/cad/isolated/build123d-execution-proposal.ts";
 import {
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
-} from "../../src/domain/analysis/fea-proof-proposal.ts";
+} from "../../src/domain/fea/seal-case/fea-proof-proposal.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
@@ -74,43 +72,47 @@ import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
-} from "../../src/domain/analysis/sensitivity-study-proposal.ts";
+} from "../../src/domain/sensitivity/study/sensitivity-study-proposal.ts";
+import {
+  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+} from "../../src/orchestration/operations/fea-isolated-static-proof.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
-  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
-} from "../../src/orchestration/operations/recorded-analysis.ts";
+} from "../../src/domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
   OrderedEngineeringAssetReader,
 } from "../../src/adapters/engineering-asset-resolver.ts";
-import { projectThreadWorkbenchSnapshot } from "../../src/adapters/projectors/thread-workbench-projector.ts";
-import { FileByteStore } from "../../src/adapters/captures/file-byte-store.ts";
-import { fileArchitectureSysmlSealCaptureReader } from "../../src/adapters/captures/file-architecture-sysml-seal-capture-reader.ts";
-import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../src/adapters/compilers/architecture-sysml-source-analysis-composition.ts";
-import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "../../src/adapters/projectors/architecture-sysml-seal-workbench-enricher.ts";
-import { enrichThreadWorkbenchWithSealedCadLevers } from "../../src/adapters/projectors/sealed-cad-lever-workbench-enricher.ts";
-import type { SealedCadLeverAdmissionReader } from "../../src/adapters/projectors/sealed-cad-lever-workbench-enricher.ts";
-import type { ArchitectureSysmlSealCaptureReader } from "../../src/application/ports/out/architecture-sysml-seal-capture-reader.ts";
-import type { ArchitectureSysmlSourceAnalysisReader } from "../../src/application/ports/out/architecture-sysml-source-analysis-reader.ts";
+import { projectThreadWorkbenchSnapshot } from "../../src/adapters/thread/thread-workbench-projector.ts";
+import { FileByteStore } from "../../src/adapters/shared/cas/file-byte-store.ts";
+import { fileArchitectureSysmlSealCaptureReader } from "../../src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts";
+import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
+import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "../../src/adapters/thread/architecture-sysml-seal-workbench-enricher.ts";
+import { enrichThreadWorkbenchWithSealedCadLevers } from "../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
+import type { SealedCadLeverAdmissionReader } from "../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
+import { readDeclaredCockpitFleet } from "../../src/adapters/thread/cockpit-fleet-projector.ts";
+import type { CockpitFleetProjection } from "../../src/contracts/cockpit-fleet.ts";
+import type { ArchitectureSysmlSealCaptureReader } from "../../src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts";
+import type { ArchitectureSysmlSourceAnalysisReader } from "../../src/application/ports/out/architecture/agent-seal/architecture-sysml-source-analysis-reader.ts";
 import {
   FileLiveThreadUpdateStore,
   type LiveThreadUpdate,
   type LiveThreadUpdateJournal,
   overlayLiveThreadUpdates,
-} from "../../src/adapters/stores/live-thread-update-store.ts";
+} from "../../src/adapters/shared/stores/live-thread-update-store.ts";
 import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
 } from "../../src/domain/thread/thread-component-catalog.ts";
-import { resolveInspectionDroneV4ProductStructureCatalog } from "../../src/adapters/projectors/inspection-drone-v4-product-structure-catalog.ts";
+import { resolveInspectionDroneV4ProductStructureCatalog } from "../../src/adapters/inspection-drone/part-definitions/inspection-drone-v4-product-structure-catalog.ts";
 import type {
   GenericArchitectureCaptureReader,
-} from "../../src/adapters/projectors/product-structure-catalog.ts";
-import { resolveGenericProductStructureCatalog } from "../../src/adapters/projectors/product-structure-catalog.ts";
-import type { GenericGeometryCaptureReader } from "../../src/adapters/projectors/geometry-bundle-product-catalog.ts";
+} from "../../src/adapters/architecture/renderer/product-structure-catalog.ts";
+import { resolveGenericProductStructureCatalog } from "../../src/adapters/architecture/renderer/product-structure-catalog.ts";
+import type { GenericGeometryCaptureReader } from "../../src/adapters/cad/canonical/geometry-bundle-product-catalog.ts";
 
 // ── Catalog resolution: generic active-project projection ────────────────────
 
@@ -150,6 +152,12 @@ export interface NativeWorkbenchHandlerOptions {
   html?: string;
   /** When set, each GET re-reads the cockpit HTML so a rebuild is visible. */
   htmlPath?: string;
+  /**
+   * Directory of the Vite multi-file dist (`native-workbench.html` + hashed
+   * JS/CSS). Defaults to the directory of `htmlPath`. The browser never
+   * receives a command route through these files.
+   */
+  uiAssetDirectory?: string;
   componentCatalog?: ThreadComponentCatalog;
   componentCatalogForSubject?: (
     subjectId: string,
@@ -190,6 +198,12 @@ export interface NativeWorkbenchHandlerOptions {
   onReviewIntentSignalError?: (error: unknown) => void;
   /** Polling only observes persisted snapshots; it never executes a tool. */
   pollIntervalMs?: number;
+  /**
+   * Declared fleet topology for GET `/api/fleet`. Identity fields only;
+   * missing or unreadable manifests resolve to 404 so the cockpit degrades
+   * to thread-observed systems. Never live health.
+   */
+  cockpitFleet?: () => Promise<CockpitFleetProjection | undefined>;
 }
 
 /**
@@ -339,6 +353,10 @@ export function createNativeWorkbenchHandler(
       if (request.method !== "GET") return methodNotAllowed();
       return serveDraftAsset(url.pathname, options.draftAssetReader);
     }
+    if (url.pathname === "/api/fleet") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await serveCockpitFleet(options);
+    }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
       return await snapshotEventStream(request, options);
@@ -399,11 +417,15 @@ export function createNativeWorkbenchHandler(
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",
           "Content-Security-Policy":
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
           "X-Content-Type-Options": "nosniff",
           "X-Frame-Options": "DENY",
         },
       });
+    }
+    if (request.method === "GET") {
+      const asset = await serveWorkbenchUiAsset(url.pathname, options);
+      if (asset) return asset;
     }
     return new Response("Not found", { status: 404 });
   };
@@ -1049,6 +1071,92 @@ async function serveDraftAsset(
   });
 }
 
+const WORKBENCH_UI_ASSET_TYPES: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+};
+
+function dirnameOf(path: string): string {
+  const trimmed = path.replace(/\/+$/, "");
+  const slash = trimmed.lastIndexOf("/");
+  return slash <= 0 ? "." : trimmed.slice(0, slash);
+}
+
+function resolveUiAssetDirectory(
+  options: NativeWorkbenchHandlerOptions,
+): string | undefined {
+  if (options.uiAssetDirectory) return options.uiAssetDirectory;
+  if (options.htmlPath) return dirnameOf(options.htmlPath);
+  return undefined;
+}
+
+function workbenchUiAssetContentType(filename: string): string | undefined {
+  const dot = filename.lastIndexOf(".");
+  if (dot < 0) return undefined;
+  return WORKBENCH_UI_ASSET_TYPES[filename.slice(dot).toLowerCase()];
+}
+
+/**
+ * Resolve a hashed Vite asset under the UI dist directory. Rejects traversal,
+ * absolute segments, and unknown extensions. This is a read-only file serve.
+ */
+export function resolveWorkbenchUiAssetPath(
+  directory: string,
+  pathname: string,
+): string | undefined {
+  if (!pathname.startsWith("/assets/") || pathname.includes("\0")) {
+    return undefined;
+  }
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return undefined;
+  }
+  if (decoded.includes("\0") || decoded.includes("\\")) return undefined;
+  const segments = decoded.split("/").filter((segment) => segment.length > 0);
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    return undefined;
+  }
+  if (segments[0] !== "assets") return undefined;
+  const filename = segments.at(-1);
+  if (!filename || !workbenchUiAssetContentType(filename)) return undefined;
+  return `${directory.replace(/\/+$/, "")}/${segments.join("/")}`;
+}
+
+async function serveWorkbenchUiAsset(
+  pathname: string,
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response | undefined> {
+  const directory = resolveUiAssetDirectory(options);
+  if (!directory) return undefined;
+  const path = resolveWorkbenchUiAssetPath(directory, pathname);
+  if (!path) return undefined;
+  const contentType = workbenchUiAssetContentType(path);
+  if (!contentType) return undefined;
+  try {
+    const bytes = await Deno.readFile(path);
+    return new Response(bytes, {
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      return new Response("Not found", { status: 404 });
+    }
+    throw error;
+  }
+}
+
 function waitForPoll(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -1202,6 +1310,7 @@ if (import.meta.main) {
     projectSnapshots,
     subjectId,
     htmlPath,
+    uiAssetDirectory: dirnameOf(htmlPath),
     componentCatalog,
     componentCatalogForSubject: async (resolvedSubjectId) =>
       await readOptionalComponentCatalog(
@@ -1244,6 +1353,10 @@ if (import.meta.main) {
       );
     },
     assetReader: (filename) => assetReader.read(filename),
+    cockpitFleet: () =>
+      readDeclaredCockpitFleet(
+        cliArgs["fleet-manifest"] ?? "config/mcp-fleet.json",
+      ),
   });
   const workspaceHandler = workspaceId === undefined || !cockpitFocus
     ? handler
@@ -1310,6 +1423,10 @@ export function createFocusedWorkspaceHandler(
   return async (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/healthz") return await options.native(request);
+    if (url.pathname.startsWith("/assets/")) {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await options.native(request);
+    }
     const focus = await options.focus.get(options.workspaceId);
     if (!focus) return cockpitFocusUnavailable(options.workspaceId, request);
     if (
@@ -1330,6 +1447,19 @@ function requestAtRoot(request: Request): Request {
   const url = new URL(request.url);
   url.pathname = "/";
   return new Request(url, { method: "GET", headers: request.headers });
+}
+
+async function serveCockpitFleet(
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response> {
+  if (!options.cockpitFleet) {
+    return json({ error: "fleet_unavailable" }, 404);
+  }
+  const projection = await options.cockpitFleet();
+  if (!projection) {
+    return json({ error: "fleet_unavailable" }, 404);
+  }
+  return json(projection, 200);
 }
 
 async function readOptionalComponentCatalog(

@@ -22,7 +22,7 @@ import {
   fingerprintResolvedOperationPlanV2,
   type ResolvedOperationPlanSource,
   type ResolvedOperationPlanV2,
-} from "../../../../domain/analysis/resolved-operation-plan-v2.ts";
+} from "../../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import {
   canonicalSimulationCaseV2Text,
   type SimulationCaseV2,
@@ -48,7 +48,7 @@ import {
   compareAsciiCodeUnits,
   fingerprintResourceBytes,
   validateProviderResourceAcquisitionLedger,
-} from "../../../../domain/analysis/provider-resource-reader.ts";
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
 import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snapshot-store.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
@@ -73,11 +73,11 @@ import {
 } from "./qualified-source-capture.ts";
 import {
   type ProviderResourceCaptureService,
-} from "../../../captures/provider-resource-capture-service.ts";
+} from "../../../shared/cas/provider-resource-capture-service.ts";
 import {
   validateProviderArtifactCaptureManifest,
-} from "../../../captures/provider-artifact-capture-manifest.ts";
-import { FileByteStore } from "../../../captures/file-byte-store.ts";
+} from "../../../shared/cas/provider-artifact-capture-manifest.ts";
+import { FileByteStore } from "../../../shared/cas/file-byte-store.ts";
 import {
   FileModelicaRecordedScenarioAttemptStore,
   type ModelicaRecordedEvidence,
@@ -86,19 +86,19 @@ import {
   ModelicaRecordedScenarioAttemptIntegrityError,
   ModelicaRecordedScenarioOutcomeUnknownError,
 } from "./recorded-scenario-attempt-store.ts";
-import { requireResolvedRunPlanExecution } from "../../../plans/resolved-run-plan-execution-guard.ts";
-import type { EngineeringProjectRunLease } from "../../../stores/file-engineering-project-run-lease.ts";
+import { requireResolvedRunPlanExecution } from "../../../compile/plans/resolved-run-plan-execution-guard.ts";
+import type { EngineeringProjectRunLease } from "../../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
-} from "../../../executors/thread-write-basis-guard.ts";
+} from "../../../shared/thread-write-basis-guard.ts";
 import {
   requireBasis,
   requireRun,
   snapshotRef,
   unexpectedStatus,
-} from "../../../executors/executor-run-helpers.ts";
-import { SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION } from "../../../../orchestration/operations/recorded-analysis.ts";
+} from "../../../shared/executor-run-helpers.ts";
+import { SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION } from "../../../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 
 const QUEUED = ["queued"] as const;
 const LIVE = ["running", "publishing"] as const;

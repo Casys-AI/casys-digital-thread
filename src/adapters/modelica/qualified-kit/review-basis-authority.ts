@@ -10,7 +10,7 @@ import type {
 import { deepFreeze } from "../../../domain/kernel/case-validation.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
-import { assertThreadSnapshotLineageIntact } from "../../stores/thread-snapshot-lineage.ts";
+import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
 
 export interface ProjectThreadModelicaQualifiedKitReviewBasisAuthorityDependencies {
   readonly projects: Pick<EngineeringProjectRevisionStore, "get">;

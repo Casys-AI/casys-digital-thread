@@ -1,8 +1,8 @@
 /** Build the local worker candidate with its reviewed wrapper digest injected. */
 
-import { fingerprintResourceBytes } from "../../src/domain/analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../src/domain/compile/source/provider-resource-reader.ts";
 
-const WRAPPER = "src/adapters/execution-profiles/calculix-static-proof-v1/run.ts";
+const WRAPPER = "src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts";
 const DOCKERFILE = "images/calculix-microsandbox-worker/Dockerfile";
 const IMAGE = "casys/calculix-microsandbox-worker:gate";
 

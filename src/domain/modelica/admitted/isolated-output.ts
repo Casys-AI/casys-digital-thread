@@ -5,7 +5,7 @@
  * here. Canonical-kit bundle hashes are not this contract.
  */
 
-import { type IsolatedCodeOutputDeclaration } from "../../analysis/isolated-code-execution.ts";
+import { type IsolatedCodeOutputDeclaration } from "../../compile/isolation/isolated-code-execution.ts";
 import { MODELICA_ADMITTED_OUTPUT_MANIFEST } from "./run-proposal.ts";
 import {
   exactRecord,

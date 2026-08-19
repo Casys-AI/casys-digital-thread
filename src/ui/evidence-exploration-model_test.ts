@@ -17,6 +17,7 @@
 
 import { assertEquals, assertNotEquals } from "@std/assert";
 import {
+  buildEvidenceMinimapView,
   buildExplorationModel,
   buildExplorationRelationRecords,
   buildExplorationVisualEdgeGroups,
@@ -394,8 +395,7 @@ Deno.test(
 
     // Dans le graphe sigma, les arêtes moignons doivent être marquées "stub".
     let stubEdgeFound = false;
-    const sigmaStubOccurrences: Array<{ key: string; edge: ThreadGraphEdge }> =
-      [];
+    const sigmaStubOccurrences: Array<{ key: string; edge: ThreadGraphEdge }> = [];
     explorationModel.graph.forEachEdge(
       (_key: string, attrs: SigmaEdgeAttrs) => {
         if (attrs.edgeType === "stub") {
@@ -1049,8 +1049,7 @@ Deno.test(
       "sysml-element",
     ];
     for (const kind of expectedKinds) {
-      const label =
-        DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
+      const label = DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
       assertEquals(
         typeof label,
         "string",
@@ -1556,4 +1555,31 @@ Deno.test("exploration labels preserve canonical evidence records", () => {
     model.graph.getNodeAttribute("artifact:step", "label"),
     step.label,
   );
+});
+
+Deno.test("minimap projects recorded full-map nodes and never invents a box", () => {
+  const origin = node("sysml", "artifact", "SysON", "artifact");
+  const result = node("obs", "observation", "CalculiX", "observation");
+  const model = buildMinimalModel(
+    [origin, result],
+    [edge("e1", origin.ref, result.ref)],
+  );
+  const emptyLocal = buildEvidenceMinimapView(
+    model,
+    new Set(["requirement:ghost"]),
+  );
+  assertEquals(emptyLocal.nodeCount, 2);
+  assertEquals(emptyLocal.edgeCount, 1);
+  assertEquals(emptyLocal.localBounds, undefined);
+  assertEquals(
+    emptyLocal.nodes.some((item) => item.key === "requirement:ghost"),
+    false,
+  );
+
+  const focused = buildEvidenceMinimapView(
+    model,
+    new Set(["artifact:sysml", "observation:obs"]),
+  );
+  assertEquals(focused.localBounds !== undefined, true);
+  assertEquals(focused.nodes.length, 2);
 });

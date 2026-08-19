@@ -42,6 +42,11 @@ export class ControlPlaneNotFoundError extends Error {
   }
 }
 
+/**
+ * Fleet and indexed-run application service for the `console_*` ops tools.
+ * Not a human dashboard: the retired Console MCP App is not registered, and
+ * `preview:browser` still refuses.
+ */
 export class ControlPlane {
   readonly #manifest: FleetManifest;
   readonly #probe: McpProbe;

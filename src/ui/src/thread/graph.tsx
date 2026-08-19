@@ -36,7 +36,7 @@ import type {
   ThreadRef,
 } from "./types.ts";
 import { displayedGraphEdgeOccurrenceKey } from "./graph-selection-model.ts";
-import { isUiOnlyPresentationEdge } from "./cad-presentation-projection.ts";
+import { isUiOnlyPresentationEdge } from "../cad/cad-presentation-projection.ts";
 
 export type { ThreadGraphSelection };
 

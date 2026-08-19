@@ -2,17 +2,17 @@ import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { MODELICA_QUALIFIED_MODEL_SOURCE } from "../qualified-kit/kit-v1/run.ts";
 import {
   TechnicalSourceAnalysisCaptureError,
-} from "../../captures/technical-source-analysis-capture.ts";
-import { FileByteStore } from "../../captures/file-byte-store.ts";
+} from "../../compile/captures/technical-source-analysis-capture.ts";
+import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import {
   createInitialTechnicalSourceAnalysisCaptureService,
-} from "../../compilers/initial-technical-source-analysis-composition.ts";
+} from "../../compile/captures/initial-technical-source-analysis-composition.ts";
 import { QUALIFIED_MODELICA_MAX_SOURCE_BYTES } from "./source-analysis-composition.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import {
   SOURCE_ANALYSIS_SCHEMA,
   validateSourceAnalysisBundle,
-} from "../../../domain/analysis/source-analysis.ts";
+} from "../../../domain/compile/source/source-analysis.ts";
 import {
   MODELICA_AST_IDENTITY_SCHEMA,
   modelicaAstSymbolId,

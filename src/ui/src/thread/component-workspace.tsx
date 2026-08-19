@@ -2,12 +2,12 @@ import type { JSX, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
-import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
+import { createThreeOrbitViewport } from "../cad/three-orbit-viewport.ts";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
-import { Tabs, TabsList, TabsTrigger } from "../ui/tabs.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.tsx";
+import { ProductSourcingCoverageLine } from "../project/product-sourcing.tsx";
 import type {
   ThreadArtifact,
   ThreadComponent,
@@ -45,17 +45,9 @@ export interface ComponentWorkspaceProps {
   onBindingSelect: (binding: ThreadComponentBinding) => void;
   /** Opens the same recorded correction context used by the Activity feed. */
   onRevisionOpen: (node: ThreadGraphNode) => void;
+  /** Opens the reserved Product › Sourcing · ERP facet. */
+  onOpenSourcing?: () => void;
 }
-
-const PROVIDERS: readonly {
-  id: ThreadComponentProvider;
-  label: string;
-  role: string;
-}[] = [
-  { id: "syson", label: "SysON", role: "system structure" },
-  { id: "build123d", label: "build123d", role: "geometry" },
-  { id: "erpnext", label: "ERPNext", role: "enterprise record" },
-];
 
 const focusRing =
   "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
@@ -68,6 +60,7 @@ export function ComponentWorkspace({
   onComponentSelect,
   onBindingSelect,
   onRevisionOpen,
+  onOpenSourcing,
 }: ComponentWorkspaceProps): JSX.Element {
   const components = snapshot.components.components;
   const cadCoverage = cadSurfaceCoverage(snapshot);
@@ -76,10 +69,14 @@ export function ComponentWorkspace({
   const selected =
     components.find((component) => component.id === selectedComponentId) ??
       components[0];
-  const revisions = selected ? correctionNodesForComponent(snapshot, selected) : [];
+  const revisions = selected
+    ? correctionNodesForComponent(snapshot, selected)
+    : [];
 
   if (!selected) {
-    const unavailable = structure.status === "unavailable" ? structure : undefined;
+    const unavailable = structure.status === "unavailable"
+      ? structure
+      : undefined;
     return (
       <Card className="min-w-0">
         <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
@@ -110,235 +107,185 @@ export function ComponentWorkspace({
     };
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="flex-row items-start justify-between gap-4 max-md:flex-col">
-        <div className="min-w-0 space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground">
-            Part-centric workspace
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
+            Product · sealed geometry
           </p>
-          <CardTitle className="text-base">{selected.label}</CardTitle>
+          <h3 className="m-0 text-lg font-semibold tracking-tight">
+            {selected.label}
+          </h3>
         </div>
-        <div className="shrink-0 text-right">
-          <strong className="text-xl font-semibold tabular-nums">
-            {headline.count}
-          </strong>
-          <p className="text-xs text-muted-foreground">
-            {headline.label}
-          </p>
-          <small className="block text-xs text-muted-foreground">
-            {headline.detail}
-          </small>
-        </div>
-      </CardHeader>
+        <dl className="grid shrink-0 grid-cols-2 divide-x divide-border overflow-hidden rounded-lg border border-border bg-card sm:grid-cols-3">
+          <div className="flex flex-col gap-0.5 px-3 py-1.5">
+            <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
+              Catalog
+            </dt>
+            <dd className="m-0 font-mono text-[12.5px] tabular-nums">
+              {headline.count} {headline.label}
+            </dd>
+          </div>
+          <div className="flex flex-col gap-0.5 px-3 py-1.5">
+            <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
+              Geometry
+            </dt>
+            <dd className="m-0 font-mono text-[12.5px]">
+              {cadCoverageLabel(cadCoverage, sealedAssembly)}
+            </dd>
+          </div>
+          <div className="col-span-2 flex flex-col gap-0.5 px-3 py-1.5 sm:col-span-1">
+            <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
+              Detail
+            </dt>
+            <dd className="m-0 font-mono text-[12.5px] text-muted-foreground">
+              {headline.detail}
+            </dd>
+          </div>
+        </dl>
+      </div>
 
-      <CardContent className="flex flex-col gap-4">
-        {revisions.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-auto w-full justify-between py-2"
-            onClick={() => onRevisionOpen(revisions[0]!)}
-          >
-            <span className="font-normal text-muted-foreground">
-              {revisions.length} recorded revision{revisions.length === 1 ? "" : "s"}
-            </span>
-            <strong className="font-medium">
-              View this part’s lifecycle in Activity
-            </strong>
-          </Button>
-        )}
-
-        <Tabs
-          value={activeProvider}
-          onValueChange={(id) => {
-            const provider = id as ThreadComponentProvider;
-            onProviderChange(provider);
-            const selectedCad = provider === "build123d"
-              ? resolveCadSurface(snapshot, selected)
-              : undefined;
-            const genericAssemblyInspection = provider === "build123d" &&
-                selected.kind === "assembly"
-              ? sealedAssembly?.inspectionBinding
-              : undefined;
-            const inspectionBinding = selectedCad?.inspectionBinding ??
-              genericAssemblyInspection;
-            if (inspectionBinding) onBindingSelect(inspectionBinding);
-          }}
+      {revisions.length > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-auto w-full justify-between py-2"
+          onClick={() => onRevisionOpen(revisions[0]!)}
         >
-          <TabsList
-            role="tablist"
-            aria-label="Tool facet"
-            className="h-auto w-full"
-          >
-            {PROVIDERS.map((provider) => {
-              const linked = components.filter((component) =>
-                verifiedBinding(component, provider.id)
-              ).length;
-              return (
-                <TabsTrigger
-                  key={provider.id}
-                  value={provider.id}
-                  className="min-w-0 flex-1 flex-col items-start px-3 py-1.5 text-left"
-                >
-                  <span className="block w-full truncate">
-                    {provider.label}
-                  </span>
-                  <small className="block w-full truncate text-xs font-normal text-muted-foreground">
-                    {provider.id === "build123d"
-                      ? cadCoverageLabel(cadCoverage, sealedAssembly)
-                      : `${linked}/${components.length} · ${provider.role}`}
-                  </small>
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
-        </Tabs>
+          <span className="font-normal text-muted-foreground">
+            {revisions.length} recorded revision
+            {revisions.length === 1 ? "" : "s"}
+          </span>
+          <strong className="font-medium">
+            View this part’s lifecycle in Activity
+          </strong>
+        </Button>
+      )}
 
-        <PartTraceStrip
-          snapshot={snapshot}
-          component={selected}
-          activeProvider={activeProvider}
-          onProviderChange={onProviderChange}
-          onBindingSelect={onBindingSelect}
-        />
-
-        <div className="min-h-[455px]" data-provider={activeProvider}>
-          {activeProvider === "syson"
-            ? (
-              <SysonStructure
-                snapshot={snapshot}
-                selected={selected}
-                onSelect={onComponentSelect}
-                onInspect={onBindingSelect}
-              />
-            )
-            : activeProvider === "erpnext"
-            ? (
-              <ErpBom
-                snapshot={snapshot}
-                selected={selected}
-                onSelect={onComponentSelect}
-                onInspect={onBindingSelect}
-              />
-            )
-            : (
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <Card className="min-w-0 overflow-hidden py-0">
+          <CardContent className="flex flex-col gap-0 p-0">
+            <StructurePartChips
+              components={components}
+              selectedId={selected.id}
+              sealLabel={sealedAssembly
+                ? sealedAssembly.assemblyFormats.join(" · ") + " · SEALED"
+                : undefined}
+              onSelect={(component) => {
+                onComponentSelect(component);
+                onProviderChange("build123d");
+                const cad = resolveCadSurface(snapshot, component);
+                const assemblyInspect = component.kind === "assembly"
+                  ? sealedAssembly?.inspectionBinding
+                  : undefined;
+                const inspect = cad?.inspectionBinding ?? assemblyInspect;
+                if (inspect) onBindingSelect(inspect);
+              }}
+            />
+            <div
+              className="min-h-[388px] p-4"
+              data-provider={activeProvider}
+            >
               <CadGeometry
                 snapshot={snapshot}
                 selected={selected}
                 onSelect={onComponentSelect}
                 onInspect={onBindingSelect}
               />
+            </div>
+            {sealedAssembly && (
+              <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-3 py-2">
+                <CompactIdentifier
+                  value={sealedAssembly.captureArtifact.fingerprint ??
+                    sealedAssembly.captureArtifact.id}
+                  label="sealed geometry fingerprint"
+                />
+                <button
+                  type="button"
+                  className={cn(
+                    "font-mono text-[9.5px] text-brand hover:underline",
+                    focusRing,
+                  )}
+                  onClick={() =>
+                    onBindingSelect(sealedAssembly.inspectionBinding)}
+                >
+                  Inspect in Activity →
+                </button>
+              </div>
             )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+          </CardContent>
+        </Card>
+        <SysmlRail
+          snapshot={snapshot}
+          selected={selected}
+          activeProvider={activeProvider}
+          onSelect={(component) => {
+            onComponentSelect(component);
+            onProviderChange("syson");
+            const binding = bindingFor(component, "syson");
+            if (binding) onBindingSelect(binding);
+          }}
+          onInspect={onBindingSelect}
+        />
+      </div>
 
-function PartTraceStrip({
-  snapshot,
-  component,
-  activeProvider,
-  onProviderChange,
-  onBindingSelect,
-}: {
-  snapshot: ThreadWorkbenchSnapshot;
-  component: ThreadComponent;
-  activeProvider: ThreadComponentProvider;
-  onProviderChange: (provider: ThreadComponentProvider) => void;
-  onBindingSelect: (binding: ThreadComponentBinding) => void;
-}): JSX.Element {
-  const sealedAssembly = resolveSealedAssemblyGeometry(snapshot);
-  return (
-    <div
-      className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] md:items-stretch md:gap-3"
-      aria-label={`Tool identities for ${component.label}`}
-    >
-      {PROVIDERS.flatMap((provider, index) => {
-        const binding = bindingFor(component, provider.id);
-        const cadSurface = provider.id === "build123d"
-          ? resolveCadSurface(snapshot, component)
-          : undefined;
-        const genericAssemblyBinding = provider.id === "build123d" &&
-            component.kind === "assembly"
-          ? sealedAssembly?.inspectionBinding
-          : undefined;
-        const verified = binding?.status === "verified" || !!cadSurface ||
-          !!genericAssemblyBinding;
-        const inspectableBinding = cadSurface?.inspectionBinding ??
-          genericAssemblyBinding ?? binding;
-        const displayBinding = binding ?? cadSurface?.binding;
-        const displayIdentity = displayBinding?.id ??
-          (genericAssemblyBinding
-            ? "Sealed assembly result"
-            : provider.id === "build123d"
-            ? component.kind === "part"
-              ? "No per-part CAD identity"
-              : "No assembly CAD identity"
-            : provider.id === "syson"
-            ? "No SysON identity"
-            : "No ERP record identity");
-        const tile = (
-          <button
-            key={provider.id}
-            type="button"
-            data-state={verified ? "verified" : "gap"}
-            aria-current={activeProvider === provider.id ? "true" : undefined}
-            className={cn(
-              "flex min-h-14 w-full min-w-0 items-center gap-2 rounded-lg border bg-card p-3 text-left",
-              focusRing,
-              verified ? "border-border" : "border-dashed border-border",
-              activeProvider === provider.id && "ring-1 ring-ring",
-            )}
-            onClick={() => {
-              onProviderChange(provider.id);
-              if (verified && inspectableBinding) {
-                onBindingSelect(inspectableBinding);
-              }
-            }}
-          >
-            <Badge variant={verified ? "success" : "warning"}>
-              {verified ? "verified" : "gap"}
-            </Badge>
-            <span className="grid min-w-0 gap-1">
-              <small className="text-xs font-medium text-muted-foreground">
-                {provider.label}
-              </small>
-              {displayBinding
-                ? (
-                  <CompactIdentifier
-                    value={displayIdentity}
-                    label={`${provider.label} identity`}
-                    copyable={false}
-                  />
-                )
-                : genericAssemblyBinding
-                ? (
-                  <strong className="truncate text-sm font-medium">
-                    {displayIdentity}
-                  </strong>
-                )
-                : <Badge variant="warning">{displayIdentity}</Badge>}
-            </span>
-          </button>
-        );
-        if (index === 0) return [tile];
-        return [
-          <span
-            key={`${provider.id}-connector`}
-            className="hidden w-px self-stretch bg-border md:block"
-            aria-hidden="true"
-          />,
-          tile,
-        ];
-      })}
+      <ProductSourcingCoverageLine
+        thread={snapshot}
+        onOpenSourcing={onOpenSourcing}
+      />
     </div>
   );
 }
 
-function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
+function StructurePartChips({
+  components,
+  selectedId,
+  sealLabel,
+  onSelect,
+}: {
+  components: readonly ThreadComponent[];
+  selectedId: string;
+  sealLabel?: string;
+  onSelect: (component: ThreadComponent) => void;
+}): JSX.Element {
+  return (
+    <div
+      className="flex items-center gap-1.5 border-b border-border px-3 py-2"
+      aria-label="Catalog components"
+    >
+      <div className="flex flex-1 flex-wrap gap-1.5">
+        {components.map((component) => (
+          <Button
+            key={component.id}
+            size="sm"
+            variant={component.id === selectedId ? "default" : "outline"}
+            aria-pressed={component.id === selectedId}
+            className="h-7 px-2.5"
+            onClick={() => onSelect(component)}
+          >
+            {component.label}
+          </Button>
+        ))}
+      </div>
+      {sealLabel && (
+        <span className="shrink-0 font-mono text-[9.5px] text-muted-foreground">
+          {sealLabel}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SysmlRail({
+  snapshot,
+  selected,
+  activeProvider,
+  onSelect,
+  onInspect,
+}: {
   snapshot: ThreadWorkbenchSnapshot;
   selected: ThreadComponent;
+  activeProvider: ThreadComponentProvider;
   onSelect: (component: ThreadComponent) => void;
   onInspect: (binding: ThreadComponentBinding) => void;
 }): JSX.Element {
@@ -346,172 +293,129 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
   const terminology = sysonTerminology(snapshot.components.components);
   const subtree = buildSysmlSubtree(snapshot, selected);
   const sysonBinding = bindingFor(selected, "syson");
-  const assemblyComponent = snapshot.components.components.find(
-    (component) => component.kind === "assembly",
-  );
-  const assemblySelected = !!assemblyComponent &&
-    assemblyComponent.id === selected.id;
+  const verifiedCount =
+    snapshot.components.components.filter((component) =>
+      verifiedBinding(component, "syson")
+    ).length;
   return (
-    <section
-      className="flex flex-col gap-4"
-      aria-label="SysON product structure"
-    >
-      <ProviderSurfaceHeader
-        eyebrow={`SysML v2 · ${terminology.heading}`}
-        title={view?.diagramLabel ?? "System structure"}
-        aside={view?.diagramId
-          ? (
-            <CompactIdentifier
-              value={view.diagramId}
-              label="SysON diagram identity"
-            />
-          )
-          : (
-            <span className="text-xs text-muted-foreground">
-              Diagram identity unavailable
-            </span>
+    <aside className="flex min-w-0 flex-col gap-3">
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex-row items-center justify-between gap-2 px-3 py-2">
+          <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+            SysML v2 · {terminology.heading}
+          </p>
+          <span className="font-mono text-[9.5px] text-muted-foreground">
+            {verifiedCount}/{snapshot.components.components.length} verified
+          </span>
+        </CardHeader>
+        <CardContent className="px-0 pb-2">
+          {view?.diagramLabel && (
+            <p className="px-3 pb-1 text-xs text-muted-foreground">
+              {view.diagramLabel}
+            </p>
           )}
-      />
-
-      {
-        /* The assembly banner is the structure root — restored to its
-          pre-facet position above everything else. Clicking it selects the
-          assembly component when the catalog declares one. */
-      }
-      <button
-        type="button"
-        disabled={!assemblyComponent}
-        className={cn(
-          "w-full rounded-lg border bg-card p-4 text-left disabled:cursor-default disabled:opacity-100",
-          focusRing,
-          assemblySelected ? "border-brand" : "border-border",
-        )}
-        onClick={assemblyComponent ? () => onSelect(assemblyComponent) : undefined}
-      >
-        <span className="text-xs font-medium text-muted-foreground">
-          Part definition
-        </span>
-        <strong className="mt-1 block text-sm font-semibold">
-          {snapshot.subject.label}
-        </strong>
-        <small className="mt-1 block text-xs text-muted-foreground">
-          {declaredSysmlCount(snapshot.components.components)} {terminology.countLabel}
-        </small>
-      </button>
-
-      {(selected.attributes ?? []).length > 0 && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            AttributeUsage
-          </p>
-          {(selected.attributes ?? []).map((attribute) => (
-            <div
-              key={attribute.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3"
-            >
-              <div className="min-w-0">
-                <span className="text-xs text-muted-foreground">
-                  AttributeUsage
-                </span>
-                <strong className="mt-1 block text-sm font-semibold">
-                  {attribute.label}
-                </strong>
-              </div>
-              <CompactIdentifier
-                value={attribute.id}
-                label={`${attribute.label} AttributeUsage identity`}
-                copyable={false}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {subtree.anchoredRequirements.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            Requirements anchored in model
-          </p>
-          {subtree.anchoredRequirements.map((req) => (
-            <SysmlRequirementRow key={req.id} req={req} />
-          ))}
-        </div>
-      )}
-
-      {
-        /* Part grid: compact selector, secondary to the SVG. The assembly
-          lives in the root banner above, never among its own parts. */
-      }
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {snapshot.components.components
-          .filter((component) => component.kind !== "assembly")
-          .map((component, index) => {
+          {snapshot.components.components.map((component) => {
             const binding = bindingFor(component, "syson");
-            const missing = !binding;
+            const current = component.id === selected.id;
             return (
               <button
                 key={component.id}
                 type="button"
-                data-state={binding?.status ?? "missing"}
                 className={cn(
-                  "flex min-h-[92px] min-w-0 flex-col gap-1 rounded-lg border bg-card p-3 text-left",
+                  "flex w-full items-center gap-2 px-3 py-1.5 text-left",
                   focusRing,
-                  missing ? "border-dashed border-border" : "border-border",
-                  component.id === selected.id && "border-solid border-brand",
+                  current && "bg-brand/[0.04]",
                 )}
                 onClick={() => onSelect(component)}
-                onDoubleClick={() => binding && onInspect(binding)}
               >
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <strong className="truncate text-sm font-semibold">
-                  {component.label}
-                </strong>
-                <small className="truncate text-xs text-muted-foreground">
-                  {binding?.label ?? terminology.missingLabel}
-                </small>
-                {binding
-                  ? (
-                    <CompactIdentifier
-                      value={binding.id}
-                      label={`${component.label} SysON identity`}
-                      copyable={false}
-                    />
-                  )
-                  : (
-                    <code className="font-mono text-xs text-muted-foreground">
-                      Trace gap
-                    </code>
+                <i
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    binding?.status === "verified"
+                      ? "bg-success"
+                      : "bg-muted-foreground/40",
                   )}
+                />
+                <span className="min-w-0 flex-1 truncate text-[11.5px]">
+                  {component.label}
+                </span>
+                <span className="font-mono text-[9.5px] text-muted-foreground">
+                  {component.kind}
+                </span>
               </button>
             );
           })}
-      </div>
+        </CardContent>
+      </Card>
+
+      {(selected.attributes ?? []).length > 0 && (
+        <Card className="gap-0 py-0">
+          <CardHeader className="px-3 py-2">
+            <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+              AttributeUsage
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1 px-3 pb-3">
+            {(selected.attributes ?? []).map((attribute) => (
+              <div
+                key={attribute.id}
+                className="flex items-center justify-between gap-3"
+              >
+                <span className="truncate text-[11.5px]">
+                  {attribute.label}
+                </span>
+                <CompactIdentifier
+                  value={attribute.id}
+                  label={`${attribute.label} AttributeUsage identity`}
+                  copyable={false}
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {subtree.anchoredRequirements.length > 0 && (
+        <Card className="gap-0 py-0">
+          <CardHeader className="px-3 py-2">
+            <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+              Requirements & constraints · anchored
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 px-3 pb-3">
+            {subtree.anchoredRequirements.map((req) => (
+              <SysmlRequirementRow key={req.id} req={req} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {sysonBinding && (
-        <footer className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2 max-md:flex-col max-md:items-start">
-          <small className="text-xs font-medium text-muted-foreground">
-            SysML element
-          </small>
-          <CompactIdentifier
-            value={sysonBinding.id}
-            label="SysML element identity"
-          />
-        </footer>
+        <button
+          type="button"
+          className={cn(
+            "flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left hover:border-brand/30",
+            focusRing,
+          )}
+          data-provider={activeProvider}
+          onClick={() => onInspect(sysonBinding)}
+        >
+          <span className="text-[11px] text-muted-foreground">
+            Ports, connections, full diagram
+          </span>
+          <strong className="font-medium text-brand">Inspect record</strong>
+        </button>
       )}
-    </section>
+    </aside>
   );
 }
 
 function SysmlRequirementRow(
   { req }: { req: SysmlAnchoredRequirement },
 ): JSX.Element {
-  const variant = req.status === "pass"
-    ? "success"
-    : req.status === "fail"
-    ? "destructive"
-    : "secondary";
+  const isPassing = req.status === "pass";
+  const isFailing = req.status === "fail";
   return (
     <div
       className="flex items-center gap-3 rounded-lg bg-muted/50 p-3"
@@ -520,15 +424,15 @@ function SysmlRequirementRow(
       <span
         className={cn(
           "text-sm",
-          req.status === "pass"
+          isPassing
             ? "text-success"
-            : req.status === "fail"
+            : isFailing
             ? "text-destructive"
             : "text-muted-foreground",
         )}
         aria-hidden="true"
       >
-        {req.status === "pass" ? "✓" : req.status === "fail" ? "✕" : "?"}
+        {isPassing ? "✓" : isFailing ? "✕" : "?"}
       </span>
       <div className="min-w-0 flex-1">
         <strong className="text-sm font-semibold">{req.label}</strong>
@@ -536,20 +440,17 @@ function SysmlRequirementRow(
           {req.expression}
         </code>
       </div>
-      <Badge variant={variant}>{req.status}</Badge>
+      {isPassing
+        ? <Badge variant="success">{req.status}</Badge>
+        : isFailing
+        ? <Badge variant="destructive">{req.status}</Badge>
+        : (
+          <span className="inline-flex rounded border border-brand/20 bg-brand/10 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase leading-none text-brand">
+            {req.status}
+          </span>
+        )}
     </div>
   );
-}
-
-function declaredSysmlCount(components: readonly ThreadComponent[]): number {
-  const parts = components.filter((component) => component.kind === "part");
-  if (parts.length > 0) return parts.length;
-  return components.filter((component) =>
-    component.kind === "assembly" &&
-    component.bindings.some((binding) =>
-      binding.provider === "syson" && binding.kind === "part-definition"
-    )
-  ).length;
 }
 
 function sysonTerminology(
@@ -581,102 +482,6 @@ function sysonTerminology(
     countLabel: "declared elements",
     missingLabel: "No SysON product element",
   };
-}
-
-function ErpBom({ snapshot, selected, onSelect, onInspect }: {
-  snapshot: ThreadWorkbenchSnapshot;
-  selected: ThreadComponent;
-  onSelect: (component: ThreadComponent) => void;
-  onInspect: (binding: ThreadComponentBinding) => void;
-}): JSX.Element {
-  const bomName = snapshot.components.systemViews.erpnext?.bomName;
-  const selectedBinding = bindingFor(selected, "erpnext");
-  return (
-    <section
-      className="flex flex-col gap-4"
-      aria-label="ERPNext bill of materials"
-    >
-      <ProviderSurfaceHeader
-        eyebrow="Manufacturing bill of materials"
-        title={bomName ?? "ERP BOM identity unavailable"}
-        aside={
-          <span className="text-xs text-muted-foreground">
-            {snapshot.components.components.length} component records
-          </span>
-        }
-      />
-      <div
-        className="overflow-x-auto rounded-lg border border-border"
-        role="table"
-      >
-        <div
-          className="grid min-w-[630px] grid-cols-[48px_minmax(120px,0.9fr)_minmax(150px,1.25fr)_48px_70px] items-center gap-2.5 border-b border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground"
-          role="row"
-        >
-          <span>Line</span>
-          <span>Item</span>
-          <span>Description</span>
-          <span>Qty</span>
-          <span>Trace</span>
-        </div>
-        {snapshot.components.components.map((component, index) => {
-          const binding = bindingFor(component, "erpnext");
-          return (
-            <button
-              key={component.id}
-              type="button"
-              data-state={binding?.status ?? "missing"}
-              role="row"
-              className={cn(
-                "grid min-h-[42px] min-w-[630px] w-full grid-cols-[48px_minmax(120px,0.9fr)_minmax(150px,1.25fr)_48px_70px] items-center gap-2.5 border-b border-border px-3 py-2 text-left text-sm last:border-0",
-                focusRing,
-                component.id === selected.id && "bg-accent",
-              )}
-              onClick={() => onSelect(component)}
-              onDoubleClick={() => binding && onInspect(binding)}
-            >
-              <span className="font-mono text-xs text-muted-foreground">
-                {String(index + 10).padStart(3, "0")}
-              </span>
-              {binding
-                ? (
-                  <CompactIdentifier
-                    value={binding.id}
-                    label={`${component.label} ERP identity`}
-                    copyable={false}
-                  />
-                )
-                : (
-                  <code className="font-mono text-xs text-muted-foreground">
-                    Unlinked
-                  </code>
-                )}
-              <strong className="truncate text-sm font-medium">
-                {component.label}
-              </strong>
-              <span>{component.quantity}</span>
-              <Badge
-                variant={binding?.status === "verified" ? "success" : "warning"}
-              >
-                {binding?.status === "verified" ? "verified" : "gap"}
-              </Badge>
-            </button>
-          );
-        })}
-      </div>
-      {selectedBinding && (
-        <footer className="flex items-center justify-between gap-3 rounded-lg bg-muted/50 px-3 py-2 max-md:flex-col max-md:items-start">
-          <small className="text-xs font-medium text-muted-foreground">
-            Selected ERP record
-          </small>
-          <CompactIdentifier
-            value={selectedBinding.id}
-            label="ERP record identity"
-          />
-        </footer>
-      )}
-    </section>
-  );
 }
 
 function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
@@ -712,87 +517,8 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
     const candidate = resolveCadSurface(snapshot, component);
     return candidate?.preview ? [component] : [];
   });
-  const inspectAction = surface
-    ? (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => onInspect(surface.inspectionBinding)}
-      >
-        inspect evidence →
-      </Button>
-    )
-    : sealedAssembly && selected.kind === "assembly"
-    ? (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => onInspect(sealedAssembly.inspectionBinding)}
-      >
-        inspect sealed result →
-      </Button>
-    )
-    : binding?.selection
-    ? (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => onInspect(binding)}
-      >
-        inspect evidence →
-      </Button>
-    )
-    : (
-      <span className="text-xs text-muted-foreground">
-        CAD surface not linked
-      </span>
-    );
   return (
     <section className="flex flex-col gap-4" aria-label="build123d geometry">
-      <ProviderSurfaceHeader
-        eyebrow={cadEyebrow(surface, sealedAssembly, selected)}
-        title={selected.label}
-        aside={inspectAction}
-      />
-      {sealedAssembly && (
-        <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4 md:flex-row md:items-center">
-          <div className="grid min-w-0 flex-1 gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">
-              Sealed assembly result
-            </span>
-            <strong className="text-sm font-semibold">
-              {sealedAssembly.assemblyFormats.join(" + ")}
-            </strong>
-            <p className="text-sm text-muted-foreground">
-              The exact assembly files are sealed and linked to this geometry capture.
-              {" "}
-              {sealedAssembly.independentPartDefinitionGeometryCount > 0
-                ? `${sealedAssembly.independentPartDefinitionGeometryCount} independent PartDefinition geometr${
-                  sealedAssembly.independentPartDefinitionGeometryCount === 1
-                    ? "y is"
-                    : "ies are"
-                } recorded under exact STEP identities.`
-                : "No independent per-part geometry mapping was published."}
-              {sealedAssembly.legacyPartMeshCount > 0 &&
-                ` ${sealedAssembly.legacyPartMeshCount} legacy presentation mesh${
-                  sealedAssembly.legacyPartMeshCount === 1 ? " is" : "es are"
-                } retained separately.`}
-            </p>
-            <CompactIdentifier
-              value={sealedAssembly.captureArtifact.fingerprint ??
-                sealedAssembly.captureArtifact.id}
-              label="sealed geometry fingerprint"
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onInspect(sealedAssembly.inspectionBinding)}
-          >
-            Open exact record
-          </Button>
-        </div>
-      )}
       {geometryBlocker && (
         <div
           className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"
@@ -828,8 +554,8 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
           <>
             <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               <span className="mr-2 font-medium">Assembly scope</span>
-              This exact assembly export does not imply separate geometry identities for
-              its child parts.
+              This exact assembly export does not imply separate geometry
+              identities for its child parts.
             </div>
             <CadStlViewer
               preview={surface.preview}
@@ -884,8 +610,8 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
                 Mesh not yet exported for {selected.label}
               </h5>
               <p className="max-w-xl text-sm text-muted-foreground">
-                A build123d identity is declared for this component, but this revision
-                contains no exact component-level presentation mesh.
+                A build123d identity is declared for this component, but this
+                revision contains no exact component-level presentation mesh.
               </p>
               <Badge variant="warning">Mesh not yet exported</Badge>
             </div>
@@ -936,6 +662,35 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
             )}
           </div>
         )}
+      {surface && selected.kind !== "assembly" && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className={cn(
+              "font-mono text-[9.5px] text-muted-foreground hover:text-brand",
+              focusRing,
+            )}
+            onClick={() =>
+              onInspect(surface.inspectionBinding)}
+          >
+            Inspect evidence →
+          </button>
+        </div>
+      )}
+      {!surface && binding?.selection && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className={cn(
+              "font-mono text-[9.5px] text-muted-foreground hover:text-brand",
+              focusRing,
+            )}
+            onClick={() => onInspect(binding)}
+          >
+            Inspect evidence →
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -966,29 +721,6 @@ function definitionGlbEvidence(
     sealedAssembly?.assemblyAssets.find((artifact) => artifact.kind === "step");
   if (!authoritativeArtifact) return undefined;
   return { preview, authoritativeArtifact, presentationArtifact };
-}
-
-function cadEyebrow(
-  surface: ReturnType<typeof resolveCadSurface>,
-  sealedAssembly: ReturnType<typeof resolveSealedAssemblyGeometry>,
-  selected: ThreadComponent,
-): string {
-  if (surface?.representation === "authoritative-step") {
-    if (surface.scope === "part") {
-      return surface.preview?.mediaType === "model/gltf-binary"
-        ? "Part-level CAD · STEP + GLB"
-        : "Part-level CAD · authoritative STEP";
-    }
-    return "Assembly-level CAD · authoritative STEP";
-  }
-  if (surface?.scope === "assembly") {
-    return "Assembly-level CAD · presentation mesh";
-  }
-  if (surface?.scope === "part") return "Part-level CAD · exact record";
-  if (sealedAssembly && selected.kind === "assembly") {
-    return "Sealed assembly result · exact record";
-  }
-  return "Parametric CAD · presentation mesh";
 }
 
 function CadRecordNotice({
@@ -1255,26 +987,6 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
   );
 }
 
-function ProviderSurfaceHeader({
-  eyebrow,
-  title,
-  aside,
-}: {
-  eyebrow: string;
-  title: string;
-  aside: JSX.Element;
-}): JSX.Element {
-  return (
-    <header className="flex items-start justify-between gap-4 max-md:flex-col">
-      <div className="min-w-0 space-y-1">
-        <p className="text-xs font-medium text-muted-foreground">{eyebrow}</p>
-        <h5 className="text-base font-semibold">{title}</h5>
-      </div>
-      {aside}
-    </header>
-  );
-}
-
 function CadEvidenceFooter({
   left,
   right,
@@ -1370,6 +1082,8 @@ function cadCoverageLabel(
     }`;
   const parts = coverage.partSurfaces === 0
     ? "no part meshes"
-    : `${coverage.partSurfaces} part mesh${coverage.partSurfaces === 1 ? "" : "es"}`;
+    : `${coverage.partSurfaces} part mesh${
+      coverage.partSurfaces === 1 ? "" : "es"
+    }`;
   return `${assembly} · ${parts}`;
 }

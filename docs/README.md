@@ -27,14 +27,14 @@ not paraphrased.
   covers the one path out of a dispatch the executor could not settle: inspect the
   provider, sign the seven-parameter reconciliation, execute it as a human, and requeue.
 - [Preview the native digital-thread Workbench](how-to/preview-native-workbench.md)
-  starts the single-shell Preact product surface, follows a project from its living
+  starts the single-shell React + Vite product surface, follows a project from its living
   brief into activity and evidence, and explains why the cockpit observes while the
   paired conversation controls bounded provider work.
 - [The Console browser preview is retired](how-to/preview-console.md) records that the
   `:3021` Fleet / Runs / Workbench page is gone. Use `preview:thread` for the cockpit
   and `console_snapshot` for fleet health.
-- [Add a result-viewer MCP App](how-to/add-mcp-app.md) scaffolds, builds, registers, and
-  verifies a standard structured-result view without broadening its server grants.
+- [Do not add an MCP App to this atelier](how-to/add-mcp-app.md) records that the
+  product cockpit is the native React workbench, not a result-viewer scaffold.
 - [Add a recorded analysis engine](how-to/add-a-recorded-analysis-engine.md) gives the
   short repeatable checklist for a qualified provider capability without giving agents a
   raw provider or plan-authoring surface.
@@ -128,8 +128,8 @@ not paraphrased.
 - [Industry positioning and state of the art](explanations/positioning.md) explains the
   executable-digital-thread and physics-in-the-loop framing.
 - [Native digital-thread Workbench](explanations/native-digital-thread-workbench.md)
-  records the accepted product direction: one linked thread model, one native Preact
-  shell, explicit engineering execution, and MCP Apps only at host boundaries.
+  records the accepted product direction: one linked thread model, one native React
+  + Vite shell, explicit engineering execution, and no MCP App as the product page.
 - [Lineage-feed Workbench UX](explanations/graph-workbench-ux.md) defines the live feed
   as the primary propagation view, the complete topology as a secondary view, and the
   five providers as contextual tool facets in one drawer.
@@ -137,9 +137,9 @@ not paraphrased.
   target multi-jurisdiction architecture for versioned official sources, licensed
   standards, evidence reuse, and external certification boundaries, using EU UAS as the
   first sourced example.
-- [The mcp-view component language](explanations/mcp-view-component-language.md)
-  explains the ERPNext-derived visual baseline, Preact default, and component-only
-  palette rule.
+- [The cockpit component language](explanations/mcp-view-component-language.md)
+  explains the local React + Vite visual baseline and the presentation gate that
+  keeps `@casys/mcp-view` and the Apps handshake out of the native bundle.
 
 ## Read the status labels literally
 

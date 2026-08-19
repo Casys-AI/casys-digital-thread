@@ -45,7 +45,7 @@ import {
   type ModelicaMicrosandboxQualificationReference,
   validateModelicaMicrosandboxQualificationReference,
 } from "../../../../domain/modelica/qualified-kit/microsandbox-qualification.ts";
-import { validateContentFingerprint } from "../../../../domain/analysis/isolated-code-execution.ts";
+import { validateContentFingerprint } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   deepFreeze,
   exactRecord,

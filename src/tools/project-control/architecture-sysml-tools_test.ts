@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { SourceAnalysisBundle } from "../../domain/analysis/source-analysis.ts";
+import type { SourceAnalysisBundle } from "../../domain/compile/source/source-analysis.ts";
 import { registerProjectArchitectureSysmlTools } from "./architecture-sysml-tools.ts";
 
 Deno.test("architecture SysML tools are absent until both seams are composed", () => {

@@ -97,24 +97,24 @@ import {
 } from "../../../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
-import type { FileCaptureStore } from "../../../captures/file-capture-store.ts";
-import { SIMULATION_CASE_CAPTURE_URI_PREFIX } from "../../../captures/file-capture-store.ts";
+import type { FileCaptureStore } from "../../../shared/cas/file-capture-store.ts";
+import { SIMULATION_CASE_CAPTURE_URI_PREFIX } from "../../../shared/cas/file-capture-store.ts";
 import {
   assertThreadSnapshotLineageIntact,
   threadSnapshotDescendsFrom,
-} from "../../../stores/thread-snapshot-lineage.ts";
-import type { EngineeringProjectRunLease } from "../../../stores/file-engineering-project-run-lease.ts";
+} from "../../../shared/stores/thread-snapshot-lineage.ts";
+import type { EngineeringProjectRunLease } from "../../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   requireBasis,
   requiredStart,
   requireRun,
   snapshotRef,
   unexpectedStatus,
-} from "../../../executors/executor-run-helpers.ts";
+} from "../../../shared/executor-run-helpers.ts";
 import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
-} from "../../../executors/thread-write-basis-guard.ts";
+} from "../../../shared/thread-write-basis-guard.ts";
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -163,7 +163,7 @@ export const SIMULATION_CASE_SOURCES: ReadonlyMap<string, string> = new Map();
  * capture family — a second definition would drift). Re-exported here so the
  * executor's callers keep a single import site.
  */
-export { SIMULATION_CASE_CAPTURE_DESCRIPTOR } from "../../../captures/file-capture-store.ts";
+export { SIMULATION_CASE_CAPTURE_DESCRIPTOR } from "../../../shared/cas/file-capture-store.ts";
 
 // ---------------------------------------------------------------------------
 // Public error classes

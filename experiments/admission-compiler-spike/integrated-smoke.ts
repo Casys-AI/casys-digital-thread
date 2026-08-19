@@ -9,18 +9,18 @@
 import {
   briefSourceIdFor,
   ProjectBriefSourceAnalyzer,
-} from "../../src/adapters/analyzers/project-brief-source-analyzer.ts";
-import { PythonCadSourceAnalyzer } from "../../src/adapters/analyzers/python-cad-source-analyzer.ts";
+} from "../../src/adapters/compile/source/project-brief-source-analyzer.ts";
+import { PythonCadSourceAnalyzer } from "../../src/adapters/cad/source/python-cad-source-analyzer.ts";
 import {
   RenderedArchitectureSysmlAnalyzer,
   sysmlRenderedSourceIdFor,
-} from "../../src/adapters/analyzers/rendered-architecture-sysml-analyzer.ts";
-import { HttpMcpResourceReader } from "../../src/adapters/mcp/http-mcp-resource-reader.ts";
-import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+} from "../../src/adapters/architecture/renderer/rendered-architecture-sysml-analyzer.ts";
+import { HttpMcpResourceReader } from "../../src/adapters/shared/mcp/http-mcp-resource-reader.ts";
+import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
 import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";
-import type { SourceAnalysisBundle } from "../../src/domain/analysis/source-analysis.ts";
+import type { SourceAnalysisBundle } from "../../src/domain/compile/source/source-analysis.ts";
 import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
-import { parseArchitectureProposalParameters } from "../../src/domain/engineering/architecture-proposal.ts";
+import { parseArchitectureProposalParameters } from "../../src/domain/architecture/renderer/architecture-proposal.ts";
 import {
   compileExplicitBriefProposals,
   SUPPORT_BLOCK_EXPLICIT_BRIEF_FIXTURE,

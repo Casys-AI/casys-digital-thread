@@ -4,7 +4,7 @@
  * This script verifies that a unit string produces a round-trippable SysML
  * attribute via syson_element_insert_sysml → syson_constraint_extract. Only
  * units whose round-trip has been confirmed here may be added to
- * UNIT_TO_SYSML_TYPE in src/domain/analysis/proof-case.ts.
+ * UNIT_TO_SYSML_TYPE in src/domain/kernel/proof-case.ts.
  *
  * BOUNDED: one attempt per invocation, no retry loop.
  *
@@ -24,9 +24,9 @@
  */
 
 import { parseArgs } from "../lib/cli.ts";
-import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
 import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";
-import type { OracleRequirement } from "../../src/domain/analysis/proof-case.ts";
+import type { OracleRequirement } from "../../src/domain/kernel/proof-case.ts";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:3009/mcp";
 

@@ -40,26 +40,26 @@ import {
   type ExpectedProviderResource,
   fingerprintResourceBytes,
   type ProviderResourceReader,
-} from "../domain/analysis/provider-resource-reader.ts";
+} from "../domain/compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshot } from "../domain/thread/thread-snapshot.ts";
 import { approvedBriefSourceAnalysisFixture } from "./approved-brief-source-analysis-fixture.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-} from "../adapters/captures/file-capture-store.ts";
-import { FileByteStore } from "../adapters/captures/file-byte-store.ts";
-import { ProviderResourceCaptureService } from "../adapters/captures/provider-resource-capture-service.ts";
+} from "../adapters/shared/cas/file-capture-store.ts";
+import { FileByteStore } from "../adapters/shared/cas/file-byte-store.ts";
+import { ProviderResourceCaptureService } from "../adapters/shared/cas/provider-resource-capture-service.ts";
 import { ModelicaQualifiedSourceCaptureService } from "../adapters/modelica/recorded/v2/qualified-source-capture.ts";
-import { FileEngineeringProjectRevisionStore } from "../adapters/stores/engineering-project-store.ts";
-import { FileEngineeringProjectRunLease } from "../adapters/stores/file-engineering-project-run-lease.ts";
-import { FileThreadSnapshotStore } from "../adapters/stores/file-thread-snapshot-store.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
+import { FileEngineeringProjectRevisionStore } from "../adapters/shared/stores/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "../adapters/shared/stores/file-engineering-project-run-lease.ts";
+import { FileThreadSnapshotStore } from "../adapters/shared/stores/file-thread-snapshot-store.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../adapters/project/engineering-project-initial-baseline-evidence-validator.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../adapters/validators/engineering-project-completion-evidence-validator.ts";
 import { FileModelicaQualifiedSealAttemptStore } from "../adapters/modelica/recorded/v2/qualified-seal-attempt-store.ts";
 import { FileModelicaRecordedScenarioAttemptStore } from "../adapters/modelica/recorded/v2/recorded-scenario-attempt-store.ts";
-import { CaptureBackedRunPlanSealer } from "../adapters/plans/capture-backed-run-plan-sealer.ts";
-import { RecordedOperationPlanResolver } from "../adapters/plans/recorded-operation-plan-resolver.ts";
+import { CaptureBackedRunPlanSealer } from "../adapters/compile/plans/capture-backed-run-plan-sealer.ts";
+import { ResolvedOperationPlanResolver } from "../adapters/compile/plans/resolved-operation-plan-resolver.ts";
 import {
   lowerSubmission,
   normalizeCapturedModelicaResumableEvidence,
@@ -67,13 +67,15 @@ import {
   parseRequestEnvelope,
   verifyCapturedModelicaResumableEvidence,
 } from "../adapters/modelica/recorded/v2/resumable-adapter.ts";
-import { ApprovedBriefBaselineRunExecutor } from "../adapters/executors/approved-brief-baseline-run-executor.ts";
+import { ApprovedBriefBaselineRunExecutor } from "../adapters/project/approved-brief-baseline-run-executor.ts";
 import { SimulateSealSimulationCaseV2RunExecutor } from "../adapters/modelica/recorded/v2/seal-case-executor.ts";
 import {
-  RECORDED_ANALYSIS_OPERATION_DESCRIPTORS,
+  FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS,
+} from "../orchestration/operations/fea-isolated-static-proof.ts";
+import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-} from "../orchestration/operations/recorded-analysis.ts";
+} from "../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../orchestration/operations/registry.ts";
 
 export const RECORDED_MODELICA_V2_AGENT: EngineeringProjectCommandOrigin = {
@@ -410,7 +412,7 @@ export async function createRecordedModelicaV2Fixture(
       return bytes?.copy();
     },
   };
-  const resolver = new RecordedOperationPlanResolver({
+  const resolver = new ResolvedOperationPlanResolver({
     snapshots,
     artifacts: {
       read: (artifact) =>
@@ -786,7 +788,7 @@ export class InstrumentedRecordedModelicaProvider {
 function recordedModelicaV2TestRegistry(): EngineeringProjectPlanOperationRegistry {
   return {
     validate(input) {
-      const descriptor = RECORDED_ANALYSIS_OPERATION_DESCRIPTORS.find((item) =>
+      const descriptor = FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS.find((item) =>
         item.id === input.operation.id && item.version === input.operation.version
       );
       if (!descriptor) return REGISTERED_ENGINEERING_OPERATION_REGISTRY.validate(input);

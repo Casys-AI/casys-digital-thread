@@ -2,18 +2,18 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import {
   briefSourceIdFor,
   ProjectBriefSourceAnalyzer,
-} from "../../src/adapters/analyzers/project-brief-source-analyzer.ts";
-import { PythonCadSourceAnalyzer } from "../../src/adapters/analyzers/python-cad-source-analyzer.ts";
+} from "../../src/adapters/compile/source/project-brief-source-analyzer.ts";
+import { PythonCadSourceAnalyzer } from "../../src/adapters/cad/source/python-cad-source-analyzer.ts";
 import {
   RenderedArchitectureSysmlAnalyzer,
   sysmlRenderedSourceIdFor,
-} from "../../src/adapters/analyzers/rendered-architecture-sysml-analyzer.ts";
-import type { SourceAnalysisBundle } from "../../src/domain/analysis/source-analysis.ts";
+} from "../../src/adapters/architecture/renderer/rendered-architecture-sysml-analyzer.ts";
+import type { SourceAnalysisBundle } from "../../src/domain/compile/source/source-analysis.ts";
 import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
 import {
   parseArchitectureProposalParameters,
   renderArchitectureSysmlWithManifest,
-} from "../../src/domain/engineering/architecture-proposal.ts";
+} from "../../src/domain/architecture/renderer/architecture-proposal.ts";
 import {
   canonicalAdmissionCompilationText,
   compileAdmissionSpike,

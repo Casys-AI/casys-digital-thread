@@ -17,7 +17,7 @@ flowchart LR
   M["Dynamic physical simulation\nmcp-modelica"] --> S["Time-series evidence\nmetrics + artifact hashes"]
   E --> V
   S --> V
-  V --> C["Read-only Console / MCP App\nshows proof and verdict separately"]
+  V --> C["Read-only native Workbench\nshows proof and verdict separately"]
 ```
 
 ## Four questions, four owners
@@ -75,9 +75,9 @@ a distinction worth keeping while the simulation path still awaits its first rea
 ## Why MCP Apps do not collapse the boundary
 
 `mcp-server` transports tools and resources using the stateless `2026-07-28` contract.
-`mcp-view` supplies presentation primitives and can render a structured result from one
-source server. The Console observes those stages read-only. The native Workbench renders
-one linked `ThreadSnapshot` through trusted imported components.
+The Console MCP tools observe those stages read-only (`console_snapshot`). The native
+Workbench renders one linked `ThreadSnapshot` through trusted local React components.
+A provider result-viewer is not the atelier product page.
 
 None of these presentation or transport layers may turn an evidence payload into an
 unstated verdict. A view can make the relationship legible—stage, metric, limit, margin,

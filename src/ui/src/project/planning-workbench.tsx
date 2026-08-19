@@ -23,6 +23,7 @@ import {
   CardTitle,
 } from "../ui/card.tsx";
 import { BaselineRunActivity } from "./baseline-run-activity.tsx";
+import { ProjectBriefElicitation } from "./brief-elicitation.tsx";
 import { ProjectCockpitHeader } from "./navigation.tsx";
 import { hasDistinctProjectObjectiveStatement } from "./navigation-model.ts";
 import {
@@ -55,7 +56,9 @@ export function PlanningWorkbench({
   const hasPath = phases.length > 0;
   const baseline = workbench.planning.technicalBaseline;
   const framing = project.framing;
-  const framingStatus = framing ? engineeringProjectFramingStatus(framing) : undefined;
+  const framingStatus = framing
+    ? engineeringProjectFramingStatus(framing)
+    : undefined;
   const displayedBrief = framing?.proposedBrief ?? framing?.currentBrief;
   const intentStatement = framing?.intent.statement ??
     project.project.objective.statement;
@@ -76,7 +79,7 @@ export function PlanningWorkbench({
   const statusTone = projectStatusTone(brief.status);
 
   return (
-    <div className="thread-workbench mcp-view-surface planning-workbench">
+    <div className="thread-workbench cockpit-surface planning-workbench">
       <ProjectCockpitHeader
         projectId={project.project.id}
         revision={project.revision}
@@ -141,14 +144,20 @@ export function PlanningWorkbench({
           </div>
         </section>
 
-        {framing && (
+        {framing && framingStatus === "approved" && (
           <ProjectFraming
             projectId={project.project.id}
-            brief={displayedBrief}
-            status={framingStatus!}
+            brief={framing.currentBrief}
+            status={framingStatus}
             questions={framing.questions.filter((question) =>
               currentProjectAnswer(framing, question.id) === undefined
             )}
+          />
+        )}
+        {framing && framingStatus !== "approved" && (
+          <ProjectBriefElicitation
+            projectId={project.project.id}
+            framing={framing}
           />
         )}
 
@@ -248,8 +257,8 @@ export function PlanningWorkbench({
                 )
                 : (
                   <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
-                    Ask the agent to publish a bounded project path in your paired
-                    conversation. The recorded path will appear here.
+                    Ask the agent to publish a bounded project path in your
+                    paired conversation. The recorded path will appear here.
                   </p>
                 )}
             </CardContent>
@@ -281,7 +290,9 @@ export function PlanningWorkbench({
                     <PlanningWorkItem
                       key={item.id}
                       item={item}
-                      phase={project.phases.find((phase) => phase.id === item.phaseId)}
+                      phase={project.phases.find((phase) =>
+                        phase.id === item.phaseId
+                      )}
                     />
                   ))}
                 </ol>
@@ -422,8 +433,8 @@ function ProjectFraming({
               <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
                 Project {projectId}{" "}
                 already exists. Continue describing the product in the paired
-                conversation; the agent will add focused questions and consolidate the
-                first reviewable brief here.
+                conversation; the agent will add focused questions and
+                consolidate the first reviewable brief here.
               </p>
             )}
           {questions.length > 0 && (

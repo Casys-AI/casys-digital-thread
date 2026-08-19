@@ -15,7 +15,7 @@ import {
   canonicalSimulationCaseV2Text,
   validateSimulationCaseV2,
 } from "../recorded/simulation-case-v2.ts";
-import { fingerprintResourceBytes } from "../../analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
 
 const encoder = new TextEncoder();

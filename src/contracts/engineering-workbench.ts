@@ -5,7 +5,10 @@ import type {
 } from "../domain/project/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "./thread-workbench.ts";
 
-/** Browser-safe schema served by the native Engineering Workbench BFF. */
+/**
+ * Browser-safe schema served by the native Engineering Workbench BFF.
+ * GET + SSE only; the browser never submits a project or Thread command.
+ */
 export const ENGINEERING_WORKBENCH_SCHEMA = "engineering-workbench/0.3" as const;
 
 /** Browser-safe schema for provisional activity over a canonical thread. */

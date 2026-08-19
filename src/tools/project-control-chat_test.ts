@@ -10,10 +10,10 @@ import type { EngineeringProjectSnapshot } from "../domain/project/engineering-p
 import type {
   ResolvedOperationPlanRef,
   ResolvedOperationPlanV2,
-} from "../domain/analysis/resolved-operation-plan-v2.ts";
+} from "../domain/compile/rop/resolved-operation-plan-v2.ts";
 import type { ResolvedRunPlanReader } from "../domain/project/resolved-run-plan-sealer.ts";
 import { sha256Fingerprint } from "../domain/kernel/deterministic-json.ts";
-import { FileProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
+import { FileProjectReviewIntentStore } from "../adapters/shared/stores/file-project-review-intent-store.ts";
 import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import {
   type ProjectControlToolDependencies,
@@ -24,7 +24,7 @@ import {
   UNCERTAIN_WRITER_BASIS_RELEASE_OUTCOME,
   uncertainWriterBasisReleaseIds,
   uncertainWriterBasisReleaseText,
-} from "../domain/project/uncertain-writer-basis-release.ts";
+} from "../domain/record/uncertain-writer-basis-release.ts";
 import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };

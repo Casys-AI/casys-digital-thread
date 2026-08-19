@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { PythonCadSourceAnalyzer } from "../../src/adapters/analyzers/python-cad-source-analyzer.ts";
+import { PythonCadSourceAnalyzer } from "../../src/adapters/cad/source/python-cad-source-analyzer.ts";
 import {
   NATIVE_MECHANICAL_BUILD123D_SOURCE_ID,
   qualifyExactNativeBuild123dFixture,

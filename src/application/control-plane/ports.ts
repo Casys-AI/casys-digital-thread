@@ -8,6 +8,7 @@ import type {
 } from "../../contracts/console.ts";
 import type { IsoDateTime } from "../../domain/kernel/primitives.ts";
 
+/** Live MCP discovery result consumed by the control-plane, not a page DTO. */
 export interface McpProbeResult {
   checkedAt: IsoDateTime;
   status: Availability;
@@ -26,8 +27,8 @@ export interface ContainerObserver {
 }
 
 /**
- * Read-only source of runs owned by another engineering service. The Console
- * never reaches through that service's Docker volume.
+ * Read-only source of runs owned by another engineering service. The
+ * control-plane never reaches through that service's Docker volume.
  */
 export interface ObservedRunCatalog {
   list(): Promise<readonly RunSummary[]>;

@@ -1,0 +1,180 @@
+import { applyEssentialFilter } from "../thread/essential-graph-filter.ts";
+import type {
+  ThreadGraphNode,
+  ThreadGraphRef,
+  ThreadWorkbenchSnapshot,
+} from "../thread/types.ts";
+
+export type OverviewLaneId =
+  | "requirements"
+  | "system-model"
+  | "geometry"
+  | "physics"
+  | "verdicts";
+
+export interface OverviewLane {
+  readonly id: OverviewLaneId;
+  readonly title: string;
+  readonly color: string;
+}
+
+/** Display lanes of mockup 2a — composition only, not a second provenance. */
+export const OVERVIEW_LANES: readonly OverviewLane[] = [
+  { id: "requirements", title: "Requirements", color: "#6e56cf" },
+  { id: "system-model", title: "System model", color: "#3f68c4" },
+  { id: "geometry", title: "Geometry", color: "#157489" },
+  { id: "physics", title: "Physics", color: "#9a5b12" },
+  { id: "verdicts", title: "Verdicts", color: "#1a7f4e" },
+];
+
+export const OVERVIEW_HERO_WIDTH = 1230;
+export const OVERVIEW_HERO_HEIGHT = 300;
+
+export interface OverviewHeroNode {
+  readonly key: string;
+  readonly node: ThreadGraphNode;
+  readonly lane: OverviewLaneId;
+  readonly x: number;
+  readonly y: number;
+  readonly color: string;
+  readonly emphasis: boolean;
+}
+
+export interface OverviewHeroEdge {
+  readonly key: string;
+  readonly d: string;
+  readonly emphasis: boolean;
+}
+
+export interface OverviewLaneColumn {
+  readonly lane: OverviewLane;
+  readonly systems: readonly string[];
+}
+
+export interface OverviewThreadHeroView {
+  readonly lanes: readonly OverviewLaneColumn[];
+  readonly nodes: readonly OverviewHeroNode[];
+  readonly edges: readonly OverviewHeroEdge[];
+}
+
+const COLUMN_WIDTH = OVERVIEW_HERO_WIDTH / OVERVIEW_LANES.length;
+const MAX_PER_LANE = 4;
+const NODE_TOP = 56;
+const NODE_GAP = 60;
+
+/**
+ * 2a hero: essential recorded nodes, stacked in the five mockup lanes.
+ * Never invents a node, an edge, or a second organisation of the dossier.
+ */
+export function buildOverviewThreadHero(
+  thread: ThreadWorkbenchSnapshot,
+): OverviewThreadHeroView {
+  const essential = applyEssentialFilter(
+    thread.graph.nodes,
+    thread.graph.edges,
+  );
+  const placed: OverviewHeroNode[] = [];
+  const counts: Record<OverviewLaneId, number> = {
+    requirements: 0,
+    "system-model": 0,
+    geometry: 0,
+    physics: 0,
+    verdicts: 0,
+  };
+
+  for (const node of essential.nodes) {
+    const lane = overviewLaneFor(node);
+    if (!lane) continue;
+    const index = counts[lane];
+    if (index >= MAX_PER_LANE) continue;
+    counts[lane] = index + 1;
+    const column = OVERVIEW_LANES.find((item) => item.id === lane)!;
+    placed.push({
+      key: refKey(node.ref),
+      node,
+      lane,
+      x: columnCenter(lane),
+      y: NODE_TOP + index * NODE_GAP,
+      color: column.color,
+      emphasis: node.freshness === "failed" || node.freshness === "stale",
+    });
+  }
+
+  const byKey = new Map(placed.map((item) => [item.key, item]));
+  const edges: OverviewHeroEdge[] = [];
+  for (const edge of essential.edges) {
+    const from = byKey.get(refKey(edge.from));
+    const to = byKey.get(refKey(edge.to));
+    if (!from || !to) continue;
+    const midX = (from.x + to.x) / 2;
+    edges.push({
+      key: edge.id,
+      d: `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`,
+      emphasis: from.emphasis || to.emphasis,
+    });
+  }
+
+  return {
+    lanes: OVERVIEW_LANES.map((lane) => ({
+      lane,
+      systems: uniqueSystems(
+        placed.filter((item) => item.lane === lane.id).map((item) =>
+          item.node.system
+        ),
+      ),
+    })),
+    nodes: placed,
+    edges,
+  };
+}
+
+export function overviewLaneFor(
+  node: ThreadGraphNode,
+): OverviewLaneId | undefined {
+  if (node.entityKind === "requirement") return "requirements";
+  if (
+    node.entityKind === "observation" ||
+    node.entityKind === "evaluation" ||
+    node.entityKind === "violation"
+  ) {
+    return "verdicts";
+  }
+  if (
+    node.entityKind === "part-definition" ||
+    node.entityKind === "part-usage" ||
+    node.entityKind === "attribute-usage"
+  ) {
+    return "system-model";
+  }
+  if (node.entityKind !== "artifact") return undefined;
+
+  const haystack = `${node.system} ${node.artifactKind ?? ""}`.toLowerCase();
+  if (
+    /calculix|gmsh|fea|modelica|thermal|ccx|frd|mesh/.test(haystack)
+  ) {
+    return "physics";
+  }
+  if (
+    /build123d|cad|step|geometry|glb/.test(haystack)
+  ) {
+    return "geometry";
+  }
+  return "system-model";
+}
+
+function columnCenter(lane: OverviewLaneId): number {
+  const index = OVERVIEW_LANES.findIndex((item) => item.id === lane);
+  return COLUMN_WIDTH * index + COLUMN_WIDTH / 2;
+}
+
+function uniqueSystems(values: readonly string[]): readonly string[] {
+  const systems: string[] = [];
+  for (const value of values) {
+    if (value && !systems.includes(value)) systems.push(value);
+  }
+  return systems;
+}
+
+function refKey(ref: ThreadGraphRef): string {
+  return `${ref.kind}:${ref.id}`;
+}

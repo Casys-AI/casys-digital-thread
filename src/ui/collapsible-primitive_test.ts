@@ -1,14 +1,11 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("Collapsible wraps Radix and is the disclosure for earlier gates and project pulse", async () => {
+Deno.test("Collapsible wraps Radix and is the disclosure for earlier gates", async () => {
   const primitive = await Deno.readTextFile(
     new URL("./src/ui/collapsible.tsx", import.meta.url),
   );
   const overview = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
-  );
-  const workbench = await Deno.readTextFile(
-    new URL("./src/thread/workbench.tsx", import.meta.url),
   );
 
   assertStringIncludes(primitive, 'from "@radix-ui/react-collapsible"');
@@ -25,20 +22,6 @@ Deno.test("Collapsible wraps Radix and is the disclosure for earlier gates and p
     overview.includes('<details className="min-w-0 pb-3">'),
     false,
     "collapsed earlier gates must not stay on native details",
-  );
-
-  assertStringIncludes(workbench, 'from "../ui/collapsible.tsx"');
-  assertStringIncludes(workbench, "Project pulse");
-  assertStringIncludes(workbench, "<Collapsible");
-  assertStringIncludes(workbench, "projectPulseStatus");
-  assertEquals(
-    workbench.includes('className="group mb-3"'),
-    true,
-  );
-  assertEquals(
-    /<details[\s\S]*Project pulse/.test(workbench),
-    false,
-    "Activity project pulse must not stay on native details",
   );
 });
 
@@ -81,7 +64,7 @@ Deno.test("collapsed earlier gates and compact spine keep planned completed as B
   );
 });
 
-Deno.test("Activity project pulse keeps planned cancelled completed as Badge text on the trigger", async () => {
+Deno.test("the Work ribbon stays visible instead of a collapsed Project pulse", async () => {
   const workbench = await Deno.readTextFile(
     new URL("./src/thread/workbench.tsx", import.meta.url),
   );
@@ -91,13 +74,10 @@ Deno.test("Activity project pulse keeps planned cancelled completed as Badge tex
 
   assertEquals(start >= 0, true);
   assertEquals(end > start, true);
-  assertStringIncludes(pulse, "<CollapsibleTrigger");
-  assertStringIncludes(pulse, "pulseStatus");
-  assertStringIncludes(pulse, "<Badge");
-  assertStringIncludes(
-    pulse,
-    "variant={recordStatusVariant(pulseStatus.status)}",
+  assertStringIncludes(pulse, "<ProjectWorkRibbon");
+  assertEquals(
+    workbench.includes("Project pulse"),
+    false,
+    "the validated Work feed (7a) has no collapsed Project pulse disclosure",
   );
-  assertStringIncludes(pulse, "{pulseStatus.label}");
-  assertStringIncludes(pulse, "data-state={pulseStatus.status}");
 });

@@ -7,11 +7,11 @@ import type {
 import {
   type OracleRequirement,
   renderTargetedOracleRequirementsSysml,
-} from "../../src/domain/analysis/proof-case.ts";
+} from "../../src/domain/kernel/proof-case.ts";
 import {
   type ArchitectureProposal,
   renderArchitectureSysmlWithManifest,
-} from "../../src/domain/engineering/architecture-proposal.ts";
+} from "../../src/domain/architecture/renderer/architecture-proposal.ts";
 import {
   runSysonSmoke,
   type SysonSmokeCompiledInput,

@@ -117,8 +117,9 @@ code-owned adapter lowers the semantic action immediately before dispatch; the e
 captures the exact provider resources that were actually observed.
 
 `resolved-operation-plan/1.0` remains readable as an earlier design contract. It is not
-the queue-to-execution authority for recorded analysis. Existing `@1` operations remain
-unchanged; `@2` is a successor vertical, not a reinterpretation of old captures.
+the queue-to-execution authority for isolated analysis. Historical MCP FEA `@1`/`@2`
+and recorded Modelica scenario/seal versions are not registered and cannot be queued.
+Product FEA run is `verify.run-fea-static-proof@3`.
 
 ## Authority rules
 
@@ -142,7 +143,7 @@ unchanged; `@2` is a successor vertical, not a reinterpretation of old captures.
 ## Hexagonal placement
 
 The source, assertion, graph, admission and resolved-plan contracts live in
-`src/domain/analysis/` and import no MCP, storage, provider, UI, Graphology or SysML
+`src/domain/compile/` (`source/`, `admission/`, `rop/`, `brief/`) and import no MCP, storage, provider, UI, Graphology or SysML
 code. Language frontends and provider lowerings are adapters. The agent-facing
 project-control tools validate MCP input and call inward-facing use cases; they do not
 own provider clients or CAS stores. Capture returns
@@ -357,14 +358,13 @@ resumable request, resolved parameters, model, scenario, script, diagnostics, ev
 `run.json` and, on success, result CSV. It publishes normalized observations only: no
 requirement, evaluation, violation, action or verdict is manufactured.
 
-For CalculiX, the `@2` run rereads the historically sealed proof and exact STEP before
-staging the private provider input. Its separately approved execution admission binds
-the current descendant basis and those exact artifacts. It captures the fixed
-nine-resource profile: STEP, request, Gmsh input/log, mesh, CalculiX deck/log/data and
-result. The proof, requirements and result remain distinct inputs to the separate SysON
-evaluation call and its exact request/structured-response capture. These bytes make
-runtime provenance inspectable; they do not claim that an agent-authored arbitrary
-`.inp` deck is accepted or parsed.
+For CalculiX, the isolated `@3` run rereads the historically sealed proof and exact STEP
+before local microVM execution. Its separately approved execution admission binds the
+current descendant basis and those exact artifacts. It publishes the nine isolated
+outputs plus execution evidence, then applies the separately qualified SysON evaluation.
+Historical MCP FEA `@1`/`@2` are not registered and are never redirected to this
+executor. These bytes make runtime provenance inspectable; they do not claim that an
+agent-authored arbitrary `.inp` deck is accepted or parsed.
 
 ## Current authority boundary
 
@@ -448,7 +448,7 @@ Exact ops: [agent workspace golden path](agent-workspace.md#7-golden-path-generi
 
 | This                                                   | Is not                                                      |
 | ------------------------------------------------------ | ----------------------------------------------------------- |
-| Study-base `fail` → `design.apply-vector-correction@1` | A DFM fail, a proof-run `@2` fail, or a BOM gap             |
+| Study-base `fail` → `design.apply-vector-correction@1` | A DFM fail, a proof-run `@3` fail, or a BOM gap             |
 | `industrialize.run-dfm-checks@1`                       | A CalculiX consumer, a `z*` grant, or isolated-geometry DFM |
 | A missing ERP / BOM binding                            | An implied part, a cost, or a fabricate verdict             |
 | A new `design.write-geometry@1` STEP                   | A silent refresh of old FEA, DFM, or BOM facts              |
@@ -575,14 +575,12 @@ bit-identical for existing sources. A sketch is never a valid `result`. `shell` 
 0.11.1 algebra function. `&` remains a D4-rejected token. Modelica and CalculiX compiler
 profiles remain absent and therefore fail closed.
 
-The recorded-analysis provider routes remain available for existing Modelica/CalculiX
-operations. `simulate.run-modelica-scenario@1/@2` and `verify.run-fea-static-proof@1/@2`
-retain their own provider capability ports, MCP adapters, plans and operation-specific
-WALs. They are not fallbacks for `simulate.run-qualified-modelica-kit@1` or
-`verify.run-fea-static-proof@3`, and old ROP2 plans are never redirected to a local
-executor. Conversely, the local Modelica operation remains the one fixed linear-ramp
-conformance kit rather than a replacement for historical arbitrary approved provider
-scenarios. Provider availability, an approved MRTR, a queued run or an isolated-worker
-smoke is never proof of a product execution; that requires the exact registered
-executor, runtime resources and resulting Thread evidence to be composed, captured and
-reread.
+Historical recorded Modelica `@1`/`@2` and MCP FEA `@1`/`@2` are not registered and
+cannot be queued. They are not fallbacks for `simulate.run-qualified-modelica-kit@1`,
+`simulate.run-admitted-modelica@1`, or `verify.run-fea-static-proof@3`, and old ROP2
+plans are never redirected to a local executor. Conversely, the local Modelica
+operation remains the one fixed linear-ramp conformance kit rather than a replacement
+for historical arbitrary approved provider scenarios. Provider availability, an
+approved MRTR, a queued run or an isolated-worker smoke is never proof of a product
+execution; that requires the exact registered executor, runtime resources and
+resulting Thread evidence to be composed, captured and reread.

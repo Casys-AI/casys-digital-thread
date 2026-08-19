@@ -37,8 +37,8 @@ import type {
   ThreadEntityKind,
   ThreadEntityRef,
 } from "../../src/domain/thread/thread-snapshot.ts";
-import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
-import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/shared/stores/file-thread-snapshot-store.ts";
 
 // ---------------------------------------------------------------------------
 // Constants

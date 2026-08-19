@@ -36,7 +36,7 @@ export function buildPreviewThreadCommands(
       command: Deno.execPath(),
       args: [
         "run",
-        "--allow-read=state/local,src/ui/dist/thread,config/projects,config/thread-subjects",
+        "--allow-read=state/local,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json",
         "--allow-write=state/local",
         "--allow-net=127.0.0.1",
         "scripts/serve/serve-native-workbench.ts",

@@ -5,9 +5,9 @@ import type {
   IsolatedCodePolicyRef,
   IsolatedCodeProfileRef,
   IsolatedCodeRuntimeAttestation,
-} from "../../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import type { ModelicaIsolatedInputBundle } from "../../../../domain/modelica/qualified-kit/isolated-execution.ts";
-import type { MicrosandboxLocalRuntimeIdentity } from "../../../../domain/analysis/local-isolation-runtime.ts";
+import type { MicrosandboxLocalRuntimeIdentity } from "../../../../domain/compile/isolation/local-isolation-runtime.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 
 export const MODELICA_ISOLATED_EXECUTION_PROFILE_SCHEMA =

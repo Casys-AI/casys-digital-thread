@@ -4,7 +4,7 @@ import type {
   McpToolClient,
   McpToolResult,
 } from "../application/ports/out/mcp-tool-client.ts";
-import { LiveThreadUpdateStore } from "./stores/live-thread-update-store.ts";
+import { LiveThreadUpdateStore } from "./shared/stores/live-thread-update-store.ts";
 import {
   RecordingMcpToolClient,
   type RecordingMcpToolEvent,

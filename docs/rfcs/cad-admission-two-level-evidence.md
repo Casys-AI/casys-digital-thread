@@ -564,7 +564,7 @@ dire `unavailable` / pas d'autorité FEA — jamais « le STEP isolé _est_ un p
 | `src/adapters/executors/design-execute-build123d-run-executor.ts`                 | 3      | lève le mur `diagnostics.length === 0` **seulement** si 1.1 |
 | `src/domain/analysis/isolated-geometry-seal-proposal.ts`                          | 3      | paramètre niveau si 1.1                                     |
 | `src/adapters/executors/design-seal-isolated-geometry-run-executor.ts`            | 3      | capture 1.1                                                 |
-| `src/adapters/executors/analyze-seal-sensitivity-study-run-executor.ts`           | 3      | erreur typée ; accepter capture 1.1                         |
+| `src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts`           | 3      | erreur typée ; accepter capture 1.1                         |
 | `src/ui/src/project/review-decision-model.ts`                                     | 4      | kind `compilation`                                          |
 | `src/ui/src/thread/geometry-decision-model.ts` (ou sibling compilation)           | 4      | parseur 1.1                                                 |
 | `docs/reference/analysis-authority-pipeline.md`                                   | 2–3    | gradient, plus « only ready-for-review » (`:630`)           |

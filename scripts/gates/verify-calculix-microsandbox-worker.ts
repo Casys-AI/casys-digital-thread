@@ -13,21 +13,21 @@ import {
   validateCalculixIsolatedOutputBatch,
   validateCalculixIsolatedRequestDocument,
   validateCalculixIsolatedStaticResult,
-} from "../../src/domain/analysis/calculix-isolated-execution.ts";
-import { CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR } from "../../src/adapters/validators/calculix-isolated-output-batch-inspector.ts";
-import { validateMechanicalProofCase } from "../../src/domain/analysis/mechanical-proof-case.ts";
-import { fingerprintResourceBytes } from "../../src/domain/analysis/provider-resource-reader.ts";
+} from "../../src/domain/fea/isolated-v3/calculix-isolated-execution.ts";
+import { CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR } from "../../src/adapters/fea/isolated-v3/calculix-isolated-output-batch-inspector.ts";
+import { validateMechanicalProofCase } from "../../src/domain/fea/seal-case/mechanical-proof-case.ts";
+import { fingerprintResourceBytes } from "../../src/domain/compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
-import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../../src/adapters/execution-profiles/calculix-static-proof-v1/worker-contract.ts";
+import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../../src/adapters/fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
 
 const DEFAULT_IMAGE = "casys/calculix-microsandbox-worker:gate";
 const DEFAULT_PROOF =
   "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json";
 const DEFAULT_STEP =
   "state/local/thread-assets/c2f04aa6660caad85bc1a179d64ab2f68cd966781a2646a5c8e8be308fbe187f.step";
-const WRAPPER = "src/adapters/execution-profiles/calculix-static-proof-v1/run.ts";
+const WRAPPER = "src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts";
 const WORKER_CONTRACT =
-  "src/adapters/execution-profiles/calculix-static-proof-v1/worker-contract.ts";
+  "src/adapters/fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
 const DENO_LOCK = "images/calculix-microsandbox-worker/deno.lock";
 const MAXIMUM_OUTPUT_FILE_BYTES = 128 * 1_048_576;
 const MAXIMUM_OUTPUT_TOTAL_BYTES = 256 * 1_048_576;

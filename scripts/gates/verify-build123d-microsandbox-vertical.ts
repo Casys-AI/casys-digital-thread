@@ -12,13 +12,13 @@
  *   scripts/gates/verify-build123d-microsandbox-vertical.ts --run
  */
 
-import { createBuild123dExecutionComposition } from "../../src/adapters/execution/build123d-execution-composition.ts";
-import { OcctStepOutputValidator } from "../../src/adapters/validators/occt-step-output-validator.ts";
+import { createBuild123dExecutionComposition } from "../../src/adapters/cad/isolated/build123d-execution-composition.ts";
+import { OcctStepOutputValidator } from "../../src/adapters/cad/isolated/occt-step-output-validator.ts";
 import {
   ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
   isolatedCodeExecutionReceiptRecord,
-} from "../../src/domain/analysis/isolated-code-execution.ts";
-import { fingerprintResourceBytes } from "../../src/domain/analysis/provider-resource-reader.ts";
+} from "../../src/domain/compile/isolation/isolated-code-execution.ts";
+import { fingerprintResourceBytes } from "../../src/domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
   sha256Fingerprint,

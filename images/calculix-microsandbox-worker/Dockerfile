@@ -38,10 +38,10 @@ ENV DENO_DIR=/opt/casys/deno-cache \
     TMPDIR=/tmp
 
 COPY --chmod=0555 \
-  src/adapters/execution-profiles/calculix-static-proof-v1/run.ts \
+  src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts \
   /opt/casys/profiles/calculix-static-proof-v1/run.ts
 COPY --chmod=0444 \
-  src/adapters/execution-profiles/calculix-static-proof-v1/worker-contract.ts \
+  src/adapters/fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts \
   /opt/casys/profiles/calculix-static-proof-v1/worker-contract.ts
 COPY --chmod=0444 \
   images/calculix-microsandbox-worker/deno.lock \

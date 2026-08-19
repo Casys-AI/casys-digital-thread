@@ -691,11 +691,11 @@ links, dependency cycles, inconsistent lifecycle timestamps, contradictory
 decision/approval states, undeclared snapshot revisions, and mismatched execution
 inputs.
 
-[`FileEngineeringProjectStore`](../../src/adapters/stores/engineering-project-store.ts)
+[`FileEngineeringProjectStore`](../../src/adapters/shared/stores/engineering-project-store.ts)
 is the validated tracked-manifest loader used only when a controlled deployment provides
 an explicit matching project ID and manifest path. Normal composition has no implicit
 product seed.
-[`FileEngineeringProjectRevisionStore`](../../src/adapters/stores/engineering-project-store.ts)
+[`FileEngineeringProjectRevisionStore`](../../src/adapters/shared/stores/engineering-project-store.ts)
 then owns append-only active state under `state/local/engineering-projects/<project>/`.
 Each numbered revision is deterministic JSON; an exclusive claim file is the
 cross-process compare-and-swap boundary. A claimed but unpublished head fails closed.

@@ -1,6 +1,6 @@
 # How-to: preview the native digital-thread Workbench
 
-Use this guide to inspect the single-shell Preact cockpit against the distinct truth
+Use this guide to inspect the single-shell React + Vite cockpit against the distinct truth
 surfaces it can render:
 
 - the project objective, living brief, phases, work, decisions and blockers declared by
@@ -31,9 +31,9 @@ thread head, or another project with the same subject.
 
 `desk-lamp-dl04` is a useful focused project: sealed geometry, requirements, and proof
 evidence. `desk-lamp-dl05` continues into sensitivity. A
-`verify.run-fea-static-proof@2` success is only a captured, reread Thread
+`verify.run-fea-static-proof@3` success is only a captured, reread Thread
 revision under `state/local/` (gitignored). If that revision is absent, the cockpit must
-not present `@1` as `@2`. Activity promotes later demo-loop documents with literal
+not present historical MCP `@1`/`@2` as `@3`. Activity promotes later demo-loop documents with literal
 labels: `measured DFM`, `study-base evaluation`, `corrected source`. A missing
 card means the run was not persisted, not that it passed.
 
@@ -47,7 +47,7 @@ The task starts Vite with HMR at the human URL and the read-only Deno BFF behind
 
 ```text
 http://127.0.0.1:5173/          Vite cockpit (default)
-http://127.0.0.1:5175/          BFF API / SSE; `preview:cockpit` frozen shell
+http://127.0.0.1:5175/          BFF API / SSE; `preview:cockpit` hashed-asset shell
 ```
 
 No Docker service, Console MCP server, MCP Apps host, or provider MCP is required to
@@ -409,12 +409,13 @@ It does **not** prove:
 
 ## Compare the preview paths
 
-| Command                    | Address                  | Purpose                                      |
-| -------------------------- | ------------------------ | -------------------------------------------- |
-| `deno task preview:thread` | `http://127.0.0.1:5173/` | Vite HMR cockpit; `/api` proxies to :5175 |
+| Command                     | Address                  | Purpose                                                      |
+| --------------------------- | ------------------------ | ------------------------------------------------------------ |
+| `deno task preview:thread`  | `http://127.0.0.1:5173/` | Vite HMR cockpit; `/api` proxies to :5175                    |
+| `deno task preview:cockpit` | `http://127.0.0.1:5175/` | Same BFF; serves built HTML + hashed JS/CSS from `dist/thread` |
 
-MCP Apps remains useful for one rich tool result or for embedding the complete Workbench
-once in an agent host. It is not used to compose the first-party product page.
+Provider MCP Apps remain useful for one rich tool result in another host. They are not
+used to compose the first-party product page. `preview:browser` refuses.
 
 ## Stop the preview
 

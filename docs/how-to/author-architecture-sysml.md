@@ -88,7 +88,7 @@ Only after a passed captured preview:
    required decision in the **same** append.
 2. `project_decision_propose` — parameters copied from `decisionParameters` in the exact
    order returned. The grammar is the 14 keys in
-   [`architecture-sysml-seal-proposal.ts`](../../src/domain/engineering/architecture-sysml-seal-proposal.ts).
+   [`architecture-sysml-seal-proposal.ts`](../../src/domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts).
 3. Human `project_decision_approve` (MRTR).
 4. `project_agent_run_queue` then `project_agent_run_execute`.
 

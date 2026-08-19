@@ -1,7 +1,7 @@
 import type {
   ArchitectureComponent,
   ArchitectureProposal,
-} from "../../../domain/engineering/architecture-proposal.ts";
+} from "../../../domain/architecture/renderer/architecture-proposal.ts";
 
 export interface ArchitectureBindingRow {
   readonly component: ArchitectureComponent;

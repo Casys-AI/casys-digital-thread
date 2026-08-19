@@ -3,19 +3,19 @@
 import type {
   IsolatedCodeExecutionLimits,
   IsolatedCodePolicyRef,
-} from "../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   validateIsolatedCodeExecutionLimits,
   validateIsolatedCodePolicyRef,
-} from "../../../domain/analysis/isolated-code-execution.ts";
-import { pinnedOciImageReference } from "../../../domain/analysis/local-isolation-runtime.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { pinnedOciImageReference } from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 import { validateAdmittedModelicaIsolatedOutput } from "../../../domain/modelica/admitted/isolated-output.ts";
 import { nonEmptyText } from "../../../domain/kernel/case-validation.ts";
 import type {
   IsolatedCodeRunner,
   IsolatedCodeRunRecovery,
   IsolatedOutputPublicationReader,
-} from "../../../application/ports/out/isolated-code-runner.ts";
+} from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import { FixedAdmittedModelicaExecutionProfileCatalog } from "./execution-profile-catalog.ts";
 import { MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "./closed-subset-v1/worker-contract.ts";
 
@@ -69,9 +69,11 @@ export async function createAdmittedModelicaExecutionComposition(
       MicrosandboxEphemeralExecutionBackend,
     },
   ] = await Promise.all([
-    import("../../../application/use-cases/brokered-isolated-code-runner.ts"),
-    import("../../captures/file-isolated-output-cas.ts"),
-    import("../../execution/microsandbox-ephemeral-execution-backend.ts"),
+    import(
+      "../../../application/use-cases/compile/isolation/brokered-isolated-code-runner.ts"
+    ),
+    import("../../shared/cas/file-isolated-output-cas.ts"),
+    import("../../shared/execution/microsandbox-ephemeral-execution-backend.ts"),
   ]);
   const worker = MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT;
   const backend = new MicrosandboxEphemeralExecutionBackend({

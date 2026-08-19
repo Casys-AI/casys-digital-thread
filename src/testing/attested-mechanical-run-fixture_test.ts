@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { projectThreadWorkbenchSnapshot } from "../adapters/projectors/thread-workbench-projector.ts";
+import { projectThreadWorkbenchSnapshot } from "../adapters/thread/thread-workbench-projector.ts";
 import { materializeAttestedMechanicalRun } from "./attested-mechanical-run-fixture.ts";
 
 Deno.test("attested CAD to FEA evidence becomes a canonical snapshot without an invented verdict", async () => {

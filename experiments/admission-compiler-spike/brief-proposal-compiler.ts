@@ -8,9 +8,9 @@
  * requirements proposal grammar.
  */
 
-import { ProjectBriefSourceAnalyzer } from "../../src/adapters/analyzers/project-brief-source-analyzer.ts";
-import type { OracleRequirement } from "../../src/domain/analysis/proof-case.ts";
-import { renderTargetedOracleRequirementsSysml } from "../../src/domain/analysis/proof-case.ts";
+import { ProjectBriefSourceAnalyzer } from "../../src/adapters/compile/source/project-brief-source-analyzer.ts";
+import type { OracleRequirement } from "../../src/domain/kernel/proof-case.ts";
+import { renderTargetedOracleRequirementsSysml } from "../../src/domain/kernel/proof-case.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -37,13 +37,13 @@ import {
   parseArchitectureProposalParameters,
   renderArchitectureSysmlWithManifest,
   type RenderedArchitectureSysml,
-} from "../../src/domain/engineering/architecture-proposal.ts";
+} from "../../src/domain/architecture/renderer/architecture-proposal.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   parseRequirementsProposalParameters,
   requirementEntriesToOracleRequirements,
   type RequirementsProposal,
-} from "../../src/domain/engineering/requirements-proposal.ts";
+} from "../../src/domain/architecture/requirements/requirements-proposal.ts";
 import { INTEGRATED_SUPPORT_BLOCK_BRIEF } from "./integrated-fixture.ts";
 
 export const EXPLICIT_BRIEF_DECLARATIONS_SCHEMA =

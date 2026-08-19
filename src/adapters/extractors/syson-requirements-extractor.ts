@@ -1,4 +1,4 @@
-import type { OracleRequirement } from "../../domain/analysis/proof-case.ts";
+import type { OracleRequirement } from "../../domain/kernel/proof-case.ts";
 import type { McpToolClient } from "../../application/ports/out/mcp-tool-client.ts";
 
 export interface VerifiedConstraintUsageIdentity {

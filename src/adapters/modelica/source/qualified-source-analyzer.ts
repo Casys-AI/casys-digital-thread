@@ -19,7 +19,7 @@
 import type {
   SourceAnalysisFrontend,
   SourceAnalysisFrontendInput,
-} from "../../../domain/analysis/source-analysis-frontend.ts";
+} from "../../../domain/compile/source/source-analysis-frontend.ts";
 import {
   SOURCE_ANALYSIS_SCHEMA,
   type SourceAnalysisBundle,
@@ -28,7 +28,7 @@ import {
   type SourceAnalysisSymbol,
   type SourceAnalysisUnresolvedConstruct,
   validateSourceAnalysisBundle,
-} from "../../../domain/analysis/source-analysis.ts";
+} from "../../../domain/compile/source/source-analysis.ts";
 import { ModelicaLexicalError } from "../../../domain/modelica/source/lexical.ts";
 import {
   type ModelicaEquationNode,

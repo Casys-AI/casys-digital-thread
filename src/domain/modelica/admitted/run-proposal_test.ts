@@ -13,7 +13,7 @@ import {
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   MICROSANDBOX_LOCAL_RUNTIME_REF,
-} from "../../analysis/local-isolation-runtime.ts";
+} from "../../compile/isolation/local-isolation-runtime.ts";
 
 function fingerprint(character: string) {
   return { algorithm: "sha256", digest: character.repeat(64) } as const;

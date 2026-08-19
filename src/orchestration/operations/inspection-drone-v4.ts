@@ -1,23 +1,6 @@
 import type { RegisteredEngineeringOperation } from "./operation-contract.ts";
-
-/**
- * The only provider-backed architecture operation for the approved V4 drone
- * brief.  It owns a fixed SysML recipe; these bindings are provenance gates,
- * not provider inputs.
- */
-export const INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION = {
-  id: "architecture.author-inspection-drone",
-  version: "3",
-} as const;
-
-/**
- * Read-only successor to the architecture run. The provider is queried only
- * against the content-addressed architecture artifact attached to r3.
- */
-export const INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION = {
-  id: "model.capture-inspection-drone-part-definitions",
-  version: "1",
-} as const;
+import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
+import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
 
 export const INSPECTION_DRONE_V4_ARCHITECTURE_DESCRIPTOR = {
   ...INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,

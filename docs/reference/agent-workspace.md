@@ -10,15 +10,14 @@ locations and ports, see [the workspace map](workspace-map.md) and
 The page is written so an agent can parse it: tables over prose, exact IDs, explicit
 grants, and lookalike pairs that must not be merged.
 
-| § | Open |
-| - | ---- |
+| § | Open                                              |
+| - | ------------------------------------------------- |
 | 3 | [Lookalike traps](lookalike-traps.md) (extracted) |
-| 4 | Surfaces an agent actually calls |
-| 5 | Registered operations |
-| 6 | Implemented language frontends |
-| 7 | Golden path |
-| 8 | Where to put code |
-
+| 4 | Surfaces an agent actually calls                  |
+| 5 | Registered operations                             |
+| 6 | Implemented language frontends                    |
+| 7 | Golden path                                       |
+| 8 | Where to put code                                 |
 
 ## 1. What this repo owns
 
@@ -68,14 +67,14 @@ A queued run is not a published result. Only a captured, reread Thread revision 
 Full tables: [lookalike traps](lookalike-traps.md). Keep this heading so older
 `#3-lookalike-traps` links still land.
 
-| Family | Open |
-| ------ | ---- |
-| SysML | [lookalike traps § SysML](lookalike-traps.md#sysml) |
-| CAD and compile | [lookalike traps § CAD](lookalike-traps.md#cad-and-compile) |
-| Modelica | [lookalike traps § Modelica](lookalike-traps.md#modelica) |
+| Family                       | Open                                                                   |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| SysML                        | [lookalike traps § SysML](lookalike-traps.md#sysml)                    |
+| CAD and compile              | [lookalike traps § CAD](lookalike-traps.md#cad-and-compile)            |
+| Modelica                     | [lookalike traps § Modelica](lookalike-traps.md#modelica)              |
 | FEA, sensitivity, correction | [lookalike traps § FEA](lookalike-traps.md#fea-sensitivity-correction) |
-| DFM and print | [lookalike traps § DFM](lookalike-traps.md#dfm-and-print) |
-| Other | [lookalike traps § Other](lookalike-traps.md#other) |
+| DFM and print                | [lookalike traps § DFM](lookalike-traps.md#dfm-and-print)              |
+| Other                        | [lookalike traps § Other](lookalike-traps.md#other)                    |
 
 ## 4. Surfaces an agent actually calls
 
@@ -85,6 +84,21 @@ Provider MCP ports are private backend dependencies. Loopback CLI:
 the arguments already include `commandId`. `cockpit_focus_set` may omit
 `expectedRevision`. `deno task preview:thread` follows cockpit focus unless
 `--project-id=` pins a vehicle.
+
+### Control-plane fleet reads
+
+Ops tools on the same `:3020/mcp` server. They are not a human page. The retired
+Console MCP App (`ui://casys-digital-thread/console`) is not registered;
+`preview:browser` refuses. Product inspection is `preview:thread` /
+`preview:cockpit`.
+
+| Tool                    | Authority          | Effect                                                                 |
+| ----------------------- | ------------------ | ---------------------------------------------------------------------- |
+| `console_snapshot`      | Read               | Desired versus observed MCP fleet and indexed run summaries            |
+| `console_server_detail` | Read               | One server: desired state, observation, image/trust, drift             |
+| `console_run_list`      | Read               | Indexed engineering-run summaries                                      |
+| `console_run_detail`    | Read               | Evidence, observations, comparison verdict, provenance                 |
+| `console_refresh`       | App-only leftover  | Probe refresh; not listed to ordinary MCP clients; no shipped App calls it |
 
 ### Project lifecycle
 
@@ -444,32 +458,42 @@ Hexagonal. Dependencies point inward. Adapters never become domain authority.
 | Tools       | `src/tools/`                                          | inbound ports    | Own CAS/provider clients                     |
 | Composition | `server.ts`                                           | everything       | Leak handles into domain                     |
 | UI          | `src/ui/src/`                                         | `src/contracts/` | Command authority, MCP credentials           |
-| Tests       | `*_test.ts` colocated; UI tests at `src/ui/*_test.ts` | `@std/assert`    | Preact render tests                          |
+| Tests       | `*_test.ts` colocated; UI tests at `src/ui/*_test.ts` | `@std/assert`    | React/DOM render tests                       |
 
 Second axis: **authority context**, not pipeline verb. Layers stay at
-`src/{domain,application,adapters}/` so the import gate remains prefix-true.
-A new Modelica, CAD or FEA module does **not** land in `domain/analysis/` or a
-flat `adapters/captures/`. File census: [workspace source map](workspace-source-map.md).
+`src/{domain,application,adapters}/` so the import gate remains prefix-true. Compile
+kernel is `src/domain/compile/` (isolation, admission, source, ROP, brief) — not
+`domain/analysis/`. A new Modelica, CAD, FEA or compile module does **not** land in a
+retired dump (`domain/analysis/`, `adapters/captures/`, `adapters/executors/`). Shared
+adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
+[workspace source map](workspace-source-map.md).
 
-| Context        | Domain root              | Do not merge                                              |
-| -------------- | ------------------------ | --------------------------------------------------------- |
-| `modelica`     | `src/domain/modelica/`   | `admitted/` ≠ `qualified-kit/` ≠ `recorded/`              |
-| `project`      | `src/domain/project/`    | Ledger and brief; not Thread bytes                        |
-| `thread`       | `src/domain/thread/`     | Canonical snapshot; not a project command                 |
-| `kernel`       | `src/domain/kernel/`     | Shared primitives only                                    |
-| shared compile | `src/domain/analysis/`   | Isolation + admission used by CAD **and** Modelica; later |
+| Context    | Domain root            | Do not merge                                                       |
+| ---------- | ---------------------- | ------------------------------------------------------------------ |
+| `modelica` | `src/domain/modelica/` | `admitted/` ≠ `qualified-kit/` ≠ `recorded/`                       |
+| `cad`      | `src/domain/cad/`      | `source/` ≠ `isolated/` ≠ `canonical/` ≠ `sealed-isolated/`        |
+| `fea`      | `src/domain/fea/`      | `seal-case/` ≠ `isolated-v3/`                                      |
+| `compile`  | `src/domain/compile/`  | Isolation ≠ admission ≠ source ≠ ROP ≠ brief; CAD **and** Modelica |
+| `project`  | `src/domain/project/`  | Ledger and brief; not Thread bytes                                 |
+| `thread`   | `src/domain/thread/`   | Canonical snapshot; not a project command                          |
+| `kernel`      | `src/domain/kernel/`      | Shared primitives only                                             |
+| `sensitivity` | `src/domain/sensitivity/` | `study/` ≠ `edges/` ≠ `base-evaluation/` ≠ `vector-correction/` ≠ `correction-source/` ≠ `live-fea/` |
+| `control-plane` | `src/application/control-plane/` | Fleet ops service + `console_*` tools. No domain kernel. Not a cockpit page |
 
-The same Modelica split lives under `src/adapters/modelica/` and
-`src/application/{ports,use-cases}/modelica/`. Later contexts (`cad`, `fea`,
-`architecture`, `sensitivity`, `make`) follow the same rule: folder = authority,
-lookalikes stay in sibling directories.
+The same split lives under
+`src/adapters/{modelica,cad,fea,compile,architecture,inspection-drone,sensitivity,make,control-plane,shared}/`
+and `src/application/{ports,use-cases}/{modelica,cad,fea,compile,architecture,sensitivity}/`.
+Folder = authority; lookalikes stay in sibling directories. Control-plane adapters are
+fleet-manifest + run fixtures. Cross-authority adapters (MCP HTTP, project/thread
+stores, microsandbox backend, byte/CAS, generic WAL helpers, executor-run-helpers,
+docker-observer, thread-write-basis-guard) live in `src/adapters/shared/`.
+Context-specific WAL stays next to its executor.
 
-New non-test module → add it to the `deno.json` `check` file list. The omission is
-silent.
+`deno task check` globs `src/adapters/**/*.ts`. Named `check:*` tasks still need their
+path lists updated when a cited file moves.
 
 UI change under `src/ui/src/` → rebuild the product bundle (`build:thread`) and commit
-`src/ui/dist/thread/**`. The leftover `build` → `dist/console` bundle is not a product
-page.
+`src/ui/dist/thread/**`. There is no Console MCP App bundle; `preview:browser` refuses.
 
 ## 9. Persistence roots that matter
 
@@ -498,7 +522,7 @@ Targeted while implementing. Full suites at integration milestones.
 ```bash
 # one colocated test — copy permissions, do not pass a path to deno task test
 deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env \
-  src/domain/engineering/architecture-sysml-parse_test.ts
+  src/domain/architecture/agent-seal/architecture-sysml-parse_test.ts
 
 deno task check          # type-check Deno globs; Vite UI is check:ui
 deno task lint

@@ -11,21 +11,21 @@
  *     experiments/admission-compiler-spike/syson-smoke.ts
  */
 
-import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
 import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";
 import {
   ARCHITECTURE_FEATURE_TYPING_AQL,
   extractArchitectureStructure,
-} from "../../src/adapters/extractors/architecture-structure-extractor.ts";
+} from "../../src/adapters/architecture/renderer/architecture-structure-extractor.ts";
 import { extractAndVerifyOracleRequirements } from "../../src/adapters/extractors/syson-requirements-extractor.ts";
 import {
   type OracleRequirement,
   renderTargetedOracleRequirementsSysml,
-} from "../../src/domain/analysis/proof-case.ts";
+} from "../../src/domain/kernel/proof-case.ts";
 import {
   type ArchitectureProposal,
   renderArchitectureSysmlWithManifest,
-} from "../../src/domain/engineering/architecture-proposal.ts";
+} from "../../src/domain/architecture/renderer/architecture-proposal.ts";
 
 const SYSON_ENDPOINT = "http://127.0.0.1:3009/mcp";
 const PROJECT_NAME_PREFIX = "admission-syson-smoke-";

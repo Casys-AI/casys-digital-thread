@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { approvalModeForBinding, createConsoleServer } from "../../server.ts";
-import { FileEngineeringProjectRevisionStore } from "../../src/adapters/stores/engineering-project-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
 import { EngineeringProjectCommandService } from "../../src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "../../src/application/use-cases/project/project-brief-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";

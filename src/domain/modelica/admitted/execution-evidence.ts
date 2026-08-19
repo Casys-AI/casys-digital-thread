@@ -8,7 +8,7 @@ import {
   type IsolatedCodeExecutionReceiptRecord,
   isolatedCodeExecutionReceiptRecord,
   validateIsolatedCodeExecutionReceiptRecord,
-} from "../../analysis/isolated-code-execution.ts";
+} from "../../compile/isolation/isolated-code-execution.ts";
 import {
   type ModelicaAdmittedRunAdmission,
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
@@ -23,7 +23,7 @@ import {
   safeId,
 } from "../../kernel/case-validation.ts";
 import { sha256Fingerprint } from "../../kernel/deterministic-json.ts";
-import { sha256Hex } from "../../analysis/provider-resource-reader.ts";
+import { sha256Hex } from "../../compile/source/provider-resource-reader.ts";
 
 export const MODELICA_ADMITTED_EXECUTION_CAPTURE_SCHEMA =
   "modelica-admitted-execution-capture/1.0" as const;

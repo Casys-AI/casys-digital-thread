@@ -4,7 +4,7 @@ import type {
 } from "../thread/thread-snapshot.ts";
 import type { IsoDateTime } from "../kernel/primitives.ts";
 import type { EngineeringProjectFraming } from "./project-brief.ts";
-import type { ResolvedOperationPlanRef } from "../analysis/resolved-operation-plan-v2.ts";
+import type { ResolvedOperationPlanRef } from "../compile/rop/resolved-operation-plan-v2.ts";
 
 /**
  * Immutable, transport-independent intent and execution state for one

@@ -1,6 +1,9 @@
 import type { IsoDateTime } from "../domain/kernel/primitives.ts";
 
-/** Fleet and run DTOs for the `console_*` ops tools. Not a human page. */
+/**
+ * Fleet and run DTOs for the `console_*` ops tools. Not a human page.
+ * The cockpit's declared-only fleet card is `src/contracts/cockpit-fleet.ts`.
+ */
 
 export type ConsoleMode = "live" | "mixed" | "demo";
 

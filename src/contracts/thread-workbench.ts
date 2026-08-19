@@ -1,7 +1,8 @@
 /**
  * Browser-safe projection of the linked engineering thread.
  *
- * This contract deliberately contains no MCP transport types. The backend owns
+ * Served by the native Workbench BFF as GET + SSE only. This contract
+ * contains no MCP transport types and no command authority. The backend owns
  * tool calls and projects their persisted, linked evidence into this snapshot.
  */
 

@@ -13,7 +13,7 @@ import {
   validateModelicaIsolatedOutput,
   validateModelicaIsolatedRun,
 } from "../../src/domain/modelica/qualified-kit/isolated-execution.ts";
-import { fingerprintResourceBytes } from "../../src/domain/analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../src/domain/compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
 import { createModelicaMicrosandboxQualificationKit } from "../../src/adapters/modelica/qualified-kit/kit-v1/qualification-kit.ts";
 import { MODELICA_QUALIFIED_KIT_WRAPPER_SHA256 } from "../../src/adapters/modelica/qualified-kit/execution-profile.ts";
@@ -23,8 +23,7 @@ const DEFAULT_IMAGE = "casys/modelica-microsandbox-worker:gate";
 const CONTAINER_PID_LIMIT = 64;
 const WRAPPER = "src/adapters/modelica/qualified-kit/kit-v1/run.ts";
 const DENO_LOCK = "images/modelica-microsandbox-worker/deno.lock";
-const WORKER_CONTRACT =
-  "src/adapters/modelica/qualified-kit/kit-v1/worker-contract.ts";
+const WORKER_CONTRACT = "src/adapters/modelica/qualified-kit/kit-v1/worker-contract.ts";
 const WORKER_CONTRACT_SHA256 =
   "043132ed24db6df3f9ded2e688a70d4cf6527841f626a9134f0ced49a2f61b72";
 const DENO_LOCK_SHA256 =

@@ -74,6 +74,23 @@ not another control room. The Overview only
   color: var(--thread-red);
 }
 
+.geometry-draft-reset {
+  position: absolute;
+  top: var(--space-10);
+  right: var(--space-10);
+  padding: var(--space-6) var(--space-8);
+  border: 1px solid var(--thread-border-strong);
+  color: var(--thread-ink);
+  background: rgba(255, 255, 255, 0.88);
+  font: 700 var(--text-3xs) / 1 var(--mono);
+  cursor: pointer;
+}
+
+.geometry-draft-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 @media (max-width: 720px) {
   .geometry-draft-canvas-shell {
     height: 320px;

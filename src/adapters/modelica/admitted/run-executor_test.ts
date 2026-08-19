@@ -11,8 +11,8 @@ import {
 import type {
   ReopenedTechnicalCompilationAdmission,
   TechnicalCompilationAdmissionReader,
-} from "../../../application/ports/out/technical-compilation-admission-reader.ts";
-import { TECHNICAL_COMPILATION_DRAFT_REFERENCE_SCHEMA } from "../../../application/ports/out/technical-compilation-draft-store.ts";
+} from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import { TECHNICAL_COMPILATION_DRAFT_REFERENCE_SCHEMA } from "../../../application/ports/out/compile/admission/technical-compilation-draft-store.ts";
 import {
   MODELICA_ADMITTED_COMPILED_ADMISSION_SCHEMA,
   MODELICA_ADMITTED_EXECUTION_PROFILE,
@@ -21,8 +21,8 @@ import {
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   MICROSANDBOX_LOCAL_RUNTIME_REF,
-} from "../../../domain/analysis/local-isolation-runtime.ts";
-import { fingerprintSourceAnalysisBundle } from "../../../domain/analysis/source-analysis.ts";
+} from "../../../domain/compile/isolation/local-isolation-runtime.ts";
+import { fingerprintSourceAnalysisBundle } from "../../../domain/compile/source/source-analysis.ts";
 import {
   compileTechnicalSources,
   fingerprintTechnicalCompilationBasis,
@@ -32,13 +32,13 @@ import {
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
   type TechnicalCompilationBasis,
   type TechnicalCompilationProfile,
-} from "../../../domain/analysis/technical-compilation.ts";
+} from "../../../domain/compile/admission/technical-compilation.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
-} from "../../../domain/analysis/technical-compilation-proposal.ts";
+} from "../../../domain/compile/admission/technical-compilation-proposal.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import { reopenAdmittedExecutionRequest } from "./run-executor.ts";
 

@@ -133,13 +133,13 @@ npm --prefix src/ui ci
 npm --prefix src/ui run build:thread
 deno task start                  # http://127.0.0.1:3020/mcp
 # Canonical product shell: one Project tab from first brief to technical proof.
-deno task preview:cockpit              # http://127.0.0.1:5175/ frozen BFF
+deno task preview:cockpit              # http://127.0.0.1:5175/ hashed-asset BFF
 deno task preview:thread               # http://127.0.0.1:5173/ Vite HMR → BFF :5175
 ```
 
 `deno task preview:browser` refuses: the `:3021` harness is not a product page.
 
-The product surface is one native Preact cockpit. Its **Project** tab begins as the
+The product surface is one native React + Vite cockpit. Its **Project** tab begins as the
 living project brief and evolves into the project path and current engineering record;
 there is no separate Discovery page in the product. Project creation, brief review and
 every consequential confirmation remain in the paired conversation. The project exists
@@ -214,11 +214,12 @@ the original immutable records under [`state/local/`](state/local/) remain. They
 audit evidence, not a template, fallback, operation or provider admission. See the
 [archived dossier](docs/legacy/cm01-v3.md).
 
-The shared visual baseline now lives in `@casys/mcp-view`, extracted from the ERPNext
-BOM palette: restrained cards, compact uppercase titles, dense metrics and tables,
-semantic badges, selection state, and container-aware layout. Domain viewers add only
-their specialized diagram, CAD, physics, or evidence rendering. See
-[The mcp-view component language](docs/explanations/mcp-view-component-language.md).
+The cockpit visual baseline lives in this repository (`src/ui/src/ui/*`, local
+`--cockpit-*` tokens): restrained cards, compact titles, dense metrics and tables,
+semantic badges, and container-aware layout. Domain viewers add only their specialized
+diagram, CAD, physics, or evidence rendering. The product does not import
+`@casys/mcp-view`. See
+[The cockpit component language](docs/explanations/mcp-view-component-language.md).
 
 When the engineering services are stopped, the console reports them as unavailable and
 keeps the checked-in bracket run explicitly labelled as demo. The documentation is
@@ -248,7 +249,7 @@ model, and security boundary.
 | `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                                                          |
 | `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence                                       |
 | `docs/README.md`                              | Diátaxis documentation map                                                                                               |
-| `docs/how-to/`                                | Focused operating guides for native workflows and MCP Apps                                                               |
+| `docs/how-to/`                                | Focused operating guides for native workflows                                                                            |
 | `docs/legacy/`                                | Non-executable historical dossiers; never active configuration or admission                                              |
 | `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                                                                    |
 | `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                                                      |
@@ -266,7 +267,7 @@ model, and security boundary.
 | [`@casys/mcp-modelica`](https://jsr.io/@casys/mcp-modelica)                            | JSR      | approved OpenModelica simulation kits and evidence          |
 | [`@casys/constraint-solver`](https://jsr.io/@casys/constraint-solver)                  | JSR      | units-aware evaluation + z3 solving                         |
 | [`@casys/mcp-server`](https://jsr.io/@casys/mcp-server)                                | JSR      | the MCP framework all servers build on                      |
-| [`@casys/mcp-view`](https://jsr.io/@casys/mcp-view)                                    | JSR      | Pure shared components plus optional MCP App runtime        |
+| [`@casys/mcp-view`](https://jsr.io/@casys/mcp-view)                                    | JSR      | Optional result-viewer for provider MCP Apps — not this cockpit |
 | [`engineering-toolchain`](https://github.com/Casys-AI/engineering-toolchain)           | GHCR     | one image bundling the chain + system backends              |
 | [`mcp-modelica`](https://github.com/Casys-AI/mcp-modelica/pkgs/container/mcp-modelica) | GHCR     | pinned OpenModelica + MSL simulation sidecar                |
 | [`@casys/mcp-erpnext`](https://jsr.io/@casys/mcp-erpnext)                              | JSR      | costing side: part structure → ERPNext BOM with real prices |

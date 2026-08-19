@@ -1,5 +1,5 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
-import type { ProjectSensitivityStudySealReviewUseCase } from "../../application/ports/in/project-sensitivity-study-seal-review.ts";
+import type { ProjectSensitivityStudySealReviewUseCase } from "../../application/ports/in/sensitivity/study/project-sensitivity-study-seal-review.ts";
 import {
   OBJECT_OUTPUT_SCHEMA,
   PROJECT_ID,

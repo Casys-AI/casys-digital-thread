@@ -7,6 +7,7 @@ Deno.test("planning Workbench is a native project-path surface, not an empty evi
 
   assertStringIncludes(source, "export function PlanningWorkbench");
   assertStringIncludes(source, "Living project brief");
+  assertStringIncludes(source, "ProjectBriefElicitation");
   assertStringIncludes(source, "Project path");
   assertStringIncludes(source, "What the path contains");
   assertStringIncludes(source, "Documentary baseline not created yet");

@@ -17,21 +17,21 @@
  *   scripts/gates/verify-calculix-microsandbox-vertical.ts --run
  */
 
-import { createCalculixIsolatedExecutionComposition } from "../../src/adapters/execution/calculix-isolated-execution-composition.ts";
-import { CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR } from "../../src/adapters/validators/calculix-isolated-output-batch-inspector.ts";
+import { createCalculixIsolatedExecutionComposition } from "../../src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
+import { CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR } from "../../src/adapters/fea/isolated-v3/calculix-isolated-output-batch-inspector.ts";
 import {
   CALCULIX_ISOLATED_OUTPUT_MANIFEST,
   type CalculixIsolatedStaticResult,
   createCalculixIsolatedInputBundle,
   validateCalculixIsolatedOutput,
   validateCalculixIsolatedOutputBatch,
-} from "../../src/domain/analysis/calculix-isolated-execution.ts";
+} from "../../src/domain/fea/isolated-v3/calculix-isolated-execution.ts";
 import {
   isolatedCodeOutputManifestsEqual,
-} from "../../src/domain/analysis/isolated-code-execution.ts";
-import { validateMechanicalProofCase } from "../../src/domain/analysis/mechanical-proof-case.ts";
-import { fingerprintResourceBytes } from "../../src/domain/analysis/provider-resource-reader.ts";
-import { validateResolvedOperationPlanV2 } from "../../src/domain/analysis/resolved-operation-plan-v2.ts";
+} from "../../src/domain/compile/isolation/isolated-code-execution.ts";
+import { validateMechanicalProofCase } from "../../src/domain/fea/seal-case/mechanical-proof-case.ts";
+import { fingerprintResourceBytes } from "../../src/domain/compile/source/provider-resource-reader.ts";
+import { validateResolvedOperationPlanV2 } from "../../src/domain/compile/rop/resolved-operation-plan-v2.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -48,7 +48,7 @@ if (Deno.args.length !== 1 || Deno.args[0] !== "--run") {
 
 const IMAGE_DIGEST = "9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2";
 const IMAGE_REFERENCE = `casys/calculix-microsandbox-worker@sha256:${IMAGE_DIGEST}`;
-const WRAPPER_PATH = "src/adapters/execution-profiles/calculix-static-proof-v1/run.ts";
+const WRAPPER_PATH = "src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts";
 const WRAPPER_SHA256 =
   "507c29da72e346aa87465ce96572b19b42e96105c64b2854be73d6894592e4e2";
 const PROOF_CAPTURE_SHA256 =

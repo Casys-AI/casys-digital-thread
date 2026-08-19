@@ -36,7 +36,7 @@ let root = "/Users/erwanpesle/Documents/GitHub/casys-digital-thread";
 let common_prompt = "Read with read_file/grep before answering: ";
 common_prompt += root + "/src/ui/src/thread/version-history.tsx, ";
 common_prompt += root + "/src/ui/src/thread/versioned-provenance-model.ts, ";
-common_prompt += root + "/src/adapters/projectors/evidence-family-graph.ts, ";
+common_prompt += root + "/src/adapters/thread/evidence-family-graph.ts, ";
 common_prompt += root + "/src/ui/src/project/model.ts (PROJECT_PATH_PRESENTATION_POLICY and architectureVersionAttachments). ";
 common_prompt += "This is design only. Do not edit files. Empty must/must_not is invalid unless you read those files.";
 

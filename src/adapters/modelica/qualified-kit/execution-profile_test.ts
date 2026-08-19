@@ -8,7 +8,7 @@ import {
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   MICROSANDBOX_LOCAL_RUNTIME_REF,
-} from "../../../domain/analysis/local-isolation-runtime.ts";
+} from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 import { MODELICA_ISOLATED_EXECUTION_PROFILE } from "../../../domain/modelica/qualified-kit/isolated-execution.ts";
 
 const DIGEST = "a".repeat(64);

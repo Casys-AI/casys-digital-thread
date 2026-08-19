@@ -5,40 +5,40 @@ import type {
   EngineeringThreadEntityRef,
 } from "../../domain/project/engineering-project.ts";
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
-import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/engineering/part-definitions-capture.ts";
-import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
-import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/engineering/geometry-proposal.ts";
-import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
-import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/analysis/technical-compilation-proposal.ts";
-import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/analysis/apply-correction-source.ts";
-import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
-import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
-import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/analysis/vector-correction-proposal.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/architecture/renderer/architecture-proposal.ts";
+import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
+import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/cad/canonical/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
+import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/sensitivity/correction-source/apply-correction-source.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
+import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
+import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
-import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
-import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "./recorded-analysis.ts";
+import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
+import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "./fea-isolated-static-proof.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
-} from "../../domain/analysis/sensitivity-study-proposal.ts";
-import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/analysis/sensitivity-base-evaluation.ts";
+} from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
+import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
 import {
   INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
   INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
-} from "../../domain/analysis/printability-proposal.ts";
+} from "../../domain/make/printability/printability-proposal.ts";
 import {
   INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION,
   INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
-} from "../../domain/analysis/print-estimate-proposal.ts";
+} from "../../domain/make/print-estimate/print-estimate-proposal.ts";
 import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
-} from "../../domain/analysis/dfm-proposal.ts";
+} from "../../domain/make/dfm/dfm-proposal.ts";
 import {
   type EngineeringOperationBasisKind,
   type EngineeringOperationRegistry,
@@ -850,10 +850,10 @@ const OPERATIONS = [
     ],
   },
   ...listInspectionDroneV4OperationDescriptors(),
-  // The recorded-analysis descriptors become reachable only with the
+  // Isolated FEA @3 descriptors become reachable only with the
   // composition-root resolver/sealer and fixed executors. Their provider
   // details remain absent from this planning boundary.
-  ...RECORDED_ANALYSIS_OPERATION_DESCRIPTORS,
+  ...FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS,
 ] as const satisfies readonly RegisteredEngineeringOperation[];
 
 const OPERATION_BY_KEY = new Map(

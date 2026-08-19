@@ -28,11 +28,11 @@ import {
   validateIsolatedCodePolicyRef,
   validateIsolatedCodeProfileRef,
   validateIsolatedCodeRuntimeAttestation,
-} from "../../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   validateMicrosandboxLocalRuntimeIdentity,
-} from "../../../../domain/analysis/local-isolation-runtime.ts";
+} from "../../../../domain/compile/isolation/local-isolation-runtime.ts";
 import {
   fingerprintTechnicalCompilationBasis,
   fingerprintTechnicalCompilationDocument,
@@ -43,13 +43,13 @@ import {
   type TechnicalCompilationProjection,
   validateTechnicalCompilationDocument,
   validateTechnicalCompilationProfileCatalog,
-} from "../../../../domain/analysis/technical-compilation.ts";
+} from "../../../../domain/compile/admission/technical-compilation.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
   parseTechnicalCompilationAdmissionParameters,
   type TechnicalCompilationAdmission,
-} from "../../../../domain/analysis/technical-compilation-proposal.ts";
+} from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import {
   deepFreeze,
   exactRecord,
@@ -75,8 +75,8 @@ import {
 import type {
   ReopenedTechnicalCompilationAdmission,
   TechnicalCompilationAdmissionReader,
-} from "../../../ports/out/technical-compilation-admission-reader.ts";
-import { TECHNICAL_COMPILATION_DRAFT_REFERENCE_SCHEMA } from "../../../ports/out/technical-compilation-draft-store.ts";
+} from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import { TECHNICAL_COMPILATION_DRAFT_REFERENCE_SCHEMA } from "../../../ports/out/compile/admission/technical-compilation-draft-store.ts";
 
 export type ProjectAdmittedModelicaRunReviewErrorCode =
   | "invalid_request"

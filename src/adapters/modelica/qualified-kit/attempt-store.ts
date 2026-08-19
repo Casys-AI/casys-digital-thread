@@ -25,7 +25,7 @@ import {
   validateIsolatedCodeProfileRef,
   validateIsolatedOutputProducerGeneration,
   validateIsolatedOutputProducerGenerationAdvance,
-} from "../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   MODELICA_ISOLATED_INPUT_BUNDLE_SCHEMA,
   MODELICA_LOCAL_QUALIFIED_KIT,
@@ -51,14 +51,14 @@ import {
 import {
   compareAsciiCodeUnits,
   sha256Hex,
-} from "../../../domain/analysis/provider-resource-reader.ts";
+} from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   validateModelicaMicrosandboxQualificationReference,
 } from "../../../domain/modelica/qualified-kit/microsandbox-qualification.ts";
 import {
   replaceAttemptFileDurably,
   writeNewAttemptFileDurably,
-} from "../../wal/durable-attempt-file-writes.ts";
+} from "../../shared/wal/durable-attempt-file-writes.ts";
 
 export const MODELICA_ISOLATED_EXECUTION_ATTEMPT_SCHEMA =
   "modelica-qualified-kit-execution-attempt/1.0" as const;

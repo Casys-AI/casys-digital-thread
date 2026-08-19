@@ -15,11 +15,11 @@ import {
   type ProviderResourceReader,
   sha256Hex,
   validateExpectedProviderResource,
-} from "../../../../domain/analysis/provider-resource-reader.ts";
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
 import {
   FileByteStore,
   type VerifiedStoredBytes,
-} from "../../../captures/file-byte-store.ts";
+} from "../../../shared/cas/file-byte-store.ts";
 
 export const MODELICA_QUALIFIED_SOURCE_CAPTURE_SCHEMA =
   "modelica-qualified-source-capture/1.0" as const;

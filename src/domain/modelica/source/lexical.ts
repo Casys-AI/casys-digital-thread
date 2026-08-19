@@ -18,7 +18,7 @@
 import type {
   SourceAnalysisLocation,
   SourceAnalysisSpan,
-} from "../../analysis/source-analysis.ts";
+} from "../../compile/source/source-analysis.ts";
 
 export type ModelicaLexicalErrorCode =
   | "unrecognized_token"

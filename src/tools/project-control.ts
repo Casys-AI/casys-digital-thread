@@ -10,7 +10,7 @@ import {
   assertUncertainWriterBasisReleaseProposal,
   isUncertainWriterBasisReleaseDecision,
   uncertainWriterBasisReleaseBaseSnapshot,
-} from "../domain/project/uncertain-writer-basis-release.ts";
+} from "../domain/record/uncertain-writer-basis-release.ts";
 import { getRegisteredEngineeringOperation } from "../orchestration/operations/registry.ts";
 import type { ProjectRunExecutor } from "../application/ports/in/project-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../application/use-cases/project/engineering-project-command-service.ts";
@@ -18,7 +18,7 @@ import type { ResolvedRunPlanReader } from "../domain/project/resolved-run-plan-
 import {
   type ResolvedOperationPlanV2,
   sameResolvedOperationPlanRef,
-} from "../domain/analysis/resolved-operation-plan-v2.ts";
+} from "../domain/compile/rop/resolved-operation-plan-v2.ts";
 import type { ProjectReviewIntentStore } from "../application/ports/out/project-review-intent-store.ts";
 import type {
   ProjectReviewIntent,
@@ -66,6 +66,10 @@ import {
   registerProjectTechnicalCompilationTools,
 } from "./project-control/technical-compilation-tools.ts";
 import {
+  type ProjectModelicaReviewToolDependencies,
+  registerProjectModelicaReviewTools,
+} from "./project-control/modelica-review-tools.ts";
+import {
   type ProjectArchitectureSysmlToolDependencies,
   registerProjectArchitectureSysmlTools,
 } from "./project-control/architecture-sysml-tools.ts";
@@ -110,6 +114,7 @@ export interface EngineeringProjectSnapshotReader {
 export interface ProjectControlToolDependencies
   extends
     ProjectTechnicalCompilationToolDependencies,
+    ProjectModelicaReviewToolDependencies,
     ProjectArchitectureSysmlToolDependencies,
     ProjectBriefCompilationToolDependencies,
     ProjectVectorCorrectionToolDependencies,
@@ -201,6 +206,7 @@ export function registerProjectControlTools(
   }
 
   registerProjectTechnicalCompilationTools(app, dependencies);
+  registerProjectModelicaReviewTools(app, dependencies);
   registerProjectArchitectureSysmlTools(app, dependencies);
   registerProjectBriefCompilationTools(app, dependencies);
   registerProjectVectorCorrectionTools(app, dependencies);

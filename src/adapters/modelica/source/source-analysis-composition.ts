@@ -18,7 +18,7 @@ import {
   type TechnicalSourceAnalysisProfile,
   type TechnicalSourceAnalysisProfileRegistration,
   validateTechnicalSourceAnalysisProfile,
-} from "../../captures/technical-source-analysis-capture.ts";
+} from "../../compile/captures/technical-source-analysis-capture.ts";
 
 export const QUALIFIED_MODELICA_MAX_SOURCE_BYTES = 262_144;
 

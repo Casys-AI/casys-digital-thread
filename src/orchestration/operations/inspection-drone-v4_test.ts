@@ -3,10 +3,8 @@ import {
   getRegisteredEngineeringOperation,
   validateRegisteredEngineeringOperationInput,
 } from "./registry.ts";
-import {
-  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
-  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
-} from "./inspection-drone-v4.ts";
+import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
+import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
 
 Deno.test("inspection-drone V4 architecture is an exact reviewed two-binding operation", () => {
   const operation = getRegisteredEngineeringOperation(

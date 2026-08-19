@@ -15,7 +15,7 @@ import type {
   IsolatedCodeRunner,
   IsolatedCodeRunRecovery,
   IsolatedOutputPublicationReader,
-} from "../../../ports/out/isolated-code-runner.ts";
+} from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   createModelicaIsolatedExecutionCapture,
   type ModelicaIsolatedExecutionCapture,
@@ -27,7 +27,7 @@ import {
   type IsolatedOutputProducerGeneration,
   validateContentFingerprint,
   validateIsolatedCodeExecutionRequest,
-} from "../../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   assertModelicaBundleMethod,
   type ModelicaIsolatedEvidence,
@@ -41,7 +41,7 @@ import {
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
-import { fingerprintResourceBytes } from "../../../../domain/analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
 import { safeId } from "../../../../domain/kernel/case-validation.ts";
 import { validateModelicaMicrosandboxQualificationReference } from "../../../../domain/modelica/qualified-kit/microsandbox-qualification.ts";
 

@@ -2,7 +2,6 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import tailwindcss from "@tailwindcss/vite";
-import { viteSingleFile } from "vite-plugin-singlefile";
 
 function trimGeneratedHtml(): Plugin {
   return {
@@ -58,7 +57,6 @@ function environmentPort(name: string, fallback: number): number {
 export default defineConfig({
   plugins: [
     tailwindcss(),
-    viteSingleFile(),
     trimGeneratedHtml(),
     workbenchRootRewrite(),
   ],
@@ -78,8 +76,6 @@ export default defineConfig({
   build: {
     outDir: "dist/thread",
     emptyOutDir: true,
-    cssCodeSplit: false,
-    assetsInlineLimit: 100_000_000,
     rollupOptions: {
       input: resolve(root, "native-workbench.html"),
     },

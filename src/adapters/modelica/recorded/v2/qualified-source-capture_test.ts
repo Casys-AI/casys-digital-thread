@@ -2,8 +2,8 @@ import { assertEquals, assertRejects } from "@std/assert";
 import {
   createProviderResourceRead,
   fingerprintResourceBytes,
-} from "../../../../domain/analysis/provider-resource-reader.ts";
-import { FileByteStore } from "../../../captures/file-byte-store.ts";
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
+import { FileByteStore } from "../../../shared/cas/file-byte-store.ts";
 import { ModelicaQualifiedSourceCaptureService } from "./qualified-source-capture.ts";
 
 Deno.test("qualified Modelica source capture rejects invalid UTF-8 even when its content hash is exact", async () => {

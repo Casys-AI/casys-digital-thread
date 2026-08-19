@@ -8,6 +8,18 @@
 
 import type { SimulationCaseV2 } from "./simulation-case-v2.ts";
 
+/** Historical recorded Modelica seal. Not registered; cannot be queued. */
+export const SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION = {
+  id: "simulate.seal-simulation-case",
+  version: "2",
+} as const;
+
+/** Historical recorded Modelica scenario run. Not registered; cannot be queued. */
+export const SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION = {
+  id: "simulate.run-modelica-scenario",
+  version: "2",
+} as const;
+
 type DecisionValue = string | number | boolean;
 type DecisionParameter = {
   readonly key: string;

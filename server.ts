@@ -7,15 +7,18 @@ import {
 import {
   DockerComposeObserver,
   type DockerObserver,
-} from "./src/adapters/docker-observer.ts";
-import { HttpMcpProbe, type McpProbe } from "./src/adapters/mcp/http-mcp-probe.ts";
-import { HttpMcpToolClient } from "./src/adapters/mcp/http-mcp-tool-client.ts";
-import { loadFleetManifest } from "./src/adapters/manifest.ts";
+} from "./src/adapters/shared/docker-observer.ts";
+import {
+  HttpMcpProbe,
+  type McpProbe,
+} from "./src/adapters/shared/mcp/http-mcp-probe.ts";
+import { HttpMcpToolClient } from "./src/adapters/shared/mcp/http-mcp-tool-client.ts";
+import { loadFleetManifest } from "./src/adapters/control-plane/manifest.ts";
 import {
   isExplicitLoopbackHostname,
   requestUsesExplicitLoopbackHost,
 } from "./src/adapters/loopback-host.ts";
-import { FileThreadSnapshotStore } from "./src/adapters/stores/file-thread-snapshot-store.ts";
+import { FileThreadSnapshotStore } from "./src/adapters/shared/stores/file-thread-snapshot-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -30,132 +33,130 @@ import {
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-} from "./src/adapters/captures/file-capture-store.ts";
-import { parseExactArchitectureCapture } from "./src/adapters/captures/architecture-capture.ts";
-import { FileCataloguedMechanicalProofCaseReader } from "./src/adapters/captures/file-catalogued-mechanical-proof-case-reader.ts";
-import { CaptureBackedFeaProofSealRequirementsReviewer } from "./src/adapters/captures/capture-backed-fea-proof-seal-requirements-reviewer.ts";
-import { PythonCadSourceAnalyzer } from "./src/adapters/analyzers/python-cad-source-analyzer.ts";
+} from "./src/adapters/shared/cas/file-capture-store.ts";
+import { parseExactArchitectureCapture } from "./src/adapters/architecture/renderer/architecture-capture.ts";
+import { FileCataloguedMechanicalProofCaseReader } from "./src/adapters/fea/seal-case/file-catalogued-mechanical-proof-case-reader.ts";
+import { CaptureBackedFeaProofSealRequirementsReviewer } from "./src/adapters/fea/seal-case/capture-backed-fea-proof-seal-requirements-reviewer.ts";
+import { PythonCadSourceAnalyzer } from "./src/adapters/cad/source/python-cad-source-analyzer.ts";
 import {
   PROJECT_BRIEF_SOURCE_ANALYZER_ID,
   PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
   ProjectBriefSourceAnalyzer,
-} from "./src/adapters/analyzers/project-brief-source-analyzer.ts";
-import { BriefSourceAnalysisCaptureService } from "./src/adapters/captures/brief-source-analysis-capture.ts";
-import { CaptureBackedTechnicalCompilationBasisResolver } from "./src/adapters/captures/technical-compilation-basis-resolver.ts";
-import { CaptureBackedTechnicalCompilationSourceReader } from "./src/adapters/compilers/capture-backed-technical-compilation-source-reader.ts";
-import { CaptureBackedTechnicalCompilationAdmissionReader } from "./src/adapters/compilers/capture-backed-technical-compilation-admission-reader.ts";
+} from "./src/adapters/compile/source/project-brief-source-analyzer.ts";
+import { BriefSourceAnalysisCaptureService } from "./src/adapters/compile/captures/brief-source-analysis-capture.ts";
+import { CaptureBackedTechnicalCompilationBasisResolver } from "./src/adapters/compile/captures/technical-compilation-basis-resolver.ts";
+import { CaptureBackedTechnicalCompilationSourceReader } from "./src/adapters/compile/admission/capture-backed-technical-compilation-source-reader.ts";
+import { CaptureBackedTechnicalCompilationAdmissionReader } from "./src/adapters/compile/admission/capture-backed-technical-compilation-admission-reader.ts";
 import {
   FileBuild123dExecutionCaptureStore,
   FileBuild123dExecutionDraftStore,
-} from "./src/adapters/captures/build123d-execution-evidence.ts";
-import { FileTechnicalCompilationDraftStore } from "./src/adapters/compilers/file-technical-compilation-draft-store.ts";
-import { FixedTechnicalCompilationProfileCatalogProvider } from "./src/adapters/compilers/fixed-technical-compilation-profile-catalog-provider.ts";
-import { createInitialTechnicalSourceAnalysisCaptureService } from "./src/adapters/compilers/initial-technical-source-analysis-composition.ts";
-import { createArchitectureSysmlSourceAnalysisCaptureService } from "./src/adapters/compilers/architecture-sysml-source-analysis-composition.ts";
-import { QualifiedArchitectureSysmlAnalyzer } from "./src/adapters/analyzers/qualified-architecture-sysml-analyzer.ts";
-import { PreviewProjectArchitectureSysml } from "./src/application/use-cases/preview-project-architecture-sysml.ts";
-import { PrepareProjectBriefArchitectureReview } from "./src/application/use-cases/prepare-project-brief-architecture-review.ts";
-import { PrepareProjectBriefRequirementsReview } from "./src/application/use-cases/prepare-project-brief-requirements-review.ts";
-import type { ProjectArchitectureSysmlSourceCaptureUseCase } from "./src/application/ports/in/project-architecture-sysml-source-capture.ts";
+} from "./src/adapters/cad/isolated/build123d-execution-evidence.ts";
+import { FileTechnicalCompilationDraftStore } from "./src/adapters/compile/admission/file-technical-compilation-draft-store.ts";
+import { FixedTechnicalCompilationProfileCatalogProvider } from "./src/adapters/compile/admission/fixed-technical-compilation-profile-catalog-provider.ts";
+import { createInitialTechnicalSourceAnalysisCaptureService } from "./src/adapters/compile/captures/initial-technical-source-analysis-composition.ts";
+import { createArchitectureSysmlSourceAnalysisCaptureService } from "./src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
+import { QualifiedArchitectureSysmlAnalyzer } from "./src/adapters/architecture/agent-seal/qualified-architecture-sysml-analyzer.ts";
+import { PreviewProjectArchitectureSysml } from "./src/application/use-cases/architecture/agent-seal/preview-project-architecture-sysml.ts";
+import { PrepareProjectBriefArchitectureReview } from "./src/application/use-cases/architecture/renderer/prepare-project-brief-architecture-review.ts";
+import { PrepareProjectBriefRequirementsReview } from "./src/application/use-cases/architecture/requirements/prepare-project-brief-requirements-review.ts";
+import type { ProjectArchitectureSysmlSourceCaptureUseCase } from "./src/application/ports/in/architecture/agent-seal/project-architecture-sysml-source-capture.ts";
 import {
   MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
   ModelSealArchitectureSysmlRunExecutor,
-} from "./src/adapters/executors/model-seal-architecture-sysml-run-executor.ts";
-import type { Build123dExecutionServerOptions } from "./src/adapters/execution/build123d-execution-composition.ts";
+} from "./src/adapters/architecture/agent-seal/model-seal-architecture-sysml-run-executor.ts";
+import type { Build123dExecutionServerOptions } from "./src/adapters/cad/isolated/build123d-execution-composition.ts";
 import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
 import { createAdmittedModelicaExecutionComposition } from "./src/adapters/modelica/admitted/execution-composition.ts";
 import { PrepareProjectAdmittedModelicaRunReview } from "./src/application/use-cases/modelica/admitted/prepare-run-review.ts";
 import {
   DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
   DesignSealIsolatedGeometryRunExecutor,
-} from "./src/adapters/executors/design-seal-isolated-geometry-run-executor.ts";
+} from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
-import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/execution/calculix-isolated-execution-composition.ts";
+import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
 import { CodeOwnedModelicaQualifiedKitBundleFactory } from "./src/adapters/modelica/qualified-kit/bundle-factory.ts";
 import {
   FileModelicaMicrosandboxQualificationStore,
   PublicationBackedModelicaMicrosandboxQualificationAuthority,
 } from "./src/adapters/modelica/qualified-kit/microsandbox-qualification.ts";
-import { FileIsolatedOutputCas } from "./src/adapters/captures/file-isolated-output-cas.ts";
+import { FileIsolatedOutputCas } from "./src/adapters/shared/cas/file-isolated-output-cas.ts";
 import { FileModelicaIsolatedExecutionCaptureStore } from "./src/adapters/modelica/qualified-kit/isolated-execution-evidence.ts";
 import { ProjectThreadModelicaQualifiedKitReviewBasisAuthority } from "./src/adapters/modelica/qualified-kit/review-basis-authority.ts";
-import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/preview-project-technical-compilation.ts";
-import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/prepare-project-build123d-execution-review.ts";
-import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/prepare-project-isolated-geometry-seal-review.ts";
-import { PrepareProjectVectorCorrectionReview } from "./src/application/use-cases/prepare-project-vector-correction-review.ts";
-import { PrepareProjectFeaProofSealReview } from "./src/application/use-cases/prepare-project-fea-proof-seal-review.ts";
-import { PrepareProjectFeaRecordedRunReview } from "./src/application/use-cases/prepare-project-fea-recorded-run-review.ts";
-import { PrepareProjectSensitivityBaseEvaluationReview } from "./src/application/use-cases/prepare-project-sensitivity-base-evaluation-review.ts";
-import { PrepareProjectSensitivityStudySealReview } from "./src/application/use-cases/prepare-project-sensitivity-study-seal-review.ts";
-import { PrepareProjectCorrectedAdmissionReview } from "./src/application/use-cases/prepare-project-corrected-admission-review.ts";
+import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/compile/admission/preview-project-technical-compilation.ts";
+import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
+import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
+import { PrepareProjectVectorCorrectionReview } from "./src/application/use-cases/sensitivity/vector-correction/prepare-project-vector-correction-review.ts";
+import { PrepareProjectFeaProofSealReview } from "./src/application/use-cases/fea/seal-case/prepare-project-fea-proof-seal-review.ts";
+import { PrepareProjectFeaIsolatedRunReview } from "./src/application/use-cases/fea/isolated-v3/prepare-project-fea-isolated-run-review.ts";
+import { PrepareProjectSensitivityBaseEvaluationReview } from "./src/application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts";
+import { PrepareProjectSensitivityStudySealReview } from "./src/application/use-cases/sensitivity/study/prepare-project-sensitivity-study-seal-review.ts";
+import { PrepareProjectCorrectedAdmissionReview } from "./src/application/use-cases/sensitivity/correction-source/prepare-project-corrected-admission-review.ts";
 import {
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   DesignApplyVectorCorrectionRunExecutor,
-} from "./src/adapters/executors/design-apply-vector-correction-run-executor.ts";
+} from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
 import {
   COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
   CompileCaptureCorrectedSourceRunExecutor,
-} from "./src/adapters/executors/compile-capture-corrected-source-run-executor.ts";
-import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "./src/adapters/analyzers/qualified-build123d-source-analyzer.ts";
+} from "./src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts";
+import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "./src/adapters/cad/source/qualified-build123d-source-analyzer.ts";
 import { PrepareProjectModelicaQualifiedKitRunReview } from "./src/application/use-cases/modelica/qualified-kit/prepare-run-review.ts";
 import { ExecuteIsolatedModelicaRun } from "./src/application/use-cases/modelica/qualified-kit/execute-isolated-run.ts";
-import type { ProjectTechnicalSourceCaptureUseCase } from "./src/application/ports/in/project-technical-source-capture.ts";
-import { assembleTechnicalSourceCaptureReview } from "./src/domain/analysis/technical-source-capture-review.ts";
-import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/analysis/source-analysis-frontend-registry.ts";
-import { RenderedArchitectureSysmlAnalyzer } from "./src/adapters/analyzers/rendered-architecture-sysml-analyzer.ts";
-import { SysmlSourceAnalysisCaptureService } from "./src/adapters/captures/sysml-source-analysis-capture.ts";
-import { FileSysonModelSeedAttemptStore } from "./src/adapters/wal/file-syson-model-seed-attempt-store.ts";
-import { FileInspectionDroneV4ArchitectureAttemptStore } from "./src/adapters/wal/file-inspection-drone-v4-architecture-attempt-store.ts";
-import { FileArchitectureAttemptStore } from "./src/adapters/wal/file-architecture-attempt-store.ts";
-import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/validators/engineering-project-initial-baseline-evidence-validator.ts";
-import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/executors/approved-brief-baseline-run-executor.ts";
-import { SysonModelSeedRunExecutor } from "./src/adapters/executors/syson-model-seed-run-executor.ts";
-import { InspectionDroneV4ArchitectureRunExecutor } from "./src/adapters/executors/inspection-drone-v4-architecture-run-executor.ts";
-import { InspectionDroneV4PartDefinitionsRunExecutor } from "./src/adapters/executors/inspection-drone-v4-part-definitions-run-executor.ts";
-import { FileInspectionDroneV4PartDefinitionsPublicationStore } from "./src/adapters/wal/file-inspection-drone-v4-part-definitions-publication-store.ts";
-import {
-  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
-  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
-} from "./src/orchestration/operations/inspection-drone-v4.ts";
+import type { ProjectTechnicalSourceCaptureUseCase } from "./src/application/ports/in/compile/admission/project-technical-source-capture.ts";
+import { assembleTechnicalSourceCaptureReview } from "./src/domain/compile/admission/technical-source-capture-review.ts";
+import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/compile/source/source-analysis-frontend-registry.ts";
+import { RenderedArchitectureSysmlAnalyzer } from "./src/adapters/architecture/renderer/rendered-architecture-sysml-analyzer.ts";
+import { SysmlSourceAnalysisCaptureService } from "./src/adapters/architecture/renderer/sysml-source-analysis-capture.ts";
+import { FileSysonModelSeedAttemptStore } from "./src/adapters/architecture/seed/file-syson-model-seed-attempt-store.ts";
+import { FileInspectionDroneV4ArchitectureAttemptStore } from "./src/adapters/inspection-drone/author/file-inspection-drone-v4-architecture-attempt-store.ts";
+import { FileArchitectureAttemptStore } from "./src/adapters/architecture/renderer/file-architecture-attempt-store.ts";
+import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/project/engineering-project-initial-baseline-evidence-validator.ts";
+import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/project/approved-brief-baseline-run-executor.ts";
+import { SysonModelSeedRunExecutor } from "./src/adapters/architecture/seed/syson-model-seed-run-executor.ts";
+import { InspectionDroneV4ArchitectureRunExecutor } from "./src/adapters/inspection-drone/author/inspection-drone-v4-architecture-run-executor.ts";
+import { InspectionDroneV4PartDefinitionsRunExecutor } from "./src/adapters/inspection-drone/part-definitions/inspection-drone-v4-part-definitions-run-executor.ts";
+import { FileInspectionDroneV4PartDefinitionsPublicationStore } from "./src/adapters/inspection-drone/part-definitions/file-inspection-drone-v4-part-definitions-publication-store.ts";
+import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "./src/domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
+import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "./src/domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
 import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   ModelWriteArchitectureRunExecutor,
-} from "./src/adapters/executors/model-write-architecture-run-executor.ts";
-import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "./src/domain/engineering/part-definitions-capture.ts";
-import { ModelCapturePartDefinitionsRunExecutor } from "./src/adapters/executors/model-capture-part-definitions-run-executor.ts";
-import { FilePartDefinitionsPublicationStore } from "./src/adapters/wal/file-part-definitions-publication-store.ts";
+} from "./src/adapters/architecture/renderer/model-write-architecture-run-executor.ts";
+import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "./src/domain/architecture/part-definitions/part-definitions-capture.ts";
+import { ModelCapturePartDefinitionsRunExecutor } from "./src/adapters/architecture/part-definitions/model-capture-part-definitions-run-executor.ts";
+import { FilePartDefinitionsPublicationStore } from "./src/adapters/architecture/part-definitions/file-part-definitions-publication-store.ts";
 import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   DesignWriteGeometryRunExecutor,
-} from "./src/adapters/executors/design-write-geometry-run-executor.ts";
-import { AdmissionBackedGeometryExportAdapter } from "./src/adapters/captures/admission-backed-geometry-export-adapter.ts";
-import type { GeometrySourceAnalysisCaptureDependencies } from "./src/adapters/captures/geometry-source-analysis-capture.ts";
-import { ExportAdmittedProjectGeometry } from "./src/application/use-cases/export-admitted-project-geometry.ts";
+} from "./src/adapters/cad/canonical/design-write-geometry-run-executor.ts";
+import { AdmissionBackedGeometryExportAdapter } from "./src/adapters/cad/canonical/admission-backed-geometry-export-adapter.ts";
+import type { GeometrySourceAnalysisCaptureDependencies } from "./src/adapters/cad/source/geometry-source-analysis-capture.ts";
+import { ExportAdmittedProjectGeometry } from "./src/application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
-} from "./src/adapters/executors/model-write-requirements-run-executor.ts";
+} from "./src/adapters/architecture/requirements/model-write-requirements-run-executor.ts";
 import {
   ARCHIVE_LINEAGE_OPERATION,
   ArchiveLineageRunExecutor,
-} from "./src/adapters/executors/archive-lineage-run-executor.ts";
+} from "./src/adapters/record/archive-lineage-run-executor.ts";
 import {
   RECONCILE_UNCERTAIN_WRITER_OPERATION,
   ReconcileUncertainWriterRunExecutor,
-} from "./src/adapters/executors/reconcile-uncertain-writer-run-executor.ts";
+} from "./src/adapters/record/reconcile-uncertain-writer-run-executor.ts";
 import {
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VerifySealProofCaseRunExecutor,
-} from "./src/adapters/executors/verify-seal-proof-case-run-executor.ts";
+} from "./src/adapters/fea/seal-case/verify-seal-proof-case-run-executor.ts";
 import { FileCanonicalAssetReader } from "./src/adapters/assets/canonical-asset-reader.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   CompileSealAdmissionRunExecutor,
-} from "./src/adapters/executors/compile-seal-admission-run-executor.ts";
+} from "./src/adapters/compile/executors/compile-seal-admission-run-executor.ts";
 import {
   DESIGN_EXECUTE_BUILD123D_OPERATION,
   DesignExecuteBuild123dRunExecutor,
-} from "./src/adapters/executors/design-execute-build123d-run-executor.ts";
+} from "./src/adapters/cad/isolated/design-execute-build123d-run-executor.ts";
 import {
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
   SimulateRunQualifiedModelicaKitRunExecutor,
@@ -164,65 +165,65 @@ import {
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
   SimulateRunAdmittedModelicaRunExecutor,
 } from "./src/adapters/modelica/admitted/run-executor.ts";
-import { VerifyRunFeaStaticProofV3RunExecutor } from "./src/adapters/executors/verify-run-fea-static-proof-v3-run-executor.ts";
-import { DockerVolumeAssetStager } from "./src/adapters/executors/container-asset-stager.ts";
-import { McpCalculixSensitivitySolver } from "./src/adapters/providers/calculix/mcp-calculix-sensitivity-solver.ts";
+import { VerifyRunFeaStaticProofV3RunExecutor } from "./src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts";
+import { DockerVolumeAssetStager } from "./src/adapters/assets/container-asset-stager.ts";
+import { McpCalculixSensitivitySolver } from "./src/adapters/sensitivity/live-fea/mcp-calculix-sensitivity-solver.ts";
 import { IsolatedStepSolverStager } from "./src/adapters/assets/isolated-step-solver-stager.ts";
-import { ExportVolumeGeometryStager } from "./src/adapters/assets/export-volume-geometry-stager.ts";
+import { ExportVolumeGeometryStager } from "./src/adapters/make/printability/export-volume-geometry-stager.ts";
 import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   AnalyzeSealSensitivityStudyRunExecutor,
-} from "./src/adapters/executors/analyze-seal-sensitivity-study-run-executor.ts";
+} from "./src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   AnalyzeRunFeaSensitivityRunExecutor,
-} from "./src/adapters/executors/analyze-run-fea-sensitivity-run-executor.ts";
+} from "./src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts";
 import {
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
   ModelWriteSensitivityEdgesRunExecutor,
-} from "./src/adapters/executors/model-write-sensitivity-edges-run-executor.ts";
+} from "./src/adapters/sensitivity/edges/model-write-sensitivity-edges-run-executor.ts";
 import {
   VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
   VerifyEvaluateSensitivityBaseRunExecutor,
-} from "./src/adapters/executors/verify-evaluate-sensitivity-base-run-executor.ts";
-import { FileFeaSensitivityAttemptStore } from "./src/adapters/wal/file-fea-sensitivity-attempt-store.ts";
+} from "./src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts";
+import { FileFeaSensitivityAttemptStore } from "./src/adapters/sensitivity/live-fea/file-fea-sensitivity-attempt-store.ts";
 import {
   INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
   IndustrializeSealPrintabilityCaseRunExecutor,
-} from "./src/adapters/executors/industrialize-seal-printability-case-run-executor.ts";
+} from "./src/adapters/make/printability/industrialize-seal-printability-case-run-executor.ts";
 import {
   INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION,
   IndustrializeObservePrintabilityRunExecutor,
-} from "./src/adapters/executors/industrialize-observe-printability-run-executor.ts";
+} from "./src/adapters/make/printability/industrialize-observe-printability-run-executor.ts";
 import {
   INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
   IndustrializeSealPrintEstimateCaseRunExecutor,
-} from "./src/adapters/executors/industrialize-seal-print-estimate-case-run-executor.ts";
+} from "./src/adapters/make/print-estimate/industrialize-seal-print-estimate-case-run-executor.ts";
 import {
   INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION,
   IndustrializeObservePrintEstimateRunExecutor,
-} from "./src/adapters/executors/industrialize-observe-print-estimate-run-executor.ts";
-import { FilePrintabilityAttemptStore } from "./src/adapters/wal/file-printability-attempt-store.ts";
-import { FilePrintEstimateAttemptStore } from "./src/adapters/wal/file-print-estimate-attempt-store.ts";
+} from "./src/adapters/make/print-estimate/industrialize-observe-print-estimate-run-executor.ts";
+import { FilePrintabilityAttemptStore } from "./src/adapters/make/printability/file-printability-attempt-store.ts";
+import { FilePrintEstimateAttemptStore } from "./src/adapters/make/print-estimate/file-print-estimate-attempt-store.ts";
 import {
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
   IndustrializeSealDfmCaseRunExecutor,
-} from "./src/adapters/executors/industrialize-seal-dfm-case-run-executor.ts";
+} from "./src/adapters/make/dfm/industrialize-seal-dfm-case-run-executor.ts";
 import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   IndustrializeRunDfmChecksRunExecutor,
-} from "./src/adapters/executors/industrialize-run-dfm-checks-run-executor.ts";
-import { FileDfmCheckAttemptStore } from "./src/adapters/wal/file-dfm-check-attempt-store.ts";
-import { FileSensitivityEdgesAttemptStore } from "./src/adapters/wal/file-sensitivity-edges-attempt-store.ts";
-import { parseSysonModelSeedCapture } from "./src/domain/engineering/syson-model-seed.ts";
-import { findArchitectureArtifact } from "./src/adapters/executors/model-write-architecture-run-executor.ts";
-import { FileByteStore } from "./src/adapters/captures/file-byte-store.ts";
-import { RecordedAnalysisCasReader } from "./src/adapters/captures/recorded-analysis-cas-reader.ts";
+} from "./src/adapters/make/dfm/industrialize-run-dfm-checks-run-executor.ts";
+import { FileDfmCheckAttemptStore } from "./src/adapters/make/dfm/file-dfm-check-attempt-store.ts";
+import { FileSensitivityEdgesAttemptStore } from "./src/adapters/sensitivity/edges/file-sensitivity-edges-attempt-store.ts";
+import { parseSysonModelSeedCapture } from "./src/domain/architecture/seed/syson-model-seed.ts";
+import { findArchitectureArtifact } from "./src/adapters/architecture/renderer/model-write-architecture-run-executor.ts";
+import { FileByteStore } from "./src/adapters/shared/cas/file-byte-store.ts";
+import { RecordedAnalysisCasReader } from "./src/adapters/shared/cas/recorded-analysis-cas-reader.ts";
 import {
   CaptureBackedRunPlanSealer,
   RESOLVED_OPERATION_PLAN_STORE_DESCRIPTOR,
-} from "./src/adapters/plans/capture-backed-run-plan-sealer.ts";
-import { RecordedOperationPlanResolver } from "./src/adapters/plans/recorded-operation-plan-resolver.ts";
+} from "./src/adapters/compile/plans/capture-backed-run-plan-sealer.ts";
+import { ResolvedOperationPlanResolver } from "./src/adapters/compile/plans/resolved-operation-plan-resolver.ts";
 import {
   CORRECTED_SOURCE_CAPTURE_DESCRIPTOR,
   CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
@@ -238,41 +239,41 @@ import {
   SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
-} from "./src/adapters/captures/file-capture-store.ts";
-import { FileRequirementsAttemptStore } from "./src/adapters/wal/file-requirements-attempt-store.ts";
-import { FileBuild123dExecutionAttemptStore } from "./src/adapters/wal/file-build123d-execution-attempt-store.ts";
+} from "./src/adapters/shared/cas/file-capture-store.ts";
+import { FileRequirementsAttemptStore } from "./src/adapters/architecture/requirements/file-requirements-attempt-store.ts";
+import { FileBuild123dExecutionAttemptStore } from "./src/adapters/cad/isolated/file-build123d-execution-attempt-store.ts";
 import { FileModelicaIsolatedExecutionAttemptStore } from "./src/adapters/modelica/qualified-kit/attempt-store.ts";
-import { FileCalculixIsolatedProductAttemptStore } from "./src/adapters/wal/file-calculix-isolated-product-attempt-store.ts";
-import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/captures/file-capture-store.ts";
+import { FileCalculixIsolatedProductAttemptStore } from "./src/adapters/fea/isolated-v3/file-calculix-isolated-product-attempt-store.ts";
+import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/shared/cas/file-capture-store.ts";
 import { RegisteredProjectRunExecutor } from "./src/application/use-cases/registered-project-run-executor.ts";
-import { FileEngineeringProjectRunLease } from "./src/adapters/stores/file-engineering-project-run-lease.ts";
-import { FileLiveThreadUpdateStore } from "./src/adapters/stores/live-thread-update-store.ts";
-import { FileEngineeringProjectRevisionStore } from "./src/adapters/stores/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "./src/adapters/shared/stores/file-engineering-project-run-lease.ts";
+import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
+import { FileEngineeringProjectRevisionStore } from "./src/adapters/shared/stores/engineering-project-store.ts";
 import {
   FileProjectReviewIntentStore,
   ProjectReviewIntentConflictError,
-} from "./src/adapters/stores/file-project-review-intent-store.ts";
+} from "./src/adapters/shared/stores/file-project-review-intent-store.ts";
 import {
   CockpitFocusConflictError,
   FileCockpitFocusStore,
-} from "./src/adapters/stores/file-cockpit-focus-store.ts";
-import { createEngineeringProjectCommandRuntime } from "./src/adapters/engineering-project-command-runtime.ts";
+} from "./src/adapters/project/file-cockpit-focus-store.ts";
+import { createEngineeringProjectCommandRuntime } from "./src/adapters/project/engineering-project-command-runtime.ts";
 import {
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
-} from "./src/adapters/stores/engineering-thread-snapshot-resolver.ts";
+} from "./src/adapters/shared/stores/engineering-thread-snapshot-resolver.ts";
 import { ModelicaRunObserver } from "./src/adapters/modelica/recorded/v1/run-observer.ts";
-import { loadRunFixtures } from "./src/adapters/run-fixtures.ts";
+import { loadRunFixtures } from "./src/adapters/control-plane/run-fixtures.ts";
 import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
 import { ProjectBriefCommandService } from "./src/application/use-cases/project/project-brief-command-service.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/operations/registry.ts";
 import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
-} from "./src/orchestration/operations/recorded-analysis.ts";
+} from "./src/orchestration/operations/fea-isolated-static-proof.ts";
 import type { FleetManifest, RunDetail } from "./src/contracts/console.ts";
 import type { ObservedRunCatalog } from "./src/application/control-plane/ports.ts";
-import { registerControlPlaneTools } from "./src/tools/register.ts";
+import { registerControlPlaneTools } from "./src/tools/control-plane.ts";
 import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,
@@ -526,7 +527,7 @@ export interface CreateConsoleServerOptions {
   dfmCheckAttemptDirectory?: string;
   engineeringProjectRunLeaseDirectory?: string;
   projectBaselineDirectory?: string;
-  /** Root of the closed CAS/WAL layout used by recorded-analysis @2 operations. */
+  /** Root of the closed CAS/WAL layout used by isolated-analysis operations. */
   recordedAnalysisDirectory?: string;
   /**
    * Explicit qualified Build123d profile and optional isolated runtime.
@@ -878,7 +879,7 @@ async function createProjectControl(
   const build123dExecution = options.build123dExecution === undefined
     ? undefined
     : await (await import(
-      "./src/adapters/execution/build123d-execution-composition.ts"
+      "./src/adapters/cad/isolated/build123d-execution-composition.ts"
     )).createBuild123dExecutionComposition(options.build123dExecution, {
       outputCasDirectory: `${recordedAnalysisDirectory}/build123d/outputs`,
     });
@@ -988,7 +989,7 @@ async function createProjectControl(
   const calculixIsolatedExecution = options.calculixIsolatedExecution === undefined
     ? undefined
     : await (await import(
-      "./src/adapters/execution/calculix-isolated-execution-composition.ts"
+      "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts"
     )).createCalculixIsolatedExecutionComposition(
       options.calculixIsolatedExecution,
       {
@@ -1036,16 +1037,17 @@ async function createProjectControl(
     uriNamespace: "simulation-case-qualification",
     label: "Recorded Modelica simulation-case qualification",
   });
-  // One historical proof CAS instance is deliberately shared by the @1 seal,
-  // @1 run and ROP2 reader. Its descriptor owns the pre-existing on-disk
-  // location; moving it beneath the new recorded-analysis root would make
-  // already sealed @1 proof artifacts invisible to the trusted @1 executor.
+  // One historical proof CAS instance is deliberately shared by the seal,
+  // isolated @3 run and ROP2 reader. Its descriptor owns the pre-existing
+  // on-disk location; moving it beneath the recorded-analysis root would make
+  // already sealed proof artifacts invisible to the isolated executor.
   const feaProofCaptures = new FileCaptureStore(
     FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   );
-  // Requirements are likewise a historical shared CAS. Model authoring, both
-  // @1 FEA operations and the ROP2 reader must resolve the same immutable
-  // bytes, including when a deployment overrides only their storage directory.
+  // Requirements are likewise a historical shared CAS. Model authoring, the
+  // proof-case seal, the isolated @3 run and the ROP2 reader must resolve the
+  // same immutable bytes, including when a deployment overrides only their
+  // storage directory.
   const requirementsCaptures = new FileCaptureStore({
     ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
     directory: options.requirementsCaptureDirectory ??
@@ -1090,7 +1092,7 @@ async function createProjectControl(
       },
     ],
   });
-  const recordedPlanResolver = new RecordedOperationPlanResolver({
+  const recordedPlanResolver = new ResolvedOperationPlanResolver({
     snapshots: threadSnapshots,
     artifacts: recordedAnalysisCas,
     stepAssets: new FileCanonicalAssetReader({
@@ -1444,7 +1446,7 @@ async function createProjectControl(
     stepAssets: feaProofStepAssets,
     admissions: technicalCompilationAdmissions,
   });
-  const feaRecordedRunReview = new PrepareProjectFeaRecordedRunReview({
+  const feaIsolatedRunReview = new PrepareProjectFeaIsolatedRunReview({
     snapshots: activeThreadSnapshots,
     admissionReviewer: recordedPlanResolver,
     projects: runtime.projects,
@@ -1762,7 +1764,7 @@ async function createProjectControl(
       briefArchitectureReview,
       briefRequirementsReview,
       feaProofSealReview,
-      feaRecordedRunReview,
+      feaIsolatedRunReview,
       sensitivityStudySealReview,
       build123dExecutionReview,
       isolatedGeometrySealReview,

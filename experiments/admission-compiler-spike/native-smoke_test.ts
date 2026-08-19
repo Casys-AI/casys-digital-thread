@@ -6,7 +6,7 @@ import type {
   CalculixRecordedStaticInput,
   CalculixRecordedStaticPlan,
   CalculixRecordedStaticRecovery,
-} from "../../src/domain/analysis/calculix-recorded-capabilities.ts";
+} from "./calculix-recorded-capabilities.ts";
 import type {
   ModelicaResumableManifest,
   ModelicaResumableRequest,
@@ -16,7 +16,7 @@ import {
   createProviderResourceRead,
   type ExpectedProviderResource,
   type ProviderResourceReader,
-} from "../../src/domain/analysis/provider-resource-reader.ts";
+} from "../../src/domain/compile/source/provider-resource-reader.ts";
 import type {
   McpToolCall,
   McpToolClient,

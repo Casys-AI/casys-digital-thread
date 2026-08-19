@@ -1,6 +1,6 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
-import type { ProjectBriefArchitectureReviewUseCase } from "../../application/ports/in/project-brief-architecture-review.ts";
-import type { ProjectBriefRequirementsReviewUseCase } from "../../application/ports/in/project-brief-requirements-review.ts";
+import type { ProjectBriefArchitectureReviewUseCase } from "../../application/ports/in/architecture/renderer/project-brief-architecture-review.ts";
+import type { ProjectBriefRequirementsReviewUseCase } from "../../application/ports/in/architecture/requirements/project-brief-requirements-review.ts";
 import {
   OBJECT_OUTPUT_SCHEMA,
   PROJECT_ID,

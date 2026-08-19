@@ -101,7 +101,7 @@ normalization and the model-owned criteria have all been validated.
 
 [`src/domain/thread/thread-snapshot-store.ts`](../../src/domain/thread/thread-snapshot-store.ts)
 defines the `get`, `latest`, and `save` persistence boundary.
-[`src/adapters/stores/file-thread-snapshot-store.ts`](../../src/adapters/stores/file-thread-snapshot-store.ts)
+[`src/adapters/shared/stores/file-thread-snapshot-store.ts`](../../src/adapters/shared/stores/file-thread-snapshot-store.ts)
 implements it as immutable JSON documents under ignored local state. Saving identical
 content is idempotent; reusing a snapshot ID for different content is rejected. Every
 read crosses the canonical validator again.

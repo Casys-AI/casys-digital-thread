@@ -30,11 +30,11 @@ import {
   fingerprintResourceBytes,
   sha256Hex,
   validateExpectedProviderResource,
-} from "../../analysis/provider-resource-reader.ts";
+} from "../../compile/source/provider-resource-reader.ts";
 import {
   type IsolatedCodeOutputDeclaration,
   validateIsolatedCodeOutputManifest,
-} from "../../analysis/isolated-code-execution.ts";
+} from "../../compile/isolation/isolated-code-execution.ts";
 import {
   canonicalModelicaQualifiedManifestDocumentText,
   type ModelicaQualifiedManifestDocument,

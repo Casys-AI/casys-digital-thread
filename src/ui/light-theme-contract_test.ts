@@ -1,15 +1,13 @@
 import { assertEquals, assertMatch, assertStringIncludes } from "@std/assert";
 
 const STYLE_FILES = [
-  "03-cockpit-shell.css",
   "04-feed-and-graph.css",
   "05-tool-drawer.css",
   "06-component-workspace.css",
-  "16-refined-cockpit.css",
   "17-saas-shell.css",
 ] as const;
 
-Deno.test("the application keeps native controls light after the shared MCP theme loads", async () => {
+Deno.test("the application keeps native controls light under the cockpit theme remaps", async () => {
   const tokens = await Deno.readTextFile(
     new URL("./src/styles/01-tokens-and-console.css", import.meta.url),
   );
@@ -18,8 +16,8 @@ Deno.test("the application keeps native controls light after the shared MCP them
     tokens,
     /html:root\s*{[^}]*color-scheme:\s*light;/s,
   );
-  assertStringIncludes(tokens, "--mcp-view-panel: var(--surface-1);");
-  assertStringIncludes(tokens, "--mcp-view-text: var(--text);");
+  assertStringIncludes(tokens, "--cockpit-panel: var(--surface-1);");
+  assertStringIncludes(tokens, "--cockpit-text: var(--text);");
 });
 
 Deno.test("cockpit style families cannot reintroduce dark surface backgrounds", async () => {
@@ -54,6 +52,28 @@ Deno.test("cockpit style families cannot reintroduce dark surface backgrounds", 
   }
 
   assertEquals(declarations, []);
+});
+
+Deno.test("retired mcp-view card selectors cannot come back", async () => {
+  const theme = await Deno.readTextFile(
+    new URL("./src/view/mcp-view-theme.ts", import.meta.url),
+  );
+  assertEquals(theme.includes(".mcp-view-card"), false);
+  assertEquals(theme.includes(".mcp-view-badge"), false);
+
+  for (
+    const file of [
+      ...STYLE_FILES,
+      "01-tokens-and-console.css",
+      "10-light-atelier.css",
+      "11-review-notifications.css",
+    ]
+  ) {
+    const css = await Deno.readTextFile(
+      new URL(`./src/styles/${file}`, import.meta.url),
+    );
+    assertEquals(css.includes(".mcp-view-"), false, file);
+  }
 });
 
 Deno.test("the 3D viewers cannot reintroduce a dark scene background", async () => {

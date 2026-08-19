@@ -13,7 +13,7 @@ import {
   MICROSANDBOX_LOCAL_RUNTIME_REF,
   type MicrosandboxLocalRuntimeIdentity,
   validateMicrosandboxLocalRuntimeIdentity,
-} from "../../analysis/local-isolation-runtime.ts";
+} from "../../compile/isolation/local-isolation-runtime.ts";
 import {
   deepFreeze,
   exactRecord,

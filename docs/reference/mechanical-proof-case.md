@@ -1,7 +1,7 @@
 # Reference: mechanical proof case and its execution receipt
 
 > **Diátaxis category: reference.** This page describes
-> [`mechanical-proof-case.ts`](../../src/domain/analysis/mechanical-proof-case.ts), the
+> [`mechanical-proof-case.ts`](../../src/domain/fea/seal-case/mechanical-proof-case.ts), the
 > reviewed cases under
 > [`config/mechanical-proof-cases/`](../../config/mechanical-proof-cases/), and the run
 > that turns one into evidence.

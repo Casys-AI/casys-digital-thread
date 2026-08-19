@@ -1,5 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
-import { ProjectBriefSourceAnalyzer } from "../../src/adapters/analyzers/project-brief-source-analyzer.ts";
+import { ProjectBriefSourceAnalyzer } from "../../src/adapters/compile/source/project-brief-source-analyzer.ts";
 import {
   compileExplicitBriefProposals,
   type ExplicitBriefDeclarations,

@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
 import type { JSX } from "react";
 import { HttpProjectReviewIntentClient } from "../project/review-intent-client.ts";
-import { HttpThreadWorkbenchClient } from "./client.ts";
+import { HttpCockpitFleetClient, HttpThreadWorkbenchClient } from "./client.ts";
 import { ThreadWorkbench } from "./workbench.tsx";
 import "../styles.css";
 
@@ -15,6 +15,10 @@ const client = new HttpThreadWorkbenchClient(
 );
 const reviewIntentClient = new HttpProjectReviewIntentClient(
   "/api/review-intents",
+  globalThis.fetch.bind(globalThis),
+);
+const fleetClient = new HttpCockpitFleetClient(
+  "/api/fleet",
   globalThis.fetch.bind(globalThis),
 );
 
@@ -32,6 +36,7 @@ function NativeCockpit(): JSX.Element {
         <ThreadWorkbench
           client={client}
           reviewIntentClient={reviewIntentClient}
+          fleetClient={fleetClient}
         />
       </div>
     </div>

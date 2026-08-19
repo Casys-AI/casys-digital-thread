@@ -25,7 +25,7 @@ sixth cockpit tab:
 
 ```bash
 deno task start                        # http://127.0.0.1:3020/mcp
-deno task preview:cockpit              # 5175, frozen single-file BFF
+deno task preview:cockpit              # 5175, BFF serves hashed JS/CSS
 deno task preview:thread               # 5173 Vite HMR → BFF 5175
 ```
 

@@ -2,7 +2,7 @@
  * Canvas-level projection of the EvidenceGraphModel for the Evidence tab.
  *
  * Extracts the structural predicate and projection logic from workbench.tsx so
- * they are testable in Deno without Preact. The presentation (JSX) layer in
+ * they are testable in Deno without React. The presentation (JSX) layer in
  * workbench.tsx calls these functions and passes the result to ThreadGraph.
  *
  * Design constraints (confirmed by operator, not renegotiable):
@@ -30,11 +30,11 @@ import {
   cadPresentationSiblingOf,
   compactCadPresentationPairs,
   mergePresentationCompacts,
-} from "./cad-presentation-projection.ts";
+} from "../cad/cad-presentation-projection.ts";
 import {
   compactSysmlPartPairs,
   graphRefKey,
-} from "./sysml-composite-projection.ts";
+} from "../architecture/sysml-composite-projection.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,

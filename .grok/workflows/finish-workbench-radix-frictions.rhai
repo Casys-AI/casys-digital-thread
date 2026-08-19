@@ -88,7 +88,7 @@ let p2 = base;
 p2 += "Confirm Product system-only regressions. Read ";
 p2 += "src/ui/src/thread/product-anchor-model.ts (partOccurrenceCount only counts kind=part), ";
 p2 += "src/ui/src/thread/component-workspace.tsx header 00 declared part occurrences, ";
-p2 += "src/adapters/projectors/product-structure-catalog.ts buildCatalog (attributes parsed, not projected). ";
+p2 += "src/adapters/architecture/renderer/product-structure-catalog.ts buildCatalog (attributes parsed, not projected). ";
 p2 += "Named AttributeUsage thickness is invisible. ERPNext gap is out of scope.";
 cjobs.push(#{
     prompt: p2,
@@ -149,7 +149,7 @@ i2 += "Header should report the unique PartDefinition / assembly root honestly (
 i2 += "AttributeUsage names already parsed in product-structure-catalog.ts (attributes array on PartDefinition) must appear on the SysON Product facet. Do not invent a PartUsage. Do not add ERP. Do not add a new binding kind if you can carry optional attributes on the existing component without breaking thread-components/1.0 validation — if you must extend the catalog, keep it optional, validated, and tested in both domain catalog and UI. ";
 i2 += "Skip duplicate GLB copy only if the two blocks render the same sha256; collapse to one sealed preview. ";
 i2 += "GLB camera: Fit/reset for a thin 80x20x4 box must frame the mesh, not a hairline. Touch gltf-asset-canvas / three-orbit-viewport if needed. ";
-i2 += "Files: src/ui/src/thread/product-anchor-model.ts, component-workspace.tsx, src/ui/product-anchor-model_test.ts, src/adapters/projectors/product-structure-catalog.ts and its tests, viewport/canvas if camera is wrong.";
+i2 += "Files: src/ui/src/thread/product-anchor-model.ts, component-workspace.tsx, src/ui/product-anchor-model_test.ts, src/adapters/architecture/renderer/product-structure-catalog.ts and its tests, viewport/canvas if camera is wrong.";
 let r2 = agent(i2, #{
     label: "impl:product-system-only",
     capability_mode: "all",

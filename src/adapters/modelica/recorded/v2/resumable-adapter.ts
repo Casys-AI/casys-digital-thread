@@ -42,7 +42,7 @@ import {
   type ExpectedProviderResource,
   fingerprintResourceBytes,
   validateExpectedProviderResource,
-} from "../../../../domain/analysis/provider-resource-reader.ts";
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
 import type { McpToolClient } from "../../../../application/ports/out/mcp-tool-client.ts";
 
 const MANIFEST_GET = "modelica_simulation_manifest_get";

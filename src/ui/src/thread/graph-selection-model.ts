@@ -1,7 +1,7 @@
 /**
  * Shared occurrence and accessibility semantics for both graph renderers.
  *
- * This is deliberately Preact-free so the keyed selection contract can be
+ * This is deliberately React-free so the keyed selection contract can be
  * regression-tested without mounting Sigma or SVG.
  */
 

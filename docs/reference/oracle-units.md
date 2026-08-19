@@ -5,7 +5,7 @@ contract for which units qualify, how one is admitted, and what happens to the
 engineering units that do not qualify.
 
 Source of truth: `UNIT_TO_SYSML_TYPE` in
-[`src/domain/analysis/proof-case.ts`](../../src/domain/analysis/proof-case.ts).
+[`src/domain/kernel/proof-case.ts`](../../src/domain/kernel/proof-case.ts).
 `SUPPORTED_ORACLE_UNITS` is its key projection; nothing else may widen it.
 
 ## What makes a unit "native"
@@ -99,7 +99,7 @@ section below).
 Engineers use units the oracle cannot carry. The gap is closed once, in code, at the
 boundary where the approved brief is compiled into MRTR parameters: `UNIT_NORMALISATION`
 in
-[`src/domain/engineering/unit-normalisation.ts`](../../src/domain/engineering/unit-normalisation.ts)
+[`src/domain/kernel/unit-normalisation.ts`](../../src/domain/kernel/unit-normalisation.ts)
 rescales each non-native unit to its oracle-admitted target and names the step in the
 provenance entry.
 

@@ -126,7 +126,7 @@ import {
   type FileCaptureStore,
   MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR,
-} from "../../../captures/file-capture-store.ts";
+} from "../../../shared/cas/file-capture-store.ts";
 import {
   buildExecutionReceiptEnvelope,
   buildProviderRunRecordEnvelope,
@@ -139,25 +139,25 @@ import {
 } from "./scenario-attempt-store.ts";
 import type {
   EngineeringProjectRunLease,
-} from "../../../stores/file-engineering-project-run-lease.ts";
+} from "../../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   assertThreadSnapshotLineageIntact,
-} from "../../../stores/thread-snapshot-lineage.ts";
+} from "../../../shared/stores/thread-snapshot-lineage.ts";
 import type {
   LiveThreadUpdateMilestoneJournal,
-} from "../../../stores/live-thread-update-store.ts";
-import { SIMULATION_CASE_CAPTURE_URI_PREFIX } from "../../../captures/file-capture-store.ts";
+} from "../../../shared/stores/live-thread-update-store.ts";
+import { SIMULATION_CASE_CAPTURE_URI_PREFIX } from "../../../shared/cas/file-capture-store.ts";
 import {
   requireBasis,
   requiredStart,
   requireRun,
   snapshotRef,
   unexpectedStatus,
-} from "../../../executors/executor-run-helpers.ts";
+} from "../../../shared/executor-run-helpers.ts";
 import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
-} from "../../../executors/thread-write-basis-guard.ts";
+} from "../../../shared/thread-write-basis-guard.ts";
 import { createObservedModelicaRunExtension } from "./observed-thread-branch.ts";
 
 // ── Public re-export ─────────────────────────────────────────────────────────

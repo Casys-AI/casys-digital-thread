@@ -1,8 +1,8 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
-import type { CockpitFocusStore } from "../../src/application/ports/out/cockpit-focus-store.ts";
+import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
 import {
   FileProjectReviewIntentStore,
-} from "../../src/adapters/stores/file-project-review-intent-store.ts";
+} from "../../src/adapters/shared/stores/file-project-review-intent-store.ts";
 import type { ProjectReviewIntentStore } from "../../src/application/ports/out/project-review-intent-store.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../../src/application/ports/out/engineering-project-revision-store.ts";
@@ -13,15 +13,15 @@ import type {
 } from "../../src/domain/project/project-review-intent.ts";
 import type { CockpitFocusSnapshot } from "../../src/domain/project/cockpit-focus.ts";
 import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/project/cockpit-focus.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/engineering/architecture-proposal.ts";
-import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/engineering/geometry-proposal.ts";
-import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/engineering/requirements-proposal.ts";
-import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/analysis/technical-compilation-proposal.ts";
-import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/analysis/build123d-execution-proposal.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/architecture/renderer/architecture-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/cad/canonical/geometry-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-proposal.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/compile/admission/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/cad/isolated/build123d-execution-proposal.ts";
 import {
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
-} from "../../src/domain/analysis/fea-proof-proposal.ts";
+} from "../../src/domain/fea/seal-case/fea-proof-proposal.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
@@ -33,16 +33,18 @@ import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
-} from "../../src/domain/analysis/sensitivity-study-proposal.ts";
+} from "../../src/domain/sensitivity/study/sensitivity-study-proposal.ts";
+import {
+  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+} from "../../src/orchestration/operations/fea-isolated-static-proof.ts";
 import {
   SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
-  VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
-} from "../../src/orchestration/operations/recorded-analysis.ts";
+} from "../../src/domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
-import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/orchestration/operations/inspection-drone-v4.ts";
+import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
 import {
   createFocusedWorkspaceHandler,
   createNativeWorkbenchHandler,
@@ -50,6 +52,7 @@ import {
   resolveNativeWorkbenchProjectId,
   resolveNativeWorkbenchStartupTarget,
   resolveNativeWorkbenchSubjectId,
+  resolveWorkbenchUiAssetPath,
 } from "./serve-native-workbench.ts";
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -428,6 +431,94 @@ Deno.test("native Workbench follows durable focus without a static target", asyn
   assertEquals((await response.json()).project.project.id, "project-two");
 });
 
+Deno.test("native Workbench resolves hashed Vite assets and rejects traversal", () => {
+  const directory = "/tmp/ui-dist";
+  assertEquals(
+    resolveWorkbenchUiAssetPath(directory, "/assets/app-aaaa.js"),
+    "/tmp/ui-dist/assets/app-aaaa.js",
+  );
+  assertEquals(
+    resolveWorkbenchUiAssetPath(directory, "/assets/app-aaaa.css"),
+    "/tmp/ui-dist/assets/app-aaaa.css",
+  );
+  assertEquals(
+    resolveWorkbenchUiAssetPath(directory, "/assets/../secret.js"),
+    undefined,
+  );
+  assertEquals(
+    resolveWorkbenchUiAssetPath(directory, "/assets/%2e%2e/secret.js"),
+    undefined,
+  );
+  assertEquals(
+    resolveWorkbenchUiAssetPath(directory, "/native-workbench.html"),
+    undefined,
+  );
+  assertEquals(
+    resolveWorkbenchUiAssetPath(directory, "/api/thread/workbench"),
+    undefined,
+  );
+});
+
+Deno.test("native Workbench serves hashed Vite JS and CSS without a command path", async () => {
+  const directory = await Deno.makeTempDir();
+  try {
+    await Deno.mkdir(`${directory}/assets`);
+    await Deno.writeTextFile(
+      `${directory}/native-workbench.html`,
+      `<html><script type="module" src="./assets/app-aaaa.js"></script></html>`,
+    );
+    await Deno.writeTextFile(
+      `${directory}/assets/app-aaaa.js`,
+      "export const ready = true;\n",
+    );
+    await Deno.writeTextFile(
+      `${directory}/assets/app-aaaa.css`,
+      "body{color:red}\n",
+    );
+    const project = projectFixture("project-one", "subject-one");
+    const handler = createNativeWorkbenchHandler({
+      store: new EmptyThreadStore(),
+      projectStore: new ProjectStore([project]),
+      projectId: project.project.id,
+      subjectId: project.project.subjectId,
+      htmlPath: `${directory}/native-workbench.html`,
+    });
+
+    const page = await handler(new Request("http://localhost/"));
+    assertEquals(page.status, 200);
+    assertStringIncludes(await page.text(), "./assets/app-aaaa.js");
+    assertStringIncludes(
+      page.headers.get("Content-Security-Policy") ?? "",
+      "script-src 'self'",
+    );
+
+    const js = await handler(
+      new Request("http://localhost/assets/app-aaaa.js"),
+    );
+    assertEquals(js.status, 200);
+    assertStringIncludes(js.headers.get("Content-Type") ?? "", "javascript");
+    assertEquals(await js.text(), "export const ready = true;\n");
+
+    const css = await handler(
+      new Request("http://localhost/assets/app-aaaa.css"),
+    );
+    assertEquals(css.status, 200);
+    assertStringIncludes(css.headers.get("Content-Type") ?? "", "text/css");
+    assertEquals(await css.text(), "body{color:red}\n");
+
+    assertEquals(
+      (await handler(new Request("http://localhost/assets/missing.js"))).status,
+      404,
+    );
+    assertEquals(
+      (await handler(new Request("http://localhost/api/project/commands"))).status,
+      404,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
 Deno.test("native Workbench keeps its BFF read-only and frame-protected", async () => {
   const project = projectFixture("project-one", "subject-one");
   const handler = createNativeWorkbenchHandler({
@@ -456,6 +547,57 @@ Deno.test("native Workbench keeps its BFF read-only and frame-protected", async 
   assertEquals(rejected.headers.get("Allow"), "GET");
   assertEquals(
     (await handler(new Request("http://localhost/api/project/commands"))).status,
+    404,
+  );
+});
+
+Deno.test("native Workbench serves declared fleet identity without health", async () => {
+  const project = projectFixture("project-one", "subject-one");
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "<html><body>Workbench</body></html>",
+    cockpitFleet: async () => ({
+      servers: [{
+        id: "syson",
+        displayName: "SysON",
+        role: "System model",
+        required: true,
+      }],
+    }),
+  });
+
+  const response = await handler(new Request("http://localhost/api/fleet"));
+  assertEquals(response.status, 200);
+  assertEquals(await response.json(), {
+    servers: [{
+      id: "syson",
+      displayName: "SysON",
+      role: "System model",
+      required: true,
+    }],
+  });
+  assertEquals(
+    (await handler(
+      new Request("http://localhost/api/fleet", { method: "POST" }),
+    )).status,
+    405,
+  );
+});
+
+Deno.test("native Workbench degrades when declared fleet is unavailable", async () => {
+  const project = projectFixture("project-one", "subject-one");
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "<html><body>Workbench</body></html>",
+  });
+  assertEquals(
+    (await handler(new Request("http://localhost/api/fleet"))).status,
     404,
   );
 });

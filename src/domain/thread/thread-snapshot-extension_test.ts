@@ -1,11 +1,11 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { materializeAttestedMechanicalRun } from "../../testing/attested-mechanical-run-fixture.ts";
-import type { AnalysisGraph } from "../analysis/analysis-graph.ts";
-import { buildBriefAnalysisGraph } from "../analysis/brief-analysis-graph.ts";
+import type { AnalysisGraph } from "./analysis-graph.ts";
+import { buildBriefAnalysisGraph } from "../compile/brief/brief-analysis-graph.ts";
 import {
   SOURCE_ANALYSIS_SCHEMA,
   validateSourceAnalysisBundle,
-} from "../analysis/source-analysis.ts";
+} from "../compile/source/source-analysis.ts";
 import {
   applyThreadSnapshotExtension,
   applyThreadSnapshotExtensionIfNew,

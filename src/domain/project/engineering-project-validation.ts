@@ -17,7 +17,7 @@ import { queuedRunCancellationSummary } from "./engineering-project.ts";
 import {
   sameResolvedOperationPlanRef,
   validateResolvedOperationPlanRef,
-} from "../analysis/resolved-operation-plan-v2.ts";
+} from "../compile/rop/resolved-operation-plan-v2.ts";
 import { deterministicJson } from "../kernel/deterministic-json.ts";
 import {
   currentProjectAnswer,

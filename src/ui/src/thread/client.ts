@@ -2,6 +2,10 @@ import {
   type EngineeringWorkbenchSnapshot,
   isEngineeringWorkbenchSnapshot,
 } from "./types.ts";
+import {
+  type CockpitFleetProjection,
+  isCockpitFleetProjection,
+} from "../../../contracts/cockpit-fleet.ts";
 
 export interface ThreadWorkbenchClient {
   readonly source: "injected" | "http" | "unconfigured";
@@ -114,6 +118,41 @@ export class HttpThreadWorkbenchClient implements ThreadWorkbenchClient {
       globalThis.location?.reload();
     });
     return () => source.close();
+  }
+}
+
+export interface CockpitFleetClient {
+  load(signal?: AbortSignal): Promise<CockpitFleetProjection | undefined>;
+}
+
+/**
+ * Declared fleet topology, served read-only by the BFF. A missing manifest
+ * (404), transport failure or malformed body resolves to undefined so the
+ * cockpit degrades to thread-observed systems instead of inventing a topology.
+ */
+export class HttpCockpitFleetClient implements CockpitFleetClient {
+  constructor(
+    private readonly endpoint = "/api/fleet",
+    private readonly fetcher: ThreadFetch = globalThis.fetch.bind(globalThis),
+  ) {}
+
+  async load(
+    signal?: AbortSignal,
+  ): Promise<CockpitFleetProjection | undefined> {
+    let body: unknown;
+    try {
+      const response = await this.fetcher(this.endpoint, {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal,
+      });
+      if (!response.ok) return undefined;
+      body = await response.json();
+    } catch {
+      return undefined;
+    }
+    return isCockpitFleetProjection(body) ? body : undefined;
   }
 }
 

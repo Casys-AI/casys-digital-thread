@@ -13,6 +13,8 @@ microVM: [admitted source isolated execution](admitted-source-isolated-execution
 | `model.write-architecture@1`                     | Server-rendered SysML inserted into SysON                    | An agent-authored SysML parser path                                     |
 | `model.seal-architecture-sysml@1`                | Provider-free Thread-document seal of closed-subset analysis | SysON insertion, `@2` architecture write, or `compile.seal-admission@1` |
 | `sysml-source-capture/1.0`                       | Renderer envelope for the SysON write                        | Agent-authored UTF-8 authority                                          |
+| `architecture.author-inspection-drone@3`         | Product-specific SysON insert of the reviewed V4 drone recipe | Generic `model.write-architecture@1`                                    |
+| `model.capture-inspection-drone-part-definitions@1` | Product-specific r4 read of the exact drone architecture   | Generic `model.capture-part-definitions@1`                              |
 | `architecture-sysml-source-analysis-capture/1.0` | Agent-authored closed-subset CAS                             | A renderer manifest                                                     |
 
 ## CAD and compile
@@ -83,4 +85,6 @@ CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.
 | CM-01 / `state/fixtures/retired/`       | Historical golden record                                                                  | A live project, fallback, or provider admission                   |
 | `desk-lamp-dl04` / `desk-lamp-dl05`     | Generic / Heron vehicles. A reread `@2` receipt may exist under gitignored `state/local/` | A committed golden, a clone-true proof, or an `@1` relabel        |
 | `config/*-api/` inventory JSON          | Documentary pinned-language ground truth                                                  | A compiler driver or generated qualification table                |
+| `console_*` on `:3020/mcp`              | Control-plane fleet and indexed-run reads                                                 | The native cockpit (`preview:thread` / `preview:cockpit`)         |
+| `preview:browser` / `ui://casys-digital-thread/console` | Retired Console MCP App. The task refuses                                      | A product page or a registered MCP resource                       |
 

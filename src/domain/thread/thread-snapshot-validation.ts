@@ -19,7 +19,7 @@ import type {
 import {
   type AnalysisGraph,
   validateAnalysisGraph,
-} from "../analysis/analysis-graph.ts";
+} from "./analysis-graph.ts";
 import { deepFreeze } from "../kernel/case-validation.ts";
 
 export interface ThreadSnapshotValidationIssue {

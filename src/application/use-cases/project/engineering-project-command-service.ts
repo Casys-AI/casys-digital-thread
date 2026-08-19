@@ -28,7 +28,7 @@ import {
 } from "../../../domain/project/engineering-project.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 import type { RegisteredRunPlanSealer } from "../../../domain/project/resolved-run-plan-sealer.ts";
-import { validateResolvedOperationPlanRef } from "../../../domain/analysis/resolved-operation-plan-v2.ts";
+import { validateResolvedOperationPlanRef } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import { deepFreeze } from "../../../domain/kernel/case-validation.ts";
 import {
   deterministicJson,
@@ -41,17 +41,17 @@ import {
   isProjectBriefGateKind,
   projectBriefContractVersion,
 } from "../../../domain/project/project-brief.ts";
-import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/engineering/geometry-proposal.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
 import {
   type ReconcileUncertainWriterOutcome,
   requireApprovedUncertainWriterReconciliationDecision,
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
-} from "../../../domain/project/reconcile-uncertain-writer-proposal.ts";
+} from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import {
   isReservedUncertainWriterBasisReleaseDecisionId,
   uncertainWriterBasisReleaseIds,
   uncertainWriterBasisReleaseText,
-} from "../../../domain/project/uncertain-writer-basis-release.ts";
+} from "../../../domain/record/uncertain-writer-basis-release.ts";
 import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,

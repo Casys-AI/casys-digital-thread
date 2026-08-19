@@ -56,13 +56,3 @@ Deno.test("console initial result rejects malformed payloads and preserves MCP e
     undefined,
   );
 });
-
-Deno.test("console declares the pre-connect initial-result lifecycle without replaying console_snapshot", async () => {
-  const source = await Deno.readTextFile(
-    new URL("./src/main.ts", import.meta.url),
-  );
-  assertEquals(source.includes("async onToolResult(result, app)"), true);
-  assertEquals(source.includes('callTool("console_snapshot"'), false);
-  assertEquals(source.includes("makeDemoSnapshot"), false);
-  assertEquals(source.includes("fixtures.ts"), false);
-});

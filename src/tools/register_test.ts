@@ -5,14 +5,14 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "@std/assert";
-import type { DockerObserver } from "../adapters/docker-observer.ts";
-import type { McpProbe } from "../adapters/mcp/http-mcp-probe.ts";
-import { FileProjectReviewIntentStore } from "../adapters/stores/file-project-review-intent-store.ts";
+import type { DockerObserver } from "../adapters/shared/docker-observer.ts";
+import type { McpProbe } from "../adapters/shared/mcp/http-mcp-probe.ts";
+import { FileProjectReviewIntentStore } from "../adapters/shared/stores/file-project-review-intent-store.ts";
 import {
   DESIGN_EXECUTE_BUILD123D_OPERATION,
-} from "../domain/analysis/build123d-execution-proposal.ts";
+} from "../domain/cad/isolated/build123d-execution-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../domain/modelica/qualified-kit/run-proposal.ts";
-import { VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION } from "../orchestration/operations/recorded-analysis.ts";
+import { VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION } from "../orchestration/operations/fea-isolated-static-proof.ts";
 import type { ProjectRunExecutor } from "../application/ports/in/project-run-executor.ts";
 import type {
   FleetManifest,
@@ -35,7 +35,7 @@ import {
   parseConsoleCli,
 } from "../../server.ts";
 import { PROJECT_REVIEW_INTENTS_RESOURCE_URI } from "./project-review-intent-subscription.ts";
-import { CONSOLE_RESOURCE_URI } from "./register.ts";
+import { CONSOLE_RESOURCE_URI } from "./control-plane.ts";
 
 const NEUTRAL_PROJECT_ID = "neutral-system-ns01";
 

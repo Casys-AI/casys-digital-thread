@@ -45,16 +45,16 @@ import {
   MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR,
   MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR,
   SIMULATION_CASE_CAPTURE_DESCRIPTOR,
-} from "../../../captures/file-capture-store.ts";
+} from "../../../shared/cas/file-capture-store.ts";
 import {
   assertSimulateMatchesRunGet,
   parseModelicaRunRecord,
 } from "./scenario-run-capture.ts";
-import { FileEngineeringProjectRevisionStore } from "../../../stores/engineering-project-store.ts";
-import { FileEngineeringProjectRunLease } from "../../../stores/file-engineering-project-run-lease.ts";
-import { FileThreadSnapshotStore } from "../../../stores/file-thread-snapshot-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../../../shared/stores/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "../../../shared/stores/file-engineering-project-run-lease.ts";
+import { FileThreadSnapshotStore } from "../../../shared/stores/file-thread-snapshot-store.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../../../validators/engineering-project-completion-evidence-validator.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../../../validators/engineering-project-initial-baseline-evidence-validator.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../../../project/engineering-project-initial-baseline-evidence-validator.ts";
 import {
   FileModelicaScenarioAttemptStore,
   ModelicaScenarioOutcomeUnknownError,
@@ -62,7 +62,7 @@ import {
 } from "./scenario-attempt-store.ts";
 import { lowerModelicaSimulationCase } from "./provider.ts";
 import { approvedBriefSourceAnalysisFixture } from "../../../../testing/approved-brief-source-analysis-fixture.ts";
-import { ApprovedBriefBaselineRunExecutor } from "../../../executors/approved-brief-baseline-run-executor.ts";
+import { ApprovedBriefBaselineRunExecutor } from "../../../project/approved-brief-baseline-run-executor.ts";
 import { SimulateSealSimulationCaseRunExecutor } from "./seal-case-executor.ts";
 import {
   SimulateRunModelicaScenarioRunExecutor,

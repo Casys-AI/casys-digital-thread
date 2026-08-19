@@ -20,9 +20,12 @@
  * snapshots; a cleanup failure reports the exact manual removal command.
  */
 
-import { loadFleetManifest, ManifestError } from "../../src/adapters/manifest.ts";
-import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
-import { parseFeaSolverResponse } from "../../src/adapters/captures/fea-solver-capture.ts";
+import {
+  loadFleetManifest,
+  ManifestError,
+} from "../../src/adapters/control-plane/manifest.ts";
+import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
+import { parseFeaSolverResponse } from "../../src/adapters/sensitivity/live-fea/fea-solver-capture.ts";
 import {
   CONTRACT_CAPTURE_BOX_DIMENSIONS_MM,
   CONTRACT_CAPTURE_MESH_SIZE_MM,

@@ -148,6 +148,9 @@ Deno.test("Project keeps its brief and path without duplicate engineering summar
   assertStringIncludes(brief, "Approved engineering project brief");
   assertStringIncludes(overview, ">Project path</h3>");
   assertStringIncludes(overview, 'title="Agent now"');
+  assertEquals(overview.includes("RUNNING"), false);
+  assertEquals(overview.includes("168.4 g"), false);
+  assertEquals(overview.includes("REQ-M-001"), false);
   assertEquals(overview.includes("GENERIC GOLDEN PATH"), false);
   assertEquals(overview.includes("Brief to sealed geometry"), false);
   assertEquals(overview.includes("SEPARATE ENGINEERING RECORD"), false);
@@ -182,6 +185,11 @@ Deno.test("Workbench keeps navigation and sends only bounded review intents", as
   assertStringIncludes(source, "setInterval(refreshReceipts, 2_000)");
   assertStringIncludes(source, "ReviewIntentStaleError");
   assertStringIncludes(source, 'target.startsWith("review/")');
+  assertStringIncludes(source, "const changeProductFacet");
+  assertStringIncludes(source, "productFacetHash");
+  assertStringIncludes(source, "<ProductRequirementsMatrix");
+  assertStringIncludes(source, "<ProductSourcingLane");
+  assertStringIncludes(source, "activeProductFacet={activeProductFacet}");
   assertEquals(source.includes("<ReviewNotifications"), false);
   assertEquals(source.includes('surface="activity"'), false);
   assertEquals(source.includes("onOpenOwner"), false);
@@ -219,18 +227,25 @@ Deno.test("native Workbench enables the same-origin review intent outbox", async
   assertStringIncludes(source, "reviewIntentClient={reviewIntentClient}");
 });
 
-Deno.test("Product keeps its combined SysML and build123d facets", async () => {
+Deno.test("Product structure is geometry-first with a compact SysML rail", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/thread/component-workspace.tsx", import.meta.url),
   );
-  assertStringIncludes(source, '{ id: "syson", label: "SysON"');
-  assertStringIncludes(source, '{ id: "build123d", label: "build123d"');
-  assertStringIncludes(source, 'role="tablist"');
+  assertStringIncludes(source, "Product · sealed geometry");
+  assertStringIncludes(source, "StructurePartChips");
+  assertStringIncludes(source, "SysmlRail");
+  assertStringIncludes(source, "ProductSourcingCoverageLine");
   assertStringIncludes(source, "sealedAssemblyGlbAsset");
   assertStringIncludes(source, "GltfAssetCanvas");
   assertStringIncludes(source, "Sealed assembly preview · GLB");
   assertStringIncludes(source, "productStructureHeadline");
   assertStringIncludes(source, "AttributeUsage");
+  assertEquals(source.includes("function ErpBom"), false);
+  assertEquals(source.includes('role="tablist"'), false);
+  assertEquals(source.includes("168.4 g"), false);
+  assertEquals(source.includes("COM "), false);
+  assertEquals(source.includes("Ixx "), false);
+  assertEquals(source.includes("RUNNING"), false);
   assertEquals(source.includes("partOccurrenceCount).padStart"), false);
   assertEquals(source.includes("Review published geometry"), false);
   assertEquals(source.includes("per-part GLB"), false);

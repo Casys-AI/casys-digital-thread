@@ -23,7 +23,7 @@ import {
   compareAsciiCodeUnits,
   fingerprintResourceBytes,
   sha256Hex,
-} from "../../../../domain/analysis/provider-resource-reader.ts";
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
 
 export const MODELICA_RECORDED_SCENARIO_ATTEMPT_SCHEMA =
   "modelica-recorded-scenario-attempt/2.0" as const;

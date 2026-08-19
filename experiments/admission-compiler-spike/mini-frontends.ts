@@ -8,14 +8,14 @@
 import type {
   SourceAnalysisFrontend,
   SourceAnalysisFrontendInput,
-} from "../../src/domain/analysis/source-analysis-frontend.ts";
+} from "../../src/domain/compile/source/source-analysis-frontend.ts";
 import {
   SOURCE_ANALYSIS_SCHEMA,
   type SourceAnalysisBundle,
   type SourceAnalysisDependency,
   type SourceAnalysisSymbol,
   validateSourceAnalysisBundle,
-} from "../../src/domain/analysis/source-analysis.ts";
+} from "../../src/domain/compile/source/source-analysis.ts";
 import { safeId } from "../../src/domain/kernel/case-validation.ts";
 import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
 

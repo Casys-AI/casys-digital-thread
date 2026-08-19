@@ -2,8 +2,8 @@
 
 import type { ModelicaIsolatedExecutionQualificationAuthority } from "../../../application/ports/out/modelica/isolated-execution-qualification.ts";
 import type { ModelicaIsolatedExecutionProfile } from "../../../application/ports/out/modelica/isolated-execution-profile.ts";
-import type { IsolatedOutputPublicationReader } from "../../../application/ports/out/isolated-code-runner.ts";
-import { isolatedCodeExecutionReceiptRecord } from "../../../domain/analysis/isolated-code-execution.ts";
+import type { IsolatedOutputPublicationReader } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
+import { isolatedCodeExecutionReceiptRecord } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   type ModelicaMicrosandboxQualificationCapture,
   type ModelicaMicrosandboxQualificationReference,
@@ -26,7 +26,7 @@ import { validateModelicaIsolatedExecutionProfile } from "./execution-profile.ts
 import {
   type CaptureStoreDescriptor,
   FileCaptureStore,
-} from "../../captures/file-capture-store.ts";
+} from "../../shared/cas/file-capture-store.ts";
 
 export const MODELICA_MICROSANDBOX_QUALIFICATION_DESCRIPTOR: CaptureStoreDescriptor<
   "modelica-microsandbox-qualification"

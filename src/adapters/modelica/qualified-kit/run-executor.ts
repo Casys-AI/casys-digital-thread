@@ -33,7 +33,7 @@ import {
   parseModelicaQualifiedKitRunAdmissionParameters,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
 } from "../../../domain/modelica/qualified-kit/run-proposal.ts";
-import { isolatedCodeExecutionReceiptRecord } from "../../../domain/analysis/isolated-code-execution.ts";
+import { isolatedCodeExecutionReceiptRecord } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -60,19 +60,19 @@ import {
 } from "../../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
-import type { EngineeringProjectRunLease } from "../../stores/file-engineering-project-run-lease.ts";
-import { assertThreadSnapshotLineageIntact } from "../../stores/thread-snapshot-lineage.ts";
+import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
+import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
 import {
   requireBasis,
   requiredStart,
   requireRun,
   snapshotRef,
   unexpectedStatus,
-} from "../../executors/executor-run-helpers.ts";
+} from "../../shared/executor-run-helpers.ts";
 import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
-} from "../../executors/thread-write-basis-guard.ts";
+} from "../../shared/thread-write-basis-guard.ts";
 
 export { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION };
 

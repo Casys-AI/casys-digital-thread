@@ -327,7 +327,7 @@ try {
 
   const stepBytes = await Deno.readFile(outputPath);
   const { OcctStepOutputValidator } = await import(
-    "../../src/adapters/validators/occt-step-output-validator.ts"
+    "../../src/adapters/cad/isolated/occt-step-output-validator.ts"
   );
   await new OcctStepOutputValidator().validateOutput(
     STEP_DECLARATION,

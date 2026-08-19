@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { fingerprintResourceBytes } from "../../analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../compile/source/provider-resource-reader.ts";
 import {
   canonicalSimulationCaseV2Text,
   SIMULATION_CASE_V2_SCHEMA,

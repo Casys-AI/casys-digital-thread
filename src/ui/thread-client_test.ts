@@ -662,7 +662,8 @@ Deno.test("the Workbench contract accepts qualified analysis assertions and reje
   assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
 
   const wrongAssertionId = structuredClone(snapshot);
-  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId = "other-assertion";
+  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId =
+    "other-assertion";
   assertEquals(isThreadWorkbenchSnapshot(wrongAssertionId), false);
 
   const missingMeasurement = structuredClone(snapshot);
@@ -828,7 +829,8 @@ Deno.test("the Workbench contract requires evidence-backed component facets", ()
   partDefinition.components.components[0].bindings[0].kind = "part-definition";
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), true);
 
-  partDefinition.components.components[0].bindings[0].kind = "invented" as never;
+  partDefinition.components.components[0].bindings[0].kind =
+    "invented" as never;
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), false);
 
   const withAttributes = structuredClone(GENERIC_THREAD_FIXTURE);
@@ -930,14 +932,14 @@ Deno.test("HTTP Workbench client rejects a naked thread projection", async () =>
 });
 
 Deno.test("native Workbench has no nested document or direct MCP tool call", async () => {
-  const main = await Deno.readTextFile(
-    new URL("./src/main.ts", import.meta.url),
+  const preview = await Deno.readTextFile(
+    new URL("./src/thread/native-preview.tsx", import.meta.url),
   );
   const workbench = await Deno.readTextFile(
     new URL("./src/thread/workbench.tsx", import.meta.url),
   );
 
-  assertEquals(main.includes("<iframe"), false);
+  assertEquals(preview.includes("<iframe"), false);
   assertEquals(workbench.includes("callTool("), false);
   assertEquals(workbench.includes("@modelcontextprotocol"), false);
   assertEquals(workbench.includes("executeProjectCommand"), false);

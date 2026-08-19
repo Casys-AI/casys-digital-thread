@@ -46,11 +46,11 @@ Sources:
 - Allowed provenance shapes:
   [`src/domain/thread/thread-snapshot-validation.ts`](../../src/domain/thread/thread-snapshot-validation.ts)
 - Analysis index:
-  [`src/domain/analysis/analysis-graph.ts`](../../src/domain/analysis/analysis-graph.ts)
+  [`src/domain/thread/analysis-graph.ts`](../../src/domain/thread/analysis-graph.ts)
 - BFF DTO:
   [`src/contracts/thread-workbench.ts`](../../src/contracts/thread-workbench.ts)
 - Projector:
-  [`src/adapters/projectors/thread-workbench-projector.ts`](../../src/adapters/projectors/thread-workbench-projector.ts)
+  [`src/adapters/thread/thread-workbench-projector.ts`](../../src/adapters/thread/thread-workbench-projector.ts)
 - Evidence policy:
   [`src/ui/src/thread/evidence-graph-model.ts`](../../src/ui/src/thread/evidence-graph-model.ts),
   [`src/ui/src/thread/evidence-canvas-model.ts`](../../src/ui/src/thread/evidence-canvas-model.ts)

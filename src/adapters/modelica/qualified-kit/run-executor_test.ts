@@ -32,7 +32,7 @@ import {
   fingerprintIsolatedOutputPublicationManifest,
   isolatedCodeExecutionReceiptRecord,
   validateIsolatedCodeExecutionRequest,
-} from "../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   MODELICA_MICROSANDBOX_QUALIFICATION_REFERENCE_SCHEMA,
   type ModelicaMicrosandboxQualificationReference,
@@ -42,7 +42,7 @@ import {
   MODELICA_QUALIFIED_RUNTIME_QUALIFICATION_FINGERPRINT,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
 } from "../../../domain/modelica/qualified-kit/run-proposal.ts";
-import { fingerprintResourceBytes } from "../../../domain/analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
   sha256Fingerprint,

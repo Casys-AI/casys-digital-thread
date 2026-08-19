@@ -4,7 +4,11 @@ Call this read-only tool instead of inventing `sensitivity.case.*` or a `cadSour
 writes nothing and grants no MRTR.
 
 `analyze.seal-sensitivity-study@1` is a provider-free Thread-document seal. It is not a
-solve and not `verify.seal-proof-case@1`.
+solve and not `verify.seal-proof-case@1`. The review and seal live under
+[`src/application/use-cases/sensitivity/study/`](../../src/application/use-cases/sensitivity/study/)
+and
+[`src/adapters/sensitivity/study/`](../../src/adapters/sensitivity/study/).
+They are not `compile.seal-admission@1`.
 
 The MCP process must be the current `server.ts`. A server started before this tool was
 registered will not list it. Restart with `deno task start` or `deno task start:yolo`,

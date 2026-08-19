@@ -3,7 +3,7 @@ import {
   boundedViewportDimensions,
   framingRadiusForBox,
   orbitCameraFrame,
-} from "./src/geometry/three-orbit-viewport-model.ts";
+} from "./src/cad/three-orbit-viewport-model.ts";
 
 Deno.test("Three orbit viewport never exposes a zero-sized render target", () => {
   assertEquals(boundedViewportDimensions(0, -12), { width: 1, height: 1 });

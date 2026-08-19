@@ -9,16 +9,16 @@ import type { ProjectBriefRevision } from "../../../domain/project/project-brief
 import {
   type ArchitectureProposal,
   parseArchitectureProposalParameters,
-} from "../../../domain/engineering/architecture-proposal.ts";
+} from "../../../domain/architecture/renderer/architecture-proposal.ts";
 import {
   parseRequirementsProposalParameters,
   type RequirementsProposal,
-} from "../../../domain/engineering/requirements-proposal.ts";
+} from "../../../domain/architecture/requirements/requirements-proposal.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import {
   type GeometryDecisionValid,
   parseGeometryDecisionView,
-} from "../thread/geometry-decision-model.ts";
+} from "../cad/geometry-decision-model.ts";
 
 export type ProjectReviewKind =
   | "brief"

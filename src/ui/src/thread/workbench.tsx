@@ -3,11 +3,6 @@ import type { JSX, ReactNode } from "react";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.tsx";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../ui/collapsible.tsx";
 import { EmptyNotice, Notice } from "../ui/notice.tsx";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs.tsx";
 import {
@@ -15,11 +10,9 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu.tsx";
+import { cn } from "../lib/utils.ts";
 import type {
   ProjectReviewIntent,
   ProjectReviewIntentAction,
@@ -48,18 +41,19 @@ import {
   agentRunSummary,
   buildAgentNowPresentation,
   buildCurrentProjectWork,
-  projectPulseStatus,
-  selectCurrentProjectFocus,
 } from "../project/model.ts";
-import { recordStatusVariant } from "../project/record-status.ts";
 import {
   ProjectCockpitHeader,
   ProjectNavigation,
   type ProjectWorkspaceView,
 } from "../project/navigation.tsx";
 import {
+  DEFAULT_PRODUCT_FACET,
   parseProjectLocationHash,
   parseProjectViewHash,
+  productFacetHash,
+  productFacetLabel,
+  type ProductWorkspaceFacet,
   projectDeepLinkDomId,
   projectDeepLinkHash,
   type ProjectDeepLinkTarget,
@@ -67,10 +61,18 @@ import {
   shouldScrollProjectDeepLink,
 } from "../project/navigation-model.ts";
 import { DocumentaryBaselineWorkbench } from "../project/documentary-baseline-workbench.tsx";
+import { ProductRequirementsMatrix } from "../project/product-requirements-matrix.tsx";
+import { productSourcingCoverage } from "../project/product-requirements-model.ts";
+import { ProductSourcingLane } from "../project/product-sourcing.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
 import { PlanningWorkbench } from "../project/planning-workbench.tsx";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
-import { type ThreadStreamStatus, type ThreadWorkbenchClient } from "./client.ts";
+import {
+  type CockpitFleetClient,
+  type ThreadStreamStatus,
+  type ThreadWorkbenchClient,
+} from "./client.ts";
+import type { CockpitFleetProjection } from "../../../contracts/cockpit-fleet.ts";
 import { activityFeedNodes, type FeedScope } from "./feed-model.ts";
 import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
@@ -98,7 +100,10 @@ import {
   type PartAnchorageResolution,
 } from "./part-anchorage-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
-import { ToolInspectorPanel, type WorkbenchToolIdentity } from "./tool-inspectors.tsx";
+import {
+  ToolInspectorPanel,
+  type WorkbenchToolIdentity,
+} from "./tool-inspectors.tsx";
 import {
   graphNodeForSelection,
   resolveToolInspectorTarget,
@@ -179,13 +184,17 @@ const TONE_BADGE_VARIANT: Record<
 export interface ThreadWorkbenchProps {
   client: ThreadWorkbenchClient;
   reviewIntentClient?: ProjectReviewIntentClient;
+  /** Declared fleet topology; absent when the BFF has no manifest. */
+  fleetClient?: CockpitFleetClient;
 }
 
 export function ThreadWorkbench({
   client,
   reviewIntentClient,
+  fleetClient,
 }: ThreadWorkbenchProps): JSX.Element {
   const [workbench, setWorkbench] = useState<EngineeringWorkbenchSnapshot>();
+  const [fleet, setFleet] = useState<CockpitFleetProjection>();
   const [selection, setSelection] = useState<ThreadRef>();
   const [graphSelection, setGraphSelection] = useState<ThreadGraphSelection>();
   const [lineageFocus, setLineageFocus] = useState<ThreadGraphRef>();
@@ -195,6 +204,12 @@ export function ThreadWorkbench({
   const ignoreStageResetUntilRef = useRef(0);
   const [activeView, setActiveView] = useState<ProjectWorkspaceView>(() =>
     parseProjectViewHash(globalThis.location?.hash ?? "")
+  );
+  const [activeProductFacet, setActiveProductFacet] = useState<
+    ProductWorkspaceFacet
+  >(() =>
+    parseProjectLocationHash(globalThis.location?.hash ?? "").productFacet ??
+      DEFAULT_PRODUCT_FACET
   );
   const [activeDeepLink, setActiveDeepLink] = useState<
     ProjectDeepLinkTarget | undefined
@@ -281,6 +296,11 @@ export function ThreadWorkbench({
       if (location.target) lastScrolledDeepLinkRef.current = undefined;
       setActiveView(location.view);
       setActiveDeepLink(location.target);
+      if (location.view === "product") {
+        setActiveProductFacet(
+          location.productFacet ?? DEFAULT_PRODUCT_FACET,
+        );
+      }
     };
     globalThis.addEventListener("popstate", syncFromHash);
     globalThis.addEventListener("hashchange", syncFromHash);
@@ -289,6 +309,18 @@ export function ThreadWorkbench({
       globalThis.removeEventListener("hashchange", syncFromHash);
     };
   }, []);
+
+  // Declared fleet topology is static workspace config: one read at mount,
+  // no polling. Absence keeps `fleet` undefined and Operations degrades to
+  // thread-observed systems.
+  useEffect(() => {
+    if (!fleetClient) return;
+    const controller = new AbortController();
+    fleetClient.load(controller.signal).then((projection) => {
+      if (projection) setFleet(projection);
+    });
+    return () => controller.abort();
+  }, [fleetClient]);
 
   useEffect(() => {
     if (
@@ -326,7 +358,8 @@ export function ThreadWorkbench({
       } else {
         const thread = next.thread;
         setSelectedComponentId(thread.components.components[0]?.id);
-        const liveNode = activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
+        const liveNode =
+          activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
         const initialSelection: ThreadRef = liveNode?.selection ??
           (thread.violations[0]
             ? { kind: "violation", id: thread.violations[0].id }
@@ -621,6 +654,23 @@ export function ThreadWorkbench({
     }
   }, [graphSelection, graphSelectionIndexMemo, versionedProvenanceMemo]);
 
+  const pushWorkspaceHash = (hash: string) => {
+    if (globalThis.location && globalThis.history) {
+      if (globalThis.location.hash !== hash) {
+        globalThis.history.pushState(null, "", hash);
+      }
+    }
+  };
+
+  const changeProductFacet = (facet: ProductWorkspaceFacet) => {
+    lastScrolledDeepLinkRef.current = undefined;
+    setActiveView("product");
+    setActiveProductFacet(facet);
+    setActiveDeepLink(undefined);
+    setInspectorOpen(false);
+    pushWorkspaceHash(productFacetHash(facet));
+  };
+
   const changeView = (next: ProjectWorkspaceView) => {
     lastScrolledDeepLinkRef.current = undefined;
     setActiveView(next);
@@ -630,12 +680,11 @@ export function ThreadWorkbench({
     setInspectorOpen(false);
     // Le fragment suit l'espace ouvert : recharger, revenir en arriere ou
     // partager le lien ramene au meme endroit du cockpit.
-    if (globalThis.location && globalThis.history) {
-      const hash = projectViewHash(next);
-      if (globalThis.location.hash !== hash) {
-        globalThis.history.pushState(null, "", hash);
-      }
-    }
+    pushWorkspaceHash(
+      next === "product"
+        ? productFacetHash(activeProductFacet)
+        : projectViewHash(next),
+    );
   };
 
   const openProjectDeepLink = (target: ProjectDeepLinkTarget) => {
@@ -882,10 +931,8 @@ export function ThreadWorkbench({
       );
     }
   };
-  const currentFocus = selectCurrentProjectFocus(project);
   const agentNow = buildAgentNowPresentation(project);
   const agentHeader = compactAgentHeader(agentNow, project);
-  const pulseStatus = projectPulseStatus(agentNow);
   // versionedProvenance and evidenceCanvas are memoized above (guarded
   // useMemo, same pattern as evidenceModel): a stable projection identity is
   // what keeps the sigma instance alive across renders — the visible-depth
@@ -970,12 +1017,18 @@ export function ThreadWorkbench({
 
   const selectGraphNode = (
     node: ThreadGraphNode,
-    options: { pauseLive?: boolean; inspect?: boolean } = {},
+    options: {
+      pauseLive?: boolean;
+      inspect?: boolean;
+      focusLineage?: boolean;
+    } = {},
   ) => {
     if (options.pauseLive) {
       setFollowLive(false);
     }
-    setLineageFocus(node.ref);
+    if (options.focusLineage !== false) {
+      setLineageFocus(node.ref);
+    }
     setGraphSelection({ kind: "node", ref: node.ref });
     if (options.inspect !== false) {
       setDrawerMode("tool");
@@ -1006,7 +1059,7 @@ export function ThreadWorkbench({
             setPresentedVersionRef(undefined);
           }
         }
-        selectGraphNode(node);
+        selectGraphNode(node, { focusLineage: false });
       }
       return;
     }
@@ -1085,7 +1138,7 @@ export function ThreadWorkbench({
         )
       );
     if (component) setSelectedComponentId(component.id);
-    changeView("product");
+    changeProductFacet("structure");
   };
 
   const selectedEdge = graphSelection?.kind === "edge"
@@ -1178,8 +1231,8 @@ export function ThreadWorkbench({
               )
               : (
                 <EmptyNotice>
-                  This graph entity has no richer record projection. Use the tool
-                  context to inspect its recorded neighbours.
+                  This graph entity has no richer record projection. Use the
+                  tool context to inspect its recorded neighbours.
                 </EmptyNotice>
               )}
           </>
@@ -1188,7 +1241,7 @@ export function ThreadWorkbench({
   );
 
   return (
-    <div className="thread-workbench mcp-view-surface">
+    <div className="thread-workbench cockpit-surface">
       <ProjectCockpitHeader
         projectId={project.project.id}
         revision={project.revision}
@@ -1220,6 +1273,9 @@ export function ThreadWorkbench({
       <ProjectNavigation
         activeView={activeView}
         onChange={changeView}
+        activeProductFacet={activeProductFacet}
+        onProductFacetChange={changeProductFacet}
+        sourcingBadge={productSourcingCoverage(snapshot).badge}
       />
 
       {workbench.alignment.status === "thread-ahead" && (
@@ -1229,8 +1285,9 @@ export function ThreadWorkbench({
           </strong>
           <span>
             The technical thread is at revision{" "}
-            {workbench.alignment.currentThreadRevision}, while project decisions remain
-            anchored to revision {workbench.alignment.projectThreadRevision}.
+            {workbench.alignment.currentThreadRevision}, while project decisions
+            remain anchored to revision{" "}
+            {workbench.alignment.projectThreadRevision}.
           </span>
         </Notice>
       )}
@@ -1244,9 +1301,10 @@ export function ThreadWorkbench({
               : "references do"} not resolve in this thread revision
           </strong>
           <span>
-            These project records cite thread entities or snapshots that the exact
-            revision cannot resolve (usually residues of abandoned work). The rest of
-            this page resolved. {workbench.unresolvedEvidenceReferences
+            These project records cite thread entities or snapshots that the
+            exact revision cannot resolve (usually residues of abandoned work).
+            The rest of this page resolved.{" "}
+            {workbench.unresolvedEvidenceReferences
               .map((issue) => issue.path)
               .join(", ")}
           </span>
@@ -1259,6 +1317,7 @@ export function ThreadWorkbench({
             project={project}
             thread={snapshot}
             onNavigate={changeView}
+            onOpenProductFacet={changeProductFacet}
             onOpenActivity={openDecisionActivity}
             onOpenDeepLink={openProjectDeepLink}
             onOpenEvidence={openPublishedEvidence}
@@ -1272,28 +1331,45 @@ export function ThreadWorkbench({
           >
             <div className="mb-3 flex items-end justify-between gap-4 max-md:flex-col max-md:items-start">
               <div className="min-w-0">
+                <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[.1em] text-brand">
+                  {workspaceEyebrow(activeView, activeProductFacet)}
+                </p>
                 <h3
                   id="thread-flow-title"
                   className="text-lg font-semibold tracking-tight"
                 >
-                  {workspaceTitle(activeView)}
+                  {activeView === "verification"
+                    ? presentedMemberRef
+                      ? "Selected version path"
+                      : evidenceCanvas.isFiltered
+                      ? `Local view · depth ${localDepth}`
+                      : "Full evidence map"
+                    : workspaceTitle(activeView, activeProductFacet)}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {workspaceDescription(activeView)}
+                  {workspaceDescription(activeView, activeProductFacet)}
                 </p>
               </div>
-              <div className="flex shrink-0 items-center justify-end">
-                {activeView !== "verification" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    aria-expanded={inspectorOpen}
-                    aria-controls="thread-tool-inspector"
-                    onClick={() => setInspectorOpen((open) => !open)}
-                  >
-                    {inspectorOpen ? "Close details" : "Inspect selection"}
-                  </Button>
+              <div className="flex shrink-0 items-center justify-end gap-3">
+                {activeView === "verification" && (
+                  <p className="font-mono text-[9.5px] font-medium uppercase tracking-[.08em] text-muted-foreground max-lg:hidden">
+                    double-click node → local view · click background → full map
+                  </p>
                 )}
+                {activeView !== "verification" &&
+                  !(activeView === "product" &&
+                    activeProductFacet !== "structure") &&
+                  (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      aria-expanded={inspectorOpen}
+                      aria-controls="thread-tool-inspector"
+                      onClick={() => setInspectorOpen((open) => !open)}
+                    >
+                      {inspectorOpen ? "Close details" : "Inspect selection"}
+                    </Button>
+                  )}
                 {activeView === "verification" && inspectorOpen && (
                   <Button
                     variant="outline"
@@ -1308,45 +1384,9 @@ export function ThreadWorkbench({
               </div>
             </div>
             {activeView === "work" && (
-              <Collapsible
-                className="group mb-3"
-                defaultOpen={currentFocus.proposedDecision !== undefined}
-              >
-                <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 [&>span]:shrink-0 [&>span]:text-xs [&>span]:font-medium [&>span]:text-muted-foreground">
-                  <span>Project pulse</span>
-                  <strong className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {currentFocus.proposedDecision
-                      ? "A recorded recommendation is ready to discuss"
-                      : "Decision status, current work and blockers"}
-                  </strong>
-                  <Badge
-                    variant={recordStatusVariant(pulseStatus.status)}
-                    data-state={pulseStatus.status}
-                  >
-                    {pulseStatus.label}
-                  </Badge>
-                  <small className="shrink-0 text-xs text-muted-foreground max-md:hidden">
-                    Open when you need the project context
-                  </small>
-                  <svg
-                    aria-hidden="true"
-                    className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="m6 9 6 6 6-6"
-                    />
-                  </svg>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-3">
-                  <ProjectWorkRibbon project={project} />
-                </CollapsibleContent>
-              </Collapsible>
+              <div className="mb-3">
+                <ProjectWorkRibbon project={project} />
+              </div>
             )}
             {activeView === "verification" && (
               <MetricTiles
@@ -1357,7 +1397,9 @@ export function ThreadWorkbench({
               />
             )}
             <div
-              className={`thread-graph-workspace ${inspectorOpen ? "" : "is-wide"}`}
+              className={`thread-graph-workspace ${
+                inspectorOpen ? "" : "is-wide"
+              }`}
             >
               <div
                 className={`thread-graph-stage thread-graph-stage-${activeView}`}
@@ -1371,6 +1413,10 @@ export function ThreadWorkbench({
                       selection={graphSelection}
                       followLive={followLive}
                       streamStatus={streamStatus}
+                      threadIdentity={{
+                        id: snapshot.id,
+                        revision: snapshot.change.revision,
+                      }}
                       evidenceModel={evidenceModel}
                       filterComponentId={feedFilterComponentId}
                       anchorage={partAnchorage}
@@ -1450,7 +1496,7 @@ export function ThreadWorkbench({
                               ? `Depth ${localDepth}; the alternate version stays hidden.`
                               : evidenceCanvas.isFiltered
                               ? "Local view. Select the background for the full map."
-                              : "Select an item to trace its support and impact."}
+                              : "Select a record to inspect. Double-click for the local neighbourhood."}
                           </p>
                         </div>
                         <p className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -1477,44 +1523,45 @@ export function ThreadWorkbench({
                         </p>
                       </div>
                       <div className="evidence-graph-menu">
+                        {(evidenceCanvas.isFiltered || presentedMemberRef) && (
+                          <div
+                            className="absolute right-14 top-10 z-10 flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 shadow-sm"
+                            role="group"
+                            aria-label="Neighbor depth"
+                          >
+                            <span className="px-1 font-mono text-[9px] font-medium uppercase tracking-[.08em] text-muted-foreground">
+                              Depth
+                            </span>
+                            {([1, 2, 3] as const).map((depth) => (
+                              <button
+                                key={depth}
+                                type="button"
+                                aria-pressed={localDepth === depth}
+                                className={cn(
+                                  "size-5 rounded font-mono text-[10.5px] tabular-nums",
+                                  localDepth === depth
+                                    ? "bg-brand/10 font-semibold text-brand"
+                                    : "text-muted-foreground hover:bg-muted",
+                                )}
+                                onClick={() => setLocalDepth(depth)}
+                              >
+                                {depth}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="outline"
                               size="icon"
-                              className="absolute left-3 top-2 size-7"
+                              className="absolute right-3 top-10 size-7"
                               aria-label="Graph settings"
                             >
                               ☰
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            {(evidenceCanvas.isFiltered ||
-                              presentedMemberRef) && (
-                              <>
-                                <DropdownMenuLabel>
-                                  Neighbor depth
-                                </DropdownMenuLabel>
-                                <DropdownMenuRadioGroup
-                                  value={String(localDepth)}
-                                  onValueChange={(value) =>
-                                    setLocalDepth(
-                                      Number(value) as 1 | 2 | 3,
-                                    )}
-                                >
-                                  {([1, 2, 3] as const).map((depth) => (
-                                    <DropdownMenuRadioItem
-                                      key={depth}
-                                      value={String(depth)}
-                                      onSelect={(event) => event.preventDefault()}
-                                    >
-                                      Depth {depth}
-                                    </DropdownMenuRadioItem>
-                                  ))}
-                                </DropdownMenuRadioGroup>
-                                <DropdownMenuSeparator />
-                              </>
-                            )}
+                          <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Show</DropdownMenuLabel>
                             {(Object.keys(
                               DISPLAY_KIND_LABELS,
@@ -1574,28 +1621,46 @@ export function ThreadWorkbench({
                           presentedMemberRef ?? lineageFocus,
                         )}
                         onSelectionChange={selectVerificationGraphItem}
+                        fullMapProjection={explorationKindProjectionMemo ??
+                          fullMapCanvas}
+                        onEnterLocalView={(ref) => {
+                          const node = graphNodeByRef(snapshot, ref);
+                          if (node) selectGraphNode(node);
+                        }}
                       />
                     </section>
                   )
                   : activeView === "product"
-                  ? (
-                    <ComponentWorkspace
-                      snapshot={snapshot}
-                      activeProvider={activeComponentProvider}
-                      selectedComponentId={selectedComponentId}
-                      onProviderChange={changeComponentProvider}
-                      onComponentSelect={selectComponent}
-                      onBindingSelect={inspectComponentBinding}
-                      onRevisionOpen={(node) => {
-                        selectGraphNode(node, { inspect: false });
-                        changeView("work");
-                      }}
-                    />
-                  )
+                  ? activeProductFacet === "requirements"
+                    ? (
+                      <ProductRequirementsMatrix
+                        thread={snapshot}
+                        onOpenVerification={() => changeView("verification")}
+                      />
+                    )
+                    : activeProductFacet === "sourcing"
+                    ? <ProductSourcingLane thread={snapshot} />
+                    : (
+                      <ComponentWorkspace
+                        snapshot={snapshot}
+                        activeProvider={activeComponentProvider}
+                        selectedComponentId={selectedComponentId}
+                        onProviderChange={changeComponentProvider}
+                        onComponentSelect={selectComponent}
+                        onBindingSelect={inspectComponentBinding}
+                        onRevisionOpen={(node) => {
+                          selectGraphNode(node, { inspect: false });
+                          changeView("work");
+                        }}
+                        onOpenSourcing={() => changeProductFacet("sourcing")}
+                      />
+                    )
                   : (
                     <ProjectOperations
                       project={project}
                       thread={snapshot}
+                      fleet={fleet}
+                      onOpenWork={() => changeView("work")}
                     />
                   )}
               </div>
@@ -1620,28 +1685,54 @@ function shouldAcceptPlanningActivityUpdate(
     incoming.planning.activity.version > current.planning.activity.version;
 }
 
+function workspaceEyebrow(
+  view: Exclude<ProjectWorkspaceView, "overview">,
+  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
+): string {
+  if (view === "work") return "Work · recorded activity";
+  if (view === "product") {
+    return `Product · ${productFacetLabel(productFacet).toLowerCase()}`;
+  }
+  if (view === "verification") return "Verification · evidence exploration";
+  return "Operations · engineering fleet";
+}
+
 function workspaceTitle(
   view: Exclude<ProjectWorkspaceView, "overview">,
+  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
 ): string {
-  if (view === "work") return "Activity";
-  if (view === "product") return "Product structure";
+  if (view === "work") return "Recorded activity";
+  if (view === "product") {
+    if (productFacet === "requirements") {
+      return "What the current revision must hold";
+    }
+    if (productFacet === "sourcing") return "To Buy stays a reserved lane";
+    return "Product structure";
+  }
   if (view === "verification") return "Evidence map";
-  return "Execution record";
+  return "Engineering fleet";
 }
 
 function workspaceDescription(
   view: Exclude<ProjectWorkspaceView, "overview">,
+  productFacet: ProductWorkspaceFacet = DEFAULT_PRODUCT_FACET,
 ): string {
   if (view === "work") {
     return "Recorded results and review requests, in order.";
   }
   if (view === "product") {
+    if (productFacet === "requirements") {
+      return "Requirement expressions and the last recorded verdict.";
+    }
+    if (productFacet === "sourcing") {
+      return "ERP coverage stays GAP until sourcing records exist.";
+    }
     return "Components matched across system, CAD and ERP records.";
   }
   if (view === "verification") {
     return "Recorded support and impact for each result.";
   }
-  return "Runs, planned work and contributing tools.";
+  return "Declared MCP surfaces, pending confirmations and the run queue.";
 }
 
 function FactList(
@@ -1692,7 +1783,9 @@ function MetricTiles(
 }
 
 function Mono({ children }: { children: ReactNode }): JSX.Element {
-  return <code className="font-mono text-xs text-muted-foreground">{children}</code>;
+  return (
+    <code className="font-mono text-xs text-muted-foreground">{children}</code>
+  );
 }
 
 function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
@@ -1750,11 +1843,12 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "asserted-by",
         label: "Asserted by",
-        value: `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
-          edge.analysis.assertedBy.version
-            ? ` @ ${edge.analysis.assertedBy.version}`
-            : ""
-        }`,
+        value:
+          `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
+            edge.analysis.assertedBy.version
+              ? ` @ ${edge.analysis.assertedBy.version}`
+              : ""
+          }`,
       },
       {
         id: "analysis-scope",
@@ -1843,9 +1937,10 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
         {!edge.attestation && edge.analysis
           ? (
             <Notice title="Qualified analysis assertion" tone="info">
-              This semantic relation is backed by the exact evidence listed above and is
-              classified as{" "}
-              {edge.analysis.epistemicBasis}. It does not grant execution authority.
+              This semantic relation is backed by the exact evidence listed
+              above and is classified as{" "}
+              {edge.analysis.epistemicBasis}. It does not grant execution
+              authority.
             </Notice>
           )
           : !edge.attestation && (
@@ -1899,7 +1994,9 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
     return <ChangeInspector snapshot={snapshot} />;
   }
   if (selection.kind === "artifact") {
-    const artifact = snapshot.artifacts.find((item) => item.id === selection.id);
+    const artifact = snapshot.artifacts.find((item) =>
+      item.id === selection.id
+    );
     return artifact
       ? (
         <ArtifactInspector
@@ -1911,7 +2008,9 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Artifact not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "observation") {
-    const observation = snapshot.observations.find((item) => item.id === selection.id);
+    const observation = snapshot.observations.find((item) =>
+      item.id === selection.id
+    );
     return observation
       ? (
         <ObservationInspector
@@ -1923,7 +2022,9 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Observation not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "requirement") {
-    const requirement = snapshot.requirements.find((item) => item.id === selection.id);
+    const requirement = snapshot.requirements.find((item) =>
+      item.id === selection.id
+    );
     return requirement
       ? (
         <RequirementInspector
@@ -1934,7 +2035,9 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       )
       : <EmptyNotice>Requirement not present in this snapshot.</EmptyNotice>;
   }
-  const violation = snapshot.violations.find((item) => item.id === selection.id);
+  const violation = snapshot.violations.find((item) =>
+    item.id === selection.id
+  );
   return violation
     ? (
       <ViolationInspector
@@ -2022,8 +2125,8 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
       <FactList items={artifactFacts(artifact)} />
       {artifact.freshness === "stale" && (
         <Notice title="Evidence invalidated" tone="warning">
-          This result predates a dependency. It remains available for provenance but
-          cannot support a current verdict.
+          This result predates a dependency. It remains available for provenance
+          but cannot support a current verdict.
         </Notice>
       )}
       {artifact.attestation && (
@@ -2031,7 +2134,9 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
           title={artifact.attestation.status === "verified"
             ? "Producer / consumer hash verified"
             : "Producer / consumer hash mismatch"}
-          tone={artifact.attestation.status === "verified" ? "success" : "danger"}
+          tone={artifact.attestation.status === "verified"
+            ? "success"
+            : "danger"}
         >
           {artifact.attestation.status === "verified"
             ? "The consumer used the exact fingerprint emitted by its upstream producer."
@@ -2347,7 +2452,9 @@ function summaryMetrics(
       label: "Evidence currency",
       value: artifacts.length,
       unit: `current${
-        historicalArtifactCount > 0 ? ` · ${historicalArtifactCount} historical` : ""
+        historicalArtifactCount > 0
+          ? ` · ${historicalArtifactCount} historical`
+          : ""
       }`,
       detail: stale > 0
         ? `${fresh} fresh · ${stale} current stale`
@@ -2361,7 +2468,9 @@ function summaryMetrics(
       unit: noCriterion ? "modelled" : "passing",
       detail: noCriterion
         ? "No model-owned criterion"
-        : `${failed} failed · ${requirements.length - passed - failed} unresolved` +
+        : `${failed} failed · ${
+          requirements.length - passed - failed
+        } unresolved` +
           (historicalRequirementCount > 0
             ? ` · ${historicalRequirementCount} prior version${
               historicalRequirementCount === 1 ? "" : "s"
@@ -2376,7 +2485,11 @@ function summaryMetrics(
       unit: "open",
       detail: snapshot.violations[0]?.id ??
         (noCriterion ? "verdict unavailable" : "no active violation"),
-      tone: snapshot.violations.length ? "danger" : noCriterion ? "warning" : "success",
+      tone: snapshot.violations.length
+        ? "danger"
+        : noCriterion
+        ? "warning"
+        : "success",
     },
   ];
 }

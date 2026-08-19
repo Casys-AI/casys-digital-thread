@@ -25,14 +25,14 @@
   },
   "coverageSources": {
     "agentFrontend": {
-      "module": "src/domain/engineering/architecture-sysml-parse.ts",
+      "module": "src/domain/architecture/agent-seal/architecture-sysml-parse.ts",
       "profile": "sysml-architecture-closed-subset-v1",
       "forms": [
         "package",
         "part-definition",
         "part-usage"
       ],
-      "lexicalGuard": "src/domain/engineering/architecture-sysml-lexical.ts admits only keywords package/part/def, identifiers, { } : ;. Comments, strings, numbers, and attributes are rejected."
+      "lexicalGuard": "src/domain/architecture/agent-seal/architecture-sysml-lexical.ts admits only keywords package/part/def, identifiers, { } : ;. Comments, strings, numbers, and attributes are rejected."
     },
     "serverGenerated": {
       "operations": [
@@ -40,7 +40,7 @@
         "model.write-requirements@1"
       ],
       "renderers": [
-        "src/domain/engineering/architecture-proposal.ts renderArchitectureSysml (package / part def / part usage)",
+        "src/domain/architecture/renderer/architecture-proposal.ts renderArchitectureSysml (package / part def / part usage)",
         "src/domain/analysis/proof-case.ts renderTargetedOracleRequirementsSysml (requirement, private import SI::*, subject, attribute, require constraint, integer literal, [unit])",
         "src/domain/analysis/proof-case.ts renderOracleRequirementsSysml (legacy part def + constraint + integer literal)"
       ],

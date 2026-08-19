@@ -9,7 +9,10 @@ import {
   resolveToolInspectorContext,
   resolveToolInspectorTarget,
 } from "./src/thread/tool-inspector-model.ts";
-import type { ThreadGraphNode, ThreadWorkbenchSnapshot } from "./src/thread/types.ts";
+import type {
+  ThreadGraphNode,
+  ThreadWorkbenchSnapshot,
+} from "./src/thread/types.ts";
 
 Deno.test("graph action keeps its own provider while exposing its richer record", () => {
   const node = graphNode("action", "ACT-INSPECT");
@@ -292,7 +295,7 @@ Deno.test(
   "graphNodeForSelection returns undefined without throwing when the ref is absent from the graph",
   () => {
     // Regression: inspector list rows were silently passing `undefined` as the
-    // ThreadRef (the 'ref' JSX prop is reserved by Preact and swallowed before
+    // ThreadRef (the 'ref' JSX prop is reserved by React and swallowed before
     // reaching the component). The downstream sameRef() call crashed on
     // undefined.kind. After the fix, a valid ref simply absent from the current
     // graph projection must return undefined without throwing.
@@ -393,7 +396,10 @@ Deno.test(
             id: "symbol:package",
             kind: "artifact",
             label: "DroneV4",
-            span: { start: { line: 1, column: 8 }, end: { line: 1, column: 15 } },
+            span: {
+              start: { line: 1, column: 8 },
+              end: { line: 1, column: 15 },
+            },
           },
           { id: "symbol:wing-usage", kind: "component", label: "wing" },
           { id: "symbol:wing", kind: "component", label: "Wing" },
@@ -436,7 +442,10 @@ Deno.test(
     assertEquals(view?.notWriteArchitecture, true);
     assertEquals(view?.notCompilationAdmission, true);
     assertEquals(view?.sourceStatus, "observed");
-    assertEquals(view?.sourceText, "package DroneV4 {\n  part def Wing {}\n}\n");
+    assertEquals(
+      view?.sourceText,
+      "package DroneV4 {\n  part def Wing {}\n}\n",
+    );
     assertEquals(view?.symbols.map((symbol) => symbol.id), [
       "symbol:package",
       "symbol:wing-usage",

@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import { createConsoleServer } from "../../server.ts";
-import { FileEngineeringProjectRevisionStore } from "../adapters/stores/engineering-project-store.ts";
+import { FileEngineeringProjectRevisionStore } from "../adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../application/use-cases/project/project-brief-command-service.ts";
 import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
 

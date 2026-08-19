@@ -12,7 +12,7 @@ import type {
   IsolatedCodeOutputDeclaration,
   IsolatedCodePolicyRef,
   IsolatedCodeRuntimeAttestation,
-} from "../../analysis/isolated-code-execution.ts";
+} from "../../compile/isolation/isolated-code-execution.ts";
 import {
   isolatedCodeOutputManifestsEqual,
   validateContentFingerprint,
@@ -20,12 +20,12 @@ import {
   validateIsolatedCodePolicyRef,
   validateIsolatedCodeProfileRef,
   validateIsolatedCodeRuntimeAttestation,
-} from "../../analysis/isolated-code-execution.ts";
+} from "../../compile/isolation/isolated-code-execution.ts";
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   type MicrosandboxLocalRuntimeIdentity,
   validateMicrosandboxLocalRuntimeIdentity,
-} from "../../analysis/local-isolation-runtime.ts";
+} from "../../compile/isolation/local-isolation-runtime.ts";
 import {
   MODELICA_ISOLATED_EXECUTION_PROFILE,
   MODELICA_ISOLATED_INPUT_BUNDLE_SCHEMA,
@@ -39,7 +39,7 @@ import {
   type ModelicaMicrosandboxQualificationReference,
   validateModelicaMicrosandboxQualificationReference,
 } from "./microsandbox-qualification.ts";
-import { sha256Hex } from "../../analysis/provider-resource-reader.ts";
+import { sha256Hex } from "../../compile/source/provider-resource-reader.ts";
 import {
   arrayOf,
   deepFreeze,

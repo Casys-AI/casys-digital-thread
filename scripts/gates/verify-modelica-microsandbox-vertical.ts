@@ -14,7 +14,7 @@ import {
   MODELICA_QUALIFIED_KIT_WORKER_CONTRACT_SHA256,
   MODELICA_QUALIFIED_KIT_WRAPPER_SHA256,
 } from "../../src/adapters/modelica/qualified-kit/kit-v1/qualification-kit.ts";
-import { FileIsolatedOutputCas } from "../../src/adapters/captures/file-isolated-output-cas.ts";
+import { FileIsolatedOutputCas } from "../../src/adapters/shared/cas/file-isolated-output-cas.ts";
 import {
   createModelicaMicrosandboxQualificationCapture,
 } from "../../src/domain/modelica/qualified-kit/microsandbox-qualification.ts";
@@ -22,8 +22,8 @@ import { validateModelicaIsolatedRun } from "../../src/domain/modelica/qualified
 import {
   ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
   isolatedCodeExecutionReceiptRecord,
-} from "../../src/domain/analysis/isolated-code-execution.ts";
-import { fingerprintResourceBytes } from "../../src/domain/analysis/provider-resource-reader.ts";
+} from "../../src/domain/compile/isolation/isolated-code-execution.ts";
+import { fingerprintResourceBytes } from "../../src/domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
   sha256Fingerprint,

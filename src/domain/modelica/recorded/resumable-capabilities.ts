@@ -18,7 +18,7 @@ import { deterministicJson } from "../../kernel/deterministic-json.ts";
 import {
   type ExpectedProviderResource,
   validateExpectedProviderResource,
-} from "../../analysis/provider-resource-reader.ts";
+} from "../../compile/source/provider-resource-reader.ts";
 
 export const MODELICA_RESUMABLE_CONTRACT_VERSION = "2.1" as const;
 export const MODELICA_QUALIFIED_MANIFEST_SCHEMA_VERSION =

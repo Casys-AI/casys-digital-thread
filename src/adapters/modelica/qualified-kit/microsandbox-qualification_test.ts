@@ -5,9 +5,9 @@ import {
   fingerprintIsolatedOutputPublicationManifest,
   isolatedCodeExecutionReceiptRecord,
   validateIsolatedCodeExecutionRequest,
-} from "../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { createModelicaMicrosandboxQualificationCapture } from "../../../domain/modelica/qualified-kit/microsandbox-qualification.ts";
-import { fingerprintResourceBytes } from "../../../domain/analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import {
   createModelicaMicrosandboxQualificationKit,

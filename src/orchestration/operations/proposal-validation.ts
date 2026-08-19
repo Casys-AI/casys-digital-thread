@@ -17,11 +17,11 @@ import {
   feaProofDecisionParametersToMap,
   parseFeaProofDecisionParameters,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
-} from "../../domain/analysis/fea-proof-proposal.ts";
+} from "../../domain/fea/seal-case/fea-proof-proposal.ts";
 import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   parseSensitivityStudyDecisionParameters,
-} from "../../domain/analysis/sensitivity-study-proposal.ts";
+} from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import {
   parseSimulationCaseDecisionParameters,
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
@@ -29,51 +29,51 @@ import {
 } from "../../domain/modelica/recorded/simulation-case-proposal.ts";
 import {
   parseSimulationCaseV2DecisionParameters,
+  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
   simulationCaseV2DecisionParametersToMap,
 } from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
-import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "./recorded-analysis.ts";
 import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
-} from "../../domain/engineering/architecture-proposal.ts";
+} from "../../domain/architecture/renderer/architecture-proposal.ts";
 import {
   parseSysonModelSeedProposalParameters,
   SYSON_MODEL_SEED_OPERATION,
-} from "../../domain/engineering/syson-model-seed-proposal.ts";
+} from "../../domain/architecture/seed/syson-model-seed-proposal.ts";
 import {
   MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
   parseArchitectureSysmlSealParameters,
-} from "../../domain/engineering/architecture-sysml-seal-proposal.ts";
+} from "../../domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts";
 import {
   DESIGN_WRITE_GEOMETRY_OPERATION,
   geometryDecisionParametersToMap,
   parseGeometryDecisionParameters,
-} from "../../domain/engineering/geometry-proposal.ts";
+} from "../../domain/cad/canonical/geometry-proposal.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   parseRequirementsProposalParameters,
-} from "../../domain/engineering/requirements-proposal.ts";
+} from "../../domain/architecture/requirements/requirements-proposal.ts";
 import type { EngineeringDecisionProposalParameter } from "../../domain/project/engineering-project.ts";
 import {
   parseReconcileUncertainWriterProposal,
   RECONCILE_UNCERTAIN_WRITER_OPERATION,
-} from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
+} from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   parseTechnicalCompilationAdmissionParameters,
-} from "../../domain/analysis/technical-compilation-proposal.ts";
+} from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import {
   DESIGN_EXECUTE_BUILD123D_OPERATION,
   parseBuild123dExecutionAdmissionParameters,
-} from "../../domain/analysis/build123d-execution-proposal.ts";
+} from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import {
   DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
   parseIsolatedGeometrySealParameters,
-} from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
+} from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import {
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   parseVectorCorrectionDecisionParameters,
-} from "../../domain/analysis/vector-correction-proposal.ts";
+} from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import {
   parseModelicaQualifiedKitRunAdmissionParameters,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
@@ -87,7 +87,7 @@ import {
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
   parseDfmDecisionParameters,
   parseDfmRunDecisionParameters,
-} from "../../domain/analysis/dfm-proposal.ts";
+} from "../../domain/make/dfm/dfm-proposal.ts";
 
 /** Operation identity as `id@version`, the key used across the registry. */
 export type OperationKey = string;

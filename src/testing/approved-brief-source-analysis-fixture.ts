@@ -7,18 +7,18 @@
  * shared working tree and unrelated test fixtures.
  */
 
-import { ProjectBriefSourceAnalyzer } from "../adapters/analyzers/project-brief-source-analyzer.ts";
+import { ProjectBriefSourceAnalyzer } from "../adapters/compile/source/project-brief-source-analyzer.ts";
 import {
   PROJECT_BRIEF_SOURCE_ANALYZER_ID,
   PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
-} from "../adapters/analyzers/project-brief-source-analyzer.ts";
-import { BriefSourceAnalysisCaptureService } from "../adapters/captures/brief-source-analysis-capture.ts";
+} from "../adapters/compile/source/project-brief-source-analyzer.ts";
+import { BriefSourceAnalysisCaptureService } from "../adapters/compile/captures/brief-source-analysis-capture.ts";
 import {
   BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
-} from "../adapters/captures/file-capture-store.ts";
-import { FixedSourceAnalysisFrontendRegistry } from "../domain/analysis/source-analysis-frontend-registry.ts";
+} from "../adapters/shared/cas/file-capture-store.ts";
+import { FixedSourceAnalysisFrontendRegistry } from "../domain/compile/source/source-analysis-frontend-registry.ts";
 
 export function approvedBriefSourceAnalysisFixture(root: string): {
   readonly briefSourceAnalysis: BriefSourceAnalysisCaptureService;

@@ -11,7 +11,7 @@ import {
   type SourceAnalysisLanguage,
   type SourceAnalysisSourceRole,
   validateSourceAnalysisBundle,
-} from "../../src/domain/analysis/source-analysis.ts";
+} from "../../src/domain/compile/source/source-analysis.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -28,7 +28,7 @@ import {
   sha256Fingerprint,
 } from "../../src/domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
-import { briefSourceIdFor } from "../../src/domain/analysis/brief-source-analysis-reference.ts";
+import { briefSourceIdFor } from "../../src/domain/compile/brief/brief-source-analysis-reference.ts";
 import type { EngineeringApprovedBriefBasis } from "../../src/domain/project/engineering-project.ts";
 import type {
   ProjectBriefActor,

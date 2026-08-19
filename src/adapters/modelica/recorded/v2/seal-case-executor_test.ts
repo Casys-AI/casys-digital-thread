@@ -25,7 +25,7 @@ import {
   createProviderResourceRead,
   fingerprintResourceBytes,
   type ProviderResourceReader,
-} from "../../../../domain/analysis/provider-resource-reader.ts";
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
 import type {
   EngineeringProjectPlanOperationRegistry,
 } from "../../../../application/use-cases/project/engineering-project-command-service.ts";
@@ -44,31 +44,33 @@ import type {
 import type { RegisteredRunPlanSealInput } from "../../../../domain/project/resolved-run-plan-sealer.ts";
 import { ProjectBriefCommandService } from "../../../../application/use-cases/project/project-brief-command-service.ts";
 import {
-  RECORDED_ANALYSIS_OPERATION_DESCRIPTORS,
+  FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS,
+} from "../../../../orchestration/operations/fea-isolated-static-proof.ts";
+import {
   SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-} from "../../../../orchestration/operations/recorded-analysis.ts";
+} from "../../../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../../../orchestration/operations/registry.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import { approvedBriefSourceAnalysisFixture } from "../../../../testing/approved-brief-source-analysis-fixture.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-} from "../../../captures/file-capture-store.ts";
-import { FileByteStore } from "../../../captures/file-byte-store.ts";
+} from "../../../shared/cas/file-capture-store.ts";
+import { FileByteStore } from "../../../shared/cas/file-byte-store.ts";
 import {
   canonicalModelicaSimulationCaseQualificationCaptureText,
   decodeExactUtf8,
   validateModelicaSimulationCaseQualificationCapture,
 } from "./simulation-case-qualification-capture.ts";
 import { ModelicaQualifiedSourceCaptureService } from "./qualified-source-capture.ts";
-import { FileEngineeringProjectRevisionStore } from "../../../stores/engineering-project-store.ts";
-import { FileEngineeringProjectRunLease } from "../../../stores/file-engineering-project-run-lease.ts";
-import { FileThreadSnapshotStore } from "../../../stores/file-thread-snapshot-store.ts";
-import { ExactInitialBaselineEvidenceValidator } from "../../../validators/engineering-project-initial-baseline-evidence-validator.ts";
+import { FileEngineeringProjectRevisionStore } from "../../../shared/stores/engineering-project-store.ts";
+import { FileEngineeringProjectRunLease } from "../../../shared/stores/file-engineering-project-run-lease.ts";
+import { FileThreadSnapshotStore } from "../../../shared/stores/file-thread-snapshot-store.ts";
+import { ExactInitialBaselineEvidenceValidator } from "../../../project/engineering-project-initial-baseline-evidence-validator.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../../../validators/engineering-project-completion-evidence-validator.ts";
 import { FileModelicaQualifiedSealAttemptStore } from "./qualified-seal-attempt-store.ts";
-import { RecordedOperationPlanResolver } from "../../../plans/recorded-operation-plan-resolver.ts";
-import { ApprovedBriefBaselineRunExecutor } from "../../../executors/approved-brief-baseline-run-executor.ts";
+import { ResolvedOperationPlanResolver } from "../../../compile/plans/resolved-operation-plan-resolver.ts";
+import { ApprovedBriefBaselineRunExecutor } from "../../../project/approved-brief-baseline-run-executor.ts";
 import { SimulateSealSimulationCaseV2RunExecutor } from "./seal-case-executor.ts";
 
 const AGENT: EngineeringProjectCommandOrigin = {
@@ -749,7 +751,7 @@ async function fixtureProject(directory: string) {
 function modelicaSealTestOperationRegistry(): EngineeringProjectPlanOperationRegistry {
   return {
     validate(input) {
-      const descriptor = RECORDED_ANALYSIS_OPERATION_DESCRIPTORS.find((item) =>
+      const descriptor = FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS.find((item) =>
         item.id === input.operation.id && item.version === input.operation.version
       );
       if (!descriptor) return REGISTERED_ENGINEERING_OPERATION_REGISTRY.validate(input);
@@ -992,7 +994,7 @@ async function resolveActualSealThroughModelicaPlanResolver(input: {
       fingerprint: await sha256Fingerprint(project),
     },
   };
-  return await new RecordedOperationPlanResolver({
+  return await new ResolvedOperationPlanResolver({
     snapshots: input.fixture.snapshots,
     artifacts: realQualifiedSealArtifactReader(input.directory),
     stepAssets: {

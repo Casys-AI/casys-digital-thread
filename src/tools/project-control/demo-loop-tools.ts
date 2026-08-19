@@ -1,6 +1,6 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
-import type { ProjectCorrectedAdmissionReviewUseCase } from "../../application/ports/in/project-corrected-admission-review.ts";
-import type { ProjectSensitivityBaseEvaluationReviewUseCase } from "../../application/ports/in/project-sensitivity-base-evaluation-review.ts";
+import type { ProjectCorrectedAdmissionReviewUseCase } from "../../application/ports/in/sensitivity/correction-source/project-corrected-admission-review.ts";
+import type { ProjectSensitivityBaseEvaluationReviewUseCase } from "../../application/ports/in/sensitivity/base-evaluation/project-sensitivity-base-evaluation-review.ts";
 import { OBJECT_OUTPUT_SCHEMA, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
 
 export interface ProjectDemoLoopToolDependencies {

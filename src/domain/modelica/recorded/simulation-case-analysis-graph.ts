@@ -14,11 +14,11 @@ import {
   type AnalysisGraph,
   type AnalysisGraphNode,
   validateAnalysisGraph,
-} from "../../analysis/analysis-graph.ts";
+} from "../../thread/analysis-graph.ts";
 import type {
   EngineeringEvidence,
   SemanticRef,
-} from "../../analysis/engineering-assertion.ts";
+} from "../../thread/engineering-assertion.ts";
 import { type SimulationCase, validateSimulationCase } from "./simulation-case.ts";
 import {
   type SimulationCaseV2,

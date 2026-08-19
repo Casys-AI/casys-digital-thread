@@ -1,5 +1,6 @@
 import type { JSX, ReactNode } from "react";
 import { cn } from "../lib/utils.ts";
+import { Badge } from "../ui/badge.tsx";
 import { Separator } from "../ui/separator.tsx";
 import {
   Tooltip,
@@ -7,8 +8,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip.tsx";
-import { PROJECT_VIEWS } from "./navigation-model.ts";
-import type { ProjectWorkspaceView } from "./navigation-model.ts";
+import {
+  PRODUCT_FACETS,
+  productFacetHash,
+  PROJECT_VIEWS,
+} from "./navigation-model.ts";
+import type {
+  ProductWorkspaceFacet,
+  ProjectWorkspaceView,
+} from "./navigation-model.ts";
 
 export type { ProjectWorkspaceView };
 export { projectViewLabel } from "./navigation-model.ts";
@@ -126,7 +134,7 @@ function ViewIcon({ view }: { view: ProjectWorkspaceView }): JSX.Element {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className="size-4 shrink-0 opacity-70 group-hover:opacity-100 group-aria-[current=page]:opacity-100 group-aria-[current=page]:text-brand"
+      className="size-4 shrink-0 opacity-70 group-hover:opacity-100 group-aria-[current=page]:opacity-100 group-aria-[current=page]:text-brand group-aria-[current=true]:opacity-100"
     >
       {VIEW_ICON_PATHS[view].map((d) => <path key={d} d={d} />)}
     </svg>
@@ -137,11 +145,18 @@ export function ProjectNavigation({
   activeView,
   onChange,
   disabledViews = [],
+  activeProductFacet,
+  onProductFacetChange,
+  sourcingBadge,
 }: {
   activeView: ProjectWorkspaceView;
   onChange: (view: ProjectWorkspaceView) => void;
   /** A pre-approval discovery has no technical record to inspect yet. */
   disabledViews?: readonly ProjectWorkspaceView[];
+  activeProductFacet?: ProductWorkspaceFacet;
+  onProductFacetChange?: (facet: ProductWorkspaceFacet) => void;
+  /** Honest coverage chip — typically GAP until ERP records exist. */
+  sourcingBadge?: string;
 }): JSX.Element {
   return (
     <nav
@@ -150,35 +165,93 @@ export function ProjectNavigation({
     >
       {PROJECT_VIEWS.map((view) => {
         const unavailable = disabledViews.includes(view.id);
+        const productOpen = view.id === "product" && activeView === "product" &&
+          !unavailable;
         return (
-          <a
-            key={view.id}
-            href={`#${view.id}`}
-            aria-current={activeView === view.id ? "page" : undefined}
-            aria-disabled={unavailable || undefined}
-            aria-label={`${view.label}: ${
-              unavailable ? "After technical work" : view.description
-            }`}
-            className={cn(
-              "group flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
-              activeView === view.id && "bg-accent text-accent-foreground",
-              unavailable && "opacity-50",
-            )}
-            onClick={(event) => {
-              if (unavailable) {
+          <div key={view.id} className="flex flex-col">
+            <a
+              href={`#${view.id}`}
+              aria-current={activeView === view.id && !productOpen
+                ? "page"
+                : activeView === view.id
+                ? "true"
+                : undefined}
+              aria-disabled={unavailable || undefined}
+              aria-expanded={view.id === "product"
+                ? productOpen || undefined
+                : undefined}
+              aria-label={`${view.label}: ${
+                unavailable ? "After technical work" : view.description
+              }`}
+              className={cn(
+                "group flex h-[29px] shrink-0 items-center gap-2.5 rounded-md px-2.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
+                activeView !== view.id && "text-muted-foreground",
+                activeView === view.id && !productOpen &&
+                  "bg-accent text-accent-foreground",
+                activeView === view.id && productOpen && "bg-accent text-brand",
+                unavailable && "opacity-50",
+              )}
+              onClick={(event) => {
+                if (unavailable) {
+                  event.preventDefault();
+                  return;
+                }
+                // Le lien reste un vrai lien — clic milieu, Cmd+clic et « copier
+                // l'adresse » doivent marcher. On n'intercepte que le clic simple.
+                if (event.metaKey || event.ctrlKey || event.shiftKey) return;
                 event.preventDefault();
-                return;
-              }
-              // Le lien reste un vrai lien — clic milieu, Cmd+clic et « copier
-              // l'adresse » doivent marcher. On n'intercepte que le clic simple.
-              if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-              event.preventDefault();
-              onChange(view.id);
-            }}
-          >
-            <ViewIcon view={view.id} />
-            <span>{view.label}</span>
-          </a>
+                onChange(view.id);
+              }}
+            >
+              <ViewIcon view={view.id} />
+              <span>{view.label}</span>
+            </a>
+            {productOpen && (
+              <div
+                className="ml-[17px] mt-0.5 flex flex-col gap-px border-l border-border pl-2.5"
+                aria-label="Product facets"
+              >
+                {PRODUCT_FACETS.map((facet) => {
+                  const current = (activeProductFacet ?? "structure") ===
+                    facet.id;
+                  return (
+                    <a
+                      key={facet.id}
+                      href={productFacetHash(facet.id)}
+                      aria-current={current ? "page" : undefined}
+                      aria-label={`${facet.label}: ${facet.description}`}
+                      className={cn(
+                        "flex h-6 items-center justify-between gap-2 rounded-[5px] px-2 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+                        current &&
+                          "bg-accent font-medium text-accent-foreground",
+                        facet.id === "sourcing" && !current &&
+                          "text-muted-foreground/70",
+                      )}
+                      onClick={(event) => {
+                        if (
+                          event.metaKey || event.ctrlKey || event.shiftKey
+                        ) return;
+                        event.preventDefault();
+                        onProductFacetChange?.(facet.id);
+                      }}
+                    >
+                      <span>{facet.label}</span>
+                      {facet.id === "sourcing" && sourcingBadge && (
+                        <Badge
+                          variant={sourcingBadge === "GAP"
+                            ? "warning"
+                            : "secondary"}
+                          className="px-1 py-0 font-mono text-[9px]"
+                        >
+                          {sourcingBadge}
+                        </Badge>
+                      )}
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         );
       })}
     </nav>

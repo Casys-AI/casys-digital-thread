@@ -17,14 +17,14 @@ import {
   validateIsolatedCodePolicyRef,
   validateIsolatedCodeProfileRef,
   validateIsolatedCodeRuntimeAttestation,
-} from "../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   createMicrosandboxRuntimeAttestation,
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   MICROSANDBOX_LOCAL_RUNTIME_REF,
   pinnedOciImageReference,
   validateMicrosandboxLocalRuntimeIdentity,
-} from "../../../domain/analysis/local-isolation-runtime.ts";
+} from "../../../domain/compile/isolation/local-isolation-runtime.ts";
 import {
   MODELICA_ISOLATED_EXECUTION_PROFILE,
   MODELICA_ISOLATED_OUTPUT_MANIFEST,
@@ -43,7 +43,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
-import { sha256Hex } from "../../../domain/analysis/provider-resource-reader.ts";
+import { sha256Hex } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { MODELICA_QUALIFIED_KIT_WRAPPER_SHA256 } from "./kit-v1/qualification-kit.ts";
 
 export { MODELICA_QUALIFIED_KIT_WRAPPER_SHA256 } from "./kit-v1/qualification-kit.ts";

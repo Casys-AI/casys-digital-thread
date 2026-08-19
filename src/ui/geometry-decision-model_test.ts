@@ -19,15 +19,15 @@ import { assertEquals } from "@std/assert";
 import {
   encodeGeometryBundleDecisionParameters,
   type GeometryBundleManifest,
-} from "../domain/engineering/geometry-bundle.ts";
+} from "../domain/cad/canonical/geometry-bundle.ts";
 import {
   encodeGeometryDecisionParameters,
   type GeometryManifest,
-} from "../domain/engineering/geometry-proposal.ts";
+} from "../domain/cad/canonical/geometry-proposal.ts";
 import {
   type GeometryDecisionParameter,
   parseGeometryDecisionView,
-} from "./src/thread/geometry-decision-model.ts";
+} from "./src/cad/geometry-decision-model.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

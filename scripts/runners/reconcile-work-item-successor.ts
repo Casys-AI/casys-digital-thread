@@ -11,12 +11,12 @@
  *     --successor-run-id=<id> --rationale='...' --apply
  */
 import { parseArgs } from "../lib/cli.ts";
-import { createEngineeringProjectCommandRuntime } from "../../src/adapters/engineering-project-command-runtime.ts";
-import { FileThreadSnapshotStore } from "../../src/adapters/stores/file-thread-snapshot-store.ts";
+import { createEngineeringProjectCommandRuntime } from "../../src/adapters/project/engineering-project-command-runtime.ts";
+import { FileThreadSnapshotStore } from "../../src/adapters/shared/stores/file-thread-snapshot-store.ts";
 import {
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
-} from "../../src/adapters/stores/engineering-thread-snapshot-resolver.ts";
+} from "../../src/adapters/shared/stores/engineering-thread-snapshot-resolver.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,

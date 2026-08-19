@@ -1,37 +1,27 @@
 /* -----------------------------------------------------------------------------
-   Feuille unique des deux surfaces : Console MCP et cockpit natif.
+   Feuille unique du cockpit natif (React + Vite).
 
    Tailwind charge en premier : ses layers (theme/base/utilities) perdent
    toujours face aux feuilles historiques non-layered ci-dessous, donc le
-   legacy garde la main tant qu'une vue n'est pas refondue. Les composants
-   refondus (shell, primitives ui/) sont stylés en utilities et leurs règles
-   historiques sont purgées au fur et à mesure.
+   leftover graphe / feed / tiroir / canvas garde la main. Les vues refondues
+   (overview, brief, requirements, navigation, work, evidence) sont stylées
+   en utilities + primitives `ui/` ; leurs règles historiques ont été
+   purgées (UI.4).
 
-   L'ORDRE DES IMPORTS HISTORIQUES EST LA CASCADE : `03` a `06` portent le
-   chrome restant (graphe, drawer, responsive Console), `10` les jetons
-   `--thread-*` et la peinture du graphe, `12`-`14` les ajustements de
-   surfaces, `16`-`17` les passes transversales. Deplacer un import change
-   le rendu.
-
-   Ajouter une regle : la poser dans le partiel qui porte deja sa famille,
-   pas en fin de fichier.
+   L'ORDRE DES IMPORTS HISTORIQUES EST LA CASCADE. Déplacer un import
+   change le rendu. Ajouter une règle : la poser dans le partiel qui porte
+   déjà sa famille, pas en fin de fichier.
    -------------------------------------------------------------------------- */
 
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @import "./styles/01-tokens-and-console.css";
-@import "./styles/02-console-runs.css";
-@import "./styles/03-cockpit-shell.css";
 @import "./styles/04-feed-and-graph.css";
 @import "./styles/05-tool-drawer.css";
 @import "./styles/06-component-workspace.css";
 @import "./styles/10-light-atelier.css";
 @import "./styles/11-review-notifications.css";
-@import "./styles/12-calm-cockpit.css";
-@import "./styles/13-planning-handoff.css";
-@import "./styles/14-documentary.css";
-@import "./styles/16-refined-cockpit.css";
 @import "./styles/17-saas-shell.css";
 
 /* --- Design system shadcn (palette zinc, claire) ---------------------------

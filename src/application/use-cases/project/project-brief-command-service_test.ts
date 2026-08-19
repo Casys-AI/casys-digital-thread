@@ -15,7 +15,7 @@ import {
   EngineeringProjectStoreConflictError,
 } from "../../ports/out/engineering-project-revision-store.ts";
 import type { RegisteredRunPlanSealInput } from "../../../domain/project/resolved-run-plan-sealer.ts";
-import type { ResolvedOperationPlanRef } from "../../../domain/analysis/resolved-operation-plan-v2.ts";
+import type { ResolvedOperationPlanRef } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import {
   ProjectBriefCommandService,
   type ProjectBriefMutationCommand,

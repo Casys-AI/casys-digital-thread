@@ -31,9 +31,11 @@ source boundary and parser contract first; do not bypass the qualified-method bo
 
 ## 3. Add the one-action ROP2 plan
 
-Define the action, resource profile and recovery policy in `src/domain/analysis/`. Add a
+Define the action, resource profile and recovery policy in
+`src/domain/compile/rop/` (and the authority domain: `src/domain/modelica/`,
+`src/domain/fea/`, …). Add a
 registered `@2` descriptor whose run bindings are exact Thread artefacts and whose
-`resolvedOperationPlan` is `2.0`. Extend `RecordedOperationPlanResolver` so queueing
+`resolvedOperationPlan` is `2.0`. Extend `ResolvedOperationPlanResolver` so queueing
 rereads the direct approved MRTR decision, immutable thread basis, qualified method and
 each input artefact before writing one CAS-backed plan reference to the queued run.
 
@@ -42,8 +44,8 @@ tool may read the sealed plan; only the registered executor may execute it.
 
 ## 4. Make recovery boring
 
-Create a typed WAL in `src/adapters/wal/` and persist intent before every non-idempotent
-provider call. After acknowledgement, store the provider request/run identity. A restart
+Create a typed WAL next to the executor and persist intent before every non-idempotent
+provider call. Generic WAL helpers live in `src/adapters/shared/wal/`. After acknowledgement, store the provider request/run identity. A restart
 may read that identity back, but must never repeat the same dispatch, solve or
 evaluation effect. A later evaluator follows its own WAL and may run once only if its
 intent has not already been recorded. After a phase's CAS capture, reopen only local CAS
@@ -72,8 +74,9 @@ and expose the executor only when all required provider URLs are configured.
 
 Add focused tests for: queue-time MRTR/basis/source rejection; URI or digest transplant;
 WAL tampering; lost acknowledgement; provider-known readback; CAS-only replay; missing
-or wrong resource roles; evaluator uncertainty; and no duplicate provider call. Add
-every new non-test module to `deno.json`'s explicit check list. Run the targeted suite,
+or wrong resource roles; evaluator uncertainty; and no duplicate provider call. `deno
+task check` globs new adapter modules; update named `check:*` tasks if they cite a moved
+path. Run the targeted suite,
 then the repository gates before considering a live MRTR run.
 
 The checklist describes a code-level integration. A real provider and MRTR test is a

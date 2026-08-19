@@ -27,8 +27,11 @@
  * Usage: deno run --allow-read=state/fixtures,config scripts/gates/verify-fea-provider-contract.ts
  */
 
-import { loadFleetManifest, ManifestError } from "../../src/adapters/manifest.ts";
-import { parseFeaSolverResponse } from "../../src/adapters/captures/fea-solver-capture.ts";
+import {
+  loadFleetManifest,
+  ManifestError,
+} from "../../src/adapters/control-plane/manifest.ts";
+import { parseFeaSolverResponse } from "../../src/adapters/sensitivity/live-fea/fea-solver-capture.ts";
 
 const FIXTURE_PATH =
   "state/fixtures/fea-provider-contract/calculix-response-golden.json";

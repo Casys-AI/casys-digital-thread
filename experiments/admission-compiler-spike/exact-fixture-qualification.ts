@@ -12,7 +12,7 @@ import {
   fingerprintSourceAnalysisBundle,
   type SourceAnalysisBundle,
   validateSourceAnalysisBundle,
-} from "../../src/domain/analysis/source-analysis.ts";
+} from "../../src/domain/compile/source/source-analysis.ts";
 import { deepFreeze } from "../../src/domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";

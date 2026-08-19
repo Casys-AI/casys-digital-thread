@@ -19,7 +19,7 @@
  * parser.
  */
 
-import type { SourceAnalysisSpan } from "../../analysis/source-analysis.ts";
+import type { SourceAnalysisSpan } from "../../compile/source/source-analysis.ts";
 import { type ModelicaToken, tokenizeModelicaSubset } from "./lexical.ts";
 
 export type ModelicaParseErrorCode =

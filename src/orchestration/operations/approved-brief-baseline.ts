@@ -18,13 +18,13 @@ import {
   fingerprintSourceAnalysisBundle,
   type SourceAnalysisBundle,
   validateSourceAnalysisBundle,
-} from "../../domain/analysis/source-analysis.ts";
-import { buildBriefAnalysisGraph } from "../../domain/analysis/brief-analysis-graph.ts";
+} from "../../domain/compile/source/source-analysis.ts";
+import { buildBriefAnalysisGraph } from "../../domain/compile/brief/brief-analysis-graph.ts";
 import {
   type BriefSourceAnalysisReference,
   briefSourceIdFor,
   validateBriefSourceAnalysisReference,
-} from "../../domain/analysis/brief-source-analysis-reference.ts";
+} from "../../domain/compile/brief/brief-source-analysis-reference.ts";
 import type {
   ContentFingerprint,
   ThreadSnapshot,

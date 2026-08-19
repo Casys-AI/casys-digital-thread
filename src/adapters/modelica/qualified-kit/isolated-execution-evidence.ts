@@ -17,7 +17,7 @@ import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   type CaptureStoreDescriptor,
   FileCaptureStore,
-} from "../../captures/file-capture-store.ts";
+} from "../../shared/cas/file-capture-store.ts";
 
 export const MODELICA_ISOLATED_EXECUTION_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "modelica-qualified-kit-execution-capture"

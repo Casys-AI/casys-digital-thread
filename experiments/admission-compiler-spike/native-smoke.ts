@@ -18,7 +18,7 @@
 import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";
 import {
   McpCalculixRecordedStaticAdapter,
-} from "../../src/adapters/providers/calculix/mcp-calculix-recorded-static-adapter.ts";
+} from "./mcp-calculix-recorded-static-adapter.ts";
 import {
   McpModelicaResumableAdapter,
 } from "../../src/adapters/modelica/recorded/v2/resumable-adapter.ts";
@@ -29,11 +29,11 @@ import type {
   CalculixRecordedStaticInput,
   CalculixRecordedStaticPlan,
   CalculixRecordedStaticRecovery,
-} from "../../src/domain/analysis/calculix-recorded-capabilities.ts";
+} from "./calculix-recorded-capabilities.ts";
 import {
   type MechanicalProofCase,
   validateMechanicalProofCase,
-} from "../../src/domain/analysis/mechanical-proof-case.ts";
+} from "../../src/domain/fea/seal-case/mechanical-proof-case.ts";
 import type {
   ModelicaResumableManifest,
   ModelicaResumableManifestSelection,
@@ -43,14 +43,14 @@ import type {
 import {
   fingerprintResourceBytes,
   type ProviderResourceReader,
-} from "../../src/domain/analysis/provider-resource-reader.ts";
+} from "../../src/domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../src/domain/kernel/deterministic-json.ts";
 import {
   validateGeometryScript,
-} from "../../src/domain/engineering/geometry-script-validation.ts";
+} from "../../src/domain/cad/source/geometry-script-validation.ts";
 
 const ENDPOINTS = Object.freeze({
   syson: "http://127.0.0.1:3009/mcp",

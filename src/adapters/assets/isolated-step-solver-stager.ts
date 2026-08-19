@@ -4,9 +4,9 @@
  */
 
 import type { SolverInputStager } from "../../application/ports/out/solver-input-stager.ts";
-import { fingerprintResourceBytes } from "../../domain/analysis/provider-resource-reader.ts";
+import { fingerprintResourceBytes } from "../../domain/compile/source/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
-import type { ContainerAssetStager } from "../executors/container-asset-stager.ts";
+import type { ContainerAssetStager } from "./container-asset-stager.ts";
 
 export class IsolatedStepSolverStager implements SolverInputStager {
   constructor(

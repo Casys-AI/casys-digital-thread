@@ -1,5 +1,5 @@
 import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
-import type { CockpitFocusStore } from "../application/ports/out/cockpit-focus-store.ts";
+import type { CockpitFocusStore } from "../application/ports/out/project/cockpit-focus-store.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import {
   COCKPIT_FOCUS_SCHEMA_VERSION,

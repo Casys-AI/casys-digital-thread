@@ -1,7 +1,7 @@
 /**
  * Preparation model for the sigma.js exploration renderer of the Evidence graph.
  *
- * Responsibilities (all pure, no I/O, no Preact):
+ * Responsibilities (all pure, no I/O, no React):
  *   1. Build a graphology MultiDirectedGraph from an EvidenceCanvasProjection, assigning
  *      x/y positions via a deterministic dagre layout (rankdir: LR) — causal
  *      origins on the left, observations/verdicts on the right.
@@ -48,7 +48,7 @@ import {
   displayedGraphEdgeOccurrenceKey,
   graphRelationAccessibleLabel,
 } from "./graph-selection-model.ts";
-import { isUiOnlyPresentationEdge } from "./cad-presentation-projection.ts";
+import { isUiOnlyPresentationEdge } from "../cad/cad-presentation-projection.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -889,10 +889,96 @@ function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
   }
 }
 
+export interface EvidenceMinimapNode {
+  readonly key: string;
+  readonly x: number;
+  readonly y: number;
+  readonly color: string;
+}
+
+export interface EvidenceMinimapView {
+  readonly nodes: readonly EvidenceMinimapNode[];
+  readonly nodeCount: number;
+  readonly edgeCount: number;
+  readonly width: number;
+  readonly height: number;
+  /** Box of local-view keys that also exist on the full map — never invented. */
+  readonly localBounds?: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
 /**
- * Returns the dominant accent color for a component based on its name.
- * Component names are derived structurally (see componentName in evidence-graph-model.ts).
+ * Projects the already-laid-out full map into a minimap. Positions come from
+ * dagre on the recorded graph — this never invents nodes, edges, or a second
+ * organisation of the dossier.
  */
+export function buildEvidenceMinimapView(
+  fullMapModel: ExplorationModel,
+  localRefKeys?: ReadonlySet<string>,
+): EvidenceMinimapView {
+  const nodes: EvidenceMinimapNode[] = [];
+  fullMapModel.graph.forEachNode((key, attrs) => {
+    nodes.push({
+      key,
+      x: attrs.x,
+      y: attrs.y,
+      color: attrs.color,
+    });
+  });
+  if (nodes.length === 0) {
+    return { nodes: [], nodeCount: 0, edgeCount: 0, width: 132, height: 64 };
+  }
+  const xs = nodes.map((node) => node.x);
+  const ys = nodes.map((node) => node.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const pad = 8;
+  const rawWidth = Math.max(maxX - minX, 1);
+  const rawHeight = Math.max(maxY - minY, 1);
+  const width = 132;
+  const height = Math.max(48, Math.round(width * (rawHeight / rawWidth)));
+  const scaleX = (width - pad * 2) / rawWidth;
+  const scaleY = (height - pad * 2) / rawHeight;
+  const project = (x: number, y: number) => ({
+    x: pad + (x - minX) * scaleX,
+    y: pad + (y - minY) * scaleY,
+  });
+  const projected = nodes.map((node) => ({
+    ...node,
+    ...project(node.x, node.y),
+  }));
+  const local = localRefKeys
+    ? projected.filter((node) => localRefKeys.has(node.key))
+    : [];
+  let localBounds: EvidenceMinimapView["localBounds"];
+  if (local.length > 0) {
+    const localXs = local.map((node) => node.x);
+    const localYs = local.map((node) => node.y);
+    const x = Math.min(...localXs) - 4;
+    const y = Math.min(...localYs) - 4;
+    localBounds = {
+      x,
+      y,
+      width: Math.max(Math.max(...localXs) - x + 4, 8),
+      height: Math.max(Math.max(...localYs) - y + 4, 8),
+    };
+  }
+  return {
+    nodes: projected,
+    nodeCount: projected.length,
+    edgeCount: fullMapModel.graph.size,
+    width,
+    height,
+    localBounds,
+  };
+}
+
 function componentColor(name: string, tokens: CssTokens): string {
   if (name.startsWith("SysML")) return tokens.cyan;
   if (name.startsWith("CAD")) return tokens.amber;

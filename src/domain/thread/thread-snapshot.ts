@@ -2,7 +2,7 @@ import type {
   ContentFingerprint as KernelContentFingerprint,
   IsoDateTime,
 } from "../kernel/primitives.ts";
-import type { AnalysisGraph } from "../analysis/analysis-graph.ts";
+import type { AnalysisGraph } from "./analysis-graph.ts";
 
 export type ContentFingerprint = Readonly<KernelContentFingerprint>;
 

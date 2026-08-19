@@ -16,7 +16,7 @@ import {
   type IsolatedCodeExecutionReceiptRecord,
   validateContentFingerprint,
   validateIsolatedCodeExecutionReceiptRecord,
-} from "../../analysis/isolated-code-execution.ts";
+} from "../../compile/isolation/isolated-code-execution.ts";
 import {
   MODELICA_ISOLATED_EXECUTION_PROFILE,
   type ModelicaIsolatedEvidence,
@@ -27,7 +27,7 @@ import {
 import {
   fingerprintResourceBytes,
   sha256Hex,
-} from "../../analysis/provider-resource-reader.ts";
+} from "../../compile/source/provider-resource-reader.ts";
 
 export const MODELICA_MICROSANDBOX_QUALIFICATION_REFERENCE_SCHEMA =
   "modelica-microsandbox-qualification-reference/1.0" as const;

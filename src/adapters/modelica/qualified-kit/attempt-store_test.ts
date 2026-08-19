@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { ModelicaIsolatedExecutionAttemptIdentity } from "../../../application/ports/out/modelica/isolated-execution-attempt-store.ts";
-import { createIsolatedOutputProducerGenerationAdvance } from "../../../domain/analysis/isolated-code-execution.ts";
+import { createIsolatedOutputProducerGenerationAdvance } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { FixedModelicaIsolatedExecutionProfileCatalog } from "./execution-profile.ts";
 import {
   FileModelicaIsolatedExecutionAttemptStore,

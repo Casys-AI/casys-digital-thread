@@ -2,7 +2,7 @@ import { EngineeringProjectCommandError } from "./project/engineering-project-co
 import type { EngineeringProjectCommandOrigin } from "../ports/in/engineering-project-command-origin.ts";
 import type { EngineeringProjectRevisionStore } from "../ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
-import { SYSON_MODEL_SEED_OPERATION } from "../../domain/engineering/syson-model-seed.ts";
+import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
 import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../orchestration/operations/approved-brief-baseline.ts";
 import type {
   ProjectRunExecutor,

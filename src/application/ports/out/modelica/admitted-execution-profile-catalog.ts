@@ -7,13 +7,13 @@ import type {
   IsolatedCodePolicyRef,
   IsolatedCodeProfileRef,
   IsolatedCodeRuntimeAttestation,
-} from "../../../../domain/analysis/isolated-code-execution.ts";
+} from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import type {
   TechnicalCompilationProfile,
   TechnicalCompilationTarget,
-} from "../../../../domain/analysis/technical-compilation.ts";
+} from "../../../../domain/compile/admission/technical-compilation.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
-import type { MicrosandboxLocalRuntimeIdentity } from "../../../../domain/analysis/local-isolation-runtime.ts";
+import type { MicrosandboxLocalRuntimeIdentity } from "../../../../domain/compile/isolation/local-isolation-runtime.ts";
 
 export const ADMITTED_MODELICA_EXECUTION_PROFILE_SCHEMA =
   "modelica-admitted-execution-profile/1.0" as const;

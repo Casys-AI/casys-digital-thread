@@ -44,7 +44,7 @@ deno task lint
 deno task fmt         # --check seulement ; pour écrire : deno fmt <chemin>
 deno task test        # suite Deno complète
 deno task check:ui    # tsc --noEmit sur src/ui
-deno task verify:thread:presentation   # gate de release : frontière mcp-view
+deno task verify:thread:presentation   # gate de release : bundle natif sans handshake Apps
 deno task verify:evidence              # cohérence des fixtures console
 ```
 
@@ -60,7 +60,7 @@ Surfaces interactives locales (chacune rebuild son bundle puis sert un BFF loopb
 
 ```bash
 deno task preview:thread      # :5173 Vite HMR → BFF :5175 (reads/SSE passifs)
-deno task preview:cockpit     # :5175 — même BFF, bundle singlefile figé
+deno task preview:cockpit     # :5175 — même BFF, HTML + JS/CSS hashés
 ```
 
 `deno task preview:browser` refuse : l'ancienne Console MCP App (`:3021`) n'est plus une

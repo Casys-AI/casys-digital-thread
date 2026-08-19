@@ -1,30 +1,21 @@
-/* Facettes produit : visualiseur CAD,
-trace de piece,
-SysON,
-ERPNext. */
+/* Identifiant compact + repli graphe/tiroir. Le chrome Console et la
+   classe `.component-workspace` ont été retirés : la facette produit est
+   déjà en utilities + Card. */
 
-.component-workspace {
-  min-width: 0;
-  border: 1px solid var(--thread-border);
-  background: var(--thread-panel);
-}
-.component-workspace :is(button, a, summary):focus-visible,
-.compact-identifier-copy:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 2px;
-}
 .compact-identifier {
   min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: var(--space-6);
 }
+
 .compact-identifier code {
   min-width: 0;
   overflow-wrap: anywhere;
   color: inherit;
-  font: 500 var(--text-3xs)/1.35 var(--mono);
+  font: 500 var(--text-3xs) / 1.35 var(--mono);
 }
+
 .compact-identifier-copy {
   flex: 0 0 auto;
   min-height: 26px;
@@ -32,107 +23,25 @@ ERPNext. */
   border: 1px solid var(--thread-border-strong);
   color: var(--text-soft);
   background: transparent;
-  font: 700 var(--text-3xs)/1 var(--mono);
+  font: 700 var(--text-3xs) / 1 var(--mono);
   cursor: pointer;
 }
+
+.compact-identifier-copy:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
 .compact-identifier[data-copy-state="copied"] .compact-identifier-copy {
   border-color: var(--green);
   color: var(--green);
 }
 
-@media (max-width: 1120px) {
-  .signal-strip {
-    grid-template-columns: repeat(5, minmax(100px, 1fr));
-  }
-  .server-lower {
-    grid-template-columns: 1fr 1fr;
-  }
-  .security-card {
-    grid-column: 1 / -1;
-    border-top: 1px solid var(--line);
-  }
-  .server-lower > .views {
-    border-right: 0;
-  }
-  .evidence-grid {
-    grid-template-columns: 1fr;
-  }
-  .requirements-block {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .run-titlebar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-
 @media (max-width: 840px) {
-  body {
-    background-image: none;
-  }
-  .console-shell {
-    border-inline: 0;
-  }
-  .masthead {
-    align-items: flex-start;
-  }
-  .connection {
-    display: none;
-  }
-  .signal-strip {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .signal-strip > div {
-    border-bottom: 1px solid var(--line);
-  }
-  .signal-strip .signal-time {
-    grid-column: 1 / -1;
-  }
-  .tabs {
-    padding-inline: 0;
-    overflow-x: auto;
-  }
-  .tabs button {
-    min-width: 160px;
-  }
-  .section-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .health-score {
-    align-self: stretch;
-    justify-content: flex-end;
-  }
-  .server-facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .server-facts > div:nth-child(2) {
-    border-right: 0;
-  }
-  .server-facts > div:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
-  }
-  .drift-row {
-    grid-template-columns: 70px 1fr;
-  }
-  .runs-layout {
-    grid-template-columns: 1fr;
-  }
-  .run-rail {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .run-index {
-    grid-template-columns: repeat(2, minmax(220px, 1fr));
-    overflow-x: auto;
-  }
-  .run-index button {
-    border-right: 1px solid var(--line);
-  }
   .thread-graph-workspace {
     grid-template-columns: 1fr;
   }
+
   .thread-tool-drawer {
     border-top: 1px solid var(--line);
     border-left: 0;
@@ -141,131 +50,17 @@ ERPNext. */
 }
 
 @media (max-width: 620px) {
-  .masthead {
-    min-height: 78px;
-    padding: var(--space-16);
-  }
-  .brand-mark {
-    width: 42px;
-  }
-  .masthead .eyebrow {
-    display: none;
-  }
-  .masthead h1 {
-    margin: 0;
-    font-size: var(--text-xl);
-  }
-  .button span {
-    display: none;
-  }
-  .button {
-    width: 40px;
-    padding: 0;
-  }
-  .signal-strip > div {
-    min-height: 62px;
-  }
-  .tabs button {
-    min-width: 138px;
-    padding: var(--space-14);
-  }
-  .tabs small {
-    display: none;
-  }
-  .main-content {
-    padding: var(--space-16);
-  }
-  .section-heading h2 {
-    font-size: var(--text-2xl);
-  }
-  .server-head {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-  .server-state {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    min-height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-inline: var(--space-16);
-    border-top: 1px solid var(--line);
-  }
-  .server-sequence {
-    min-width: 46px;
-  }
-  .server-facts,
-  .server-lower {
-    grid-template-columns: 1fr;
-  }
-  .server-facts > div,
-  .server-lower > section {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .server-facts > div:last-child,
-  .server-lower > section:last-child {
-    border-bottom: 0;
-  }
-  .server-lower > .security-card {
-    grid-column: auto;
-  }
-  .drift-panel summary > span:last-child {
-    display: none;
-  }
-  .drift-row {
-    grid-template-columns: 1fr;
-  }
-  .run-index {
-    grid-template-columns: minmax(260px, 1fr);
-  }
-  .run-titlebar,
-  .lineage-block,
-  .requirements-block,
-  .artifacts-block {
-    padding: var(--space-16);
-  }
-  .run-meta {
-    width: 100%;
-    overflow-x: auto;
-  }
-  .run-meta div {
-    min-width: 110px;
-  }
-  .lineage {
-    grid-template-columns: repeat(5, 190px);
-  }
-  .measurement-list,
-  .provenance-list {
-    grid-template-columns: 1fr;
-  }
-  .artifact-list li {
-    grid-template-columns: 42px minmax(0, 1fr) auto;
-  }
-  .artifact-list > li > code {
-    display: none;
-  }
-  .workbench-heading {
-    align-items: flex-start;
-  }
-  .workbench-runtime {
-    justify-items: start;
-  }
   .thread-graph-stage {
     min-height: 0;
     padding: var(--space-8);
   }
+
   .thread-graph-canvas {
     min-height: 320px;
   }
+
   .thread-graph-density {
     align-items: flex-start;
     flex-direction: column;
-  }
-  .console-footer {
-    padding: 0 var(--space-16);
-  }
-  .console-footer span:last-child {
-    display: none;
   }
 }

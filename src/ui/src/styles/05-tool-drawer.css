@@ -1,31 +1,8 @@
-/* Tiroir d'inspection : onglets,
-inspecteurs d'outil,
-cartes d'enregistrement. */
+/* Tiroir d'inspection : placement que les utilities du drawer ne couvrent pas. */
 
 .thread-tool-drawer {
   min-width: 0;
   border-left: 1px solid var(--line);
   background: var(--thread-panel);
   box-shadow: none;
-}
-.native-preview-body {
-  padding: clamp(0.75rem, 2vw, 1.6rem);
-}
-.native-preview-shell {
-  width: min(100%, 1560px);
-  margin: 0 auto;
-  border: 1px solid var(--line);
-}
-.console-footer {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-16);
-  padding: 0 var(--space-40);
-  border-top: 1px solid var(--line);
-  color: var(--thread-muted);
-  background: var(--surface-0);
-  font: var(--text-3xs)/1 var(--mono);
-  letter-spacing: 0.08em;
 }

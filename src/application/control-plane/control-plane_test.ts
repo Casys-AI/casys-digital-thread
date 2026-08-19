@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import { loadRunFixtures } from "../../adapters/run-fixtures.ts";
+import { loadRunFixtures } from "../../adapters/control-plane/run-fixtures.ts";
 import { ControlPlane } from "./control-plane.ts";
 import type {
   ContainerObserver,

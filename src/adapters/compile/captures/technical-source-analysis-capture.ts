@@ -1,0 +1,931 @@
+/**
+ * Provider-neutral capture boundary for executable technical source text.
+ *
+ * The source and its parser-backed analysis are persisted before either may be
+ * promoted into an admission proposal. Profiles are supplied by the server
+ * composition root; a caller can select a registered profile id, but cannot
+ * choose the language, parser, policy, provider, tool, or execution arguments.
+ */
+
+import {
+  deepFreeze,
+  exactRecord,
+  literalValue,
+  nonEmptyText,
+  positiveInteger,
+  safeId,
+  safeVersion,
+} from "../../../domain/kernel/case-validation.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import {
+  fingerprintResourceBytes,
+  type ImmutableBytes,
+} from "../../../domain/compile/source/provider-resource-reader.ts";
+import type { SourceAnalysisFrontend } from "../../../domain/compile/source/source-analysis-frontend.ts";
+import {
+  type SourceAnalysisAnalyzer,
+  type SourceAnalysisBundle,
+  type SourceAnalysisLanguage,
+  type SourceAnalysisSourceRole,
+  validateSourceAnalysisBundle,
+} from "../../../domain/compile/source/source-analysis.ts";
+import {
+  FileByteStore,
+  type VerifiedStoredBytes,
+} from "../../shared/cas/file-byte-store.ts";
+
+export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA =
+  "technical-source-analysis-capture/1.0" as const;
+
+/** Hard ceiling for every code-owned technical-source capture profile. */
+export const MAX_TECHNICAL_SOURCE_PROFILE_BYTES = 1024 * 1024;
+
+export type TechnicalSourceRole = Extract<
+  SourceAnalysisSourceRole,
+  "cad-script" | "modelica-model"
+>;
+
+export type TechnicalSourceLanguage = Extract<
+  SourceAnalysisLanguage,
+  "python" | "modelica"
+>;
+
+/** Code-owned method selection. It is never accepted from the capture caller. */
+export interface TechnicalSourceAnalysisProfile {
+  readonly id: string;
+  readonly version: string;
+  readonly role: TechnicalSourceRole;
+  readonly language: TechnicalSourceLanguage;
+  readonly analyzer: SourceAnalysisAnalyzer;
+  /** UTF-8 byte ceiling applied before any source hashing, CAS write, or analysis. */
+  readonly maxSourceBytes: number;
+}
+
+export interface TechnicalSourceAnalysisProfileRegistration {
+  readonly profile: TechnicalSourceAnalysisProfile;
+  readonly frontend: SourceAnalysisFrontend;
+}
+
+export interface TechnicalSourceAnalysisProfileRegistry {
+  /** Resolve the one profile currently addressable by an opaque caller selector. */
+  requireForCapture(profileId: string): TechnicalSourceAnalysisProfileRegistration;
+  /** Resolve the exact persisted profile version during replay. */
+  requireExact(input: {
+    readonly id: string;
+    readonly version: string;
+  }): TechnicalSourceAnalysisProfileRegistration;
+}
+
+export class TechnicalSourceAnalysisProfileNotRegisteredError extends Error {
+  constructor(
+    readonly profileId: string,
+    readonly profileVersion?: string,
+  ) {
+    super(
+      profileVersion === undefined
+        ? `No technical source-analysis profile is registered for ${profileId}.`
+        : `No technical source-analysis profile is registered for ${profileId}@${profileVersion}.`,
+    );
+    this.name = "TechnicalSourceAnalysisProfileNotRegisteredError";
+  }
+}
+
+/**
+ * Small sealed registry suitable for composition-root registrations.
+ *
+ * Profile ids are unique, so capture never has an implicit "latest" fallback.
+ * Replacing a version is an explicit deployment change; replay additionally
+ * checks the exact version and profile fingerprint persisted in the reference.
+ */
+export class FixedTechnicalSourceAnalysisProfileRegistry
+  implements TechnicalSourceAnalysisProfileRegistry {
+  readonly #registrations: ReadonlyMap<
+    string,
+    TechnicalSourceAnalysisProfileRegistration
+  >;
+
+  constructor(
+    registrations: readonly TechnicalSourceAnalysisProfileRegistration[],
+  ) {
+    const byId = new Map<string, TechnicalSourceAnalysisProfileRegistration>();
+    for (const rawRegistration of registrations) {
+      const registrationInput = exactRecord(
+        rawRegistration,
+        ["profile", "frontend"],
+        "$registration",
+      );
+      const profile = validateTechnicalSourceAnalysisProfile(
+        registrationInput.profile,
+        "$registration.profile",
+      );
+      const frontend = requireFrontend(
+        registrationInput.frontend,
+        "$registration.frontend",
+      );
+      if (byId.has(profile.id)) {
+        throw new TypeError(
+          `Duplicate technical source-analysis profile registration for ${profile.id}.`,
+        );
+      }
+      byId.set(profile.id, Object.freeze({ profile, frontend }));
+    }
+    this.#registrations = byId;
+  }
+
+  requireForCapture(
+    profileIdValue: string,
+  ): TechnicalSourceAnalysisProfileRegistration {
+    const profileId = safeId(profileIdValue, "$profileId");
+    const registration = this.#registrations.get(profileId);
+    if (registration === undefined) {
+      throw new TechnicalSourceAnalysisProfileNotRegisteredError(profileId);
+    }
+    return registration;
+  }
+
+  requireExact(input: {
+    readonly id: string;
+    readonly version: string;
+  }): TechnicalSourceAnalysisProfileRegistration {
+    const identity = exactRecord(input, ["id", "version"], "$profile");
+    const id = safeId(identity.id, "$profile.id");
+    const version = safeVersion(identity.version, "$profile.version");
+    const registration = this.#registrations.get(id);
+    if (
+      registration === undefined || registration.profile.version !== version
+    ) {
+      throw new TechnicalSourceAnalysisProfileNotRegisteredError(id, version);
+    }
+    return registration;
+  }
+}
+
+export interface TechnicalSourceAnalysisCaptureDocument {
+  readonly schemaVersion: typeof TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA;
+  readonly kind: "technical-source-analysis";
+  readonly profile: {
+    readonly id: string;
+    readonly version: string;
+    readonly fingerprint: ContentFingerprint;
+  };
+  readonly source: {
+    readonly id: string;
+    readonly role: TechnicalSourceRole;
+    readonly language: TechnicalSourceLanguage;
+    readonly sha256: string;
+    readonly byteCount: number;
+    readonly casUri: string;
+  };
+  readonly analysis: {
+    readonly analyzer: SourceAnalysisAnalyzer;
+    readonly policy: {
+      readonly profile: string;
+      readonly status: "passed" | "rejected";
+    };
+    readonly sha256: string;
+    readonly byteCount: number;
+    readonly casUri: string;
+  };
+}
+
+/** The returned document is itself the closed replay reference. */
+export type TechnicalSourceAnalysisReference = TechnicalSourceAnalysisCaptureDocument;
+
+export interface TechnicalSourceAnalysisCaptureDependencies {
+  readonly sourceCaptures: FileByteStore<"technical-source">;
+  readonly analysisCaptures: FileByteStore<"technical-source-analysis">;
+  readonly profiles: TechnicalSourceAnalysisProfileRegistry;
+}
+
+export interface VerifiedTechnicalSourceAnalysis {
+  readonly reference: TechnicalSourceAnalysisReference;
+  readonly sourceText: string;
+  readonly analysis: SourceAnalysisBundle;
+}
+
+export type TechnicalSourceAnalysisCaptureErrorCode =
+  | "source_size_limit_exceeded"
+  | "source_capture_readback_failed"
+  | "analysis_identity_mismatch"
+  | "analysis_capture_readback_failed"
+  | "source_capture_invalid"
+  | "analysis_capture_invalid"
+  | "analysis_rejected";
+
+export class TechnicalSourceAnalysisCaptureError extends Error {
+  constructor(
+    readonly code: TechnicalSourceAnalysisCaptureErrorCode,
+    message: string,
+    readonly reference?: TechnicalSourceAnalysisReference,
+  ) {
+    super(message);
+    this.name = "TechnicalSourceAnalysisCaptureError";
+  }
+}
+
+/**
+ * Persist exact UTF-8 source bytes, analyze those bytes locally, persist the
+ * canonical bundle, and prove both CAS entries through a deterministic replay.
+ */
+export class TechnicalSourceAnalysisCaptureService {
+  readonly #sourceCaptures: FileByteStore<"technical-source">;
+  readonly #analysisCaptures: FileByteStore<"technical-source-analysis">;
+  readonly #profiles: TechnicalSourceAnalysisProfileRegistry;
+
+  constructor(dependencies: TechnicalSourceAnalysisCaptureDependencies) {
+    this.#sourceCaptures = dependencies.sourceCaptures;
+    this.#analysisCaptures = dependencies.analysisCaptures;
+    this.#profiles = dependencies.profiles;
+  }
+
+  async capture(inputValue: {
+    readonly profileId: string;
+    /** Assigned by the server before this boundary; never derived from a label. */
+    readonly sourceId: string;
+    readonly sourceText: string;
+  }): Promise<TechnicalSourceAnalysisReference> {
+    const input = exactRecord(
+      inputValue,
+      ["profileId", "sourceId", "sourceText"],
+      "$technicalSourceCaptureInput",
+    );
+    const registration = this.#profiles.requireForCapture(
+      safeId(input.profileId, "$technicalSourceCaptureInput.profileId"),
+    );
+    const profile = validateTechnicalSourceAnalysisProfile(
+      registration.profile,
+      "$registeredProfile",
+    );
+    const sourceId = safeId(
+      input.sourceId,
+      "$technicalSourceCaptureInput.sourceId",
+    );
+    const sourceText = requireSourceText(
+      input.sourceText,
+      "$technicalSourceCaptureInput.sourceText",
+    );
+    const sourceBytes = new TextEncoder().encode(sourceText);
+    if (sourceBytes.byteLength > profile.maxSourceBytes) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "source_size_limit_exceeded",
+        `Technical source is ${sourceBytes.byteLength} UTF-8 bytes; registered profile ${profile.id}@${profile.version} permits at most ${profile.maxSourceBytes}.`,
+      );
+    }
+    const sourceFingerprint = await fingerprintBytes(sourceBytes);
+
+    let sourceStored: VerifiedStoredBytes<"technical-source">;
+    try {
+      sourceStored = await this.#sourceCaptures.save(
+        sourceFingerprint,
+        sourceBytes,
+      );
+      await requireExactStoredBytes(
+        this.#sourceCaptures,
+        sourceStored,
+        sourceBytes,
+        "Technical source",
+      );
+    } catch (error) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "source_capture_readback_failed",
+        `Technical source was not durably readable before analysis: ${
+          errorMessage(error)
+        }`,
+      );
+    }
+
+    const rawBundle = await registration.frontend.analyze({
+      sourceId,
+      role: profile.role,
+      language: profile.language,
+      sourceText,
+    });
+    const bundle = validateSourceAnalysisBundle(rawBundle);
+    assertExactBundleIdentity(bundle, profile, sourceId, sourceFingerprint);
+
+    const analysisText = deterministicJson(bundle);
+    const analysisBytes = new TextEncoder().encode(analysisText);
+    const analysisFingerprint = await fingerprintBytes(analysisBytes);
+    let analysisStored: VerifiedStoredBytes<"technical-source-analysis">;
+    try {
+      analysisStored = await this.#analysisCaptures.save(
+        analysisFingerprint,
+        analysisBytes,
+      );
+      await requireExactStoredBytes(
+        this.#analysisCaptures,
+        analysisStored,
+        analysisBytes,
+        "Technical source analysis",
+      );
+    } catch (error) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_capture_readback_failed",
+        `Technical source analysis was not durably readable after capture: ${
+          errorMessage(error)
+        }`,
+      );
+    }
+
+    const profileFingerprint = await fingerprintTechnicalSourceAnalysisProfile(
+      profile,
+    );
+    const reference = await validateTechnicalSourceAnalysisCaptureDocument({
+      schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
+      kind: "technical-source-analysis",
+      profile: {
+        id: profile.id,
+        version: profile.version,
+        fingerprint: profileFingerprint,
+      },
+      source: {
+        id: sourceId,
+        role: profile.role,
+        language: profile.language,
+        sha256: sourceStored.fingerprint.digest,
+        byteCount: sourceStored.byteCount,
+        casUri: sourceStored.uri,
+      },
+      analysis: {
+        analyzer: profile.analyzer,
+        policy: {
+          profile: bundle.policy.profile,
+          status: bundle.policy.status,
+        },
+        sha256: analysisStored.fingerprint.digest,
+        byteCount: analysisStored.byteCount,
+        casUri: analysisStored.uri,
+      },
+    });
+
+    // Reopen through the public evidence path before returning any reference.
+    await this.#reopen(reference, true).catch((error) => {
+      if (error instanceof TechnicalSourceAnalysisCaptureError) throw error;
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_capture_readback_failed",
+        `Technical source analysis failed exact replay after capture: ${
+          errorMessage(error)
+        }`,
+        reference,
+      );
+    });
+
+    if (bundle.policy.status === "rejected") {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_rejected",
+        `Technical source analysis rejected ${sourceId}; persisted analysis sha256 ${analysisFingerprint.digest}.`,
+        reference,
+      );
+    }
+    return reference;
+  }
+
+  /** Reopen both CAS objects and reproduce the exact registered analysis. */
+  reopen(
+    value: unknown,
+  ): Promise<VerifiedTechnicalSourceAnalysis> {
+    return this.#reopen(value, false);
+  }
+
+  async #reopen(
+    value: unknown,
+    allowRejected: boolean,
+  ): Promise<VerifiedTechnicalSourceAnalysis> {
+    const reference = await validateTechnicalSourceAnalysisCaptureDocument(value);
+    const registration = this.#profiles.requireExact({
+      id: reference.profile.id,
+      version: reference.profile.version,
+    });
+    const profile = validateTechnicalSourceAnalysisProfile(
+      registration.profile,
+      "$registeredProfile",
+    );
+    const registeredFingerprint = await fingerprintTechnicalSourceAnalysisProfile(
+      profile,
+    );
+    if (
+      !sameFingerprint(registeredFingerprint, reference.profile.fingerprint) ||
+      profile.role !== reference.source.role ||
+      profile.language !== reference.source.language ||
+      !sameAnalyzer(profile.analyzer, reference.analysis.analyzer)
+    ) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_identity_mismatch",
+        "Technical source reference does not name the exact registered profile.",
+        reference,
+      );
+    }
+
+    const sourceFingerprint = fingerprintFromDigest(reference.source.sha256);
+    if (this.#sourceCaptures.uriFor(sourceFingerprint) !== reference.source.casUri) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "source_capture_invalid",
+        "Technical source reference names a foreign CAS URI.",
+        reference,
+      );
+    }
+    let sourceBytes: ImmutableBytes | undefined;
+    try {
+      sourceBytes = await this.#sourceCaptures.read(sourceFingerprint);
+    } catch (error) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "source_capture_invalid",
+        `Technical source failed content-addressed readback: ${errorMessage(error)}`,
+        reference,
+      );
+    }
+    if (
+      sourceBytes === undefined ||
+      sourceBytes.byteLength !== reference.source.byteCount ||
+      sourceBytes.byteLength > profile.maxSourceBytes
+    ) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "source_capture_invalid",
+        "Technical source byte count does not match its capture reference or registered profile cap.",
+        reference,
+      );
+    }
+    const sourceText = decodeExactUtf8(sourceBytes.copy(), "technical source");
+
+    const analysisFingerprint = fingerprintFromDigest(reference.analysis.sha256);
+    if (
+      this.#analysisCaptures.uriFor(analysisFingerprint) !==
+        reference.analysis.casUri
+    ) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_capture_invalid",
+        "Technical source analysis reference names a foreign CAS URI.",
+        reference,
+      );
+    }
+    let analysisBytes: ImmutableBytes | undefined;
+    try {
+      analysisBytes = await this.#analysisCaptures.read(analysisFingerprint);
+    } catch (error) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_capture_invalid",
+        `Technical source analysis failed content-addressed readback: ${
+          errorMessage(error)
+        }`,
+        reference,
+      );
+    }
+    if (
+      analysisBytes === undefined ||
+      analysisBytes.byteLength !== reference.analysis.byteCount
+    ) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_capture_invalid",
+        "Technical source analysis byte count does not match its capture reference.",
+        reference,
+      );
+    }
+
+    let analysis: SourceAnalysisBundle;
+    let analysisText: string;
+    try {
+      analysisText = decodeExactUtf8(
+        analysisBytes.copy(),
+        "technical source analysis",
+      );
+      analysis = validateSourceAnalysisBundle(JSON.parse(analysisText));
+      if (deterministicJson(analysis) !== analysisText) {
+        throw new TypeError("analysis is not canonical JSON");
+      }
+      assertExactBundleIdentity(
+        analysis,
+        profile,
+        reference.source.id,
+        sourceFingerprint,
+      );
+      if (
+        analysis.policy.profile !== reference.analysis.policy.profile ||
+        analysis.policy.status !== reference.analysis.policy.status
+      ) {
+        throw new TypeError("analysis policy does not match its capture reference");
+      }
+      const recomputed = validateSourceAnalysisBundle(
+        await registration.frontend.analyze({
+          sourceId: reference.source.id,
+          role: profile.role,
+          language: profile.language,
+          sourceText,
+        }),
+      );
+      if (deterministicJson(recomputed) !== analysisText) {
+        throw new TypeError(
+          "registered frontend did not reproduce the captured analysis",
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof TechnicalSourceAnalysisCaptureError &&
+        error.code === "analysis_identity_mismatch"
+      ) {
+        throw error;
+      }
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_capture_invalid",
+        `Technical source analysis is invalid: ${errorMessage(error)}`,
+        reference,
+      );
+    }
+
+    if (!allowRejected && analysis.policy.status === "rejected") {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_rejected",
+        `Technical source analysis rejected ${reference.source.id}; persisted analysis sha256 ${reference.analysis.sha256}.`,
+        reference,
+      );
+    }
+    return Object.freeze({ reference, sourceText, analysis });
+  }
+}
+
+/** Strictly validate the closed replay reference, including its profile hash. */
+export function validateTechnicalSourceAnalysisCaptureDocument(
+  value: unknown,
+  path = "$technicalSourceAnalysisCapture",
+): TechnicalSourceAnalysisCaptureDocument {
+  const root = exactRecord(
+    value,
+    ["schemaVersion", "kind", "profile", "source", "analysis"],
+    path,
+  );
+  literalValue(
+    root.schemaVersion,
+    TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
+    `${path}.schemaVersion`,
+  );
+  literalValue(root.kind, "technical-source-analysis", `${path}.kind`);
+
+  const profileInput = exactRecord(
+    root.profile,
+    ["id", "version", "fingerprint"],
+    `${path}.profile`,
+  );
+  const sourceInput = exactRecord(
+    root.source,
+    ["id", "role", "language", "sha256", "byteCount", "casUri"],
+    `${path}.source`,
+  );
+  const analysisInput = exactRecord(
+    root.analysis,
+    ["analyzer", "policy", "sha256", "byteCount", "casUri"],
+    `${path}.analysis`,
+  );
+  const analyzerInput = exactRecord(
+    analysisInput.analyzer,
+    ["id", "version"],
+    `${path}.analysis.analyzer`,
+  );
+  const policyInput = exactRecord(
+    analysisInput.policy,
+    ["profile", "status"],
+    `${path}.analysis.policy`,
+  );
+
+  const profile = validatePersistedProfileDescriptor({
+    id: profileInput.id,
+    version: profileInput.version,
+    role: sourceInput.role,
+    language: sourceInput.language,
+    analyzer: {
+      id: analyzerInput.id,
+      version: analyzerInput.version,
+    },
+  }, `${path}.profileDescriptor`);
+  const persistedProfileFingerprint = parseFingerprint(
+    profileInput.fingerprint,
+    `${path}.profile.fingerprint`,
+  );
+
+  const sourceSha256 = canonicalSha256(
+    sourceInput.sha256,
+    `${path}.source.sha256`,
+  );
+  const sourceByteCount = nonNegativeSafeInteger(
+    sourceInput.byteCount,
+    `${path}.source.byteCount`,
+  );
+  const analysisSha256 = canonicalSha256(
+    analysisInput.sha256,
+    `${path}.analysis.sha256`,
+  );
+  const analysisByteCount = nonNegativeSafeInteger(
+    analysisInput.byteCount,
+    `${path}.analysis.byteCount`,
+  );
+  const policyProfile = safeId(
+    policyInput.profile,
+    `${path}.analysis.policy.profile`,
+  );
+  if (policyProfile !== profile.id) {
+    throw new TypeError(
+      `${path}.analysis.policy.profile must equal the registered profile id.`,
+    );
+  }
+  const policyStatus = requirePolicyStatus(
+    policyInput.status,
+    `${path}.analysis.policy.status`,
+  );
+
+  return deepFreeze({
+    schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
+    kind: "technical-source-analysis",
+    profile: {
+      id: profile.id,
+      version: profile.version,
+      fingerprint: persistedProfileFingerprint,
+    },
+    source: {
+      id: safeId(sourceInput.id, `${path}.source.id`),
+      role: profile.role,
+      language: profile.language,
+      sha256: sourceSha256,
+      byteCount: sourceByteCount,
+      casUri: canonicalCasUri(
+        sourceInput.casUri,
+        sourceSha256,
+        `${path}.source.casUri`,
+      ),
+    },
+    analysis: {
+      analyzer: profile.analyzer,
+      policy: { profile: policyProfile, status: policyStatus },
+      sha256: analysisSha256,
+      byteCount: analysisByteCount,
+      casUri: canonicalCasUri(
+        analysisInput.casUri,
+        analysisSha256,
+        `${path}.analysis.casUri`,
+      ),
+    },
+  });
+}
+
+export function validateTechnicalSourceAnalysisProfile(
+  value: unknown,
+  path = "$technicalSourceAnalysisProfile",
+): TechnicalSourceAnalysisProfile {
+  const input = exactRecord(
+    value,
+    ["id", "version", "role", "language", "analyzer", "maxSourceBytes"],
+    path,
+  );
+  const analyzer = exactRecord(
+    input.analyzer,
+    ["id", "version"],
+    `${path}.analyzer`,
+  );
+  const role = input.role;
+  const language = input.language;
+  if (
+    !(
+      (role === "cad-script" && language === "python") ||
+      (role === "modelica-model" && language === "modelica")
+    )
+  ) {
+    throw new TypeError(
+      `${path} must select cad-script/python or modelica-model/modelica; brief, plain-text, SysML, TypeScript, and CalculiX input are not executable technical-source profiles.`,
+    );
+  }
+  return deepFreeze({
+    id: safeId(input.id, `${path}.id`),
+    version: safeVersion(input.version, `${path}.version`),
+    role,
+    language,
+    analyzer: {
+      id: safeId(analyzer.id, `${path}.analyzer.id`),
+      version: safeVersion(analyzer.version, `${path}.analyzer.version`),
+    },
+    maxSourceBytes: boundedSourceBytes(
+      input.maxSourceBytes,
+      `${path}.maxSourceBytes`,
+    ),
+  });
+}
+
+type PersistedTechnicalSourceProfileDescriptor = Omit<
+  TechnicalSourceAnalysisProfile,
+  "maxSourceBytes"
+>;
+
+/**
+ * The public reference intentionally keeps the profile selector opaque and
+ * tool-compatible. Its fingerprint covers the full registered profile,
+ * including `maxSourceBytes`, and is therefore verified only by `reopen`,
+ * where the code-owned registry is available.
+ */
+function validatePersistedProfileDescriptor(
+  value: unknown,
+  path: string,
+): PersistedTechnicalSourceProfileDescriptor {
+  const input = exactRecord(
+    value,
+    ["id", "version", "role", "language", "analyzer"],
+    path,
+  );
+  const analyzer = exactRecord(
+    input.analyzer,
+    ["id", "version"],
+    `${path}.analyzer`,
+  );
+  const role = input.role;
+  const language = input.language;
+  if (
+    !(
+      (role === "cad-script" && language === "python") ||
+      (role === "modelica-model" && language === "modelica")
+    )
+  ) {
+    throw new TypeError(
+      `${path} must select cad-script/python or modelica-model/modelica.`,
+    );
+  }
+  return deepFreeze({
+    id: safeId(input.id, `${path}.id`),
+    version: safeVersion(input.version, `${path}.version`),
+    role,
+    language,
+    analyzer: {
+      id: safeId(analyzer.id, `${path}.analyzer.id`),
+      version: safeVersion(analyzer.version, `${path}.analyzer.version`),
+    },
+  });
+}
+
+function boundedSourceBytes(value: unknown, path: string): number {
+  const bytes = positiveInteger(value, path);
+  if (bytes > MAX_TECHNICAL_SOURCE_PROFILE_BYTES) {
+    throw new TypeError(
+      `${path} must not exceed ${MAX_TECHNICAL_SOURCE_PROFILE_BYTES} bytes.`,
+    );
+  }
+  return bytes;
+}
+
+export function fingerprintTechnicalSourceAnalysisProfile(
+  value: unknown,
+): Promise<ContentFingerprint> {
+  return sha256Fingerprint(validateTechnicalSourceAnalysisProfile(value));
+}
+
+function requireFrontend(value: unknown, path: string): SourceAnalysisFrontend {
+  if (
+    value === null || typeof value !== "object" ||
+    typeof (value as { analyze?: unknown }).analyze !== "function"
+  ) {
+    throw new TypeError(`${path} must implement analyze.`);
+  }
+  return value as SourceAnalysisFrontend;
+}
+
+function requireSourceText(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError(`${path} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function assertExactBundleIdentity(
+  bundle: SourceAnalysisBundle,
+  profile: TechnicalSourceAnalysisProfile,
+  sourceId: string,
+  sourceFingerprint: ContentFingerprint,
+): void {
+  if (
+    bundle.source.id !== sourceId || bundle.source.role !== profile.role ||
+    bundle.source.language !== profile.language ||
+    !sameFingerprint(bundle.source.fingerprint, sourceFingerprint) ||
+    !sameAnalyzer(bundle.analyzer, profile.analyzer) ||
+    bundle.policy.profile !== profile.id
+  ) {
+    throw new TechnicalSourceAnalysisCaptureError(
+      "analysis_identity_mismatch",
+      "Technical source analysis does not name the exact captured source, registered analyzer, and policy profile.",
+    );
+  }
+}
+
+async function requireExactStoredBytes<Kind extends string>(
+  store: FileByteStore<Kind>,
+  receipt: VerifiedStoredBytes<Kind>,
+  expected: Uint8Array,
+  label: string,
+): Promise<void> {
+  const reopened = await store.read(receipt.fingerprint);
+  if (
+    reopened === undefined || reopened.byteLength !== expected.byteLength ||
+    receipt.byteCount !== expected.byteLength ||
+    !bytesEqual(reopened.copy(), expected)
+  ) {
+    throw new TypeError(`${label} bytes changed during durable readback.`);
+  }
+}
+
+async function fingerprintBytes(
+  bytes: Uint8Array,
+): Promise<ContentFingerprint> {
+  return Object.freeze({
+    algorithm: "sha256",
+    digest: await fingerprintResourceBytes(bytes),
+  });
+}
+
+function fingerprintFromDigest(digest: string): ContentFingerprint {
+  return Object.freeze({
+    algorithm: "sha256",
+    digest: canonicalSha256(digest, "$fingerprint.digest"),
+  });
+}
+
+function parseFingerprint(value: unknown, path: string): ContentFingerprint {
+  const input = exactRecord(value, ["algorithm", "digest"], path);
+  literalValue(input.algorithm, "sha256", `${path}.algorithm`);
+  return Object.freeze({
+    algorithm: "sha256",
+    digest: canonicalSha256(input.digest, `${path}.digest`),
+  });
+}
+
+function canonicalSha256(value: unknown, path: string): string {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/.test(value)) {
+    throw new TypeError(`${path} must be canonical lowercase SHA-256 hex.`);
+  }
+  return value;
+}
+
+function canonicalCasUri(value: unknown, digest: string, path: string): string {
+  const uri = nonEmptyText(value, path);
+  if (
+    !/^casys:\/\/[a-z0-9][a-z0-9.-]{0,62}\/sha256\/[a-f0-9]{64}$/.test(uri) ||
+    !uri.endsWith(`/sha256/${digest}`)
+  ) {
+    throw new TypeError(`${path} must be a canonical CAS URI for its sha256.`);
+  }
+  return uri;
+}
+
+function nonNegativeSafeInteger(value: unknown, path: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new TypeError(`${path} must be a non-negative safe integer.`);
+  }
+  return Number(value);
+}
+
+function requirePolicyStatus(
+  value: unknown,
+  path: string,
+): "passed" | "rejected" {
+  if (value !== "passed" && value !== "rejected") {
+    throw new TypeError(`${path} must be passed or rejected.`);
+  }
+  return value;
+}
+
+function decodeExactUtf8(bytes: Uint8Array, label: string): string {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+      bytes,
+    );
+  } catch (error) {
+    throw new TypeError(`${label} is not exact UTF-8: ${errorMessage(error)}`);
+  }
+  if (!bytesEqual(new TextEncoder().encode(text), bytes)) {
+    throw new TypeError(`${label} did not round-trip as exact UTF-8 bytes.`);
+  }
+  return text;
+}
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  let different = 0;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    different |= left[index]! ^ right[index]!;
+  }
+  return different === 0;
+}
+
+function sameFingerprint(
+  left: ContentFingerprint,
+  right: ContentFingerprint,
+): boolean {
+  return left.algorithm === right.algorithm && left.digest === right.digest;
+}
+
+function sameAnalyzer(
+  left: SourceAnalysisAnalyzer,
+  right: SourceAnalysisAnalyzer,
+): boolean {
+  return left.id === right.id && left.version === right.version;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

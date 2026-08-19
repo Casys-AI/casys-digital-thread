@@ -351,12 +351,16 @@ export function resolveSealedAssemblyGeometry(
   );
   if (records.some((record) => !record)) return undefined;
   const exactRecords = records as GeometryBinaryRecord[];
-  const hasV2Records = exactRecords.some((record) => record.generation === "v2");
+  const hasV2Records = exactRecords.some((record) =>
+    record.generation === "v2"
+  );
   if (
     hasV2Records && exactRecords.some((record) => record.generation !== "v2")
   ) return undefined;
 
-  const assemblyRecords = exactRecords.filter((record) => record.scope === "assembly")
+  const assemblyRecords = exactRecords.filter((record) =>
+    record.scope === "assembly"
+  )
     .toSorted((left, right) =>
       left.generation === "v2" && right.generation === "v2"
         ? left.formatIndex - right.formatIndex
@@ -790,7 +794,7 @@ export interface SysmlSensitivityRecord {
  *   parent assembly → selected component → (siblings shown flat, not rendered)
  *
  * Non-trivial display logic lives here so the TSX stays declarative and the
- * model remains testable without Preact.
+ * model remains testable without React.
  */
 export interface SysmlSubtreeModel {
   /** The root assembly (or the closest ancestor). */

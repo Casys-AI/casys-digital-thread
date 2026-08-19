@@ -8,7 +8,7 @@ import { applyEssentialFilter } from "./essential-graph-filter.ts";
 import {
   compactSysmlPartPairs,
   graphRefKey,
-} from "./sysml-composite-projection.ts";
+} from "../architecture/sysml-composite-projection.ts";
 import type {
   PartAnchorageResolution,
   PartTarget,

@@ -3,7 +3,7 @@ import {
   compactSysmlPartPairs,
   graphRefKey,
   isUiOnlySysmlCompositeEdge,
-} from "./src/thread/sysml-composite-projection.ts";
+} from "./src/architecture/sysml-composite-projection.ts";
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,

@@ -1,5 +1,5 @@
 import { parseArgs } from "../lib/cli.ts";
-import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
+import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
 import { parseCapturedSysonModelInventory } from "../../src/adapters/historical/syson-model-inventory-extension.ts";
 
 const args = parseArgs(Deno.args);

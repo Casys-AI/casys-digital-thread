@@ -15,8 +15,8 @@ import {
   canonicalResourceUri,
   compareAsciiCodeUnits,
   sha256Hex,
-} from "../../../../domain/analysis/provider-resource-reader.ts";
-import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "../../../../orchestration/operations/recorded-analysis.ts";
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
+import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "../../../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 
 export const SIMULATION_CASE_QUALIFICATION_CAPTURE_SCHEMA =
   "simulation-case-qualification-capture/2.0" as const;

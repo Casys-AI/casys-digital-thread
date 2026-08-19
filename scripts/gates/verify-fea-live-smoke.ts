@@ -33,9 +33,12 @@
  *   deno task verify:fea:live
  */
 
-import { loadFleetManifest, ManifestError } from "../../src/adapters/manifest.ts";
-import { HttpMcpToolClient } from "../../src/adapters/mcp/http-mcp-tool-client.ts";
-import { parseFeaSolverResponse } from "../../src/adapters/captures/fea-solver-capture.ts";
+import {
+  loadFleetManifest,
+  ManifestError,
+} from "../../src/adapters/control-plane/manifest.ts";
+import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
+import { parseFeaSolverResponse } from "../../src/adapters/sensitivity/live-fea/fea-solver-capture.ts";
 import {
   ephemeralFeaExportCleanupScript,
   validateEphemeralFeaExportCleanup,

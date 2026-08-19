@@ -7,7 +7,7 @@ import {
   type LiveThreadGraphPatch,
   type LiveThreadUpdateJournal,
   redactLiveThreadGraphPatch,
-} from "./stores/live-thread-update-store.ts";
+} from "./shared/stores/live-thread-update-store.ts";
 
 export type RecordingMcpToolPhase = "started" | "completed" | "failed";
 

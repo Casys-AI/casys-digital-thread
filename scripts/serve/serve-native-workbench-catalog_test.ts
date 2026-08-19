@@ -19,7 +19,7 @@ import { validateThreadSnapshot } from "../../src/domain/thread/thread-snapshot-
 import {
   ARCHITECTURE_CAPTURE_URI_PREFIX,
   GEOMETRY_CAPTURE_URI_PREFIX,
-} from "../../src/adapters/captures/file-capture-store.ts";
+} from "../../src/adapters/shared/cas/file-capture-store.ts";
 import type { ContentFingerprint } from "../../src/domain/thread/thread-snapshot.ts";
 import { resolveSnapshotComponentCatalog } from "./serve-native-workbench.ts";
 

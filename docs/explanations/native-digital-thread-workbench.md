@@ -9,10 +9,10 @@ architecture: five isolated applications remain five isolated applications even 
 they share colors and small reusable components.
 
 The product Workbench therefore no longer uses nested MCP Apps or iframes as its main
-composition primitive. It renders one linked engineering state in one native Preact
-application. MCP remains the protocol between the backend and the engineering tools; MCP
-Apps remain a delivery surface for rich tool results and for embedding the complete
-Workbench once in an agent host.
+composition primitive. It renders one linked engineering state in one native React +
+Vite application. MCP remains the protocol between the backend and the engineering
+tools. Provider MCP Apps may still show one rich tool result in another host; they are
+not the atelier product page. `preview:browser` refuses.
 
 ## Product question
 
@@ -81,7 +81,7 @@ context.
 ## Runtime boundary
 
 ```text
-native Preact SPA                           paired agent MCP client
+native React + Vite SPA                     paired agent MCP client
   | GET + snapshot SSE                       | propose / elicit / queue / execute
   | no command authority                     | bounded registered operations only
   v                                          v
@@ -152,19 +152,19 @@ thread model.
 
 ## Presentation boundary
 
-`@casys/mcp-view` remains the shared visual language. Its pure Preact primitives and
-domain components may be imported by the native application without the MCP Apps bridge.
-A clean components-only sub-export is preferred over relying on tree-shaking from an
-entry point that also exports the MCP App surface runtime.
+The product cockpit is a React + Vite SPA (`native-preview.tsx` mounts
+`ThreadWorkbench`). Presentation primitives live in `src/ui/src/ui/*`. A local
+token copy (`src/ui/src/view/mcp-view-theme.ts`) holds `--cockpit-*` and
+`.cockpit-surface`; leftover `.mcp-view-*` class rules were retired. The native
+bundle must not import `@casys/mcp-view` and must not contain the Apps handshake
+(`ui/initialize`, `toolresult`). `deno task verify:thread:presentation` enforces
+that boundary.
 
-The same views support two host adapters:
-
-- an HTTP client for the standalone browser Workbench;
-- an MCP Apps client when the complete Workbench is embedded once in an agent host.
-
-Individual provider viewers remain useful when an agent calls one provider tool and
-wants one rich result. An iframe remains an isolation fallback for third-party or
-unreviewed Apps; it is not the normal first-party product layout.
+The standalone browser Workbench talks to the BFF over HTTP and SSE. It is not an
+MCP App and is not embedded through an Apps host. Individual provider viewers
+remain useful when an agent calls one provider tool and wants one rich result in
+that provider's own host. An iframe remains an isolation fallback for third-party
+or unreviewed Apps; it is not the first-party product layout.
 
 In the native Workbench, SysON, build123d, CalculiX, Modelica, and ERPNext are tool
 facets in one contextual drawer. Feed or topology selection activates the owning tool

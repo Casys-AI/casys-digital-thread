@@ -98,6 +98,20 @@ deno task mcp:call --name=project_sensitivity_study_seal_review \
 How-to:
 [Compile sensitivity-study parameters](compile-sensitivity-parameters.md).
 
+Authorities stay in sibling folders — do not merge them:
+
+| Operation | Folder |
+| --------- | ------ |
+| `analyze.seal-sensitivity-study@1` | [`src/adapters/sensitivity/study/`](../../src/adapters/sensitivity/study/) |
+| `analyze.run-fea-sensitivity@1` | [`src/adapters/sensitivity/live-fea/`](../../src/adapters/sensitivity/live-fea/) |
+| `verify.evaluate-sensitivity-base@1` | [`src/adapters/sensitivity/base-evaluation/`](../../src/adapters/sensitivity/base-evaluation/) |
+| `model.write-sensitivity-edges@1` | [`src/adapters/sensitivity/edges/`](../../src/adapters/sensitivity/edges/) |
+| `design.apply-vector-correction@1` | [`src/adapters/sensitivity/vector-correction/`](../../src/adapters/sensitivity/vector-correction/) |
+| `compile.capture-corrected-source@1` | [`src/adapters/sensitivity/correction-source/`](../../src/adapters/sensitivity/correction-source/) |
+
+`compile.seal-admission@1` stays under `src/adapters/compile/`. A proof-run
+evaluation does not authorize the vector-correction folder.
+
 Every consequential step is still: append work + decision → propose → human MRTR
 → queue → execute.
 

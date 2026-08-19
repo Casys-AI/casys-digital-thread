@@ -22,7 +22,7 @@ import {
   canonicalResourceUri,
   fingerprintResourceBytes,
   sha256Hex,
-} from "../../../../domain/analysis/provider-resource-reader.ts";
+} from "../../../../domain/compile/source/provider-resource-reader.ts";
 
 export const MODELICA_QUALIFIED_SEAL_ATTEMPT_SCHEMA =
   "modelica-qualified-seal-attempt/1.0" as const;

@@ -15,7 +15,7 @@ import {
   ANALYSIS_GRAPH_SCHEMA,
   type AnalysisGraph,
   validateAnalysisGraph,
-} from "../analysis/analysis-graph.ts";
+} from "./analysis-graph.ts";
 import { deterministicJson } from "../kernel/deterministic-json.ts";
 import { validateThreadSnapshot } from "./thread-snapshot-validation.ts";
 

@@ -24,8 +24,9 @@ not carry the same authority. Naming all of them “oracles” would hide that d
 Ports instead name their narrow capability; the qualified method supplies the broader
 engineering meaning.
 
-- `McpCalculixRecordedStaticAdapter` is a CalculiX recorded-static engine adapter, not
-  an oracle. The proof method is separately qualified.
+- Isolated CalculiX `@3` is a local microVM engine path, not an oracle. The proof
+  method is separately qualified. Historical MCP recorded-static adapters are not
+  product.
 - `McpModelicaResumableAdapter` is a resumable dynamic-system engine adapter. The
   qualified kit manifest identifies the method.
 - SysON is a model/constraint engine. `syson_constraint_evaluate` is an evaluation
@@ -66,18 +67,18 @@ static proof, not support for arbitrary agent-authored `.inp` decks.
 The application stays hexagonal by separating storage and recovery from provider wire
 vocabulary:
 
-1. `src/domain/analysis/` defines the plan, resource profile, qualified methods and
+1. `src/domain/compile/rop/` defines the plan, resource profile, qualified methods and
    validation without I/O.
-2. `src/adapters/plans/` resolves and seals the one-action plan at queue time; the same
+2. `src/adapters/compile/plans/` resolves and seals the one-action plan at queue time; the same
    CAS-backed reader supports inspection and execution.
-3. `src/adapters/mcp/http-mcp-resource-reader.ts` reads one exact provider resource; it
-   exposes no discovery authority. `src/adapters/captures/` saves/rereads bytes, ledger
+3. `src/adapters/shared/mcp/http-mcp-resource-reader.ts` reads one exact provider resource; it
+   exposes no discovery authority. `src/adapters/shared/cas/` saves/rereads bytes, ledger
    and manifest.
-4. `src/adapters/modelica/recorded/` and `src/adapters/providers/calculix/` own fixed
+4. `src/adapters/modelica/recorded/` and `src/adapters/sensitivity/live-fea/` own fixed
    MCP tools and envelopes. Executors cannot construct arbitrary provider arguments.
-5. `src/adapters/wal/` owns the durable post-dispatch state. `src/adapters/executors/`
-   owns the fixed sequence and canonical ThreadSnapshot write. Modelica WAL and
-   executors live under `src/adapters/modelica/`.
+5. Generic WAL helpers live in `src/adapters/shared/wal/`. Typed WAL and executors live
+   next to the authority (`src/adapters/modelica/`, `src/adapters/fea/`, …). Modelica WAL
+   and executors live under `src/adapters/modelica/`.
 
 Before non-idempotent dispatch, the WAL records intent. A known Modelica request or
 CalculiX run is read back, never submitted or solved again. Once solver resources,

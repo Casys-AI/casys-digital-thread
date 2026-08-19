@@ -31,7 +31,7 @@ import {
   replaceAttemptFileDurably,
   syncAttemptDirectoryChain,
   writeNewAttemptFileDurably,
-} from "../../../wal/durable-attempt-file-writes.ts";
+} from "../../../shared/wal/durable-attempt-file-writes.ts";
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const NO_WRITE_PROGRESS = "Modelica scenario attempt journal made no write progress.";

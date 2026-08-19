@@ -5,7 +5,7 @@ import type {
   ThreadOperationRef,
   ThreadSnapshot,
 } from "./thread-snapshot.ts";
-import type { AnalysisGraph } from "../analysis/analysis-graph.ts";
+import type { AnalysisGraph } from "./analysis-graph.ts";
 import {
   collectThreadSnapshotIssues,
   createThreadSnapshot,

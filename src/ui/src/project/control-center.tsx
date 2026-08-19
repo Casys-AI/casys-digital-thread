@@ -8,10 +8,10 @@ import type {
 } from "../../../domain/project/engineering-project.ts";
 import type { ProjectReviewIntentAction } from "../../../domain/project/project-review-intent.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
-import { type GeometryDecisionValid } from "../thread/geometry-decision-model.ts";
+import { type GeometryDecisionValid } from "../cad/geometry-decision-model.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
 import { isDuplicateSealedGlbCopy } from "../thread/component-workspace-model.ts";
-import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
+import { createThreeOrbitViewport } from "../cad/three-orbit-viewport.ts";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";

@@ -17,7 +17,7 @@ import {
   validateContentFingerprint,
   validateIsolatedCodeExecutionReceiptRecord,
   validateIsolatedOutputProducerGenerationAdvance,
-} from "../../analysis/isolated-code-execution.ts";
+} from "../../compile/isolation/isolated-code-execution.ts";
 import {
   type ModelicaIsolatedEvidence,
   validateModelicaIsolatedEvidence,

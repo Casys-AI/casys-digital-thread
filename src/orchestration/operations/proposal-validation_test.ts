@@ -4,14 +4,14 @@ import {
   gatedProposalOperations,
   ProposalGrammarError,
 } from "./proposal-validation.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/engineering/architecture-proposal.ts";
-import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/engineering/requirements-proposal.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/architecture/renderer/architecture-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
 import {
   encodeSysonModelSeedProposalParameters,
   SYSON_MODEL_SEED_CANONICAL_MODEL_NAME,
   SYSON_MODEL_SEED_OPERATION,
-} from "../../domain/engineering/syson-model-seed-proposal.ts";
-import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
+} from "../../domain/architecture/seed/syson-model-seed-proposal.ts";
+import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { validateSimulationCase } from "../../domain/modelica/recorded/simulation-case.ts";
 import {
   encodeSimulationCaseDecisionParameters,
@@ -19,17 +19,17 @@ import {
 import { validateSimulationCaseV2 } from "../../domain/modelica/recorded/simulation-case-v2.ts";
 import {
   encodeSimulationCaseV2DecisionParameters,
+  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
 } from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import {
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
 } from "../../domain/modelica/recorded/simulation-case-proposal.ts";
-import { SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION } from "./recorded-analysis.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
-} from "../../domain/analysis/technical-compilation-proposal.ts";
-import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build123d-execution-proposal.ts";
+} from "../../domain/compile/admission/technical-compilation-proposal.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 
 const VALID_ARCHITECTURE = [
   { key: "architecture.package", label: "Package", value: "DemoArchitecture" },

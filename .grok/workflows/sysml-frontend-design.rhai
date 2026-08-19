@@ -33,10 +33,10 @@ let design_schema = #{
 
 phase("Read");
 let read_p = "Read-only survey in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
-read_p += "Use read_file/grep. Read src/domain/engineering/architecture-proposal.ts, ";
+read_p += "Use read_file/grep. Read src/domain/architecture/renderer/architecture-proposal.ts, ";
 read_p += "src/adapters/analyzers/qualified-build123d-source-analyzer.ts, ";
 read_p += "docs/reference/analysis-authority-pipeline.md architecture and compilation sections, ";
-read_p += "src/adapters/executors/model-write-architecture-run-executor.ts capture pipeline. ";
+read_p += "src/adapters/architecture/renderer/model-write-architecture-run-executor.ts capture pipeline. ";
 read_p += "Summarize: who writes SysML today, what subset the renderer emits, ";
 read_p += "and which CAD admission steps SysML must copy. Do not edit files.";
 

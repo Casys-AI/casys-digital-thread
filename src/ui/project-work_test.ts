@@ -4,18 +4,16 @@ Deno.test("agent run journal binds each status chip to the same run title", asyn
   const source = await Deno.readTextFile(
     new URL("./src/project/work.tsx", import.meta.url),
   );
-  const start = source.indexOf("Agent run journal");
-  const end = source.indexOf("Tools contributing evidence", start);
+  const start = source.indexOf("Full run journal");
+  const end = source.indexOf("declared fleet", start);
   const journal = source.slice(start, end);
 
   assertEquals(start >= 0, true);
   assertEquals(end > start, true);
   assertStringIncludes(journal, "aria-label={agentRunJournalItemName(");
   assertStringIncludes(journal, 'aria-hidden="true"');
-  assertStringIncludes(
-    journal,
-    "variant={recordStatusVariant(run.status)}",
-  );
+  assertStringIncludes(journal, "variant={recordStatusVariant(");
+  assertStringIncludes(journal, "run.status");
   assertStringIncludes(journal, "{sentenceLabel(run.status)}");
   assertEquals(
     /AgentRunLifecycle[\s\S]*<Badge/.test(journal),

@@ -21,7 +21,7 @@ let status_schema = #{
 phase("Implement");
 let impl = "Implement FIRST SLICE ONLY of agent-authored SysML in ";
 impl += "/Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
-impl += "Read CLAUDE.md, src/domain/engineering/architecture-proposal.ts, ";
+impl += "Read CLAUDE.md, src/domain/architecture/renderer/architecture-proposal.ts, ";
 impl += "src/adapters/analyzers/qualified-build123d-source-analyzer.ts, ";
 impl += "src/adapters/captures/technical-source-analysis-capture.ts, ";
 impl += "src/domain/analysis/technical-compilation.ts, deno.json check list. ";

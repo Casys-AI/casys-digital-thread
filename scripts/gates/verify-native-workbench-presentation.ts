@@ -66,10 +66,25 @@ function findMcpViewImports(source: string): string[] {
     .filter((specifier): specifier is string => specifier !== undefined);
 }
 
+async function readNativeWorkbenchBundle(root = "src/ui/dist/thread"): Promise<string> {
+  const html = await Deno.readTextFile(`${root}/native-workbench.html`);
+  const parts = [html];
+  try {
+    for await (const entry of Deno.readDir(`${root}/assets`)) {
+      if (!entry.isFile) continue;
+      if (!/\.(js|css)$/.test(entry.name)) continue;
+      parts.push(await Deno.readTextFile(`${root}/assets/${entry.name}`));
+    }
+  } catch (error) {
+    if (!(error instanceof Deno.errors.NotFound)) throw error;
+  }
+  return parts.join("\n");
+}
+
 if (import.meta.main) {
   const [primitiveAdapterSource, nativeBundle] = await Promise.all([
     Deno.readTextFile("src/ui/src/mcp-view-primitives.ts"),
-    Deno.readTextFile("src/ui/dist/thread/native-workbench.html"),
+    readNativeWorkbenchBundle(),
   ]);
   const result = evaluatePresentationBoundary({
     primitiveAdapterSource,
