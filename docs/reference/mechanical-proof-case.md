@@ -45,12 +45,12 @@ seal authorization** only. Its `workItemId` and `decisionId` identify the human-
 `verify.seal-proof-case@1` work that turned the declaration into a sealed thread
 artifact. It establishes neither a queued solver run nor permission to execute one.
 
-`verify.run-fea-static-proof@2` has a separate **execution admission**: its own work
+`verify.run-fea-static-proof@3` has a separate **execution admission**: its own work
 item, exact run basis, server-sealed `resolved-operation-plan/2.0`, and its own MRTR
 approval. The plan binds the sealed proof and geometry artifacts as inputs; it does not
 copy or reinterpret the old seal decision. The two decisions are expected to have
 different IDs and may occur in different project revisions. Equality between a proof
-case's seal references and the `@2` run's admission references is therefore a rejection
+case's seal references and the isolated run's admission references is therefore a rejection
 of a valid two-stage history, not a safety check.
 
 Both stages remain fail-closed. The seal is accepted only when its declared work,

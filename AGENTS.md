@@ -65,16 +65,12 @@ from UI copy or tool descriptions.
   record. The server does not invent a named CAD lever or an AttributeUsage. Declare CAD
   handles on `model.write-architecture@1` with `attribute.<slug>.name` and
   `attribute.<slug>.parent`.
-- `verify.run-fea-static-proof@1`, `@2`, and `@3` are distinct authorities. Do not
-  reroute one plan to another.
+- Product FEA run is `verify.run-fea-static-proof@3` (isolated microVM). Historical MCP
+  `@1`/`@2` are not registered. Do not queue them.
 - `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>` only.
-  A proof-run `@2` evaluation cannot authorize `design.apply-vector-correction@1`.
+  A proof-run evaluation cannot authorize `design.apply-vector-correction@1`.
   `compile.capture-corrected-source@1` is not `compile.seal-admission@1`.
 - CM-01 is retired. Do not replay retired fixtures as live evidence.
-- A `verify.run-fea-static-proof@2` success is only a captured, reread Thread revision.
-  This atelier may hold such receipts for `desk-lamp-dl04` and `desk-lamp-dl05` under
-  `state/local/` (gitignored). Absence of that revision is `unavailable`. Do not relabel
-  `@1`.
 - `deno task check` type-checks Deno sources by glob. Do not add a per-file census. Vite
   UI (`src/ui/src`) is `deno task check:ui`, not that graph.
 

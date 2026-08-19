@@ -2,13 +2,10 @@ import { assertEquals } from "@std/assert";
 import { RECORDED_CALCULIX_RUN_OPERATION } from "../../domain/analysis/recorded-calculix-bindings.ts";
 import {
   RECORDED_ANALYSIS_OPERATION_DESCRIPTORS,
-  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-  VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./recorded-analysis.ts";
 
-Deno.test("recorded analysis successors keep qualification planless and every run plan-bound", () => {
+Deno.test("recorded analysis registers only isolated CalculiX @3 as a plan-bound run", () => {
   assertEquals(
     RECORDED_ANALYSIS_OPERATION_DESCRIPTORS.map((operation) => ({
       id: operation.id,
@@ -20,21 +17,6 @@ Deno.test("recorded analysis successors keep qualification planless and every ru
     })),
     [
       {
-        ...SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-        plan: undefined,
-        bindings: ["approvedBrief"],
-      },
-      {
-        ...SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
-        plan: "2.0",
-        bindings: ["simulationCase", "methodManifest"],
-      },
-      {
-        ...VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
-        plan: "2.0",
-        bindings: ["proofCase", "geometry"],
-      },
-      {
         ...VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
         plan: "2.0",
         bindings: ["proofCase", "geometry"],
@@ -43,9 +25,9 @@ Deno.test("recorded analysis successors keep qualification planless and every ru
   );
 });
 
-Deno.test("recorded CalculiX review identity is the registry @2 pair, not @1 or @3", () => {
+Deno.test("isolated CalculiX review identity is the registry @3 pair", () => {
   assertEquals(
     RECORDED_CALCULIX_RUN_OPERATION,
-    VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+    VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
   );
 });

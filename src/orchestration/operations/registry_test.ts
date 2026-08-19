@@ -94,27 +94,28 @@ Deno.test("operation lookup is exact and fails closed for unknown revisions", ()
   assertEquals(error.message.includes("arguments"), false);
 });
 
-Deno.test("recorded-analysis @2 operations are reviewed registry entries with their plan boundary", () => {
-  const seal = getRegisteredEngineeringOperation(
-    SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-  )!;
-  assertEquals(seal.execution, "trusted");
-  assertEquals(seal.resolvedOperationPlan, undefined);
-  assertEquals(seal.bindings, [{
-    name: "approvedBrief",
-    allowedSourceKinds: ["approved-brief"],
-  }]);
-
+Deno.test("historical MCP FEA and recorded Modelica versions are neither lookupable nor queueable", () => {
   for (
     const operation of [
-      SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+      { id: "verify.run-fea-static-proof", version: "1" },
       VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+      { id: "simulate.seal-simulation-case", version: "1" },
+      SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+      { id: "simulate.run-modelica-scenario", version: "1" },
+      SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
     ]
   ) {
-    const registered = getRegisteredEngineeringOperation(operation)!;
-    assertEquals(registered.execution, "trusted");
-    assertEquals(registered.resolvedOperationPlan, "2.0");
-    assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
+    assertEquals(getRegisteredEngineeringOperation(operation), undefined);
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: { ...operation, bindings: [] },
+          stage: "queue",
+          basisKind: "thread-snapshot",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "unknown_operation");
   }
 });
 

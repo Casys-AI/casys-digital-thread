@@ -94,7 +94,7 @@ design.write-geometry@1        # seal a reviewed draft (legacy MCP path)
   or compile.seal-admission@1 + design.execute-build123d@1  # isolated CAD draft
   or compile.seal-admission@1 + simulate.run-admitted-modelica@1  # isolated .mo
 verify.seal-proof-case@1       # seal the proof declaration
-verify.run-fea-static-proof@2  # recorded CalculiX + SysON oracle
+verify.run-fea-static-proof@3  # isolated CalculiX microVM + SysON oracle
 ```
 
 A parallel, provider-free slice exists for agent-authored closed-subset SysML: capture →

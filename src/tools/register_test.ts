@@ -243,7 +243,7 @@ Deno.test("server composes one historical proof and requirements CAS for @1 and 
     source,
     "geometryCaptures,\n    stepAssets: feaProofStepAssets,",
   );
-  assertEquals(source.match(/requirementsCaptures,/g)?.length, 6);
+  assertEquals(source.match(/requirementsCaptures,/g)?.length, 5);
   assertEquals(
     source.includes("${recordedAnalysisDirectory}/calculix/proof-cases"),
     false,
@@ -581,8 +581,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_decision_approve",
     "project_decision_propose",
     "project_decision_reject",
+    "project_fea_isolated_run_review",
     "project_fea_proof_seal_review",
-    "project_fea_recorded_run_review",
     "project_isolated_geometry_seal_review",
     "project_plan_publish",
     "project_question_propose",
@@ -643,8 +643,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_decision_approve",
       "project_decision_propose",
       "project_decision_reject",
+      "project_fea_isolated_run_review",
       "project_fea_proof_seal_review",
-      "project_fea_recorded_run_review",
       "project_isolated_geometry_seal_review",
       "project_plan_publish",
       "project_question_propose",
@@ -877,7 +877,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_review_intent_list" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_fea_proof_seal_review" ||
-          tool.name === "project_fea_recorded_run_review" ||
+          tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||
@@ -911,7 +911,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_decision_reject" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_fea_proof_seal_review" ||
-          tool.name === "project_fea_recorded_run_review" ||
+          tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||

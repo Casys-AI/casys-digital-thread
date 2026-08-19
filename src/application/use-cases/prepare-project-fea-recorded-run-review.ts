@@ -1,10 +1,9 @@
 /**
- * Provider-free compilation of `verify.run-fea-static-proof@2` bindings
+ * Provider-free compilation of `verify.run-fea-static-proof@3` bindings
  * from one sealed proof-case Thread document.
  *
  * The shared plan admission reopens the sealed capture and names the canonical
- * part STEP. It never emits `fea.run.*` numbers, binds a cad-model as geometry,
- * or treats the distinct isolated `@3` authority as an `@2` source.
+ * part STEP. It never emits `fea.run.*` numbers or binds a cad-model as geometry.
  */
 
 import type {
@@ -207,14 +206,13 @@ export class PrepareProjectFeaRecordedRunReview
         parameters: proposal.parameters,
         expectedRevision: nextState.expectedRevision,
         phaseId,
-        phaseName: "Recorded FEA verification",
-        phaseDescription:
-          "Run the separately approved recorded CalculiX @2 proof on the canonical part STEP.",
+        phaseName: "Isolated FEA verification",
+        phaseDescription: "Run the isolated CalculiX proof on the canonical part STEP.",
         workItemId: selection.workItemId,
         decisionId: selection.decisionId,
-        decisionTitle: "Approve recorded FEA proof run",
+        decisionTitle: "Approve isolated FEA proof run",
         decisionQuestion:
-          "Approve verify.run-fea-static-proof@2 for this exact sealed proof and canonical STEP?",
+          "Approve verify.run-fea-static-proof@3 for this exact sealed proof and canonical STEP?",
       }),
     });
   }

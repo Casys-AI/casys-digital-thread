@@ -1,5 +1,5 @@
 /**
- * Server-owned recorded CalculiX @2 input identities.
+ * Server-owned isolated CalculiX input identities.
  *
  * The registry binding is still named `geometry`, but the plan resolver
  * requires a STEP Thread artifact (`kind: step`, `model/step`). Binding the
@@ -7,7 +7,7 @@
  * helpers name that refusal before an agent copies a wrong id into a proposal.
  *
  * There is no `fea.run.*` grammar. Numbers stay in the sealed proof document.
- * The run admits thread-entity bindings only.
+ * The run admits thread-entity bindings only. Product run is isolated `@3`.
  */
 
 import { fingerprintsEqual } from "../kernel/deterministic-json.ts";
@@ -21,13 +21,13 @@ import type { FeaProofCaseCapture } from "./fea-proof-case-capture.ts";
 import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "./fea-proof-proposal.ts";
 
 /**
- * Recorded CalculiX identity for the review surface. Distinct from `@1`
- * (historical MCP) and `@3` (local isolated). The registry owns the same
- * pair; this constant is only so the review cannot emit another version.
+ * Isolated CalculiX identity for the review surface. Historical MCP `@1`/`@2`
+ * are not registered. This constant is only so the review cannot emit another
+ * version.
  */
 export const RECORDED_CALCULIX_RUN_OPERATION = {
   id: "verify.run-fea-static-proof",
-  version: "2",
+  version: "3",
 } as const;
 
 export const RECORDED_CALCULIX_PROOF_KIND = "document" as const;
@@ -69,8 +69,8 @@ export interface RecordedCalculixResolvedBindings {
 }
 
 /**
- * Human-facing restatement of the compiled `@2` bindings. This is not a
- * `fea.run.*` grammar: the executor admits the thread-entity bindings, not
+ * Human-facing restatement of the compiled isolated-run bindings. This is not
+ * a `fea.run.*` grammar: the executor admits the thread-entity bindings, not
  * these keys. They exist so `project_decision_propose` (min one parameter)
  * does not invent solver numbers.
  */
@@ -82,8 +82,8 @@ export function recordedCalculixReviewProposal(
   readonly parameters: readonly EngineeringDecisionProposalParameter[];
 } {
   return {
-    summary: `Queue verify.run-fea-static-proof@2 on sealed proof ${proofArtifactId} ` +
-      `and canonical part STEP ${stepArtifactId}. Do not bind a cad-model or an @3 isolated authority.`,
+    summary: `Queue verify.run-fea-static-proof@3 on sealed proof ${proofArtifactId} ` +
+      `and canonical part STEP ${stepArtifactId}. Do not bind a cad-model.`,
     parameters: [
       {
         key: "review.proofArtifactId",
@@ -92,7 +92,7 @@ export function recordedCalculixReviewProposal(
       },
       {
         key: "review.stepArtifactId",
-        label: "Canonical part STEP for @2 geometry binding (not cad-model or @3)",
+        label: "Canonical part STEP for geometry binding (not cad-model)",
         value: stepArtifactId,
       },
     ],
@@ -106,10 +106,10 @@ export function recordedCalculixBindingRejectionMessage(input: {
   readonly geometryMediaType: string | undefined;
 }): string {
   const geometryHint = input.geometryKind === "cad-model"
-    ? " Bound geometry is a cad-model capture; recorded CalculiX @2 requires the canonical part STEP (kind: step, mediaType: model/step), not the assembly cad-model or the @3 isolated authority."
+    ? " Bound geometry is a cad-model capture; isolated CalculiX requires the canonical part STEP (kind: step, mediaType: model/step), not the assembly cad-model."
     : "";
   return (
-    "Recorded CalculiX inputs must be an exact proof JSON document and STEP Thread artifact. " +
+    "Isolated CalculiX inputs must be an exact proof JSON document and STEP Thread artifact. " +
     `Bound proofCase is kind=${input.proofKind} mediaType=${
       input.proofMediaType ?? "absent"
     }; bound geometry is kind=${input.geometryKind} mediaType=${

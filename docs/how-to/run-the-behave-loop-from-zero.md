@@ -116,14 +116,13 @@ family from timestamps.
 ```text
 project_fea_proof_seal_review          # catalog id → fea.proof.*; optional signed catalog offer
   → verify.seal-proof-case@1
-project_fea_recorded_run_review        # sealed document → proofCase + STEP
-  → verify.run-fea-static-proof@2
+project_fea_isolated_run_review        # sealed document → proofCase + STEP
+  → verify.run-fea-static-proof@3
 ```
 
 Do not type `fea.proof.*` by hand. Do not invent `fea.run.*`. Do not bind the assembly
-`cad-model` as `@2` `geometry` — the recorded-run review names the canonical part STEP.
-It is not the isolated `@3` authority. How-to:
-[Compile FEA parameters](compile-fea-parameters.md).
+`cad-model` as `geometry` — the isolated-run review names the canonical part STEP.
+How-to: [Compile FEA parameters](compile-fea-parameters.md).
 
 For a new parameterized project, set `sensitivityCatalogOptIn: true` only when the
 review returns `sensitivityCatalog.status = ready-for-opt-in`. The same MRTR then signs
@@ -178,8 +177,8 @@ They must not be the same view.
   [three judgement branches](../explanations/product-direction.md#three-judgement-branches).
 - Replay `desk-lamp-dl05`. Its head may already be a joined `pass` (Thread r19 on the
   atelier that ran the isolated join). That is a contrast vehicle, not this script.
-- Modelica. Other product family.
-- `verify.run-fea-static-proof@3` unless the human asked for the isolated successor.
+- Modelica. Other product family. Product Modelica is admitted `@1`, not a recorded
+  scenario.
 
 When two operations look similar, read
 [agent workspace](../reference/agent-workspace.md) before calling either.

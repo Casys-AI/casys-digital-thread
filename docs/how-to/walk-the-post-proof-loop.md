@@ -78,7 +78,7 @@ project_sensitivity_study_seal_review   # catalog id → sensitivity.case.*; cad
   → project_corrected_admission_review
   → compile.seal-admission@1
   → design.execute-build123d@1
-  → verify.seal-proof-case@1 + verify.run-fea-static-proof@2
+  → verify.seal-proof-case@1 + verify.run-fea-static-proof@3
 
 industrialize.seal-dfm-case@1
   → industrialize.run-dfm-checks@1         # write-geometry STEP only

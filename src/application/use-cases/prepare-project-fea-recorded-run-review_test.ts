@@ -26,7 +26,7 @@ Deno.test("recorded-run review binds the canonical part STEP and lists the cad-m
   if (result.status !== "resolved") return;
   assertExists(result.bindings);
   assertEquals(result.operation.id, "verify.run-fea-static-proof");
-  assertEquals(result.operation.version, "2");
+  assertEquals(result.operation.version, "3");
   assertEquals(
     result.operation.bindings.map((binding) => binding.name),
     ["proofCase", "geometry"],

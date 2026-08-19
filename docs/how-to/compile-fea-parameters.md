@@ -1,9 +1,10 @@
-# How-to: compile FEA seal parameters and recorded-run bindings
+# How-to: compile FEA seal parameters and isolated-run bindings
 
-Call these two read-only tools instead of typing `fea.proof.*` or guessing the `@2`
+Call these two read-only tools instead of typing `fea.proof.*` or guessing the
 `geometry` binding. They write nothing and grant no MRTR.
 
-There is no `fea.run.*` grammar. `@1`, `@2` and `@3` stay distinct.
+There is no `fea.run.*` grammar. Product run is isolated
+`verify.run-fea-static-proof@3`. Historical MCP `@1`/`@2` are not registered.
 
 ## The short path
 
@@ -19,10 +20,10 @@ There is no `fea.run.*` grammar. `@1`, `@2` and `@3` stay distinct.
    `false` seals only the proof. Send `sensitivityCatalogOptIn: true` only when
    `sensitivityCatalog.status` is `ready-for-opt-in`: the returned `decisionParameters`
    then sign the offer digest and exact admission identity in this same MRTR.
-2. After that seal is on the Thread tip: `project_fea_recorded_run_review`. Same two
-   argument envelopes. `geometry` is the canonical part STEP, not a cad-model or the
-   isolated `@3` authority. Cad-models are in `rejectedLookalikes`. The proposal
-   restates those identities; it is not a `fea.run.*` grammar.
+2. After that seal is on the Thread tip: `project_fea_isolated_run_review`. Same two
+   argument envelopes. `geometry` is the canonical part STEP, not a cad-model.
+   Cad-models are in `rejectedLookalikes`. The proposal restates those identities; it
+   is not a `fea.run.*` grammar. Historical MCP FEA runs are not registered.
 
 Omit `caseId`, `basis` and `proofArtifactId` when they are unique. The server picks the
 catalog case, the current Thread tip (max revision, **not** `latest`), and the unique

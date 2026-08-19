@@ -31,7 +31,7 @@ microVM: [admitted source isolated execution](admitted-source-isolated-execution
 
 | This                                    | Is                                                                             | Is not                                                                        |
 | --------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `simulate.run-modelica-scenario@2`      | Recorded provider Modelica                                                     | `simulate.run-qualified-modelica-kit@1` or `simulate.run-admitted-modelica@1` |
+| `simulate.run-modelica-scenario@1` / `@2` | Historical provider Modelica. Not registered                                 | Admitted `@1` or the pinned kit                                               |
 | `simulate.run-qualified-modelica-kit@1` | One code-owned LinearThermalRamp kit in the local microVM                      | Admitted `.mo` execution or recorded `@2`                                     |
 | `simulate.run-admitted-modelica@1`      | Reopen `compile.seal-admission@1` Modelica bytes and run them in isolation     | The pinned kit, `@2`, or caller `modelicaText`                                |
 
@@ -46,13 +46,12 @@ the product `.mo`. Same image family `casys/modelica-microsandbox-worker`; kit
 
 | This                                         | Is                                                                                               | Is not                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `verify.run-fea-static-proof@1`              | Historical generic MCP FEA                                                                       | The current recorded or isolated successors                  |
-| `verify.run-fea-static-proof@2`              | Recorded CalculiX MCP plan (`resolved-operation-plan/2.0`)                                       | The local microVM `@3` executor                              |
-| `verify.run-fea-static-proof@3`              | Isolated local CalculiX + separate SysON oracle                                                  | A reinterpretation of `@2` plans                             |
+| `verify.run-fea-static-proof@1` / `@2`       | Historical MCP FEA. Not registered                                                               | Product isolated `@3`                                        |
+| `verify.run-fea-static-proof@3`              | Isolated local CalculiX + separate SysON oracle                                                  | MCP CalculiX, agent `.inp`, or a cad-model as `geometry`     |
 | `project_fea_proof_seal_review`              | Catalog id → `fea.proof.*` for `verify.seal-proof-case@1`                                        | Case authoring or a `fea.run.*` grammar                      |
 | `project_sensitivity_study_seal_review`      | Catalog id or signed catalog-offer → `sensitivity.case.*` for `analyze.seal-sensitivity-study@1` | Case authoring, a solve, or inventing `cadSource`            |
-| `project_fea_recorded_run_review`            | Sealed proof document → `@2` bindings (`proofCase` document + STEP)                              | `@1` / `@3`, or binding the assembly cad-model as `geometry` |
-| `@2` binding `geometry`                      | Canonical part STEP (`kind: step`, `mediaType: model/step`)                                      | The sibling `cad-model` or isolated `@3` authority           |
+| `project_fea_isolated_run_review`            | Sealed proof document → `@3` bindings (`proofCase` document + STEP)                              | Binding the assembly cad-model as `geometry`                 |
+| Isolated `geometry` binding                  | Canonical part STEP (`kind: step`, `mediaType: model/step`)                                      | The sibling `cad-model`                                      |
 | `analyze.seal-sensitivity-study@1`           | Provider-free Thread-document seal of a 2.0 study case                                           | `verify.seal-proof-case@1` or a solve                        |
 | `analyze.run-fea-sensitivity@1`              | Two attested CalculiX observations, no verdict                                                   | `verify.run-fea-static-proof@1` / `@2` / `@3`                |
 | `verify.evaluate-sensitivity-base@1`         | SysON evaluations of those study-base observations                                               | A proof-run evaluation or an invented metric mapping         |

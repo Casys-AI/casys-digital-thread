@@ -162,7 +162,7 @@ How-to: [Compile brief parameters](../how-to/compile-brief-parameters.md).
 | Tool                              | Writes | Grant                                                                                   |
 | --------------------------------- | ------ | --------------------------------------------------------------------------------------- |
 | `project_fea_proof_seal_review`   | None   | `decisionParameters` plus `next.append` / `next.propose` for `verify.seal-proof-case@1` |
-| `project_fea_recorded_run_review` | None   | `@2` bindings plus guarded hops. `geometry` = canonical part STEP. Not `@1`/`@3`        |
+| `project_fea_isolated_run_review` | None   | Isolated `@3` bindings plus guarded hops. `geometry` = canonical part STEP              |
 
 The caller may name only `projectId`, plus the false-by-default
 `sensitivityCatalogOptIn` on the proof-seal review. Omitted `caseId` / `proofArtifactId`
@@ -284,15 +284,9 @@ Unknown ids/versions are indistinguishable from absent.
 | `design.seal-isolated-geometry@1`                   | trusted                   | none                         | Thread document of isolated execution identities                                                                        | STEP artifact, cad-model, or FEA                                     |
 | `design.write-geometry@1`                           | trusted                   | none (seal)                  | Canonical geometry capture                                                                                              | Re-execution of CAD                                                  |
 | `verify.seal-proof-case@1`                          | trusted                   | none                         | Sealed proof-case; optional signed catalog-offer artifact                                                               | A solve or complete sensitivity case                                 |
-| `verify.run-fea-static-proof@1`                     | trusted                   | CalculiX MCP + SysON         | Historical verdict                                                                                                      | `@2` or `@3`                                                         |
-| `verify.run-fea-static-proof@2`                     | trusted                   | recorded CalculiX + SysON    | Current MCP qualification path                                                                                          | Isolated `@3`                                                        |
-| `verify.run-fea-static-proof@3`                     | trusted                   | local microVM + SysON oracle | Isolated successor                                                                                                      | Reroute of `@2` plans                                                |
-| `simulate.seal-simulation-case@1`                   | trusted                   | none                         | V1 case artifact                                                                                                        | A run                                                                |
-| `simulate.run-modelica-scenario@1`                  | trusted                   | Modelica MCP                 | Observations only                                                                                                       | A verdict                                                            |
-| `simulate.seal-simulation-case@2`                   | trusted                   | Modelica resources           | Planless V2 seal                                                                                                        | A simulation                                                         |
-| `simulate.run-modelica-scenario@2`                  | trusted                   | recorded Modelica            | Observations via ROP 2.0                                                                                                | Local kit `@1`                                                       |
-| `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | One fixed linear-ramp kit                                                                                               | Admitted closed-subset `.mo` or `@2`                                 |
-| `simulate.run-admitted-modelica@1`                  | trusted                   | local microVM                | Documentary run of sealed `compile.seal-admission@1` Modelica bytes                                                     | The pinned kit, recorded `@2`, or caller `modelicaText`              |
+| `verify.run-fea-static-proof@3`                     | trusted                   | local microVM + SysON oracle | Isolated CalculiX verdict                                                                                               | Historical MCP FEA, agent `.inp`, or a cad-model as `geometry`       |
+| `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | One fixed linear-ramp kit                                                                                               | Admitted closed-subset `.mo`                                         |
+| `simulate.run-admitted-modelica@1`                  | trusted                   | local microVM                | Documentary run of sealed `compile.seal-admission@1` Modelica bytes                                                     | The pinned kit or caller `modelicaText`                              |
 | `analyze.seal-sensitivity-study@1`                  | trusted                   | none                         | Sealed 2.0 study-case document                                                                                          | A solve or a verdict                                                 |
 | `analyze.run-fea-sensitivity@1`                     | trusted                   | isolated CAD + CalculiX MCP  | Dimensioned observations + study capture                                                                                | A verdict or `@2` ROP plan                                           |
 | `verify.evaluate-sensitivity-base@1`                | trusted                   | SysON                        | Evaluations that cite `sensitivity-base-<metric>-<digest>`                                                              | A solve, a proof `@2`, or a metric alias                             |
@@ -413,12 +407,9 @@ flowchart TD
   geomB --> sealGeom["design.seal-isolated-geometry@1 → Thread document only"]
   geomA --> proof["verify.seal-proof-case@1"]
   geomB --> proof
-  proof --> fea2["verify.run-fea-static-proof@2"]
   proof --> fea3["verify.run-fea-static-proof@3"]
-  fea2 --> verdict["SysON oracle: pass or publishable fail"]
-  fea3 --> verdict
-  fea2 --> sens["analyze.seal + run-fea-sensitivity@1"]
-  fea3 --> sens
+  fea3 --> verdict["SysON oracle: pass or publishable fail"]
+  fea3 --> sens["analyze.seal + run-fea-sensitivity@1"]
   sens --> join["verify.evaluate-sensitivity-base@1"]
   join --> passNode["joined pass: no correction"]
   join --> failNode["joined fail"]

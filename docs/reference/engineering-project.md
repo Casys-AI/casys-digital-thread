@@ -116,16 +116,10 @@ entry-point registry contains:
 | Sealed compilation admission; local isolation runtime composed                | `design.execute-build123d@1`            |
 | Documentary isolated execution capture; published STEP stays gated            | `design.seal-isolated-geometry@1`       |
 | Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`               |
-| Human-reviewed simulation case; exact thread-snapshot basis required          | `simulate.seal-simulation-case@1`       |
-| Sealed simulation-case artifact in basis; thread-entity binding required      | `simulate.run-modelica-scenario@1`      |
 | Human-reviewed FEA proof case; exact geometry and requirements-tip in basis   | `verify.seal-proof-case@1`              |
-| Sealed proof-case and geometry artifacts in basis; thread-entity bindings     | `verify.run-fea-static-proof@1`         |
-| Human-reviewed `simulation-case/2.0`, qualified Modelica kit required         | `simulate.seal-simulation-case@2`       |
-| Sealed V2 case and qualified method-manifest, exact MRTR required             | `simulate.run-modelica-scenario@2`      |
+| Sealed proof case and canonical part STEP; local isolation runtime composed   | `verify.run-fea-static-proof@3`         |
 | One server-owned local Modelica linear-ramp kit; qualification reread         | `simulate.run-qualified-modelica-kit@1` |
 | Sealed Modelica compilation admission; local isolation runtime composed       | `simulate.run-admitted-modelica@1`      |
-| Sealed proof case and geometry, exact MRTR required                           | `verify.run-fea-static-proof@2`         |
-| Same bindings; isolated local CalculiX; not a reroute of `@2` plans           | `verify.run-fea-static-proof@3`         |
 | Human inspection of an uncertain provider write                               | `record.reconcile-uncertain-writer@1`   |
 | Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`              |
 
@@ -136,7 +130,7 @@ Admitted CAD/Modelica microVM:
 `design.execute-build123d@1` is not canonical geometry promotion.
 `simulate.run-admitted-modelica@1` is not `simulate.run-qualified-modelica-kit@1`.
 `design.seal-isolated-geometry@1` is not `design.write-geometry@1` and is not FEA
-geometry. `verify.run-fea-static-proof@3` must not consume a `@2` plan.
+geometry. Historical MCP FEA runs are not registered.
 
 The V3 baseline binding names only the exact human-approved brief. After r1,
 `architecture.seed-syson-model@2` may be added by one append-only project change. That
@@ -188,9 +182,9 @@ journals before the provider boundary, captures every returned resource to CAS a
 publishes observations only. If the provider request is known it uses `request_get`;
 after the resource capture, recovery uses only local CAS.
 
-`verify.run-fea-static-proof@2` rereads the sealed proof and exact STEP before the
-private CalculiX staging boundary. It journals the solve, captures the fixed nine
-provider resources, and then journals a separate SysON constraint evaluation. The
+`verify.run-fea-static-proof@3` rereads the sealed proof and exact STEP, runs
+gmsh+CCX in the digest-pinned microVM, and then journals a separate SysON constraint
+evaluation. Historical MCP FEA `@1`/`@2` are not registered. The
 evaluation capture binds proof, requirements and result inputs; its Digital Thread
 artifact is evidence for the SysON outcome. Unlike Modelica, this qualified proof may
 publish evaluations, violations and proposed actions. Neither route accepts arbitrary

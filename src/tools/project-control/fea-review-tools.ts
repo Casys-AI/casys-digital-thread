@@ -10,11 +10,11 @@ import {
 export interface ProjectFeaReviewToolDependencies {
   /** Provider-free compilation of one catalogued case into fea.proof.* parameters. */
   feaProofSealReview?: ProjectFeaProofSealReviewUseCase;
-  /** Provider-free compilation of @2 bindings from a sealed proof document. */
+  /** Provider-free compilation of isolated @3 bindings from a sealed proof document. */
   feaRecordedRunReview?: ProjectFeaRecordedRunReviewUseCase;
 }
 
-/** Register the provider-free FEA seal and recorded-run review surfaces. */
+/** Register the provider-free FEA seal and isolated-run review surfaces. */
 export function registerProjectFeaReviewTools(
   app: McpApp,
   dependencies: ProjectFeaReviewToolDependencies,
@@ -52,9 +52,9 @@ function registerRecordedRun(
   app.registerTool(projectFeaRecordedRunReviewTool, async (args) => {
     const result = await review.execute(args);
     const content = result.status === "resolved"
-      ? `Resolved verify.run-fea-static-proof@2 on current Thread r${result.selected.basis.revision}. Paste next.append.arguments (proofCase=${result.selected.proofArtifactId}, geometry=${result.selected.stepArtifactId} canonical part STEP), then next.propose.arguments; compiled workItemId=${result.selected.workItemId}, decisionId=${result.selected.decisionId}. No fea.run.* grammar.`
+      ? `Resolved verify.run-fea-static-proof@3 on current Thread r${result.selected.basis.revision}. Paste next.append.arguments (proofCase=${result.selected.proofArtifactId}, geometry=${result.selected.stepArtifactId} canonical part STEP), then next.propose.arguments; compiled workItemId=${result.selected.workItemId}, decisionId=${result.selected.decisionId}. No fea.run.* grammar.`
       : result.status === "unavailable"
-      ? "Unavailable: diagnostics name the missing project head, historical basis, or unreadable @2 source. No paste-ready next hop. Never bind a cad-model as geometry."
+      ? "Unavailable: diagnostics name the missing project head, historical basis, or unreadable isolated source. No paste-ready next hop. Never bind a cad-model as geometry."
       : "Unresolved: diagnostics name the proof, STEP join, or conflicting identity that failed. No bindings. Never bind a cad-model as geometry.";
     return {
       content,
@@ -119,9 +119,9 @@ const projectFeaProofSealReviewTool: MCPTool = {
 };
 
 const projectFeaRecordedRunReviewTool: MCPTool = {
-  name: "project_fea_recorded_run_review",
+  name: "project_fea_isolated_run_review",
   description:
-    "Compile verify.run-fea-static-proof@2 bindings from a sealed proof document. Name the project; basis and proofArtifactId are optional (current Thread tip, unique seal). geometry is the canonical part STEP, never a cad-model or the isolated @3 authority. The review shares proof/STEP/history admission with the @2 plan resolver, but cannot pre-approve the future run MRTR. Only an appendable review against the exact current project head is resolved and carries next.append / next.propose. Not @1 or @3. Read-only: no MRTR or solver authority.",
+    "Compile verify.run-fea-static-proof@3 bindings from a sealed proof document. Name the project; basis and proofArtifactId are optional (current Thread tip, unique seal). geometry is the canonical part STEP, never a cad-model. The review shares proof/STEP/history admission with the isolated plan resolver, but cannot pre-approve the future run MRTR. Only an appendable review against the exact current project head is resolved and carries next.append / next.propose. Historical MCP FEA runs are not registered. Read-only: no MRTR or solver authority.",
   inputSchema: {
     type: "object",
     properties: {

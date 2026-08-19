@@ -328,7 +328,7 @@ acquired byte through local CAS.
 For a mechanical proof, this vertical deliberately has two non-substitutable admissions.
 The declaration's `authorization` is a **seal authorization**: it names the reviewed
 `verify.seal-proof-case@1` work and decision that created the sealed proof artifact. The
-later `verify.run-fea-static-proof@2` uses a separate **execution admission** in its
+later `verify.run-fea-static-proof@3` uses a separate **execution admission** in its
 `resolved-operation-plan/2.0`: a different run, work item, MRTR approval, exact basis
 and artifact bindings. The execution plan consumes the earlier sealed artifact; it must
 verify the historical seal lineage, but must not require the seal work or decision IDs

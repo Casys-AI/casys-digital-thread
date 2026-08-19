@@ -113,7 +113,7 @@ canonical STEP. Script:
 
 For the currently registered generic physical chain, the reviewed vocabulary is
 `model.write-architecture@1`, `model.write-requirements@1`, `design.write-geometry@1`,
-`verify.seal-proof-case@1`, then `verify.run-fea-static-proof@2`. Treat this list as
+`verify.seal-proof-case@1`, then `verify.run-fea-static-proof@3`. Treat this list as
 discoverable server state: re-read the operation catalogue before planning and never
 substitute a retired product-specific identifier.
 
