@@ -766,6 +766,7 @@ function projectStructuralGraphEdges(
 
 type ProjectedComponent = ThreadWorkbenchSnapshot["components"]["components"][number];
 type ProjectedComponentBinding = ProjectedComponent["bindings"][number];
+type ProjectedAttribute = NonNullable<ProjectedComponent["attributes"]>[number];
 
 interface ExactComponentStructureRecord {
   component: ProjectedComponent;
@@ -793,8 +794,10 @@ interface ExactPartUsageStructureRecord {
  * unverified PartDefinition/PartUsage binding suppresses the complete overlay.
  * Geometry is optional before publication, but any declared CAD binding or
  * preview must name an exact active canonical artifact. Reused
- * PartDefinitions must agree on both their authoritative STEP and their GLB
- * presentation derivative.
+ * PartDefinitions must agree on both their authoritative STEP, their GLB
+ * presentation derivative, and their AttributeUsage rows. Each AttributeUsage
+ * is a structure node owned by that definition; a shared id on two
+ * definitions suppresses the overlay.
  */
 function projectComponentStructureGraph(
   context: ProjectionContext,
@@ -908,9 +911,11 @@ function projectComponentStructureGraph(
       architecture: CanonicalArtifact;
       cad?: CanonicalArtifact;
       preview?: CanonicalArtifact;
+      attributes: readonly ProjectedAttribute[];
     }
   >();
   for (const record of records) {
+    const attributes = normalizedAttributes(record.component);
     const existing = definitions.get(record.definition.id);
     if (existing) {
       if (
@@ -918,7 +923,8 @@ function projectComponentStructureGraph(
         existing.binding.evidenceArtifactId !==
           record.definition.evidenceArtifactId ||
         existing.cad?.id !== record.cad?.id ||
-        existing.preview?.id !== record.preview?.id
+        existing.preview?.id !== record.preview?.id ||
+        !sameAttributes(existing.attributes, attributes)
       ) {
         return empty();
       }
@@ -927,9 +933,18 @@ function projectComponentStructureGraph(
     definitions.set(record.definition.id, {
       binding: record.definition,
       architecture: record.architecture,
+      attributes,
       ...(record.cad ? { cad: record.cad } : {}),
       ...(record.preview ? { preview: record.preview } : {}),
     });
+  }
+  const attributeOwnerById = new Map<string, string>();
+  for (const [definitionId, definition] of definitions) {
+    for (const attribute of definition.attributes) {
+      const owner = attributeOwnerById.get(attribute.id);
+      if (owner !== undefined && owner !== definitionId) return empty();
+      attributeOwnerById.set(attribute.id, definitionId);
+    }
   }
 
   const recordByComponentId = new Map(
@@ -984,6 +999,21 @@ function projectComponentStructureGraph(
         recordedAt: record.architecture.freshness.changedAt,
         selection: { kind: "artifact", id: record.architecture.id },
       })),
+    ...[...definitions.values()]
+      .sort((left, right) => left.binding.id.localeCompare(right.binding.id))
+      .flatMap(({ binding, architecture, attributes }): ThreadGraphNode[] =>
+        attributes.map((attribute) => ({
+          id: graphNodeId({ kind: "attribute-usage", id: attribute.id }),
+          ref: { kind: "attribute-usage" as const, id: attribute.id },
+          entityKind: "attribute-usage" as const,
+          label: `${binding.label} · ${attribute.label}`,
+          system: "syson",
+          freshness: effectiveArtifactFreshness(architecture, context),
+          summary: `AttributeUsage · owned by ${binding.label}`,
+          recordedAt: architecture.freshness.changedAt,
+          selection: { kind: "artifact" as const, id: architecture.id },
+        }))
+      ),
   ];
 
   const hierarchyEdges: ThreadGraphEdge[] = [{
@@ -1016,6 +1046,22 @@ function projectComponentStructureGraph(
         origin: "structure",
       },
     );
+  }
+  for (
+    const { binding, attributes } of [...definitions.values()]
+      .sort((left, right) => left.binding.id.localeCompare(right.binding.id))
+  ) {
+    for (const attribute of attributes) {
+      hierarchyEdges.push({
+        id: `structure:contains:${binding.id}:${attribute.id}`,
+        from: { kind: "part-definition", id: binding.id },
+        to: { kind: "attribute-usage", id: attribute.id },
+        relation: "contains",
+        rationale:
+          `${binding.label} contains the exact SysON AttributeUsage ${attribute.label}.`,
+        origin: "structure",
+      });
+    }
   }
   const representationEdges = [...definitions.values()]
     .sort((left, right) => left.binding.id.localeCompare(right.binding.id))
@@ -1075,6 +1121,26 @@ function sameOptionalComponentBinding(
   return left === undefined || right === undefined
     ? left === right
     : sameComponentBinding(left, right);
+}
+
+function normalizedAttributes(
+  component: ProjectedComponent,
+): readonly ProjectedAttribute[] {
+  return [...(component.attributes ?? [])].sort((left, right) =>
+    left.id.localeCompare(right.id) || left.label.localeCompare(right.label)
+  );
+}
+
+function sameAttributes(
+  left: readonly ProjectedAttribute[],
+  right: readonly ProjectedAttribute[],
+): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((attribute, index) =>
+    attribute.id === right[index]!.id &&
+    attribute.kind === right[index]!.kind &&
+    attribute.label === right[index]!.label
+  );
 }
 
 function sameComponentBinding(

@@ -39,6 +39,55 @@ Deno.test("one unambiguous usage renders as a definition-backed composite while 
   );
 });
 
+Deno.test("compact usage keeps AttributeUsage nodes on the owning PartDefinition", () => {
+  const fixture = singleUsageFixture();
+  const thickness = node("attribute-usage", "attr-thickness", "thickness");
+  fixture.nodes.push(thickness);
+  fixture.edges.push(
+    edge("contains-thickness", fixture.nodes[2]!.ref, thickness.ref, "contains"),
+  );
+  const projected = compactSysmlPartPairs(fixture, fixture);
+
+  assertEquals(
+    projected.nodes.map((node) => [graphRefKey(node.ref), node.label]),
+    [
+      ["part-definition:def-root", "DeskLamp"],
+      ["part-definition:def-stem", "stem : FixedStem"],
+      ["artifact:step-stem", "FixedStem STEP"],
+      ["attribute-usage:attr-thickness", "thickness"],
+    ],
+  );
+  const ownership = projected.edges.find((edge) => edge.to.kind === "attribute-usage");
+  assertEquals(ownership?.from, {
+    kind: "part-definition",
+    id: "def-stem",
+  });
+  assertEquals(ownership?.to, {
+    kind: "attribute-usage",
+    id: "attr-thickness",
+  });
+  assertEquals(ownership?.relation, "contains");
+});
+
+Deno.test("compact usage keeps a parameterizes CAD lever on the AttributeUsage", () => {
+  const fixture = singleUsageFixture();
+  const thickness = node("attribute-usage", "attr-thickness", "WallHook · thickness");
+  const lever = node(
+    "cad-lever",
+    "admission:parameter.thickness",
+    "CAD · thickness = 8",
+  );
+  fixture.nodes.push(thickness, lever);
+  fixture.edges.push(
+    edge("contains-thickness", fixture.nodes[2]!.ref, thickness.ref, "contains"),
+    edge("parameterizes-thickness", lever.ref, thickness.ref, "parameterizes"),
+  );
+  const projected = compactSysmlPartPairs(fixture, fixture);
+  const ownership = projected.edges.find((item) => item.relation === "parameterizes");
+  assertEquals(ownership?.from, lever.ref);
+  assertEquals(ownership?.to, thickness.ref);
+});
+
 Deno.test("a shared PartDefinition keeps both usages and their exact family links visible", () => {
   const fixture = reusedDefinitionFixture();
   const projected = compactSysmlPartPairs(fixture, fixture);

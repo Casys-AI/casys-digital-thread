@@ -1055,7 +1055,10 @@ function canonicalResultRef(
   if (
     reference.kind === "analysis-node" ||
     reference.kind === "part-definition" ||
-    reference.kind === "part-usage"
+    reference.kind === "part-usage" ||
+    reference.kind === "attribute-usage" ||
+    reference.kind === "cad-lever" ||
+    reference.kind === "cad-unnamed-literal"
   ) {
     throw new Error(
       "A browser-only analysis or SysML element cannot be review result evidence.",
@@ -1134,9 +1137,7 @@ Deno.test(
   () => {
     // A → B → focus(C) → D → E
     // At depth 2 from C: upstream = {A, B} (2), downstream = {D, E} (2), total = 5.
-    const [nA, nB, nC, nD, nE] = ["A", "B", "C", "D", "E"].map((id) =>
-      artifact(id)
-    );
+    const [nA, nB, nC, nD, nE] = ["A", "B", "C", "D", "E"].map((id) => artifact(id));
     const evidenceModel = buildEvidenceGraphModel(
       {
         nodes: [nA, nB, nC, nD, nE],
@@ -1231,9 +1232,7 @@ Deno.test(
     );
     assertEquals(projection.hiddenSupportingCount, 1);
     assertEquals(
-      projection.nodes.some((candidate) =>
-        candidate.ref.id === "unrelated-capture"
-      ),
+      projection.nodes.some((candidate) => candidate.ref.id === "unrelated-capture"),
       false,
       "lineage must not cross the upstream hub and fan out to its sibling",
     );
@@ -1270,16 +1269,12 @@ Deno.test(
     const counters = compactLineageCounters(evidenceModel, refs.architecture);
 
     assertEquals(
-      projection.nodes.filter((candidate) =>
-        candidate.entityKind === "part-definition"
-      )
+      projection.nodes.filter((candidate) => candidate.entityKind === "part-definition")
         .length,
       5,
     );
     assertEquals(
-      projection.nodes.filter((candidate) =>
-        candidate.entityKind === "part-usage"
-      )
+      projection.nodes.filter((candidate) => candidate.entityKind === "part-usage")
         .length,
       0,
     );
@@ -1436,9 +1431,7 @@ Deno.test(
       ORPHAN_FEED_SCOPE,
     ] as const;
     const partition = scopes.flatMap((scope) =>
-      filterFeedNodesByScope(activity, anchorage, scope).map((node) =>
-        node.ref.id
-      )
+      filterFeedNodesByScope(activity, anchorage, scope).map((node) => node.ref.id)
     );
     assertEquals(
       [...new Set(partition)].sort(),

@@ -239,6 +239,8 @@ export function ThreadWorkbench({
     "action": true,
     "analysis": true,
     "sysml-element": true,
+    "cad-lever": true,
+    "cad-unnamed-literal": true,
   });
   // Type visibility for the local Exploration view (in-place sigma reducer,
   // no re-layout). Defaults: all kinds visible.
@@ -257,6 +259,8 @@ export function ThreadWorkbench({
     "action": true,
     "analysis": true,
     "sysml-element": true,
+    "cad-lever": true,
+    "cad-unnamed-literal": true,
   });
   // Feed component filter: a catalog component, an explicit non-anchored
   // scope, or undefined ("Tout le projet").

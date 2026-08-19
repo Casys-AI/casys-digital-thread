@@ -16,11 +16,7 @@
  * This module is pure domain (no I/O, no Preact, no browser APIs).
  */
 
-import type {
-  ThreadGraphEdge,
-  ThreadGraphNode,
-  ThreadGraphRef,
-} from "./types.ts";
+import type { ThreadGraphEdge, ThreadGraphNode, ThreadGraphRef } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Structural predicates
@@ -74,7 +70,9 @@ export type DisplayKind =
   | "consumption"
   | "action"
   | "analysis"
-  | "sysml-element";
+  | "sysml-element"
+  | "cad-lever"
+  | "cad-unnamed-literal";
 
 /**
  * Human-readable English labels for each DisplayKind.
@@ -93,6 +91,8 @@ export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
   "action": "Actions",
   "analysis": "Qualified analysis",
   "sysml-element": "SysML component view",
+  "cad-lever": "CAD levers",
+  "cad-unnamed-literal": "Unnamed CAD literals",
 };
 
 /**
@@ -115,10 +115,13 @@ export function displayKindOf(node: ThreadGraphNode): DisplayKind {
   if (node.entityKind === "analysis-node") return "analysis";
   if (
     node.entityKind === "part-definition" ||
-    node.entityKind === "part-usage"
+    node.entityKind === "part-usage" ||
+    node.entityKind === "attribute-usage"
   ) {
     return "sysml-element";
   }
+  if (node.entityKind === "cad-lever") return "cad-lever";
+  if (node.entityKind === "cad-unnamed-literal") return "cad-unnamed-literal";
   if (
     node.entityKind === "artifact" &&
     node.artifactKind !== undefined &&
@@ -127,6 +130,17 @@ export function displayKindOf(node: ThreadGraphNode): DisplayKind {
     return "supporting-artifact";
   }
   return node.entityKind as DisplayKind;
+}
+
+/**
+ * A missing kind key (HMR / old session state after a new entityKind) stays
+ * visible. Only an explicit `false` hides the node.
+ */
+export function isDisplayKindVisible(
+  visibleKinds: Record<DisplayKind, boolean>,
+  node: ThreadGraphNode,
+): boolean {
+  return visibleKinds[displayKindOf(node)] !== false;
 }
 
 /**

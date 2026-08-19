@@ -1068,6 +1068,8 @@ const ALL_KINDS_VISIBLE: Record<DisplayKind, boolean> = {
   "action": true,
   "analysis": true,
   "sysml-element": true,
+  "cad-lever": true,
+  "cad-unnamed-literal": true,
 };
 
 /** Default map-mode kinds (matching workbench defaults). */
@@ -1084,6 +1086,8 @@ const DEFAULT_MAP_KINDS: Record<DisplayKind, boolean> = {
   "action": true,
   "analysis": true,
   "sysml-element": true,
+  "cad-lever": true,
+  "cad-unnamed-literal": true,
 };
 
 Deno.test(

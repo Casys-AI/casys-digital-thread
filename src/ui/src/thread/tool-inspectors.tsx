@@ -26,10 +26,7 @@ import {
   type WorkbenchToolIdentity,
 } from "./tool-inspector-model.ts";
 
-export type {
-  WorkbenchToolId,
-  WorkbenchToolIdentity,
-} from "./tool-inspector-model.ts";
+export type { WorkbenchToolId, WorkbenchToolIdentity } from "./tool-inspector-model.ts";
 
 type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 type InspectorTone =
@@ -99,8 +96,8 @@ export function ToolInspectorPanel({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Choose a node or an edge to inspect the owning tool and the evidence
-            it contributes to {snapshot.subject.label}.
+            Choose a node or an edge to inspect the owning tool and the evidence it
+            contributes to {snapshot.subject.label}.
           </p>
           <ToolFacetRail
             snapshot={snapshot}
@@ -108,8 +105,8 @@ export function ToolInspectorPanel({
             onSelectGraphNode={onSelectGraphNode}
           />
           <EmptyNotice>
-            No engineering tool is selected. The Workbench will not execute a
-            tool while you browse the graph.
+            No engineering tool is selected. The Workbench will not execute a tool while
+            you browse the graph.
           </EmptyNotice>
         </CardContent>
       </Card>
@@ -344,8 +341,8 @@ function ArchitectureSysmlSealSummary({
       </header>
       <Notice title="Thread document only" tone="info">
         Producer {view.producer}. This is not a SysON model, not{" "}
-        model.write-architecture@1, and not compile.seal-admission@1. Bindings
-        are symbol ids; labels are display only.
+        model.write-architecture@1, and not compile.seal-admission@1. Bindings are
+        symbol ids; labels are display only.
       </Notice>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
         <dt className="text-xs text-muted-foreground">producer</dt>
@@ -388,9 +385,7 @@ function ArchitectureSysmlSealSummary({
         )}
       </dl>
       <InspectorSection
-        title={view.sourceStatus === "unavailable"
-          ? "Source unavailable"
-          : "Source"}
+        title={view.sourceStatus === "unavailable" ? "Source unavailable" : "Source"}
         count={view.sourceText === undefined ? 0 : 1}
       >
         {view.sourceText === undefined ? null : (
@@ -403,9 +398,7 @@ function ArchitectureSysmlSealSummary({
         )}
       </InspectorSection>
       <InspectorSection
-        title={view.symbolsStatus === "unavailable"
-          ? "Symbols unavailable"
-          : "Symbols"}
+        title={view.symbolsStatus === "unavailable" ? "Symbols unavailable" : "Symbols"}
         count={view.symbols.length}
       >
         {view.symbols.map((symbol) => (
@@ -495,24 +488,22 @@ function BranchState({ context, snapshot }: {
     return (
       <Notice title="One engineering subject" tone="info">
         The five providers are facets of{" "}
-        {snapshot.subject.label}. Select a provider node to inspect its evidence
-        branch.
+        {snapshot.subject.label}. Select a provider node to inspect its evidence branch.
       </Notice>
     );
   }
   if (context.connection === "independent") {
     return (
       <Notice title="No causal edge recorded" tone="warning">
-        This provider shares the declared subject identity, but the snapshot
-        does not prove a dependency to another tool. Its evidence remains an
-        independent branch.
+        This provider shares the declared subject identity, but the snapshot does not
+        prove a dependency to another tool. Its evidence remains an independent branch.
       </Notice>
     );
   }
   return (
     <Notice title="Cross-tool link recorded" tone="success">
-      At least one explicit Workbench dependency connects this provider to
-      another tool. Inspect the provenance below before treating it as causal.
+      At least one explicit Workbench dependency connects this provider to another tool.
+      Inspect the provenance below before treating it as causal.
     </Notice>
   );
 }
@@ -657,11 +648,21 @@ function GraphContextRow({ node, onSelect }: {
 }): JSX.Element {
   const entityLabel = node.ref.kind === "part-definition"
     ? "PartDefinition"
+    : node.ref.kind === "attribute-usage"
+    ? "AttributeUsage"
+    : node.ref.kind === "cad-lever"
+    ? "named lever"
+    : node.ref.kind === "cad-unnamed-literal"
+    ? "unnamed literal"
     : "PartUsage";
+  const systemLabel =
+    node.ref.kind === "cad-lever" || node.ref.kind === "cad-unnamed-literal"
+      ? "build123d"
+      : "SysON";
   const content = (
     <>
       <span className="text-xs font-medium text-muted-foreground">
-        SysON · {entityLabel}
+        {systemLabel} · {entityLabel}
       </span>
       <strong className="text-sm font-semibold">{node.label}</strong>
       <span className="font-mono text-xs text-muted-foreground">
@@ -696,9 +697,7 @@ function ProvenanceSummary({ artifacts, snapshot, onSelect }: {
     artifact.dependsOn.map((sourceId) => ({ artifact, sourceId }))
   );
   const attestations = artifacts.flatMap((artifact) =>
-    artifact.attestation
-      ? [{ artifact, attestation: artifact.attestation }]
-      : []
+    artifact.attestation ? [{ artifact, attestation: artifact.attestation }] : []
   );
 
   return (
@@ -719,9 +718,7 @@ function ProvenanceSummary({ artifacts, snapshot, onSelect }: {
         : (
           <div className="flex flex-col gap-2">
             {dependencies.map(({ artifact, sourceId }) => {
-              const source = snapshot.artifacts.find((item) =>
-                item.id === sourceId
-              );
+              const source = snapshot.artifacts.find((item) => item.id === sourceId);
               return (
                 <Button
                   type="button"
@@ -937,7 +934,5 @@ function toolMonogram(tool: WorkbenchToolIdentity): string {
 
 function shortFingerprint(value: string): string {
   const normalized = value.startsWith("sha256:") ? value.slice(7) : value;
-  return `sha256:${normalized.slice(0, 12)}${
-    normalized.length > 12 ? "…" : ""
-  }`;
+  return `sha256:${normalized.slice(0, 12)}${normalized.length > 12 ? "…" : ""}`;
 }

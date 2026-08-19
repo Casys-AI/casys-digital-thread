@@ -111,8 +111,8 @@ deliberately smaller browser contract. The projection is never promoted back int
 canonical domain model, and project commands cannot create thread evidence.
 
 The four graph layers, painted relations, and a frozen dl05 inventory live in
-[`graph-data-model.md`](graph-data-model.md). Use that page to review coherence;
-this page stays the `ThreadSnapshot` contract.
+[`graph-data-model.md`](graph-data-model.md). Use that page to review coherence; this
+page stays the `ThreadSnapshot` contract.
 
 The browser projection includes a required `graph` with typed nodes and edges. Canonical
 `provenance` links retain their relation and rationale. Exact `inputArtifactIds` and
@@ -122,11 +122,15 @@ attestation so the UI can distinguish a semantic relation from matching producer
 consumer bytes.
 
 The same Evidence canvas may also receive browser-only SysML structure nodes from the
-reviewed component catalog: `part-definition`, `part-usage`, `contains`, `typed_by`, and
-`represented_by`. They are emitted only from unique verified provider identities, an
-exact active STEP, and—when declared—its hash-matched GLB presentation derivative. The
-STEP remains authoritative. These nodes do not extend the canonical ThreadSnapshot
-entity vocabulary, create causal provenance, or introduce a second graph mode.
+reviewed component catalog: `part-definition`, `part-usage`, `attribute-usage`,
+`contains`, `typed_by`, and `represented_by`. They are emitted only from unique verified
+provider identities, an exact active STEP, and—when declared—its hash-matched GLB
+presentation derivative. AttributeUsage nodes are the catalog `attributes[]` of that
+PartDefinition. A sealed `compile.seal-admission@1` may add `cad-lever` nodes and a
+`parameterizes` edge onto an existing AttributeUsage; a missing unique bind adds
+nothing. The STEP remains authoritative. These nodes do not extend the canonical
+ThreadSnapshot entity vocabulary, create causal provenance, or introduce a second graph
+mode.
 
 The architecture artifact anchors the root definition. Focused Activity and Evidence
 views follow bounded upstream and downstream lineage, then add only the matching SysML

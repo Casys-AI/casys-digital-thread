@@ -21,6 +21,7 @@ import {
   displayKindOf,
   evidenceSystemFamily,
   type ExplorationLegendItem,
+  isDisplayKindVisible,
   readCssTokens,
   type SigmaEdgeAttrs,
   type SigmaNodeAttrs,
@@ -224,7 +225,7 @@ export function EvidenceExploration({
         if ((depths.get(key) ?? 0) > displayDepth) return true;
       }
       if (visibleKinds !== undefined) {
-        if (!visibleKinds[displayKindOf(attrs.node)]) return true;
+        if (!isDisplayKindVisible(visibleKinds, attrs.node)) return true;
       }
       return false;
     };
@@ -284,7 +285,7 @@ export function EvidenceExploration({
         if ((depths.get(key) ?? 0) > displayDepth) return false;
       }
       if (visibleKinds !== undefined) {
-        if (!visibleKinds[displayKindOf(attrs.node)]) return false;
+        if (!isDisplayKindVisible(visibleKinds, attrs.node)) return false;
       }
       return true;
     };
@@ -373,7 +374,8 @@ export function EvidenceExploration({
         (depths.get(key) ?? 0) > displayDepth
       ) return;
       if (
-        visibleKinds !== undefined && !visibleKinds[displayKindOf(attrs.node)]
+        visibleKinds !== undefined &&
+        !isDisplayKindVisible(visibleKinds, attrs.node)
       ) return;
       visibleNodeKeys.add(key);
       nodes.push({ key, label: attrs.label, ref: attrs.node.ref });

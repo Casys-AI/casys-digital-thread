@@ -90,6 +90,8 @@ import { FileByteStore } from "../../src/adapters/captures/file-byte-store.ts";
 import { fileArchitectureSysmlSealCaptureReader } from "../../src/adapters/captures/file-architecture-sysml-seal-capture-reader.ts";
 import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../src/adapters/compilers/architecture-sysml-source-analysis-composition.ts";
 import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "../../src/adapters/projectors/architecture-sysml-seal-workbench-enricher.ts";
+import { enrichThreadWorkbenchWithSealedCadLevers } from "../../src/adapters/projectors/sealed-cad-lever-workbench-enricher.ts";
+import type { SealedCadLeverAdmissionReader } from "../../src/adapters/projectors/sealed-cad-lever-workbench-enricher.ts";
 import type { ArchitectureSysmlSealCaptureReader } from "../../src/application/ports/out/architecture-sysml-seal-capture-reader.ts";
 import type { ArchitectureSysmlSourceAnalysisReader } from "../../src/application/ports/out/architecture-sysml-source-analysis-reader.ts";
 import {
@@ -164,6 +166,11 @@ export interface NativeWorkbenchHandlerOptions {
    */
   architectureSysmlSeals?: ArchitectureSysmlSealCaptureReader;
   architectureSysmlSources?: ArchitectureSysmlSourceAnalysisReader;
+  /**
+   * Optional CAS reopen of `compile.seal-admission@1` Thread documents.
+   * The pure projector never reads this store.
+   */
+  technicalCompilationAdmissions?: SealedCadLeverAdmissionReader;
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
@@ -931,12 +938,19 @@ async function projectThreadSnapshot(
     evidenceCatalog ?? componentCatalog ??
       (subjectId === options.subjectId ? options.componentCatalog : undefined),
   );
-  const canonical = options.architectureSysmlSeals && options.architectureSysmlSources
-    ? await enrichThreadWorkbenchWithArchitectureSysmlSeals(projected, {
-      seals: options.architectureSysmlSeals,
-      sources: options.architectureSysmlSources,
-    })
-    : projected;
+  const withArchitecture =
+    options.architectureSysmlSeals && options.architectureSysmlSources
+      ? await enrichThreadWorkbenchWithArchitectureSysmlSeals(projected, {
+        seals: options.architectureSysmlSeals,
+        sources: options.architectureSysmlSources,
+      })
+      : projected;
+  const canonical = options.technicalCompilationAdmissions
+    ? await enrichThreadWorkbenchWithSealedCadLevers(
+      withArchitecture,
+      options.technicalCompilationAdmissions,
+    )
+    : withArchitecture;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
@@ -1132,6 +1146,21 @@ if (import.meta.main) {
       label: "Sealed architecture SysML analysis",
     }),
   );
+  const technicalCompilationSealBytes = new FileByteStore({
+    kind: "technical-compilation-admission-capture",
+    directory: cliArgs["technical-compilation-admission-dir"] ??
+      "state/local/recorded-analysis/technical-compilation/seals",
+    uriNamespace: "technical-compilation-admission-capture",
+    label: "Sealed technical compilation admission",
+  });
+  const technicalCompilationAdmissions: SealedCadLeverAdmissionReader = {
+    read: async (fingerprint) => {
+      const stored = await technicalCompilationSealBytes.read(fingerprint);
+      return stored === undefined
+        ? undefined
+        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
+    },
+  };
   // The paired MCP owns all project commands and initialisation. The cockpit
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
@@ -1191,6 +1220,7 @@ if (import.meta.main) {
       ),
     architectureSysmlSeals,
     architectureSysmlSources,
+    technicalCompilationAdmissions,
     liveUpdates,
     reviewIntents,
     reviewIntentSignal: {

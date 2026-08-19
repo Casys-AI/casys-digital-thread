@@ -36,6 +36,7 @@ export {
   DISPLAY_KIND_LABELS,
   type DisplayKind,
   displayKindOf,
+  isDisplayKindVisible,
 } from "./essential-graph-filter.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
@@ -454,8 +455,8 @@ export function buildExplorationModel(
     g.setDefaultEdgeLabel(() => ({}));
 
     // Register all nodes with an approximate bounding box for dagre.
-    graph.forEachNode((key) => {
-      g.setNode(key, { width: 120, height: 40 });
+    graph.forEachNode((key, attrs) => {
+      g.setNode(key, dagreNodeBox(attrs.node));
     });
 
     // Feed the same visual quotient to dagre so a redundant assertion pair
@@ -822,9 +823,10 @@ function makeSigmaEdgeKeyFactory(
 }
 
 /**
- * Node visual size. Requirements and verdicts deserve emphasis.
+ * Node visual size. Requirements and verdicts deserve emphasis. Attribute and
+ * CAD literal holes stay smaller than parts and artifacts.
  */
-function nodeSizeFor(node: ThreadGraphNode): number {
+export function nodeSizeFor(node: ThreadGraphNode): number {
   switch (node.entityKind) {
     case "evaluation":
     case "requirement":
@@ -835,9 +837,26 @@ function nodeSizeFor(node: ThreadGraphNode): number {
       return 10;
     case "artifact":
       return 8;
+    case "attribute-usage":
+    case "cad-lever":
+    case "cad-unnamed-literal":
+      return 4;
     default:
       return 7;
   }
+}
+
+function dagreNodeBox(
+  node: ThreadGraphNode,
+): { width: number; height: number } {
+  if (
+    node.entityKind === "attribute-usage" ||
+    node.entityKind === "cad-lever" ||
+    node.entityKind === "cad-unnamed-literal"
+  ) {
+    return { width: 72, height: 24 };
+  }
+  return { width: 120, height: 40 };
 }
 
 /**

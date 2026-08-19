@@ -712,6 +712,15 @@ Deno.test("the Workbench contract accepts exact SysML structure nodes and reject
     freshness: "fresh",
     summary: "PartUsage · typed by DripTray",
     selection: { kind: "artifact", id: "ART-SYSML-017" },
+  }, {
+    id: "graph:attribute-usage:attr-thickness",
+    ref: { kind: "attribute-usage", id: "attr-thickness" },
+    entityKind: "attribute-usage",
+    label: "thickness",
+    system: "syson",
+    freshness: "fresh",
+    summary: "AttributeUsage · owned by GenericAssembly",
+    selection: { kind: "artifact", id: "ART-SYSML-017" },
   });
   snapshot.graph.edges.push({
     id: "structure:contains:def-system:usage-tray",
@@ -734,6 +743,30 @@ Deno.test("the Workbench contract accepts exact SysML structure nodes and reject
     relation: "represented_by",
     rationale: "The exact STEP represents this PartDefinition.",
     origin: "structure",
+  }, {
+    id: "structure:contains:def-system:attr-thickness",
+    from: { kind: "part-definition", id: "def-system" },
+    to: { kind: "attribute-usage", id: "attr-thickness" },
+    relation: "contains",
+    rationale: "GenericAssembly contains thickness.",
+    origin: "structure",
+  }, {
+    id: "structure:parameterizes:admission:attr-thickness",
+    from: { kind: "cad-lever", id: "admission:parameter.thickness" },
+    to: { kind: "attribute-usage", id: "attr-thickness" },
+    relation: "parameterizes",
+    rationale: "Sealed admission uniquely parameterizes thickness.",
+    origin: "structure",
+  });
+  snapshot.graph.nodes.push({
+    id: "graph:cad-lever:admission:parameter.thickness",
+    ref: { kind: "cad-lever", id: "admission:parameter.thickness" },
+    entityKind: "cad-lever",
+    label: "CAD · thickness = 8",
+    system: "build123d",
+    freshness: "fresh",
+    summary: "named numeric lever · unit undeclared",
+    selection: { kind: "artifact", id: "ART-SYSML-017" },
   });
   assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
 

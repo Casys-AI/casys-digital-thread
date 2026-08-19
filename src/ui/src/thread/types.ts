@@ -1550,7 +1550,10 @@ function isThreadGraphRef(value: unknown): value is ThreadGraphRef {
       reference.kind === "action" ||
       reference.kind === "analysis-node" ||
       reference.kind === "part-definition" ||
-      reference.kind === "part-usage");
+      reference.kind === "part-usage" ||
+      reference.kind === "attribute-usage" ||
+      reference.kind === "cad-lever" ||
+      reference.kind === "cad-unnamed-literal");
 }
 
 function isThreadRef(value: unknown): value is ThreadRef {
@@ -1587,6 +1590,8 @@ function isThreadGraphRelation(value: unknown): value is ThreadGraphRelation {
     value === "contains" ||
     value === "typed_by" ||
     value === "represented_by" ||
+    value === "parameterizes" ||
+    value === "unnamed_in" ||
     isThreadAnalysisRelation(value);
 }
 

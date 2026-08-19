@@ -896,6 +896,144 @@ Deno.test("Evidence deduplicates one reused PartDefinition and refuses ambiguous
   );
 });
 
+Deno.test("Evidence projects AttributeUsage nodes on a system-only PartDefinition", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const systemOnly = cloneCatalog(catalog);
+  const system = systemOnly.components.find((component) =>
+    component.id === "component-system"
+  )!;
+  system.attributes = [{
+    id: "attr-thickness",
+    kind: "AttributeUsage",
+    label: "thickness",
+  }];
+  systemOnly.components = [system];
+
+  const projection = projectThreadWorkbenchSnapshot(canonical, systemOnly);
+  assertEquals(
+    projection.graph.nodes
+      .filter((node) => node.entityKind === "attribute-usage")
+      .map((node) => `${node.ref.id}:${node.label}`),
+    ["attr-thickness:DeskLamp · thickness"],
+  );
+  assertEquals(
+    projection.graph.edges
+      .filter((edge) => edge.to.kind === "attribute-usage")
+      .map((edge) =>
+        `${edge.from.kind}:${edge.from.id}->${edge.to.kind}:${edge.to.id}`
+      ),
+    ["part-definition:def-system->attribute-usage:attr-thickness"],
+  );
+});
+
+Deno.test("Evidence projects AttributeUsage nodes onto their owning PartDefinition", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const withAttributes = cloneCatalog(catalog);
+  const stem = withAttributes.components.find((component) =>
+    component.id === "component-stem"
+  )!;
+  stem.attributes = [
+    { id: "attr-length", kind: "AttributeUsage", label: "length" },
+    { id: "attr-thickness", kind: "AttributeUsage", label: "thickness" },
+  ];
+
+  const projection = projectThreadWorkbenchSnapshot(canonical, withAttributes);
+  const attributes = projection.graph.nodes
+    .filter((node) => node.entityKind === "attribute-usage")
+    .map((node) => `${node.ref.id}:${node.label}:${node.summary}`)
+    .sort();
+  assertEquals(attributes, [
+    "attr-length:FixedStem · length:AttributeUsage · owned by FixedStem",
+    "attr-thickness:FixedStem · thickness:AttributeUsage · owned by FixedStem",
+  ]);
+  const ownership = projection.graph.edges
+    .filter((edge) =>
+      edge.relation === "contains" && edge.to.kind === "attribute-usage"
+    )
+    .map((edge) => `${edge.from.kind}:${edge.from.id}->${edge.to.kind}:${edge.to.id}`)
+    .sort();
+  assertEquals(ownership, [
+    "part-definition:def-stem->attribute-usage:attr-length",
+    "part-definition:def-stem->attribute-usage:attr-thickness",
+  ]);
+});
+
+Deno.test("Evidence keeps two AttributeUsage nodes when the same label belongs to distinct PartDefinitions", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const homonyms = cloneCatalog(catalog);
+  homonyms.components.find((component) => component.id === "component-stem")!
+    .attributes = [{
+      id: "attr-stem-thickness",
+      kind: "AttributeUsage",
+      label: "thickness",
+    }];
+  homonyms.components.find((component) => component.id === "component-head")!
+    .attributes = [{
+      id: "attr-head-thickness",
+      kind: "AttributeUsage",
+      label: "thickness",
+    }];
+
+  const projection = projectThreadWorkbenchSnapshot(canonical, homonyms);
+  assertEquals(
+    projection.graph.nodes
+      .filter((node) => node.entityKind === "attribute-usage")
+      .map((node) => `${node.ref.id}:${node.label}`)
+      .sort(),
+    [
+      "attr-head-thickness:LampHead · thickness",
+      "attr-stem-thickness:FixedStem · thickness",
+    ],
+  );
+});
+
+Deno.test("Evidence fails closed when a reused PartDefinition disagrees on AttributeUsage", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const inconsistent = cloneCatalog(catalog);
+  const head = inconsistent.components.find((component) =>
+    component.id === "component-head"
+  )!;
+  const socket = inconsistent.components.find((component) =>
+    component.id === "component-socket"
+  )!;
+  socket.bindings.find((binding) => binding.kind === "part-definition")!.id =
+    head.bindings.find((binding) => binding.kind === "part-definition")!.id;
+  socket.bindings.find((binding) => binding.kind === "part-definition")!.label =
+    head.bindings.find((binding) => binding.kind === "part-definition")!.label;
+  socket.bindings.find((binding) => binding.provider === "digital-thread")!.id =
+    head.bindings.find((binding) => binding.provider === "digital-thread")!.id;
+  socket.preview = { ...head.preview! };
+  head.attributes = [
+    { id: "attr-length", kind: "AttributeUsage", label: "length" },
+  ];
+  socket.attributes = [
+    { id: "attr-thickness", kind: "AttributeUsage", label: "thickness" },
+  ];
+
+  assertNoComponentStructure(
+    projectThreadWorkbenchSnapshot(canonical, inconsistent),
+    "one reused PartDefinition cannot claim two AttributeUsage sets",
+  );
+});
+
+Deno.test("Evidence fails closed when two PartDefinitions share an AttributeUsage id", () => {
+  const { canonical, catalog } = componentStructureFixture();
+  const shared = cloneCatalog(catalog);
+  shared.components.find((component) => component.id === "component-stem")!
+    .attributes = [
+      { id: "attr-shared", kind: "AttributeUsage", label: "length" },
+    ];
+  shared.components.find((component) => component.id === "component-head")!
+    .attributes = [
+      { id: "attr-shared", kind: "AttributeUsage", label: "thickness" },
+    ];
+
+  assertNoComponentStructure(
+    projectThreadWorkbenchSnapshot(canonical, shared),
+    "one AttributeUsage id cannot belong to two PartDefinitions",
+  );
+});
+
 Deno.test("Evidence fails closed when a reused PartDefinition disagrees on its exact GLB preview", () => {
   const { canonical, catalog } = componentStructureFixture();
   const inconsistent = cloneCatalog(catalog);
@@ -1468,7 +1606,8 @@ function assertNoComponentStructure(
 ): void {
   assertEquals(
     projection.graph.nodes.some((node) =>
-      node.entityKind === "part-definition" || node.entityKind === "part-usage"
+      node.entityKind === "part-definition" || node.entityKind === "part-usage" ||
+      node.entityKind === "attribute-usage"
     ),
     false,
     message,

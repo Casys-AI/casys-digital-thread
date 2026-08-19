@@ -16,9 +16,13 @@ export interface ThreadRef {
 /**
  * Every entity kind which can participate in the native graph.
  *
- * `part-definition` and `part-usage` are browser-safe structural read-model
- * nodes projected from exact reviewed SysON bindings. They are not promoted
- * back into the canonical ThreadSnapshot entity vocabulary.
+ * `part-definition`, `part-usage`, `attribute-usage`, `cad-lever` and
+ * `cad-unnamed-literal` are browser-safe structural read-model nodes. The
+ * first three come from exact reviewed SysON bindings. `cad-lever` comes
+ * from a sealed compilation admission that uniquely `parameterizes` an
+ * AttributeUsage. `cad-unnamed-literal` is a constructor-photo hole (span +
+ * value, no invented name). They are not promoted back into the canonical
+ * ThreadSnapshot entity vocabulary.
  */
 export interface ThreadGraphRef {
   kind:
@@ -32,7 +36,10 @@ export interface ThreadGraphRef {
     | "action"
     | "analysis-node"
     | "part-definition"
-    | "part-usage";
+    | "part-usage"
+    | "attribute-usage"
+    | "cad-lever"
+    | "cad-unnamed-literal";
   id: string;
 }
 
@@ -51,7 +58,9 @@ export type ProvenanceThreadGraphRelation =
   | "source_of"
   | "contains"
   | "typed_by"
-  | "represented_by";
+  | "represented_by"
+  | "parameterizes"
+  | "unnamed_in";
 
 export type ThreadAnalysisRelation =
   | "semantic-binding"

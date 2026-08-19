@@ -23,7 +23,7 @@ import { boundedLineageNeighborhood } from "./evidence-graph-model.ts";
 import {
   applyEssentialFilter,
   type DisplayKind,
-  displayKindOf,
+  isDisplayKindVisible,
   isSupportingNode,
 } from "./essential-graph-filter.ts";
 import {
@@ -598,7 +598,7 @@ export function buildExplorationKindProjection(
   );
   const requested = new Set(
     essential.nodes
-      .filter((node) => visibleKinds[displayKindOf(node)])
+      .filter((node) => isDisplayKindVisible(visibleKinds, node))
       .map((node) => `${node.ref.kind}:${node.ref.id}`),
   );
   const byKey = new Map<string, ThreadGraphNode>(essential.nodes.map((node) =>

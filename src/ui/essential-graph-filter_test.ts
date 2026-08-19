@@ -15,6 +15,7 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
 import {
   applyEssentialFilter,
+  isDisplayKindVisible,
   isSupportingNode,
   SUPPORTING_ARTIFACT_KINDS,
 } from "./src/thread/essential-graph-filter.ts";
@@ -157,8 +158,16 @@ Deno.test("isSupportingNode: observation is essential (never supporting)", () =>
   assertEquals(isSupportingNode(observationNode("obs-1")), false);
 });
 
-Deno.test("isSupportingNode keeps SysML PartDefinition and PartUsage nodes essential", () => {
-  for (const kind of ["part-definition", "part-usage"] as const) {
+Deno.test("isSupportingNode keeps SysML PartDefinition, PartUsage and AttributeUsage nodes essential", () => {
+  for (
+    const kind of [
+      "part-definition",
+      "part-usage",
+      "attribute-usage",
+      "cad-lever",
+      "cad-unnamed-literal",
+    ] as const
+  ) {
     const node: ThreadGraphNode = {
       id: `graph:${kind}:element`,
       ref: ref("element", kind),
@@ -170,6 +179,37 @@ Deno.test("isSupportingNode keeps SysML PartDefinition and PartUsage nodes essen
     };
     assertEquals(isSupportingNode(node), false);
   }
+});
+
+Deno.test("isDisplayKindVisible keeps a missing kind visible", () => {
+  const node: ThreadGraphNode = {
+    id: "graph:cad-lever:thickness",
+    ref: ref("thickness", "cad-lever"),
+    label: "CAD · thickness = 5",
+    summary: "named numeric lever · unit undeclared",
+    system: "build123d",
+    entityKind: "cad-lever",
+    freshness: "fresh",
+  };
+  const kinds = {
+    artifact: true,
+    "supporting-artifact": false,
+    observation: true,
+    requirement: true,
+    evaluation: true,
+    "study-base-evaluation": true,
+    violation: true,
+    change: false,
+    consumption: false,
+    action: true,
+    analysis: true,
+    "sysml-element": true,
+  } as Record<string, boolean>;
+  assertEquals(isDisplayKindVisible(kinds as never, node), true);
+  assertEquals(
+    isDisplayKindVisible({ ...kinds, "cad-lever": false } as never, node),
+    false,
+  );
 });
 
 Deno.test("isSupportingNode: artifact with non-supporting artifactKind is essential", () => {

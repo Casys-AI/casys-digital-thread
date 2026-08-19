@@ -25,6 +25,7 @@ import {
   displayKindOf,
   evidenceSystemFamily,
   FALLBACK_TOKENS,
+  nodeSizeFor,
   normalizeEdgeDirection,
   type SigmaEdgeAttrs,
   type SigmaNodeAttrs,
@@ -393,7 +394,8 @@ Deno.test(
 
     // Dans le graphe sigma, les arêtes moignons doivent être marquées "stub".
     let stubEdgeFound = false;
-    const sigmaStubOccurrences: Array<{ key: string; edge: ThreadGraphEdge }> = [];
+    const sigmaStubOccurrences: Array<{ key: string; edge: ThreadGraphEdge }> =
+      [];
     explorationModel.graph.forEachEdge(
       (_key: string, attrs: SigmaEdgeAttrs) => {
         if (attrs.edgeType === "stub") {
@@ -982,6 +984,9 @@ Deno.test(
       ["analysis-node", "analysis"],
       ["part-definition", "sysml-element"],
       ["part-usage", "sysml-element"],
+      ["attribute-usage", "sysml-element"],
+      ["cad-lever", "cad-lever"],
+      ["cad-unnamed-literal", "cad-unnamed-literal"],
     ];
     for (const [entityKind, expected] of cases) {
       const n = node(
@@ -998,6 +1003,22 @@ Deno.test(
     }
   },
 );
+
+Deno.test("nodeSizeFor keeps attribute and CAD literal holes smaller than parts", () => {
+  const part = node("def", "part-definition", "syson", "part-definition");
+  const attribute = node("attr", "attribute-usage", "syson", "attribute-usage");
+  const lever = node("lever", "cad-lever", "build123d", "cad-lever");
+  const unnamed = node(
+    "unnamed",
+    "cad-unnamed-literal",
+    "build123d",
+    "cad-unnamed-literal",
+  );
+  assertEquals(nodeSizeFor(part), 7);
+  assertEquals(nodeSizeFor(attribute), 4);
+  assertEquals(nodeSizeFor(lever), 4);
+  assertEquals(nodeSizeFor(unnamed), 4);
+});
 
 Deno.test(
   "displayKindOf: study-base evaluationFamily is a distinct type chip",
@@ -1028,7 +1049,8 @@ Deno.test(
       "sysml-element",
     ];
     for (const kind of expectedKinds) {
-      const label = DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
+      const label =
+        DISPLAY_KIND_LABELS[kind as keyof typeof DISPLAY_KIND_LABELS];
       assertEquals(
         typeof label,
         "string",
