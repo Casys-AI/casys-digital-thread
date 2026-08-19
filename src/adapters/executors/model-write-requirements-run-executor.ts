@@ -60,6 +60,7 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import { parseSysonModelSeedCapture } from "../../domain/engineering/syson-model-seed.ts";
 import {
+  fingerprintRequirementsPlan,
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   parseRequirementsProposalParameters,
   planRequirementsEnrichment,
@@ -2865,7 +2866,7 @@ async function requirementsPlanDigest(
   partDefName: string,
   target: RequirementsTarget,
 ): Promise<string> {
-  const fp = await sha256Fingerprint({
+  const fp = await fingerprintRequirementsPlan({
     partDefName,
     target,
     requirements,

@@ -583,3 +583,27 @@ export function fingerprintRequirementsEnvelope(
 ): Promise<ContentFingerprint> {
   return sha256Fingerprint(envelope);
 }
+
+/**
+ * WAL plan digest for insert and completed replay. Sort by metric so
+ * enrichment `toInsert + adopted` matches the signed proposal order.
+ */
+export function fingerprintRequirementsPlan(input: {
+  readonly partDefName: string;
+  readonly target: RequirementsTarget;
+  readonly requirements: readonly OracleRequirement[];
+}): Promise<ContentFingerprint> {
+  return sha256Fingerprint({
+    partDefName: input.partDefName,
+    target: input.target,
+    requirements: canonicalizeOracleRequirements(input.requirements),
+  });
+}
+
+export function canonicalizeOracleRequirements(
+  requirements: readonly OracleRequirement[],
+): OracleRequirement[] {
+  return [...requirements].toSorted((left, right) =>
+    left.metric.localeCompare(right.metric)
+  );
+}

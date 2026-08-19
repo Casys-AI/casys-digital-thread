@@ -306,9 +306,12 @@ export function validateMechanicalProofCase(value: unknown): MechanicalProofCase
   const requirements = arrayOf(root.requirements, "$case.requirements").map(
     (item, index) => requirement(item, `$case.requirements[${index}]`),
   );
-  if (requirements.length !== 2) {
+  if (requirements.length === 0) {
+    throw new Error("$case.requirements must not be empty.");
+  }
+  if (requirements.length > REQUIREMENT_ORDER.size) {
     throw new Error(
-      "$case.requirements must contain exactly maximum-displacement and maximum-von-mises-stress.",
+      "$case.requirements may only declare maximum-displacement and/or maximum-von-mises-stress.",
     );
   }
   rejectDuplicates(requirements.map((item) => item.id), "$case.requirements ids");
@@ -331,14 +334,6 @@ export function validateMechanicalProofCase(value: unknown): MechanicalProofCase
     (left, right) =>
       REQUIREMENT_ORDER.get(left.metric)! - REQUIREMENT_ORDER.get(right.metric)!,
   );
-  if (
-    orderedRequirements[0].metric !== "maximum-displacement" ||
-    orderedRequirements[1].metric !== "maximum-von-mises-stress"
-  ) {
-    throw new Error(
-      "$case.requirements must contain exactly maximum-displacement and maximum-von-mises-stress.",
-    );
-  }
 
   return deepFreeze({
     schemaVersion: MECHANICAL_PROOF_CASE_SCHEMA,

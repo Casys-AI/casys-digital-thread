@@ -7,6 +7,7 @@ import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import {
   derivePartDefName,
   fingerprintRequirementsEnvelope,
+  fingerprintRequirementsPlan,
   parseRequirementsProposalParameters,
   planRequirementsEnrichment,
   requirementEntriesToOracleRequirements,
@@ -528,5 +529,43 @@ Deno.test(
       target: { ...base.target, elementId: "element-456" },
     });
     assertEquals(fp1.digest !== fp2.digest, true);
+  },
+);
+
+Deno.test(
+  "fingerprintRequirementsPlan is stable when enrichment render order differs from the signed proposal",
+  async () => {
+    const target = {
+      kind: "part-definition" as const,
+      label: "CantileverArm",
+      elementId: "part-def-1",
+    };
+    const displacement: OracleRequirement = {
+      id: "maxDisplacement",
+      name: "Maximum arm displacement",
+      metric: "maxDisplacement",
+      operator: "<=",
+      limit: { value: 2, unit: "mm" },
+    };
+    const stress: OracleRequirement = {
+      id: "maxVonMises",
+      name: "Maximum von Mises stress",
+      metric: "maxVonMises",
+      operator: "<=",
+      limit: { value: 60_000_000, unit: "Pa" },
+    };
+    const signedProposalOrder = [displacement, stress];
+    const enrichmentRenderOrder = [stress, displacement];
+    const signed = await fingerprintRequirementsPlan({
+      partDefName: "CantileverArmRequirements",
+      target,
+      requirements: signedProposalOrder,
+    });
+    const rendered = await fingerprintRequirementsPlan({
+      partDefName: "CantileverArmRequirements",
+      target,
+      requirements: enrichmentRenderOrder,
+    });
+    assertEquals(signed.digest, rendered.digest);
   },
 );

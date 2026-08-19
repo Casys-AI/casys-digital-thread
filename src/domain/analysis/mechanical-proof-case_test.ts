@@ -253,15 +253,29 @@ Deno.test("mechanical proof declaration rejects inferred or invalid physical inp
   );
 });
 
-Deno.test("mechanical proof declaration requires the two declared unit-bearing criteria", () => {
-  const incomplete = caseInput();
-  object(incomplete).requirements = array(incomplete.requirements).slice(0, 1);
-  assertThrows(
-    () => validateMechanicalProofCase(incomplete),
-    Error,
-    "$case.requirements must contain exactly",
+Deno.test("mechanical proof declaration accepts one supported unit-bearing criterion", () => {
+  const displacementOnly = caseInput();
+  object(displacementOnly).requirements = array(displacementOnly.requirements).slice(
+    0,
+    1,
   );
+  const proofCase = validateMechanicalProofCase(displacementOnly);
+  assertEquals(proofCase.requirements.map((item) => item.metric), [
+    "maximum-displacement",
+  ]);
+});
 
+Deno.test("mechanical proof declaration rejects an empty requirement set", () => {
+  const empty = caseInput();
+  object(empty).requirements = [];
+  assertThrows(
+    () => validateMechanicalProofCase(empty),
+    Error,
+    "$case.requirements must not be empty",
+  );
+});
+
+Deno.test("mechanical proof declaration rejects unsupported or conflicting criteria", () => {
   const wrongStressUnit = caseInput();
   const stress = object(array(wrongStressUnit.requirements)[1]);
   object(stress.limit).unit = "MPa";

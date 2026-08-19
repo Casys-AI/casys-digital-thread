@@ -3704,6 +3704,63 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "completed enrichment replay succeeds when the signed proposal order differs from WAL render order",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-enrichment-replay-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const first = await makeExecutor(fixture, {
+        syson: new InitialReqsSyson(),
+        directory,
+      }).execute(AGENT, executionCommand(fixture));
+      const enrichmentQueued = await queueEnrichmentRun(fixture, first);
+      const attempts = new FileRequirementsAttemptStore(
+        `${directory}/enrichment-replay-attempts`,
+      );
+      const enrichmentCmd = {
+        commandId: "agent-enrichment-replay",
+        projectId: PROJECT_ID,
+        expectedRevision: enrichmentQueued.revision,
+        issuedAt: "2026-08-08T12:25:00.000Z",
+        runId: enrichmentQueued.runId,
+      };
+      const completed = await makeExecutor({
+        ...fixture,
+        queued: enrichmentQueued,
+      }, {
+        syson: new EnrichmentReqsSyson(),
+        directory,
+        leaseSubdir: "enrichment-replay-leases",
+        attempts,
+      }).execute(AGENT, enrichmentCmd);
+      const replaySyson = new EnrichmentReqsSyson();
+      const replayed = await makeExecutor({
+        ...fixture,
+        queued: enrichmentQueued,
+      }, {
+        syson: replaySyson,
+        directory,
+        leaseSubdir: "enrichment-replay-leases",
+        attempts,
+      }).execute(AGENT, {
+        ...enrichmentCmd,
+        expectedRevision: completed.revision,
+      });
+      assertEquals(
+        replayed.agentRuns.find((run) => run.id === enrichmentQueued.runId)
+          ?.status,
+        "completed",
+      );
+      assertEquals(replaySyson.calls, []);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ── BLOQUANT: foreign element identity check ──────────────────────────────────
 
 Deno.test(
