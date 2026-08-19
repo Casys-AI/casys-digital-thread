@@ -79,6 +79,10 @@ import {
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
 } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
 import {
+  parseModelicaAdmittedRunAdmissionParameters,
+  SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+} from "../../domain/analysis/modelica-admitted-run-proposal.ts";
+import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
   parseDfmDecisionParameters,
@@ -131,6 +135,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION),
     (parameters) => {
       parseModelicaQualifiedKitRunAdmissionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(SIMULATE_RUN_ADMITTED_MODELICA_OPERATION),
+    (parameters) => {
+      parseModelicaAdmittedRunAdmissionParameters(parameters);
     },
   ],
   [

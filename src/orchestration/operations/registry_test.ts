@@ -25,6 +25,7 @@ import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
 } from "../../domain/engineering/geometry-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/analysis/modelica-admitted-run-proposal.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
@@ -331,6 +332,60 @@ Deno.test("the qualified local Modelica kit is a consequential zero-binding oper
               },
             },
           }],
+        },
+        stage: "planning",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(extraBinding.code, "invalid_bindings");
+});
+
+Deno.test("admitted Modelica execution binds one compilation admission and refuses caller source", () => {
+  const registered = getRegisteredEngineeringOperation(
+    SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+  )!;
+  assertEquals(registered.execution, "trusted");
+  assertEquals(registered.workItemKind, "simulate");
+  assertEquals(registered.riskClass, "consequential");
+  assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(registered.bindings, [{
+    name: "compilationAdmission",
+    allowedSourceKinds: ["thread-entity"],
+    cardinality: "one",
+    allowedThreadEntityKinds: ["artifact"],
+  }]);
+
+  const extraBinding = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+          bindings: [
+            {
+              name: "compilationAdmission",
+              source: {
+                kind: "thread-entity",
+                reference: {
+                  snapshotId: "thread.snapshot.7",
+                  snapshotRevision: 7,
+                  kind: "artifact",
+                  id: "artifact.admission",
+                },
+              },
+            },
+            {
+              name: "modelicaText",
+              source: {
+                kind: "thread-entity",
+                reference: {
+                  snapshotId: "thread.snapshot.7",
+                  snapshotRevision: 7,
+                  kind: "artifact",
+                  id: "artifact.caller-selected-modelica",
+                },
+              },
+            },
+          ],
         },
         stage: "planning",
       }),

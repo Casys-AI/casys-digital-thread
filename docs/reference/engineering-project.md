@@ -22,6 +22,13 @@ are not a creation route for new work. Every value is JSON-compatible. Validatio
 and recursively freezes the accepted value, rejects unknown fields, and never fills in a
 missing decision or engineering input.
 
+| Open | Owns |
+| ---- | ---- |
+| Three truth boundaries | Project vs Thread vs activity |
+| Agent-published plan and reviewed operations | Registered ops including admitted Modelica |
+| Recorded-analysis `@2` authority | Provider MCP recorded path |
+| Command and authority surfaces | Who may write what |
+
 ## Three truth boundaries
 
 | Boundary    | Owns                                                                                                                                                                                                 | Must not claim                                                        |
@@ -116,14 +123,18 @@ entry-point registry contains:
 | Human-reviewed `simulation-case/2.0`, qualified Modelica kit required         | `simulate.seal-simulation-case@2`       |
 | Sealed V2 case and qualified method-manifest, exact MRTR required             | `simulate.run-modelica-scenario@2`      |
 | One server-owned local Modelica linear-ramp kit; qualification reread         | `simulate.run-qualified-modelica-kit@1` |
+| Sealed Modelica compilation admission; local isolation runtime composed       | `simulate.run-admitted-modelica@1`      |
 | Sealed proof case and geometry, exact MRTR required                           | `verify.run-fea-static-proof@2`         |
 | Same bindings; isolated local CalculiX; not a reroute of `@2` plans           | `verify.run-fea-static-proof@3`         |
 | Human inspection of an uncertain provider write                               | `record.reconcile-uncertain-writer@1`   |
 | Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`              |
 
-Lookalike pairs and grants: [agent workspace](agent-workspace.md#3-lookalike-traps).
+Lookalike pairs and grants: [lookalike traps](lookalike-traps.md).
+Admitted CAD/Modelica microVM:
+[admitted source isolated execution](admitted-source-isolated-execution.md).
 `model.seal-architecture-sysml@1` is not `model.write-architecture@2`.
 `design.execute-build123d@1` is not canonical geometry promotion.
+`simulate.run-admitted-modelica@1` is not `simulate.run-qualified-modelica-kit@1`.
 `design.seal-isolated-geometry@1` is not `design.write-geometry@1` and is not FEA
 geometry. `verify.run-fea-static-proof@3` must not consume a `@2` plan.
 

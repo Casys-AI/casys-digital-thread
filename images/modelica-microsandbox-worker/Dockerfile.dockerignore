@@ -5,6 +5,9 @@
 !src/adapters/execution-profiles/modelica-qualified-kit-v1/
 !src/adapters/execution-profiles/modelica-qualified-kit-v1/run.ts
 !src/adapters/execution-profiles/modelica-qualified-kit-v1/worker-contract.ts
+!src/adapters/execution-profiles/modelica-closed-subset-v1/
+!src/adapters/execution-profiles/modelica-closed-subset-v1/run.ts
+!src/adapters/execution-profiles/modelica-closed-subset-v1/worker-contract.ts
 !images/
 !images/modelica-microsandbox-worker/
 !images/modelica-microsandbox-worker/deno.lock

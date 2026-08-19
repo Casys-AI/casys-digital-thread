@@ -48,6 +48,9 @@ not paraphrased.
   turns a catalog id into `sensitivity.case.*` for
   `analyze.seal-sensitivity-study@1`. `cadSource` is a compilation admission,
   never a STEP. `desk-lamp-dl06` is `catalog-absent`.
+- [Run admitted Modelica](how-to/run-admitted-modelica.md) walks product closed-subset
+  `.mo` through capture → `compile.seal-admission@1` →
+  `simulate.run-admitted-modelica@1`. It is not the pinned kit and not recorded `@2`.
 - [Walk the post-proof loop](how-to/walk-the-post-proof-loop.md) is the **behave**
   continuation after FEA: join study-base observations, apply a correction only
   on a real fail, capture `z*`, reseal. Measured DFM is the separate **make**
@@ -66,13 +69,21 @@ not paraphrased.
 ## Reference — look up exact contracts and locations
 
 - [Agent workspace](reference/agent-workspace.md) is the compact contract for agents:
-  authority, lookalike traps, tool and operation catalogues, frontend profiles, and
-  where to put code.
+  tool and operation catalogues, frontend profiles, and where to put code.
+- [Lookalike traps](reference/lookalike-traps.md) is the split catalogue of pairs that
+  are not substitutes (SysML, CAD, Modelica, FEA, DFM).
+- [Admitted source isolated execution](reference/admitted-source-isolated-execution.md)
+  is the recurrent hexagonal pattern: sealed compilation → reopen exact bytes →
+  `IsolatedCodeRunner`. CAD execute and admitted Modelica share it. The Modelica kit
+  and CalculiX `@3` do not.
+- [Compilation and isolation](reference/compilation-and-isolation.md) is the admission
+  compiler plus CAD / Modelica / CalculiX isolated verticals, extracted from the
+  authority pipeline.
+- [Workspace map](reference/workspace-map.md) is ports, YOLO, and runtime ownership.
+  File census and CAS roots are [workspace source map](reference/workspace-source-map.md).
 - [MCP console reference](reference/console.md) documents the console resource, tools,
   evidence model, agent project-control tools, signed MRTR elicitation, and authority
   boundary.
-- [Workspace map and local ports](reference/workspace-map.md) identifies the workflow,
-  observers, UI sources, generated bundle, harness, volumes, and every local endpoint.
 - [Source analysis and authority pipeline](reference/analysis-authority-pipeline.md)
   separates native-language parsing, provider-neutral facts, human admission,
   inspectable lowering and private provider dispatch; it documents the recorded

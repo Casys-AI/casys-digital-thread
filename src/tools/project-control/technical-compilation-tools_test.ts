@@ -4,6 +4,7 @@ import type { ProjectAdmittedGeometryExportResult } from "../../application/port
 import type { ProjectBuild123dExecutionReviewResult } from "../../application/ports/in/project-build123d-execution-review.ts";
 import type { ProjectIsolatedGeometrySealReviewResult } from "../../application/ports/in/project-isolated-geometry-seal-review.ts";
 import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../application/ports/in/project-modelica-qualified-kit-run-review.ts";
+import type { ProjectAdmittedModelicaRunReviewResult } from "../../application/ports/in/project-admitted-modelica-run-review.ts";
 import { registerProjectTechnicalCompilationTools } from "./technical-compilation-tools.ts";
 
 const ARTIFACT_DIGEST = "a".repeat(64);
@@ -377,6 +378,64 @@ Deno.test("isolated geometry seal review rejects unknown authority fields before
     "unsupported field(s): sourceText",
   );
   assertEquals(calls, 0);
+});
+
+Deno.test("admitted Modelica review is conditional, closed, and rejects caller Modelica text", async () => {
+  const absent = new CapturingApp();
+  registerProjectTechnicalCompilationTools(absent as unknown as McpApp, {});
+  assertEquals(absent.hasTool("project_admitted_modelica_run_review"), false);
+
+  const app = new CapturingApp();
+  const calls: unknown[] = [];
+  const resultIdentity = Object.freeze({
+    admission: Object.freeze({ marker: "use-case-owned-admitted-modelica" }),
+    decisionParameters: Object.freeze([
+      Object.freeze({ key: "review.identity", label: "Identity", value: "exact" }),
+    ]),
+  }) as unknown as ProjectAdmittedModelicaRunReviewResult;
+  registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
+    admittedModelicaRunReview: {
+      execute(value) {
+        calls.push(value);
+        return Promise.resolve(resultIdentity);
+      },
+    },
+  });
+
+  const response = await app.handler("project_admitted_modelica_run_review")(
+    structuredClone(REVIEW_COMMAND),
+  ) as Record<string, unknown>;
+  assert(response.structuredContent === resultIdentity);
+  assertEquals(calls, [REVIEW_COMMAND]);
+  assertStringIncludes(response.content as string, REVIEW_COMMAND.artifactId);
+  assertStringIncludes(response.content as string, "no source bytes");
+
+  const tool = app.tool("project_admitted_modelica_run_review");
+  const inputSchema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(
+    Object.keys(inputSchema.properties as Record<string, unknown>).sort(),
+    ["artifactFingerprint", "artifactId", "basis", "projectId"],
+  );
+  assertEquals(
+    Object.keys(inputSchema.properties as Record<string, unknown>).some((key) =>
+      ["sourceText", "modelicaText", "runtime", "profile", "provider"].includes(
+        key,
+      )
+    ),
+    false,
+  );
+
+  const handler = app.handler("project_admitted_modelica_run_review");
+  await assertRejects(
+    () =>
+      handler({
+        ...structuredClone(REVIEW_COMMAND),
+        modelicaText: "model CallerSelected end CallerSelected;",
+      }) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): modelicaText",
+  );
+  assertEquals(calls, [REVIEW_COMMAND]);
 });
 
 Deno.test("qualified Modelica review exposes one closed two-field input and forwards it exactly", async () => {

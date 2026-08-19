@@ -1,10 +1,10 @@
 # Reference: MCP console
 
 The Console MCP server (`:3020/mcp`) is the agent and ops control plane. It is not a
-human dashboard. The former MCP App at `ui://casys-digital-thread/console` (Fleet /
-Runs / Workbench, `preview:browser` on `:3021`) is retired. Product inspection is the
-native cockpit (`preview:thread` / `preview:cockpit`). The operational snapshot
-contract remains `2.0` on the `console_*` tools. The same MCP server exposes the
+human dashboard. The former MCP App at `ui://casys-digital-thread/console` (Fleet / Runs
+/ Workbench, `preview:browser` on `:3021`) is retired. Product inspection is the native
+cockpit (`preview:thread` / `preview:cockpit`). The operational snapshot contract
+remains `2.0` on the `console_*` tools. The same MCP server exposes the
 conversation-owned project-control tools used by the agent. Those tools mutate project
 revisions or dispatch registered operations; the cockpit itself remains a passive
 projection.
@@ -36,13 +36,13 @@ SSE. Neither path starts CAD, meshing, FEA, Modelica, or a SysON mutation on pag
 
 ## Tools
 
-| Tool                    | Audience          | Meaning                                                              |
-| ----------------------- | ----------------- | -------------------------------------------------------------------- |
-| `console_snapshot`      | Any MCP client    | Fleet observations and run summaries                                 |
-| `console_server_detail` | Any MCP client    | Desired state, observation, drift, image and trust information       |
-| `console_run_list`      | Any MCP client    | Indexed engineering-run summaries                                    |
-| `console_run_detail`    | Any MCP client    | Evidence, observations, comparisons and provenance                   |
-| `console_refresh`       | App-only leftover | Explicitly refresh the read-only probes; no shipped App calls it     |
+| Tool                    | Audience          | Meaning                                                          |
+| ----------------------- | ----------------- | ---------------------------------------------------------------- |
+| `console_snapshot`      | Any MCP client    | Fleet observations and run summaries                             |
+| `console_server_detail` | Any MCP client    | Desired state, observation, drift, image and trust information   |
+| `console_run_list`      | Any MCP client    | Indexed engineering-run summaries                                |
+| `console_run_detail`    | Any MCP client    | Evidence, observations, comparisons and provenance               |
+| `console_refresh`       | App-only leftover | Explicitly refresh the read-only probes; no shipped App calls it |
 
 `console_snapshot` no longer carries dashboard-panel declarations. Product state lives
 in the canonical [`ThreadSnapshot`](thread-snapshot.md) and its native Workbench
@@ -80,20 +80,21 @@ These tools write draft CAS or return review parameters. They do not queue a run
 not grant MRTR or provider authority. Full grants:
 [agent workspace](agent-workspace.md#4-surfaces-an-agent-actually-calls).
 
-| Tool                                        | Authority      | Meaning                                                                             |
-| ------------------------------------------- | -------------- | ----------------------------------------------------------------------------------- |
-| `project_architecture_sysml_source_capture` | Draft CAS      | Exact agent-authored closed-subset SysML + analysis. Not `sysml-source-capture/1.0` |
-| `project_architecture_sysml_preview`        | Diagnostic     | Tokenize/parse/analyse. `decisionParameters` only from a reopened passed capture    |
-| `project_technical_source_capture`          | Draft CAS      | Review: parser vs levers vs opaque reference. Pass `result.reference` only          |
-| `project_technical_compilation_preview`     | Review draft   | `projectId` + `result.reference`. Server tip, profile, unique SysML join            |
-| `project_admitted_geometry_export`          | Geometry draft | Export one sealed Build123d admission through the sandbox. Not isolated execution   |
-| `project_build123d_execution_review`        | Read           | MRTR parameters for `design.execute-build123d@1`. No capability                     |
-| `project_isolated_geometry_seal_review`     | Read           | MRTR parameters for `design.seal-isolated-geometry@1`. No STEP bytes                |
-| `project_modelica_qualified_kit_run_review` | Read           | MRTR parameters for the one local Modelica kit                                      |
-| `project_fea_proof_seal_review`             | Read           | `fea.proof.*` plus paste-ready `next.append` / `next.propose` for the seal          |
-| `project_fea_recorded_run_review`           | Read           | `@2` bindings plus paste-ready hops; geometry is STEP, never cad-model              |
+| Tool                                        | Authority      | Meaning                                                                                                                    |
+| ------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `project_architecture_sysml_source_capture` | Draft CAS      | Exact agent-authored closed-subset SysML + analysis. Not `sysml-source-capture/1.0`                                        |
+| `project_architecture_sysml_preview`        | Diagnostic     | Tokenize/parse/analyse. `decisionParameters` only from a reopened passed capture                                           |
+| `project_technical_source_capture`          | Draft CAS      | Review: parser vs levers vs opaque reference. Pass `result.reference` only                                                 |
+| `project_technical_compilation_preview`     | Review draft   | `projectId` + `result.reference`. Server tip, profile, unique SysML join                                                   |
+| `project_admitted_geometry_export`          | Geometry draft | Export one sealed Build123d admission through the sandbox. Not isolated execution                                          |
+| `project_build123d_execution_review`        | Read           | MRTR parameters for `design.execute-build123d@1`. No capability                                                            |
+| `project_isolated_geometry_seal_review`     | Read           | MRTR parameters for `design.seal-isolated-geometry@1`. No STEP bytes                                                       |
+| `project_modelica_qualified_kit_run_review` | Read           | MRTR parameters for the one local Modelica kit                                                                             |
+| `project_admitted_modelica_run_review`      | Read           | MRTR parameters for `simulate.run-admitted-modelica@1`. No Modelica text                                                   |
+| `project_fea_proof_seal_review`             | Read           | `fea.proof.*` plus paste-ready `next.append` / `next.propose` for the seal                                                 |
+| `project_fea_recorded_run_review`           | Read           | `@2` bindings plus paste-ready hops; geometry is STEP, never cad-model                                                     |
 | `project_sensitivity_study_seal_review`     | Read           | `sensitivity.case.*` plus paste-ready hops; `cadSource` is an admission, never STEP. `desk-lamp-dl06` is `catalog-absent`. |
-| `project_geometry_preview`                  | None           | Not registered. Canonical drafts come from `project_admitted_geometry_export`       |
+| `project_geometry_preview`                  | None           | Not registered. Canonical drafts come from `project_admitted_geometry_export`                                              |
 
 Every mutation uses a stable command ID, `expectedRevision`, and `issuedAt`. Retrying an
 identical command ID and payload returns its immutable result; changing the request

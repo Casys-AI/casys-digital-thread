@@ -9,11 +9,13 @@ frontières, contrats — vit dans les pages ci-dessous, qui sont la vérité.
 1. [AGENTS.md](AGENTS.md) — autorités, pièges de paires qui se ressemblent, labels
 2. [docs/reference/agent-workspace.md](docs/reference/agent-workspace.md) — surfaces
    appelables, opérations enregistrées, grants exacts
-3. [docs/reference/workspace-map.md](docs/reference/workspace-map.md) — fichiers, ports,
-   frontières, racines CAS
-4. [docs/reference/analysis-authority-pipeline.md](docs/reference/analysis-authority-pipeline.md)
+3. [docs/reference/lookalike-traps.md](docs/reference/lookalike-traps.md) — paires qui
+   ne sont pas des substituts
+4. [docs/reference/workspace-map.md](docs/reference/workspace-map.md) — ports, YOLO.
+   Census fichiers : [workspace source map](docs/reference/workspace-source-map.md)
+5. [docs/reference/analysis-authority-pipeline.md](docs/reference/analysis-authority-pipeline.md)
    — capture → analyse → MRTR → dispatch
-5. [docs/tutorials/first-engineering-loop.md](docs/tutorials/first-engineering-loop.md)
+6. [docs/tutorials/first-engineering-loop.md](docs/tutorials/first-engineering-loop.md)
    — la boucle de bout en bout
 
 Les serveurs MCP d'ingénierie vivent dans leurs propres repos et tournent depuis des

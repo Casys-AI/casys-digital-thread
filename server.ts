@@ -63,6 +63,9 @@ import {
   ModelSealArchitectureSysmlRunExecutor,
 } from "./src/adapters/executors/model-seal-architecture-sysml-run-executor.ts";
 import type { Build123dExecutionServerOptions } from "./src/adapters/execution/build123d-execution-composition.ts";
+import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/execution/admitted-modelica-execution-composition.ts";
+import { createAdmittedModelicaExecutionComposition } from "./src/adapters/execution/admitted-modelica-execution-composition.ts";
+import { PrepareProjectAdmittedModelicaRunReview } from "./src/application/use-cases/prepare-project-admitted-modelica-run-review.ts";
 import {
   DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
   DesignSealIsolatedGeometryRunExecutor,
@@ -173,6 +176,10 @@ import {
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
   SimulateRunQualifiedModelicaKitRunExecutor,
 } from "./src/adapters/executors/simulate-run-qualified-modelica-kit-run-executor.ts";
+import {
+  SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+  SimulateRunAdmittedModelicaRunExecutor,
+} from "./src/adapters/executors/simulate-run-admitted-modelica-run-executor.ts";
 import { VerifyRunFeaStaticProofV3RunExecutor } from "./src/adapters/executors/verify-run-fea-static-proof-v3-run-executor.ts";
 import { DockerVolumeAssetStager } from "./src/adapters/executors/container-asset-stager.ts";
 import { FileFeaStaticProofAttemptStore } from "./src/adapters/wal/file-fea-static-proof-attempt-store.ts";
@@ -409,6 +416,8 @@ export const LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE =
 
 export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
+export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
+  "casys/modelica-microsandbox-worker@sha256:d92793e42b81fedd4391c4c2a0a0b9cab06934deef22498902e338cb09c73bcd" as const;
 export const LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE =
   "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2" as const;
 const LOCAL_CALCULIX_WRAPPER_SHA256 =
@@ -458,6 +467,18 @@ const LOCAL_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
   schemaVersion: "modelica-microsandbox-policy/1.0",
   backend: "microsandbox-local@0.6.8",
   imageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  network: "deny-all",
+  pullPolicy: "never",
+  securityProfile: "restricted",
+  workerUser: "65532:65532",
+  fixedExecutables: ["omc", "perl"],
+  limits: LOCAL_MODELICA_EXECUTION_LIMITS,
+});
+
+const LOCAL_ADMITTED_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
+  schemaVersion: "modelica-admitted-microsandbox-policy/1.0",
+  backend: "microsandbox-local@0.6.8",
+  imageReference: LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
   network: "deny-all",
   pullPolicy: "never",
   securityProfile: "restricted",
@@ -578,6 +599,11 @@ export interface CreateConsoleServerOptions {
    * requires the separately persisted, digest-pinned qualification capture.
    */
   modelicaIsolatedExecution?: ModelicaIsolatedExecutionServerOptions;
+  /**
+   * Admitted Modelica closed-subset profile and optional isolated runtime.
+   * Distinct from the pinned kit. Omitted means no review tool and no executor.
+   */
+  admittedModelicaExecution?: AdmittedModelicaExecutionServerOptions;
   /** Local CalculiX profile; product execution additionally requires SysON. */
   calculixIsolatedExecution?: CalculixIsolatedExecutionServerOptions;
 }
@@ -967,6 +993,43 @@ async function createProjectControl(
           `${recordedAnalysisDirectory}/modelica/isolated-execution/outputs`,
       },
     );
+  const admittedModelicaExecution = options.admittedModelicaExecution === undefined
+    ? undefined
+    : await createAdmittedModelicaExecutionComposition(
+      options.admittedModelicaExecution,
+      {
+        outputCasDirectory: `${recordedAnalysisDirectory}/modelica/admitted/outputs`,
+      },
+    );
+  const admittedModelicaCaptureBytes = new FileByteStore({
+    kind: "modelica-admitted-execution-capture",
+    directory: `${recordedAnalysisDirectory}/modelica/admitted/captures`,
+    uriNamespace: "modelica-admitted-execution-capture",
+    label: "Admitted Modelica execution capture",
+  });
+  const admittedModelicaCaptures = {
+    save: async (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+      canonicalText: string,
+    ) => {
+      const stored = await admittedModelicaCaptureBytes.save(
+        fingerprint,
+        new TextEncoder().encode(canonicalText),
+      );
+      return { uri: stored.uri, fingerprint: stored.fingerprint };
+    },
+    read: async (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+    ) => {
+      const stored = await admittedModelicaCaptureBytes.read(fingerprint);
+      return stored === undefined
+        ? undefined
+        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
+    },
+    uriFor: (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+    ) => admittedModelicaCaptureBytes.uriFor(fingerprint),
+  };
   const modelicaQualificationAuthority = modelicaIsolatedExecution === undefined
     ? undefined
     : new PublicationBackedModelicaMicrosandboxQualificationAuthority({
@@ -1304,6 +1367,27 @@ async function createProjectControl(
           captures: modelicaExecutionCaptures,
         }),
         captures: modelicaExecutionCaptures,
+        lease,
+      });
+  const admittedModelicaRunReview = admittedModelicaExecution === undefined
+    ? undefined
+    : new PrepareProjectAdmittedModelicaRunReview({
+      admissions: technicalCompilationAdmissions,
+      profiles: admittedModelicaExecution.profiles,
+    });
+  const simulateRunAdmittedModelica =
+    admittedModelicaExecution?.execution === undefined ||
+      admittedModelicaRunReview === undefined
+      ? undefined
+      : new SimulateRunAdmittedModelicaRunExecutor({
+        projects: runtime.projects,
+        commands: runtime.commands,
+        snapshots: build123dThreadSnapshots,
+        admissions: technicalCompilationAdmissions,
+        profiles: admittedModelicaExecution.profiles,
+        runner: admittedModelicaExecution.execution.runner,
+        publications: admittedModelicaExecution.execution.publications,
+        captures: admittedModelicaCaptures,
         lease,
       });
   const genericModelWriteArchitecture = sysonMcpUrl
@@ -1974,6 +2058,7 @@ async function createProjectControl(
       sensitivityBaseEvaluationReview,
       correctedAdmissionReview,
       modelicaQualifiedKitRunReview,
+      admittedModelicaRunReview,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
           DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY,
@@ -2018,6 +2103,12 @@ async function createProjectControl(
             executor: simulateRunQualifiedModelicaKit,
             unavailableMessage:
               "The server has no complete qualified local Modelica runtime and pinned qualification configured for this run.",
+          },
+          {
+            operation: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+            executor: simulateRunAdmittedModelica,
+            unavailableMessage:
+              "The server has no admitted Modelica closed-subset isolated runtime configured for this run.",
           },
           {
             operation: INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
@@ -2285,6 +2376,9 @@ if (import.meta.main) {
     modelicaIsolatedExecution: localExecution
       ? await createLocalModelicaIsolatedExecutionServerOptions()
       : undefined,
+    admittedModelicaExecution: localExecution
+      ? await createLocalAdmittedModelicaExecutionServerOptions()
+      : undefined,
     calculixIsolatedExecution: localExecution
       ? await createLocalCalculixIsolatedExecutionServerOptions()
       : undefined,
@@ -2304,7 +2398,7 @@ if (import.meta.main) {
       }
       if (localExecution) {
         console.error(
-          `LOCAL EXECUTION ACTIVE: qualified Build123d, Modelica, and CalculiX runs use ${LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE}, and ${LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE} through the attached local Microsandbox backend; CalculiX publication still requires the SysON oracle.`,
+          `LOCAL EXECUTION ACTIVE: qualified Build123d, Modelica kit, admitted Modelica, and CalculiX runs use ${LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE}, and ${LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE} through the attached local Microsandbox backend; CalculiX publication still requires the SysON oracle.`,
         );
       }
       if (!projectToolsEnabled) {
@@ -2422,6 +2516,27 @@ export async function createLocalModelicaIsolatedExecutionServerOptions(): Promi
         version: "1.27.0",
         mslVersion: "4.1.0",
       }),
+    }),
+    runtime: Object.freeze({}),
+  });
+}
+
+/** Code-owned binding for admitted Modelica closed-subset execution. */
+export async function createLocalAdmittedModelicaExecutionServerOptions(): Promise<
+  AdmittedModelicaExecutionServerOptions
+> {
+  const policy = Object.freeze({
+    id: "modelica-admitted-microsandbox-deny-all-v1",
+    version: "1.0.0",
+    fingerprint: await sha256Fingerprint(
+      LOCAL_ADMITTED_MODELICA_EXECUTION_POLICY_BODY,
+    ),
+  });
+  return Object.freeze({
+    profile: Object.freeze({
+      imageReference: LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
+      policy,
+      limits: LOCAL_MODELICA_EXECUTION_LIMITS,
     }),
     runtime: Object.freeze({}),
   });

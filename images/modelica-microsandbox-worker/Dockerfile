@@ -34,7 +34,7 @@ RUN apt-get update \
     && rm /tmp/modelica-standard-library.tar.gz
 
 LABEL org.opencontainers.image.title="Casys qualified Modelica worker" \
-      org.opencontainers.image.description="Fixed local Microsandbox worker for the reviewed LinearThermalRamp solver-conformance kit" \
+      org.opencontainers.image.description="Fixed local Microsandbox worker: pinned LinearThermalRamp kit (ENTRYPOINT) plus admitted closed-subset /input/source.mo" \
       org.opencontainers.image.licenses="Apache-2.0" \
       io.casys.execution-profile="modelica-qualified-kit-v1" \
       io.casys.modelica.library="@casys/mcp-modelica@0.4.0" \
@@ -72,7 +72,20 @@ RUN echo "${DENO_LOCK_SHA256}  /opt/casys/profiles/modelica-qualified-kit-v1/den
     && echo "${WRAPPER_SHA256}  /opt/casys/profiles/modelica-qualified-kit-v1/run.ts" \
       | sha256sum --check --strict \
     && echo "${WORKER_CONTRACT_SHA256}  /opt/casys/profiles/modelica-qualified-kit-v1/worker-contract.ts" \
-      | sha256sum --check --strict \
+      | sha256sum --check --strict
+
+# Second worker in the same image. Kit ENTRYPOINT is unchanged. Admitted runs
+# select this wrapper through backend args, not a second image name.
+COPY --chmod=0555 \
+  src/adapters/execution-profiles/modelica-closed-subset-v1/run.ts \
+  /opt/casys/profiles/modelica-closed-subset-v1/run.ts
+COPY --chmod=0444 \
+  src/adapters/execution-profiles/modelica-closed-subset-v1/worker-contract.ts \
+  /opt/casys/profiles/modelica-closed-subset-v1/worker-contract.ts
+RUN deno cache --no-config \
+      --lock=/opt/casys/profiles/modelica-qualified-kit-v1/deno.lock \
+      --frozen \
+      /opt/casys/profiles/modelica-closed-subset-v1/run.ts \
     && chmod -R a=rX /opt/casys/deno-cache /opt/modelica-libraries \
     && groupadd --system --gid 65532 casys-worker \
     && useradd --system --uid 65532 --gid 65532 \

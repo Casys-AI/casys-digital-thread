@@ -24,6 +24,7 @@ import type { ProjectReviewIntent } from "../domain/project/project-review-inten
 import {
   approvalModeForBinding,
   createConsoleServer,
+  createLocalAdmittedModelicaExecutionServerOptions,
   createLocalBuild123dExecutionServerOptions,
   createLocalCalculixIsolatedExecutionServerOptions,
   createLocalModelicaIsolatedExecutionServerOptions,
@@ -367,6 +368,33 @@ Deno.test("server exposes qualified Modelica review only from explicit local pro
       id: "simulate.run-qualified-modelica-kit",
       version: "1",
     });
+    assertStringIncludes(
+      await Deno.readTextFile("server.ts"),
+      "The server has no admitted Modelica closed-subset isolated runtime configured for this run.",
+    );
+    assertEquals(
+      withoutConfiguration.app.getToolNames().includes(
+        "project_admitted_modelica_run_review",
+      ),
+      false,
+    );
+
+    const { profile: admittedProfile } =
+      await createLocalAdmittedModelicaExecutionServerOptions();
+    const admittedReview = await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory: `${temporaryDirectory}/admitted/projects`,
+      recordedAnalysisDirectory: `${temporaryDirectory}/admitted/analysis`,
+      admittedModelicaExecution: { profile: admittedProfile },
+    });
+    assertEquals(
+      admittedReview.app.getToolNames().includes(
+        "project_admitted_modelica_run_review",
+      ),
+      true,
+    );
   } finally {
     await Deno.remove(temporaryDirectory, { recursive: true });
   }

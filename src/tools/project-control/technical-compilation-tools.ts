@@ -16,6 +16,10 @@ import type {
   ProjectModelicaQualifiedKitRunReviewUseCase,
 } from "../../application/ports/in/project-modelica-qualified-kit-run-review.ts";
 import type {
+  ProjectAdmittedModelicaRunReviewCommand,
+  ProjectAdmittedModelicaRunReviewUseCase,
+} from "../../application/ports/in/project-admitted-modelica-run-review.ts";
+import type {
   ProjectTechnicalCompilationPreviewCommand,
   ProjectTechnicalCompilationPreviewUseCase,
 } from "../../application/ports/in/project-technical-compilation-preview.ts";
@@ -47,6 +51,8 @@ export interface ProjectTechnicalCompilationToolDependencies {
   isolatedGeometrySealReview?: ProjectIsolatedGeometrySealReviewUseCase;
   /** Read-only preparation of the one code-owned qualified Modelica kit run. */
   modelicaQualifiedKitRunReview?: ProjectModelicaQualifiedKitRunReviewUseCase;
+  /** Provider-free preparation of one admitted Modelica execution review. */
+  admittedModelicaRunReview?: ProjectAdmittedModelicaRunReviewUseCase;
 }
 
 /** Register the provider-free technical source and compilation draft surfaces. */
@@ -137,6 +143,19 @@ export function registerProjectTechnicalCompilationTools(
       return {
         content:
           "The exact local Modelica solver-conformance kit review was prepared from the current Thread basis, code-owned bundle, pinned profile, and durable runtime qualification. The returned admission and decisionParameters are review material only: no source bytes or runtime capability are exposed, no simulation ran, no project or Thread state changed, and no dispatch authority was created.",
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+
+  if (dependencies.admittedModelicaRunReview) {
+    const review = dependencies.admittedModelicaRunReview;
+    app.registerTool(projectAdmittedModelicaRunReviewTool, async (args) => {
+      const command = admittedModelicaRunReviewCommand(args);
+      const result = await review.execute(command);
+      return {
+        content:
+          `Admitted Modelica execution review for sealed admission ${command.artifactId} was prepared from exact server-reopened facts. The returned admission and decisionParameters are review material only: they contain no source bytes or runtime capability, no code was executed, and no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority was created.`,
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -421,6 +440,25 @@ const projectIsolatedGeometrySealReviewTool: MCPTool = {
   annotations: READ_ONLY_ANNOTATIONS,
 };
 
+const projectAdmittedModelicaRunReviewTool: MCPTool = {
+  name: "project_admitted_modelica_run_review",
+  description:
+    "Prepare the exact human-review identity and canonical MRTR parameters for one future admitted Modelica closed-subset execution by reopening a sealed technical-compilation admission and joining it to the server-owned execution profile. This provider-free read performs no code execution, returns no source bytes or runtime capability, mutates no EngineeringProject or Thread state, and grants no MRTR, provider, or dispatch authority. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; Modelica text, runtime, isolation, output, profile, command, tool and transport facts remain server-owned. This is not simulate.run-qualified-modelica-kit@1 and not simulate.run-modelica-scenario@2.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+      basis: TECHNICAL_THREAD_BASIS_SCHEMA,
+      artifactId: TECHNICAL_ID_SCHEMA,
+      artifactFingerprint: FINGERPRINT_SCHEMA,
+    },
+    required: ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
 const projectModelicaQualifiedKitRunReviewTool: MCPTool = {
   name: "project_modelica_qualified_kit_run_review",
   description:
@@ -532,6 +570,26 @@ function isolatedGeometrySealReviewCommand(
     ["projectId", "basis", "artifactId", "artifactFingerprint"],
     [],
     "isolatedGeometrySealReview",
+  );
+  return {
+    projectId: technicalId(value.projectId, "projectId"),
+    basis: technicalThreadBasis(value.basis, "basis"),
+    artifactId: technicalId(value.artifactId, "artifactId"),
+    artifactFingerprint: fingerprintInput(
+      value.artifactFingerprint,
+      "artifactFingerprint",
+    ),
+  };
+}
+
+function admittedModelicaRunReviewCommand(
+  value: Record<string, unknown>,
+): ProjectAdmittedModelicaRunReviewCommand {
+  exactKeys(
+    value,
+    ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    [],
+    "admittedModelicaRunReview",
   );
   return {
     projectId: technicalId(value.projectId, "projectId"),

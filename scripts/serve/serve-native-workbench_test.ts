@@ -27,6 +27,7 @@ import {
   SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
 } from "../../src/domain/analysis/simulation-case-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../src/domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../src/domain/analysis/modelica-admitted-run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../src/domain/thread/thread-retirement.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
@@ -376,6 +377,7 @@ Deno.test("native Workbench classifies every known durable writer before attachm
     SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
     VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
     SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+    SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
     VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
     ARCHIVE_LINEAGE_OPERATION,
     ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,

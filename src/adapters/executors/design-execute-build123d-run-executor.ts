@@ -37,6 +37,10 @@ import type {
 } from "../../application/ports/out/technical-compilation-admission-reader.ts";
 import { PrepareProjectBuild123dExecutionReview } from "../../application/use-cases/prepare-project-build123d-execution-review.ts";
 import {
+  isolatedRequestFromAdmittedSource,
+  ReopenAdmittedCompilationSource,
+} from "../../application/use-cases/reopen-admitted-compilation-source.ts";
+import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
@@ -54,7 +58,6 @@ import {
   parseBuild123dExecutionAdmissionParameters,
 } from "../../domain/analysis/build123d-execution-proposal.ts";
 import {
-  ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
   type IsolatedCodeExecutionReceipt,
   type IsolatedCodeExecutionReceiptRecord,
   isolatedCodeExecutionReceiptRecord,
@@ -63,12 +66,9 @@ import {
   isolatedCodeRefsEqual,
   runtimeAttestationsEqual,
   validateIsolatedCodeExecutionReceiptRecord,
-  validateIsolatedCodeExecutionRequest,
   validateIsolatedOutputProducerGenerationAdvance,
 } from "../../domain/analysis/isolated-code-execution.ts";
 import {
-  fingerprintTechnicalCompilationDocument,
-  fingerprintTechnicalSourceText,
   validateTechnicalCompilationDocument,
 } from "../../domain/analysis/technical-compilation.ts";
 import {
@@ -186,45 +186,31 @@ async function reopenReviewedExecutionContext(input: {
     );
   }
 
-  let reopened: ReopenedTechnicalCompilationAdmission | undefined;
+  let admitted;
   try {
-    reopened = await input.admissions.read(reviewRequest);
+    admitted = await new ReopenAdmittedCompilationSource({
+      admissions: input.admissions,
+    }).execute({
+      ...reviewRequest,
+      expectedTarget: "build123d-source",
+    });
   } catch {
     throw invalidTransition(
       "The exact technical-compilation admission could not be reopened for execution.",
     );
   }
-  if (!reopened) {
-    throw invalidTransition(
-      "The exact technical-compilation admission is no longer available for execution.",
-    );
-  }
-  const document = await validateTechnicalCompilationDocument(reopened.document);
-  const documentFingerprint = await fingerprintTechnicalCompilationDocument(
-    document,
-  );
+  const document = admitted.document;
+  const documentFingerprint = admitted.documentFingerprint;
+  const projection = admitted.projection;
+  const source = document.inputManifest.sources[0]!;
+  const admittedSource = admitted.reopened.admission.sources[0]!;
+  const projectionFingerprint = await sha256Fingerprint(projection);
+  const sourceFingerprint = admitted.sourceFingerprint;
   if (
     !fingerprintsEqual(
       documentFingerprint,
       input.admission.compilation.document.fingerprint,
-    ) || document.status !== "ready-for-review" ||
-    document.projections.length !== 1 ||
-    document.inputManifest.sources.length !== 1 ||
-    reopened.admission.sources.length !== 1
-  ) {
-    throw invalidTransition(
-      "The reopened compilation document is not the exact singular reviewed Build123d document.",
-    );
-  }
-  const projection = document.projections[0]!;
-  const source = document.inputManifest.sources[0]!;
-  const admittedSource = reopened.admission.sources[0]!;
-  const projectionFingerprint = await sha256Fingerprint(projection);
-  const sourceFingerprint = await fingerprintTechnicalSourceText(source.sourceText);
-  if (
-    projection.target !== "build123d-source" ||
-    projection.status !== "ready-for-review" ||
-    projection.diagnostics.length !== 0 || projection.sources.length !== 1 ||
+    ) ||
     !fingerprintsEqual(
       projectionFingerprint,
       input.admission.compilation.projection.fingerprint,
@@ -265,24 +251,15 @@ async function reopenReviewedExecutionContext(input: {
     );
   }
   await assertExecutionProfileExact(profile, input.admission, projection);
-  const sourceBytes = new TextEncoder().encode(source.sourceText);
-  if (sourceBytes.byteLength > profile.maximumSourceBytes) {
-    throw invalidTransition(
-      "The reopened Build123d source exceeds the reviewed execution-profile ceiling.",
-    );
-  }
-  const request = await validateIsolatedCodeExecutionRequest({
-    schemaVersion: ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
+  const request = await isolatedRequestFromAdmittedSource({
     runId: input.executionRunId,
-    producerGeneration: 0,
+    sourceText: admitted.sourceText,
+    sourceSha256: sourceFingerprint.digest,
     profile: profile.executionProfile,
-    source: {
-      bytes: sourceBytes,
-      sha256: sourceFingerprint.digest,
-    },
     policy: profile.isolationPolicy,
     outputs: profile.outputManifest,
-  }, profile.maximumSourceBytes);
+    maximumSourceBytes: profile.maximumSourceBytes,
+  });
   const attemptIdentity: Build123dExecutionAttemptIdentity = {
     projectId: input.project.project.id,
     agentRunId: input.run.id,
@@ -307,10 +284,10 @@ async function reopenReviewedExecutionContext(input: {
     },
     admission: input.admission,
     technicalAdmission: {
-      trustedRunId: reopened.trustedRunId,
-      decisionId: reopened.decisionId,
-      sealedAt: reopened.sealedAt,
-      draftReference: reopened.draftReference,
+      trustedRunId: admitted.reopened.trustedRunId,
+      decisionId: admitted.reopened.decisionId,
+      sealedAt: admitted.reopened.sealedAt,
+      draftReference: admitted.reopened.draftReference,
       documentFingerprint,
       projectionFingerprint,
       sourceFingerprint,
@@ -336,14 +313,14 @@ async function reopenReviewedExecutionContext(input: {
   );
   return {
     admission: reviewed.admission,
-    reopened,
+    reopened: admitted.reopened,
     request: {
       schemaVersion: request.schemaVersion,
       runId: request.runId,
       producerGeneration: 0,
       profile: request.profile,
       source: {
-        bytes: request.source.bytes.copy(),
+        bytes: Uint8Array.from(request.source.bytes),
         sha256: request.source.sha256,
       },
       policy: request.policy,

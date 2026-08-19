@@ -2,7 +2,9 @@
 
 Start a **new** project and walk the **behave** branch only: intent → brief → SysON →
 canonical CAD → CalculiX `@2` → optional joined sensitivity. Stop on `pass`. Do not open
-make (DFM / printability) or buy (BOM). Do not "repair" `desk-lamp-dl05`.
+make (DFM / printability) or buy (BOM). Do not "repair" `desk-lamp-dl05`. Optional
+product Modelica is a separate capture → admission → admitted microVM walk
+([run admitted Modelica](run-admitted-modelica.md)), never the pinned kit.
 
 The paired conversation commands. The Workbench is read-only. The person never types a
 provider tool. The agent never invents a metric, a unit, a `z*`, or an operation id.
@@ -28,6 +30,7 @@ below is a **typed refusal** or a lookalike. Surface it. Do not work around it.
 | Study metrics aliased to requirement ids  | `UNLINKED`. Reseal from a template whose metric ids Object.is-equal. Never map                         |
 | `z*` after a `pass`                       | `design.apply-vector-correction@1` accepts only a study-base **fail**                                  |
 | Printability or DFM to complete the loop  | Other judgement branch. Stop.                                                                          |
+| Kit `@1` for product Modelica `.mo`       | [Run admitted Modelica](run-admitted-modelica.md). Kit worker pins image source                        |
 
 ## 0. Surfaces
 
@@ -66,8 +69,8 @@ One question at a time (`project_question_propose` / `project_answer_record`).
 2. `project_change_append` — seed work item **and** its required decision in the
    **same** append. `dependsOnWorkItemIds` must name the unique
    `baseline.from-approved-brief@1` work item; append refuses the omission. Human
-   approves. Queue. Execute `architecture.seed-syson-model@2`. r2 is a blank
-   container, not an architecture.
+   approves. Queue. Execute `architecture.seed-syson-model@2`. r2 is a blank container,
+   not an architecture.
 
 ## 4. Architecture and requirements
 
@@ -87,6 +90,21 @@ Two paths. They are not substitutes.
 
 The proof case must name the canonical STEP. A successful isolated run is not Product
 authority and not a DFM target.
+
+## 5b. Product Modelica (optional)
+
+Not required to close behave. When walked, it is the CAD analog for `.mo`, not the kit:
+
+```text
+project_technical_source_capture          # modelica-closed-subset-v1
+  → project_technical_compilation_preview
+  → compile.seal-admission@1
+  → project_admitted_modelica_run_review
+  → simulate.run-admitted-modelica@1
+```
+
+How-to: [run admitted Modelica](run-admitted-modelica.md). Do not walk it on a vehicle
+that already has a joined `pass`.
 
 If a later geometry **replaces** an earlier one, the writer emits `supersedes` (exact
 predecessor artifact). Evidence then photographs the tip. Activity keeps the old card

@@ -3,10 +3,22 @@
 This page is the working contract for coding agents and project-control agents in this
 repository. It is not a product tutorial. For the first human loop, see
 [Follow the engineering loop](../tutorials/first-engineering-loop.md). For file
-locations and ports, see [the workspace map](workspace-map.md).
+locations and ports, see [the workspace map](workspace-map.md) and
+[the source map](workspace-source-map.md). Lookalikes:
+[lookalike traps](lookalike-traps.md).
 
 The page is written so an agent can parse it: tables over prose, exact IDs, explicit
 grants, and lookalike pairs that must not be merged.
+
+| § | Open |
+| - | ---- |
+| 3 | [Lookalike traps](lookalike-traps.md) (extracted) |
+| 4 | Surfaces an agent actually calls |
+| 5 | Registered operations |
+| 6 | Implemented language frontends |
+| 7 | Golden path |
+| 8 | Where to put code |
+
 
 ## 1. What this repo owns
 
@@ -53,50 +65,17 @@ A queued run is not a published result. Only a captured, reread Thread revision 
 
 ## 3. Lookalike traps
 
-These pairs look related and are **not** substitutes.
+Full tables: [lookalike traps](lookalike-traps.md). Keep this heading so older
+`#3-lookalike-traps` links still land.
 
-![Two SysML authorities: renderer path writes SysON; agent-authored path seals a Thread document only.](../assets/sysml-two-paths.svg)
-
-| This                                                      | Is                                                                                                            | Is not                                                                  |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `project_work_item_reconcile_successor`                   | Retired MCP identity. Recovery is `deno task recover:work-item-successor`                                     | A canonical project-control tool                                        |
-| `model.write-architecture@1`                              | Server-rendered SysML inserted into SysON                                                                     | An agent-authored SysML parser path                                     |
-| `model.seal-architecture-sysml@1`                         | Provider-free Thread-document seal of closed-subset analysis                                                  | SysON insertion, `@2` architecture write, or `compile.seal-admission@1` |
-| `sysml-source-capture/1.0`                                | Renderer envelope for the SysON write                                                                         | Agent-authored UTF-8 authority                                          |
-| `architecture-sysml-source-analysis-capture/1.0`          | Agent-authored closed-subset CAS                                                                              | A renderer manifest                                                     |
-| `project_geometry_preview` + `design.write-geometry@1`    | Retired product entry. Preview is not registered. `write-geometry` refuses a draft without an admission stamp | Isolated compiler execution or a photo STEP                             |
-| `design.preview-geometry@1`                               | Retired identity. Not registered                                                                              | A product CAD verb or sandbox entry                                     |
-| `parser.status` on a technical capture                    | Closed-subset parser fact                                                                                     | Admission, a named lever, or a SysML bind                               |
-| `levers.status` on a technical capture                    | Reachable named numeric literals                                                                              | A SysML `parameterizes` bind or `compile.seal-admission@1`              |
-| `source.no-named-numeric-lever`                           | No reachable named literal (constructor photo or dead assignment)                                             | Missing `parameterizes` (`binding.missing`)                             |
-| `compile.seal-admission@1` + `design.execute-build123d@1` | Provider-free admission then local microVM draft execution                                                    | Canonical geometry promotion                                            |
-| `design.seal-isolated-geometry@1`                         | Provider-free Thread-document seal of isolated execution                                                      | Canonical STEP, cad-model, `write-geometry`, or FEA geometry            |
-| `verify.run-fea-static-proof@1`                           | Historical generic MCP FEA                                                                                    | The current recorded or isolated successors                             |
-| `verify.run-fea-static-proof@2`                           | Recorded CalculiX MCP plan (`resolved-operation-plan/2.0`)                                                    | The local microVM `@3` executor                                         |
-| `verify.run-fea-static-proof@3`                           | Isolated local CalculiX + separate SysON oracle                                                               | A reinterpretation of `@2` plans                                        |
-| `project_fea_proof_seal_review`                           | Catalog id → `fea.proof.*` for `verify.seal-proof-case@1`                                                     | Case authoring or a `fea.run.*` grammar                                 |
-| `project_sensitivity_study_seal_review`                   | Catalog id or signed catalog-offer → `sensitivity.case.*` for `analyze.seal-sensitivity-study@1`              | Case authoring, a solve, or inventing `cadSource`                       |
-| `project_fea_recorded_run_review`                         | Sealed proof document → `@2` bindings (`proofCase` document + STEP)                                           | `@1` / `@3`, or binding the assembly cad-model as `geometry`            |
-| `@2` binding `geometry`                                   | Canonical part STEP (`kind: step`, `mediaType: model/step`)                                                   | The sibling `cad-model` or isolated `@3` authority                      |
-| `simulate.run-modelica-scenario@2`                        | Recorded provider Modelica                                                                                    | `simulate.run-qualified-modelica-kit@1` (one local kit)                 |
-| `planning-only` operation                                 | Descriptor only; `queueRun` refuses it with `invalid_transition`                                              | A trusted Thread writer                                                 |
-| CM-01 / `state/fixtures/retired/`                         | Historical golden record                                                                                      | A live project, fallback, or provider admission                         |
-| `desk-lamp-dl04` / `desk-lamp-dl05`                       | Generic / Heron vehicles. A reread `@2` receipt may exist under gitignored `state/local/`                     | A committed golden, a clone-true proof, or an `@1` relabel              |
-| `analyze.seal-sensitivity-study@1`                        | Provider-free Thread-document seal of a 2.0 study case                                                        | `verify.seal-proof-case@1` or a solve                                   |
-| `analyze.run-fea-sensitivity@1`                           | Two attested CalculiX observations, no verdict                                                                | `verify.run-fea-static-proof@1` / `@2` / `@3`                           |
-| `verify.evaluate-sensitivity-base@1`                      | SysON evaluations of those study-base observations                                                            | A proof-run evaluation or an invented metric mapping                    |
-| STEP inside a sensitivity-study capture                   | Isolated solver input for that study only                                                                     | Canonical geometry or a proof-run `geometry` binding                    |
-| `model.write-sensitivity-edges@1`                         | Server-rendered derivative PartDef inserted into SysON                                                        | `model.write-architecture@1`                                            |
-| `renderSensitivityEdgeSetSysml`                           | Flat PartDef renderer for measured edges                                                                      | `renderSensitivityRelationsSysml`                                       |
-| `sensitivity-study-case/2.0` `cadSource`                  | Sealed compilation-admission artifact URI + sha256                                                            | `recipeSource` 1.0 or a STEP artifact                                   |
-| `design.apply-vector-correction@1`                        | Provider-free Thread-document seal of a bounded correction proposal (`grants: none`)                          | CAD write, SysON insert, provider run, or execution admission           |
-| `compile.capture-corrected-source@1`                      | Substitute sealed z* into the parent admission source                                                         | `compile.seal-admission@1` or `design.execute-build123d@1`              |
-| Binding `studyCapture`                                    | `sensitivity-study-capture/1.0`                                                                               | `sensitivity-edges-capture/1.0` or a SysON PartDef                      |
-| `config/*-api/` inventory JSON                            | Documentary pinned-language ground truth                                                                      | A compiler driver or generated qualification table                      |
-| `industrialize.observe-printability@1`                    | Documentary FDM observations (`estimate` path); no evaluation                                                 | Measured DFM verdicts                                                   |
-| `industrialize.run-dfm-checks@1`                          | Measured mcp-dfm envelope/thickness/overhang verdicts                                                         | `observe-printability` or a print-time estimate                         |
-| `printability-check-case/1.0`                             | Documentary estimate case; no attested STEP, no Z-min filter                                                  | `dfm-check-case/1.0`                                                    |
-| `dfm-check-case/1.0`                                      | Sealed measured case: attested STEP, build-volume object, declared Z-min filter                               | A STL target or a hidden executor heuristic                             |
+| Family | Open |
+| ------ | ---- |
+| SysML | [lookalike traps § SysML](lookalike-traps.md#sysml) |
+| CAD and compile | [lookalike traps § CAD](lookalike-traps.md#cad-and-compile) |
+| Modelica | [lookalike traps § Modelica](lookalike-traps.md#modelica) |
+| FEA, sensitivity, correction | [lookalike traps § FEA](lookalike-traps.md#fea-sensitivity-correction) |
+| DFM and print | [lookalike traps § DFM](lookalike-traps.md#dfm-and-print) |
+| Other | [lookalike traps § Other](lookalike-traps.md#other) |
 
 ## 4. Surfaces an agent actually calls
 
@@ -238,7 +217,7 @@ How-to:
 `desk-lamp-dl06` has no reviewed catalog JSON. A unique signed catalog-offer on the
 current tip is enough for this compiler; the review / seal / run tools stay.
 
-### Technical compilation / isolated CAD
+### Technical compilation / isolated execution
 
 | Tool                                         | Writes             | Grant                                                                                                                            |
 | -------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -251,6 +230,7 @@ current tip is enough for this compiler; the review / seal / run tools stay.
 | `project_sensitivity_base_evaluation_review` | None               | Ready only if study metrics join Thread requirements exactly                                                                     |
 | `project_corrected_admission_review`         | None               | Parameters for `compile.seal-admission@1` from a corrected source                                                                |
 | `project_modelica_qualified_kit_run_review`  | None               | Parameters for the one local Modelica kit                                                                                        |
+| `project_admitted_modelica_run_review`       | None               | Parameters for `simulate.run-admitted-modelica@1`. Reopens sealed Modelica admission. No `modelicaText`                          |
 | `project_geometry_preview`                   | None               | Not registered. Not a product entry                                                                                              |
 
 `project_technical_compilation_preview` takes `projectId` and `result.reference` only.
@@ -311,7 +291,8 @@ Unknown ids/versions are indistinguishable from absent.
 | `simulate.run-modelica-scenario@1`                  | trusted                   | Modelica MCP                 | Observations only                                                                                                       | A verdict                                                            |
 | `simulate.seal-simulation-case@2`                   | trusted                   | Modelica resources           | Planless V2 seal                                                                                                        | A simulation                                                         |
 | `simulate.run-modelica-scenario@2`                  | trusted                   | recorded Modelica            | Observations via ROP 2.0                                                                                                | Local kit `@1`                                                       |
-| `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | One fixed linear-ramp kit                                                                                               | Arbitrary Modelica                                                   |
+| `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | One fixed linear-ramp kit                                                                                               | Admitted closed-subset `.mo` or `@2`                                 |
+| `simulate.run-admitted-modelica@1`                  | trusted                   | local microVM                | Documentary run of sealed `compile.seal-admission@1` Modelica bytes                                                     | The pinned kit, recorded `@2`, or caller `modelicaText`              |
 | `analyze.seal-sensitivity-study@1`                  | trusted                   | none                         | Sealed 2.0 study-case document                                                                                          | A solve or a verdict                                                 |
 | `analyze.run-fea-sensitivity@1`                     | trusted                   | isolated CAD + CalculiX MCP  | Dimensioned observations + study capture                                                                                | A verdict or `@2` ROP plan                                           |
 | `verify.evaluate-sensitivity-base@1`                | trusted                   | SysON                        | Evaluations that cite `sensitivity-base-<metric>-<digest>`                                                              | A solve, a proof `@2`, or a metric alias                             |
@@ -428,6 +409,7 @@ flowchart TD
   arch --> req["model.write-requirements@1"]
   arch --> geomA["admission → admitted export → design.write-geometry@1"]
   arch --> geomB["compile.seal-admission@1 → design.execute-build123d@1 draft"]
+  arch --> moAdmit["compile.seal-admission@1 → simulate.run-admitted-modelica@1"]
   geomB --> sealGeom["design.seal-isolated-geometry@1 → Thread document only"]
   geomA --> proof["verify.seal-proof-case@1"]
   geomB --> proof

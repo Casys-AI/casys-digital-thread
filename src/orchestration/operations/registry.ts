@@ -17,6 +17,7 @@ import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/analysis/build1
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/analysis/isolated-geometry-seal-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/analysis/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/analysis/modelica-qualified-kit-run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/analysis/modelica-admitted-run-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/project/reconcile-uncertain-writer-proposal.ts";
 import { RECORDED_ANALYSIS_OPERATION_DESCRIPTORS } from "./recorded-analysis.ts";
@@ -362,6 +363,36 @@ const OPERATIONS = [
     riskClass: "consequential",
     execution: "trusted",
     bindings: [],
+  },
+  /**
+   * Admitted Modelica closed-subset execution — trusted executor
+   * `simulate.run-admitted-modelica@1`.
+   *
+   * The signed proposal names one exact `compile.seal-admission@1` Modelica
+   * compilation and one server-owned isolation profile. Execution reopens
+   * those admitted `.mo` bytes. It is not the pinned kit, not recorded `@2`,
+   * and not a caller-supplied `modelicaText`.
+   */
+  {
+    id: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id,
+    version: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Execute the reviewed admitted Modelica compilation in isolation",
+    description:
+      "Reopen one exact sealed technical-compilation admission, verify the human-signed " +
+      "server-owned execution and isolation contract, execute its qualified Modelica source, " +
+      "and publish documentary solver evidence only. Callers never supply Modelica text.",
+    workItemKind: "simulate",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "compilationAdmission",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
   },
   /**
    * Provider-free documentary seal of one bounded vector-correction proposal.
