@@ -25,6 +25,7 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(source, "PartDefinition binding diagram");
   assertStringIncludes(source, "Requirements proposal · target");
   assertStringIncludes(source, "GltfAssetCanvas");
+  assertStringIncludes(source, "isDuplicateSealedGlbCopy");
   assertStringIncludes(source, "Sealed result · exact recorded bytes");
   assertStringIncludes(source, "Validated proposal · result pending");
   assertStringIncludes(source, "Draft · geometry proposal");
@@ -54,6 +55,17 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(feed, "data-review-status={displayStatus}");
   assertStringIncludes(feed, "data-review-status={reviewDisplayStatus}");
   assertStringIncludes(feed, "activityReviewDisplayStatusLabel");
+  assertStringIncludes(feed, "activityCurrency(node, familyGraph)");
+  assertStringIncludes(feed, "data-currency={currency}");
+  assertEquals(feed.includes("{node.freshness}"), false);
+
+  const workbench = await Deno.readTextFile(
+    new URL("./src/thread/workbench.tsx", import.meta.url),
+  );
+  assertStringIncludes(
+    workbench,
+    "familyGraph={snapshot.evidenceFamilyGraph}",
+  );
 
   const styles = await Deno.readTextFile(
     new URL("./src/styles/11-review-notifications.css", import.meta.url),
@@ -111,8 +123,7 @@ Deno.test("Activity reuses one exact GLB viewer across selectable PartDefinition
   assertEquals(viewer.match(/<GltfAssetCanvas/g)?.length, 1);
   assertStringIncludes(source, "STEP remains the");
   assertStringIncludes(source, "authoritative per-part CAD");
-  assertStringIncludes(source, "no per-part browser");
-  assertStringIncludes(source, "viewer is claimed");
+  assertStringIncludes(source, "no per-part browser viewer is");
   assertStringIncludes(source, "Sealed part presentation · exact recorded GLB");
   assertStringIncludes(
     source,
@@ -218,6 +229,9 @@ Deno.test("Product keeps its combined SysML and build123d facets", async () => {
   assertStringIncludes(source, "sealedAssemblyGlbAsset");
   assertStringIncludes(source, "GltfAssetCanvas");
   assertStringIncludes(source, "Sealed assembly preview · GLB");
+  assertStringIncludes(source, "productStructureHeadline");
+  assertStringIncludes(source, "AttributeUsage");
+  assertEquals(source.includes("partOccurrenceCount).padStart"), false);
   assertEquals(source.includes("Review published geometry"), false);
   assertEquals(source.includes("per-part GLB"), false);
 });

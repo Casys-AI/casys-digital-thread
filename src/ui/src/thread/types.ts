@@ -74,6 +74,7 @@ export type {
   ThreadArtifact,
   ThreadChange,
   ThreadComponent,
+  ThreadComponentAttribute,
   ThreadComponentBinding,
   ThreadComponentCatalog,
   ThreadComponentPreview,
@@ -1325,6 +1326,7 @@ function isThreadComponent(value: unknown): value is ThreadComponent {
     "parentId",
     "bindings",
     "preview",
+    "attributes",
   ]) && typeof component.id === "string" && component.id.length > 0 &&
     typeof component.label === "string" &&
     (component.kind === "assembly" || component.kind === "part") &&
@@ -1336,7 +1338,31 @@ function isThreadComponent(value: unknown): value is ThreadComponent {
     Array.isArray(component.bindings) &&
     component.bindings.every(isThreadComponentBinding) &&
     (component.preview === undefined ||
-      isThreadComponentPreview(component.preview));
+      isThreadComponentPreview(component.preview)) &&
+    (component.attributes === undefined ||
+      isThreadComponentAttributes(component.attributes));
+}
+
+function isThreadComponentAttributes(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  const ids = new Set<string>();
+  const labels = new Set<string>();
+  return value.every((entry) => {
+    if (!isRecord(entry) || !hasExactKeys(entry, ["id", "kind", "label"])) {
+      return false;
+    }
+    if (
+      typeof entry.id !== "string" || entry.id.length === 0 ||
+      entry.kind !== "AttributeUsage" ||
+      typeof entry.label !== "string" || entry.label.length === 0 ||
+      ids.has(entry.id) || labels.has(entry.label)
+    ) {
+      return false;
+    }
+    ids.add(entry.id);
+    labels.add(entry.label);
+    return true;
+  });
 }
 
 function isThreadComponentPreview(value: unknown): boolean {

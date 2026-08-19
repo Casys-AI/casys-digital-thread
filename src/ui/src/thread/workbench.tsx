@@ -3,6 +3,11 @@ import type { JSX, ReactNode } from "react";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.tsx";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible.tsx";
 import { EmptyNotice, Notice } from "../ui/notice.tsx";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs.tsx";
 import {
@@ -43,8 +48,10 @@ import {
   agentRunSummary,
   buildAgentNowPresentation,
   buildCurrentProjectWork,
+  projectPulseStatus,
   selectCurrentProjectFocus,
 } from "../project/model.ts";
+import { recordStatusVariant } from "../project/record-status.ts";
 import {
   ProjectCockpitHeader,
   ProjectNavigation,
@@ -63,10 +70,7 @@ import { DocumentaryBaselineWorkbench } from "../project/documentary-baseline-wo
 import { ProjectOverview } from "../project/overview.tsx";
 import { PlanningWorkbench } from "../project/planning-workbench.tsx";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
-import {
-  type ThreadStreamStatus,
-  type ThreadWorkbenchClient,
-} from "./client.ts";
+import { type ThreadStreamStatus, type ThreadWorkbenchClient } from "./client.ts";
 import { activityFeedNodes, type FeedScope } from "./feed-model.ts";
 import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
@@ -94,10 +98,7 @@ import {
   type PartAnchorageResolution,
 } from "./part-anchorage-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
-import {
-  ToolInspectorPanel,
-  type WorkbenchToolIdentity,
-} from "./tool-inspectors.tsx";
+import { ToolInspectorPanel, type WorkbenchToolIdentity } from "./tool-inspectors.tsx";
 import {
   graphNodeForSelection,
   resolveToolInspectorTarget,
@@ -321,8 +322,7 @@ export function ThreadWorkbench({
       } else {
         const thread = next.thread;
         setSelectedComponentId(thread.components.components[0]?.id);
-        const liveNode =
-          activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
+        const liveNode = activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
         const initialSelection: ThreadRef = liveNode?.selection ??
           (thread.violations[0]
             ? { kind: "violation", id: thread.violations[0].id }
@@ -879,10 +879,9 @@ export function ThreadWorkbench({
     }
   };
   const currentFocus = selectCurrentProjectFocus(project);
-  const agentHeader = compactAgentHeader(
-    buildAgentNowPresentation(project),
-    project,
-  );
+  const agentNow = buildAgentNowPresentation(project);
+  const agentHeader = compactAgentHeader(agentNow, project);
+  const pulseStatus = projectPulseStatus(agentNow);
   // versionedProvenance and evidenceCanvas are memoized above (guarded
   // useMemo, same pattern as evidenceModel): a stable projection identity is
   // what keeps the sigma instance alive across renders — the visible-depth
@@ -1175,8 +1174,8 @@ export function ThreadWorkbench({
               )
               : (
                 <EmptyNotice>
-                  This graph entity has no richer record projection. Use the
-                  tool context to inspect its recorded neighbours.
+                  This graph entity has no richer record projection. Use the tool
+                  context to inspect its recorded neighbours.
                 </EmptyNotice>
               )}
           </>
@@ -1226,9 +1225,8 @@ export function ThreadWorkbench({
           </strong>
           <span>
             The technical thread is at revision{" "}
-            {workbench.alignment.currentThreadRevision}, while project decisions
-            remain anchored to revision{" "}
-            {workbench.alignment.projectThreadRevision}.
+            {workbench.alignment.currentThreadRevision}, while project decisions remain
+            anchored to revision {workbench.alignment.projectThreadRevision}.
           </span>
         </Notice>
       )}
@@ -1242,10 +1240,9 @@ export function ThreadWorkbench({
               : "references do"} not resolve in this thread revision
           </strong>
           <span>
-            These project records cite thread entities or snapshots that the
-            exact revision cannot resolve (usually residues of abandoned work).
-            The rest of this page resolved.{" "}
-            {workbench.unresolvedEvidenceReferences
+            These project records cite thread entities or snapshots that the exact
+            revision cannot resolve (usually residues of abandoned work). The rest of
+            this page resolved. {workbench.unresolvedEvidenceReferences
               .map((issue) => issue.path)
               .join(", ")}
           </span>
@@ -1307,23 +1304,29 @@ export function ThreadWorkbench({
               </div>
             </div>
             {activeView === "work" && (
-              <details
+              <Collapsible
                 className="group mb-3"
-                open={currentFocus.proposedDecision !== undefined}
+                defaultOpen={currentFocus.proposedDecision !== undefined}
               >
-                <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 [&>span]:shrink-0 [&>span]:text-xs [&>span]:font-medium [&>span]:text-muted-foreground [&::-webkit-details-marker]:hidden">
+                <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 [&>span]:shrink-0 [&>span]:text-xs [&>span]:font-medium [&>span]:text-muted-foreground">
                   <span>Project pulse</span>
                   <strong className="min-w-0 flex-1 truncate text-sm font-medium">
                     {currentFocus.proposedDecision
                       ? "A recorded recommendation is ready to discuss"
                       : "Decision status, current work and blockers"}
                   </strong>
+                  <Badge
+                    variant={recordStatusVariant(pulseStatus.status)}
+                    data-state={pulseStatus.status}
+                  >
+                    {pulseStatus.label}
+                  </Badge>
                   <small className="shrink-0 text-xs text-muted-foreground max-md:hidden">
                     Open when you need the project context
                   </small>
                   <svg
                     aria-hidden="true"
-                    className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                    className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -1335,11 +1338,11 @@ export function ThreadWorkbench({
                       d="m6 9 6 6 6-6"
                     />
                   </svg>
-                </summary>
-                <div className="mt-3">
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-3">
                   <ProjectWorkRibbon project={project} />
-                </div>
-              </details>
+                </CollapsibleContent>
+              </Collapsible>
             )}
             {activeView === "verification" && (
               <MetricTiles
@@ -1350,9 +1353,7 @@ export function ThreadWorkbench({
               />
             )}
             <div
-              className={`thread-graph-workspace ${
-                inspectorOpen ? "" : "is-wide"
-              }`}
+              className={`thread-graph-workspace ${inspectorOpen ? "" : "is-wide"}`}
             >
               <div
                 className={`thread-graph-stage thread-graph-stage-${activeView}`}
@@ -1370,6 +1371,7 @@ export function ThreadWorkbench({
                       filterComponentId={feedFilterComponentId}
                       anchorage={partAnchorage}
                       components={snapshot.components}
+                      familyGraph={snapshot.evidenceFamilyGraph}
                       reviewRecords={activityReviewRecords}
                       reviewIntentProjectId={project.project.id}
                       reviewIntentStates={reviewIntentStates}
@@ -1500,8 +1502,7 @@ export function ThreadWorkbench({
                                     <DropdownMenuRadioItem
                                       key={depth}
                                       value={String(depth)}
-                                      onSelect={(event) =>
-                                        event.preventDefault()}
+                                      onSelect={(event) => event.preventDefault()}
                                     >
                                       Depth {depth}
                                     </DropdownMenuRadioItem>
@@ -1687,9 +1688,7 @@ function MetricTiles(
 }
 
 function Mono({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <code className="font-mono text-xs text-muted-foreground">{children}</code>
-  );
+  return <code className="font-mono text-xs text-muted-foreground">{children}</code>;
 }
 
 function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
@@ -1747,12 +1746,11 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "asserted-by",
         label: "Asserted by",
-        value:
-          `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
-            edge.analysis.assertedBy.version
-              ? ` @ ${edge.analysis.assertedBy.version}`
-              : ""
-          }`,
+        value: `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
+          edge.analysis.assertedBy.version
+            ? ` @ ${edge.analysis.assertedBy.version}`
+            : ""
+        }`,
       },
       {
         id: "analysis-scope",
@@ -1841,10 +1839,9 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
         {!edge.attestation && edge.analysis
           ? (
             <Notice title="Qualified analysis assertion" tone="info">
-              This semantic relation is backed by the exact evidence listed
-              above and is classified as{" "}
-              {edge.analysis.epistemicBasis}. It does not grant execution
-              authority.
+              This semantic relation is backed by the exact evidence listed above and is
+              classified as{" "}
+              {edge.analysis.epistemicBasis}. It does not grant execution authority.
             </Notice>
           )
           : !edge.attestation && (
@@ -1898,9 +1895,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
     return <ChangeInspector snapshot={snapshot} />;
   }
   if (selection.kind === "artifact") {
-    const artifact = snapshot.artifacts.find((item) =>
-      item.id === selection.id
-    );
+    const artifact = snapshot.artifacts.find((item) => item.id === selection.id);
     return artifact
       ? (
         <ArtifactInspector
@@ -1912,9 +1907,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Artifact not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "observation") {
-    const observation = snapshot.observations.find((item) =>
-      item.id === selection.id
-    );
+    const observation = snapshot.observations.find((item) => item.id === selection.id);
     return observation
       ? (
         <ObservationInspector
@@ -1926,9 +1919,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Observation not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "requirement") {
-    const requirement = snapshot.requirements.find((item) =>
-      item.id === selection.id
-    );
+    const requirement = snapshot.requirements.find((item) => item.id === selection.id);
     return requirement
       ? (
         <RequirementInspector
@@ -1939,9 +1930,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       )
       : <EmptyNotice>Requirement not present in this snapshot.</EmptyNotice>;
   }
-  const violation = snapshot.violations.find((item) =>
-    item.id === selection.id
-  );
+  const violation = snapshot.violations.find((item) => item.id === selection.id);
   return violation
     ? (
       <ViolationInspector
@@ -2029,8 +2018,8 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
       <FactList items={artifactFacts(artifact)} />
       {artifact.freshness === "stale" && (
         <Notice title="Evidence invalidated" tone="warning">
-          This result predates a dependency. It remains available for provenance
-          but cannot support a current verdict.
+          This result predates a dependency. It remains available for provenance but
+          cannot support a current verdict.
         </Notice>
       )}
       {artifact.attestation && (
@@ -2038,9 +2027,7 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
           title={artifact.attestation.status === "verified"
             ? "Producer / consumer hash verified"
             : "Producer / consumer hash mismatch"}
-          tone={artifact.attestation.status === "verified"
-            ? "success"
-            : "danger"}
+          tone={artifact.attestation.status === "verified" ? "success" : "danger"}
         >
           {artifact.attestation.status === "verified"
             ? "The consumer used the exact fingerprint emitted by its upstream producer."
@@ -2356,9 +2343,7 @@ function summaryMetrics(
       label: "Evidence currency",
       value: artifacts.length,
       unit: `current${
-        historicalArtifactCount > 0
-          ? ` · ${historicalArtifactCount} historical`
-          : ""
+        historicalArtifactCount > 0 ? ` · ${historicalArtifactCount} historical` : ""
       }`,
       detail: stale > 0
         ? `${fresh} fresh · ${stale} current stale`
@@ -2372,9 +2357,7 @@ function summaryMetrics(
       unit: noCriterion ? "modelled" : "passing",
       detail: noCriterion
         ? "No model-owned criterion"
-        : `${failed} failed · ${
-          requirements.length - passed - failed
-        } unresolved` +
+        : `${failed} failed · ${requirements.length - passed - failed} unresolved` +
           (historicalRequirementCount > 0
             ? ` · ${historicalRequirementCount} prior version${
               historicalRequirementCount === 1 ? "" : "s"
@@ -2389,11 +2372,7 @@ function summaryMetrics(
       unit: "open",
       detail: snapshot.violations[0]?.id ??
         (noCriterion ? "verdict unavailable" : "no active violation"),
-      tone: snapshot.violations.length
-        ? "danger"
-        : noCriterion
-        ? "warning"
-        : "success",
+      tone: snapshot.violations.length ? "danger" : noCriterion ? "warning" : "success",
     },
   ];
 }

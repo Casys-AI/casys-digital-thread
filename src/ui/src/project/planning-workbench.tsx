@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { recordStatusVariant } from "./record-status.ts";
 import type {
+  EngineeringPhaseStatus,
   EngineeringProjectPhase,
   EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
@@ -26,6 +27,7 @@ import { ProjectCockpitHeader } from "./navigation.tsx";
 import { hasDistinctProjectObjectiveStatement } from "./navigation-model.ts";
 import {
   buildProjectBrief,
+  phaseStatusLabel,
   projectBriefStatusLabel,
   projectStatusTone,
   workOwnerLabel,
@@ -53,9 +55,7 @@ export function PlanningWorkbench({
   const hasPath = phases.length > 0;
   const baseline = workbench.planning.technicalBaseline;
   const framing = project.framing;
-  const framingStatus = framing
-    ? engineeringProjectFramingStatus(framing)
-    : undefined;
+  const framingStatus = framing ? engineeringProjectFramingStatus(framing) : undefined;
   const displayedBrief = framing?.proposedBrief ?? framing?.currentBrief;
   const intentStatement = framing?.intent.statement ??
     project.project.objective.statement;
@@ -248,8 +248,8 @@ export function PlanningWorkbench({
                 )
                 : (
                   <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
-                    Ask the agent to publish a bounded project path in your
-                    paired conversation. The recorded path will appear here.
+                    Ask the agent to publish a bounded project path in your paired
+                    conversation. The recorded path will appear here.
                   </p>
                 )}
             </CardContent>
@@ -281,9 +281,7 @@ export function PlanningWorkbench({
                     <PlanningWorkItem
                       key={item.id}
                       item={item}
-                      phase={project.phases.find((phase) =>
-                        phase.id === item.phaseId
-                      )}
+                      phase={project.phases.find((phase) => phase.id === item.phaseId)}
                     />
                   ))}
                 </ol>
@@ -424,8 +422,8 @@ function ProjectFraming({
               <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
                 Project {projectId}{" "}
                 already exists. Continue describing the product in the paired
-                conversation; the agent will add focused questions and
-                consolidate the first reviewable brief here.
+                conversation; the agent will add focused questions and consolidate the
+                first reviewable brief here.
               </p>
             )}
           {questions.length > 0 && (
@@ -524,11 +522,10 @@ function sortWorkItems(
   );
 }
 
-function planningPhaseLabel(status: string): string {
-  if (status === "completed") return "Gate satisfied";
-  if (status === "active") return "In progress";
+function planningPhaseLabel(status: EngineeringPhaseStatus): string {
   if (status === "blocked") return "Needs review";
-  return "Planned";
+  if (status === "planned") return "Planned";
+  return phaseStatusLabel(status);
 }
 
 function technicalBaselineTitle(status: string): string {

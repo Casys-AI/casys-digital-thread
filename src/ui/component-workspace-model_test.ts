@@ -3,11 +3,13 @@ import {
   buildSysmlSubtree,
   cadSurfaceCoverage,
   correctionNodesForComponent,
+  isDuplicateSealedGlbCopy,
   resolveCadMeshStatus,
   resolveCadSurface,
   resolveSealedAssemblyGeometry,
   sealedAssemblyGeometryBlocker,
   sealedAssemblyGlbAsset,
+  sealedGlbPreviewBlocks,
 } from "./src/thread/component-workspace-model.ts";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import type {
@@ -111,10 +113,8 @@ Deno.test("projected r5 geometry resolves from exact capture-to-binary traces", 
   const snapshot = minimalSnapshot();
   const captureDigest =
     "39d5a031fcf2ed7926ac7e17fecb7ee7e55587fe5112588814c0d256afdbb04a";
-  const glbDigest =
-    "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
-  const stepDigest =
-    "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
+  const glbDigest = "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
+  const stepDigest = "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
   const capture = projectedGeometryCapture(captureDigest);
   const glb = projectedGeometryBinary(
     captureDigest,
@@ -459,6 +459,37 @@ Deno.test("exact v2 PartDefinition mapping resolves one reusable GLB viewer per 
   const mismatched = resolveCadSurface(snapshot, parts[0]!);
   assertEquals(mismatched?.authoritativeArtifact.id, definitionSteps[0]!.id);
   assertEquals(mismatched?.preview, undefined);
+});
+
+Deno.test("duplicate GLB copies collapse only when both blocks share the same sha256", () => {
+  const digest = "a".repeat(64);
+  const assembly = projectedV2GeometryBinary(
+    "b".repeat(64),
+    digest,
+    "cad-model",
+    "glb",
+    { scope: "assembly", formatIndex: 1 },
+  );
+  const preview = {
+    provider: "build123d" as const,
+    artifactId: "definition-glb",
+    mediaType: "model/gltf-binary" as const,
+    url: `/api/thread/assets/${digest}.glb`,
+    sha256: digest,
+  };
+
+  assertEquals(sealedGlbPreviewBlocks(assembly, preview), {
+    assembly,
+    definition: undefined,
+  });
+
+  const otherPreview = { ...preview, sha256: "c".repeat(64) };
+  assertEquals(sealedGlbPreviewBlocks(assembly, otherPreview), {
+    assembly,
+    definition: otherPreview,
+  });
+  assertEquals(isDuplicateSealedGlbCopy(digest, [digest]), true);
+  assertEquals(isDuplicateSealedGlbCopy(digest, ["c".repeat(64)]), false);
 });
 
 Deno.test("Product renders exact GLB parts and keeps STEP-only bundles honest", async () => {
@@ -862,8 +893,7 @@ Deno.test("per-part mesh binding resolves via resolveCadSurface as a part surfac
     revision: "a".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "a".repeat(64),
-    uri:
-      "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
+    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
@@ -912,8 +942,7 @@ Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported fr
     revision: "b".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "b".repeat(64),
-    uri:
-      "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
+    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
@@ -1119,8 +1148,7 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
       status: "pass",
       observationIds: [],
       violationIds: [],
-      rationale:
-        "Fixture requirement for Boiler, must not appear for DripTray.",
+      rationale: "Fixture requirement for Boiler, must not appear for DripTray.",
     },
   ];
 

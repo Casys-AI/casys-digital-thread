@@ -266,8 +266,9 @@ export interface EngineeringWorkItemRunSuccessorReconciliation {
    * Absent for a direct reconciliation where the successor run result is already
    * the project thread head and no separate closeout snapshot is needed (e.g.,
    * a seed work item whose executor rejects it and whose successor completes
-   * with the same result as the project head). Both forms satisfy the phase
-   * completion invariant through `successorEvidenceRefs`.
+   * with the same result as the project head). Both forms record the successor
+   * through `successorEvidenceRefs`. Phase completion still requires evidence
+   * owned by that phase.
    */
   readonly successorSnapshot?: EngineeringThreadSnapshotRef;
   readonly successorEvidenceRefs: readonly EngineeringThreadEntityRef[];
@@ -683,12 +684,10 @@ export function deriveEngineeringPhaseStatus(
     requiredDecisions.every((decision) =>
       isEngineeringDecisionSatisfied(snapshot, decision)
     ) &&
-    (phase.evidenceRefs.length > 0 ||
-      workItems.some((item) =>
-        item.reconciliation !== undefined &&
-        !("successorWorkItemId" in item.reconciliation) &&
-        item.reconciliation.successorEvidenceRefs.length > 0
-      ))
+    // Successor evidence on a cancelled item is not this phase's evidence.
+    // Same-phase reconcile stays completed because the phase record already
+    // owns those refs. An empty other-phase cancelled seed does not.
+    phase.evidenceRefs.length > 0
   ) return "completed";
 
   const workItemIds = new Set(phase.workItemIds);

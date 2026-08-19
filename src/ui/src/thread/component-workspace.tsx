@@ -26,11 +26,15 @@ import {
   resolveSealedAssemblyGeometry,
   sealedAssemblyGeometryBlocker,
   sealedAssemblyGlbAsset,
+  sealedGlbPreviewBlocks,
   type SysmlAnchoredRequirement,
 } from "./component-workspace-model.ts";
 import { CompactIdentifier } from "./compact-identifier.tsx";
 import { GltfAssetCanvas } from "./gltf-asset-canvas.tsx";
-import { productStructureAvailability } from "./product-anchor-model.ts";
+import {
+  productStructureAvailability,
+  productStructureHeadline,
+} from "./product-anchor-model.ts";
 
 export interface ComponentWorkspaceProps {
   snapshot: ThreadWorkbenchSnapshot;
@@ -72,14 +76,10 @@ export function ComponentWorkspace({
   const selected =
     components.find((component) => component.id === selectedComponentId) ??
       components[0];
-  const revisions = selected
-    ? correctionNodesForComponent(snapshot, selected)
-    : [];
+  const revisions = selected ? correctionNodesForComponent(snapshot, selected) : [];
 
   if (!selected) {
-    const unavailable = structure.status === "unavailable"
-      ? structure
-      : undefined;
+    const unavailable = structure.status === "unavailable" ? structure : undefined;
     return (
       <Card className="min-w-0">
         <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
@@ -101,10 +101,13 @@ export function ComponentWorkspace({
     );
   }
 
-  const structureCounts = structure.status === "available" ? structure : {
-    assemblyRootCount: 0,
-    partOccurrenceCount: 0,
-  };
+  const headline = structure.status === "available"
+    ? productStructureHeadline(structure)
+    : {
+      count: 0,
+      label: "declared PartDefinition",
+      detail: "0 part occurrences",
+    };
 
   return (
     <Card className="min-w-0">
@@ -117,16 +120,13 @@ export function ComponentWorkspace({
         </div>
         <div className="shrink-0 text-right">
           <strong className="text-xl font-semibold tabular-nums">
-            {String(structureCounts.partOccurrenceCount).padStart(2, "0")}
+            {headline.count}
           </strong>
           <p className="text-xs text-muted-foreground">
-            declared part occurrences
+            {headline.label}
           </p>
           <small className="block text-xs text-muted-foreground">
-            {structureCounts.assemblyRootCount} assembly root{structureCounts
-                .assemblyRootCount === 1
-              ? ""
-              : "s"}
+            {headline.detail}
           </small>
         </div>
       </CardHeader>
@@ -140,8 +140,7 @@ export function ComponentWorkspace({
             onClick={() => onRevisionOpen(revisions[0]!)}
           >
             <span className="font-normal text-muted-foreground">
-              {revisions.length}{" "}
-              recorded revision{revisions.length === 1 ? "" : "s"}
+              {revisions.length} recorded revision{revisions.length === 1 ? "" : "s"}
             </span>
             <strong className="font-medium">
               View this part’s lifecycle in Activity
@@ -387,9 +386,7 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
           focusRing,
           assemblySelected ? "border-brand" : "border-border",
         )}
-        onClick={assemblyComponent
-          ? () => onSelect(assemblyComponent)
-          : undefined}
+        onClick={assemblyComponent ? () => onSelect(assemblyComponent) : undefined}
       >
         <span className="text-xs font-medium text-muted-foreground">
           Part definition
@@ -398,10 +395,37 @@ function SysonStructure({ snapshot, selected, onSelect, onInspect }: {
           {snapshot.subject.label}
         </strong>
         <small className="mt-1 block text-xs text-muted-foreground">
-          {declaredSysmlCount(snapshot.components.components)}{" "}
-          {terminology.countLabel}
+          {declaredSysmlCount(snapshot.components.components)} {terminology.countLabel}
         </small>
       </button>
+
+      {(selected.attributes ?? []).length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            AttributeUsage
+          </p>
+          {(selected.attributes ?? []).map((attribute) => (
+            <div
+              key={attribute.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3"
+            >
+              <div className="min-w-0">
+                <span className="text-xs text-muted-foreground">
+                  AttributeUsage
+                </span>
+                <strong className="mt-1 block text-sm font-semibold">
+                  {attribute.label}
+                </strong>
+              </div>
+              <CompactIdentifier
+                value={attribute.id}
+                label={`${attribute.label} AttributeUsage identity`}
+                copyable={false}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
       {subtree.anchoredRequirements.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -667,6 +691,21 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
   const assemblyGlb = sealedAssembly && selected.kind === "assembly"
     ? sealedAssemblyGlbAsset(sealedAssembly)
     : undefined;
+  const definitionPreview = surface?.preview?.mediaType === "model/gltf-binary"
+    ? surface.preview
+    : selected.preview?.mediaType === "model/gltf-binary"
+    ? selected.preview
+    : undefined;
+  const glbBlocks = sealedGlbPreviewBlocks(assemblyGlb, definitionPreview);
+  const definitionGlb = glbBlocks.definition
+    ? definitionGlbEvidence(
+      snapshot,
+      selected,
+      glbBlocks.definition,
+      surface,
+      sealedAssembly,
+    )
+    : undefined;
   const geometryBlocker = sealedAssemblyGeometryBlocker(snapshot);
   const meshStatus = resolveCadMeshStatus(snapshot, selected);
   const available = snapshot.components.components.flatMap((component) => {
@@ -725,8 +764,8 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
               {sealedAssembly.assemblyFormats.join(" + ")}
             </strong>
             <p className="text-sm text-muted-foreground">
-              The exact assembly files are sealed and linked to this geometry
-              capture.{" "}
+              The exact assembly files are sealed and linked to this geometry capture.
+              {" "}
               {sealedAssembly.independentPartDefinitionGeometryCount > 0
                 ? `${sealedAssembly.independentPartDefinitionGeometryCount} independent PartDefinition geometr${
                   sealedAssembly.independentPartDefinitionGeometryCount === 1
@@ -765,20 +804,32 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
           <p className="mt-1">{geometryBlocker}</p>
         </div>
       )}
-      {assemblyGlb
+      {glbBlocks.assembly || definitionGlb
         ? (
-          <SealedAssemblyGlbViewer
-            asset={assemblyGlb}
-            captureArtifact={sealedAssembly!.captureArtifact}
-          />
+          <>
+            {glbBlocks.assembly && sealedAssembly && (
+              <SealedAssemblyGlbViewer
+                asset={glbBlocks.assembly}
+                captureArtifact={sealedAssembly.captureArtifact}
+              />
+            )}
+            {definitionGlb && (
+              <PartDefinitionGlbViewer
+                label={selected.label}
+                preview={definitionGlb.preview}
+                authoritativeArtifact={definitionGlb.authoritativeArtifact}
+                presentationArtifact={definitionGlb.presentationArtifact}
+              />
+            )}
+          </>
         )
         : surface?.preview && surface.scope === "assembly"
         ? (
           <>
             <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               <span className="mr-2 font-medium">Assembly scope</span>
-              This exact assembly export does not imply separate geometry
-              identities for its child parts.
+              This exact assembly export does not imply separate geometry identities for
+              its child parts.
             </div>
             <CadStlViewer
               preview={surface.preview}
@@ -786,16 +837,6 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
               snapshot={snapshot}
             />
           </>
-        )
-        : surface?.preview?.mediaType === "model/gltf-binary" &&
-            surface.scope === "part" && surface.presentationArtifact
-        ? (
-          <PartDefinitionGlbViewer
-            label={selected.label}
-            preview={surface.preview}
-            authoritativeArtifact={surface.authoritativeArtifact}
-            presentationArtifact={surface.presentationArtifact}
-          />
         )
         : surface?.preview
         ? (
@@ -843,8 +884,8 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
                 Mesh not yet exported for {selected.label}
               </h5>
               <p className="max-w-xl text-sm text-muted-foreground">
-                A build123d identity is declared for this component, but this
-                revision contains no exact component-level presentation mesh.
+                A build123d identity is declared for this component, but this revision
+                contains no exact component-level presentation mesh.
               </p>
               <Badge variant="warning">Mesh not yet exported</Badge>
             </div>
@@ -897,6 +938,34 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
         )}
     </section>
   );
+}
+
+function definitionGlbEvidence(
+  snapshot: ThreadWorkbenchSnapshot,
+  selected: ThreadComponent,
+  preview: ThreadComponentPreview,
+  surface: ReturnType<typeof resolveCadSurface>,
+  sealedAssembly: ReturnType<typeof resolveSealedAssemblyGeometry>,
+): {
+  readonly preview: ThreadComponentPreview;
+  readonly authoritativeArtifact: ThreadArtifact;
+  readonly presentationArtifact: ThreadArtifact;
+} | undefined {
+  const presentationArtifact =
+    snapshot.artifacts.find((artifact) => artifact.id === preview.artifactId) ??
+      snapshot.artifacts.find((artifact) => artifact.uri === preview.url);
+  if (!presentationArtifact) return undefined;
+  const authoritativeArtifact = surface?.authoritativeArtifact ??
+    snapshot.artifacts.find((artifact) =>
+      selected.bindings.some((binding) =>
+        binding.provider === "digital-thread" &&
+        binding.kind === "artifact" &&
+        binding.id === artifact.id
+      )
+    ) ??
+    sealedAssembly?.assemblyAssets.find((artifact) => artifact.kind === "step");
+  if (!authoritativeArtifact) return undefined;
+  return { preview, authoritativeArtifact, presentationArtifact };
 }
 
 function cadEyebrow(
@@ -1301,8 +1370,6 @@ function cadCoverageLabel(
     }`;
   const parts = coverage.partSurfaces === 0
     ? "no part meshes"
-    : `${coverage.partSurfaces} part mesh${
-      coverage.partSurfaces === 1 ? "" : "es"
-    }`;
+    : `${coverage.partSurfaces} part mesh${coverage.partSurfaces === 1 ? "" : "es"}`;
   return `${assembly} · ${parts}`;
 }

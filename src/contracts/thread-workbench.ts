@@ -481,6 +481,12 @@ export interface ThreadComponentPreview {
   sha256: string;
 }
 
+export interface ThreadComponentAttribute {
+  id: string;
+  kind: "AttributeUsage";
+  label: string;
+}
+
 export interface ThreadComponent {
   id: string;
   label: string;
@@ -489,6 +495,7 @@ export interface ThreadComponent {
   parentId?: string;
   bindings: ThreadComponentBinding[];
   preview?: ThreadComponentPreview;
+  attributes?: ThreadComponentAttribute[];
 }
 
 export interface ThreadComponentCatalog {

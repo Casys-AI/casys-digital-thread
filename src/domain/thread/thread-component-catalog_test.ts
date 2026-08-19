@@ -166,6 +166,86 @@ Deno.test("component catalog accepts an exact GLB presentation beside authoritat
   });
 });
 
+Deno.test("component catalog keeps optional AttributeUsage rows without a new binding kind", () => {
+  const catalog = validateThreadComponentCatalog({
+    schemaVersion: "thread-components/1.0",
+    authority: "workspace-declared",
+    subjectId: "subject",
+    rationale: "Reviewed exact identities.",
+    systemViews: {},
+    components: [{
+      id: "arm",
+      label: "CantileverArm",
+      kind: "assembly",
+      quantity: 1,
+      bindings: [{
+        provider: "syson",
+        kind: "part-definition",
+        id: "part-def-arm",
+        label: "CantileverArm",
+        evidenceArtifactId: "architecture-1",
+      }],
+      attributes: [{
+        id: "attr-thickness",
+        kind: "AttributeUsage",
+        label: "thickness",
+      }],
+    }],
+  });
+
+  assertEquals(catalog.components[0]?.attributes, [{
+    id: "attr-thickness",
+    kind: "AttributeUsage",
+    label: "thickness",
+  }]);
+});
+
+Deno.test("component catalog without attributes remains thread-components/1.0", () => {
+  const catalog = validateThreadComponentCatalog({
+    schemaVersion: "thread-components/1.0",
+    authority: "workspace-declared",
+    subjectId: "subject",
+    rationale: "Reviewed exact identities.",
+    systemViews: {},
+    components: [{
+      id: "arm",
+      label: "CantileverArm",
+      kind: "assembly",
+      quantity: 1,
+      bindings: [],
+    }],
+  });
+
+  assertEquals(catalog.components[0]?.attributes, undefined);
+});
+
+Deno.test("component catalog rejects an AttributeUsage row that is not exact", () => {
+  assertThrows(
+    () =>
+      validateThreadComponentCatalog({
+        schemaVersion: "thread-components/1.0",
+        authority: "workspace-declared",
+        subjectId: "subject",
+        rationale: "Reviewed exact identities.",
+        systemViews: {},
+        components: [{
+          id: "arm",
+          label: "CantileverArm",
+          kind: "assembly",
+          quantity: 1,
+          bindings: [],
+          attributes: [{
+            id: "attr-thickness",
+            kind: "PartUsage",
+            label: "thickness",
+          }],
+        }],
+      }),
+    Error,
+    "AttributeUsage",
+  );
+});
+
 Deno.test("component catalog rejects ambiguous and cyclic identities", () => {
   assertThrows(
     () =>

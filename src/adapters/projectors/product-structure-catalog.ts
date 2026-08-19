@@ -87,6 +87,11 @@ interface GenericArchitectureCapture {
       readonly targetKind: string;
       readonly targetLabel: string;
     }[];
+    readonly attributes?: readonly {
+      readonly id: string;
+      readonly kind: string;
+      readonly label: string;
+    }[];
   }[];
 }
 
@@ -377,6 +382,7 @@ function buildCatalog(
   }
   const systemDecl = systemDeclarations[0]!;
   const systemId = `${subjectId}:system`;
+  const systemAttributes = architectureAttributes(systemDecl);
   const systemComponent = {
     id: systemId,
     label: systemDecl.label,
@@ -391,6 +397,7 @@ function buildCatalog(
         evidenceArtifactId,
       },
     ],
+    ...(systemAttributes ? { attributes: systemAttributes } : {}),
   };
   if (systemDecl.usages.length === 0) {
     if (capture.partDefinitions.length !== 1) {
@@ -443,6 +450,7 @@ function buildCatalog(
       // of the same PartDefinition distinct (and parents it by that occurrence).
       const occurrencePath = [...path, usage.id];
       const id = `${subjectId}:usage:${occurrencePath.join("/")}`;
+      const attributes = architectureAttributes(target);
       components.push({
         id,
         label: target.label,
@@ -465,6 +473,7 @@ function buildCatalog(
             evidenceArtifactId,
           },
         ],
+        ...(attributes ? { attributes } : {}),
       });
       visit(target, id, occurrencePath, nextAncestors);
     }
@@ -501,6 +510,18 @@ function buildCatalog(
 }
 
 // ── Private: unavailable catalog ──────────────────────────────────────────────
+
+function architectureAttributes(
+  declaration: GenericArchitectureCapture["partDefinitions"][number],
+): readonly { id: string; kind: "AttributeUsage"; label: string }[] | undefined {
+  const attributes = declaration.attributes ?? [];
+  if (attributes.length === 0) return undefined;
+  return attributes.map((attribute) => ({
+    id: attribute.id,
+    kind: "AttributeUsage" as const,
+    label: attribute.label,
+  }));
+}
 
 function unavailable(subjectId: string, rationale: string): ThreadComponentCatalog {
   return {

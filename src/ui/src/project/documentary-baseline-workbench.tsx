@@ -13,6 +13,7 @@ import {
 import { DocumentaryTechnicalStartActivity } from "./documentary-technical-start-activity.tsx";
 import {
   buildProjectBrief,
+  phaseStatusLabel,
   type ProjectBrief,
   projectBriefStatusLabel,
   projectStatusTone,
@@ -108,8 +109,7 @@ export function DocumentaryBaselineWorkbench({
                   {statusSeal.label}
                 </Badge>
                 <p className="text-xs text-muted-foreground">
-                  {brief.completedPhases}/{brief.phases.length}{" "}
-                  phase gates satisfied
+                  {brief.completedPhases}/{brief.phases.length} phase gates satisfied
                 </p>
               </div>
             </section>
@@ -207,8 +207,7 @@ export function DocumentaryBaselineWorkbench({
                 <CardContent>
                   <ul className="list-none space-y-1.5 text-sm text-muted-foreground">
                     <li className="before:mr-2 before:text-success before:content-['•']">
-                      The approved project brief is retained with its project
-                      path.
+                      The approved project brief is retained with its project path.
                     </li>
                     <li className="before:mr-2 before:text-success before:content-['•']">
                       The record has one exact, checkable fingerprint.
@@ -234,12 +233,10 @@ export function DocumentaryBaselineWorkbench({
                       No SysML model or CAD geometry is recorded.
                     </li>
                     <li className="before:mr-2 before:text-warning before:content-['•']">
-                      No simulation, measurement or physical behaviour is
-                      recorded.
+                      No simulation, measurement or physical behaviour is recorded.
                     </li>
                     <li className="before:mr-2 before:text-warning before:content-['•']">
-                      No requirement, compliance or certification verdict
-                      exists.
+                      No requirement, compliance or certification verdict exists.
                     </li>
                   </ul>
                 </CardContent>
@@ -266,9 +263,9 @@ export function DocumentaryBaselineWorkbench({
                       : (
                         <>
                           {documentary.technicalEvidence.message}{" "}
-                          Ask the agent to propose a concrete model, CAD or
-                          analysis step in your paired conversation. Its
-                          recorded scope and results will appear here.
+                          Ask the agent to propose a concrete model, CAD or analysis
+                          step in your paired conversation. Its recorded scope and
+                          results will appear here.
                         </>
                       )}
                   </CardDescription>
@@ -463,8 +460,8 @@ function DocumentaryUnavailable({ title, detail }: {
         <CardTitle className="text-base">{title}</CardTitle>
         <CardDescription>{detail}</CardDescription>
         <CardDescription>
-          Ask your agent to propose the next bounded operation; its recorded
-          result will appear in this project cockpit.
+          Ask your agent to propose the next bounded operation; its recorded result will
+          appear in this project cockpit.
         </CardDescription>
       </CardHeader>
     </Card>
@@ -497,8 +494,8 @@ function DocumentaryExecution({ project }: {
           </CardHeader>
           <CardContent>
             <p className="rounded-lg bg-muted/50 px-4 py-6 text-center text-sm text-muted-foreground">
-              This project has a durable starting record. No technical tool run
-              has produced evidence yet.
+              This project has a durable starting record. No technical tool run has
+              produced evidence yet.
             </p>
           </CardContent>
         </Card>
@@ -527,8 +524,7 @@ function documentaryWorkspaceCopy(
   if (view === "product") {
     return {
       title: "Product structure",
-      description:
-        "Components appear after an explicit model or CAD operation.",
+      description: "Components appear after an explicit model or CAD operation.",
       unavailableTitle: "No product definition is recorded yet",
       unavailableDetail:
         "There is no SysML model, CAD geometry or ERP component record to inspect.",
@@ -550,13 +546,6 @@ function documentaryWorkspaceCopy(
     unavailableDetail:
       "The only recorded operation established the approved starting point; it did not produce technical evidence.",
   };
-}
-
-function phaseStatusLabel(status: string): string {
-  if (status === "completed") return "Gate satisfied";
-  if (status === "active") return "In progress";
-  if (status === "blocked") return "Blocked";
-  return "Planned";
 }
 
 /**

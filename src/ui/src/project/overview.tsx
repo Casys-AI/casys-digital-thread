@@ -17,6 +17,11 @@ import {
 } from "../thread/component-workspace-model.ts";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../ui/collapsible.tsx";
 import { DecisionCenter } from "./control-center.tsx";
 import { ProjectBriefRecord } from "./brief-record.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
@@ -30,6 +35,7 @@ import {
   buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
+  phaseStatusLabel,
   type ProjectPathPhaseView,
   projectPathStatusLabel,
   projectStatusTone,
@@ -172,8 +178,7 @@ export function ProjectOverview({
             project={project}
             thread={thread}
             onOpenActivity={onOpenActivity}
-            onOpenReview={(kind) =>
-              onOpenDeepLink?.(reviewDeepLinkTarget(kind))}
+            onOpenReview={(kind) => onOpenDeepLink?.(reviewDeepLinkTarget(kind))}
             onOpenEvidence={onOpenEvidence}
           />
           <NowPanel
@@ -209,28 +214,46 @@ export function ProjectOverview({
                     className="w-0.5 flex-1 rounded-full bg-success/40"
                   />
                 </span>
-                <details className="min-w-0 pb-3">
-                  <summary className="cursor-pointer text-sm font-medium">
+                <Collapsible className="group min-w-0 pb-3">
+                  <CollapsibleTrigger className="cursor-pointer text-sm font-medium">
                     {collapsedGates.length} earlier gates satisfied
-                  </summary>
-                  <ol className="mt-2 grid gap-1.5" role="list">
-                    {collapsedGates.map((item) => (
-                      <li
-                        key={item.phase.id}
-                        data-state={item.status}
-                        className="min-w-0"
-                      >
-                        <span className="text-sm">{item.phase.name}</span>
-                        <span className="sr-only">
-                          {phaseStatusLabel(item.status)}
-                        </span>
-                        <p className="font-mono text-xs tabular-nums text-muted-foreground">
-                          {phaseCounterLabel(item)}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                </details>
+                    <svg
+                      aria-hidden="true"
+                      className="size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m6 9 6 6 6-6"
+                      />
+                    </svg>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <ol className="mt-2 grid gap-1.5" role="list">
+                      {collapsedGates.map((item) => (
+                        <li
+                          key={item.phase.id}
+                          data-state={item.status}
+                          className="flex min-w-0 items-start justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <span className="text-sm">{item.phase.name}</span>
+                            <p className="font-mono text-xs tabular-nums text-muted-foreground">
+                              {phaseCounterLabel(item)}
+                            </p>
+                          </div>
+                          <Badge variant={recordStatusVariant(item.status)}>
+                            {phaseStatusLabel(item.status)}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ol>
+                  </CollapsibleContent>
+                </Collapsible>
               </li>
             )}
             {visiblePhases.map((item, index) => (
@@ -339,9 +362,9 @@ export function ProjectOverview({
 /**
  * Une vertèbre de l'épine, à deux densités : seules les phases active ou
  * bloquée s'ouvrent (statut, tallies, lifecycle) ; les autres restent des
- * lignes compactes — le statut y est porté par le nœud, et répété en
- * sr-only pour ne pas reposer sur la forme seule. Un lifecycle en
- * attention reste visible même compact : il réclame une review.
+ * lignes compactes — le statut y reste un Badge texte, pas seulement le
+ * nœud coloré. Un lifecycle en attention reste visible même compact : il
+ * réclame une review.
  */
 function SpinePhase(
   { item, isLast }: { item: ProjectPathPhaseView; isLast: boolean },
@@ -417,8 +440,12 @@ function SpinePhase(
         // passer en `blocked`, donc la phase s'ouvre.
         : (
           <div className={cn("min-w-0", !isLast && "pb-3")}>
-            <span className="text-sm font-medium">{item.phase.name}</span>
-            <span className="sr-only">{phaseStatusLabel(item.status)}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium">{item.phase.name}</span>
+              <Badge variant={recordStatusVariant(item.status)}>
+                {phaseStatusLabel(item.status)}
+              </Badge>
+            </div>
             <p className="font-mono text-xs tabular-nums text-muted-foreground">
               {phaseCounterLabel(item)}
             </p>
@@ -476,8 +503,8 @@ function NowPanel({
             ? <WorkItemLine item={nextWork} />
             : (
               <p className="text-sm text-muted-foreground">
-                No further current work is recorded. Historical retries remain
-                in Activity.
+                No further current work is recorded. Historical retries remain in
+                Activity.
               </p>
             )}
         </NowRow>
@@ -666,13 +693,6 @@ function phaseCounterLabel(
     );
   }
   return parts.join(" · ");
-}
-
-function phaseStatusLabel(status: EngineeringPhaseStatus): string {
-  if (status === "completed") return "Gate satisfied";
-  if (status === "active") return "In progress";
-  if (status === "blocked") return "Blocked";
-  return "Planned";
 }
 
 function projectPhaseLifecycleLabel(

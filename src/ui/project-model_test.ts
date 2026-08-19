@@ -10,8 +10,10 @@ import {
   buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
+  phaseStatusLabel,
   PROJECT_PATH_PRESENTATION_POLICY,
   projectBriefStatusLabel,
+  projectPulseStatus,
   projectStatusLabel,
   selectCurrentProjectFocus,
   splitLeadingSatisfiedGates,
@@ -449,6 +451,69 @@ Deno.test("Project Path wraps a later architecture-capture tip under the origina
   );
   assertEquals(architecture?.lifecycle?.revisionAttemptCount, 1);
 });
+
+Deno.test("phase status labels name planned explicitly and never fall through to Gate satisfied", () => {
+  assertEquals(phaseStatusLabel("planned"), "Planned");
+  assertEquals(phaseStatusLabel("completed"), "Gate satisfied");
+  assertEquals(phaseStatusLabel("active"), "In progress");
+  assertEquals(phaseStatusLabel("blocked"), "Blocked");
+});
+
+Deno.test(
+  "a cancelled-before-claim seed on phase A with successor on phase B does not appear as a satisfied gate",
+  () => {
+    const { project, thread } = cancelledSeedSuccessorFixture();
+    const path = buildProjectPath(project, thread);
+    const brief = buildProjectBrief(project);
+
+    assertEquals(
+      brief.phases.find((item) => item.phase.id === "phase-seed")?.status,
+      "planned",
+    );
+    assertEquals(
+      path.phases.some((item) => item.phase.id === "phase-seed"),
+      false,
+      "the cancelled seed must fold under the unique same-operation successor",
+    );
+    assertEquals(
+      path.phases.some((item) =>
+        item.phase.id === "phase-seed" && item.status === "completed"
+      ),
+      false,
+    );
+    const successor = path.phases.find((item) =>
+      item.phase.id === "phase-seed-2"
+    );
+    assertEquals(successor?.status, "completed");
+    assertEquals(successor?.lifecycle, {
+      affectedComponentIds: [],
+      correctionCount: 0,
+      revisionAttemptCount: 1,
+      state: "retained",
+    });
+    assertEquals(phaseStatusLabel(successor!.status), "Gate satisfied");
+  },
+);
+
+Deno.test(
+  "Project Path shows Planned when a cancelled seed cannot uniquely fold under one successor",
+  () => {
+    const { project, thread } = cancelledSeedSuccessorFixture({
+      extraSuccessorPhaseId: "phase-seed-3",
+    });
+    const path = buildProjectPath(project, thread);
+    const seed = path.phases.find((item) => item.phase.id === "phase-seed");
+
+    assertEquals(seed?.status, "planned");
+    assertEquals(phaseStatusLabel(seed!.status), "Planned");
+    assertEquals(
+      path.phases.some((item) =>
+        item.phase.id === "phase-seed" && item.status === "completed"
+      ),
+      false,
+    );
+  },
+);
 
 Deno.test("current project work prefers an explicit successor reconciliation", () => {
   const { project } = correctionPathFixture();
@@ -1141,6 +1206,194 @@ interface LeftoverOperationWorkSpec {
   readonly geometryId?: string;
 }
 
+function cancelledSeedSuccessorFixture(spec?: {
+  readonly extraSuccessorPhaseId?: string;
+}) {
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
+  const ref = (id: string) => ({
+    kind: "artifact" as const,
+    id,
+    snapshotId: "thread-seed",
+    snapshotRevision: 2,
+  });
+  const seedEvidence = ref("syson-model-seed");
+  const extraEvidence = ref("syson-model-seed-alt");
+  const operation = {
+    id: "architecture.seed-syson-model",
+    version: "2",
+    bindings: [{
+      name: "approvedBrief",
+      source: { kind: "approved-brief" as const },
+    }],
+  };
+  const reconciliation = (
+    failedRunId: string,
+    successorRunId: string,
+    evidence: typeof seedEvidence,
+  ) => ({
+    kind: "superseded-by-successor" as const,
+    reconciledAt: "2026-08-18T06:58:30.000Z",
+    reconciledBy: { id: "agent:reconciler", origin: "agent" as const },
+    failedRunId,
+    successorRunId,
+    successorRunSnapshot: {
+      snapshotId: "thread-seed",
+      revision: 2,
+      subjectId: "GEN-01",
+    },
+    successorEvidenceRefs: [evidence],
+    rationale:
+      "The pre-claim cancelled seed was closed by the completed successor.",
+  });
+  const seedWork = {
+    id: "wi-seed",
+    phaseId: "phase-seed",
+    title: "wi-seed",
+    description: "wi-seed",
+    kind: "architect" as const,
+    operation,
+    status: "cancelled" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [],
+    decisionIds: [],
+    blockerIds: [],
+    reconciliation: reconciliation(
+      "run:ca01-queue-seed",
+      "run:ca01-seed-2",
+      seedEvidence,
+    ),
+  };
+  const successorWork = {
+    id: "wi-seed-2",
+    phaseId: "phase-seed-2",
+    title: "wi-seed-2",
+    description: "wi-seed-2",
+    kind: "architect" as const,
+    operation,
+    status: "completed" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [seedEvidence],
+    decisionIds: [],
+    blockerIds: [],
+  };
+  const extraSuccessorId = spec?.extraSuccessorPhaseId;
+  const extraCancelled = extraSuccessorId
+    ? {
+      ...seedWork,
+      id: "wi-seed-alt",
+      reconciliation: reconciliation(
+        "run:ca01-queue-seed-alt",
+        "run:ca01-seed-3",
+        extraEvidence,
+      ),
+    }
+    : undefined;
+  const extraSuccessor = extraSuccessorId
+    ? {
+      ...successorWork,
+      id: "wi-seed-3",
+      phaseId: extraSuccessorId,
+      evidenceRefs: [extraEvidence],
+    }
+    : undefined;
+  const phases = [
+    {
+      id: "phase-seed",
+      name: "SysON model seed",
+      order: 2,
+      description: "Create the model container.",
+      workItemIds: extraCancelled
+        ? [seedWork.id, extraCancelled.id]
+        : [seedWork.id],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    },
+    {
+      id: "phase-seed-2",
+      name: "SysON model seed (sequenced)",
+      order: 3,
+      description: "Create the model container after the lineage append.",
+      workItemIds: [successorWork.id],
+      requiredDecisionIds: [],
+      evidenceRefs: [seedEvidence],
+    },
+    ...(extraSuccessorId && extraSuccessor
+      ? [{
+        id: extraSuccessorId,
+        name: extraSuccessorId,
+        order: 4,
+        description: extraSuccessorId,
+        workItemIds: [extraSuccessor.id],
+        requiredDecisionIds: [],
+        evidenceRefs: extraSuccessor.evidenceRefs,
+      }]
+      : []),
+  ];
+  const project = {
+    ...base,
+    phases,
+    workItems: [
+      seedWork,
+      successorWork,
+      ...(extraCancelled ? [extraCancelled] : []),
+      ...(extraSuccessor ? [extraSuccessor] : []),
+    ],
+    agentRuns: [
+      {
+        id: "run:ca01-queue-seed",
+        workItemId: seedWork.id,
+        status: "cancelled" as const,
+        summary: "Cancelled before agent claim.",
+        queuedAt: "2026-08-18T06:56:00.000Z",
+        evidenceRefs: [],
+        cancellation: {
+          rationale: "Executor rejected the empty planning lineage.",
+          cancelledAt: "2026-08-18T06:56:01.000Z",
+          cancelledBy: { id: "human:owner", origin: "human" as const },
+        },
+      },
+      {
+        id: "run:ca01-seed-2",
+        workItemId: successorWork.id,
+        status: "completed" as const,
+        summary: "Seeded the SysON model container.",
+        queuedAt: "2026-08-18T06:58:00.000Z",
+        completedAt: "2026-08-18T06:58:29.000Z",
+        evidenceRefs: [seedEvidence],
+      },
+      ...(extraCancelled && extraSuccessor
+        ? [{
+          id: "run:ca01-queue-seed-alt",
+          workItemId: extraCancelled.id,
+          status: "cancelled" as const,
+          summary: "Cancelled before agent claim.",
+          queuedAt: "2026-08-18T06:56:02.000Z",
+          evidenceRefs: [],
+          cancellation: {
+            rationale: "Executor rejected the empty planning lineage.",
+            cancelledAt: "2026-08-18T06:56:03.000Z",
+            cancelledBy: { id: "human:owner", origin: "human" as const },
+          },
+        }, {
+          id: "run:ca01-seed-3",
+          workItemId: extraSuccessor.id,
+          status: "completed" as const,
+          summary: "Second sequenced seed.",
+          queuedAt: "2026-08-18T06:58:30.000Z",
+          completedAt: "2026-08-18T06:58:40.000Z",
+          evidenceRefs: [extraEvidence],
+        }]
+        : []),
+    ],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  };
+  return { project, thread: structuredClone(GENERIC_THREAD_FIXTURE) };
+}
+
 function leftoverReadyPredecessorFixture(spec: {
   readonly predecessor: LeftoverOperationWorkSpec;
   readonly successor: LeftoverOperationWorkSpec;
@@ -1620,6 +1873,30 @@ Deno.test("an in-flight run never counts as the last settled run", () => {
 
   assertEquals(brief.activeRuns[0]?.status, "waiting-for-decision");
   assertEquals(brief.lastSettledRun, undefined);
+});
+
+Deno.test("project pulse status labels keep planned cancelled and completed literal", () => {
+  assertEquals(
+    projectPulseStatus({
+      kind: "current-work",
+      work: { status: "planned" },
+    }),
+    { status: "planned", label: "Planned" },
+  );
+  assertEquals(
+    projectPulseStatus({
+      kind: "last-settled-run",
+      run: { status: "cancelled" },
+    }),
+    { status: "cancelled", label: "Cancelled" },
+  );
+  assertEquals(
+    projectPulseStatus({
+      kind: "last-settled-run",
+      run: { status: "completed" },
+    }),
+    { status: "completed", label: "Completed" },
+  );
 });
 
 Deno.test("the spine split never hides the active phase or an unsatisfied gate", () => {

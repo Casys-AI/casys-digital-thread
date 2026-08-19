@@ -8,6 +8,7 @@ import {
   type EngineeringProjectPhase,
   type EngineeringProjectSnapshot,
   type EngineeringProjectStatus,
+  type EngineeringThreadEntityRef,
   type EngineeringWorkItem,
   isEngineeringDecisionSatisfied,
 } from "../../../domain/project/engineering-project.ts";
@@ -112,6 +113,12 @@ export interface CurrentProjectWork {
  * architecture-capture tip in the same BFF evidence family wraps under the
  * phase that owns the historical member.
  *
+ * A cancelled-before-claim seed whose only work is superseded-by-successor and
+ * whose own evidenceRefs are empty is not a satisfied gate. When a unique later
+ * phase owns that successor evidence at the same registered operation
+ * `id@version`, the seed folds under it as retained lifecycle. If that fold is
+ * not unique, the seed stays visible as planned (never executed).
+ *
  * It deliberately uses no labels, title fragments or loose identifiers. If a
  * future project does not provide this evidence, its phase remains visible.
  */
@@ -131,6 +138,10 @@ export const PROJECT_PATH_PRESENTATION_POLICY = {
   enrichmentMeasurement: {
     requiredLineage:
       "every artifact evidence is the recorded derived_from source of an already-folded model enrichment owned by a strictly earlier parent",
+  },
+  cancelledSuccessor: {
+    requiredLineage:
+      "empty-evidence phase whose only work is cancelled superseded-by-successor folds under the unique later phase that owns that successor evidence at the same registered operation id@version; a non-unique successor is planned, never completed",
   },
 } as const;
 
@@ -465,9 +476,11 @@ export function buildProjectPath(
       attachment,
     ) => [attachment.phaseId, attachment.parentPhaseId]),
   );
+  const supersededSeeds = cancelledSupersededSeedAttachments(snapshot, brief);
   const hiddenPhaseIds = new Set([
     ...corrections.map((attachment) => attachment.phaseId),
     ...revisions.map((attachment) => attachment.phaseId),
+    ...supersededSeeds.folds.map((attachment) => attachment.phaseId),
   ]);
   const enrichments = modelEnrichmentAttachments(
     thread,
@@ -513,7 +526,7 @@ export function buildProjectPath(
     }
   }
 
-  for (const revision of revisions) {
+  for (const revision of [...revisions, ...supersededSeeds.folds]) {
     const parentPhaseId = resolveMacroPhaseId(
       revision.parentPhaseId,
       revisionParentByPhaseId,
@@ -556,11 +569,14 @@ export function buildProjectPath(
       const lifecycleView = lifecycle
         ? projectPhaseLifecycle(snapshot, lifecycle, phaseById)
         : undefined;
+      const baseStatus = supersededSeeds.plannedPhaseIds.has(item.phase.id)
+        ? "planned"
+        : item.status;
       return {
         ...item,
         status: lifecycleView
-          ? lifecycleEffectivePhaseStatus(item.status, lifecycleView)
-          : item.status,
+          ? lifecycleEffectivePhaseStatus(baseStatus, lifecycleView)
+          : baseStatus,
         ...(lifecycleView ? { lifecycle: lifecycleView } : {}),
       };
     });
@@ -974,6 +990,124 @@ function correctionAttachments(
   return attachments;
 }
 
+/**
+ * An empty-evidence phase whose only work is cancelled+superseded-by-successor
+ * is retained history of the unique later phase that executed the same
+ * registered operation. Ambiguous successors stay visible as planned.
+ */
+function cancelledSupersededSeedAttachments(
+  snapshot: EngineeringProjectSnapshot,
+  brief: ProjectBrief,
+): {
+  readonly folds: readonly RevisionAttachment[];
+  readonly plannedPhaseIds: ReadonlySet<string>;
+} {
+  const folds: RevisionAttachment[] = [];
+  const plannedPhaseIds = new Set<string>();
+  for (const view of brief.phases) {
+    if (!isEmptyCancelledSupersededPhase(snapshot, view.phase)) continue;
+    const successorPhaseId = uniqueSuccessorPhaseId(snapshot, view.phase);
+    if (successorPhaseId && successorPhaseId !== view.phase.id) {
+      folds.push({ phaseId: view.phase.id, parentPhaseId: successorPhaseId });
+      continue;
+    }
+    plannedPhaseIds.add(view.phase.id);
+  }
+  return { folds, plannedPhaseIds };
+}
+
+function isEmptyCancelledSupersededPhase(
+  snapshot: EngineeringProjectSnapshot,
+  phase: EngineeringProjectPhase,
+): boolean {
+  if (phase.evidenceRefs.length !== 0) return false;
+  const workItems = phase.workItemIds.flatMap((id) => {
+    const item = snapshot.workItems.find((candidate) => candidate.id === id);
+    return item ? [item] : [];
+  });
+  return workItems.length > 0 &&
+    workItems.every((item) =>
+      item.status === "cancelled" &&
+      item.reconciliation?.kind === "superseded-by-successor"
+    );
+}
+
+function uniqueSuccessorPhaseId(
+  snapshot: EngineeringProjectSnapshot,
+  phase: EngineeringProjectPhase,
+): string | undefined {
+  const successorPhaseIds = new Set<string>();
+  for (const id of phase.workItemIds) {
+    const item = snapshot.workItems.find((candidate) => candidate.id === id);
+    if (!item) return undefined;
+    const successorPhaseId = successorPhaseIdForCancelledWork(snapshot, item);
+    if (!successorPhaseId || successorPhaseId === phase.id) return undefined;
+    successorPhaseIds.add(successorPhaseId);
+  }
+  return successorPhaseIds.size === 1 ? [...successorPhaseIds][0] : undefined;
+}
+
+function successorPhaseIdForCancelledWork(
+  snapshot: EngineeringProjectSnapshot,
+  item: EngineeringWorkItem,
+): string | undefined {
+  const reconciliation = item.reconciliation;
+  if (reconciliation?.kind !== "superseded-by-successor") return undefined;
+  const operationKey = registeredOperationKey(item);
+  if (!operationKey) return undefined;
+  const successorWork = "successorWorkItemId" in reconciliation
+    ? snapshot.workItems.find((candidate) =>
+      candidate.id === reconciliation.successorWorkItemId
+    )
+    : successorWorkFromRun(snapshot, reconciliation.successorRunId);
+  if (
+    !successorWork || registeredOperationKey(successorWork) !== operationKey
+  ) {
+    return undefined;
+  }
+  if (!("successorWorkItemId" in reconciliation)) {
+    const owned = phaseOwnsEvidenceRefs(
+      snapshot,
+      successorWork.phaseId,
+      reconciliation.successorEvidenceRefs,
+    );
+    if (!owned) return undefined;
+  }
+  return successorWork.phaseId;
+}
+
+function successorWorkFromRun(
+  snapshot: EngineeringProjectSnapshot,
+  successorRunId: string,
+): EngineeringWorkItem | undefined {
+  const run = snapshot.agentRuns.find((candidate) =>
+    candidate.id === successorRunId
+  );
+  return run
+    ? snapshot.workItems.find((candidate) => candidate.id === run.workItemId)
+    : undefined;
+}
+
+function phaseOwnsEvidenceRefs(
+  snapshot: EngineeringProjectSnapshot,
+  phaseId: string,
+  refs: readonly EngineeringThreadEntityRef[],
+): boolean {
+  if (refs.length === 0) return false;
+  const phase = snapshot.phases.find((candidate) => candidate.id === phaseId);
+  if (!phase) return false;
+  const owned = new Set([
+    ...phase.evidenceRefs.map((ref) => graphRefKey(ref)),
+    ...phase.workItemIds.flatMap((id) => {
+      const item = snapshot.workItems.find((candidate) => candidate.id === id);
+      return item?.status === "completed"
+        ? item.evidenceRefs.map((ref) => graphRefKey(ref))
+        : [];
+    }),
+  ]);
+  return refs.every((ref) => owned.has(graphRefKey(ref)));
+}
+
 function revisionAttachments(
   snapshot: EngineeringProjectSnapshot,
   brief: ProjectBrief,
@@ -1111,6 +1245,9 @@ function projectPhaseLifecycle(
    */
   const state = latestRun?.status === "failed"
     ? "attention"
+    : latestLifecycleRecord &&
+        isEmptyCancelledSupersededPhase(snapshot, latestLifecycleRecord.phase)
+    ? "retained"
     : latestLifecycleRecord?.status === "completed"
     ? "current"
     : "retained";
@@ -1199,7 +1336,17 @@ export function projectStatusLabel(status: EngineeringProjectStatus): string {
   if (status === "active") return "Active";
   if (status === "blocked") return "Blocked";
   if (status === "completed") return "Completed";
+  if (status === "planned") return "Planned";
   return "Planned";
+}
+
+export function phaseStatusLabel(status: EngineeringPhaseStatus): string {
+  if (status === "completed") return "Gate satisfied";
+  if (status === "active") return "In progress";
+  if (status === "blocked") return "Blocked";
+  if (status === "planned") return "Planned";
+  const _never: never = status;
+  return _never;
 }
 
 export function projectBriefStatusLabel(brief: ProjectBrief): string {
@@ -1255,6 +1402,45 @@ export function workOwnerLabel(owner: EngineeringWorkItem["owner"]): string {
 
 export function workStatusLabel(status: EngineeringWorkItem["status"]): string {
   return status.replaceAll("-", " ");
+}
+
+/**
+ * Compact Activity pulse chip: the current run or work status as literal
+ * Badge text, so planned/cancelled/completed stay readable when collapsed.
+ */
+export function projectPulseStatus(
+  presentation:
+    | {
+      readonly kind: "active-run" | "last-settled-run";
+      readonly run: { readonly status: string };
+    }
+    | {
+      readonly kind: "current-work";
+      readonly work: { readonly status: string };
+    }
+    | { readonly kind: "empty" },
+): { readonly status: string; readonly label: string } {
+  if (
+    presentation.kind === "active-run" ||
+    presentation.kind === "last-settled-run"
+  ) {
+    return {
+      status: presentation.run.status,
+      label: sentenceStatusLabel(presentation.run.status),
+    };
+  }
+  if (presentation.kind === "current-work") {
+    return {
+      status: presentation.work.status,
+      label: sentenceStatusLabel(presentation.work.status),
+    };
+  }
+  return { status: "idle", label: "Idle" };
+}
+
+function sentenceStatusLabel(status: string): string {
+  const label = status.replaceAll("-", " ");
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
 }
 
 /**

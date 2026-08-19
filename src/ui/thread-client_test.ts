@@ -797,6 +797,20 @@ Deno.test("the Workbench contract requires evidence-backed component facets", ()
 
   partDefinition.components.components[0].bindings[0].kind = "invented" as never;
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), false);
+
+  const withAttributes = structuredClone(GENERIC_THREAD_FIXTURE);
+  withAttributes.components.components[0].attributes = [{
+    id: "attr-thickness",
+    kind: "AttributeUsage",
+    label: "thickness",
+  }];
+  assertEquals(isThreadWorkbenchSnapshot(withAttributes), true);
+  withAttributes.components.components[0].attributes = [{
+    id: "attr-thickness",
+    kind: "PartUsage",
+    label: "thickness",
+  }] as never;
+  assertEquals(isThreadWorkbenchSnapshot(withAttributes), false);
 });
 
 Deno.test("HTTP Workbench client performs one uncached read-only JSON GET", async () => {

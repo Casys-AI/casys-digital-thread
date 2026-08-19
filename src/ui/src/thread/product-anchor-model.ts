@@ -1,12 +1,10 @@
-import type {
-  ThreadComponentProvider,
-  ThreadWorkbenchSnapshot,
-} from "./types.ts";
+import type { ThreadComponentProvider, ThreadWorkbenchSnapshot } from "./types.ts";
 
 export type ProductStructureAvailability =
   | {
     readonly status: "available";
     readonly assemblyRootCount: number;
+    readonly partDefinitionCount: number;
     readonly partOccurrenceCount: number;
   }
   | {
@@ -15,6 +13,12 @@ export type ProductStructureAvailability =
     readonly detail: string;
     readonly guidance: string;
   };
+
+export interface ProductStructureHeadline {
+  readonly count: number;
+  readonly label: string;
+  readonly detail: string;
+}
 
 /**
  * Product counts are shown only when a compatible reviewed catalog exists.
@@ -40,11 +44,50 @@ export function productStructureAvailability(
       components.filter((component) =>
         component.kind === "assembly" && component.parentId === undefined
       ).length,
-    partOccurrenceCount: components.filter((component) =>
-      component.kind === "part"
-    )
+    partDefinitionCount: uniquePartDefinitionCount(components),
+    partOccurrenceCount: components.filter((component) => component.kind === "part")
       .reduce((count, component) => count + component.quantity, 0),
   };
+}
+
+/** Honest Product header: 1 definition / 0 occurrences is valid, never "00". */
+export function productStructureHeadline(
+  structure: Extract<ProductStructureAvailability, { status: "available" }>,
+): ProductStructureHeadline {
+  if (structure.partOccurrenceCount === 0) {
+    return {
+      count: structure.partDefinitionCount,
+      label: structure.partDefinitionCount === 1
+        ? "declared PartDefinition"
+        : "declared PartDefinitions",
+      detail: `${structure.partOccurrenceCount} part occurrences`,
+    };
+  }
+  return {
+    count: structure.partOccurrenceCount,
+    label: "declared part occurrences",
+    detail: `${structure.assemblyRootCount} assembly root${
+      structure.assemblyRootCount === 1 ? "" : "s"
+    }`,
+  };
+}
+
+function uniquePartDefinitionCount(
+  components: ThreadWorkbenchSnapshot["components"]["components"],
+): number {
+  const ids = new Set(
+    components.flatMap((component) =>
+      component.bindings
+        .filter((binding) =>
+          binding.provider === "syson" && binding.kind === "part-definition"
+        )
+        .map((binding) => binding.id)
+    ),
+  );
+  if (ids.size > 0) return ids.size;
+  return components.filter((component) =>
+    component.kind === "assembly" && component.parentId === undefined
+  ).length;
 }
 
 /** A compact Project-route summary that never turns unavailable into zero. */

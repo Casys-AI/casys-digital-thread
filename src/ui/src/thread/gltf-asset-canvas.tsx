@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { framingRadiusForBox } from "../geometry/three-orbit-viewport-model.ts";
 import { createThreeOrbitViewport } from "../geometry/three-orbit-viewport.ts";
 
 export interface GltfAssetCanvasProps {
@@ -51,9 +52,15 @@ export function GltfAssetCanvas({
         const box = new THREE.Box3().setFromObject(loadedScene);
         const center = box.getCenter(new THREE.Vector3());
         const size = box.getSize(new THREE.Vector3());
-        const radius = Math.max(size.length() / 2, 1);
         loadedScene.position.sub(center);
-        resetView.current = () => viewport.fitRadius(radius);
+        resetView.current = () => {
+          const radius = framingRadiusForBox(
+            [size.x, size.y, size.z],
+            viewport.camera.aspect,
+            viewport.camera.fov,
+          );
+          viewport.fitRadius(radius);
+        };
         resetView.current();
         setState("ready");
       },

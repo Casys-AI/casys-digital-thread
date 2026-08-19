@@ -14,6 +14,7 @@ import {
   agentRunSummary,
   buildAgentNowPresentation,
   buildProjectBrief,
+  projectPulseStatus,
   selectCurrentProjectFocus,
   workOwnerLabel,
   workStatusLabel,
@@ -88,14 +89,15 @@ function AgentNowRibbon({
   project: EngineeringProjectSnapshot;
   presentation: ReturnType<typeof buildAgentNowPresentation>;
 }): JSX.Element {
+  const pulse = projectPulseStatus(presentation);
   if (presentation.kind === "active-run") {
     return (
       <RibbonFacts
         label="Agent now"
         value={workTitle(project, presentation.run)}
         detail={agentRunSummary(project, presentation.run)}
-        badge={sentenceLabel(presentation.run.status)}
-        badgeVariant={recordStatusVariant(presentation.run.status)}
+        badge={pulse.label}
+        badgeVariant={recordStatusVariant(pulse.status)}
       />
     );
   }
@@ -105,8 +107,8 @@ function AgentNowRibbon({
         label="Agent now"
         value={presentation.work.title}
         detail={`Current work · ${workOwnerLabel(presentation.work.owner)}`}
-        badge={sentenceLabel(workStatusLabel(presentation.work.status))}
-        badgeVariant={recordStatusVariant(presentation.work.status)}
+        badge={pulse.label}
+        badgeVariant={recordStatusVariant(pulse.status)}
       />
     );
   }
@@ -118,8 +120,8 @@ function AgentNowRibbon({
         detail={`${presentation.run.status.replaceAll("-", " ")} · ${
           formatDateTime(agentRunRecordedAt(presentation.run))
         }`}
-        badge={sentenceLabel(presentation.run.status)}
-        badgeVariant={recordStatusVariant(presentation.run.status)}
+        badge={pulse.label}
+        badgeVariant={recordStatusVariant(pulse.status)}
       />
     );
   }
@@ -128,8 +130,8 @@ function AgentNowRibbon({
       label="Agent now"
       value="No active run"
       detail="The project records no current agent execution."
-      badge="Idle"
-      badgeVariant="secondary"
+      badge={pulse.label}
+      badgeVariant={recordStatusVariant(pulse.status)}
     />
   );
 }
@@ -155,6 +157,13 @@ function RibbonFacts({
       <Badge className="mt-2" variant={badgeVariant}>{badge}</Badge>
     </>
   );
+}
+
+export function agentRunJournalItemName(
+  title: string,
+  status: EngineeringAgentRun["status"],
+): string {
+  return `${title} · ${sentenceLabel(status)}`;
 }
 
 function sentenceLabel(value: string): string {
@@ -191,16 +200,24 @@ export function ProjectOperations({
           {project.agentRuns.length
             ? (
               <ol className="divide-y divide-border">
-                {[...project.agentRuns].reverse().map((run) => (
-                  <li
-                    key={run.id}
-                    data-state={run.status}
-                    className="py-4 first:pt-0 last:pb-0"
-                  >
-                    <div className="flex items-start justify-between gap-3">
+                {[...project.agentRuns].reverse().map((run) => {
+                  const title = workTitle(project, run);
+                  return (
+                    <li
+                      key={run.id}
+                      data-state={run.status}
+                      aria-label={agentRunJournalItemName(title, run.status)}
+                      className="py-4 first:pt-0 last:pb-0"
+                    >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold">
-                          {workTitle(project, run)}
+                        <p className="flex items-start gap-2 text-sm font-semibold">
+                          <Badge
+                            aria-hidden="true"
+                            variant={recordStatusVariant(run.status)}
+                          >
+                            {sentenceLabel(run.status)}
+                          </Badge>
+                          <span className="min-w-0">{title}</span>
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
                           {agentRunSummary(project, run)}
@@ -219,12 +236,9 @@ export function ProjectOperations({
                         </p>
                         <AgentRunLifecycle run={run} />
                       </div>
-                      <Badge variant={recordStatusVariant(run.status)}>
-                        {sentenceLabel(run.status)}
-                      </Badge>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ol>
             )
             : (

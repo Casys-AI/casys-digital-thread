@@ -877,6 +877,11 @@ Deno.test(
       ),
       false,
     );
+    assertEquals(catalog?.components[0]?.attributes, [{
+      id: "attr-thickness",
+      kind: "AttributeUsage",
+      label: "thickness",
+    }]);
   },
 );
 

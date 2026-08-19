@@ -3,6 +3,7 @@ import {
   buildCatalogArtifactAnchorMap,
   productDefinitionSummary,
   productStructureAvailability,
+  productStructureHeadline,
 } from "./src/thread/product-anchor-model.ts";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import type { ThreadComponent, ThreadWorkbenchSnapshot } from "./src/thread/types.ts";
@@ -72,8 +73,64 @@ Deno.test("available product structure distinguishes roots from part occurrences
   assertEquals(productStructureAvailability(snapshot), {
     status: "available",
     assemblyRootCount: 1,
+    partDefinitionCount: 1,
     partOccurrenceCount: 5,
   });
+  assertEquals(
+    productStructureHeadline({
+      status: "available",
+      assemblyRootCount: 1,
+      partDefinitionCount: 1,
+      partOccurrenceCount: 5,
+    }),
+    {
+      count: 5,
+      label: "declared part occurrences",
+      detail: "1 assembly root",
+    },
+  );
+});
+
+Deno.test("a system-only assembly is one PartDefinition and zero occurrences, never 00", () => {
+  const snapshot = snapshotWith([{
+    id: "system-root",
+    label: "CantileverArm",
+    kind: "assembly",
+    quantity: 1,
+    bindings: [{
+      provider: "syson",
+      kind: "part-definition",
+      id: "part-def-arm",
+      label: "CantileverArm",
+      evidenceArtifactId: "architecture-1",
+      status: "verified",
+    }],
+    attributes: [{
+      id: "attr-thickness",
+      kind: "AttributeUsage",
+      label: "thickness",
+    }],
+  }]);
+
+  const structure = productStructureAvailability(snapshot);
+  assertEquals(structure, {
+    status: "available",
+    assemblyRootCount: 1,
+    partDefinitionCount: 1,
+    partOccurrenceCount: 0,
+  });
+  if (structure.status !== "available") {
+    throw new Error("A valid system-only catalog must stay available.");
+  }
+  assertEquals(productStructureHeadline(structure), {
+    count: 1,
+    label: "declared PartDefinition",
+    detail: "0 part occurrences",
+  });
+  assertEquals(
+    productDefinitionSummary(snapshot),
+    "1 reviewed component records across SysON.",
+  );
 });
 
 Deno.test("buildCatalogArtifactAnchorMap anchors @3 assembly STEP to assembly component", () => {

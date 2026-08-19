@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   boundedViewportDimensions,
+  framingRadiusForBox,
   orbitCameraFrame,
 } from "./src/geometry/three-orbit-viewport-model.ts";
 
@@ -19,8 +20,36 @@ Deno.test("Three orbit viewport derives the shared engineering camera frame from
     position: [80, 57.49999999999999, 95],
   });
   assertEquals(orbitCameraFrame(1), {
-    near: 0.1,
+    near: 0.01,
     far: 30,
     position: [1.6, 1.15, 1.9],
   });
+});
+
+Deno.test("Fit/reset frames a thin 80x20x4 box instead of a hairline", () => {
+  const aspect = 16 / 9;
+  const fov = 36;
+  const visibleShare = (
+    size: readonly [number, number, number],
+  ): number => {
+    const radius = framingRadiusForBox(size, aspect, fov);
+    const frame = orbitCameraFrame(radius);
+    const distance = Math.hypot(...frame.position);
+    const visibleWidth = 2 * distance * Math.tan((fov * Math.PI) / 360) * aspect;
+    const longest = Math.max(...size);
+    return longest / visibleWidth;
+  };
+
+  const millimetreShare = visibleShare([80, 20, 4]);
+  const metreShare = visibleShare([0.08, 0.02, 0.004]);
+  assertEquals(millimetreShare > 0.25 && millimetreShare <= 1, true);
+  assertEquals(metreShare > 0.25 && metreShare <= 1, true);
+
+  const metreFrame = orbitCameraFrame(
+    framingRadiusForBox([0.08, 0.02, 0.004], aspect, fov),
+  );
+  assertEquals(
+    metreFrame.near < Math.hypot(...metreFrame.position) / 10,
+    true,
+  );
 });

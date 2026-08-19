@@ -15,6 +15,8 @@ import type {
 } from "./part-anchorage-model.ts";
 import type {
   ThreadComponentCatalog,
+  ThreadEvidenceFamilyGraph,
+  ThreadFreshness,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
@@ -127,6 +129,27 @@ export function traceThreadLineage(
     feedback,
     edges: lineageEdges,
   };
+}
+
+/**
+ * Activity currency for one feed fact. Family `historicalRefs` are retained
+ * history; they must not keep the current `fresh` chip even when the sealed
+ * capture itself is still a fresh artifact.
+ */
+export type ActivityCurrency = ThreadFreshness | "historical";
+
+export function activityCurrency(
+  node: ThreadGraphNode,
+  familyGraph: ThreadEvidenceFamilyGraph | undefined,
+): ActivityCurrency {
+  if (!familyGraph) return node.freshness;
+  const key = refKey(node.ref);
+  const historical = familyGraph.families.some((family) =>
+    family.status === "current" &&
+    family.currentRefs.length === 1 &&
+    family.historicalRefs.some((reference) => refKey(reference) === key)
+  );
+  return historical ? "historical" : node.freshness;
 }
 
 /** Selects meaningful activity cards; supporting records stay in lineage. */

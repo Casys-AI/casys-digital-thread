@@ -16,6 +16,7 @@ Deno.test("documentary baseline stays inside the project cockpit, without preten
   assertStringIncludes(source, "ProjectNavigation");
   assertStringIncludes(source, "ProjectWorkRibbon");
   assertStringIncludes(source, "Intent to technical proof");
+  assertStringIncludes(source, "phaseStatusLabel");
   assertStringIncludes(source, "No product definition is recorded yet");
   assertStringIncludes(source, "No verification chain is recorded yet");
 

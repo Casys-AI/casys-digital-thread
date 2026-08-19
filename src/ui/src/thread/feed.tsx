@@ -25,6 +25,7 @@ import {
 import { Button } from "../ui/button.tsx";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
+  activityCurrency,
   activityFeedNodes,
   activityKindLabel,
   buildActivityTimeline,
@@ -45,6 +46,7 @@ import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import { RecomputeHistoryPanel } from "./recompute.tsx";
 import type {
   ThreadComponentCatalog,
+  ThreadEvidenceFamilyGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
@@ -85,6 +87,12 @@ export interface ThreadFeedProps {
    * anchorage is present.
    */
   components?: ThreadComponentCatalog;
+  /**
+   * Evidence family graph already projected on the workbench snapshot.
+   * Activity currency reads `historicalRefs` from it; the feed does not
+   * reconstruct supersession from labels or timestamps.
+   */
+  familyGraph?: ThreadEvidenceFamilyGraph;
   /** Durable human reviews merged into the same chronological Activity rail. */
   reviewRecords?: readonly ProjectReviewRecord[];
   /** Current project identity used to isolate transport state across focus changes. */
@@ -133,6 +141,7 @@ export function ThreadFeed({
   filterComponentId,
   anchorage,
   components,
+  familyGraph,
   reviewRecords = [],
   reviewIntentProjectId,
   reviewIntentStates,
@@ -343,9 +352,7 @@ export function ThreadFeed({
             transmissionState,
           );
           const active = isActivityEntryExpanded(focus, node);
-          const lineage = active
-            ? traceThreadLineage(nodes, edges, focus)
-            : undefined;
+          const lineage = active ? traceThreadLineage(nodes, edges, focus) : undefined;
           // True upstream+downstream count for the collapsed card badge:
           // uses the raw graph lineage (full depth, not bounded).
           const lineageCount = lineage
@@ -359,6 +366,7 @@ export function ThreadFeed({
           const compact = active && evidenceModel
             ? compactLineageCounters(evidenceModel, node.ref)
             : undefined;
+          const currency = activityCurrency(node, familyGraph);
 
           return (
             <li
@@ -372,7 +380,8 @@ export function ThreadFeed({
                   isArchitectureSysmlSealArtifactId(node.ref.id)
                 ? "documentary"
                 : undefined}
-              data-freshness={node.freshness}
+              data-currency={currency}
+              data-freshness={currency}
               data-review-status={reviewDisplayStatus}
               data-canonical-review-status={reviewStatus}
               style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
@@ -429,10 +438,10 @@ export function ThreadFeed({
                       </Badge>
                     )}
                     <span
-                      data-state={node.freshness}
-                      className={freshnessClass(node.freshness)}
+                      data-state={currency}
+                      className={freshnessClass(currency)}
                     >
-                      {node.freshness}
+                      {currency}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {lineageCount} linked
@@ -474,10 +483,8 @@ export function ThreadFeed({
                         {compact
                           ? (
                             <span className="text-xs text-muted-foreground">
-                              {compact.total} items · depth 2 ·{" "}
-                              {compact.upstream} upstream / {compact.downstream}
-                              {" "}
-                              downstream
+                              {compact.total} items · depth 2 · {compact.upstream}{" "}
+                              upstream / {compact.downstream} downstream
                             </span>
                           )
                           : (
@@ -501,14 +508,13 @@ export function ThreadFeed({
                       nodes={nodes}
                       edges={edges}
                       focus={node.ref}
-                      onSelectNode={(related) =>
-                        onSelectNode(related, "lineage")}
+                      onSelectNode={(related) => onSelectNode(related, "lineage")}
                     />
                     {lineageCount === 0
                       ? (
                         <p className="px-8 py-8 text-sm text-muted-foreground">
-                          This fact is recorded, but no causal relation connects
-                          it to another fact yet.
+                          This fact is recorded, but no causal relation connects it to
+                          another fact yet.
                         </p>
                       )
                       : evidenceModel
@@ -517,8 +523,7 @@ export function ThreadFeed({
                           evidenceModel={evidenceModel}
                           focusRef={node.ref}
                           selection={selection}
-                          onSelectNode={(related) =>
-                            onSelectNode(related, "lineage")}
+                          onSelectNode={(related) => onSelectNode(related, "lineage")}
                           ariaLabel={`Complete recorded lineage for ${node.label}`}
                         />
                       )
@@ -529,7 +534,9 @@ export function ThreadFeed({
                             ...lineage.upstream.map((step) => step.node),
                             node,
                             ...lineage.feedback.map((step) => step.node),
-                            ...lineage.downstream.map((step) => step.node),
+                            ...lineage.downstream.map((step) =>
+                              step.node
+                            ),
                           ]}
                           edges={lineage.edges}
                           focus={node.ref}
@@ -638,8 +645,8 @@ function FeedLineageGraph({
   if (neighborhood.nodes.length === 0) {
     return (
       <p className="px-8 py-8 text-sm text-muted-foreground">
-        This fact is recorded, but it is not currently present in the evidence
-        graph (it may be a folded historical version).
+        This fact is recorded, but it is not currently present in the evidence graph (it
+        may be a folded historical version).
       </p>
     );
   }

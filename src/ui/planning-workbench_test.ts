@@ -13,6 +13,8 @@ Deno.test("planning Workbench is a native project-path surface, not an empty evi
   assertStringIncludes(source, "baseline.message");
   assertStringIncludes(source, "Review the path with your agent");
   assertStringIncludes(source, "BaselineRunActivity");
+  assertStringIncludes(source, 'status === "planned"');
+  assertStringIncludes(source, 'return "Planned"');
 
   const threadWorkbench = await Deno.readTextFile(
     new URL("./src/thread/workbench.tsx", import.meta.url),

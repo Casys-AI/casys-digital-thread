@@ -52,7 +52,44 @@ export function sealedAssemblyGlbAsset(
     return artifact.kind === "cad-model" &&
       match?.[1] === fingerprintDigest(artifact.fingerprint);
   });
-  return candidates.length === 1 ? candidates[0] : undefined;
+  if (candidates.length === 0) return undefined;
+  const digests = new Set(
+    candidates.map((artifact) => fingerprintDigest(artifact.fingerprint)),
+  );
+  return digests.size === 1 ? candidates[0] : undefined;
+}
+
+/**
+ * Collapse a definition GLB only when it renders the same sha256 as the sealed
+ * assembly preview. Distinct bytes stay as two blocks.
+ */
+export function sealedGlbPreviewBlocks(
+  assembly: ThreadArtifact | undefined,
+  definition: ThreadComponentPreview | undefined,
+): {
+  readonly assembly: ThreadArtifact | undefined;
+  readonly definition: ThreadComponentPreview | undefined;
+} {
+  if (
+    assembly && definition &&
+    isDuplicateSealedGlbCopy(
+      fingerprintDigest(assembly.fingerprint),
+      [definition.sha256],
+    )
+  ) {
+    return { assembly, definition: undefined };
+  }
+  return { assembly, definition };
+}
+
+/** True only when every listed preview digest is the same sealed GLB. */
+export function isDuplicateSealedGlbCopy(
+  assemblySha256: string | undefined,
+  partSha256s: readonly string[],
+): boolean {
+  return assemblySha256 !== undefined &&
+    partSha256s.length > 0 &&
+    partSha256s.every((digest) => digest === assemblySha256);
 }
 
 /**
@@ -314,16 +351,12 @@ export function resolveSealedAssemblyGeometry(
   );
   if (records.some((record) => !record)) return undefined;
   const exactRecords = records as GeometryBinaryRecord[];
-  const hasV2Records = exactRecords.some((record) =>
-    record.generation === "v2"
-  );
+  const hasV2Records = exactRecords.some((record) => record.generation === "v2");
   if (
     hasV2Records && exactRecords.some((record) => record.generation !== "v2")
   ) return undefined;
 
-  const assemblyRecords = exactRecords.filter((record) =>
-    record.scope === "assembly"
-  )
+  const assemblyRecords = exactRecords.filter((record) => record.scope === "assembly")
     .toSorted((left, right) =>
       left.generation === "v2" && right.generation === "v2"
         ? left.formatIndex - right.formatIndex

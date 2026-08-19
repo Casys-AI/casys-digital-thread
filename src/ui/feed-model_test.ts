@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import type { EngineeringThreadEntityRef } from "../domain/project/engineering-project.ts";
 import {
+  activityCurrency,
   activityFeedNodes,
   activityKindLabel,
   AMBIGUOUS_FEED_SCOPE,
@@ -173,9 +174,12 @@ Deno.test(
       isArchitectureSysmlSealArtifactId(seal.ref.id),
       true,
     );
-    assertEquals(activityFeedNodes([seal, brief, proof]).map((item) => item.ref.id), [
-      seal.ref.id,
-    ]);
+    assertEquals(
+      activityFeedNodes([seal, brief, proof]).map((item) => item.ref.id),
+      [
+        seal.ref.id,
+      ],
+    );
     assertEquals(activityKindLabel(seal), "document · documentary");
     assertEquals(activityKindLabel(brief), "document");
   },
@@ -347,6 +351,104 @@ Deno.test("ambiguous result ownership fails closed instead of choosing a review"
   );
 });
 
+Deno.test(
+  "historical requirements capture currency is historical, never Validated fresh",
+  () => {
+    const predecessor = node(
+      "requirements-capture-r1",
+      "artifact",
+      "2026-08-01T08:00:00.000Z",
+      "sysml-model",
+    );
+    const tip = node(
+      "requirements-capture-r2",
+      "artifact",
+      "2026-08-02T08:00:00.000Z",
+      "sysml-model",
+    );
+    const familyGraph = currentFamilyGraph({
+      id: "requirements-capture-family",
+      entityKind: "artifact",
+      artifactKind: "sysml-model",
+      historical: predecessor.ref,
+      current: tip.ref,
+    });
+
+    const review = reviewRecord({
+      decisionId: "decision-requirements-r1",
+      state: "published",
+      resultEvidence: canonicalResultRef(predecessor),
+    });
+    const timeline = buildActivityTimeline([predecessor], [review]);
+
+    assertEquals(predecessor.freshness, "fresh");
+    assertEquals(timeline[0]?.kind, "thread");
+    if (timeline[0]?.kind === "thread") {
+      assertEquals(timeline[0].review?.state, "published");
+    }
+    assertEquals(activityCurrency(predecessor, familyGraph), "historical");
+    assertEquals(activityCurrency(tip, familyGraph), "fresh");
+    assertEquals(activityCurrency(predecessor, EMPTY_FAMILY), "fresh");
+    assertEquals(
+      activityCurrency(predecessor, familyGraph) === "fresh",
+      false,
+      "a family historicalRef must not keep the fresh currency chip",
+    );
+  },
+);
+
+Deno.test(
+  "review-required families do not invent historical currency",
+  () => {
+    const left = node(
+      "requirements-capture-a",
+      "artifact",
+      "2026-08-01T08:00:00.000Z",
+      "sysml-model",
+    );
+    const right = node(
+      "requirements-capture-b",
+      "artifact",
+      "2026-08-02T08:00:00.000Z",
+      "sysml-model",
+    );
+    const familyGraph: ThreadEvidenceFamilyGraph = {
+      schemaVersion: "thread-evidence-family-graph/1.0",
+      asOf: { snapshotId: "feed-test", revision: 2 },
+      families: [{
+        id: "divergent-requirements",
+        entityKind: "artifact",
+        artifactKind: "sysml-model",
+        historicalRefs: [],
+        currentRefs: [left.ref, right.ref],
+        revisionCount: 1,
+        status: "review-required",
+        reviewReason: "divergent-successors",
+        relationship: {
+          relation: "supersedes",
+          classification: "not-recorded",
+          equivalence: "not-recorded",
+        },
+        transitions: [{
+          edgeRef: {
+            id: "divergent",
+            relation: "supersedes",
+            origin: "provenance",
+          },
+          historical: left.ref,
+          successor: right.ref,
+        }],
+      }],
+      edges: [],
+      omittedSelfLoops: [],
+      omittedCycleEdges: [],
+    };
+
+    assertEquals(activityCurrency(left, familyGraph), "fresh");
+    assertEquals(activityCurrency(right, familyGraph), "fresh");
+  },
+);
+
 Deno.test("part filtering keeps exact attached reviews but omits unscoped review-only events", () => {
   const visible = node("geometry-result");
   const attached = reviewRecord({
@@ -392,6 +494,45 @@ const EMPTY_FAMILY: ThreadEvidenceFamilyGraph = {
   omittedSelfLoops: [],
   omittedCycleEdges: [],
 };
+
+function currentFamilyGraph(spec: {
+  id: string;
+  entityKind: "artifact" | "requirement";
+  artifactKind?: string;
+  historical: ThreadGraphRef;
+  current: ThreadGraphRef;
+}): ThreadEvidenceFamilyGraph {
+  return {
+    schemaVersion: "thread-evidence-family-graph/1.0",
+    asOf: { snapshotId: "feed-test", revision: 2 },
+    families: [{
+      id: spec.id,
+      entityKind: spec.entityKind,
+      ...(spec.artifactKind ? { artifactKind: spec.artifactKind } : {}),
+      historicalRefs: [spec.historical],
+      currentRefs: [spec.current],
+      revisionCount: 1,
+      status: "current",
+      relationship: {
+        relation: "supersedes",
+        classification: "not-recorded",
+        equivalence: "not-recorded",
+      },
+      transitions: [{
+        edgeRef: {
+          id: `${spec.id}-supersedes`,
+          relation: "supersedes",
+          origin: "provenance",
+        },
+        historical: spec.historical,
+        successor: spec.current,
+      }],
+    }],
+    edges: [],
+    omittedSelfLoops: [],
+    omittedCycleEdges: [],
+  };
+}
 
 Deno.test(
   "feed lineage local view: focus node is always included in bounded neighborhood (depth 2)",
@@ -993,7 +1134,9 @@ Deno.test(
   () => {
     // A → B → focus(C) → D → E
     // At depth 2 from C: upstream = {A, B} (2), downstream = {D, E} (2), total = 5.
-    const [nA, nB, nC, nD, nE] = ["A", "B", "C", "D", "E"].map((id) => artifact(id));
+    const [nA, nB, nC, nD, nE] = ["A", "B", "C", "D", "E"].map((id) =>
+      artifact(id)
+    );
     const evidenceModel = buildEvidenceGraphModel(
       {
         nodes: [nA, nB, nC, nD, nE],
@@ -1088,7 +1231,9 @@ Deno.test(
     );
     assertEquals(projection.hiddenSupportingCount, 1);
     assertEquals(
-      projection.nodes.some((candidate) => candidate.ref.id === "unrelated-capture"),
+      projection.nodes.some((candidate) =>
+        candidate.ref.id === "unrelated-capture"
+      ),
       false,
       "lineage must not cross the upstream hub and fan out to its sibling",
     );
@@ -1125,12 +1270,16 @@ Deno.test(
     const counters = compactLineageCounters(evidenceModel, refs.architecture);
 
     assertEquals(
-      projection.nodes.filter((candidate) => candidate.entityKind === "part-definition")
+      projection.nodes.filter((candidate) =>
+        candidate.entityKind === "part-definition"
+      )
         .length,
       5,
     );
     assertEquals(
-      projection.nodes.filter((candidate) => candidate.entityKind === "part-usage")
+      projection.nodes.filter((candidate) =>
+        candidate.entityKind === "part-usage"
+      )
         .length,
       0,
     );
@@ -1287,7 +1436,9 @@ Deno.test(
       ORPHAN_FEED_SCOPE,
     ] as const;
     const partition = scopes.flatMap((scope) =>
-      filterFeedNodesByScope(activity, anchorage, scope).map((node) => node.ref.id)
+      filterFeedNodesByScope(activity, anchorage, scope).map((node) =>
+        node.ref.id
+      )
     );
     assertEquals(
       [...new Set(partition)].sort(),

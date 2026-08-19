@@ -1,6 +1,11 @@
-import type { BadgeProps } from "../ui/badge.tsx";
-
-export type BadgeVariant = NonNullable<BadgeProps["variant"]>;
+export type BadgeVariant =
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "outline"
+  | "success"
+  | "warning"
+  | "info";
 
 /**
  * Le vocabulaire unique des états de run/record → variants de Badge.
@@ -40,6 +45,9 @@ export function recordStatusVariant(status: string): BadgeVariant {
   }
   if (status === "failed" || status === "blocked" || status === "fail") {
     return "destructive";
+  }
+  if (status === "planned" || status === "cancelled") {
+    return "secondary";
   }
   return "secondary";
 }

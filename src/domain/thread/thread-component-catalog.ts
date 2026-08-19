@@ -39,6 +39,12 @@ export interface ThreadComponentPreview {
   sha256: string;
 }
 
+export interface ThreadComponentAttribute {
+  id: string;
+  kind: "AttributeUsage";
+  label: string;
+}
+
 export interface ThreadComponentDefinition {
   id: string;
   label: string;
@@ -47,6 +53,8 @@ export interface ThreadComponentDefinition {
   parentId?: string;
   bindings: ThreadComponentBinding[];
   preview?: ThreadComponentPreview;
+  /** Optional AttributeUsage rows owned by this component's PartDefinition. */
+  attributes?: ThreadComponentAttribute[];
 }
 
 /**
@@ -114,6 +122,9 @@ export function validateThreadComponentCatalog(
       const preview = input.preview === undefined
         ? undefined
         : componentPreview(input.preview, `${path}.preview`);
+      const attributes = input.attributes === undefined
+        ? undefined
+        : componentAttributes(input.attributes, `${path}.attributes`);
       return {
         id: nonEmpty(input.id, `${path}.id`),
         label: nonEmpty(input.label, `${path}.label`),
@@ -124,6 +135,7 @@ export function validateThreadComponentCatalog(
           : { parentId: nonEmpty(input.parentId, `${path}.parentId`) }),
         bindings,
         ...(preview ? { preview } : {}),
+        ...(attributes ? { attributes } : {}),
       };
     },
   );
@@ -243,6 +255,26 @@ function binding(value: unknown, path: string): ThreadComponentBinding {
       `${path}.evidenceArtifactId`,
     ),
   };
+}
+
+function componentAttributes(
+  value: unknown,
+  path: string,
+): ThreadComponentAttribute[] {
+  const attributes = array(value, path).map((entry, index) => {
+    const input = record(entry, `${path}[${index}]`);
+    return {
+      id: nonEmpty(input.id, `${path}[${index}].id`),
+      kind: oneOf(input.kind, ["AttributeUsage"], `${path}[${index}].kind`),
+      label: nonEmpty(input.label, `${path}[${index}].label`),
+    };
+  });
+  const ids = attributes.map((attribute) => attribute.id);
+  const labels = attributes.map((attribute) => attribute.label);
+  if (new Set(ids).size !== ids.length || new Set(labels).size !== labels.length) {
+    throw new Error(`${path} contains duplicate AttributeUsage identities.`);
+  }
+  return attributes;
 }
 
 function componentPreview(
