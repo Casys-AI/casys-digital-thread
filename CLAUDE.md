@@ -37,7 +37,7 @@ deno task mcp:call --name=<tool> --args='{}'  # tools/call loopback :3020/mcp
 Qualité — à passer avant tout commit :
 
 ```bash
-deno task check       # type-check ; liste explicite de fichiers (voir piège plus bas)
+deno task check       # type-check Deno (globs ; Vite UI = check:ui)
 deno task lint
 deno task fmt         # --check seulement ; pour écrire : deno fmt <chemin>
 deno task test        # suite Deno complète
@@ -61,8 +61,8 @@ deno task preview:thread      # :5173 Vite HMR → BFF :5175 (reads/SSE passifs)
 deno task preview:cockpit     # :5175 — même BFF, bundle singlefile figé
 ```
 
-`deno task preview:browser` refuse : l'ancienne Console MCP App (`:3021`) n'est plus
-une page produit. La santé de flotte reste `console_snapshot` sur `:3020/mcp`.
+`deno task preview:browser` refuse : l'ancienne Console MCP App (`:3021`) n'est plus une
+page produit. La santé de flotte reste `console_snapshot` sur `:3020/mcp`.
 
 Sondes diagnostiques, sans écriture ni révision :
 
@@ -73,10 +73,13 @@ deno task probe:requirement-units --unit=<unit> --type=<SysmlType>
 
 ## Les deux pièges qui ne préviennent pas
 
-**`deno task check`** énumère les fichiers un par un dans `deno.json`. Un nouveau module
-non-test qui n'y est pas ajouté **n'est jamais type-checké** — l'oubli est silencieux. Y
-ajouter chaque nouveau module. Ne jamais rapporter une suite verte obtenue avec
-`--no-check` : la vérification a été désactivée, pas satisfaite.
+**`deno task check`** type-check par globs (`server.ts`,
+`src/{adapters,application,contracts,domain,orchestration,testing,tools}/**/*.ts`,
+`scripts/**/*.ts`, `experiments/**/*.ts`). Un module Deno nouveau est pris
+automatiquement. **`src/ui/src`** reste hors de ce graphe — c'est `deno task check:ui`
+(tsc). Exception Deno : `src/ui/*_test.ts` et `src/ui/src/project/record-status.ts`. Ne
+jamais rapporter une suite verte obtenue avec `--no-check` : la vérification a été
+désactivée, pas satisfaite.
 
 **`src/ui/dist/**` est commité.** Toute modification de `src/ui/src/` exige de rebuilder
 les surfaces concernées et de commiter le bundle régénéré, sinon le preview et la

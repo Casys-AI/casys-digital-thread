@@ -1954,6 +1954,7 @@ async function createProjectControl(
     control: {
       projects: runtime.projects,
       commands: runtime.commands,
+      threadSnapshots,
       // The same CAS-backed object seals at queue time and reads through the
       // agent-visible plan inspection tool. No alternate plan authority is
       // composed for execution or control-plane reads.

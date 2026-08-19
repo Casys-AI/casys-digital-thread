@@ -1,0 +1,128 @@
+{
+  "schemaVersion": "mechanical-proof-case/1.0",
+  "id": "wall-hook-wh01-hook-cantilever",
+  "revision": 1,
+  "scope": "WH01 wall hook taken in isolation: one rectangular-section solid, 30 x 12 x 5 mm, verified as a single solid in its local frame before sealing. Geometry is the admitted parameterized Box; the 10 N tip-load and Aluminium 6061 values are declared assumptions for this behave vehicle.",
+  "evidenceBoundary": "Concept verification only. Not a certification, a material release, a joint qualification, a fatigue or stability assessment, or a fabrication claim. Material and the 10 N tip load are assumptions; the root face is treated as fully fixed. This case declares only the brief displacement criterion.",
+  "project": {
+    "id": "wall-hook-wh01",
+    "subjectId": "project:wall-hook-wh01",
+    "baseThreadSnapshot": {
+      "id": "project:wall-hook-wh01:r6:model-write-requirements-WallHook-0ffbce0aa39983665c43273ed1a749f76a454a61b093611cbdf90c05bb3c8137",
+      "revision": 6,
+      "subjectId": "project:wall-hook-wh01"
+    }
+  },
+  "target": {
+    "id": "wh01-wall-hook",
+    "modelElementId": "62f6e38c-c462-4c6e-b9d5-870c4ba09f43"
+  },
+  "authorization": {
+    "workItemId": "wi-proof-seal",
+    "decisionId": "dec-proof-seal"
+  },
+  "requirementsSource": {
+    "provider": "syson",
+    "editingContextId": "8fa88b41-28f8-44e3-9c2f-4907a979ec7a",
+    "elementId": "0987d164-85c6-4e7a-9074-49a2ac546f19"
+  },
+  "solver": {
+    "provider": "calculix",
+    "tool": "calculix_solve_static",
+    "resultSchemaVersion": "2.0"
+  },
+  "cadSource": {
+    "kind": "parametric",
+    "generator": {
+      "provider": "build123d",
+      "tool": "build123d_export",
+      "definition": {
+        "mediaType": "text/x-python",
+        "sha256": "12cc0880bac90a5f55dbbcc5a8ab8da79085826a439bcccbc20acce7c8767ada",
+        "bytes": 72
+      }
+    },
+    "engineeringBoundary": {
+      "designIntent": "partial",
+      "editableCad": "absent",
+      "manufacturability": "not-established",
+      "limitations": [
+        "The proof geometry is the isolated WallHook PartDefinition in its local frame.",
+        "The root face is treated as fully fixed; no joint or support hardware is modelled.",
+        "The declaration carries no tolerances, interfaces, manufacturing features or process evidence."
+      ]
+    }
+  },
+  "expectedCadArtifact": {
+    "format": "step",
+    "sha256": "c4a3f2c02f7ef545c6b92714706a8b0bd54a11086192ea56d97d21efb180c33e",
+    "bytes": 15426
+  },
+  "analysis": {
+    "kind": "linear-static",
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "basis": "Aluminium 6061 as a declared assumption for this behave vehicle; pending a selected material certificate. Same datasheet values as the committed Heron cantilever cases.",
+      "youngModulus": {
+        "value": 69000,
+        "unit": "MPa"
+      },
+      "poissonRatio": {
+        "value": 0.33,
+        "unit": "1"
+      }
+    },
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSize": {
+        "value": 2,
+        "unit": "mm"
+      }
+    },
+    "supports": [
+      {
+        "id": "hook-root-fixed",
+        "kind": "fixed",
+        "selection": {
+          "name": "FIXED",
+          "box": {
+            "min": [-16, -7, -4],
+            "max": [-14, 7, 4],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "tip-load-10n",
+        "kind": "force",
+        "selection": {
+          "name": "LOADED",
+          "box": {
+            "min": [14, -7, -4],
+            "max": [16, 7, 4],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [0, 0, -10],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "wh01-hook-deflection",
+      "name": "maxDisplacement",
+      "metric": "maximum-displacement",
+      "feature": "maxDisplacement",
+      "operator": "<=",
+      "limit": {
+        "value": 2,
+        "unit": "mm"
+      }
+    }
+  ]
+}

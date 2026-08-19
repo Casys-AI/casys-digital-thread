@@ -36,6 +36,11 @@ import type {
   EngineeringThreadSnapshotRef,
   EngineeringWorkOwner,
 } from "../domain/project/engineering-project.ts";
+import {
+  type AgentRunJoinThreadSnapshot,
+  assembleAgentRunRequirementJoins,
+  runNeedsThreadProjection,
+} from "../domain/project/agent-run-requirement-join.ts";
 import type {
   ContentFingerprint,
   ThreadEntityKind,
@@ -119,6 +124,13 @@ export interface ProjectControlToolDependencies
   runExecutor?: ProjectRunExecutor;
   /** Reads only server-stamped resolved operation plans from the local CAS. */
   runPlanReader?: ResolvedRunPlanReader;
+  /**
+   * Exact Thread reread for MCP presentation. Used only to hoist `join` from
+   * Thread `evaluations[]` onto completed requirement-join runs.
+   */
+  threadSnapshots?: {
+    get(snapshotId: string): Promise<AgentRunJoinThreadSnapshot | undefined>;
+  };
   /** Explicit startup policy; omission preserves signed MRTR elicitation. */
   approvalMode?: ProjectApprovalMode;
 }
@@ -136,7 +148,7 @@ export function registerProjectControlTools(
         snapshot,
       )
       : undefined;
-    return projectResult(
+    return await projectResult(
       `Project ${snapshot.project.name} is at revision ${snapshot.revision}.` +
         (actionableReviewIntents === undefined
           ? ""
@@ -150,6 +162,7 @@ export function registerProjectControlTools(
               .length
           } acknowledged but awaiting a canonical decision); call project_review_intent_list to read the exact action, comment, and receipt before continuing.`),
       snapshot,
+      dependencies.threadSnapshots,
     );
   });
 
@@ -230,9 +243,10 @@ export function registerProjectControlTools(
       workItems: planWorkItems(args.workItems),
       requiredDecisions: planDecisions(args.requiredDecisions),
     });
-    return projectResult(
+    return await projectResult(
       `The agent-published project path is recorded at revision ${snapshot.revision}. It is planning state only: no engineering operation was executed.`,
       snapshot,
+      dependencies.threadSnapshots,
     );
   });
 
@@ -255,9 +269,10 @@ export function registerProjectControlTools(
       workItems: planWorkItems(args.workItems),
       requiredDecisions: planDecisions(args.requiredDecisions),
     });
-    return projectResult(
+    return await projectResult(
       `The agent-appended project change is recorded at revision ${snapshot.revision}. It adds only reviewed work anchored to the exact current thread snapshot; no engineering operation was executed.`,
       snapshot,
+      dependencies.threadSnapshots,
     );
   });
 
@@ -282,7 +297,7 @@ export function registerProjectControlTools(
           return humanRunExecutionConfirmationRequest(current, runId);
         }
         if (!confirmation) {
-          return projectResult(
+          return await projectResult(
             `Human-only agent run ${runId} was not executed. No project state changed; continue the paired conversation.`,
             current,
           );
@@ -291,7 +306,7 @@ export function registerProjectControlTools(
           elicitedHumanOrigin(context),
           { ...common, runId },
         );
-        return projectResult(
+        return await projectResult(
           `The paired MCP host reported human execution of run ${runId} through elicitation at project revision ${snapshot.revision}. The operation is human-only; no agent origin was accepted.`,
           snapshot,
         );
@@ -300,7 +315,7 @@ export function registerProjectControlTools(
         agentOrigin(context),
         { ...common, runId },
       );
-      return projectResult(
+      return await projectResult(
         `Agent run ${runId} completed through its registered server-owned executor at project revision ${snapshot.revision}.`,
         snapshot,
       );
@@ -323,11 +338,12 @@ export function registerProjectControlTools(
       summary: queueRunSummary(workItem),
       ...queueExecutionBasis(current, workItem),
     });
-    return projectResult(
+    return await projectResult(
       `Agent queued the reviewed operation ${workItem.operation!.id}@${
         workItem.operation!.version
       } for work item ${workItemId} at project revision ${snapshot.revision}. The server derived the run id, summary and exact basis; no provider or arbitrary execution input was accepted.`,
       snapshot,
+      dependencies.threadSnapshots,
     );
   });
 
@@ -378,9 +394,10 @@ export function registerProjectControlTools(
           : declaredProjectHead(current),
       },
     );
-    return projectResult(
+    return await projectResult(
       `Decision ${decisionId} now has an agent proposal at project revision ${snapshot.revision}; human approval is still required.`,
       snapshot,
+      dependencies.threadSnapshots,
     );
   });
 
@@ -867,9 +884,10 @@ async function handleDecisionElicitation(
         ),
       },
     );
-    return projectResult(
+    return await projectResult(
       `YOLO local startup opt-in auto-approved decision ${decisionId} at project revision ${snapshot.revision}. No inputResponses or retryVerified value was fabricated.`,
       snapshot,
+      dependencies.threadSnapshots,
     );
   }
   const confirmation = decisionConfirmationResponse(context);
@@ -877,11 +895,12 @@ async function handleDecisionElicitation(
     return decisionConfirmationRequest(current, decisionId, action, rationale);
   }
   if (!confirmation) {
-    return projectResult(
+    return await projectResult(
       `Decision ${decisionId} was not ${
         action === "approve" ? "approved" : "rejected"
       }. No project state changed; continue the paired conversation.`,
       current,
+      dependencies.threadSnapshots,
     );
   }
   const snapshot = action === "approve"
@@ -897,11 +916,12 @@ async function handleDecisionElicitation(
       inputFingerprint,
       rationale,
     });
-  return projectResult(
+  return await projectResult(
     `The paired MCP host reported ${
       action === "approve" ? "approval" : "rejection"
     } of decision ${decisionId} through elicitation at project revision ${snapshot.revision}.`,
     snapshot,
+    dependencies.threadSnapshots,
   );
 }
 
@@ -1098,9 +1118,10 @@ async function handleQueuedRunCancellation(
         ),
       },
     );
-    return projectResult(
+    return await projectResult(
       `YOLO local startup opt-in auto-cancelled queued agent run ${runId} at project revision ${snapshot.revision}. No MCP elicitation response was fabricated, and no agent claim or execution was recorded.`,
       snapshot,
+      dependencies.threadSnapshots,
     );
   }
   const confirmation = runCancellationConfirmationResponse(context);
@@ -1108,18 +1129,20 @@ async function handleQueuedRunCancellation(
     return runCancellationConfirmationRequest(current, runId, rationale);
   }
   if (!confirmation) {
-    return projectResult(
+    return await projectResult(
       `Queued agent run ${runId} was not cancelled. No project state changed; continue the paired conversation.`,
       current,
+      dependencies.threadSnapshots,
     );
   }
   const snapshot = await dependencies.commands.cancelQueuedRun(
     elicitedHumanOrigin(context),
     { ...common, runId, rationale },
   );
-  return projectResult(
+  return await projectResult(
     `The paired MCP host reported human cancellation of queued agent run ${runId} through elicitation at project revision ${snapshot.revision}. No agent claim or execution was recorded.`,
     snapshot,
+    dependencies.threadSnapshots,
   );
 }
 
@@ -1166,9 +1189,10 @@ async function handleUnstartedWorkItemSupersession(
         ),
       },
     );
-    return projectResult(
+    return await projectResult(
       `YOLO local startup opt-in auto-superseded unstarted work item ${workItemId} at project revision ${snapshot.revision}. No MCP elicitation response was fabricated, and no agent run, provider call, or ThreadSnapshot was created.`,
       snapshot,
+      dependencies.threadSnapshots,
     );
   }
   const confirmation = unstartedSupersessionConfirmationResponse(context);
@@ -1180,9 +1204,10 @@ async function handleUnstartedWorkItemSupersession(
     );
   }
   if (!confirmation) {
-    return projectResult(
+    return await projectResult(
       `Unstarted work item ${workItemId} was not superseded. No project state changed; continue the paired conversation.`,
       current,
+      dependencies.threadSnapshots,
     );
   }
   const snapshot = await dependencies.commands.supersedeUnstartedWorkItem(
@@ -1196,9 +1221,10 @@ async function handleUnstartedWorkItemSupersession(
       rationale,
     },
   );
-  return projectResult(
+  return await projectResult(
     `The paired MCP host recorded human supersession of unstarted work item ${workItemId} at project revision ${snapshot.revision}. No agent run, provider call, or ThreadSnapshot was created.`,
     snapshot,
+    dependencies.threadSnapshots,
   );
 }
 
@@ -1235,9 +1261,10 @@ async function handleWorkItemAbandonment(
     );
   }
   if (!confirmation) {
-    return projectResult(
+    return await projectResult(
       `Work item abandonment was declined. No project state changed; continue the paired conversation.`,
       current,
+      dependencies.threadSnapshots,
     );
   }
   const snapshot = await dependencies.commands.abandonWorkItems(
@@ -1246,7 +1273,7 @@ async function handleWorkItemAbandonment(
   );
   const itemCount = workItemIds.length;
   const decisionCount = decisionIds.length;
-  return projectResult(
+  return await projectResult(
     `The paired MCP host recorded human abandonment of ${itemCount} work item${
       itemCount === 1 ? "" : "s"
     }` +
@@ -1255,6 +1282,7 @@ async function handleWorkItemAbandonment(
         : "") +
       ` at project revision ${snapshot.revision}. No agent run, provider call, or ThreadSnapshot was created.`,
     snapshot,
+    dependencies.threadSnapshots,
   );
 }
 
@@ -2068,11 +2096,43 @@ function assertDeclaredProjectHead(
   }
 }
 
-function projectResult(content: string, snapshot: EngineeringProjectSnapshot) {
+async function projectResult(
+  content: string,
+  snapshot: EngineeringProjectSnapshot,
+  threadSnapshots?: ProjectControlToolDependencies["threadSnapshots"],
+) {
   return {
     content,
-    structuredContent: snapshot as unknown as Record<string, unknown>,
+    structuredContent: await presentProjectSnapshot(
+      snapshot,
+      threadSnapshots,
+    ) as unknown as Record<string, unknown>,
   };
+}
+
+async function presentProjectSnapshot(
+  snapshot: EngineeringProjectSnapshot,
+  threadSnapshots?: ProjectControlToolDependencies["threadSnapshots"],
+): Promise<EngineeringProjectSnapshot> {
+  if (!threadSnapshots) return snapshot;
+  const workById = new Map(
+    snapshot.workItems.map((item) => [item.id, item] as const),
+  );
+  const needed = new Set(
+    snapshot.agentRuns
+      .filter((run) =>
+        run.resultSnapshot &&
+        runNeedsThreadProjection(run, workById.get(run.workItemId))
+      )
+      .map((run) => run.resultSnapshot!.snapshotId),
+  );
+  if (needed.size === 0) return snapshot;
+  const threads = new Map<string, AgentRunJoinThreadSnapshot>();
+  for (const snapshotId of needed) {
+    const thread = await threadSnapshots.get(snapshotId);
+    if (thread) threads.set(snapshotId, thread);
+  }
+  return assembleAgentRunRequirementJoins(snapshot, threads);
 }
 
 function decisionProposal(value: unknown): {

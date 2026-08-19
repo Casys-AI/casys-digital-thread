@@ -68,8 +68,8 @@ from UI copy or tool descriptions.
   This atelier may hold such receipts for `desk-lamp-dl04` and `desk-lamp-dl05` under
   `state/local/` (gitignored). Absence of that revision is `unavailable`. Do not relabel
   `@1`.
-- New non-test modules must be listed in `deno.json` `check`. Omitting them is a silent
-  type-check hole.
+- `deno task check` type-checks Deno sources by glob. Do not add a per-file census. Vite
+  UI (`src/ui/src`) is `deno task check:ui`, not that graph.
 
 ## Labels stay literal
 
