@@ -825,7 +825,7 @@ Deno.test({
 
 async function walFixture() {
   const source = new TextEncoder().encode(
-    "model MyRamp\n  Real temperatureC;\nequation\n  der(temperatureC) = 2;\nend MyRamp;\n",
+    "model GenericState\n  Real position;\nequation\n  der(position) = 2;\nend GenericState;\n",
   );
   const sourceSha256 = await fingerprintResourceBytes(source);
   const limits = {
@@ -848,7 +848,7 @@ async function walFixture() {
     limits,
   }).initial();
   const admission = validateModelicaAdmittedRunAdmission({
-    schemaVersion: "modelica-admitted-run-admission/1.0",
+    schemaVersion: "modelica-admitted-run-admission/2.0",
     admissionArtifact: {
       schemaVersion: "technical-compilation-admission-capture/1.0",
       id: `technical-compilation-admission-${"1".repeat(64)}`,
@@ -899,8 +899,8 @@ async function walFixture() {
     },
     status: "ready-for-execution-review",
   });
-  const projectId = "modelica-ramp-mr02";
-  const agentRunId = "run-mr02-admitted-modelica";
+  const projectId = "modelica-generic-wal";
+  const agentRunId = "run-generic-admitted-modelica";
   const executionRunId = await deriveAdmittedModelicaExecutionRunId(
     projectId,
     agentRunId,
@@ -1011,9 +1011,9 @@ async function receiptFor(input: {
     outputs: input.identity.executionProfile.outputManifest,
   });
   const evidenceBytes = new TextEncoder().encode(
-    '{"metrics":[{"id":"temperature_final","value":14}]}\n',
+    '{"modelName":"GenericState"}\n',
   );
-  const resultBytes = new TextEncoder().encode("time,temperatureC\n0,10\n2,14\n");
+  const resultBytes = new TextEncoder().encode("time,position\n0,0\n2,4\n");
   const members = await Promise.all([
     outputMember(
       input.identity.executionProfile.outputManifest[0]!,

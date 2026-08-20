@@ -39,11 +39,14 @@ import {
   type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
+  admittedModelicaExecutionContractFromSourceBytes,
+  assertAdmittedModelicaEvidenceMatchesContract,
   createModelicaAdmittedExecutionCapture,
   deriveAdmittedModelicaExecutionRunId,
   type ModelicaAdmittedExecutionCapture,
   validateModelicaAdmittedExecutionCapture,
 } from "../../../domain/modelica/admitted/execution-evidence.ts";
+import { parseAdmittedModelicaIsolatedEvidence } from "../../../domain/modelica/admitted/isolated-output.ts";
 import {
   type IsolatedCodeExecutionReceipt,
   type IsolatedCodeExecutionReceiptRecord,
@@ -142,7 +145,7 @@ interface ReviewedAuthority {
 interface DocumentarySuccessor {
   readonly snapshot: ThreadSnapshot;
   readonly artifacts: readonly [ThreadArtifact, ThreadArtifact, ThreadArtifact];
-  readonly observation: ThreadObservation;
+  readonly observations: readonly ThreadObservation[];
 }
 
 interface PersistedAdmittedExecutionCapture {
@@ -725,23 +728,32 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         "The admitted Modelica published bytes differ from their journaled output hashes.",
       );
     }
-    let evidence: {
-      readonly metrics?: readonly { readonly id?: string; readonly value?: number }[];
-    };
+    let evidence;
     try {
-      evidence = JSON.parse(new TextDecoder().decode(evidenceBytes));
+      evidence = parseAdmittedModelicaIsolatedEvidence(evidenceBytes);
     } catch {
-      throw invalidTransition("The admitted Modelica evidence is not JSON.");
+      throw invalidTransition(
+        "The admitted Modelica evidence does not match the generic v2 evidence contract.",
+      );
     }
-    const metrics =
-      evidence.metrics?.filter((item) => item.id === "temperature_final") ?? [];
-    const metric = metrics[0];
     if (
-      metrics.length !== 1 || typeof metric?.value !== "number" ||
-      !Number.isFinite(metric.value)
+      evidence.inputBundleSha256 !== context.request.source.sha256 ||
+      evidence.result.byteCount !== resultBytes.byteLength ||
+      evidence.result.sha256 !== resultSha256
     ) {
       throw invalidTransition(
-        "The admitted Modelica evidence lacks one exact temperature_final metric.",
+        "The admitted Modelica v2 evidence does not attest the reopened source and exact result bytes.",
+      );
+    }
+    let contract;
+    try {
+      contract = admittedModelicaExecutionContractFromSourceBytes(
+        context.request.source.bytes,
+      );
+      assertAdmittedModelicaEvidenceMatchesContract(evidence, contract);
+    } catch {
+      throw invalidTransition(
+        "The admitted Modelica evidence does not match the reopened source contract.",
       );
     }
     return await createModelicaAdmittedExecutionCapture({
@@ -751,7 +763,8 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       admission: context.admission,
       sourceSha256: context.request.source.sha256,
       receipt,
-      temperatureFinal: { value: metric.value, unit: "degC" },
+      evidence,
+      contract,
     });
   }
 
@@ -1649,18 +1662,15 @@ function buildDocumentarySuccessor(input: {
     verifiedAt: capturedAt,
     status: "verified",
   };
-  const observation: ThreadObservation = {
-    id: `modelica-admitted-temperature-final-${input.run.id}`,
-    name: "Admitted Modelica final temperature",
-    metric: "temperature_final",
-    quantity: input.capture.temperatureFinal,
-    source: {
-      operation,
-      artifactIds: [evidenceArtifact.id, resultArtifact.id],
-      capturedAt,
-    },
+  const observations = admittedModelicaObservations({
+    capture: input.capture,
+    runId: input.run.id,
+    operation,
+    evidenceArtifactId: evidenceArtifact.id,
+    resultArtifactId: resultArtifact.id,
+    capturedAt,
     freshness,
-  };
+  });
   const provenance: ThreadProvenanceLink[] = [
     ...[captureArtifact, evidenceArtifact, resultArtifact].map((artifact) => ({
       id: `derived-from-${admissionArtifact.id}-by-${artifact.id}`,
@@ -1678,14 +1688,16 @@ function buildDocumentarySuccessor(input: {
       rationale:
         "The execution verified the exact admission artifact fingerprint before dispatch.",
     },
-    ...observation.source.artifactIds.map((artifactId) => ({
-      id: `${observation.id}-from-${artifactId}`,
-      relation: "derived_from" as const,
-      from: { kind: "observation" as const, id: observation.id },
-      to: { kind: "artifact" as const, id: artifactId },
-      rationale:
-        "The observation is reported by the exact normalized evidence and retained solver result.",
-    })),
+    ...observations.flatMap((observation) =>
+      observation.source.artifactIds.map((artifactId) => ({
+        id: `${observation.id}-from-${artifactId}`,
+        relation: "derived_from" as const,
+        from: { kind: "observation" as const, id: observation.id },
+        to: { kind: "artifact" as const, id: artifactId },
+        rationale:
+          "The observation is reported by the exact normalized evidence and retained solver result.",
+      }))
+    ),
   ];
   const extension: ThreadSnapshotExtension = {
     id: `simulate-run-admitted-modelica-${input.run.id}`,
@@ -1694,7 +1706,7 @@ function buildDocumentarySuccessor(input: {
     capturedAt,
     artifacts: [captureArtifact, evidenceArtifact, resultArtifact],
     consumptions: [consumption],
-    observations: [observation],
+    observations,
     requirements: [],
     evaluations: [],
     violations: [],
@@ -1714,8 +1726,33 @@ function buildDocumentarySuccessor(input: {
   return {
     snapshot: validateThreadSnapshot(applied.snapshot),
     artifacts: [captureArtifact, evidenceArtifact, resultArtifact],
-    observation,
+    observations,
   };
+}
+
+function admittedModelicaObservations(input: {
+  readonly capture: ModelicaAdmittedExecutionCapture;
+  readonly runId: string;
+  readonly operation: ThreadObservation["source"]["operation"];
+  readonly evidenceArtifactId: string;
+  readonly resultArtifactId: string;
+  readonly capturedAt: string;
+  readonly freshness: ThreadObservation["freshness"];
+}): ThreadObservation[] {
+  return input.capture.metrics.map((metric) => {
+    return {
+      id: `modelica-admitted-${metric.outputName}-${metric.statistic}-${input.runId}`,
+      name: `Admitted Modelica ${metric.outputName} ${metric.statistic}`,
+      metric: `${metric.outputName}.${metric.statistic}`,
+      quantity: { value: metric.value, unit: metric.unit },
+      source: {
+        operation: input.operation,
+        artifactIds: [input.evidenceArtifactId, input.resultArtifactId],
+        capturedAt: input.capturedAt,
+      },
+      freshness: input.freshness,
+    };
+  });
 }
 
 function exactAdmissionArtifact(

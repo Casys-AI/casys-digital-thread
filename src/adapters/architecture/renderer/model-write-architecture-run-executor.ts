@@ -1631,6 +1631,7 @@ export class ModelWriteArchitectureRunExecutor {
       usages: Array<
         { id: string; label: string; targetId: string; targetLabel: string }
       >;
+      attributes: Array<{ id: string; label: string }>;
     }> = [];
     if (predecessor) {
       const text = await this.#captures.read(predecessor.fingerprint);
@@ -1682,6 +1683,10 @@ export class ModelWriteArchitectureRunExecutor {
             targetId: usage.targetId,
             targetLabel: usage.targetLabel,
           })),
+          attributes: (part.attributes ?? []).map((attribute) => ({
+            id: attribute.id,
+            label: attribute.label,
+          })),
         });
       }
     }
@@ -1709,6 +1714,11 @@ export class ModelWriteArchitectureRunExecutor {
     const predecessorById = new Map<string, typeof predecessorDefinitions[number]>();
     const predecessorLabels = new Map<string, number>();
     const predecessorUsageIds = new Set<string>();
+    const predecessorAttributeIds = new Set<string>();
+    const inheritedAttributes = new Map<
+      string,
+      { id: string; label: string; parentId: string; parentLabel: string }
+    >();
     const inheritedEdges = new Map<string, number>();
     for (const part of predecessorDefinitions) {
       if (predecessorById.has(part.id)) {
@@ -1726,6 +1736,20 @@ export class ModelWriteArchitectureRunExecutor {
         }
         predecessorUsageIds.add(usage.id);
         increment(inheritedEdges, edgeKey(part.label, usage.label, usage.targetLabel));
+      }
+      for (const attribute of part.attributes) {
+        if (predecessorAttributeIds.has(attribute.id)) {
+          fail(
+            "Verification failed: the predecessor capture repeats an AttributeUsage identity.",
+          );
+        }
+        predecessorAttributeIds.add(attribute.id);
+        inheritedAttributes.set(attribute.id, {
+          id: attribute.id,
+          label: attribute.label,
+          parentId: part.id,
+          parentLabel: part.label,
+        });
       }
     }
     if ([...predecessorLabels.values()].some((count) => count !== 1)) {
@@ -1849,6 +1873,89 @@ export class ModelWriteArchitectureRunExecutor {
       fail(
         "Verification failed: a proposal PartUsage occurrence is absent from live architecture.",
       );
+    }
+
+    // AttributeUsage is part of the attested architecture graph too. Preserve
+    // every inherited provider identity exactly, and permit only one fresh
+    // attribute for each reviewed proposal name/owner pair not already inherited.
+    const attributeKey = (parent: string, label: string) => `${parent}\u0000${label}`;
+    const inheritedAttributeKeys = new Set(
+      [...inheritedAttributes.values()].map((attribute) =>
+        attributeKey(attribute.parentLabel, attribute.label)
+      ),
+    );
+    const expectedNewAttributes = new Map<string, number>();
+    for (const attribute of proposal.attributes ?? []) {
+      const key = attributeKey(attribute.parentName, attribute.name);
+      if (!inheritedAttributeKeys.has(key)) {
+        increment(expectedNewAttributes, key);
+      }
+    }
+
+    const actualAttributeIds = new Set<string>();
+    const observedNewAttributes = new Map<string, number>();
+    for (const part of verified.partDefs) {
+      for (const attribute of part.attributes ?? []) {
+        const attributeId = attribute.id;
+        if (typeof attributeId !== "string" || attributeId.length === 0) {
+          fail(
+            "Verification failed: live architecture has an invalid or repeated AttributeUsage identity.",
+          );
+        }
+        const exactAttributeId = attributeId as string;
+        if (
+          !isAttributeUsageKind(attribute.kind ?? "") ||
+          actualSemanticIds.has(exactAttributeId) ||
+          actualAttributeIds.has(exactAttributeId)
+        ) {
+          fail(
+            "Verification failed: live architecture has an invalid or repeated AttributeUsage identity.",
+          );
+        }
+        actualAttributeIds.add(exactAttributeId);
+        actualSemanticIds.add(exactAttributeId);
+        const inherited = inheritedAttributes.get(exactAttributeId);
+        if (inherited !== undefined) {
+          if (
+            inherited.label !== attribute.label ||
+            inherited.parentId !== part.id ||
+            inherited.parentLabel !== part.label
+          ) {
+            fail(
+              "Verification failed: an attested predecessor AttributeUsage was replaced or moved.",
+            );
+          }
+          continue;
+        }
+        const key = attributeKey(part.label, attribute.label);
+        if (inheritedAttributeKeys.has(key)) {
+          fail(
+            "Verification failed: an attested predecessor AttributeUsage was replaced or moved.",
+          );
+        }
+        const expected = expectedNewAttributes.get(key) ?? 0;
+        if (expected <= 0) {
+          fail(
+            "Verification failed: live architecture contains an unreviewed AttributeUsage outside the attested predecessor plus proposal graph.",
+          );
+        }
+        observedNewAttributes.set(key, (observedNewAttributes.get(key) ?? 0) + 1);
+      }
+    }
+
+    for (const inherited of inheritedAttributes.values()) {
+      if (!actualAttributeIds.has(inherited.id)) {
+        fail(
+          "Verification failed: an attested predecessor AttributeUsage was replaced or removed.",
+        );
+      }
+    }
+    for (const [key, expected] of expectedNewAttributes) {
+      if (observedNewAttributes.get(key) !== expected) {
+        fail(
+          "Verification failed: a proposal AttributeUsage is absent from live architecture.",
+        );
+      }
     }
   }
 
@@ -2298,6 +2405,11 @@ export class ModelWriteArchitectureRunExecutor {
           targetId: usage.targetId,
           targetKind: usage.targetKind,
           targetLabel: usage.targetLabel,
+        })),
+        attributes: (part.attributes ?? []).map((attribute) => ({
+          id: attribute.id,
+          kind: attribute.kind,
+          label: attribute.label,
         })),
       })),
     };
@@ -2826,6 +2938,11 @@ function verifyAllComponentsPresent(
 function isPartUsageKind(kind: string): boolean {
   return kind === "PartUsage" || kind === "sysml::PartUsage" ||
     kind.endsWith("entity=PartUsage");
+}
+
+function isAttributeUsageKind(kind: string): boolean {
+  return kind === "AttributeUsage" || kind === "sysml::AttributeUsage" ||
+    kind.endsWith("entity=AttributeUsage");
 }
 
 // ── Private: thread extension builder ────────────────────────────────────────

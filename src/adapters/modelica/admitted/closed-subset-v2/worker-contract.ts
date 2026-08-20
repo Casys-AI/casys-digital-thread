@@ -1,4 +1,4 @@
-/** Code-owned guest/runtime contract for admitted LinearThermalRamp-form source. */
+/** Code-owned guest/runtime contract for admitted Modelica closed-subset v2. */
 
 export const MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT = Object.freeze({
   executable: "/usr/local/bin/deno",
@@ -7,11 +7,11 @@ export const MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT = Object.freeze({
     "--cached-only",
     "--no-config",
     "--no-prompt",
-    "--allow-read=/input,/out,/work",
+    "--allow-read=/input,/out,/work,/opt/casys/src",
     "--allow-write=/out,/work",
     "--allow-run=omc,perl",
     "--allow-env=HOME,LANG,LC_ALL,OPENMODELICALIBRARY,PATH,TMPDIR",
-    "/opt/casys/profiles/modelica-closed-subset-v1/run.ts",
+    "/opt/casys/src/adapters/modelica/admitted/closed-subset-v2/run.ts",
     "/input/source.mo",
     "/out",
     "/work",

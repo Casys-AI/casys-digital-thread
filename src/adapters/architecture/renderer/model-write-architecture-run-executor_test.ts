@@ -111,6 +111,16 @@ const DRONE_ENRICHMENT_PARAMS = [
   { key: "component.motor.parent", label: "Motor parent", value: "DroneSystem" },
 ];
 
+const DRONE_ATTRIBUTE_PARAMS = [
+  ...DRONE_PROPOSAL_PARAMS,
+  { key: "attribute.thickness.name", label: "Thickness", value: "thickness" },
+  {
+    key: "attribute.thickness.parent",
+    label: "Thickness parent",
+    value: "DroneSystem",
+  },
+];
+
 const SCOPED_HOMONYM_PROPOSAL_PARAMS = [
   { key: "architecture.package", label: "Package name", value: "DroneV4" },
   { key: "system.name", label: "System name", value: "DroneSystem" },
@@ -599,6 +609,101 @@ class EnrichmentArchSyson implements McpToolClient {
       });
     }
     return Promise.reject(new Error(`Unexpected tool: ${call.name}`));
+  }
+}
+
+class AttributeInitialArchSyson extends InitialArchSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (
+      call.name === "syson_element_children" &&
+      call.arguments?.element_id === "sys-def-001"
+    ) {
+      this.calls.push(structuredClone(call));
+      return Promise.resolve({
+        text: "system-features-with-attribute",
+        structuredContent: {
+          parentId: "sys-def-001",
+          children: [{
+            id: "wing-usage-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+            label: "wing",
+          }, {
+            id: "attribute-thickness-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+            label: "thickness",
+          }],
+          count: 2,
+        },
+      });
+    }
+    return super.callTool(call);
+  }
+}
+
+class ForeignAttributeInitialArchSyson extends InitialArchSyson {
+  override callTool(call: McpToolCall): Promise<McpToolResult> {
+    if (
+      call.name === "syson_element_children" &&
+      call.arguments?.element_id === "sys-def-001"
+    ) {
+      this.calls.push(structuredClone(call));
+      return Promise.resolve({
+        text: "system-features-with-foreign-attribute",
+        structuredContent: {
+          parentId: "sys-def-001",
+          children: [{
+            id: "wing-usage-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=PartUsage",
+            label: "wing",
+          }, {
+            id: "attribute-foreign-001",
+            kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+            label: "foreignFlag",
+          }],
+          count: 2,
+        },
+      });
+    }
+    return super.callTool(call);
+  }
+}
+
+class LostInheritedAttributeEnrichmentSyson extends EnrichmentArchSyson {
+  #systemReads = 0;
+
+  constructor(private readonly mode: "removed" | "replaced") {
+    super();
+  }
+
+  override async callTool(call: McpToolCall): Promise<McpToolResult> {
+    const result = await super.callTool(call);
+    if (
+      call.name !== "syson_element_children" ||
+      call.arguments?.element_id !== "sys-def-001"
+    ) return result;
+    this.#systemReads++;
+    const content = result.structuredContent as {
+      parentId: string;
+      children: Record<string, unknown>[];
+    };
+    const attributes = this.#systemReads === 1
+      ? [{
+        id: "attribute-thickness-001",
+        kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+        label: "thickness",
+      }]
+      : this.mode === "replaced"
+      ? [{
+        id: "attribute-thickness-replacement",
+        kind: "siriusComponents://semantic?domain=sysml&entity=AttributeUsage",
+        label: "thickness",
+      }]
+      : [];
+    const children = [...content.children, ...attributes];
+    return {
+      ...result,
+      structuredContent: { ...content, children, count: children.length },
+    };
   }
 }
 
@@ -1494,6 +1599,63 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "model.write-architecture quarantines an unreviewed AttributeUsage after the initial ACK",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-foreign-attribute-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, {
+            syson: new ForeignAttributeInitialArchSyson(),
+            directory,
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "unreviewed AttributeUsage",
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        true,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture quarantines when a reviewed AttributeUsage is absent after the initial ACK",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-missing-attribute-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(
+        directory,
+        DRONE_ATTRIBUTE_PARAMS,
+      );
+      await assertRejects(
+        () =>
+          makeExecutor(fixture, { syson: new InitialArchSyson(), directory }).execute(
+            AGENT,
+            executionCommand(fixture),
+          ),
+        EngineeringProjectCommandError,
+        "proposal AttributeUsage is absent",
+      );
+      assertEquals(
+        await fixture.archAttempts.isQuarantined(PROJECT_ID, fixture.queued.runId),
+        true,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
 // ── Validated acknowledgement boundary ──────────────────────────────────────
 
 Deno.test(
@@ -1765,10 +1927,13 @@ Deno.test(
 
     const directory = await Deno.makeTempDir({ prefix: "casys-arch-replay-seal-" });
     try {
-      const fixture = await queuedArchitectureFixture(directory);
+      const fixture = await queuedArchitectureFixture(
+        directory,
+        DRONE_ATTRIBUTE_PARAMS,
+      );
       const command = executionCommand(fixture);
       const completed = await makeExecutor(fixture, {
-        syson: new InitialArchSyson(),
+        syson: new AttributeInitialArchSyson(),
         directory,
       }).execute(AGENT, command);
       const run = completed.agentRuns.find((candidate) =>
@@ -1819,6 +1984,12 @@ Deno.test(
             label: "ForgedExtra",
             usages: [],
           });
+        },
+      }, {
+        name: "attribute",
+        mutateCapture: (capture) => {
+          delete (capture.partDefinitions as Array<Record<string, unknown>>)[0]
+            ?.attributes;
         },
       }, {
         name: "startedAt",
@@ -2338,6 +2509,50 @@ Deno.test(
       assertEquals(failedRun?.evidenceRefs, []);
     } finally {
       await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture quarantines a removed or replaced inherited AttributeUsage",
+  async () => {
+    for (const mode of ["removed", "replaced"] as const) {
+      const directory = await Deno.makeTempDir({
+        prefix: `casys-arch-${mode}-attribute-`,
+      });
+      try {
+        const fixture = await queuedArchitectureFixture(
+          directory,
+          DRONE_ATTRIBUTE_PARAMS,
+        );
+        const initial = await makeExecutor(fixture, {
+          syson: new AttributeInitialArchSyson(),
+          directory,
+        }).execute(AGENT, executionCommand(fixture));
+        const queued = await queueArchitectureEnrichment(fixture, initial);
+        await assertRejects(
+          () =>
+            makeExecutor(fixture, {
+              syson: new LostInheritedAttributeEnrichmentSyson(mode),
+              directory,
+            }).execute(AGENT, {
+              commandId: `agent-${mode}-inherited-attribute`,
+              projectId: PROJECT_ID,
+              expectedRevision: queued.revision,
+              issuedAt: "2026-08-08T12:20:00.000Z",
+              runId: queued.runId,
+            }),
+          EngineeringProjectCommandError,
+          "predecessor AttributeUsage was replaced",
+        );
+        assertEquals(
+          await fixture.archAttempts.isQuarantined(PROJECT_ID, queued.runId),
+          true,
+          `${mode}: acknowledged enrichment must be quarantined`,
+        );
+      } finally {
+        await Deno.remove(directory, { recursive: true });
+      }
     }
   },
 );

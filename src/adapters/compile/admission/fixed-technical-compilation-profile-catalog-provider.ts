@@ -22,7 +22,7 @@ import {
 
 /**
  * Registrations correspond to real parser-backed closed subsets: the
- * build123d geometry subset and the Modelica LinearThermalRamp kit form.
+ * build123d geometry subset and the executable Modelica closed subset v2.
  * CalculiX remains absent until an independently qualified frontend exists;
  * requesting it therefore fails closed.
  */
@@ -43,7 +43,7 @@ export const INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG:
       requiredBindingSymbolKinds: ["artifact", "parameter"],
     }, {
       id: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
-      version: "1.0.0",
+      version: "2.0.0",
       target: "modelica-source-qualification",
       sourceRole: "modelica-model",
       language: "modelica",

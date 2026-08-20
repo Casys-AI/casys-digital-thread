@@ -4,10 +4,8 @@
  * WHY A FICTITIOUS PROJECT — the executor is generic; "fea-seal-test" proves
  * that no product-specific project.id hardcoding leaks into the path.
  *
- * WHY STUB readTextFile — the catalog path
- * "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json" does not
- * need to exist on disk; tests supply an in-memory stub so the suite can run on any
- * checkout without a pre-existing file.
+ * WHY STUB CATALOG — tests supply an in-memory manifest reader so the suite
+ * exercises the same identifier-only boundary as production.
  *
  * WHY STUB CAPTURE STORES for geometry/requirements/seed — the seal executor only
  * reads from these stores (never writes). Using read-only stubs with controlled
@@ -139,6 +137,7 @@ Deno.test(
       seedCaptures: {} as never,
       canonicalAssetReader: {} as never,
       lease: {} as never,
+      catalog: {} as never,
     });
     await assertRejects(
       () =>
@@ -217,6 +216,7 @@ Deno.test(
       seedCaptures: {} as never,
       canonicalAssetReader: {} as never,
       lease: {} as never,
+      catalog: {} as never,
     });
     await assertRejects(
       () =>
@@ -270,7 +270,6 @@ Deno.test(
         reqArtifact,
       });
 
-      let sourceReads = 0;
       const executor = new VerifySealProofCaseRunExecutor({
         projects: fixture.projects,
         commands: fixture.commands,
@@ -284,9 +283,9 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: () => {
-          sourceReads += 1;
-          return Promise.reject(new Error("retired proof case must not be read"));
+        catalog: {
+          list: () => Promise.resolve([]),
+          read: () => Promise.resolve(undefined),
         },
       });
 
@@ -302,7 +301,6 @@ Deno.test(
         EngineeringProjectCommandError,
         "server-side catalog",
       );
-      assertEquals(sourceReads, 0, "A retired proof case must not reach its source.");
     } finally {
       await Deno.remove(directory, { recursive: true });
     }
@@ -356,7 +354,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: makeReadStub(realCase),
+        catalog: makeCatalogStub(realCase),
       });
 
       await assertRejects(
@@ -424,7 +422,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: makeReadStub(mismatched),
+        catalog: makeCatalogStub(mismatched),
       });
 
       await assertRejects(
@@ -521,7 +519,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: makeReadStub(testCase),
+        catalog: makeCatalogStub(testCase),
       });
 
       await assertRejects(
@@ -623,7 +621,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: makeReadStub(testCase),
+        catalog: makeCatalogStub(testCase),
       });
 
       await assertRejects(
@@ -954,7 +952,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: makeReadStub(proofCase),
+        catalog: makeCatalogStub(proofCase),
       });
 
       const completed = await executor.execute(AGENT, {
@@ -1259,7 +1257,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: makeReadStub(proofCase),
+        catalog: makeCatalogStub(proofCase),
       });
 
       const completed = await executor.execute(AGENT, {
@@ -1426,7 +1424,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        readTextFile: makeReadStub(proofCase),
+        catalog: makeCatalogStub(proofCase),
       });
       const completed = await executor.execute(AGENT, {
         commandId: "agent-seal-with-sensitivity-catalog",
@@ -1657,7 +1655,7 @@ async function sensitivityOptInHarness(
     seedCaptures: makeSeedCaptureStub() as never,
     canonicalAssetReader: makeCanonicalAssetReader() as never,
     lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-    readTextFile: makeReadStub(proofCase),
+    catalog: makeCatalogStub(proofCase),
   });
   return {
     executor,
@@ -2392,7 +2390,7 @@ function makeCanonicalAssetReader(): { read: () => Promise<Uint8Array> } {
  * Build a valid MechanicalProofCase for PROJECT_ID / SUBJECT_ID.
  *
  * The proof case uses "desk-lamp-dl04-arm-cantilever" as its id
- * so it resolves in FEA_PROOF_CASE_SOURCES; tests that want an unknown id pass
+ * so it resolves through the catalog reader; tests that want an unknown id pass
  * one explicitly.
  *
  * `basisSnapshotId` and `basisRevision` set the baseThreadSnapshot for MRTR
@@ -2509,13 +2507,21 @@ function makeTestCase(
 }
 
 /**
- * Build a readTextFile stub that returns the deterministicJson of the given case.
- * This simulates the server-side catalog file lookup without requiring a real file.
+ * Build an identifier-only catalog stub with deterministic case bytes.
  */
-function makeReadStub(
+function makeCatalogStub(
   proofCase: ReturnType<typeof validateMechanicalProofCase>,
-): (path: string) => Promise<string> {
-  return (_path: string) => Promise.resolve(deterministicJson(proofCase));
+): {
+  readonly list: () => Promise<readonly { readonly caseId: string }[]>;
+  readonly read: (caseId: string) => Promise<string | undefined>;
+} {
+  return {
+    list: () => Promise.resolve([{ caseId: proofCase.id }]),
+    read: (caseId) =>
+      Promise.resolve(
+        caseId === proofCase.id ? deterministicJson(proofCase) : undefined,
+      ),
+  };
 }
 
 // ---------------------------------------------------------------------------

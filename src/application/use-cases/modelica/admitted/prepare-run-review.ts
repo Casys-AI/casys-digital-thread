@@ -351,7 +351,9 @@ async function reopenReadyModelicaCompilation(
     admission.sources.length !== 1 ||
     admission.compilationProfileRequests.length !== 1
   ) {
-    throw new TypeError("V1 requires one projection, source, and profile request.");
+    throw new TypeError(
+      "The admitted Modelica profile requires one projection, source, and profile request.",
+    );
   }
   const projection = document.projections[0]!;
   if (
@@ -455,7 +457,7 @@ async function validateExecutionProfile(
     executionProfile.version !== MODELICA_ADMITTED_EXECUTION_PROFILE.version
   ) {
     throw new TypeError(
-      "The execution profile is not registered for admitted Modelica V1.",
+      "The execution profile is not registered for admitted Modelica v2.",
     );
   }
   literalValue(
@@ -507,7 +509,7 @@ async function validateExecutionProfile(
     )
   ) {
     throw new TypeError(
-      "The admitted Modelica V1 output manifest must be evidence plus result.",
+      "The admitted Modelica v2 output manifest must be evidence plus result.",
     );
   }
   const outputValidatorRecord = exactRecord(

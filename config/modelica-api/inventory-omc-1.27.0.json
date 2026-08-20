@@ -2,7 +2,7 @@
   "schemaVersion": "modelica-language-inventory/1.0",
   "authority": "documentary-ground-truth",
   "consumedByCompiler": false,
-  "note": "No analyzer imports this file. The shipped frontend is modelica-closed-subset-v1 (LinearThermalRamp). Coverage percents below are annotations, not generated tables.",
+  "note": "No analyzer imports this file. The product frontend is the generic modelica-closed-subset-v2; the qualified LinearThermalRamp kit V1 is separate image smoke. Coverage percents below are annotations, not generated tables.",
   "compiler": {
     "name": "OpenModelica",
     "version": "1.27.0",
@@ -31,7 +31,7 @@
       "ObsoleteModelica4"
     ]
   },
-  "extractedFrom": "casys/modelica-microsandbox-worker:gate (local image sha256:6b870c3f676cc6811a1872b65b6ef22e30efadec169e07cf65f4a231075cb2e1); 4 docker run --rm probes: omc --version; getAvailableLibraries + loadModel(Modelica) + getVersion(Modelica) + getClassNames(Modelica, recursive=false); getClassNames on each Modelica L1 class; getVersion + getClassNames L1 on the seven companion libraries. getInstalledLibraries and getAvailableLanguageStandards are absent (OpenModelica scripting package is not on MODELICAPATH). Grammar forms enumerated from MLS 3.6 Appendix A.2 and sections 4.6, 8.3, 11.2. Coverage annotated from src/domain/modelica/source/parse.ts (LinearThermalRamp closed subset).",
+  "extractedFrom": "casys/modelica-microsandbox-worker:gate (local image sha256:6b870c3f676cc6811a1872b65b6ef22e30efadec169e07cf65f4a231075cb2e1); 4 docker run --rm probes: omc --version; getAvailableLibraries + loadModel(Modelica) + getVersion(Modelica) + getClassNames(Modelica, recursive=false); getClassNames on each Modelica L1 class; getVersion + getClassNames L1 on the seven companion libraries. getInstalledLibraries and getAvailableLanguageStandards are absent (OpenModelica scripting package is not on MODELICAPATH). Grammar forms enumerated from MLS 3.6 Appendix A.2 and sections 4.6, 8.3, 11.2. Coverage annotated from src/domain/modelica/source/parse.ts (generic modelica-closed-subset-v2); the LinearThermalRamp qualified kit V1 is separate image smoke.",
   "grammarForms": [
     {
       "id": "stored-definition-within",
@@ -57,7 +57,7 @@
       "sourceOfTruth": "specification",
       "covered": true,
       "coverageKind": "qualified",
-      "note": "LinearThermalRamp root specialized class."
+      "note": "Generic v2 root model form; the qualified LinearThermalRamp kit V1 is separate."
     },
     {
       "id": "record",
@@ -299,7 +299,7 @@
       "sourceOfTruth": "specification",
       "covered": true,
       "coverageKind": "qualified",
-      "note": "Optional STRING after the model name; LinearThermalRamp carries one."
+      "note": "Optional STRING after the model name; generic v2 permits it."
     },
     {
       "id": "annotation-clause",
@@ -2817,10 +2817,10 @@
     "mslPackages": 286
   },
   "coverage": {
-    "frontend": "modelica-closed-subset-v1",
-    "analyzer": "modelica-qualified-mo-subset@1.0.0",
+    "frontend": "modelica-closed-subset-v2",
+    "analyzer": "modelica-qualified-mo-subset@2.0.0",
     "source": "src/domain/modelica/source/parse.ts",
-    "kit": "linear-thermal-ramp-v1@0.1.0",
+    "kit": "qualified-kit-v1:linear-thermal-ramp-v1@0.1.0",
     "kitForms": [
       {
         "id": "model",
@@ -2855,6 +2855,6 @@
     "mslPackagesQualified": 0,
     "mslPackagesTotal": 286,
     "mslPercent": 0.0,
-    "note": "LinearThermalRamp is a standalone model of built-in Real; it imports or extends no MSL class. The parser also accepts algebraic IDENT = expr and a narrow arithmetic factor grammar; those are recorded as partial slices of simple-equation, not additional qualified forms."
+    "note": "The product frontend is the generic v2 bounded subset: scalar Real parameters and outputs, closed equations, and an exact experiment annotation, with no MSL imports or extensions. The separate qualified-kit V1 LinearThermalRamp remains an image smoke. The listed inventory percentages are unchanged documentary coverage figures."
   }
 }

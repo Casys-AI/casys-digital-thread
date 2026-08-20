@@ -26,6 +26,7 @@ import {
   AnalyzeSealSensitivityStudyRunExecutor,
   SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX,
 } from "./analyze-seal-sensitivity-study-run-executor.ts";
+import { FileCataloguedSensitivityStudyCaseReader } from "./file-catalogued-sensitivity-study-case-reader.ts";
 
 const AT = SIGNED_OFFER_AT;
 const PROJECT_ID = SIGNED_OFFER_PROJECT_ID;
@@ -37,16 +38,7 @@ const APPROVAL_ID = "approval.sensitivity-seal";
 const COMMAND_ID = "command.sensitivity-seal";
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 const HUMAN = { kind: "human" as const, actorId: "human:test" };
-const REAL_CATALOG = {
-  async read(path: string): Promise<string | undefined> {
-    try {
-      return await Deno.readTextFile(path);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return undefined;
-      throw error;
-    }
-  },
-};
+const REAL_CATALOG = new FileCataloguedSensitivityStudyCaseReader();
 
 Deno.test(
   "analyze.seal-sensitivity-study@1 seals the unique signed catalog offer",
@@ -92,6 +84,7 @@ Deno.test(
       admissions: {} as never,
       captures: {} as never,
       lease: {} as never,
+      catalog: {} as never,
     });
     await assertRejects(
       () =>
@@ -115,7 +108,7 @@ Deno.test(
     await assertRejects(
       () => fixture.executor.execute(AGENT, fixture.command),
       EngineeringProjectCommandError,
-      "not in the server-side catalog",
+      "not in the server-owned catalog manifest",
     );
     assertEquals(fixture.project.agentRuns[0]?.status, "queued");
   },
@@ -465,6 +458,7 @@ async function createOfferFixture(
       admissions,
       captures: captures as never,
       lease: { withLease: (_projectId, _scope, operation) => operation() },
+      catalog: REAL_CATALOG,
       ...(options.omitReaders ? {} : {
         catalogOffers: live.catalogOffers,
         proofCaptures: live.proofCaptures,

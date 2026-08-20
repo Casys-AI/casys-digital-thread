@@ -33,7 +33,7 @@ export const SIMULATE_RUN_ADMITTED_MODELICA_OPERATION = Object.freeze(
 );
 
 export const MODELICA_ADMITTED_RUN_ADMISSION_SCHEMA =
-  "modelica-admitted-run-admission/1.0" as const;
+  "modelica-admitted-run-admission/2.0" as const;
 export const MODELICA_ADMITTED_COMPILATION_SCHEMA =
   "technical-compilation/1.0" as const;
 export const MODELICA_ADMITTED_COMPILED_ADMISSION_SCHEMA =
@@ -41,20 +41,20 @@ export const MODELICA_ADMITTED_COMPILED_ADMISSION_SCHEMA =
 
 export const MODELICA_ADMITTED_EXECUTION_PROFILE = Object.freeze(
   {
-    id: "modelica-closed-subset-v1",
-    version: "1.0.0",
+    id: "modelica-closed-subset-v2",
+    version: "2.0.0",
   } as const,
 );
 
 export const MODELICA_ADMITTED_COMPILATION_PROFILE_ID =
-  "modelica-closed-subset-v1" as const;
+  "modelica-closed-subset-v2" as const;
 
 export const MODELICA_ADMITTED_EVIDENCE_OUTPUT = Object.freeze(
   {
     role: "evidence",
     basename: "evidence.json",
     mediaType: "application/json",
-    format: "modelica-isolated-evidence-v1",
+    format: "modelica-isolated-evidence-v2",
   } as const,
 );
 
@@ -71,6 +71,11 @@ export const MODELICA_ADMITTED_OUTPUT_MANIFEST = Object.freeze([
   MODELICA_ADMITTED_EVIDENCE_OUTPUT,
   MODELICA_ADMITTED_RESULT_OUTPUT,
 ]);
+
+export const MODELICA_ADMITTED_OUTPUT_VALIDATOR = Object.freeze({
+  id: "modelica-closed-subset-v2-result-normalizer",
+  version: "2.0.0",
+});
 
 export interface ModelicaAdmittedOutputValidatorRef {
   readonly id: string;

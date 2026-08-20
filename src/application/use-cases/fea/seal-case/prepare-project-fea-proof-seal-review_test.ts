@@ -30,9 +30,18 @@ const LINKED_SOURCE_TEXT =
   "from build123d import Box\narm_thickness = 10\nresult = Box(220, 20, arm_thickness)\n";
 const PHOTO_SOURCE_TEXT = "from build123d import Box\nresult = Box(20, 10, 5)\n";
 const CATALOG_READER = {
-  async read(path: string): Promise<string | undefined> {
+  async list(): Promise<readonly { readonly caseId: string }[]> {
+    return (await catalogEntries()).map(({ id }) => ({ caseId: id }));
+  },
+  async read(caseId: string): Promise<string | undefined> {
     try {
-      const parsed = JSON.parse(await Deno.readTextFile(path)) as {
+      const entry = (await catalogEntries()).find((item) => item.id === caseId);
+      if (!entry) return undefined;
+      const parsed = JSON.parse(
+        await Deno.readTextFile(
+          `config/mechanical-proof-cases/${entry.file}`,
+        ),
+      ) as {
         expectedCadArtifact: { sha256: string; bytes: number };
       };
       parsed.expectedCadArtifact.sha256 = STEP_DIGEST;
@@ -44,6 +53,15 @@ const CATALOG_READER = {
     }
   },
 };
+
+async function catalogEntries(): Promise<
+  readonly { readonly id: string; readonly file: string }[]
+> {
+  const manifest = JSON.parse(
+    await Deno.readTextFile("config/mechanical-proof-cases/catalog.json"),
+  ) as { cases: readonly { readonly id: string; readonly file: string }[] };
+  return manifest.cases;
+}
 const LINKED_CATALOG_READER = catalogReaderForSource(LINKED_SOURCE_TEXT);
 const PHOTO_CATALOG_READER = catalogReaderForSource(PHOTO_SOURCE_TEXT);
 const ADMITTED_GEOMETRY = {
@@ -67,8 +85,9 @@ const ADMITTED_STEP = {
 
 function catalogReaderForSource(sourceText: string) {
   return {
-    async read(path: string): Promise<string | undefined> {
-      const raw = await CATALOG_READER.read(path);
+    list: () => CATALOG_READER.list(),
+    async read(caseId: string): Promise<string | undefined> {
+      const raw = await CATALOG_READER.read(caseId);
       if (raw === undefined) return undefined;
       const parsed = JSON.parse(raw) as {
         cadSource: {
@@ -114,6 +133,7 @@ Deno.test("fea proof-case seal review refuses an unknown catalog id without open
   const review = new PrepareProjectFeaProofSealReview({
     snapshots: new MemorySnapshots(basisSnapshot()),
     catalogReader: {
+      list: () => Promise.resolve([]),
       read: () => {
         reads += 1;
         return Promise.resolve("{}");
@@ -318,14 +338,15 @@ Deno.test("fea proof-case seal review auto-select ignores a broken sibling catal
     const review = new PrepareProjectFeaProofSealReview({
       snapshots: new MemorySnapshots(snapshot),
       catalogReader: {
-        read(path: string): Promise<string | undefined> {
-          if (!path.endsWith("desk-lamp-dl06-arm-cantilever.json")) {
+        list: () => CATALOG_READER.list(),
+        read(caseId: string): Promise<string | undefined> {
+          if (caseId !== "desk-lamp-dl06-arm-cantilever") {
             if (sibling === "throw") {
               throw new Error("sibling catalog source is unreadable");
             }
             return Promise.resolve(sibling);
           }
-          return CATALOG_READER.read(path);
+          return CATALOG_READER.read(caseId);
         },
       },
       requirementsReviewer: REQUIREMENTS_REVIEWER,
@@ -583,7 +604,10 @@ Deno.test("fea proof-case seal review distinguishes unavailable and corrupt cata
   ) {
     const review = new PrepareProjectFeaProofSealReview({
       snapshots: new MemorySnapshots(basisSnapshot()),
-      catalogReader: { read: () => Promise.resolve(text) },
+      catalogReader: {
+        list: () => Promise.resolve([{ caseId: "desk-lamp-dl06-arm-cantilever" }]),
+        read: () => Promise.resolve(text),
+      },
       requirementsReviewer: REQUIREMENTS_REVIEWER,
       geometryCaptures: ADMITTED_GEOMETRY,
       stepAssets: ADMITTED_STEP,

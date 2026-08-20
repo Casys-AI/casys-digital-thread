@@ -26,10 +26,10 @@ import {
 import {
   MODELICA_ADMITTED_EXECUTION_PROFILE,
   MODELICA_ADMITTED_OUTPUT_MANIFEST,
+  MODELICA_ADMITTED_OUTPUT_VALIDATOR,
 } from "../../../domain/modelica/admitted/run-proposal.ts";
 import {
   createMicrosandboxRuntimeAttestation,
-  MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   MICROSANDBOX_LOCAL_RUNTIME_REF,
   type MicrosandboxLocalRuntimeIdentity,
   pinnedOciImageReference,
@@ -56,10 +56,8 @@ import {
 import { QUALIFIED_MODELICA_MAX_SOURCE_BYTES } from "../source/source-analysis-composition.ts";
 import { INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG } from "../../compile/admission/fixed-technical-compilation-profile-catalog-provider.ts";
 
-export const MODELICA_ADMITTED_OUTPUT_VALIDATOR_REF = Object.freeze({
-  id: "modelica-closed-subset-result-normalizer",
-  version: "1.0.0",
-});
+export const MODELICA_ADMITTED_OUTPUT_VALIDATOR_REF =
+  MODELICA_ADMITTED_OUTPUT_VALIDATOR;
 
 export const MICROSANDBOX_ADMITTED_MODELICA_OUTPUT_MANIFEST =
   validateIsolatedCodeOutputManifest([...MODELICA_ADMITTED_OUTPUT_MANIFEST]);
@@ -178,7 +176,7 @@ export async function validateAdmittedModelicaExecutionProfile(
     executionProfile.id !== MODELICA_ADMITTED_EXECUTION_PROFILE.id ||
     executionProfile.version !== MODELICA_ADMITTED_EXECUTION_PROFILE.version
   ) {
-    throw new TypeError("The execution profile is not admitted Modelica V1.");
+    throw new TypeError("The execution profile is not admitted Modelica v2.");
   }
   literalValue(
     profile.compilationTarget,

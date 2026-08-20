@@ -25,7 +25,7 @@ export const QUALIFIED_MODELICA_MAX_SOURCE_BYTES = 262_144;
 export const QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE:
   TechnicalSourceAnalysisProfile = validateTechnicalSourceAnalysisProfile({
     id: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
-    version: "1.0.0",
+    version: "2.0.0",
     role: "modelica-model",
     language: "modelica",
     analyzer: {

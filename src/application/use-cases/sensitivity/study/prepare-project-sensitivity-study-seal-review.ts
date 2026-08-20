@@ -19,7 +19,7 @@ import type {
   ProjectSensitivityStudySealReviewResult,
   ProjectSensitivityStudySealReviewUseCase,
 } from "../../../ports/in/sensitivity/study/project-sensitivity-study-seal-review.ts";
-import type { CataloguedMechanicalProofCaseReader } from "../../../ports/out/fea/seal-case/catalogued-mechanical-proof-case-reader.ts";
+import type { CataloguedSensitivityStudyCaseReader } from "../../../ports/out/sensitivity/study/catalogued-sensitivity-study-case-reader.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import { shouldOpenSignedCatalogOffer } from "../../../../domain/sensitivity/study/sensitivity-catalog-offer-join.ts";
 import {
@@ -28,10 +28,7 @@ import {
 } from "./reopen-signed-catalog-offer.ts";
 import { assertSensitivityLiveMethod } from "../../../../domain/sensitivity/study/sensitivity-live-method.ts";
 import {
-  isKnownSensitivityStudyCaseId,
   selectUniqueCataloguedSensitivityCase,
-  SENSITIVITY_STUDY_CASE_SOURCES,
-  sensitivityStudyCaseSourcePath,
   sensitivityStudySealIdentities,
 } from "../../../../domain/sensitivity/study/sensitivity-study-case-catalog.ts";
 import {
@@ -99,7 +96,7 @@ export type { ContentAddressedCaptureReader };
 export interface PrepareProjectSensitivityStudySealReviewDependencies {
   readonly snapshots: FeaReviewSnapshotStore;
   readonly projects?: FeaReviewProjectReader;
-  readonly catalogReader: CataloguedMechanicalProofCaseReader;
+  readonly catalogReader: CataloguedSensitivityStudyCaseReader;
   readonly admissions: TechnicalCompilationAdmissionReader;
   readonly catalogOffers?: ContentAddressedCaptureReader;
   readonly proofCaptures?: ContentAddressedCaptureReader;
@@ -109,7 +106,7 @@ export class PrepareProjectSensitivityStudySealReview
   implements ProjectSensitivityStudySealReviewUseCase {
   readonly #snapshots: FeaReviewSnapshotStore;
   readonly #projects: FeaReviewProjectReader | undefined;
-  readonly #catalogReader: CataloguedMechanicalProofCaseReader;
+  readonly #catalogReader: CataloguedSensitivityStudyCaseReader;
   readonly #admissions: TechnicalCompilationAdmissionReader;
   readonly #catalogOffers: ContentAddressedCaptureReader | undefined;
   readonly #proofCaptures: ContentAddressedCaptureReader | undefined;
@@ -302,7 +299,6 @@ export class PrepareProjectSensitivityStudySealReview
     const catalogued = await this.#openCataloguedCase(projectId, caseId);
     if (
       !shouldOpenSignedCatalogOffer({
-        namedCaseId: caseId,
         catalogStatus: catalogued.status === "ok" ||
             catalogued.status === "catalog_unavailable" ||
             catalogued.status === "catalog_integrity_failed"
@@ -344,24 +340,24 @@ export class PrepareProjectSensitivityStudySealReview
     | { readonly status: "catalog_integrity_failed"; readonly message: string }
   > {
     const selected = caseId
-      ? namedCase(caseId)
+      ? await namedCase(caseId, this.#catalogReader)
       : await uniqueCaseForProject(projectId, this.#catalogReader);
     if (selected.status !== "ok") return selected;
     let raw: string | undefined;
     try {
-      raw = await this.#catalogReader.read(selected.path);
+      raw = await this.#catalogReader.read(selected.caseId);
     } catch {
       return {
         status: "catalog_unavailable",
         message:
-          `Catalog entry "${selected.caseId}" could not be read from its code-owned source.`,
+          `Catalog entry "${selected.caseId}" could not be read from the server-owned manifest.`,
       };
     }
     if (raw === undefined) {
       return {
         status: "catalog_unavailable",
         message:
-          `Catalog entry "${selected.caseId}" is registered, but its code-owned source is unavailable.`,
+          `Catalog entry "${selected.caseId}" is registered, but its manifest file is unavailable.`,
       };
     }
     try {
@@ -604,14 +600,29 @@ function parseCommand(value: unknown): ProjectSensitivityStudySealReviewCommand 
   });
 }
 
-function namedCase(caseId: string):
-  | { readonly status: "ok"; readonly caseId: string; readonly path: string }
+async function namedCase(
+  caseId: string,
+  reader: CataloguedSensitivityStudyCaseReader,
+): Promise<
+  | { readonly status: "ok"; readonly caseId: string }
   | {
     readonly status: "unresolved";
     readonly caseId: string;
     readonly diagnostics: readonly SensitivityStudySealDiagnostic[];
-  } {
-  if (!isKnownSensitivityStudyCaseId(caseId)) {
+  }
+  | { readonly status: "catalog_unavailable"; readonly message: string }
+> {
+  let entries: readonly { readonly caseId: string }[];
+  try {
+    entries = await reader.list();
+  } catch {
+    return {
+      status: "catalog_unavailable",
+      message:
+        `The server-owned sensitivity-study catalog manifest could not be opened for "${caseId}".`,
+    };
+  }
+  if (!entries.some((entry) => entry.caseId === caseId)) {
     return {
       status: "unresolved",
       caseId,
@@ -619,47 +630,43 @@ function namedCase(caseId: string):
         code: "catalog-absent",
         artifactId: null,
         message: `Sensitivity case "${caseId}" is not in the server-owned catalog. ` +
-          "Add an entry to SENSITIVITY_STUDY_CASE_SOURCES and the corresponding JSON template.",
+          "Add a reviewed JSON template to the manifest.",
       }],
     };
   }
-  const path = sensitivityStudyCaseSourcePath(caseId);
-  if (!path) {
-    return {
-      status: "unresolved",
-      caseId,
-      diagnostics: [{
-        code: "catalog-absent",
-        artifactId: null,
-        message: `Sensitivity case "${caseId}" is not in the server-owned catalog.`,
-      }],
-    };
-  }
-  return { status: "ok", caseId, path };
+  return { status: "ok", caseId };
 }
 
 async function uniqueCaseForProject(
   projectId: string,
-  reader: CataloguedMechanicalProofCaseReader,
+  reader: CataloguedSensitivityStudyCaseReader,
 ): Promise<
-  | { readonly status: "ok"; readonly caseId: string; readonly path: string }
+  | { readonly status: "ok"; readonly caseId: string }
   | {
     readonly status: "unresolved";
     readonly caseId: string;
     readonly diagnostics: readonly SensitivityStudySealDiagnostic[];
   }
+  | { readonly status: "catalog_unavailable"; readonly message: string }
 > {
-  const loaded: Array<
-    { readonly caseId: string; readonly path: string; readonly projectId: string }
-  > = [];
-  for (const [caseId, path] of SENSITIVITY_STUDY_CASE_SOURCES) {
-    const candidate = await readCataloguedSensitivityCase(reader, caseId, path);
+  const loaded: Array<{ readonly caseId: string; readonly projectId: string }> = [];
+  let entries: readonly { readonly caseId: string }[];
+  try {
+    entries = await reader.list();
+  } catch {
+    return {
+      status: "catalog_unavailable",
+      message:
+        "The server-owned sensitivity-study catalog manifest could not be opened.",
+    };
+  }
+  for (const { caseId } of entries) {
+    const candidate = await readCataloguedSensitivityCase(reader, caseId);
     if (candidate) loaded.push(candidate);
   }
   const selected = selectUniqueCataloguedSensitivityCase(projectId, loaded);
   if (selected.status === "ok") {
-    const match = loaded.find((item) => item.caseId === selected.caseId);
-    return { status: "ok", caseId: selected.caseId, path: match!.path };
+    return { status: "ok", caseId: selected.caseId };
   }
   return {
     status: "unresolved",
@@ -673,21 +680,17 @@ async function uniqueCaseForProject(
 }
 
 /**
- * Auto-select only considers readable, exact catalog entries. A missing or
+ * Auto-select only considers readable, exact manifest entries. A missing or
  * invalid sibling must not fail another project's unique-case scan; naming
  * that sibling as `caseId` still reports catalog-unavailable / integrity.
  */
 async function readCataloguedSensitivityCase(
-  reader: CataloguedMechanicalProofCaseReader,
+  reader: CataloguedSensitivityStudyCaseReader,
   caseId: string,
-  path: string,
-): Promise<
-  | { readonly caseId: string; readonly path: string; readonly projectId: string }
-  | undefined
-> {
+): Promise<{ readonly caseId: string; readonly projectId: string } | undefined> {
   let raw: string | undefined;
   try {
-    raw = await reader.read(path);
+    raw = await reader.read(caseId);
   } catch {
     return undefined;
   }
@@ -695,7 +698,7 @@ async function readCataloguedSensitivityCase(
   try {
     const template = validateSensitivityStudyCaseTemplate(JSON.parse(raw));
     if (template.id !== caseId) return undefined;
-    return { caseId, path, projectId: template.project.id };
+    return { caseId, projectId: template.project.id };
   } catch {
     return undefined;
   }

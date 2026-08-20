@@ -1,6 +1,9 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { MODELICA_QUALIFIED_MODEL_SOURCE } from "../../../../adapters/modelica/qualified-kit/kit-v1/run.ts";
-import { QualifiedModelicaSourceAnalyzer } from "../../../../adapters/modelica/source/qualified-source-analyzer.ts";
+import {
+  QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
+  QUALIFIED_MODELICA_SOURCE_ANALYZER_VERSION,
+  QualifiedModelicaSourceAnalyzer,
+} from "../../../../adapters/modelica/source/qualified-source-analyzer.ts";
 import type {
   ReopenedTechnicalCompilationAdmission,
   TechnicalCompilationAdmissionReader,
@@ -30,6 +33,23 @@ import {
 } from "./reopen-admitted-compilation-source.ts";
 import { ReopenAdmittedCompilationSourceError } from "../../../ports/in/compile/admission/reopen-admitted-compilation-source.ts";
 
+const MODELICA_CLOSED_SUBSET_V2_SOURCE = `model ReopenedTemperatureTrial
+  parameter Real initialTemperature(unit = "degC") = 20;
+  parameter Real heatingRate(unit = "K/s") = 1;
+  output Real temperatureC(
+    unit = "degC",
+    start = 20,
+    fixed = true);
+equation
+  der(temperatureC) = heatingRate;
+annotation(experiment(
+  StartTime = 0,
+  StopTime = 2,
+  Interval = 0.1,
+  Tolerance = 1e-6));
+end ReopenedTemperatureTrial;
+`;
+
 Deno.test("admitted compilation reopen returns exact Modelica bytes for the microVM request", async () => {
   const fixture = await harness();
   const result = await fixture.service.execute({
@@ -37,18 +57,21 @@ Deno.test("admitted compilation reopen returns exact Modelica bytes for the micr
     expectedTarget: "modelica-source-qualification",
   });
   const sourceSha = (await fingerprintTechnicalSourceText(
-    MODELICA_QUALIFIED_MODEL_SOURCE,
+    MODELICA_CLOSED_SUBSET_V2_SOURCE,
   )).digest;
-  assertEquals(result.sourceText, MODELICA_QUALIFIED_MODEL_SOURCE);
+  assertEquals(result.sourceText, MODELICA_CLOSED_SUBSET_V2_SOURCE);
   assertEquals(result.sourceFingerprint.digest, sourceSha);
   const request = await isolatedRequestFromAdmittedSource({
     runId: "admitted-modelica-test",
     sourceText: result.sourceText,
     sourceSha256: result.sourceFingerprint.digest,
-    profile: { id: "modelica-closed-subset-v1", version: "1.0.0" },
+    profile: {
+      id: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
+      version: QUALIFIED_MODELICA_SOURCE_ANALYZER_VERSION,
+    },
     policy: {
-      id: "isolation.modelica-closed-v1",
-      version: "1.0.0",
+      id: "isolation.modelica-closed-v2",
+      version: "2.0.0",
       fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
     },
     outputs: [{
@@ -67,7 +90,7 @@ Deno.test("admitted compilation reopen returns exact Modelica bytes for the micr
   assertEquals(request.source.sha256, sourceSha);
   assertEquals(
     new TextDecoder().decode(request.source.bytes),
-    MODELICA_QUALIFIED_MODEL_SOURCE,
+    MODELICA_CLOSED_SUBSET_V2_SOURCE,
   );
   assertEquals(fixture.reader.requests, [fixture.command]);
 });
@@ -112,9 +135,9 @@ class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
 }
 
 async function harness() {
-  const sourceText = MODELICA_QUALIFIED_MODEL_SOURCE;
+  const sourceText = MODELICA_CLOSED_SUBSET_V2_SOURCE;
   const analysis = await new QualifiedModelicaSourceAnalyzer().analyze({
-    sourceId: "source.modelica.linear-ramp",
+    sourceId: "source.modelica.reopened-temperature-trial",
     role: "modelica-model",
     language: "modelica",
     sourceText,
@@ -157,13 +180,13 @@ async function harness() {
     sysmlAnchorFingerprint: await fingerprintTechnicalSysmlAnchor(sysmlAnchor),
   };
   const compilationProfile: TechnicalCompilationProfile = {
-    id: "modelica-closed-subset-v1",
-    version: "1.0.0",
+    id: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
+    version: QUALIFIED_MODELICA_SOURCE_ANALYZER_VERSION,
     target: "modelica-source-qualification",
     sourceRole: "modelica-model",
     language: "modelica",
     analyzer: analysis.analyzer,
-    analysisPolicyProfile: "modelica-closed-subset-v1",
+    analysisPolicyProfile: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
     requiredBindingSymbolKinds: ["artifact", "parameter"],
   };
   const artifact = analysis.symbols.find((symbol) => symbol.kind === "artifact")!;

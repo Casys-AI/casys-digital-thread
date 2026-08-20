@@ -1,10 +1,11 @@
 /**
  * Read one server-catalogued mechanical proof declaration.
  *
- * The application may name only a path already selected from the code-owned
- * catalogue. Filesystem access and missing-file semantics stay outside the
- * application layer.
+ * Case identifiers, not filesystem paths, cross the application boundary.
+ * The adapter owns the versioned manifest, root directory, and file integrity
+ * checks.
  */
 export interface CataloguedMechanicalProofCaseReader {
-  read(path: string): Promise<string | undefined>;
+  list(): Promise<readonly { readonly caseId: string }[]>;
+  read(caseId: string): Promise<string | undefined>;
 }

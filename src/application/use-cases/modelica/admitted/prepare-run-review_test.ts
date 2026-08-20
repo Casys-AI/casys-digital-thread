@@ -45,12 +45,23 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
-import { MODELICA_QUALIFIED_MODEL_SOURCE } from "../../../../adapters/modelica/qualified-kit/kit-v1/run.ts";
 import { QualifiedModelicaSourceAnalyzer } from "../../../../adapters/modelica/source/qualified-source-analyzer.ts";
 import {
   PrepareProjectAdmittedModelicaRunReview,
   ProjectAdmittedModelicaRunReviewError,
 } from "./prepare-run-review.ts";
+
+const MODELICA_ADMITTED_GENERIC_SOURCE = `model GenericOscillator
+  parameter Real initialPosition(unit = "m") = 0;
+  parameter Real drive(unit = "m/s2") = 2;
+  output Real position(unit = "m", start = initialPosition, fixed = true);
+  output Real velocity(unit = "m/s", start = 0, fixed = true);
+equation
+  der(position) = velocity;
+  der(velocity) = drive-position;
+annotation(experiment(StartTime = 0, StopTime = 2, Interval = 0.1, Tolerance = 0.000001));
+end GenericOscillator;
+`;
 
 interface Harness {
   readonly service: PrepareProjectAdmittedModelicaRunReview;
@@ -113,7 +124,7 @@ Deno.test("admitted Modelica review reopens sealed source and never returns Mode
   );
   assertEquals(result.admission.execution.outputs, MODELICA_ADMITTED_OUTPUT_MANIFEST);
   assertEquals(
-    deterministicJson(result).includes("der(temperatureC)"),
+    deterministicJson(result).includes("der(position)"),
     false,
   );
   assertEquals(recursiveKeys(result).has("sourceText"), false);
@@ -171,9 +182,9 @@ Deno.test("admitted Modelica review refuses unresolved constructs", async () => 
 });
 
 async function harness(): Promise<Harness> {
-  const sourceText = MODELICA_QUALIFIED_MODEL_SOURCE;
+  const sourceText = MODELICA_ADMITTED_GENERIC_SOURCE;
   const analysis = await new QualifiedModelicaSourceAnalyzer().analyze({
-    sourceId: "source.modelica.linear-ramp",
+    sourceId: "source.modelica.generic-oscillator",
     role: "modelica-model",
     language: "modelica",
     sourceText,
@@ -198,14 +209,14 @@ async function harness(): Promise<Harness> {
     rootElementKind: "Package" as const,
     elements: [
       { id: "sysml.package.main", kind: "Package", provenance },
-      { id: "sysml.part.ramp", kind: "PartUsage", provenance },
+      { id: "sysml.part.oscillator", kind: "PartUsage", provenance },
       {
-        id: "sysml.attribute.heating-rate",
+        id: "sysml.attribute.initial-position",
         kind: "AttributeUsage",
         provenance,
       },
       {
-        id: "sysml.attribute.initial-temperature",
+        id: "sysml.attribute.drive",
         kind: "AttributeUsage",
         provenance,
       },
@@ -226,13 +237,13 @@ async function harness(): Promise<Harness> {
     sysmlAnchorFingerprint: await fingerprintTechnicalSysmlAnchor(sysmlAnchor),
   };
   const compilationProfile: TechnicalCompilationProfile = {
-    id: "modelica-closed-subset-v1",
-    version: "1.0.0",
+    id: "modelica-closed-subset-v2",
+    version: "2.0.0",
     target: "modelica-source-qualification",
     sourceRole: "modelica-model",
     language: "modelica",
     analyzer: analysis.analyzer,
-    analysisPolicyProfile: "modelica-closed-subset-v1",
+    analysisPolicyProfile: "modelica-closed-subset-v2",
     requiredBindingSymbolKinds: ["artifact", "parameter"],
   };
   const artifact = analysis.symbols.find((symbol) => symbol.kind === "artifact")!;
@@ -248,25 +259,25 @@ async function harness(): Promise<Harness> {
         id: "binding.model",
         sourceId: analysis.source.id,
         sourceSymbolId: artifact.id,
-        sysmlElementId: "sysml.part.ramp",
+        sysmlElementId: "sysml.part.oscillator",
         sysmlElementKind: "PartUsage",
         relation: "represents",
       },
       {
-        id: "binding.heating-rate",
+        id: "binding.initial-position",
         sourceId: analysis.source.id,
-        sourceSymbolId: parameters.find((symbol) => symbol.name === "heatingRate")!.id,
-        sysmlElementId: "sysml.attribute.heating-rate",
+        sourceSymbolId: parameters.find((symbol) =>
+          symbol.name === "initialPosition"
+        )!.id,
+        sysmlElementId: "sysml.attribute.initial-position",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",
       },
       {
-        id: "binding.initial-temperature",
+        id: "binding.drive",
         sourceId: analysis.source.id,
-        sourceSymbolId: parameters.find((symbol) =>
-          symbol.name === "initialTemperature"
-        )!.id,
-        sysmlElementId: "sysml.attribute.initial-temperature",
+        sourceSymbolId: parameters.find((symbol) => symbol.name === "drive")!.id,
+        sysmlElementId: "sysml.attribute.drive",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",
       },
@@ -388,11 +399,11 @@ async function harness(): Promise<Harness> {
     compilationProfile: projection.profile,
     compilationProfileFingerprint: projection.profileFingerprint,
     isolationPolicy: {
-      id: "isolation.modelica-closed-v1",
-      version: "1.0.0",
+      id: "isolation.modelica-closed-v2",
+      version: "2.0.0",
       fingerprint: await sha256Fingerprint({
-        id: "isolation.modelica-closed-v1",
-        version: "1.0.0",
+        id: "isolation.modelica-closed-v2",
+        version: "2.0.0",
         network: "deny-all",
       }),
     },
@@ -427,8 +438,8 @@ async function harness(): Promise<Harness> {
     },
     outputManifest: [...MODELICA_ADMITTED_OUTPUT_MANIFEST],
     outputValidator: {
-      id: "modelica-closed-subset-result-normalizer",
-      version: "1.0.0",
+      id: "modelica-closed-subset-v2-result-normalizer",
+      version: "2.0.0",
     },
     maximumSourceBytes: 262_144,
     minimumDestructionAssurance: "acknowledged-unattested",

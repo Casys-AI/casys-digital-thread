@@ -1,5 +1,4 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { MODELICA_QUALIFIED_MODEL_SOURCE } from "../qualified-kit/kit-v1/run.ts";
 import {
   TechnicalSourceAnalysisCaptureError,
 } from "../../compile/captures/technical-source-analysis-capture.ts";
@@ -22,7 +21,63 @@ import {
   QualifiedModelicaSourceAnalyzer,
 } from "./qualified-source-analyzer.ts";
 
-const SOURCE_ID = "source.modelica.linear-ramp";
+const SOURCE_ID = "source.modelica.generic-v2";
+
+const SINGLE_STATE_SOURCE = `model WorkshopTemperatureResponse
+  parameter Real ambientLevel(unit = "degC") = 20;
+  parameter Real ratePerSecond(unit = "K/s") = 1;
+  output Real measuredLevel(
+    unit = "degC",
+    start = 20,
+    fixed = true);
+equation
+  der(measuredLevel) = ratePerSecond;
+annotation(experiment(
+  StartTime = 0,
+  StopTime = 4,
+  Interval = 0.2,
+  Tolerance = 1e-6));
+end WorkshopTemperatureResponse;
+`;
+
+const COUPLED_STATE_SOURCE = `model BenchOscillationTrial
+  parameter Real inertia(unit = "kg") = 2;
+  parameter Real drag(unit = "N.s/m") = 3;
+  parameter Real restoringGain(unit = "N/m") = 100;
+  parameter Real externalLoad(unit = "N") = 10;
+  output Real travel(
+    unit = "m",
+    start = 0,
+    fixed = true);
+  output Real travelRate(
+    unit = "m/s",
+    start = 0,
+    fixed = true);
+equation
+  der(travel) = travelRate;
+  der(travelRate) = externalLoad / inertia - drag / inertia * travelRate - restoringGain / inertia * travel;
+annotation(experiment(
+  StartTime = 0,
+  StopTime = 8,
+  Interval = 0.1,
+  Tolerance = 1e-7));
+end BenchOscillationTrial;
+`;
+
+const UNSUPPORTED_WHEN_SOURCE = `model EventDrivenTrial
+  parameter Real gain(unit = "1/s") = 2;
+  output Real response(unit = "1", start = 0, fixed = true);
+equation
+  when response > 1 then
+    response = 0;
+  end when;
+annotation(experiment(
+  StartTime = 0,
+  StopTime = 2,
+  Interval = 0.1,
+  Tolerance = 1e-6));
+end EventDrivenTrial;
+`;
 
 function analyze(sourceText: string) {
   return new QualifiedModelicaSourceAnalyzer().analyze({
@@ -33,18 +88,8 @@ function analyze(sourceText: string) {
   });
 }
 
-function withModel(body: string): string {
-  return [
-    "model LinearThermalRamp",
-    '  "Minimal balanced solver-conformance model; not a physical thermal oracle."',
-    body,
-    "end LinearThermalRamp;",
-    "",
-  ].join("\n");
-}
-
-Deno.test("Le source LinearThermalRamp est reconnu sans unresolved et émet exactement un artifact, deux paramètres, une variable, une équation de type der", async () => {
-  const bundle = await analyze(MODELICA_QUALIFIED_MODEL_SOURCE);
+Deno.test("closed-subset-v2 accepts a generic single-state model with arbitrary names", async () => {
+  const bundle = await analyze(SINGLE_STATE_SOURCE);
   assertEquals(bundle.policy.status, "passed");
   assertEquals(bundle.policy.findings, []);
   assertEquals(bundle.unresolvedConstructs, []);
@@ -57,227 +102,156 @@ Deno.test("Le source LinearThermalRamp est reconnu sans unresolved et émet exac
     bundle.symbols.filter((symbol) => symbol.kind === "artifact").map((symbol) =>
       symbol.name
     ),
-    ["LinearThermalRamp"],
+    ["WorkshopTemperatureResponse"],
   );
   assertEquals(
     bundle.symbols.filter((symbol) => symbol.kind === "parameter").map((symbol) =>
       symbol.name
     ).sort(),
-    ["heatingRate", "initialTemperature"],
+    ["ambientLevel", "ratePerSecond"],
   );
   assertEquals(
     bundle.symbols.filter((symbol) => symbol.kind === "variable").map((symbol) =>
       symbol.name
-    ),
-    ["temperatureC"],
+    ).sort(),
+    ["measuredLevel"],
   );
   const equations = bundle.symbols.filter((symbol) => symbol.kind === "equation");
   assertEquals(equations.length, 1);
-  assertEquals(equations[0]?.name, "der(temperatureC)");
-});
-
-Deno.test("Un source vide produit status rejected avec un finding severity error de kind modelica-missing-model-block", async () => {
-  const bundle = await analyze("");
-  assertEquals(bundle.policy.status, "rejected");
-  assertEquals(bundle.symbols, []);
-  assertEquals(bundle.unresolvedConstructs, []);
-  assertEquals(bundle.policy.findings.length, 1);
-  assertEquals(bundle.policy.findings[0]?.severity, "error");
-  assertEquals(bundle.policy.findings[0]?.code, "modelica-missing-model-block");
-});
-
-Deno.test("Un token hors-vocabulaire produit status rejected avec un finding code modelica-lexical-error", async () => {
-  const bundle = await analyze("model Foo # not-qualified\nend Foo;\n");
-  assertEquals(bundle.policy.status, "rejected");
-  assertEquals(bundle.unresolvedConstructs, []);
-  assertEquals(bundle.policy.findings[0]?.severity, "error");
-  assertEquals(bundle.policy.findings[0]?.code, "modelica-lexical-error");
-});
-
-Deno.test("Un import produit un unresolved modelica-unsupported-top-level-form et status passed si aucun autre error", async () => {
-  const bundle = await analyze(
-    `import Modelica.SIunits;\n${MODELICA_QUALIFIED_MODEL_SOURCE}`,
-  );
-  assertEquals(bundle.policy.status, "passed");
-  assertEquals(bundle.policy.findings, []);
+  assertEquals(equations[0]?.name, "der(measuredLevel)");
   assertEquals(
-    bundle.unresolvedConstructs.map((item) => item.kind),
-    ["modelica-unsupported-top-level-form"],
+    bundle.symbols.filter((symbol) => symbol.kind !== "artifact").every((symbol) =>
+      symbol.span !== undefined
+    ),
+    true,
   );
   assertEquals(
-    bundle.symbols.some((symbol) => symbol.kind === "artifact"),
+    bundle.dependencies.every((dependency) => dependency.span !== undefined),
     true,
   );
 });
 
-Deno.test("Deux blocs model produisent un unresolved modelica-multiple-model-blocks", async () => {
-  const bundle = await analyze(
-    `${MODELICA_QUALIFIED_MODEL_SOURCE}\nmodel Extra\n  parameter Real x = 1;\nequation\n  der(x) = x;\nend Extra;\n`,
-  );
+Deno.test("closed-subset-v2 accepts a generic coupled-state model without compiler changes", async () => {
+  const bundle = await analyze(COUPLED_STATE_SOURCE);
   assertEquals(bundle.policy.status, "passed");
-  assertEquals(
-    bundle.unresolvedConstructs.map((item) => item.kind),
-    ["modelica-multiple-model-blocks"],
-  );
+  assertEquals(bundle.policy.findings, []);
+  assertEquals(bundle.unresolvedConstructs, []);
   assertEquals(
     bundle.symbols.filter((symbol) => symbol.kind === "artifact").map((symbol) =>
       symbol.name
     ),
-    ["LinearThermalRamp"],
+    ["BenchOscillationTrial"],
+  );
+  assertEquals(
+    bundle.symbols.filter((symbol) => symbol.kind === "parameter").map((symbol) =>
+      symbol.name
+    ).sort(),
+    ["drag", "externalLoad", "inertia", "restoringGain"],
+  );
+  assertEquals(
+    bundle.symbols.filter((symbol) => symbol.kind === "variable").map((symbol) =>
+      symbol.name
+    ).sort(),
+    ["travel", "travelRate"],
+  );
+  assertEquals(
+    bundle.symbols.filter((symbol) => symbol.kind === "equation").map((symbol) =>
+      symbol.name
+    ).sort(),
+    ["der(travel)", "der(travelRate)"],
   );
 });
 
-Deno.test("Une déclaration Integer produit un unresolved modelica-unsupported-variable-type", async () => {
-  const bundle = await analyze(withModel([
-    "  parameter Integer steps = 1;",
-    '  parameter Real heatingRate(unit = "K/s") = 1;',
-    "  output Real temperatureC;",
-    "equation",
-    "  der(temperatureC) = heatingRate;",
-  ].join("\n")));
-  assertEquals(bundle.policy.status, "passed");
-  assertEquals(
-    bundle.unresolvedConstructs.map((item) => item.kind),
-    ["modelica-unsupported-variable-type"],
+Deno.test("generic variable RHS names emit static value flows into both ODEs", async () => {
+  const bundle = await analyze(COUPLED_STATE_SOURCE);
+  const travel = bundle.symbols.find((symbol) =>
+    symbol.kind === "variable" && symbol.name === "travel"
+  )!;
+  const travelRate = bundle.symbols.find((symbol) =>
+    symbol.kind === "variable" && symbol.name === "travelRate"
+  )!;
+  const externalLoad = bundle.symbols.find((symbol) =>
+    symbol.kind === "parameter" && symbol.name === "externalLoad"
+  )!;
+  const travelEquation = bundle.symbols.find((symbol) =>
+    symbol.kind === "equation" && symbol.name === "der(travel)"
+  )!;
+  const travelRateEquation = bundle.symbols.find((symbol) =>
+    symbol.kind === "equation" && symbol.name === "der(travelRate)"
+  )!;
+  const staticFlows = bundle.dependencies.filter((dependency) =>
+    dependency.kind === "static-value-flow"
   );
-});
 
-Deno.test("Une équation when produit un unresolved modelica-unsupported-equation-form", async () => {
-  const bundle = await analyze(withModel([
-    '  parameter Real heatingRate(unit = "K/s") = 1;',
-    "  output Real temperatureC;",
-    "equation",
-    "  when heatingRate > 0 then",
-    "    temperatureC = heatingRate;",
-    "  end when;",
-  ].join("\n")));
-  assertEquals(bundle.policy.status, "passed");
   assertEquals(
-    bundle.unresolvedConstructs.map((item) => item.kind),
-    ["modelica-unsupported-equation-form"],
-  );
-});
-
-Deno.test("Un défaut de paramètre non scalaire reste unresolved passed et ne produit pas modelica-end-mismatch", async () => {
-  const bundle = await analyze(withModel([
-    "  parameter Real x = 1 + 2;",
-    "  output Real y;",
-    "equation",
-    "  der(y) = x;",
-  ].join("\n")));
-  assertEquals(bundle.policy.status, "passed");
-  assertEquals(bundle.policy.findings, []);
-  assertEquals(
-    bundle.unresolvedConstructs.some((item) =>
-      item.kind === "modelica-expression-not-qualified"
+    staticFlows.some((dependency) =>
+      dependency.fromSymbolId === travelRate.id &&
+      dependency.toSymbolId === travelEquation.id
     ),
     true,
   );
   assertEquals(
-    bundle.policy.findings.some((item) => item.code === "modelica-end-mismatch"),
-    false,
-  );
-});
-
-Deno.test("Une annotation après un paramètre reste unresolved passed et ne produit pas modelica-end-mismatch", async () => {
-  const bundle = await analyze(withModel([
-    "  parameter Real x = 1 annotation(Evaluate=true);",
-    "  output Real y;",
-    "equation",
-    "  der(y) = x;",
-  ].join("\n")));
-  assertEquals(bundle.policy.status, "passed");
-  assertEquals(bundle.policy.findings, []);
-  assertEquals(
-    bundle.unresolvedConstructs.some((item) =>
-      item.kind === "modelica-unsupported-section"
+    staticFlows.some((dependency) =>
+      dependency.fromSymbolId === travel.id &&
+      dependency.toSymbolId === travelRateEquation.id
     ),
     true,
   );
   assertEquals(
-    bundle.policy.findings.some((item) => item.code === "modelica-end-mismatch"),
-    false,
-  );
-});
-
-Deno.test("Deux paramètres de même nom produisent un bundle passed avec des ids distincts", async () => {
-  const bundle = await analyze(withModel([
-    "  parameter Real x = 1;",
-    "  parameter Real x = 2;",
-    "  output Real y;",
-    "equation",
-    "  der(y) = x;",
-  ].join("\n")));
-  const parameters = bundle.symbols.filter((symbol) => symbol.kind === "parameter");
-  const firstId = await modelicaAstSymbolId(SOURCE_ID, {
-    kind: "parameter",
-    name: "x",
-  });
-  const secondId = await modelicaAstSymbolId(SOURCE_ID, {
-    kind: "parameter",
-    name: "x",
-    ordinal: 1,
-  });
-  assertEquals(bundle.policy.status, "passed");
-  assertEquals(parameters.length, 2);
-  assertEquals(
-    new Set(parameters.map((symbol) => symbol.id)),
-    new Set([firstId, secondId]),
-  );
-  assertEquals(
-    bundle.unresolvedConstructs.some((item) =>
-      item.kind === "modelica-duplicate-declaration"
+    staticFlows.some((dependency) =>
+      dependency.fromSymbolId === externalLoad.id &&
+      dependency.toSymbolId === travelRateEquation.id
     ),
     true,
   );
 });
 
-Deno.test("Un end mal apparié produit status rejected", async () => {
-  const bundle = await analyze(
-    withModel([
-      '  parameter Real heatingRate(unit = "K/s") = 1;',
-      "  output Real temperatureC;",
-      "equation",
-      "  der(temperatureC) = heatingRate;",
-    ].join("\n")).replace("end LinearThermalRamp;", "end OtherName;"),
-  );
+Deno.test("closed-subset-v2 rejects a construct outside the executable grammar before admission", async () => {
+  const bundle = await analyze(UNSUPPORTED_WHEN_SOURCE);
   assertEquals(bundle.policy.status, "rejected");
-  assertEquals(bundle.policy.findings[0]?.severity, "error");
-  assertEquals(bundle.policy.findings[0]?.code, "modelica-end-mismatch");
+  assertEquals(bundle.symbols, []);
+  assertEquals(bundle.dependencies, []);
+  assertEquals(bundle.unresolvedConstructs, []);
+  assertEquals(bundle.policy.findings, [{
+    id: "finding:modelica-closed-subset-v2-rejected",
+    code: "modelica-closed-subset-v2-rejected",
+    severity: "error",
+    message: "The source is outside the executable Modelica closed-subset-v2 grammar.",
+  }]);
 });
 
-Deno.test("Les mêmes 8 lignes LinearThermalRamp produisent les mêmes ids de symboles avant et après bump de version mineure (garantie bit-identical)", async () => {
-  const first = await analyze(MODELICA_QUALIFIED_MODEL_SOURCE);
-  const second = await analyze(MODELICA_QUALIFIED_MODEL_SOURCE);
+Deno.test("the same authorized v2 source produces deterministic symbol ids", async () => {
+  const first = await analyze(SINGLE_STATE_SOURCE);
+  const second = await analyze(SINGLE_STATE_SOURCE);
   assertEquals(
     first.symbols.map((symbol) => [symbol.kind, symbol.name, symbol.id]),
     second.symbols.map((symbol) => [symbol.kind, symbol.name, symbol.id]),
   );
   const artifact = first.symbols.find((symbol) => symbol.kind === "artifact");
-  const heatingRate = first.symbols.find((symbol) =>
-    symbol.kind === "parameter" && symbol.name === "heatingRate"
+  const ratePerSecond = first.symbols.find((symbol) =>
+    symbol.kind === "parameter" && symbol.name === "ratePerSecond"
   );
-  const temperatureC = first.symbols.find((symbol) => symbol.kind === "variable");
+  const measuredLevel = first.symbols.find((symbol) => symbol.kind === "variable");
   const equation = first.symbols.find((symbol) => symbol.kind === "equation");
   assertEquals(
     artifact?.id,
     await modelicaAstSymbolId(SOURCE_ID, {
       kind: "model",
-      name: "LinearThermalRamp",
+      name: "WorkshopTemperatureResponse",
     }),
   );
   assertEquals(
-    heatingRate?.id,
+    ratePerSecond?.id,
     await modelicaAstSymbolId(SOURCE_ID, {
       kind: "parameter",
-      name: "heatingRate",
+      name: "ratePerSecond",
     }),
   );
   assertEquals(
-    temperatureC?.id,
+    measuredLevel?.id,
     await modelicaAstSymbolId(SOURCE_ID, {
       kind: "variable",
-      name: "temperatureC",
+      name: "measuredLevel",
     }),
   );
   assertEquals(
@@ -292,8 +266,8 @@ Deno.test("Les mêmes 8 lignes LinearThermalRamp produisent les mêmes ids de sy
     schemaVersion: MODELICA_AST_IDENTITY_SCHEMA,
     sourceId: SOURCE_ID,
     kind: "model",
-    name: "LinearThermalRamp",
-    analyzerVersion: "1.1.0",
+    name: "WorkshopTemperatureResponse",
+    analyzerVersion: "2.1.0",
   });
   assertEquals(artifact?.id === versioned.digest, false);
 });
@@ -373,7 +347,7 @@ Deno.test("Un source qui dépasse 262 144 octets est rejeté avant l'analyse par
 });
 
 Deno.test("Les dépendances structural-incidence couvrent exactement les paramètres et variables du modèle vers l'artifact", async () => {
-  const bundle = await analyze(MODELICA_QUALIFIED_MODEL_SOURCE);
+  const bundle = await analyze(SINGLE_STATE_SOURCE);
   const artifact = bundle.symbols.find((symbol) => symbol.kind === "artifact");
   const members = bundle.symbols.filter((symbol) =>
     symbol.kind === "parameter" || symbol.kind === "variable"

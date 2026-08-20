@@ -14,43 +14,26 @@ function artifact(id: string) {
   return { id };
 }
 
-Deno.test(
-  "named known catalog id and unique catalog JSON block the signed-offer path",
-  () => {
-    assertEquals(
-      shouldOpenSignedCatalogOffer({
-        namedCaseId: "dl05-arm-thickness-isolated",
-        catalogStatus: "unresolved",
-      }),
-      false,
-    );
-    assertEquals(
-      shouldOpenSignedCatalogOffer({ catalogStatus: "ok" }),
-      false,
-    );
-    assertEquals(
-      shouldOpenSignedCatalogOffer({ catalogStatus: "catalog_unavailable" }),
-      false,
-    );
-    assertEquals(
-      shouldOpenSignedCatalogOffer({ catalogStatus: "catalog_integrity_failed" }),
-      false,
-    );
-  },
-);
+Deno.test("a resolved or unavailable catalog blocks the signed-offer path", () => {
+  assertEquals(
+    shouldOpenSignedCatalogOffer({ catalogStatus: "ok" }),
+    false,
+  );
+  assertEquals(
+    shouldOpenSignedCatalogOffer({ catalogStatus: "catalog_unavailable" }),
+    false,
+  );
+  assertEquals(
+    shouldOpenSignedCatalogOffer({ catalogStatus: "catalog_integrity_failed" }),
+    false,
+  );
+});
 
 Deno.test(
   "catalog-absent and catalog-ambiguous fall through to a signed offer",
   () => {
     assertEquals(
       shouldOpenSignedCatalogOffer({ catalogStatus: "unresolved" }),
-      true,
-    );
-    assertEquals(
-      shouldOpenSignedCatalogOffer({
-        namedCaseId: "invented-dl06-case",
-        catalogStatus: "unresolved",
-      }),
       true,
     );
   },

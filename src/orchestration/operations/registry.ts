@@ -461,7 +461,7 @@ const OPERATIONS = [
    * FEA proof-case seal — trusted executor `verify.seal-proof-case@1`.
    *
    * Turns a reviewed authoring JSON (mechanical-proof-case/1.0, resolved through
-   * the server-owned FEA_PROOF_CASE_SOURCES catalog — the agent never supplies a
+   * the server-owned mechanical proof-case catalog — the agent never supplies a
    * path) into a content-addressed Thread artifact: the execution authority for
    * any later FEA run. The signed MRTR parameters spell out every consequential
    * input in clear text; the executor recrosses each one against the canonical

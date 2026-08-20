@@ -37,6 +37,7 @@ import {
 } from "./src/adapters/shared/cas/file-capture-store.ts";
 import { parseExactArchitectureCapture } from "./src/adapters/architecture/renderer/architecture-capture.ts";
 import { FileCataloguedMechanicalProofCaseReader } from "./src/adapters/fea/seal-case/file-catalogued-mechanical-proof-case-reader.ts";
+import { FileCataloguedSensitivityStudyCaseReader } from "./src/adapters/sensitivity/study/file-catalogued-sensitivity-study-case-reader.ts";
 import { CaptureBackedFeaProofSealRequirementsReviewer } from "./src/adapters/fea/seal-case/capture-backed-fea-proof-seal-requirements-reviewer.ts";
 import { PythonCadSourceAnalyzer } from "./src/adapters/cad/source/python-cad-source-analyzer.ts";
 import {
@@ -363,7 +364,7 @@ export const LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE =
 export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
 export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:8e9403242c6adb0223930a036017f90c305a0091643c9a076a2cc4ff39db03ec" as const;
+  "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf" as const;
 export const LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE =
   "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2" as const;
 const LOCAL_CALCULIX_WRAPPER_SHA256 =
@@ -1456,6 +1457,8 @@ async function createProjectControl(
   // FEA proof-case seal calls no provider — always available.
   const geometryCaptures = new FileCaptureStore(GEOMETRY_CAPTURE_DESCRIPTOR);
   const proofCaseCatalogReader = new FileCataloguedMechanicalProofCaseReader();
+  const sensitivityStudyCaseCatalogReader =
+    new FileCataloguedSensitivityStudyCaseReader();
   const proofSealRequirementsReviewer =
     new CaptureBackedFeaProofSealRequirementsReviewer({
       requirementsCaptures,
@@ -1489,6 +1492,7 @@ async function createProjectControl(
     requirementsCaptures,
     seedCaptures: sysonModelSeedCaptures,
     canonicalAssetReader: feaProofStepAssets,
+    catalog: proofCaseCatalogReader,
     lease,
   });
   const sensitivityCaseCaptures = new FileCaptureStore(
@@ -1521,7 +1525,7 @@ async function createProjectControl(
   const sensitivityStudySealReview = new PrepareProjectSensitivityStudySealReview({
     snapshots: activeThreadSnapshots,
     projects: runtime.projects,
-    catalogReader: proofCaseCatalogReader,
+    catalogReader: sensitivityStudyCaseCatalogReader,
     admissions: technicalCompilationAdmissions,
     catalogOffers: sensitivityCatalogOfferCaptures,
     proofCaptures: feaProofCaptures,
@@ -1560,6 +1564,7 @@ async function createProjectControl(
     captures: sensitivityCaseCaptures,
     catalogOffers: sensitivityCatalogOfferCaptures,
     proofCaptures: feaProofCaptures,
+    catalog: sensitivityStudyCaseCatalogReader,
     lease,
   });
   const analyzeRunFeaSensitivity =

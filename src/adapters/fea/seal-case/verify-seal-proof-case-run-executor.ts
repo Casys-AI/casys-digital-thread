@@ -19,8 +19,8 @@
  *  1. Agent-only origin gate.
  *  2. requireShape: operation id / version check.
  *  3. requireMrtrApproval: find the sole human-approved decision for this run.
- *  4. Parse fea.proof.* from the proposal parameters; look up the case path in
- *     FEA_PROOF_CASE_SOURCES; read + validateMechanicalProofCase; compute
+ *  4. Parse fea.proof.* from the proposal parameters; reopen the case through
+ *     the catalog reader; validateMechanicalProofCase; compute
  *     canonicalProofText + proofDigest; assert MRTR-signed proofDigest matches
  *     the computed one (fail-fast, before the lease); cross-check every field.
  *  5. Project / subject / authorization guards.
@@ -64,6 +64,7 @@ import {
   type EngineeringProjectRevisionStore,
 } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import type { CataloguedMechanicalProofCaseReader } from "../../../application/ports/out/fea/seal-case/catalogued-mechanical-proof-case-reader.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -77,7 +78,6 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import { parseSysonModelSeedCapture } from "../../../domain/architecture/seed/syson-model-seed.ts";
-import { FEA_PROOF_CASE_SOURCES } from "../../../domain/fea/seal-case/fea-proof-case-catalog.ts";
 import { FEA_PROOF_CASE_CAPTURE_SCHEMA } from "../../../domain/fea/seal-case/fea-proof-case-capture.ts";
 import {
   canonicalProofText,
@@ -156,19 +156,6 @@ export const FEA_PROOF_CASE_CAPTURE_URI_PREFIX =
   "casys://fea-proof-case-capture/" as const;
 
 /**
- * Server-side catalog that maps each known mechanical proof case id to its
- * source file path relative to the repository root.
- *
- * WHY EXPORTED — tests pin the catalog entries; operator tooling enumerates
- * known cases without re-parsing executor code.
- *
- * EXTENSION RULE — a new proof case adds exactly one entry to the domain
- * catalog and one JSON file at the declared path. The executor never falls
- * back to a derived path.
- */
-export { FEA_PROOF_CASE_SOURCES };
-
-/**
  * The descriptor lives in file-capture-store.ts (the canonical home for every
  * capture family — a second definition would drift). Re-exported here so the
  * executor's callers keep a single import site.
@@ -237,13 +224,8 @@ export interface VerifySealProofCaseRunExecutorDependencies {
   readonly seedCaptures: FileCaptureStore<"syson-model-seed">;
   readonly canonicalAssetReader: CanonicalAssetReader;
   readonly lease: EngineeringProjectRunLease;
-  /**
-   * Injected file reader — defaults to Deno.readTextFile. Tests stub this to
-   * avoid real filesystem access; production code passes undefined. The executor
-   * never derives the path from environment variables or runtime state; the path
-   * is always looked up in FEA_PROOF_CASE_SOURCES.
-   */
-  readonly readTextFile?: (path: string) => Promise<string>;
+  /** Server-owned manifest reader; no path crosses the executor boundary. */
+  readonly catalog: CataloguedMechanicalProofCaseReader;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,7 +246,7 @@ export class VerifySealProofCaseRunExecutor {
   readonly #seedCaptures: FileCaptureStore<"syson-model-seed">;
   readonly #canonicalAssetReader: CanonicalAssetReader;
   readonly #lease: EngineeringProjectRunLease;
-  readonly #readTextFile: (path: string) => Promise<string>;
+  readonly #catalog: CataloguedMechanicalProofCaseReader;
 
   constructor(deps: VerifySealProofCaseRunExecutorDependencies) {
     this.#projects = deps.projects;
@@ -278,7 +260,7 @@ export class VerifySealProofCaseRunExecutor {
     this.#seedCaptures = deps.seedCaptures;
     this.#canonicalAssetReader = deps.canonicalAssetReader;
     this.#lease = deps.lease;
-    this.#readTextFile = deps.readTextFile ?? Deno.readTextFile.bind(Deno);
+    this.#catalog = deps.catalog;
   }
 
   async execute(
@@ -868,23 +850,21 @@ export class VerifySealProofCaseRunExecutor {
   }> {
     // Catalog lookup (fail-fast before any snapshot or lease access).
     const caseId = decisionParams.id;
-    const casePath = FEA_PROOF_CASE_SOURCES.get(caseId);
-    if (!casePath) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        `Proof case "${caseId}" is not in the server-side catalog. ` +
-          "Add an entry to FEA_PROOF_CASE_SOURCES and the corresponding JSON file.",
-      );
-    }
-
-    // Read + validate the proof case file.
-    let raw: string;
+    let raw: string | undefined;
     try {
-      raw = await this.#readTextFile(casePath);
+      raw = await this.#catalog.read(caseId);
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Proof case file "${casePath}" is not readable: ${errorMessage(error)}`,
+        `Proof case "${caseId}" could not be read from the server-owned manifest: ` +
+          errorMessage(error),
+      );
+    }
+    if (raw === undefined) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Proof case "${caseId}" is not in the server-side catalog. ` +
+          "Add it to config/mechanical-proof-cases/catalog.json and its JSON file.",
       );
     }
 
@@ -894,7 +874,7 @@ export class VerifySealProofCaseRunExecutor {
     } catch {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Proof case file "${casePath}" is not valid JSON.`,
+        `Proof case "${caseId}" is not valid JSON.`,
       );
     }
 
@@ -904,7 +884,7 @@ export class VerifySealProofCaseRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Proof case "${casePath}" failed validation: ${errorMessage(error)}`,
+        `Proof case "${caseId}" failed validation: ${errorMessage(error)}`,
       );
     }
 
@@ -920,9 +900,7 @@ export class VerifySealProofCaseRunExecutor {
         "invalid_input",
         `Proof case digest divergence: the MRTR signed proofDigest ` +
           `"${decisionParams.proofDigest.slice(0, 16)}…" does not match the ` +
-          `computed digest "${
-            proofDigest.slice(0, 16)
-          }…" of the case at "${casePath}".`,
+          `computed digest "${proofDigest.slice(0, 16)}…" of case "${caseId}".`,
       );
     }
 

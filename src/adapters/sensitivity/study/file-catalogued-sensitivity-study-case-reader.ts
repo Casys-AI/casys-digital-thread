@@ -1,23 +1,20 @@
-import type { CataloguedMechanicalProofCaseReader } from "../../../application/ports/out/fea/seal-case/catalogued-mechanical-proof-case-reader.ts";
+import type { CataloguedSensitivityStudyCaseReader } from "../../../application/ports/out/sensitivity/study/catalogued-sensitivity-study-case-reader.ts";
 
 const CATALOG_FILE = "catalog.json";
-const CATALOG_SCHEMA_VERSION = "mechanical-proof-case-catalog/1.0";
-const CATALOG_ROOT = "config/mechanical-proof-cases";
+const CATALOG_SCHEMA_VERSION = "sensitivity-study-case-catalog/1.0";
+const CATALOG_ROOT = "config/sensitivity-study-cases";
 type CatalogEntry = { readonly id: string; readonly file: string };
 
-/** Strict filesystem boundary for reviewed mechanical proof cases. */
-export class FileCataloguedMechanicalProofCaseReader
-  implements CataloguedMechanicalProofCaseReader {
+/** Strict filesystem boundary for reviewed sensitivity-study templates. */
+export class FileCataloguedSensitivityStudyCaseReader
+  implements CataloguedSensitivityStudyCaseReader {
   readonly #root: string;
-
   constructor(root = CATALOG_ROOT) {
     this.#root = root.replace(/\/+$/, "");
   }
-
   async list(): Promise<readonly { readonly caseId: string }[]> {
     return (await this.#manifest()).map(({ id }) => ({ caseId: id }));
   }
-
   async read(caseId: string): Promise<string | undefined> {
     const entry = (await this.#manifest()).find((item) => item.id === caseId);
     if (!entry) return undefined;
@@ -27,21 +24,18 @@ export class FileCataloguedMechanicalProofCaseReader
     assertCaseFileId(raw, caseId, path);
     return raw;
   }
-
   async #manifest(): Promise<readonly CatalogEntry[]> {
     const path = this.#path(CATALOG_FILE);
     const raw = await readIfPresent(path);
     if (raw === undefined) {
-      throw new Error(`Mechanical proof-case catalog manifest is missing: ${path}.`);
+      throw new Error(`Sensitivity-study catalog manifest is missing: ${path}.`);
     }
-    return parseManifest(raw, path, CATALOG_SCHEMA_VERSION);
+    return parseManifest(raw, path);
   }
-
   #path(file: string): string {
     return `${this.#root}/${file}`;
   }
 }
-
 async function readIfPresent(path: string): Promise<string | undefined> {
   try {
     return await Deno.readTextFile(path);
@@ -50,12 +44,7 @@ async function readIfPresent(path: string): Promise<string | undefined> {
     throw error;
   }
 }
-
-function parseManifest(
-  raw: string,
-  path: string,
-  schemaVersion: string,
-): readonly CatalogEntry[] {
+function parseManifest(raw: string, path: string): readonly CatalogEntry[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -64,17 +53,15 @@ function parseManifest(
   }
   if (
     !isRecord(parsed) || !hasExactKeys(parsed, ["schemaVersion", "cases"]) ||
-    parsed.schemaVersion !== schemaVersion || !Array.isArray(parsed.cases)
-  ) {
-    throw new Error(`Catalog manifest is invalid: ${path}.`);
-  }
+    parsed.schemaVersion !== CATALOG_SCHEMA_VERSION || !Array.isArray(parsed.cases)
+  ) throw new Error(`Catalog manifest is invalid: ${path}.`);
   const ids = new Set<string>();
   const files = new Set<string>();
   return parsed.cases.map((entry, index) => {
     if (
       !isRecord(entry) || !hasExactKeys(entry, ["id", "file"]) ||
-      typeof entry.id !== "string" || typeof entry.file !== "string" ||
-      !isSafeId(entry.id) ||
+      typeof entry.id !== "string" ||
+      typeof entry.file !== "string" || !isSafeId(entry.id) ||
       !isSafeRelativeJsonPath(entry.file)
     ) throw new Error(`Catalog manifest case ${index} is invalid: ${path}.`);
     if (ids.has(entry.id) || files.has(entry.file)) {
@@ -85,7 +72,6 @@ function parseManifest(
     return { id: entry.id, file: entry.file };
   });
 }
-
 function assertCaseFileId(raw: string, expectedId: string, path: string): void {
   let parsed: unknown;
   try {
@@ -99,7 +85,6 @@ function assertCaseFileId(raw: string, expectedId: string, path: string): void {
     );
   }
 }
-
 function hasExactKeys(
   value: Record<string, unknown>,
   keys: readonly string[],
@@ -110,7 +95,7 @@ function hasExactKeys(
     actual.every((key, index) => key === expected[index]);
 }
 function isSafeId(value: string): boolean {
-  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value);
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value);
 }
 function isSafeRelativeJsonPath(value: string): boolean {
   return value.endsWith(".json") && !value.startsWith("/") && !value.includes("\\") &&

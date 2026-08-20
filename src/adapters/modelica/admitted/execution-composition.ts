@@ -17,7 +17,7 @@ import type {
   IsolatedOutputPublicationReader,
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import { FixedAdmittedModelicaExecutionProfileCatalog } from "./execution-profile-catalog.ts";
-import { MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "./closed-subset-v1/worker-contract.ts";
+import { MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "./closed-subset-v2/worker-contract.ts";
 import { MODELICA_MICROSANDBOX_WORKER_CONTRACT } from "../qualified-kit/kit-v1/worker-contract.ts";
 
 export interface AdmittedModelicaExecutionProfileServerOptions {

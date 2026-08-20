@@ -9,6 +9,7 @@
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import type { CataloguedSensitivityStudyCaseReader } from "../../../application/ports/out/sensitivity/study/catalogued-sensitivity-study-case-reader.ts";
 import type {
   ReopenedTechnicalCompilationAdmission,
   TechnicalCompilationAdmissionReader,
@@ -31,10 +32,6 @@ import {
   verifySensitivityStudyParametersMatchCase,
 } from "../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { locateModuleLevelNumericBinding } from "../../../domain/sensitivity/study/sensitivity-source-substitution.ts";
-import {
-  SENSITIVITY_STUDY_CASE_SOURCES,
-  sensitivityStudyCaseSourcePath,
-} from "../../../domain/sensitivity/study/sensitivity-study-case-catalog.ts";
 import {
   assembleSensitivityStudyCaseV2,
   type SensitivityStudyCaseTemplate,
@@ -96,8 +93,6 @@ export {
   SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX,
 };
 
-export { SENSITIVITY_STUDY_CASE_SOURCES };
-
 export const SENSITIVITY_SEAL_THREAD_WRITE_OUTCOME_UNKNOWN =
   "analyze-seal-sensitivity-study-thread-write-outcome-unknown";
 
@@ -115,9 +110,10 @@ export interface AnalyzeSealSensitivityStudyRunExecutorDependencies {
   readonly admissions: TechnicalCompilationAdmissionReader;
   readonly captures: FileCaptureStore<"sensitivity-study-case">;
   readonly lease: EngineeringProjectRunLease;
+  /** Server-owned reviewed JSON manifest; callers never select a path. */
+  readonly catalog: CataloguedSensitivityStudyCaseReader;
   readonly catalogOffers?: ContentAddressedCaptureReader;
   readonly proofCaptures?: ContentAddressedCaptureReader;
-  readonly readTextFile?: (path: string) => Promise<string>;
 }
 
 export class AnalyzeSealSensitivityStudyRunExecutor {
@@ -127,9 +123,9 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
   readonly #admissions: TechnicalCompilationAdmissionReader;
   readonly #captures: FileCaptureStore<"sensitivity-study-case">;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #catalog: CataloguedSensitivityStudyCaseReader;
   readonly #catalogOffers: ContentAddressedCaptureReader | undefined;
   readonly #proofCaptures: ContentAddressedCaptureReader | undefined;
-  readonly #readTextFile: (path: string) => Promise<string>;
 
   constructor(deps: AnalyzeSealSensitivityStudyRunExecutorDependencies) {
     this.#projects = deps.projects;
@@ -138,9 +134,9 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     this.#admissions = deps.admissions;
     this.#captures = deps.captures;
     this.#lease = deps.lease;
+    this.#catalog = deps.catalog;
     this.#catalogOffers = deps.catalogOffers;
     this.#proofCaptures = deps.proofCaptures;
-    this.#readTextFile = deps.readTextFile ?? Deno.readTextFile.bind(Deno);
   }
 
   async execute(
@@ -454,11 +450,21 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     readonly caseDigest: string;
     readonly authority: SensitivityStudySealAuthorityKind;
   }> {
-    const casePath = sensitivityStudyCaseSourcePath(decisionParams.id);
-    if (casePath) {
+    let raw: string | undefined;
+    try {
+      raw = await this.#catalog.read(decisionParams.id);
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Sensitivity case "${decisionParams.id}" could not be read from the server-owned manifest: ${
+          errorMessage(error)
+        }`,
+      );
+    }
+    if (raw !== undefined) {
       return {
         ...await this.#assembleVerifiedCase(
-          await this.#readCatalogTemplate(casePath),
+          this.#readCatalogTemplate(decisionParams.id, raw),
           decisionParams,
         ),
         authority: "catalog",
@@ -476,7 +482,7 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     if (offered.status === "absent") {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Sensitivity case "${decisionParams.id}" is not in the server-side catalog ` +
+        `Sensitivity case "${decisionParams.id}" is not in the server-owned catalog manifest ` +
           "and no unique signed catalog offer is on the current tip.",
       );
     }
@@ -501,23 +507,17 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     };
   }
 
-  async #readCatalogTemplate(casePath: string) {
-    let raw: string;
-    try {
-      raw = await this.#readTextFile(casePath);
-    } catch (error) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        `Sensitivity case file "${casePath}" is not readable: ${errorMessage(error)}`,
-      );
-    }
+  #readCatalogTemplate(
+    caseId: string,
+    raw: string,
+  ): SensitivityStudyCaseTemplate {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Sensitivity case file "${casePath}" is not valid JSON.`,
+        `Sensitivity case "${caseId}" is not valid JSON.`,
       );
     }
     try {
@@ -525,7 +525,9 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Sensitivity case template failed validation: ${errorMessage(error)}`,
+        `Sensitivity case "${caseId}" template failed validation: ${
+          errorMessage(error)
+        }`,
       );
     }
   }

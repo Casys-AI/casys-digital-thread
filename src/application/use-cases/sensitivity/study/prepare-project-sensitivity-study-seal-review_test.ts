@@ -6,6 +6,7 @@ import {
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
+import { FileCataloguedSensitivityStudyCaseReader } from "../../../../adapters/sensitivity/study/file-catalogued-sensitivity-study-case-reader.ts";
 import { PrepareProjectSensitivityStudySealReview } from "./prepare-project-sensitivity-study-seal-review.ts";
 import {
   SIGNED_OFFER_AT,
@@ -20,16 +21,7 @@ const SUBJECT_ID = "project:desk-lamp-dl06";
 const CASE_ID = SIGNED_OFFER_CASE_ID;
 const ADMISSION_ID = "compile-admission-1";
 const ADMISSION_DIGEST = "a".repeat(64);
-const REAL_CATALOG = {
-  async read(path: string): Promise<string | undefined> {
-    try {
-      return await Deno.readTextFile(path);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return undefined;
-      throw error;
-    }
-  },
-};
+const REAL_CATALOG = new FileCataloguedSensitivityStudyCaseReader();
 
 function matchingAdmission(
   sourceText = "arm_thickness = 10\nresult = Box(1, 1, arm_thickness)\n",
@@ -178,6 +170,48 @@ Deno.test(
     assertEquals(
       result.next.append.arguments.workItems[0]?.id,
       "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness",
+    );
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review reopens a named case from the reviewed JSON manifest",
+  async () => {
+    const projectId = "desk-lamp-dl04";
+    const subjectId = "lamp-arm";
+    const snapshot = basisSnapshot({ projectId, subjectId });
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot, projectId),
+      catalogReader: REAL_CATALOG,
+      admissions: {
+        read: () =>
+          Promise.resolve(
+            matchingAdmission(
+              "size_z = 50\nresult = Box(1, 1, size_z)\n",
+              "size_z",
+            ),
+          ),
+      },
+    });
+    const result = await review.execute({
+      projectId,
+      caseId: "dl04-size-z-sensitivity",
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: snapshot.id,
+        revision: snapshot.revision,
+        subjectId,
+      },
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.caseId, "dl04-size-z-sensitivity");
+    assertEquals(result.selected.authority, "catalog");
+    assertEquals(
+      parseSensitivityStudyDecisionParameters(result.decisionParameters).target
+        .semanticKey,
+      "size_z",
     );
   },
 );

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "mechanical-proof-case-catalog/1.0",
+  "cases": [
+    {
+      "id": "desk-lamp-dl01-articulated-arm-cantilever-v1",
+      "file": "desk-lamp-dl01-articulated-arm-cantilever.json"
+    },
+    {
+      "id": "desk-lamp-dl03-arm-cantilever",
+      "file": "desk-lamp-dl03-arm-cantilever.json"
+    },
+    {
+      "id": "desk-lamp-dl04-arm-cantilever",
+      "file": "desk-lamp-dl04-arm-cantilever.json"
+    },
+    {
+      "id": "desk-lamp-dl05-arm-cantilever",
+      "file": "desk-lamp-dl05-arm-cantilever.json"
+    },
+    {
+      "id": "desk-lamp-dl06-arm-cantilever",
+      "file": "desk-lamp-dl06-arm-cantilever.json"
+    },
+    {
+      "id": "cantilever-arm-ca01-arm-cantilever",
+      "file": "cantilever-arm-ca01-arm-cantilever.json"
+    },
+    {
+      "id": "cantilever-arm-ca02-arm-cantilever",
+      "file": "cantilever-arm-ca02-arm-cantilever.json"
+    },
+    {
+      "id": "wall-hook-wh01-hook-cantilever",
+      "file": "wall-hook-wh01-hook-cantilever.json"
+    }
+  ]
+}

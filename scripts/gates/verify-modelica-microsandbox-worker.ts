@@ -299,11 +299,21 @@ async function inspectWorkerImage(image: string): Promise<InspectedWorkerImage> 
   const labels = record(config.Labels, "image labels");
   exactLabel(labels, "io.casys.execution-profile", "modelica-qualified-kit-v1");
   exactLabel(labels, "io.casys.modelica.kit", "linear-thermal-ramp-v1@0.1.0");
+  exactLabel(
+    labels,
+    "io.casys.modelica.admitted-profile",
+    "modelica-closed-subset-v2@2.0.0",
+  );
   exactLabel(labels, "io.casys.lowering", "modelica-omc-lowering@1.0.0");
   exactLabel(
     labels,
     "io.casys.result-normalizer",
     "linear-thermal-ramp-result-normalizer@1.0.0",
+  );
+  exactLabel(
+    labels,
+    "io.casys.modelica.admitted-result-normalizer",
+    "modelica-closed-subset-v2-result-normalizer@2.0.0",
   );
   const wrapperSha256 = digestLabel(labels, "io.casys.wrapper.sha256");
   const workerContractSha256 = digestLabel(

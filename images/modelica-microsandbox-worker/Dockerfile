@@ -13,6 +13,11 @@ ARG MSL_TARBALL_SHA256=b402903aefd4f1397364e3ae1992bb99080ce935ab9a426d3bcdb47e4
 ARG PERL_VERSION=5.34.0-3ubuntu1.7
 ARG WRAPPER_SHA256=b5336d1615b017900f65aa9d491f3ecae8b3afb377d0bb38bc5678b03028c816
 ARG WORKER_CONTRACT_SHA256=043132ed24db6df3f9ded2e688a70d4cf6527841f626a9134f0ced49a2f61b72
+ARG ADMITTED_V2_WRAPPER_SHA256=6d5fb4744fe5d436710312cc020bc47850d928db0a3f5fe24381cf7fbc17da8c
+ARG ADMITTED_V2_WORKER_CONTRACT_SHA256=49931a551ea684f7d6de0ed190f318871e0abf7fb034b1c1c9f6580a67be5c77
+ARG ADMITTED_V2_SOURCE_AUTHORITY_SHA256=cd2a2762753d4816a91ef8369aec2ee804ac17cf7bff22f49106e99de92b0aa6
+ARG ADMITTED_V2_SOURCE_LEXICAL_SHA256=2cabc206743c5e19e3b4b8d1acd65aa168c131769708cf3f2d19a4e48ce1a3d2
+ARG ADMITTED_V2_SOURCE_PARSE_SHA256=3a7bba73a09f9b8dc5393b8dd203f44781e7a545524ec0cb4a1c673465c2265a
 ARG DENO_LOCK_SHA256=458cd80498b070cb2313cfdf5f4184a70272f689a9c20d7fc90acff655b88e65
 
 COPY --from=deno-bin /deno /usr/local/bin/deno
@@ -41,6 +46,8 @@ LABEL org.opencontainers.image.title="Casys qualified Modelica worker" \
       io.casys.modelica.kit="linear-thermal-ramp-v1@0.1.0" \
       io.casys.lowering="modelica-omc-lowering@1.0.0" \
       io.casys.result-normalizer="linear-thermal-ramp-result-normalizer@1.0.0" \
+      io.casys.modelica.admitted-profile="modelica-closed-subset-v2@2.0.0" \
+      io.casys.modelica.admitted-result-normalizer="modelica-closed-subset-v2-result-normalizer@2.0.0" \
       io.casys.wrapper.sha256="${WRAPPER_SHA256}" \
       io.casys.worker-contract.sha256="${WORKER_CONTRACT_SHA256}" \
       io.casys.deno-lock.sha256="${DENO_LOCK_SHA256}"
@@ -74,19 +81,39 @@ RUN echo "${DENO_LOCK_SHA256}  /opt/casys/profiles/modelica-qualified-kit-v1/den
     && echo "${WORKER_CONTRACT_SHA256}  /opt/casys/profiles/modelica-qualified-kit-v1/worker-contract.ts" \
       | sha256sum --check --strict
 
-# Second worker in the same image. Kit ENTRYPOINT is unchanged. Admitted runs
-# select this wrapper through backend args, not a second image name.
+# Second worker in the same image. It imports the same pure v2 source authority
+# as the frontend; the image retains source layout to prevent a worker-only
+# parser from diverging from the admission frontend.
 COPY --chmod=0555 \
-  src/adapters/modelica/admitted/closed-subset-v1/run.ts \
-  /opt/casys/profiles/modelica-closed-subset-v1/run.ts
+  src/adapters/modelica/admitted/closed-subset-v2/run.ts \
+  /opt/casys/src/adapters/modelica/admitted/closed-subset-v2/run.ts
 COPY --chmod=0444 \
-  src/adapters/modelica/admitted/closed-subset-v1/worker-contract.ts \
-  /opt/casys/profiles/modelica-closed-subset-v1/worker-contract.ts
+  src/adapters/modelica/admitted/closed-subset-v2/worker-contract.ts \
+  /opt/casys/src/adapters/modelica/admitted/closed-subset-v2/worker-contract.ts
+COPY --chmod=0444 \
+  src/domain/modelica/source/closed-subset-v2.ts \
+  /opt/casys/src/domain/modelica/source/closed-subset-v2.ts
+COPY --chmod=0444 \
+  src/domain/modelica/source/lexical.ts \
+  /opt/casys/src/domain/modelica/source/lexical.ts
+COPY --chmod=0444 \
+  src/domain/modelica/source/parse.ts \
+  /opt/casys/src/domain/modelica/source/parse.ts
 RUN deno cache --no-config \
       --lock=/opt/casys/profiles/modelica-qualified-kit-v1/deno.lock \
       --frozen \
-      /opt/casys/profiles/modelica-closed-subset-v1/run.ts \
-    && chmod -R a=rX /opt/casys/deno-cache /opt/modelica-libraries \
+      /opt/casys/src/adapters/modelica/admitted/closed-subset-v2/run.ts \
+    && echo "${ADMITTED_V2_WRAPPER_SHA256}  /opt/casys/src/adapters/modelica/admitted/closed-subset-v2/run.ts" \
+      | sha256sum --check --strict \
+    && echo "${ADMITTED_V2_WORKER_CONTRACT_SHA256}  /opt/casys/src/adapters/modelica/admitted/closed-subset-v2/worker-contract.ts" \
+      | sha256sum --check --strict \
+    && echo "${ADMITTED_V2_SOURCE_AUTHORITY_SHA256}  /opt/casys/src/domain/modelica/source/closed-subset-v2.ts" \
+      | sha256sum --check --strict \
+    && echo "${ADMITTED_V2_SOURCE_LEXICAL_SHA256}  /opt/casys/src/domain/modelica/source/lexical.ts" \
+      | sha256sum --check --strict \
+    && echo "${ADMITTED_V2_SOURCE_PARSE_SHA256}  /opt/casys/src/domain/modelica/source/parse.ts" \
+      | sha256sum --check --strict \
+    && chmod -R a=rX /opt/casys/deno-cache /opt/modelica-libraries /opt/casys/src \
     && groupadd --system --gid 65532 casys-worker \
     && useradd --system --uid 65532 --gid 65532 \
       --home-dir /nonexistent --shell /usr/sbin/nologin casys-worker \

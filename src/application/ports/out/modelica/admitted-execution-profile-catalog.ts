@@ -16,7 +16,7 @@ import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts
 import type { MicrosandboxLocalRuntimeIdentity } from "../../../../domain/compile/isolation/local-isolation-runtime.ts";
 
 export const ADMITTED_MODELICA_EXECUTION_PROFILE_SCHEMA =
-  "modelica-admitted-execution-profile/1.0" as const;
+  "modelica-admitted-execution-profile/2.0" as const;
 
 export type AdmittedModelicaMinimumDestructionAssurance =
   | "acknowledged-unattested"

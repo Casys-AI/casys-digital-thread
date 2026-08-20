@@ -182,7 +182,7 @@ Deno.test("capture-backed source reader rejects reference drift and non-exact co
   });
 });
 
-Deno.test("fixed catalogue exposes only the real qualified build123d frontend", async () => {
+Deno.test("fixed catalogue exposes only the registered build123d and Modelica v2 frontends", async () => {
   const provider = new FixedTechnicalCompilationProfileCatalogProvider();
   const first = await provider.get();
   const second = await provider.get();
@@ -195,7 +195,16 @@ Deno.test("fixed catalogue exposes only the real qualified build123d frontend", 
     version: QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
   });
   assertEquals(first.profiles[1].target, "modelica-source-qualification");
-  assertEquals(first.profiles[1].id, "modelica-closed-subset-v1");
+  assertEquals(first.profiles[1].id, "modelica-closed-subset-v2");
+  assertEquals(first.profiles[1].version, "2.0.0");
+  assertEquals(first.profiles[1].analyzer, {
+    id: "modelica-qualified-mo-subset",
+    version: "2.0.0",
+  });
+  assertEquals(first.profiles[1].requiredBindingSymbolKinds, [
+    "artifact",
+    "parameter",
+  ]);
   assertEquals(Object.isFrozen(first), true);
   assertEquals(Object.isFrozen(first.profiles[0]), true);
   assertThrows(

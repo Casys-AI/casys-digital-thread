@@ -16,7 +16,6 @@ import type {
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../../../domain/thread/thread-snapshot-extension.ts";
-import { MODELICA_QUALIFIED_MODEL_SOURCE } from "../qualified-kit/kit-v1/run.ts";
 import { QualifiedModelicaSourceAnalyzer } from "../source/qualified-source-analyzer.ts";
 import { PrepareProjectAdmittedModelicaRunReview } from "../../../application/use-cases/modelica/admitted/prepare-run-review.ts";
 import {
@@ -38,6 +37,7 @@ import {
   type ModelicaAdmittedRunAdmission,
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
 } from "../../../domain/modelica/admitted/run-proposal.ts";
+import { admittedModelicaExecutionContractFromSourceBytes } from "../../../domain/modelica/admitted/execution-evidence.ts";
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
   MICROSANDBOX_LOCAL_RUNTIME_REF,
@@ -82,6 +82,18 @@ import {
   type SimulateRunAdmittedModelicaRunExecutorDependencies,
 } from "./run-executor.ts";
 
+const MODELICA_ADMITTED_GENERIC_SOURCE = `model GenericOscillator
+  parameter Real initialPosition(unit = "m") = 0;
+  parameter Real drive(unit = "m/s2") = 2;
+  output Real position(unit = "m", start = initialPosition, fixed = true);
+  output Real velocity(unit = "m/s", start = 0, fixed = true);
+equation
+  der(position) = velocity;
+  der(velocity) = drive-position;
+annotation(experiment(StartTime = 0, StopTime = 2, Interval = 0.1, Tolerance = 0.000001));
+end GenericOscillator;
+`;
+
 Deno.test("admitted execute reopens sealed Modelica bytes and never takes caller text", async () => {
   const fixture = await harness();
   const context = await reopenAdmittedExecutionRequest({
@@ -93,12 +105,12 @@ Deno.test("admitted execute reopens sealed Modelica bytes and never takes caller
     admission: (await fixture.review.execute(fixture.command)).admission,
   });
   const sourceSha = (await fingerprintTechnicalSourceText(
-    MODELICA_QUALIFIED_MODEL_SOURCE,
+    MODELICA_ADMITTED_GENERIC_SOURCE,
   )).digest;
   assertEquals(context.request.source.sha256, sourceSha);
   assertEquals(
     new TextDecoder().decode(context.request.source.bytes),
-    MODELICA_QUALIFIED_MODEL_SOURCE,
+    MODELICA_ADMITTED_GENERIC_SOURCE,
   );
   assertEquals(context.request.outputs, [...MODELICA_ADMITTED_OUTPUT_MANIFEST]);
 });
@@ -141,9 +153,9 @@ class FakeProfiles implements AdmittedModelicaExecutionProfileCatalog {
 }
 
 async function harness() {
-  const sourceText = MODELICA_QUALIFIED_MODEL_SOURCE;
+  const sourceText = MODELICA_ADMITTED_GENERIC_SOURCE;
   const analysis = await new QualifiedModelicaSourceAnalyzer().analyze({
-    sourceId: "source.modelica.linear-ramp",
+    sourceId: "source.modelica.generic-oscillator",
     role: "modelica-model",
     language: "modelica",
     sourceText,
@@ -165,10 +177,10 @@ async function harness() {
     rootElementKind: "Package" as const,
     elements: [
       { id: "sysml.package.main", kind: "Package", provenance },
-      { id: "sysml.part.ramp", kind: "PartUsage", provenance },
-      { id: "sysml.attribute.heating-rate", kind: "AttributeUsage", provenance },
+      { id: "sysml.part.oscillator", kind: "PartUsage", provenance },
+      { id: "sysml.attribute.initial-position", kind: "AttributeUsage", provenance },
       {
-        id: "sysml.attribute.initial-temperature",
+        id: "sysml.attribute.drive",
         kind: "AttributeUsage",
         provenance,
       },
@@ -186,13 +198,13 @@ async function harness() {
     sysmlAnchorFingerprint: await fingerprintTechnicalSysmlAnchor(sysmlAnchor),
   };
   const compilationProfile: TechnicalCompilationProfile = {
-    id: "modelica-closed-subset-v1",
-    version: "1.0.0",
+    id: "modelica-closed-subset-v2",
+    version: "2.0.0",
     target: "modelica-source-qualification",
     sourceRole: "modelica-model",
     language: "modelica",
     analyzer: analysis.analyzer,
-    analysisPolicyProfile: "modelica-closed-subset-v1",
+    analysisPolicyProfile: "modelica-closed-subset-v2",
     requiredBindingSymbolKinds: ["artifact", "parameter"],
   };
   const artifact = analysis.symbols.find((symbol) => symbol.kind === "artifact")!;
@@ -207,26 +219,24 @@ async function harness() {
         id: "binding.model",
         sourceId: analysis.source.id,
         sourceSymbolId: artifact.id,
-        sysmlElementId: "sysml.part.ramp",
+        sysmlElementId: "sysml.part.oscillator",
         sysmlElementKind: "PartUsage",
         relation: "represents",
       },
       {
-        id: "binding.heating-rate",
+        id: "binding.initial-position",
         sourceId: analysis.source.id,
-        sourceSymbolId: parameters.find((symbol) => symbol.name === "heatingRate")!
+        sourceSymbolId: parameters.find((symbol) => symbol.name === "initialPosition")!
           .id,
-        sysmlElementId: "sysml.attribute.heating-rate",
+        sysmlElementId: "sysml.attribute.initial-position",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",
       },
       {
-        id: "binding.initial-temperature",
+        id: "binding.drive",
         sourceId: analysis.source.id,
-        sourceSymbolId: parameters.find((symbol) =>
-          symbol.name === "initialTemperature"
-        )!.id,
-        sysmlElementId: "sysml.attribute.initial-temperature",
+        sourceSymbolId: parameters.find((symbol) => symbol.name === "drive")!.id,
+        sysmlElementId: "sysml.attribute.drive",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",
       },
@@ -342,7 +352,7 @@ async function harness() {
     compilationProfileFingerprint: projection.profileFingerprint,
     isolationPolicy: {
       id: "isolation.modelica-closed-v1",
-      version: "1.0.0",
+      version: "2.0.0",
       fingerprint: await sha256Fingerprint({
         id: "isolation.modelica-closed-v1",
         version: "1.0.0",
@@ -380,8 +390,8 @@ async function harness() {
     },
     outputManifest: [...MODELICA_ADMITTED_OUTPUT_MANIFEST],
     outputValidator: {
-      id: "modelica-closed-subset-result-normalizer",
-      version: "1.0.0",
+      id: "modelica-closed-subset-v2-result-normalizer",
+      version: "2.0.0",
     },
     maximumSourceBytes: 262_144,
     minimumDestructionAssurance: "proven",
@@ -444,6 +454,29 @@ Deno.test("admitted project executor journals, dispatches once, completes, and r
     assertEquals(fixture.captures.saveCalls, captureSaves);
   } finally {
     await fixture.dispose();
+  }
+});
+
+Deno.test("admitted executor refuses evidence that misattests the reopened source or result bytes", async () => {
+  for (
+    const options of [
+      { evidenceInputBundleDrift: true },
+      { evidenceResultDrift: true },
+    ] as const
+  ) {
+    const fixture = await executorHarness(options);
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(EXECUTION_AGENT, EXECUTION_COMMAND),
+        Error,
+        "does not attest the reopened source and exact result bytes",
+      );
+      assertEquals(fixture.runtime.runs, [0]);
+      assertEquals(fixture.captures.saveCalls, 0);
+      assertEquals(fixture.snapshots.saveCalls, 0);
+    } finally {
+      await fixture.dispose();
+    }
   }
 });
 
@@ -1080,6 +1113,8 @@ interface ExecutorHarnessOptions {
   readonly loseCompleteAck?: boolean;
   readonly loseCompletionJournalBeforeWrite?: boolean;
   readonly twoInstances?: boolean;
+  readonly evidenceInputBundleDrift?: boolean;
+  readonly evidenceResultDrift?: boolean;
 }
 
 interface ExecutorHarness {
@@ -1755,13 +1790,53 @@ class FakeAdmittedRuntime {
   }
 
   async #receipt(request: IsolatedCodeExecutionRequest) {
-    const resultBytes = new TextEncoder().encode(
-      "time,temperatureC\n0,10\n1,12\n",
+    const contract = admittedModelicaExecutionContractFromSourceBytes(
+      request.source.bytes,
     );
+    const resultBytes = new TextEncoder().encode(
+      `time,${contract.outputs.map((output) => output.name).join(",")}\n0,${
+        contract.outputs.map(() => "0").join(",")
+      }\n`,
+    );
+    const resultSha256 = await fingerprintResourceBytes(resultBytes);
     const evidenceBytes = new TextEncoder().encode(deterministicJson({
-      schemaVersion: "modelica-isolated-evidence/1.0",
+      schemaVersion: "modelica-isolated-evidence/2.0",
+      inputBundleSha256: this.options.evidenceInputBundleDrift
+        ? "a".repeat(64)
+        : request.source.sha256,
       status: "succeeded",
-      metrics: [{ id: "temperature_final", value: 12, unit: "degC" }],
+      method: {
+        lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
+        resultNormalizer: {
+          id: "modelica-closed-subset-v2-result-normalizer",
+          version: "2.0.0",
+        },
+        engine: { name: "OpenModelica", version: "1.25.0", mslVersion: "not-used" },
+      },
+      modelName: contract.modelName,
+      scenario: contract.scenario,
+      resolvedParameters: contract.parameters,
+      metrics: contract.outputs.flatMap((output) => [
+        {
+          outputName: output.name,
+          statistic: "final",
+          value: 0,
+          unit: output.unit,
+        },
+        {
+          outputName: output.name,
+          statistic: "max_abs",
+          value: 0,
+          unit: output.unit,
+        },
+      ]),
+      result: {
+        role: "result",
+        basename: "result.csv",
+        byteCount: resultBytes.byteLength,
+        sha256: this.options.evidenceResultDrift ? "b".repeat(64) : resultSha256,
+      },
+      warnings: [],
     }));
     this.#bytes.set("evidence", evidenceBytes);
     this.#bytes.set("result", resultBytes);
@@ -1843,7 +1918,7 @@ class FakeAdmittedCaptures {
     const text = this.items.get(fingerprint.digest);
     if (!text || !this.drift) return Promise.resolve(text);
     const parsed = JSON.parse(text);
-    parsed.temperatureFinal.value += 1;
+    parsed.metrics[0].value += 1;
     return Promise.resolve(deterministicJson(parsed));
   }
 

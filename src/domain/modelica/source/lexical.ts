@@ -1,5 +1,5 @@
 /**
- * Fail-closed lexical guard for the Modelica closed subset v1.
+ * Fail-closed lexical guard for the generic Modelica closed subset v2.
  *
  * The subset is locked to the LinearThermalRamp kit form: one root `model`,
  * scalar `parameter Real` / `output Real` declarations, and a single
@@ -15,10 +15,15 @@
  * stretching this hand-written guard.
  */
 
-import type {
-  SourceAnalysisLocation,
-  SourceAnalysisSpan,
-} from "../../compile/source/source-analysis.ts";
+/** Structurally compatible with source-analysis spans without importing it. */
+export interface SourceAnalysisLocation {
+  readonly line: number;
+  readonly column: number;
+}
+export interface SourceAnalysisSpan {
+  readonly start: SourceAnalysisLocation;
+  readonly end: SourceAnalysisLocation;
+}
 
 export type ModelicaLexicalErrorCode =
   | "unrecognized_token"

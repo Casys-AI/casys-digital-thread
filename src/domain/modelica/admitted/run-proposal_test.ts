@@ -40,14 +40,14 @@ function admission(): Record<string, unknown> {
         status: "ready-for-review",
       },
       source: {
-        id: "source.thermal-ramp",
+        id: "source.generic-oscillator",
         sourceFingerprint: fingerprint("d"),
         captureFingerprint: fingerprint("e"),
         analysisFingerprint: fingerprint("f"),
       },
       profile: {
         id: MODELICA_ADMITTED_COMPILATION_PROFILE_ID,
-        version: "1.0.0",
+        version: "2.0.0",
         fingerprint: fingerprint("1"),
       },
     },
@@ -58,7 +58,7 @@ function admission(): Record<string, unknown> {
       },
       isolationPolicy: {
         id: "isolation.modelica-deny-net",
-        version: "1.0.0",
+        version: "2.0.0",
         fingerprint: fingerprint("3"),
       },
       runtimeBackend: {
@@ -91,15 +91,15 @@ function admission(): Record<string, unknown> {
         },
       },
       outputValidator: {
-        id: "modelica-closed-subset-result-normalizer",
-        version: "1.0.0",
+        id: "modelica-closed-subset-v2-result-normalizer",
+        version: "2.0.0",
       },
       outputs: [
         {
           role: "evidence",
           basename: "evidence.json",
           mediaType: "application/json",
-          format: "modelica-isolated-evidence-v1",
+          format: "modelica-isolated-evidence-v2",
         },
         {
           role: "result",

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "sensitivity-study-case-catalog/1.0",
+  "cases": [
+    { "id": "dl04-size-z-sensitivity", "file": "dl04-size-z-sensitivity.json" },
+    {
+      "id": "dl05-arm-thickness-sensitivity",
+      "file": "dl05-arm-thickness-sensitivity.json"
+    },
+    { "id": "dl05-arm-thickness-isolated", "file": "dl05-arm-thickness-isolated.json" }
+  ]
+}

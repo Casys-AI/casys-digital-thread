@@ -18,9 +18,6 @@ import type { CataloguedMechanicalProofCaseReader } from "../../../ports/out/fea
 import type { FeaProofSealRequirementsReviewer } from "../../../ports/out/fea/seal-case/fea-proof-seal-requirements-reviewer.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import {
-  FEA_PROOF_CASE_SOURCES,
-  feaProofCaseSourcePath,
-  isKnownFeaProofCaseId,
   selectUniqueCataloguedProofCase,
 } from "../../../../domain/fea/seal-case/fea-proof-case-catalog.ts";
 import {
@@ -320,24 +317,24 @@ export class PrepareProjectFeaProofSealReview
     | { readonly status: "catalog_integrity_failed"; readonly message: string }
   > {
     const selected = caseId
-      ? namedCase(caseId)
+      ? await namedCase(caseId, this.#catalogReader)
       : await uniqueCaseForProject(projectId, this.#catalogReader);
     if (selected.status !== "ok") return selected;
     let raw: string | undefined;
     try {
-      raw = await this.#catalogReader.read(selected.path);
+      raw = await this.#catalogReader.read(selected.caseId);
     } catch {
       return {
         status: "catalog_unavailable",
         message:
-          `Catalog entry "${selected.caseId}" could not be read from its code-owned source.`,
+          `Catalog entry "${selected.caseId}" could not be read from the server-owned manifest.`,
       };
     }
     if (raw === undefined) {
       return {
         status: "catalog_unavailable",
         message:
-          `Catalog entry "${selected.caseId}" is registered, but its code-owned source is unavailable.`,
+          `Catalog entry "${selected.caseId}" is registered, but its manifest file is unavailable.`,
       };
     }
     try {
@@ -494,14 +491,29 @@ function parseCommand(value: unknown): ProjectFeaProofSealReviewCommand {
   });
 }
 
-function namedCase(caseId: string):
-  | { readonly status: "ok"; readonly caseId: string; readonly path: string }
+async function namedCase(
+  caseId: string,
+  reader: CataloguedMechanicalProofCaseReader,
+): Promise<
+  | { readonly status: "ok"; readonly caseId: string }
   | {
     readonly status: "unresolved";
     readonly caseId: string;
     readonly diagnostics: readonly FeaProofSealBindingDiagnostic[];
-  } {
-  if (!isKnownFeaProofCaseId(caseId)) {
+  }
+  | { readonly status: "catalog_unavailable"; readonly message: string }
+> {
+  let entries: readonly { readonly caseId: string }[];
+  try {
+    entries = await reader.list();
+  } catch {
+    return {
+      status: "catalog_unavailable",
+      message:
+        `The server-owned mechanical proof-case catalog manifest could not be opened for "${caseId}".`,
+    };
+  }
+  if (!entries.some((entry) => entry.caseId === caseId)) {
     return {
       status: "unresolved",
       caseId,
@@ -509,47 +521,43 @@ function namedCase(caseId: string):
         code: "catalog-absent",
         artifactId: null,
         message: `Proof case "${caseId}" is not in the server-owned catalog. ` +
-          "Add an entry to FEA_PROOF_CASE_SOURCES and the corresponding JSON file.",
+          "Add an entry to config/mechanical-proof-cases/catalog.json and its JSON file.",
       }],
     };
   }
-  const path = feaProofCaseSourcePath(caseId);
-  if (!path) {
-    return {
-      status: "unresolved",
-      caseId,
-      diagnostics: [{
-        code: "catalog-absent",
-        artifactId: null,
-        message: `Proof case "${caseId}" is not in the server-owned catalog.`,
-      }],
-    };
-  }
-  return { status: "ok", caseId, path };
+  return { status: "ok", caseId };
 }
 
 async function uniqueCaseForProject(
   projectId: string,
   reader: CataloguedMechanicalProofCaseReader,
 ): Promise<
-  | { readonly status: "ok"; readonly caseId: string; readonly path: string }
+  | { readonly status: "ok"; readonly caseId: string }
   | {
     readonly status: "unresolved";
     readonly caseId: string;
     readonly diagnostics: readonly FeaProofSealBindingDiagnostic[];
   }
+  | { readonly status: "catalog_unavailable"; readonly message: string }
 > {
-  const loaded: Array<
-    { readonly caseId: string; readonly path: string; readonly projectId: string }
-  > = [];
-  for (const [caseId, path] of FEA_PROOF_CASE_SOURCES) {
-    const candidate = await readCataloguedProofCase(reader, caseId, path);
+  const loaded: Array<{ readonly caseId: string; readonly projectId: string }> = [];
+  let entries: readonly { readonly caseId: string }[];
+  try {
+    entries = await reader.list();
+  } catch {
+    return {
+      status: "catalog_unavailable",
+      message:
+        "The server-owned mechanical proof-case catalog manifest could not be opened.",
+    };
+  }
+  for (const { caseId } of entries) {
+    const candidate = await readCataloguedProofCase(reader, caseId);
     if (candidate) loaded.push(candidate);
   }
   const selected = selectUniqueCataloguedProofCase(projectId, loaded);
   if (selected.status === "ok") {
-    const match = loaded.find((item) => item.caseId === selected.caseId);
-    return { status: "ok", caseId: selected.caseId, path: match!.path };
+    return { status: "ok", caseId: selected.caseId };
   }
   return {
     status: "unresolved",
@@ -570,14 +578,13 @@ async function uniqueCaseForProject(
 async function readCataloguedProofCase(
   reader: CataloguedMechanicalProofCaseReader,
   caseId: string,
-  path: string,
 ): Promise<
-  | { readonly caseId: string; readonly path: string; readonly projectId: string }
+  | { readonly caseId: string; readonly projectId: string }
   | undefined
 > {
   let raw: string | undefined;
   try {
-    raw = await reader.read(path);
+    raw = await reader.read(caseId);
   } catch {
     return undefined;
   }
@@ -585,7 +592,7 @@ async function readCataloguedProofCase(
   try {
     const proofCase = validateMechanicalProofCase(JSON.parse(raw));
     if (proofCase.id !== caseId) return undefined;
-    return { caseId, path, projectId: proofCase.project.id };
+    return { caseId, projectId: proofCase.project.id };
   } catch {
     return undefined;
   }

@@ -1,19 +1,21 @@
 /**
  * Precedence and post-I/O joins for a signed sensitivity catalog offer.
  *
- * Named known catalog ids and a unique catalog JSON still win. catalog-absent
- * and catalog-ambiguous fall through to a unique signed offer. Several same
+ * Named catalog ids and a unique catalog JSON still win. catalog-absent and
+ * catalog-ambiguous fall through to a unique signed offer. Several same
  * proofDigest captures are one case. An invalid sibling must not brick a
  * unique digest match. After the unique offer, proof and admission are
  * reopened, `bindSignedCatalogOffer` compiles the study template.
  */
 
-import { fingerprintsEqual, sha256Fingerprint } from "../../kernel/deterministic-json.ts";
+import {
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import type { ThreadArtifact } from "../../thread/thread-snapshot.ts";
 import type { MechanicalProofCase } from "../../fea/seal-case/mechanical-proof-case.ts";
 import type { SensitivityCatalogOffer } from "./sensitivity-catalog-from-proof.ts";
-import { isKnownSensitivityStudyCaseId } from "./sensitivity-study-case-catalog.ts";
 import {
   isCompileAdmissionArtifact,
   sensitivityCadSourceUri,
@@ -38,23 +40,12 @@ export type CatalogOpenStatus =
 /**
  * Whether the review may reopen a signed catalog offer after the catalog pass.
  *
- * | Named known catalog id | Catalog status | Winner |
- * | --- | --- | --- |
- * | yes | any | catalog |
- * | no | ok | catalog |
- * | no | catalog_unavailable / catalog_integrity_failed | catalog I/O |
- * | no | unresolved (absent or ambiguous) | try signed offer |
+ * The application determines the catalog status through its injected reader.
+ * This pure domain rule deliberately knows neither catalog ids nor paths.
  */
 export function shouldOpenSignedCatalogOffer(input: {
-  readonly namedCaseId?: string;
   readonly catalogStatus: CatalogOpenStatus;
 }): boolean {
-  if (
-    input.namedCaseId !== undefined &&
-    isKnownSensitivityStudyCaseId(input.namedCaseId)
-  ) {
-    return false;
-  }
   return input.catalogStatus === "unresolved";
 }
 
