@@ -1,3 +1,5 @@
+import { LANE_LABEL } from "../ui/cockpit.tsx";
+import { cn } from "../lib/utils.ts";
 import type { JSX } from "react";
 import {
   buildOverviewThreadHero,
@@ -29,7 +31,7 @@ export function OverviewThreadHero({
               : "px-4 py-2"}
           >
             <p
-              className="m-0 font-mono text-[9.5px] font-semibold uppercase tracking-[0.1em]"
+              className={cn("m-0", LANE_LABEL)}
               style={{ color: column.lane.color }}
             >
               {column.lane.title}

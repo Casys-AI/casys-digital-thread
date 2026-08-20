@@ -16,9 +16,23 @@ import type { ComponentProps, JSX } from "react";
 import { cn } from "../lib/utils.ts";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.tsx";
 
+/**
+ * Surtitre de page : mono, capitales, teinté de l'accent produit. Il nomme
+ * l'espace où l'on se trouve — un seul par page.
+ */
+export const PAGE_EYEBROW =
+  "font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand";
+
 /** Étiquette de section : mono, capitales, interlettrage large. */
 export const SECTION_LABEL =
   "font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground";
+
+/**
+ * Libellé de voie du fil. Il ne porte pas sa couleur : elle vient de la
+ * discipline, appliquée par l'appelant, parce que c'est une donnée.
+ */
+export const LANE_LABEL =
+  "font-mono text-[9.5px] font-semibold uppercase tracking-[0.1em]";
 
 /** Ligne de données : mono discret, pour les identités et les empreintes. */
 export const DATA_LINE = "font-mono text-[10px] text-muted-foreground";
@@ -138,9 +152,7 @@ export function PageHead(
   return (
     <div className="flex items-end justify-between gap-6 pb-3.5">
       <div className="min-w-0">
-        <p className="m-0 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
-          {eyebrow}
-        </p>
+        <p className={cn("m-0", PAGE_EYEBROW)}>{eyebrow}</p>
         <h1 className="m-0 mt-1 max-w-[640px] text-balance text-[19px]/tight font-semibold -tracking-[0.015em]">
           {title}
         </h1>

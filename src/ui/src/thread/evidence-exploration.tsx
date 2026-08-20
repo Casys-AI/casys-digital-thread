@@ -11,6 +11,7 @@
  * evidence-exploration-model.ts et evidence-canvas-model.ts.
  */
 
+import { SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sigma from "sigma";
@@ -51,8 +52,7 @@ const legendRowClass =
   "flex items-center justify-between gap-2 rounded-sm px-1 py-[3px] text-[11.5px] leading-tight";
 const legendCountClass =
   "font-mono text-[10px] text-muted-foreground tabular-nums";
-const legendTitleClass =
-  "mb-0.5 font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground";
+const legendTitleClass = cn("mb-0.5", SECTION_LABEL);
 const NEIGHBOR_DEPTHS = [1, 2, 3] as const;
 
 export interface EvidenceExplorationProps {
@@ -760,7 +760,7 @@ function ExplorationKeyboardNavigation({
 }): JSX.Element {
   return (
     <details className="mt-1 w-full max-[720px]:basis-full">
-      <summary className="cursor-pointer font-mono text-[9px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+      <summary className={cn("cursor-pointer", SECTION_LABEL)}>
         Accessible evidence table ({nodes.length} items · {edges.length}{" "}
         relations)
       </summary>

@@ -1,3 +1,4 @@
+import { PAGE_EYEBROW } from "../ui/cockpit.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
@@ -1398,7 +1399,7 @@ export function ThreadWorkbench({
     >
       <header className="border-b border-border px-3 py-2.5">
         <div className="flex items-center justify-between gap-3">
-          <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-brand">
+          <p className={PAGE_EYEBROW}>
             Inspector
           </p>
           <Badge variant="secondary" className="font-mono text-[9px]">

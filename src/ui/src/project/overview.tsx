@@ -17,6 +17,7 @@ import {
 import { OverviewThreadHero } from "./overview-thread-hero.tsx";
 import { Progress } from "@ark-ui/react/progress";
 import { cn } from "../lib/utils.ts";
+import { PAGE_EYEBROW, PanelFoot, SECTION_LABEL } from "../ui/cockpit.tsx";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent } from "../ui/card.tsx";
@@ -117,7 +118,7 @@ export function ProjectOverview({
         aria-labelledby="project-objective-title"
       >
         <div className="min-w-0 [&>h3]:m-0 [&>h3]:max-w-[620px] [&>h3]:text-balance [&>h3]:text-[19px] [&>h3]:font-semibold [&>h3]:leading-snug [&>h3]:tracking-tight">
-          <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
+          <p className={cn("mb-1", PAGE_EYEBROW)}>
             Project objective
           </p>
           <h3 id="project-objective-title">
@@ -306,7 +307,7 @@ export function ProjectOverview({
         {sealedAssemblyGlb?.uri && (
           <Card className="gap-0 overflow-hidden py-0 shadow-sm">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <p className="m-0 font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+              <p className={cn("m-0", SECTION_LABEL)}>
                 Sealed assembly preview · GLB
               </p>
               <span className="font-mono text-[9.5px] text-muted-foreground">
@@ -321,12 +322,12 @@ export function ProjectOverview({
                 errorLabel="Sealed model unavailable"
               />
             </div>
-            <div className="flex justify-between border-t border-border bg-muted/30 px-3 py-2 font-mono text-[10px] tabular-nums text-muted-foreground">
+            <PanelFoot className="font-mono text-[10px] tabular-nums text-muted-foreground">
               <span>{sealedAssembly?.captureArtifact.label}</span>
               <span>
                 {thread.components.components.length} recorded components
               </span>
-            </div>
+            </PanelFoot>
           </Card>
         )}
       </div>
@@ -595,7 +596,7 @@ function OverviewVerdictTiles({
       <div className="mb-3 flex items-end justify-between gap-4">
         <h3
           id="overview-verdicts-title"
-          className="m-0 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground"
+          className={cn("m-0", SECTION_LABEL)}
         >
           Recorded verdicts
         </h3>
@@ -772,7 +773,7 @@ function NowPanel({
   return (
     <section aria-label="Current project control">
       <div className="flex items-center justify-between border-b border-border px-3.5 py-2">
-        <p className="m-0 font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+        <p className={cn("m-0", SECTION_LABEL)}>
           NOW
         </p>
         {liveRunCount > 0 && (
@@ -794,7 +795,7 @@ function NowPanel({
           )
           : feed.map((entry, i) => <NowFeedRow key={i} entry={entry} />)}
       </div>
-      <div className="border-t border-border bg-muted/30 px-3.5 py-1.5">
+      <PanelFoot>
         <a
           href="#work"
           className="text-[12px] font-medium text-brand hover:underline"
@@ -806,7 +807,7 @@ function NowPanel({
         >
           Open activity →
         </a>
-      </div>
+      </PanelFoot>
     </section>
   );
 }

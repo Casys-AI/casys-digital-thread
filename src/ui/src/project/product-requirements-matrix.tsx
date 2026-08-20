@@ -1,3 +1,4 @@
+import { PAGE_EYEBROW } from "../ui/cockpit.tsx";
 import { Fragment, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
@@ -36,7 +37,7 @@ export function ProductRequirementsMatrix({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <p className="mb-0 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
+        <p className={cn("mb-0", PAGE_EYEBROW)}>
           Verification · requirement verdicts
         </p>
         <dl className="grid shrink-0 grid-cols-3 divide-x divide-border overflow-hidden rounded-lg border border-border bg-card font-mono tabular-nums">

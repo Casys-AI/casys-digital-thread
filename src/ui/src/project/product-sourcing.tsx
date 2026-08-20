@@ -1,8 +1,10 @@
+import { PAGE_EYEBROW } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { productSourcingCoverage } from "./product-requirements-model.ts";
+import { cn } from "../lib/utils.ts";
 
 /**
  * Reserved to-Buy coverage (mockup 3b / 5a). Count is a recorded ERP
@@ -46,7 +48,7 @@ export function ProductSourcingLane({
 }): JSX.Element {
   return (
     <div className="flex flex-col gap-3">
-      <p className="mb-0 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
+      <p className={cn("mb-0", PAGE_EYEBROW)}>
         Product › Sourcing · ERP
       </p>
       <ProductSourcingCoverageLine thread={thread} />

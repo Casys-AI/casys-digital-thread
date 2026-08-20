@@ -1,3 +1,4 @@
+import { PAGE_EYEBROW, SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import type { EngineeringProjectFraming } from "../../../domain/project/project-brief.ts";
 import { cn } from "../lib/utils.ts";
@@ -28,7 +29,7 @@ export function ProjectBriefElicitation({
       className="grid gap-3"
     >
       <header className="min-w-0">
-        <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
+        <p className={cn("mb-1", PAGE_EYEBROW)}>
           Framing · the brief follows the conversation
         </p>
         <h3
@@ -42,7 +43,7 @@ export function ProjectBriefElicitation({
       <div className="grid items-start gap-3.5 lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
         <Card className="gap-0 overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-            <span className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+            <span className={SECTION_LABEL}>
               Framing questions
             </span>
             <span className="font-mono text-[10px] text-muted-foreground">
@@ -73,7 +74,7 @@ export function ProjectBriefElicitation({
           data-authority={view.assemblingAuthority}
         >
           <div className="flex items-center justify-between gap-3 border-b border-border px-3.5 py-2">
-            <span className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+            <span className={SECTION_LABEL}>
               {view.revision === undefined
                 ? "Living brief"
                 : `Living brief · rev ${view.revision}`}
@@ -107,7 +108,7 @@ export function ProjectBriefElicitation({
                       >
                         <h4
                           id={`brief-elicitation-${section.id}`}
-                          className="m-0 font-mono text-[9px] font-medium uppercase tracking-[0.1em] text-muted-foreground"
+                          className={cn("m-0", SECTION_LABEL)}
                         >
                           {section.title}
                         </h4>

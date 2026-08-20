@@ -1,3 +1,4 @@
+import { PAGE_EYEBROW, SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { JSX, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Splitter } from "@ark-ui/react/splitter";
@@ -115,7 +116,7 @@ export function ComponentWorkspace({
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <p className="mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
+          <p className={cn("mb-1", PAGE_EYEBROW)}>
             Product · sealed geometry
           </p>
           <h3 className="m-0 text-lg font-semibold tracking-tight">
@@ -329,7 +330,7 @@ function SysmlRail({
     <aside className="flex min-w-0 flex-col gap-3">
       <Card className="gap-0 py-0">
         <CardHeader className="flex-row items-center justify-between gap-2 px-3 py-2">
-          <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+          <p className={SECTION_LABEL}>
             SysML v2 · {terminology.heading}
           </p>
           <span className="font-mono text-[9.5px] text-muted-foreground">
@@ -353,7 +354,7 @@ function SysmlRail({
       {(selected.attributes ?? []).length > 0 && (
         <Card className="gap-0 py-0">
           <CardHeader className="px-3 py-2">
-            <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+            <p className={SECTION_LABEL}>
               AttributeUsage
             </p>
           </CardHeader>
@@ -380,7 +381,7 @@ function SysmlRail({
       {subtree.anchoredRequirements.length > 0 && (
         <Card className="gap-0 py-0">
           <CardHeader className="px-3 py-2">
-            <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+            <p className={SECTION_LABEL}>
               Requirements & constraints · anchored
             </p>
           </CardHeader>
