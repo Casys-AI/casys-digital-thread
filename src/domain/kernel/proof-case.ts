@@ -355,7 +355,7 @@ function renderOracleRequirementMembers(
  *     scripts/probes/probe-requirement-units.ts, status ok for all eight;
  *     per-unit dates and the refused candidates (m2, N*m, N.m, kPa, deg)
  *     are recorded inline in UNIT_TO_SYSML_TYPE and in
- *     docs/reference/oracle-units.md.
+ *     docs/reference/providers/oracle-units.md.
  */
 export const SUPPORTED_ORACLE_UNITS: readonly string[] = [
   ...UNIT_TO_SYSML_TYPE.keys(),

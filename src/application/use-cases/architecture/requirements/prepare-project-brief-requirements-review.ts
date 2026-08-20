@@ -257,7 +257,7 @@ function collectItemDiagnostics(
 // Unit normalisation (MPa → Pa and future affine cases like °C → K) is handled
 // by the domain module `unit-normalisation.ts`, which validates every target
 // unit against SUPPORTED_ORACLE_UNITS at module load time.  See the module and
-// docs/reference/oracle-units.md for the rationale and probe evidence.
+// docs/reference/providers/oracle-units.md for the rationale and probe evidence.
 
 function requirementParameters(
   requirement: BriefRequirementDeclaration,

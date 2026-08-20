@@ -57,7 +57,7 @@ jobs.push(#{
     output_schema: holes_schema,
 });
 jobs.push(#{
-    prompt: base + "Scan docs/reference/agent-workspace.md, docs/how-to/run-the-behave-loop-from-zero.md, CLAUDE.md, docs/reference/workspace-map.md for agent-facing command holes: mcp:call not indexed, expectedRevision still required in docs, preview --project-id still presented as default.",
+    prompt: base + "Scan docs/reference/agent/agent-workspace.md, docs/how-to/behave/run-the-behave-loop-from-zero.md, CLAUDE.md, docs/reference/runtime/workspace-map.md for agent-facing command holes: mcp:call not indexed, expectedRevision still required in docs, preview --project-id still presented as default.",
     label: "audit:docs",
     capability_mode: "read-only",
     output_schema: holes_schema,

@@ -7,13 +7,13 @@ frontières, contrats — vit dans les pages ci-dessous, qui sont la vérité.
 ## Lire d'abord
 
 1. [AGENTS.md](AGENTS.md) — autorités, pièges de paires qui se ressemblent, labels
-2. [docs/reference/agent-workspace.md](docs/reference/agent-workspace.md) — surfaces
+2. [docs/reference/agent/agent-workspace.md](docs/reference/agent/agent-workspace.md) — surfaces
    appelables, opérations enregistrées, grants exacts
-3. [docs/reference/lookalike-traps.md](docs/reference/lookalike-traps.md) — paires qui
+3. [docs/reference/agent/lookalike-traps.md](docs/reference/agent/lookalike-traps.md) — paires qui
    ne sont pas des substituts
-4. [docs/reference/workspace-map.md](docs/reference/workspace-map.md) — ports, YOLO.
-   Census fichiers : [workspace source map](docs/reference/workspace-source-map.md)
-5. [docs/reference/analysis-authority-pipeline.md](docs/reference/analysis-authority-pipeline.md)
+4. [docs/reference/runtime/workspace-map.md](docs/reference/runtime/workspace-map.md) — ports, YOLO.
+   Census fichiers : [workspace source map](docs/reference/runtime/workspace-source-map.md)
+5. [docs/reference/pipeline/analysis-authority-pipeline.md](docs/reference/pipeline/analysis-authority-pipeline.md)
    — capture → analyse → MRTR → dispatch
 6. [docs/tutorials/first-engineering-loop.md](docs/tutorials/first-engineering-loop.md)
    — la boucle de bout en bout
@@ -98,6 +98,6 @@ ressource MCP servent l'ancienne UI.
 - Tests `_test.ts` co-localisés ; les tests UI sont des tests **Deno** à la racine de
   `src/ui/`. `@std/assert` uniquement ; noms de tests en phrases décrivant l'invariant.
 - Documentation en Diátaxis sous `docs/`. Une nouvelle frontière ou un nouveau port se
-  documente dans `docs/reference/workspace-map.md`.
+  documente dans `docs/reference/runtime/workspace-map.md`.
 - Pendant l'implémentation, préférer les checks ciblés et causaux ; réserver les suites
   globales aux vrais jalons d'intégration.

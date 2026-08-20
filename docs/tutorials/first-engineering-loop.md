@@ -1,5 +1,7 @@
 # Tutorial: follow the engineering loop
 
+Audience: both · Diátaxis: tutorial · Kind: how-to
+
 This is the first Diátaxis tutorial. It shows how a person and a paired agent move from
 plain-language intent to inspectable evidence, using the native Workbench as a
 **read-only** dossier.
@@ -48,7 +50,7 @@ five spaces. A CalculiX `@2` receipt is only a captured, reread Thread revision 
 `state/local/`, gitignored), never an `@1` relabel.
 
 A **new** live project on the behave branch only:
-[Run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md).
+[Run the behave loop from zero](../how-to/behave/run-the-behave-loop-from-zero.md).
 
 ## 1. Create or resume a project
 
@@ -80,7 +82,7 @@ After the brief is canonical:
 3. Human approves. Agent queues and executes. r2 is a **blank container identity**, not
    an architecture.
 
-See [sequence a SysON seed](../how-to/sequence-seed-work-item.md) if this ordering is
+See [sequence a SysON seed](../how-to/behave/sequence-seed-work-item.md) if this ordering is
 violated.
 
 ## 4. Architecture, requirements, geometry, proof
@@ -100,12 +102,12 @@ verify.run-fea-static-proof@3  # isolated CalculiX microVM + SysON oracle
 A parallel, provider-free slice exists for agent-authored closed-subset SysML: capture →
 preview → `model.seal-architecture-sysml@1`. That seal writes a Thread document and
 **does not** insert into SysON. See
-[author architecture SysML](../how-to/author-architecture-sysml.md).
+[author architecture SysML](../how-to/compile/author-architecture-sysml.md).
 
 The first two writes need not be typed by hand. `project_brief_architecture_review` and
 `project_brief_requirements_review` compile the approved brief into their exact
 parameters and record which brief item each value came from. See
-[compile brief parameters](../how-to/compile-brief-parameters.md).
+[compile brief parameters](../how-to/compile/compile-brief-parameters.md).
 
 Every consequential step is: append work + decision → propose → human MRTR → queue →
 execute. The agent supplies no provider name, tool, path, or SysML text on the renderer
@@ -115,7 +117,7 @@ Do not type `sensitivity.case.*`. Call
 `project_sensitivity_study_seal_review` first — catalog id and the current
 Thread admission become the seal parameters. `desk-lamp-dl06` is
 `catalog-absent` until a reviewed template exists. How-to:
-[Compile sensitivity-study parameters](../how-to/compile-sensitivity-parameters.md).
+[Compile sensitivity-study parameters](../how-to/compile/compile-sensitivity-parameters.md).
 
 After a sealed sensitivity study, check the join **before** queueing an
 evaluation. `project_sensitivity_base_evaluation_review` is ready only when
@@ -124,7 +126,7 @@ each study metric Object.is-equals one Thread requirement. Historical
 `maxDisplacement` / `maxVonMises` — that is `UNLINKED`, not a mapping the
 agent may invent. A later isolated reseal on that atelier joined. A new
 project starts at
-[Run the behave loop from zero](../how-to/run-the-behave-loop-from-zero.md).
+[Run the behave loop from zero](../how-to/behave/run-the-behave-loop-from-zero.md).
 Proof-run `@2` evaluations stay a different authority.
 
 `verify.evaluate-sensitivity-base@1` then asks SysON to evaluate the
@@ -145,7 +147,7 @@ canonical `design.write-geometry@1` STEP only. Isolated geometry is not a DFM
 target. Do not open make or buy to complete a behave head.
 
 Exact ids, the local r16 facts, and the fail-closed exits:
-[Walk the post-proof loop](../how-to/walk-the-post-proof-loop.md).
+[Walk the post-proof loop](../how-to/behave/walk-the-post-proof-loop.md).
 
 ## 5. Read the cockpit, do not command it
 
@@ -177,5 +179,5 @@ Opening the page does not run FEA, Modelica, or SysON. A documentary baseline is
 system model. A SysON seed is not an architecture. An isolated Build123d execution is
 not canonical geometry. A `succeeded` Modelica run is not a requirement verdict.
 
-When in doubt, read [agent workspace](../reference/agent-workspace.md) before calling a
+When in doubt, read [agent workspace](../reference/agent/agent-workspace.md) before calling a
 tool that looks similar to another.

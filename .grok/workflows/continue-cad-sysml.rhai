@@ -51,8 +51,8 @@ if (slice == "all" || slice == "cad") {
     cad += "Wedge must require exactly 7 positionals. ";
     cad += "Move the unresolved D4 sentinel from Torus to fillet. ";
     cad += "Do not change D4, isolated execute, export, SysML, or registry. ";
-    cad += "Update docs/reference/agent-workspace.md, analysis-authority-pipeline.md, ";
-    cad += "and workspace-map.md lists. deno fmt edited files. Return ok/summary/files.";
+    cad += "Update docs/reference/agent/agent-workspace.md, docs/reference/pipeline/analysis-authority-pipeline.md, ";
+    cad += "and docs/reference/runtime/workspace-map.md lists. deno fmt edited files. Return ok/summary/files.";
     jobs.push(#{
         prompt: cad,
         label: "cad-solids",

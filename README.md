@@ -14,7 +14,7 @@ state intent and make consequential choices in the paired agent conversation. Th
 prepares and orchestrates bounded technical work; the cockpit projects the resulting
 dossier, activity, lineage, and evidence live. The canonical V1/V2 boundary, including
 idea-first, CAD-first, and reverse-engineering entry points, is recorded in
-[the product direction](docs/explanations/product-direction.md).
+[the product direction](docs/explanations/product/product-direction.md).
 
 ```
 SysML v2 model          mcp-syson         requirements, constraints, part structure
@@ -46,7 +46,7 @@ certification claim by implication.
 The research community is converging on this pattern under the name
 **physics-in-the-loop** (generate-and-verify / LLM-Modulo family): the agent proposes,
 sound physical tools dispose. See
-[docs/explanations/positioning.md](docs/explanations/positioning.md) for the full
+[docs/explanations/product/positioning.md](docs/explanations/product/positioning.md) for the full
 analysis and references. What distinguishes this implementation:
 
 - **Model-grounded** — verified loops start from reviewed SysML v2 requirements.
@@ -67,8 +67,11 @@ This is the **workspace, fleet observer, and engineering-project control plane**
 engineering servers still live in their own repos and run from their published container
 images — you clone only this workspace.
 
+Documentation: start here — [docs/README.md](docs/README.md) (human vs agent vs RFC).
+Do not begin with an RFC.
+
 Agents working in this repo start at [AGENTS.md](AGENTS.md) and
-[docs/reference/agent-workspace.md](docs/reference/agent-workspace.md). Those pages
+[docs/reference/agent/agent-workspace.md](docs/reference/agent/agent-workspace.md). Those pages
 state the authority split and the lookalike operations that must not be merged.
 
 Requirements: Docker (Desktop on macOS) for the engineering stack, and Deno + Node.js
@@ -199,18 +202,18 @@ through bounded backend tools, with chat elicitation where human authority is
 consequential. Only registered operations are executable today; a missing executor stays
 an explicit capability gap. Provider execution, canonical attachment, and project
 completion remain separate operations. See the
-[native preview how-to](docs/how-to/preview-native-workbench.md) and the
-[ThreadSnapshot reference](docs/reference/thread-snapshot.md).
+[native preview how-to](docs/how-to/cockpit/preview-native-workbench.md) and the
+[ThreadSnapshot reference](docs/reference/contracts/thread-snapshot.md).
 
-[`experiments/thread-workflow/`](experiments/thread-workflow/) holds the frozen YAML DAG
+[`experiments/thread-workflow/`](experiments/thread-workflow) holds the frozen YAML DAG
 authoring prototype (spec and engine; no production caller). No dashboard-layout YAML,
 iframe host, or presentation-only MCP sits between the backend and provider-native MCP
-tools. See the [workflow reference](docs/reference/thread-workflows.md).
+tools. See the [workflow reference](docs/reference/contracts/thread-workflows.md).
 
 CM-01 has been fully retired from active code, configuration, scripts, catalogues and UI
 fixtures. Only the static
-[`state/fixtures/retired/cm01-v3/`](state/fixtures/retired/cm01-v3/) golden fixture and
-the original immutable records under [`state/local/`](state/local/) remain. They are
+[`state/fixtures/retired/cm01-v3/`](state/fixtures/retired/cm01-v3) golden fixture and
+the original immutable records under [`state/local/`](state/local) remain. They are
 audit evidence, not a template, fallback, operation or provider admission. See the
 [archived dossier](docs/legacy/cm01-v3.md).
 
@@ -219,22 +222,14 @@ The cockpit visual baseline lives in this repository (`src/ui/src/ui/*`, local
 semantic badges, and container-aware layout. Domain viewers add only their specialized
 diagram, CAD, physics, or evidence rendering. The product does not import
 `@casys/mcp-view`. See
-[The cockpit component language](docs/explanations/mcp-view-component-language.md).
+[The cockpit component language](docs/explanations/cockpit/mcp-view-component-language.md).
 
 When the engineering services are stopped, the console reports them as unavailable and
-keeps the checked-in bracket run explicitly labelled as demo. The documentation is
-organized with [Diátaxis](https://diataxis.fr/): start at the
-[documentation map](docs/README.md), follow the
-[product direction](docs/explanations/product-direction.md), follow the
-[retired Console preview note](docs/how-to/preview-console.md), use the
-[native Workbench preview](docs/how-to/preview-native-workbench.md), or inspect the
-[CM-01 archive](docs/legacy/cm01-v3.md). Look up exact paths and ports in the
-[workspace reference](docs/reference/workspace-map.md). The
-[source-analysis and authority pipeline](docs/reference/analysis-authority-pipeline.md)
-documents how native agent-authored code remains free while source capture, parsing,
-review and provider dispatch stay causally explicit. The
-[console reference](docs/reference/console.md) retains the observer contract, evidence
-model, and security boundary.
+keeps the checked-in bracket run explicitly labelled as demo.
+
+Documentation: start here — [docs/README.md](docs/README.md). That page is the reading
+plan (human, agent, RFC). RFCs under [docs/rfcs/](docs/rfcs/README.md) are session
+briefs or studies, not the product contract.
 
 ## Repository map
 
@@ -248,13 +243,13 @@ model, and security boundary.
 | `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                                                                  |
 | `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                                                          |
 | `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence                                       |
-| `docs/README.md`                              | Diátaxis documentation map                                                                                               |
-| `docs/how-to/`                                | Focused operating guides for native workflows                                                                            |
+| `docs/README.md`                              | Documentation reading plan — start here                                                                                  |
+| `docs/tutorials/`                             | First engineering loop                                                                                                   |
+| `docs/how-to/`                                | How-to guides, then theme folders (`behave/`, `compile/`, `run/`, `cockpit/`, `extend/`)                                  |
+| `docs/reference/`                             | Contracts and lookup, then theme folders (`agent/`, `runtime/`, `pipeline/`, `contracts/`, `providers/`)                  |
+| `docs/explanations/`                          | Why the boundaries exist, then theme folders (`product/`, `cockpit/`, `oracles/`)                                         |
+| `docs/rfcs/`                                  | Session briefs and studies — not the product contract                                                                    |
 | `docs/legacy/`                                | Non-executable historical dossiers; never active configuration or admission                                              |
-| `docs/reference/`                             | Exact workspace ownership, contracts, and port lookup                                                                    |
-| `docs/explanations/product-direction.md`      | Canonical verified-now, V1, and V2 product boundary                                                                      |
-| `docs/reference/console.md`                   | Console ops tools, truth model, limitations, and security boundary                                                       |
-| `docs/explanations/positioning.md`            | Explanation: industry & SOTA positioning and references                                                                  |
 | `examples/bracket/`                           | The end-to-end walkthrough with real numbers                                                                             |
 
 ## The ecosystem (public building blocks)

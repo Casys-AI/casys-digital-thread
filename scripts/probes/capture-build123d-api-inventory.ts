@@ -7,7 +7,7 @@
  * qualification tables from this file (plus type methods). Until then the
  * frontend hand table in qualified-build123d-source-analyzer.ts remains
  * documentary coverage, not a derived table. See
- * docs/explanations/closed-language-compilation.md.
+ * docs/explanations/product/closed-language-compilation.md.
  *
  * Read-only probe: it runs `python3 inspect` inside the already-running
  * compose sandbox and rewrites the JSON artifact. It never touches the
