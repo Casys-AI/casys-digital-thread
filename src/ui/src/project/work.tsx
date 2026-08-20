@@ -220,25 +220,13 @@ export function ProjectOperations({
   ).length;
 
   return (
-    <div className="space-y-4">
-      {/* Compact header */}
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
-        <p className="font-mono text-[10px] tabular-nums text-foreground">
-          <span>{view.summary.declared}</span>
-          {" declared surfaces · "}
-          <span>{view.summary.observed}</span>
-          {" with recorded evidence · "}
-          <span>{view.summary.running}</span>
-          {" running"}
-        </p>
-        <p className="shrink-0 font-mono text-[10px] text-muted-foreground">
-          read-only projection · fleet health lives in
-          {" console_snapshot"}
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-3.5">
+      {
+        /* Le titre porte les chiffres de la flotte : « combien, dans quel
+          état » est ce qu'on vient lire ici, pas le mot « flotte ». */
+      }
       {/* Fleet cards */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
         {view.cards.map((card) => (
           <FleetServerCard
             key={card.id}
@@ -254,7 +242,7 @@ export function ProjectOperations({
       )}
 
       {/* MRTR + Queue */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_1fr]">
+      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <MrtrCard decisions={pendingDecisions} />
         <QueueCard
           runs={activeRuns}
@@ -442,9 +430,10 @@ function MrtrCard({
             </p>
           )}
         <p className="text-[11px] text-muted-foreground leading-snug pt-1">
-          Signed retry via <span className="font-mono text-[10px]">elicitation</span>
-          {" "}
-          in the paired conversation — the cockpit only projects the pending state.
+          Signed retry via{" "}
+          <span className="font-mono text-[10px]">elicitation</span>{" "}
+          in the paired conversation — the cockpit only projects the pending
+          state.
         </p>
       </CardContent>
       <div className="border-t border-border bg-muted/30 px-3 py-1.5 font-mono text-[9.5px] text-muted-foreground">
@@ -507,7 +496,9 @@ function QueueCard({
         {runs.length > 0
           ? (
             <ul>
-              {runs.map((run) => <QueueRow key={run.id} run={run} project={project} />)}
+              {runs.map((run) => (
+                <QueueRow key={run.id} run={run} project={project} />
+              ))}
             </ul>
           )
           : (

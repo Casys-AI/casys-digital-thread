@@ -1,14 +1,11 @@
 import { Fragment, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
+import { Accordion } from "@ark-ui/react/accordion";
+import { compactEmbeddedFingerprints } from "../thread/compact-identifier-model.ts";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../ui/collapsible.tsx";
 import { recordStatusVariant } from "./record-status.ts";
 import {
   buildRequirementMatrix,
@@ -128,15 +125,22 @@ export function ProductRequirementsMatrix({
               No current modelled requirements match this filter.
             </p>
           )
-          : rows.map((row) => (
-            <RequirementRow
-              key={row.id}
-              row={row}
-              open={openId === row.id}
-              onOpenChange={(next) => setOpenId(next ? row.id : undefined)}
-              onOpenVerification={onOpenVerification}
-            />
-          ))}
+          : (
+            <Accordion.Root
+              collapsible
+              value={openId === undefined ? [] : [openId]}
+              onValueChange={(details) => setOpenId(details.value[0])}
+            >
+              {rows.map((row) => (
+                <RequirementRow
+                  key={row.id}
+                  row={row}
+                  open={openId === row.id}
+                  onOpenVerification={onOpenVerification}
+                />
+              ))}
+            </Accordion.Root>
+          )}
         <div className="flex flex-col gap-0.5 border-t border-border bg-muted/40 px-3.5 py-2">
           <span className="font-mono text-[10px] tracking-[0.05em] text-muted-foreground">
             <span className="text-foreground/70">TO MAKE</span>
@@ -155,23 +159,21 @@ export function ProductRequirementsMatrix({
 function RequirementRow({
   row,
   open,
-  onOpenChange,
   onOpenVerification,
 }: {
   row: RequirementMatrixRow;
   open: boolean;
-  onOpenChange: (open: boolean) => void;
   onOpenVerification: () => void;
 }): JSX.Element {
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={onOpenChange}
+    <Accordion.Item
+      value={row.id}
       className={cn(
+        "block",
         open && "border-l-2 border-brand bg-brand/[0.03]",
       )}
     >
-      <CollapsibleTrigger
+      <Accordion.ItemTrigger
         className={cn(
           "grid w-full items-center text-left tabular-nums",
           MATRIX_GRID,
@@ -205,13 +207,13 @@ function RequirementRow({
         <span className="truncate px-3.5 py-2 pl-2 font-mono text-[10px] text-muted-foreground">
           {row.evidenceLabel}
         </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-2.5 px-3.5 pb-3">
+      </Accordion.ItemTrigger>
+      <Accordion.ItemContent className="flex flex-col gap-2.5 overflow-hidden px-3.5 pb-3">
         <EvidenceChain row={row} />
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-[10px] text-muted-foreground">
             {row.observationId
-              ? `Observation ${row.observationId}`
+              ? `Observation ${compactEmbeddedFingerprints(row.observationId)}`
               : "No persisted observation on this requirement"}
             {row.violationId ? ` · violation ${row.violationId}` : ""}
           </span>
@@ -247,8 +249,8 @@ function RequirementRow({
             />
           </div>
         )}
-      </CollapsibleContent>
-    </Collapsible>
+      </Accordion.ItemContent>
+    </Accordion.Item>
   );
 }
 
@@ -283,7 +285,9 @@ function EvidenceChain({
   if (hasRecordedObservation(row)) {
     links.push({
       label: "OBSERVATION",
-      title: `${row.computed} · ${row.observationId}`,
+      title: `${row.computed} · ${
+        compactEmbeddedFingerprints(row.observationId ?? "")
+      }`,
       subtitle: "units checked",
     });
   }
@@ -351,7 +355,7 @@ function EvidenceChainCard({
       </span>
       <span
         className={cn(
-          "font-mono text-[11px] font-medium",
+          "min-w-0 break-words font-mono text-[11px] font-medium",
           tone === "pass" && "text-success",
           tone === "fail" && "text-destructive",
           !tone && "text-foreground",

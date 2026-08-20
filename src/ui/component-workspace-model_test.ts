@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 import {
+  buildComponentTree,
   buildSysmlSubtree,
   cadSurfaceCoverage,
   correctionNodesForComponent,
@@ -113,8 +114,10 @@ Deno.test("projected r5 geometry resolves from exact capture-to-binary traces", 
   const snapshot = minimalSnapshot();
   const captureDigest =
     "39d5a031fcf2ed7926ac7e17fecb7ee7e55587fe5112588814c0d256afdbb04a";
-  const glbDigest = "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
-  const stepDigest = "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
+  const glbDigest =
+    "5ae73d2321bf164be3ea4085c52ef9a0a4b92ac5cf8d6b5cde6fd93001e20d6f";
+  const stepDigest =
+    "9ffb695f17d6f92d8e203143f0d79830754c711fff1656067420a1648e54ba56";
   const capture = projectedGeometryCapture(captureDigest);
   const glb = projectedGeometryBinary(
     captureDigest,
@@ -893,7 +896,8 @@ Deno.test("per-part mesh binding resolves via resolveCadSurface as a part surfac
     revision: "a".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "a".repeat(64),
-    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
+    uri:
+      "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
@@ -942,7 +946,8 @@ Deno.test("resolveCadMeshStatus distinguishes preview-ready from not-exported fr
     revision: "b".repeat(64),
     freshness: "fresh",
     fingerprint: "sha256:" + "b".repeat(64),
-    uri: "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
+    uri:
+      "generic-semantic-cad-r3-capture://test#generic-product-v3-r3-drip-tray.stl",
     producedBy: "build123d_export",
     dependsOn: [],
   };
@@ -1148,7 +1153,8 @@ Deno.test("buildSysmlSubtree anchors requirements by exact SysON element identit
       status: "pass",
       observationIds: [],
       violationIds: [],
-      rationale: "Fixture requirement for Boiler, must not appear for DripTray.",
+      rationale:
+        "Fixture requirement for Boiler, must not appear for DripTray.",
     },
   ];
 
@@ -1580,3 +1586,59 @@ function attachExactV2Catalog(
     ),
   ];
 }
+
+Deno.test("the product tree nests on declared parentId and never loses a component", () => {
+  const component = (
+    id: string,
+    parentId?: string,
+  ): ThreadComponent => ({
+    id,
+    label: id,
+    kind: "part",
+    quantity: 1,
+    ...(parentId === undefined ? {} : { parentId }),
+    bindings: [],
+  });
+  const catalog = {
+    ...GENERIC_THREAD_FIXTURE.components,
+    components: [
+      component("root"),
+      component("child", "root"),
+      // Parent absent du catalogue : le composant doit remonter à la racine.
+      // Le masquer ferait passer un catalogue incomplet pour complet.
+      component("orphan", "missing-parent"),
+    ],
+  };
+
+  const tree = buildComponentTree(catalog);
+  assertEquals(tree.map((node) => node.id), ["root", "orphan"]);
+  assertEquals(tree[0]?.children.map((node) => node.id), ["child"]);
+});
+
+Deno.test("a cyclic parentId is cut instead of rendering forever", () => {
+  const catalog = {
+    ...GENERIC_THREAD_FIXTURE.components,
+    components: [
+      {
+        id: "a",
+        label: "a",
+        kind: "part" as const,
+        quantity: 1,
+        parentId: "b",
+        bindings: [],
+      },
+      {
+        id: "b",
+        label: "b",
+        kind: "part" as const,
+        quantity: 1,
+        parentId: "a",
+        bindings: [],
+      },
+    ],
+  };
+
+  // Deux composants parents l'un de l'autre : aucun n'est racine, donc l'arbre
+  // est vide — mais la projection doit rendre, pas boucler.
+  assertEquals(buildComponentTree(catalog).length, 0);
+});

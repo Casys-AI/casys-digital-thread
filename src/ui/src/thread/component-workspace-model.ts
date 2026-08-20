@@ -2,6 +2,7 @@ import type {
   ThreadArtifact,
   ThreadComponent,
   ThreadComponentBinding,
+  ThreadComponentCatalog,
   ThreadComponentPreview,
   ThreadGraphNode,
   ThreadRequirement,
@@ -938,4 +939,64 @@ export function resolveCadMeshStatus(
     (b) => b.provider === "build123d" && b.kind !== "assembly-child",
   );
   return hasBuild123dBinding ? "not-exported" : "no-binding";
+}
+
+/**
+ * Un nœud de l'arbre de structure produit.
+ *
+ * L'imbrication vient de `parentId`, déclaré dans le catalogue — jamais d'un
+ * nom ni d'un préfixe de libellé. Un composant dont le parent n'est pas dans
+ * le catalogue remonte à la racine plutôt que de disparaître : un catalogue
+ * incomplet doit se voir, pas se taire.
+ */
+export interface ComponentTreeNode {
+  readonly id: string;
+  readonly label: string;
+  readonly kind: ThreadComponent["kind"];
+  readonly quantity: number;
+  readonly verified: boolean;
+  readonly children: readonly ComponentTreeNode[];
+}
+
+/**
+ * Projette le catalogue en arbre. L'ordre des enfants suit celui du catalogue :
+ * c'est un ordre enregistré, il ne se retrie pas à l'affichage.
+ */
+export function buildComponentTree(
+  catalog: ThreadComponentCatalog,
+): readonly ComponentTreeNode[] {
+  const components = catalog.components;
+  const known = new Set(components.map((component) => component.id));
+  const childrenByParent = new Map<string, ThreadComponent[]>();
+  const roots: ThreadComponent[] = [];
+  for (const component of components) {
+    const parentId = component.parentId;
+    if (parentId === undefined || !known.has(parentId)) {
+      roots.push(component);
+      continue;
+    }
+    const siblings = childrenByParent.get(parentId) ?? [];
+    siblings.push(component);
+    childrenByParent.set(parentId, siblings);
+  }
+  // `seen` coupe un parentId cyclique : le catalogue est déclaratif et rien
+  // n'interdit structurellement une boucle, qui ferait tourner le rendu.
+  const project = (
+    component: ThreadComponent,
+    seen: ReadonlySet<string>,
+  ): ComponentTreeNode => ({
+    id: component.id,
+    label: component.label,
+    kind: component.kind,
+    quantity: component.quantity,
+    verified: component.bindings.some(
+      (binding) =>
+        binding.provider === "syson" && binding.status === "verified",
+    ),
+    children: seen.has(component.id)
+      ? []
+      : (childrenByParent.get(component.id) ??
+        []).map((child) => project(child, new Set([...seen, component.id]))),
+  });
+  return roots.map((root) => project(root, new Set()));
 }

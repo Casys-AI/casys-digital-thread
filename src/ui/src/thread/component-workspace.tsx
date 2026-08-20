@@ -1,5 +1,7 @@
 import type { JSX, ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Splitter } from "@ark-ui/react/splitter";
+import { createTreeCollection, TreeView } from "@ark-ui/react/tree-view";
 import * as THREE from "three";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import { createThreeOrbitViewport } from "../cad/three-orbit-viewport.ts";
@@ -12,14 +14,17 @@ import type {
   ThreadArtifact,
   ThreadComponent,
   ThreadComponentBinding,
+  ThreadComponentCatalog,
   ThreadComponentPreview,
   ThreadComponentProvider,
   ThreadGraphNode,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 import {
+  buildComponentTree,
   buildSysmlSubtree,
   cadSurfaceCoverage,
+  type ComponentTreeNode,
   correctionNodesForComponent,
   resolveCadMeshStatus,
   resolveCadSurface,
@@ -162,72 +167,95 @@ export function ComponentWorkspace({
         </Button>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-        <Card className="min-w-0 overflow-hidden py-0">
-          <CardContent className="flex flex-col gap-0 p-0">
-            <StructurePartChips
-              components={components}
-              selectedId={selected.id}
-              sealLabel={sealedAssembly
-                ? sealedAssembly.assemblyFormats.join(" · ") + " · SEALED"
-                : undefined}
-              onSelect={(component) => {
-                onComponentSelect(component);
-                onProviderChange("build123d");
-                const cad = resolveCadSurface(snapshot, component);
-                const assemblyInspect = component.kind === "assembly"
-                  ? sealedAssembly?.inspectionBinding
-                  : undefined;
-                const inspect = cad?.inspectionBinding ?? assemblyInspect;
-                if (inspect) onBindingSelect(inspect);
-              }}
-            />
-            <div
-              className="min-h-[388px] p-4"
-              data-provider={activeProvider}
-            >
-              <CadGeometry
-                snapshot={snapshot}
-                selected={selected}
-                onSelect={onComponentSelect}
-                onInspect={onBindingSelect}
+      {
+        /* Le viewer et son rail se partagent la largeur : la géométrie et
+          la structure se lisent ensemble, et la répartition appartient au
+          lecteur. Les tailles minimales gardent les deux exploitables. */
+      }
+      <Splitter.Root
+        defaultSize={[70, 30]}
+        panels={[
+          { id: "viewer", minSize: 45 },
+          { id: "rail", minSize: 22 },
+        ]}
+        className="flex items-stretch"
+      >
+        <Splitter.Panel id="viewer" className="min-w-0">
+          <Card className="min-w-0 overflow-hidden py-0">
+            <CardContent className="flex flex-col gap-0 p-0">
+              <StructurePartChips
+                components={components}
+                selectedId={selected.id}
+                sealLabel={sealedAssembly
+                  ? sealedAssembly.assemblyFormats.join(" · ") + " · SEALED"
+                  : undefined}
+                onSelect={(component) => {
+                  onComponentSelect(component);
+                  onProviderChange("build123d");
+                  const cad = resolveCadSurface(snapshot, component);
+                  const assemblyInspect = component.kind === "assembly"
+                    ? sealedAssembly?.inspectionBinding
+                    : undefined;
+                  const inspect = cad?.inspectionBinding ?? assemblyInspect;
+                  if (inspect) onBindingSelect(inspect);
+                }}
               />
-            </div>
-            {sealedAssembly && (
-              <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-3 py-2">
-                <CompactIdentifier
-                  value={sealedAssembly.captureArtifact.fingerprint ??
-                    sealedAssembly.captureArtifact.id}
-                  label="sealed geometry fingerprint"
+              <div
+                className="min-h-[388px] p-4"
+                data-provider={activeProvider}
+              >
+                <CadGeometry
+                  snapshot={snapshot}
+                  selected={selected}
+                  onSelect={onComponentSelect}
+                  onInspect={onBindingSelect}
                 />
-                <button
-                  type="button"
-                  className={cn(
-                    "font-mono text-[9.5px] text-brand hover:underline",
-                    focusRing,
-                  )}
-                  onClick={() =>
-                    onBindingSelect(sealedAssembly.inspectionBinding)}
-                >
-                  Inspect in Activity →
-                </button>
               </div>
-            )}
-          </CardContent>
-        </Card>
-        <SysmlRail
-          snapshot={snapshot}
-          selected={selected}
-          activeProvider={activeProvider}
-          onSelect={(component) => {
-            onComponentSelect(component);
-            onProviderChange("syson");
-            const binding = bindingFor(component, "syson");
-            if (binding) onBindingSelect(binding);
-          }}
-          onInspect={onBindingSelect}
-        />
-      </div>
+              {sealedAssembly && (
+                <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/30 px-3 py-2">
+                  <CompactIdentifier
+                    value={sealedAssembly.captureArtifact.fingerprint ??
+                      sealedAssembly.captureArtifact.id}
+                    label="sealed geometry fingerprint"
+                  />
+                  <button
+                    type="button"
+                    className={cn(
+                      "font-mono text-[9.5px] text-brand hover:underline",
+                      focusRing,
+                    )}
+                    onClick={() =>
+                      onBindingSelect(sealedAssembly.inspectionBinding)}
+                  >
+                    Inspect in Activity →
+                  </button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </Splitter.Panel>
+        <Splitter.ResizeTrigger
+          id="viewer:rail"
+          aria-label="Resize the geometry and structure panes"
+          className="mx-1.5 grid w-1.5 shrink-0 cursor-col-resize place-items-center rounded-full hover:bg-muted data-[dragging]:bg-brand/15"
+        >
+          <i aria-hidden="true" className="h-8 w-0.5 rounded-full bg-border" />
+        </Splitter.ResizeTrigger>
+        <Splitter.Panel id="rail" className="flex min-w-0 flex-col">
+          <SysmlRail
+            snapshot={snapshot}
+            selected={selected}
+            activeProvider={activeProvider}
+            onSelect={(component) => {
+              onComponentSelect(component);
+              onProviderChange("syson");
+              const binding = bindingFor(component, "syson");
+              if (binding) onBindingSelect(binding);
+            }}
+            onInspect={onBindingSelect}
+          />
+        </Splitter.Panel>
+      </Splitter.Root>
 
       <ProductSourcingCoverageLine
         thread={snapshot}
@@ -314,38 +342,11 @@ function SysmlRail({
               {view.diagramLabel}
             </p>
           )}
-          {snapshot.components.components.map((component) => {
-            const binding = bindingFor(component, "syson");
-            const current = component.id === selected.id;
-            return (
-              <button
-                key={component.id}
-                type="button"
-                className={cn(
-                  "flex w-full items-center gap-2 px-3 py-1.5 text-left",
-                  focusRing,
-                  current && "bg-brand/[0.04]",
-                )}
-                onClick={() => onSelect(component)}
-              >
-                <i
-                  aria-hidden="true"
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    binding?.status === "verified"
-                      ? "bg-success"
-                      : "bg-muted-foreground/40",
-                  )}
-                />
-                <span className="min-w-0 flex-1 truncate text-[11.5px]">
-                  {component.label}
-                </span>
-                <span className="font-mono text-[9.5px] text-muted-foreground">
-                  {component.kind}
-                </span>
-              </button>
-            );
-          })}
+          <ProductStructureTree
+            catalog={snapshot.components}
+            selected={selected}
+            onSelect={onSelect}
+          />
         </CardContent>
       </Card>
 
@@ -1040,6 +1041,141 @@ function EvidenceColumnView({
         )
         : null}
     </div>
+  );
+}
+
+/**
+ * L'arbre de structure produit, sur Ark UI.
+ *
+ * L'imbrication vient du catalogue (`buildComponentTree`) : la vue ne déduit
+ * aucune hiérarchie. Sélectionner un nœud sélectionne le composant, ce qui
+ * garde le reste de l'espace de travail synchronisé comme avec l'ancienne
+ * liste.
+ */
+function ProductStructureTree({
+  catalog,
+  selected,
+  onSelect,
+}: {
+  catalog: ThreadComponentCatalog;
+  selected: ThreadComponent;
+  onSelect: (component: ThreadComponent) => void;
+}): JSX.Element {
+  const roots = useMemo(() => buildComponentTree(catalog), [catalog]);
+  const collection = useMemo(
+    () =>
+      createTreeCollection<ComponentTreeNode>({
+        nodeToValue: (node) => node.id,
+        nodeToString: (node) => node.label,
+        rootNode: {
+          id: "__root__",
+          label: "",
+          kind: "assembly",
+          quantity: 1,
+          verified: false,
+          children: roots,
+        },
+      }),
+    [roots],
+  );
+  const byId = useMemo(
+    () => new Map(catalog.components.map((item) => [item.id, item])),
+    [catalog],
+  );
+  return (
+    <TreeView.Root
+      collection={collection}
+      selectedValue={[selected.id]}
+      // Toutes les branches ouvertes : la structure produit se lit d'un coup,
+      // elle n'a pas la profondeur d'une arborescence de fichiers.
+      defaultExpandedValue={catalog.components.map((item) => item.id)}
+      onSelectionChange={(details) => {
+        const next = byId.get(details.selectedValue[0] ?? "");
+        if (next) onSelect(next);
+      }}
+      lazyMount
+    >
+      <TreeView.Tree aria-label="Product structure">
+        {collection.rootNode.children?.map((node, index) => (
+          <ProductStructureTreeNode
+            key={node.id}
+            node={node}
+            indexPath={[index]}
+          />
+        ))}
+      </TreeView.Tree>
+    </TreeView.Root>
+  );
+}
+
+function ProductStructureTreeNode({
+  node,
+  indexPath,
+}: {
+  node: ComponentTreeNode;
+  indexPath: number[];
+}): JSX.Element {
+  const dot = (
+    <i
+      aria-hidden="true"
+      className={cn(
+        "size-1.5 shrink-0 rounded-full",
+        node.verified ? "bg-success" : "bg-muted-foreground/40",
+      )}
+    />
+  );
+  const meta = (
+    <span className="ml-auto shrink-0 font-mono text-[9.5px] text-muted-foreground">
+      {node.quantity > 1 ? `${node.kind} · ×${node.quantity}` : node.kind}
+    </span>
+  );
+  return (
+    <TreeView.NodeProvider node={node} indexPath={indexPath}>
+      {node.children.length > 0
+        ? (
+          <TreeView.Branch className="block">
+            <TreeView.BranchControl className="flex cursor-default items-center gap-2 px-3 py-1.5 data-[selected]:bg-brand/[0.06]">
+              <TreeView.BranchIndicator className="text-muted-foreground transition-transform data-[state=open]:rotate-90">
+                <svg
+                  viewBox="0 0 12 12"
+                  className="size-2.5"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M4 2.5 L8 6 L4 9.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                  />
+                </svg>
+              </TreeView.BranchIndicator>
+              {dot}
+              <TreeView.BranchText className="min-w-0 truncate text-[11.5px] font-semibold">
+                {node.label}
+              </TreeView.BranchText>
+              {meta}
+            </TreeView.BranchControl>
+            <TreeView.BranchContent className="ml-[22px] border-l border-border">
+              {node.children.map((child, index) => (
+                <ProductStructureTreeNode
+                  key={child.id}
+                  node={child}
+                  indexPath={[...indexPath, index]}
+                />
+              ))}
+            </TreeView.BranchContent>
+          </TreeView.Branch>
+        )
+        : (
+          <TreeView.Item className="flex cursor-default items-center gap-2 py-1.5 pl-[26px] pr-3 data-[selected]:bg-brand/[0.06]">
+            {dot}
+            <TreeView.ItemText className="min-w-0 truncate text-[11.5px]">
+              {node.label}
+            </TreeView.ItemText>
+            {meta}
+          </TreeView.Item>
+        )}
+    </TreeView.NodeProvider>
   );
 }
 
