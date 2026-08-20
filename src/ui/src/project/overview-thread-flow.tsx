@@ -41,13 +41,22 @@ import {
 } from "./overview-thread-hero-model.ts";
 
 /** Largeur d'une carte de nœud. Fixe : les voies doivent rester alignées. */
-const NODE_WIDTH = 178;
+const NODE_WIDTH = 158;
 const NODE_HEIGHT = 46;
 
 interface FlowNodeData extends Record<string, unknown> {
   readonly hero: OverviewHeroNode;
   readonly onOpenEvidence: () => void;
 }
+
+const HANDLES = [
+  { id: "in-left", type: "target", position: Position.Left },
+  { id: "out-right", type: "source", position: Position.Right },
+  { id: "in-top", type: "target", position: Position.Top },
+  { id: "out-bottom", type: "source", position: Position.Bottom },
+  { id: "in-bottom", type: "target", position: Position.Bottom },
+  { id: "out-top", type: "source", position: Position.Top },
+] as const;
 
 function ThreadFlowNode({ data }: { data: FlowNodeData }): JSX.Element {
   const { hero, onOpenEvidence } = data;
@@ -71,21 +80,22 @@ function ThreadFlowNode({ data }: { data: FlowNodeData }): JSX.Element {
         </span>
       </Popover.Trigger>
       {
-        /* Points d'ancrage des liens. Invisibles : le fil se lit par ses
-          traits, pas par des poignées — rien ne se connecte à la main. */
+        /* Quatre ancrages, invisibles : rien ne se connecte à la main.
+          Deux tiers des liens joignent des nœuds d'une MÊME voie ; les faire
+          sortir par la droite pour revenir par la gauche leur faisait faire
+          une anse autour de la carte. Un lien vertical sort donc par le haut
+          ou par le bas, un lien entre voies par les côtés. */
       }
-      <Handle
-        type="target"
-        position={Position.Left}
-        isConnectable={false}
-        className="!h-px !w-px !border-0 !bg-transparent"
-      />
-      <Handle
-        type="source"
-        position={Position.Right}
-        isConnectable={false}
-        className="!h-px !w-px !border-0 !bg-transparent"
-      />
+      {HANDLES.map(({ id, type, position }) => (
+        <Handle
+          key={id}
+          id={id}
+          type={type}
+          position={position}
+          isConnectable={false}
+          className="!h-px !w-px !border-0 !bg-transparent"
+        />
+      ))}
       <Portal>
         <Popover.Positioner>
           <Popover.Content
@@ -158,25 +168,47 @@ export function OverviewThreadFlow({
     [view, onOpenEvidence],
   );
 
+  const placedByKey = useMemo(
+    () => new Map(view.nodes.map((hero) => [hero.key, hero])),
+    [view],
+  );
+
   const edges = useMemo<Edge[]>(
     () =>
-      view.edges.map((edge) => ({
-        id: edge.key,
-        source: edge.source,
-        target: edge.target,
-        type: "smoothstep",
-        animated: false,
-        style: {
-          // Le trait doit se suivre du regard d'une voie à l'autre : le
-          // jeton de bordure, prévu pour des filets, disparaît à cette échelle.
-          stroke: edge.emphasis
-            ? "var(--color-brand)"
-            : "var(--color-muted-foreground)",
-          strokeOpacity: edge.emphasis ? 0.9 : 0.45,
-          strokeWidth: edge.emphasis ? 1.8 : 1.2,
-        },
-      })),
-    [view],
+      view.edges.map((edge) => {
+        const from = placedByKey.get(edge.source);
+        const to = placedByKey.get(edge.target);
+        // Même colonne : le lien est vertical, il sort par le haut ou le bas.
+        const vertical = from !== undefined && to !== undefined &&
+          Math.abs(from.x - to.x) < NODE_WIDTH / 2;
+        const downward = (to?.y ?? 0) >= (from?.y ?? 0);
+        return {
+          id: edge.key,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: vertical
+            ? (downward ? "out-bottom" : "out-top")
+            : "out-right",
+          targetHandle: vertical
+            ? (downward ? "in-top" : "in-bottom")
+            : "in-left",
+          // Des courbes, pas des coudes : à cet espacement, smoothstep longe
+          // les cartes et empile ses angles droits. La Bézier laisse lire
+          // quelle voie mène à quelle voie.
+          type: "bezier",
+          animated: false,
+          style: {
+            // Le trait doit se suivre du regard d'une voie à l'autre : le
+            // jeton de bordure, prévu pour des filets, disparaît à cette échelle.
+            stroke: edge.emphasis
+              ? "var(--color-brand)"
+              : "var(--color-muted-foreground)",
+            strokeOpacity: edge.emphasis ? 0.9 : 0.45,
+            strokeWidth: edge.emphasis ? 1.8 : 1.2,
+          },
+        };
+      }),
+    [view, placedByKey],
   );
 
   return (

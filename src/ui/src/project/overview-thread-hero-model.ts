@@ -18,10 +18,16 @@ export interface OverviewLane {
   readonly color: string;
 }
 
-/** Display lanes of mockup 2a — composition only, not a second provenance. */
+/**
+ * Voies d'affichage — composition seule, pas une seconde provenance.
+ *
+ * Le modèle système vient en premier parce que c'est lui qui DÉCLARE les
+ * exigences : les placer avant lui obligeait quatorze arêtes à remonter le
+ * fil, contre dix dans cet ordre (mesuré sur le graphe enregistré).
+ */
 export const OVERVIEW_LANES: readonly OverviewLane[] = [
-  { id: "requirements", title: "Requirements", color: "#7c3aed" },
   { id: "system-model", title: "System model", color: "#2563eb" },
+  { id: "requirements", title: "Requirements", color: "#7c3aed" },
   { id: "geometry", title: "Geometry", color: "#0e7490" },
   { id: "physics", title: "Physics", color: "#a16207" },
   { id: "verdicts", title: "Verdicts", color: "#15803d" },
@@ -63,7 +69,8 @@ export interface OverviewThreadHeroView {
 const COLUMN_WIDTH = OVERVIEW_HERO_WIDTH / OVERVIEW_LANES.length;
 const MAX_PER_LANE = 4;
 const NODE_TOP = 56;
-const NODE_GAP = 60;
+// L'écart vertical laisse passer les liens entre deux cartes de 46 px de haut.
+const NODE_GAP = 72;
 
 /**
  * 2a hero: essential recorded nodes, stacked in the five mockup lanes.
