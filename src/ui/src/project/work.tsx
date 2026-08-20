@@ -1,4 +1,4 @@
-import { CARD_SURFACE } from "../ui/cockpit.tsx";
+import { CARD_SURFACE, SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import type {
   CockpitFleetProjection,
@@ -11,6 +11,7 @@ import type {
 } from "../../../domain/project/engineering-project.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { cn } from "../lib/utils.ts";
+import { buildRunTimeline, waitShare } from "./run-timeline-model.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import { Card, CardContent, CardHeader } from "../ui/card.tsx";
 import {
@@ -253,6 +254,8 @@ export function ProjectOperations({
           project={project}
         />
       </div>
+
+      <RunTimelineCard project={project} />
 
       {/* Full run journal — collapsed by default */}
       <details className={cn("overflow-hidden", CARD_SURFACE)}>
@@ -633,6 +636,72 @@ function AgentRunLifecycle({ run }: { run: EngineeringAgentRun }): JSX.Element {
 // ---------------------------------------------------------------------------
 // Private utilities
 // ---------------------------------------------------------------------------
+
+/**
+ * Le déroulé des runs : une barre par run, coupée entre l'attente en file et
+ * l'exécution.
+ *
+ * Les barres se mesurent contre le run le plus long, pas contre l'horloge :
+ * sur une session d'une demi-heure, un axe absolu écraserait des durées de
+ * quelques secondes contre le bord gauche et ne montrerait rien.
+ */
+function RunTimelineCard(
+  { project }: { project: EngineeringProjectSnapshot },
+): JSX.Element | null {
+  const view = buildRunTimeline(project, (run) => workTitle(project, run));
+  if (view.scaleSeconds === 0) return null;
+  const share = waitShare(view);
+  const percent = (seconds: number) =>
+    `${(seconds / view.scaleSeconds) * 100}%`;
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+        <span className={SECTION_LABEL}>Run timeline · queued vs running</span>
+        {share !== undefined && (
+          <span className="font-mono text-[9.5px] text-muted-foreground">
+            {Math.round(share * 100)}% waiting ·{" "}
+            {view.totalRunSeconds.toFixed(1)}s computed
+          </span>
+        )}
+      </div>
+      <ol className="m-0 flex list-none flex-col gap-1 p-3">
+        {view.rows.map((row) => {
+          const wait = row.waitSeconds ?? 0;
+          const ran = row.runSeconds ?? 0;
+          return (
+            <li
+              key={row.id}
+              className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-3"
+            >
+              <span className="truncate text-[11.5px]" title={row.label}>
+                {row.label}
+              </span>
+              <span
+                className="flex h-2 items-stretch overflow-hidden rounded-full bg-muted"
+                aria-hidden="true"
+              >
+                <i
+                  className="bg-muted-foreground/35"
+                  style={{ width: percent(wait) }}
+                />
+                <i className="bg-brand" style={{ width: percent(ran) }} />
+              </span>
+              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                {row.waitSeconds === undefined
+                  // Jamais démarré : pas de durée, et surtout pas un zéro qui
+                  // se lirait « instantané ».
+                  ? "not started"
+                  : `${wait.toFixed(1)}s + ${
+                    row.runSeconds === undefined ? "…" : `${ran.toFixed(1)}s`
+                  }`}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
+  );
+}
 
 function workTitle(
   project: EngineeringProjectSnapshot,
