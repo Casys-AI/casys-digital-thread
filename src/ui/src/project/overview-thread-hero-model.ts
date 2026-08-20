@@ -92,8 +92,26 @@ export function buildOverviewThreadHero(
     verdicts: 0,
   };
 
+  // Producteurs déclarés de chaque nœud, lus sur le graphe COMPLET : le
+  // filtre essentiel écarte les artefacts de solveur, donc l'arête qui dit
+  // d'où vient une mesure n'existe plus dans `essential`.
+  const nodeByRefKey = new Map(
+    thread.graph.nodes.map((item) => [refKey(item.ref), item]),
+  );
+  const producersByRefKey = new Map<string, ThreadGraphNode[]>();
+  for (const edge of thread.graph.edges) {
+    const producer = nodeByRefKey.get(refKey(edge.from));
+    if (!producer) continue;
+    const target = refKey(edge.to);
+    const producers = producersByRefKey.get(target) ?? [];
+    producers.push(producer);
+    producersByRefKey.set(target, producers);
+  }
+
   for (const node of essential.nodes) {
-    const lane = overviewLaneFor(node);
+    const lane = node.entityKind === "observation"
+      ? measurementLaneFor(node, producersByRefKey) ?? overviewLaneFor(node)
+      : overviewLaneFor(node);
     if (!lane) continue;
     const index = counts[lane];
     if (index >= MAX_PER_LANE) continue;
@@ -140,6 +158,25 @@ export function buildOverviewThreadHero(
   };
 }
 
+/**
+ * Voie d'une mesure, lue sur ses producteurs enregistrés.
+ *
+ * Une observation n'est pas un jugement : elle appartient à la discipline qui
+ * l'a produite. `maxDisplacement measured by local CalculiX` déclare pourtant
+ * `digital-thread` comme système, donc seule l'arête vers son `solver-result`
+ * dit d'où elle vient. On lit le graphe, jamais le libellé.
+ */
+function measurementLaneFor(
+  node: ThreadGraphNode,
+  producersByRefKey: ReadonlyMap<string, readonly ThreadGraphNode[]>,
+): OverviewLaneId | undefined {
+  for (const producer of producersByRefKey.get(refKey(node.ref)) ?? []) {
+    const lane = overviewLaneFor(producer);
+    if (lane === "physics" || lane === "geometry") return lane;
+  }
+  return undefined;
+}
+
 export function overviewLaneFor(
   node: ThreadGraphNode,
 ): OverviewLaneId | undefined {
@@ -161,8 +198,11 @@ export function overviewLaneFor(
   if (node.entityKind !== "artifact") return undefined;
 
   const haystack = `${node.system} ${node.artifactKind ?? ""}`.toLowerCase();
+  // `solver-input` / `solver-result` sont des genres d'artefact ENREGISTRÉS :
+  // les omettre laissait la voie physique vide alors qu'un solveur avait
+  // tourné, parce que ces artefacts déclarent `digital-thread` comme système.
   if (
-    /calculix|gmsh|fea|modelica|thermal|ccx|frd|mesh/.test(haystack)
+    /calculix|gmsh|fea|modelica|thermal|ccx|frd|mesh|solver/.test(haystack)
   ) {
     return "physics";
   }

@@ -49,9 +49,13 @@ Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids
     hero.nodes.find((item) => item.node.ref.id === "ART-CAD-018")?.lane,
     "geometry",
   );
+  // Une mesure appartient à la discipline qui l'a produite, pas au verdict :
+  // une contrainte mesurée par un solveur est de la physique. Le jugement,
+  // lui, reste un verdict. Confondre les deux laissait la voie physique vide
+  // alors qu'un solveur avait tourné.
   assertEquals(
     hero.nodes.find((item) => item.node.ref.id === "OBS-STRESS-MAX")?.lane,
-    "verdicts",
+    "physics",
   );
 });
 
