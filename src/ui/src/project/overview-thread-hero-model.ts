@@ -1,6 +1,4 @@
 import { applyEssentialFilter } from "../thread/essential-graph-filter.ts";
-import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
-import { resolveThreadPhases } from "./overview-thread-phase-model.ts";
 import type {
   ThreadGraphNode,
   ThreadGraphRef,
@@ -62,22 +60,13 @@ export interface OverviewLaneColumn {
   readonly systems: readonly string[];
 }
 
-/**
- * Une colonne du fil : une étape déclarée du projet, celle-là même que le
- * bandeau de gates affiche au-dessus.
- */
-export interface OverviewPhaseColumn {
-  readonly id: string;
-  readonly title: string;
-  readonly systems: readonly string[];
-}
-
 export interface OverviewThreadHeroView {
-  readonly lanes: readonly OverviewPhaseColumn[];
+  readonly lanes: readonly OverviewLaneColumn[];
   readonly nodes: readonly OverviewHeroNode[];
   readonly edges: readonly OverviewHeroEdge[];
 }
 
+const COLUMN_WIDTH = OVERVIEW_HERO_WIDTH / OVERVIEW_LANES.length;
 const MAX_PER_LANE = 4;
 const NODE_TOP = 56;
 // L'écart vertical laisse passer les liens entre deux cartes de 46 px de haut.
@@ -89,12 +78,19 @@ const NODE_GAP = 72;
  */
 export function buildOverviewThreadHero(
   thread: ThreadWorkbenchSnapshot,
-  project: EngineeringProjectSnapshot,
 ): OverviewThreadHeroView {
   const essential = applyEssentialFilter(
     thread.graph.nodes,
     thread.graph.edges,
   );
+  const placed: OverviewHeroNode[] = [];
+  const counts: Record<OverviewLaneId, number> = {
+    requirements: 0,
+    "system-model": 0,
+    geometry: 0,
+    physics: 0,
+    verdicts: 0,
+  };
 
   // Producteurs déclarés de chaque nœud, lus sur le graphe COMPLET : le
   // filtre essentiel écarte les artefacts de solveur, donc l'arête qui dit
@@ -112,61 +108,22 @@ export function buildOverviewThreadHero(
     producersByRefKey.set(target, producers);
   }
 
-  const phases = resolveThreadPhases(project, thread);
-
-  // Seules les étapes qui portent un enregistrement deviennent des colonnes :
-  // une colonne vide occuperait la largeur sans rien apprendre. L'ordre reste
-  // celui que le projet déclare.
-  // Repli : sans provenance d'étape exploitable, le fil retombe sur les
-  // disciplines plutôt que de se vider. Un projet dont les runs ne citent
-  // aucun work item garderait sinon une page blanche là où il a travaillé.
-  const hasPhaseProvenance = essential.nodes.some((node) =>
-    phases.phaseIdByRefKey.has(refKey(node.ref))
-  );
-  const columnOf = (node: ThreadGraphNode): string | undefined =>
-    hasPhaseProvenance
-      ? phases.phaseIdByRefKey.get(refKey(node.ref))
-      : (node.entityKind === "observation"
-        ? measurementLaneFor(node, producersByRefKey) ?? overviewLaneFor(node)
-        : overviewLaneFor(node));
-
-  const placeable = essential.nodes.filter((node) =>
-    columnOf(node) !== undefined
-  );
-  const usedColumnIds = new Set(placeable.map((node) => columnOf(node)!));
-  const declaredColumns = hasPhaseProvenance
-    ? phases.orderedPhases
-    : OVERVIEW_LANES.map((lane) => ({ id: lane.id, name: lane.title }));
-  const columns = declaredColumns.filter((column) =>
-    usedColumnIds.has(column.id)
-  );
-  const columnIndex = new Map(
-    columns.map((column, index) => [column.id, index]),
-  );
-  const columnWidth = columns.length === 0
-    ? OVERVIEW_HERO_WIDTH
-    : OVERVIEW_HERO_WIDTH / columns.length;
-
-  const placed: OverviewHeroNode[] = [];
-  const counts = new Map<string, number>();
-  for (const node of placeable) {
-    const columnId = columnOf(node)!;
-    const index = counts.get(columnId) ?? 0;
-    if (index >= MAX_PER_LANE) continue;
-    counts.set(columnId, index + 1);
-    // La couleur continue de dire la DISCIPLINE : la colonne dit l'étape, le
-    // liseré dit la nature. Deux informations, pas une.
+  for (const node of essential.nodes) {
     const lane = node.entityKind === "observation"
       ? measurementLaneFor(node, producersByRefKey) ?? overviewLaneFor(node)
       : overviewLaneFor(node);
-    const discipline = OVERVIEW_LANES.find((item) => item.id === lane);
+    if (!lane) continue;
+    const index = counts[lane];
+    if (index >= MAX_PER_LANE) continue;
+    counts[lane] = index + 1;
+    const column = OVERVIEW_LANES.find((item) => item.id === lane)!;
     placed.push({
       key: refKey(node.ref),
       node,
-      lane: lane ?? "system-model",
-      x: columnWidth * (columnIndex.get(columnId) ?? 0) + columnWidth / 2,
+      lane,
+      x: columnCenter(lane),
       y: NODE_TOP + index * NODE_GAP,
-      color: discipline?.color ?? "#71717a",
+      color: column.color,
       emphasis: node.freshness === "failed" || node.freshness === "stale",
     });
   }
@@ -188,13 +145,12 @@ export function buildOverviewThreadHero(
   }
 
   return {
-    lanes: columns.map((phase) => ({
-      id: phase.id,
-      title: phase.name,
+    lanes: OVERVIEW_LANES.map((lane) => ({
+      lane,
       systems: uniqueSystems(
-        placed
-          .filter((item) => phases.phaseIdByRefKey.get(item.key) === phase.id)
-          .map((item) => item.node.system),
+        placed.filter((item) => item.lane === lane.id).map((item) =>
+          item.node.system
+        ),
       ),
     })),
     nodes: placed,
@@ -256,6 +212,11 @@ export function overviewLaneFor(
     return "geometry";
   }
   return "system-model";
+}
+
+function columnCenter(lane: OverviewLaneId): number {
+  const index = OVERVIEW_LANES.findIndex((item) => item.id === lane);
+  return COLUMN_WIDTH * index + COLUMN_WIDTH / 2;
 }
 
 function uniqueSystems(values: readonly string[]): readonly string[] {
