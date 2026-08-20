@@ -88,6 +88,49 @@ Deno.test("filesystem isolated CAS rejects root, empty, traversal and ambiguous 
   }
 });
 
+Deno.test("filesystem isolated CAS securely creates an absent nested root", async () => {
+  const parent = await realTempDir();
+  const root = `${parent}/modelica/admitted/outputs`;
+  try {
+    const cas = new FileIsolatedOutputCas(root);
+    const prepared = await prepare(cas, "run:nested-root");
+    await cas.abort(prepared.staged.batch);
+
+    for (
+      const directory of [
+        `${parent}/modelica`,
+        `${parent}/modelica/admitted`,
+        root,
+      ]
+    ) {
+      assertPrivateMode(await Deno.lstat(directory), directory);
+      assertEquals(await Deno.realPath(directory), directory);
+    }
+  } finally {
+    await Deno.remove(parent, { recursive: true });
+  }
+});
+
+Deno.test("independent CAS instances safely race to create one nested root", async () => {
+  const parent = await realTempDir();
+  const root = `${parent}/modelica/admitted/outputs`;
+  try {
+    const [left, right] = await Promise.all([
+      prepare(new FileIsolatedOutputCas(root), "run:nested-left"),
+      prepare(new FileIsolatedOutputCas(root), "run:nested-right"),
+    ]);
+    await Promise.all([
+      new FileIsolatedOutputCas(root).abortByRunId(left.record.runId, 0),
+      new FileIsolatedOutputCas(root).abortByRunId(right.record.runId, 0),
+    ]);
+
+    assertPrivateMode(await Deno.lstat(root), root);
+    assertEquals(await Deno.realPath(root), root);
+  } finally {
+    await Deno.remove(parent, { recursive: true });
+  }
+});
+
 Deno.test("filesystem isolated CAS rejects symlinked roots and staging ancestors", async () => {
   const parent = await realTempDir();
   const target = `${parent}/target`;

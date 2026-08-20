@@ -1331,31 +1331,58 @@ function absoluteStorageRoot(root: string): string {
 }
 
 async function ensureAbsoluteDirectoryTreeNoSymlinks(path: string): Promise<void> {
-  let info: Deno.FileInfo;
-  try {
-    info = await Deno.lstat(path);
-  } catch (failure) {
-    if (!(failure instanceof Deno.errors.NotFound)) throw failure;
-    const parent = parentPath(path);
-    if (await Deno.realPath(parent) !== parent) {
+  const missing: string[] = [];
+  let anchor = path;
+  while (true) {
+    let info: Deno.FileInfo;
+    try {
+      info = await Deno.lstat(anchor);
+    } catch (failure) {
+      if (!(failure instanceof Deno.errors.NotFound)) throw failure;
+      missing.push(anchor);
+      anchor = parentPath(anchor);
+      continue;
+    }
+    if (
+      info.isSymlink || !info.isDirectory ||
+      await Deno.realPath(anchor) !== anchor
+    ) {
+      throw new FileIsolatedOutputCasError(
+        anchor === path
+          ? "Isolated output CAS root and ancestors must be real directories."
+          : "Isolated output CAS root parent must not resolve through a symlink.",
+      );
+    }
+    break;
+  }
+
+  for (const directory of missing.reverse()) {
+    const parent = parentPath(directory);
+    const parentInfo = await Deno.lstat(parent);
+    if (
+      parentInfo.isSymlink || !parentInfo.isDirectory ||
+      await Deno.realPath(parent) !== parent
+    ) {
       throw new FileIsolatedOutputCasError(
         "Isolated output CAS root parent must not resolve through a symlink.",
       );
     }
     try {
-      await Deno.mkdir(path, { mode: 0o700 });
-    } catch (creationFailure) {
-      if (!(creationFailure instanceof Deno.errors.AlreadyExists)) {
-        throw creationFailure;
-      }
+      await Deno.mkdir(directory, { mode: 0o700 });
+    } catch (failure) {
+      if (!(failure instanceof Deno.errors.AlreadyExists)) throw failure;
     }
+    const created = await Deno.lstat(directory);
+    if (
+      created.isSymlink || !created.isDirectory ||
+      await Deno.realPath(directory) !== directory
+    ) {
+      throw new FileIsolatedOutputCasError(
+        "Isolated output CAS root and ancestors must be real directories.",
+      );
+    }
+    await Deno.chmod(directory, 0o700);
     await syncDirectory(parent);
-    info = await Deno.lstat(path);
-  }
-  if (info.isSymlink || !info.isDirectory || await Deno.realPath(path) !== path) {
-    throw new FileIsolatedOutputCasError(
-      "Isolated output CAS root and ancestors must be real directories.",
-    );
   }
   await syncDirectory(path);
 }

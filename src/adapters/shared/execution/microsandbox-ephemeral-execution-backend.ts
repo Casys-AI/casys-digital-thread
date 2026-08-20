@@ -233,6 +233,12 @@ export interface MicrosandboxEphemeralExecutionBackendOptions {
   readonly sdk: MicrosandboxSdk;
   readonly imageReference: string;
   readonly expectedImageUser: string;
+  /**
+   * Exact OCI ENTRYPOINT committed by the image. Omission keeps the common
+   * case where the image entrypoint is also the command executed by this
+   * backend; shared images may select another reviewed executable explicitly.
+   */
+  readonly expectedImageEntrypoint?: readonly string[];
   readonly executable: string;
   readonly args: readonly string[];
   readonly workdir: string;
@@ -255,6 +261,7 @@ interface NormalizedBackendOptions {
   readonly imageReference: string;
   readonly imageDigest: string;
   readonly expectedImageUser: string;
+  readonly expectedImageEntrypoint: readonly string[];
   readonly executable: string;
   readonly args: readonly string[];
   readonly workdir: string;
@@ -417,7 +424,7 @@ async function resolvePinnedMicrosandboxPlatformArtifacts(): Promise<{
 
 async function resolveCodeOwnedMicrosandboxConfiguration(): Promise<string> {
   const configuredUrl = new URL(
-    "../../../config/microsandbox-local.json",
+    "../../../../config/microsandbox-local.json",
     import.meta.url,
   );
   const lexicalPath = fileURLToPath(configuredUrl);
@@ -901,7 +908,7 @@ export class MicrosandboxEphemeralExecutionBackend
       image.user !== this.#options.expectedImageUser ||
       !stringArraysEqual(
         image.entrypoint,
-        [this.#options.executable, ...this.#options.args],
+        this.#options.expectedImageEntrypoint,
       )
     ) {
       throw new Error("The cached local OCI image does not match the reviewed image.");
@@ -1239,12 +1246,17 @@ function normalizeOptions(
   const root = exactRecord(
     {
       ...value,
+      expectedImageEntrypoint: value.expectedImageEntrypoint ?? [
+        value.executable,
+        ...value.args,
+      ],
       supervisorUser: value.supervisorUser ?? value.expectedImageUser,
     },
     [
       "sdk",
       "imageReference",
       "expectedImageUser",
+      "expectedImageEntrypoint",
       "executable",
       "args",
       "workdir",
@@ -1303,6 +1315,20 @@ function normalizeOptions(
     throw new TypeError("The quiescence proof must be exact bytes.");
   }
   const args = stringArray(root.args, "$microsandboxBackend.args");
+  const rawExpectedImageEntrypoint = stringArray(
+    root.expectedImageEntrypoint,
+    "$microsandboxBackend.expectedImageEntrypoint",
+  );
+  if (rawExpectedImageEntrypoint.length === 0) {
+    throw new TypeError("The expected image entrypoint must not be empty.");
+  }
+  const expectedImageEntrypoint = Object.freeze([
+    absoluteGuestPath(
+      rawExpectedImageEntrypoint[0]!,
+      "$microsandboxBackend.expectedImageEntrypoint.0",
+    ),
+    ...rawExpectedImageEntrypoint.slice(1),
+  ]);
   return Object.freeze({
     sdk: requireSdk(root.sdk),
     imageReference,
@@ -1311,6 +1337,7 @@ function normalizeOptions(
       root.expectedImageUser,
       "$microsandboxBackend.expectedImageUser",
     ),
+    expectedImageEntrypoint,
     executable: absoluteGuestPath(root.executable, "$microsandboxBackend.executable"),
     args,
     workdir: absoluteGuestPath(root.workdir, "$microsandboxBackend.workdir"),
@@ -1611,7 +1638,7 @@ function assertSandboxConfiguration(
     runtime.workdir !== options.workdir || runtime.user !== options.supervisorUser ||
     !unknownStringArrayEquals(
       runtime.entrypoint,
-      [options.executable, ...options.args],
+      options.expectedImageEntrypoint,
     ) ||
     !unknownNullableStringArrayEquals(runtime.cmd, imageInspection.command) ||
     runtime.shell !== null ||

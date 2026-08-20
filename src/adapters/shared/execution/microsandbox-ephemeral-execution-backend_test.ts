@@ -154,6 +154,59 @@ Deno.test("Microsandbox creation fixes the local image configuration and copies 
   }]);
 });
 
+Deno.test("Microsandbox attests a shared image entrypoint while executing a distinct fixed command", async () => {
+  const imageEntrypoint = [
+    "/usr/local/bin/deno",
+    "run",
+    "/opt/casys/profiles/qualified-kit/run.ts",
+  ];
+  const sdk = new FakeMicrosandboxSdk({
+    imageEntrypoint,
+    nextExecHandle: FakeExecHandle.completed([{ kind: "exited", code: 23 }]),
+  });
+  const backend = backendFor(sdk, { expectedImageEntrypoint: imageEntrypoint });
+  const lease = await backend.create(await requestFor(backend));
+
+  assertEquals((await backend.execute(lease)).termination, {
+    kind: "exited",
+    exitCode: 23,
+    signal: null,
+  });
+  assertEquals(sdk.createdSessions[0]?.executeCalls, [{
+    executable: "/usr/local/bin/python3",
+    args: ["-I", "-B", "/opt/casys/run.py"],
+    cwd: "/work",
+    user: "0:0",
+    maxProcesses: 4,
+    maxOpenFiles: 64,
+  }]);
+});
+
+Deno.test("Microsandbox still rejects a shared image whose entrypoint differs from its exact declared identity", async () => {
+  const sdk = new FakeMicrosandboxSdk({
+    imageEntrypoint: [
+      "/usr/local/bin/deno",
+      "run",
+      "/opt/casys/profiles/qualified-kit/run.ts",
+    ],
+  });
+  const backend = backendFor(sdk, {
+    expectedImageEntrypoint: [
+      "/usr/local/bin/deno",
+      "run",
+      "/opt/casys/profiles/another-kit/run.ts",
+    ],
+  });
+  const request = await requestFor(backend);
+
+  await assertRejects(
+    () => backend.create(request),
+    Error,
+    "cached local OCI image",
+  );
+  assertEquals(sdk.createRequests, []);
+});
+
 Deno.test("Microsandbox creation rejects a source whose declared digest does not match its bytes", async () => {
   const sdk = new FakeMicrosandboxSdk();
   const backend = backendFor(sdk);
@@ -598,14 +651,24 @@ class FakeMicrosandboxSdk implements MicrosandboxSdk {
   readonly getByNameCalls: string[] = [];
   readonly #known = new Map<string, FakeKnownSandbox>();
   readonly #nextExecHandle: FakeExecHandle;
+  readonly #imageEntrypoint: readonly string[];
   localAssertions = 0;
 
   constructor(
-    options: { readonly nextExecHandle?: FakeExecHandle } = {},
+    options: {
+      readonly nextExecHandle?: FakeExecHandle;
+      readonly imageEntrypoint?: readonly string[];
+    } = {},
   ) {
     this.#nextExecHandle = options.nextExecHandle ?? FakeExecHandle.completed([
       { kind: "exited", code: 0 },
     ]);
+    this.#imageEntrypoint = options.imageEntrypoint ?? [
+      "/usr/local/bin/python3",
+      "-I",
+      "-B",
+      "/opt/casys/run.py",
+    ];
   }
 
   assertLocalBackend(): void {
@@ -630,7 +693,7 @@ class FakeMicrosandboxSdk implements MicrosandboxSdk {
       architecture: hostArchitecture(),
       os: "linux",
       user: "0:0",
-      entrypoint: ["/usr/local/bin/python3", "-I", "-B", "/opt/casys/run.py"],
+      entrypoint: this.#imageEntrypoint,
       command: null,
       environment: {},
       labels: { [PROFILE_LABEL]: "image-owned-unversioned-profile" },
@@ -645,12 +708,15 @@ class FakeMicrosandboxSdk implements MicrosandboxSdk {
     this.createRequests.push(captured);
     const session = new FakeSession(
       request.name,
-      sandboxConfig(captured),
+      sandboxConfig(captured, this.#imageEntrypoint),
       this.#nextExecHandle,
       () => this.#known.delete(request.name),
     );
     this.createdSessions.push(session);
-    this.installKnown(request.name, sandboxConfig(captured));
+    this.installKnown(
+      request.name,
+      sandboxConfig(captured, this.#imageEntrypoint),
+    );
     return Promise.resolve(session);
   }
 
@@ -689,6 +755,7 @@ class FakeMicrosandboxSdk implements MicrosandboxSdk {
 
 function backendFor(
   sdk: MicrosandboxSdk,
+  overrides: Partial<MicrosandboxEphemeralExecutionBackendOptions> = {},
 ): MicrosandboxEphemeralExecutionBackend {
   const options: MicrosandboxEphemeralExecutionBackendOptions = {
     sdk,
@@ -714,6 +781,7 @@ function backendFor(
     maxDurationMs: 1_000,
     maxOpenFiles: 64,
     supervisorUser: "0:0",
+    ...overrides,
   };
   return new MicrosandboxEphemeralExecutionBackend(options);
 }
@@ -755,7 +823,15 @@ function createRequest(
   };
 }
 
-function sandboxConfig(request: MicrosandboxCreateRequest) {
+function sandboxConfig(
+  request: MicrosandboxCreateRequest,
+  imageEntrypoint: readonly string[] = [
+    "/usr/local/bin/python3",
+    "-I",
+    "-B",
+    "/opt/casys/run.py",
+  ],
+) {
   return {
     name: request.name,
     image: {
@@ -774,7 +850,7 @@ function sandboxConfig(request: MicrosandboxCreateRequest) {
       workdir: request.workdir,
       shell: null,
       scripts: {},
-      entrypoint: ["/usr/local/bin/python3", "-I", "-B", "/opt/casys/run.py"],
+      entrypoint: [...imageEntrypoint],
       cmd: null,
       hostname: null,
       user: request.user,
