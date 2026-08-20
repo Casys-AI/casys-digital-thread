@@ -7,112 +7,18 @@
 
 import {
   ENGINEERING_WORKBENCH_SCHEMA,
-  type EngineeringDocumentaryTechnicalStart,
-  type EngineeringDocumentaryTechnicalStartState,
-  type EngineeringDocumentaryTechnicalStartStep,
-  type EngineeringDocumentaryWorkbenchSnapshot,
-  type EngineeringEvidenceWorkbenchSnapshot,
-  type EngineeringPlanningActivity,
-  type EngineeringPlanningActivityMilestone,
-  type EngineeringPlanningAgentRunStatus,
-  type EngineeringPlanningBaselineRun,
-  type EngineeringPlanningBaselineRunMilestone,
-  type EngineeringPlanningWorkbenchSnapshot,
-  type EngineeringTechnicalBaselineStatus,
-  type EngineeringWorkbenchSnapshot,
   LIVE_THREAD_OVERLAY_SCHEMA,
-  type LiveThreadOverlay,
-  type LiveThreadOverlayActivity,
-  type LiveThreadWorkbenchSnapshot,
-} from "../../../contracts/engineering-workbench.ts";
+} from "../../../presentation/workbench/engineering/schema.ts";
 import type {
-  ThreadAction,
-  ThreadAnalysisEdgeDetail,
-  ThreadAnalysisNodeDetail,
-  ThreadAnalysisQuantity,
-  ThreadAnalysisScope,
-  ThreadAnalysisSemanticRef,
-  ThreadArtifact,
-  ThreadChange,
-  ThreadComponent,
-  ThreadComponentBinding,
-  ThreadComponentCatalog,
-  ThreadEvidenceFamily,
-  ThreadEvidenceFamilyEdgeRef,
-  ThreadEvidenceFamilyGraph,
-  ThreadEvidenceFamilyGraphEdge,
-  ThreadEvidenceFamilyOmittedCycleEdge,
-  ThreadEvidenceFamilyOmittedSelfLoop,
-  ThreadEvidenceFamilyTransition,
-  ThreadFlowStage,
-  ThreadFreshness,
-  ThreadGraph,
-  ThreadGraphEdge,
-  ThreadGraphEdgeAttestation,
-  ThreadGraphNode,
-  ThreadGraphRef,
-  ThreadGraphRelation,
-  ThreadObservation,
-  ThreadRef,
-  ThreadRequirement,
-  ThreadViolation,
-  ThreadWorkbenchPreviousSnapshot,
-  ThreadWorkbenchSnapshot,
-} from "../../../contracts/thread-workbench.ts";
-import {
-  isEngineeringProjectSnapshot,
-  isEngineeringPublicPretechnicalProjectSnapshot,
-} from "../project/contract.ts";
-
-export type {
-  ThreadAction,
-  ThreadArchitectureSysmlSealIncidence,
-  ThreadArchitectureSysmlSealPresentation,
-  ThreadArchitectureSysmlSealSpan,
-  ThreadArchitectureSysmlSealSymbol,
-  ThreadArchitectureSysmlSealUnresolved,
-  ThreadArtifact,
-  ThreadChange,
-  ThreadComponent,
-  ThreadComponentAttribute,
-  ThreadComponentBinding,
-  ThreadComponentCatalog,
-  ThreadComponentPreview,
-  ThreadComponentProvider,
-  ThreadEvidenceFamily,
-  ThreadEvidenceFamilyEdgeRef,
-  ThreadEvidenceFamilyGraph,
-  ThreadEvidenceFamilyGraphEdge,
-  ThreadEvidenceFamilyOmittedCycleEdge,
-  ThreadEvidenceFamilyOmittedSelfLoop,
-  ThreadEvidenceFamilyTransition,
-  ThreadFlowStage,
-  ThreadFreshness,
-  ThreadGraph,
-  ThreadGraphEdge,
-  ThreadGraphEdgeAttestation,
-  ThreadGraphNode,
-  ThreadGraphRef,
-  ThreadGraphRelation,
-  ThreadObservation,
-  ThreadRef,
-  ThreadRequirement,
-  ThreadTone,
-  ThreadViolation,
-  ThreadWorkbenchPreviousSnapshot,
-  ThreadWorkbenchSnapshot,
-} from "../../../contracts/thread-workbench.ts";
-
-export {
-  ENGINEERING_WORKBENCH_SCHEMA,
-  LIVE_THREAD_OVERLAY_SCHEMA,
-} from "../../../contracts/engineering-workbench.ts";
-export type {
   EngineeringDocumentaryTechnicalStart,
   EngineeringDocumentaryTechnicalStartState,
   EngineeringDocumentaryTechnicalStartStep,
   EngineeringDocumentaryWorkbenchSnapshot,
+} from "../../../presentation/workbench/engineering/documentary.ts";
+import type {
   EngineeringEvidenceWorkbenchSnapshot,
+} from "../../../presentation/workbench/engineering/evidence.ts";
+import type {
   EngineeringPlanningActivity,
   EngineeringPlanningActivityMilestone,
   EngineeringPlanningAgentRunStatus,
@@ -120,15 +26,147 @@ export type {
   EngineeringPlanningBaselineRunMilestone,
   EngineeringPlanningWorkbenchSnapshot,
   EngineeringTechnicalBaselineStatus,
+} from "../../../presentation/workbench/engineering/planning.ts";
+import type {
+  LiveThreadOverlay,
+  LiveThreadOverlayActivity,
+  LiveThreadWorkbenchSnapshot,
+} from "../../../presentation/workbench/engineering/live-overlay.ts";
+import type { EngineeringWorkbenchSnapshot } from "../../../presentation/workbench/engineering/snapshot.ts";
+import type {
+  ThreadAnalysisEdgeDetail,
+  ThreadAnalysisNodeDetail,
+  ThreadAnalysisQuantity,
+  ThreadAnalysisScope,
+  ThreadAnalysisSemanticRef,
+  ThreadFreshness,
+  ThreadGraph,
+  ThreadGraphEdge,
+  ThreadGraphEdgeAttestation,
+  ThreadGraphNode,
+  ThreadGraphRef,
+  ThreadGraphRelation,
+  ThreadRef,
+} from "../../../presentation/workbench/thread/graph.ts";
+import type {
+  ThreadChange,
+  ThreadEvidenceFamily,
+  ThreadEvidenceFamilyEdgeRef,
+  ThreadEvidenceFamilyGraph,
+  ThreadEvidenceFamilyGraphEdge,
+  ThreadEvidenceFamilyOmittedCycleEdge,
+  ThreadEvidenceFamilyOmittedSelfLoop,
+  ThreadEvidenceFamilyTransition,
+  ThreadFlowStage,
+  ThreadVerificationCase,
+  ThreadVerificationCaseCatalog,
+  ThreadVerificationCaseCoverage,
+  ThreadVerificationCaseFamily,
+  ThreadVerificationCaseIssue,
+} from "../../../presentation/workbench/thread/evidence.ts";
+import type {
+  ThreadAction,
+  ThreadArtifact,
+  ThreadObservation,
+  ThreadRequirement,
+  ThreadViolation,
+  ThreadWorkbenchPreviousSnapshot,
+  ThreadWorkbenchSnapshot,
+} from "../../../presentation/workbench/thread/snapshot.ts";
+import type {
+  ThreadComponent,
+  ThreadComponentBinding,
+  ThreadComponentCatalog,
+} from "../../../presentation/workbench/thread/components.ts";
+import {
+  isEngineeringProjectSnapshot,
+  isEngineeringPublicPretechnicalProjectSnapshot,
+} from "../project/contract.ts";
+
+export type {
+  ThreadAction,
+  ThreadArtifact,
+  ThreadObservation,
+  ThreadRequirement,
+  ThreadViolation,
+  ThreadWorkbenchPreviousSnapshot,
+  ThreadWorkbenchSnapshot,
+} from "../../../presentation/workbench/thread/snapshot.ts";
+export type {
+  ThreadArchitectureSysmlSealIncidence,
+  ThreadArchitectureSysmlSealPresentation,
+  ThreadArchitectureSysmlSealSpan,
+  ThreadArchitectureSysmlSealSymbol,
+  ThreadArchitectureSysmlSealUnresolved,
+} from "../../../presentation/workbench/thread/architecture.ts";
+export type {
+  ThreadComponent,
+  ThreadComponentAttribute,
+  ThreadComponentBinding,
+  ThreadComponentCatalog,
+  ThreadComponentPreview,
+  ThreadComponentProvider,
+} from "../../../presentation/workbench/thread/components.ts";
+export type {
+  ThreadChange,
+  ThreadEvidenceFamily,
+  ThreadEvidenceFamilyEdgeRef,
+  ThreadEvidenceFamilyGraph,
+  ThreadEvidenceFamilyGraphEdge,
+  ThreadEvidenceFamilyOmittedCycleEdge,
+  ThreadEvidenceFamilyOmittedSelfLoop,
+  ThreadEvidenceFamilyTransition,
+  ThreadFlowStage,
+  ThreadVerificationCase,
+  ThreadVerificationCaseCatalog,
+  ThreadVerificationCaseCoverage,
+  ThreadVerificationCaseFamily,
+  ThreadVerificationCaseIssue,
+} from "../../../presentation/workbench/thread/evidence.ts";
+export type {
+  ThreadFreshness,
+  ThreadGraph,
+  ThreadGraphEdge,
+  ThreadGraphEdgeAttestation,
+  ThreadGraphNode,
+  ThreadGraphRef,
+  ThreadGraphRelation,
+  ThreadRef,
+  ThreadTone,
+} from "../../../presentation/workbench/thread/graph.ts";
+
+export {
+  ENGINEERING_WORKBENCH_SCHEMA,
+  LIVE_THREAD_OVERLAY_SCHEMA,
+} from "../../../presentation/workbench/engineering/schema.ts";
+export type {
+  EngineeringDocumentaryTechnicalStart,
+  EngineeringDocumentaryTechnicalStartState,
+  EngineeringDocumentaryTechnicalStartStep,
+  EngineeringDocumentaryWorkbenchSnapshot,
+} from "../../../presentation/workbench/engineering/documentary.ts";
+export type {
+  EngineeringEvidenceWorkbenchSnapshot,
   EngineeringWorkbenchAlignment,
   EngineeringWorkbenchBaseSnapshot,
-  EngineeringWorkbenchSnapshot,
+} from "../../../presentation/workbench/engineering/evidence.ts";
+export type {
+  EngineeringPlanningActivity,
+  EngineeringPlanningActivityMilestone,
+  EngineeringPlanningAgentRunStatus,
+  EngineeringPlanningBaselineRun,
+  EngineeringPlanningBaselineRunMilestone,
+  EngineeringPlanningWorkbenchSnapshot,
+  EngineeringTechnicalBaselineStatus,
+} from "../../../presentation/workbench/engineering/planning.ts";
+export type { EngineeringWorkbenchSnapshot } from "../../../presentation/workbench/engineering/snapshot.ts";
+export type {
   LiveThreadGraphState,
   LiveThreadOverlay,
   LiveThreadOverlayActivity,
   LiveThreadUpdateState,
   LiveThreadWorkbenchSnapshot,
-} from "../../../contracts/engineering-workbench.ts";
+} from "../../../presentation/workbench/engineering/live-overlay.ts";
 
 export function isEngineeringWorkbenchSnapshot(
   value: unknown,
@@ -627,6 +665,7 @@ export function isThreadWorkbenchSnapshot(
     "sourceLabel",
     "change",
     "components",
+    "verificationCases",
     "graph",
     "evidenceFamilyGraph",
     "flow",
@@ -657,6 +696,13 @@ export function isThreadWorkbenchSnapshot(
     candidate.flow.every(isThreadFlowStage) &&
     Array.isArray(candidate.artifacts) &&
     candidate.artifacts.every(isThreadArtifact) &&
+    (candidate.verificationCases === undefined
+      ? candidate.graph.nodes.every((node) => node.verificationCaseRefs === undefined)
+      : isThreadVerificationCaseCatalog(
+        candidate.verificationCases,
+        candidate.artifacts,
+        candidate.graph,
+      )) &&
     Array.isArray(candidate.observations) &&
     candidate.observations.every(isThreadObservation) &&
     Array.isArray(candidate.requirements) &&
@@ -709,6 +755,7 @@ function isThreadArtifact(value: unknown): value is ThreadArtifact {
     "uri",
     "producedAt",
     "producedBy",
+    "producerRunId",
     "dependsOn",
     "attestation",
     "architectureSysmlSeal",
@@ -721,6 +768,9 @@ function isThreadArtifact(value: unknown): value is ThreadArtifact {
     (value.uri === undefined || typeof value.uri === "string") &&
     (value.producedAt === undefined || typeof value.producedAt === "string") &&
     (value.producedBy === undefined || typeof value.producedBy === "string") &&
+    (value.producerRunId === undefined ||
+      (typeof value.producerRunId === "string" &&
+        value.producerRunId.length > 0)) &&
     Array.isArray(value.dependsOn) &&
     value.dependsOn.every((id) => typeof id === "string") &&
     (value.attestation === undefined ||
@@ -1407,6 +1457,209 @@ function isThreadComponentBinding(
     (binding.selection === undefined || isThreadRef(binding.selection));
 }
 
+function isThreadVerificationCaseCatalog(
+  value: unknown,
+  artifactsValue: unknown,
+  graphValue: unknown,
+): value is ThreadVerificationCaseCatalog {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "schemaVersion",
+      "status",
+      "coverage",
+      "cases",
+      "issues",
+    ]) ||
+    value.schemaVersion !== "thread-verification-cases/1.0" ||
+    (value.status !== "observed" && value.status !== "unresolved" &&
+      value.status !== "unavailable") ||
+    !Array.isArray(value.coverage) ||
+    !value.coverage.every(isThreadVerificationCaseCoverage) ||
+    !hasExactVerificationCaseCoverage(value.coverage) ||
+    !Array.isArray(value.cases) ||
+    !value.cases.every(isThreadVerificationCase) ||
+    !Array.isArray(value.issues) ||
+    !value.issues.every(isThreadVerificationCaseIssue) ||
+    !Array.isArray(artifactsValue) ||
+    !isRecord(graphValue) ||
+    !Array.isArray(graphValue.nodes)
+  ) return false;
+
+  const catalog = value as unknown as ThreadVerificationCaseCatalog;
+  const artifacts = artifactsValue as unknown as ThreadArtifact[];
+  const nodes = graphValue.nodes as unknown as ThreadGraphNode[];
+  const artifactIds = new Set(artifacts.map((artifact) => artifact.id));
+  const artifactsById = new Map(
+    artifacts.map((artifact) => [artifact.id, artifact]),
+  );
+  const artifactNodeIds = new Set(
+    nodes.flatMap((node) => node.ref?.kind === "artifact" ? [node.ref.id] : []),
+  );
+  const caseKeys = catalog.cases.map((item) => item.key);
+  if (!hasUniqueStrings(caseKeys)) return false;
+  const knownCaseKeys = new Set(caseKeys);
+  const exactCaseIdentities = catalog.cases.map((item) =>
+    `${item.family}:${item.caseDigest}`
+  );
+  if (!hasUniqueStrings(exactCaseIdentities)) return false;
+  const authorityIds = catalog.cases.flatMap((item) => item.authorityArtifactIds);
+  if (!hasUniqueStrings(authorityIds)) return false;
+  const coverageByFamily = new Map(
+    catalog.coverage.map((item) => [item.family, item.status]),
+  );
+  if (
+    catalog.cases.some((item) =>
+      coverageByFamily.get(item.family) !== "observed" ||
+      item.authorityArtifactIds.some((id) =>
+        !artifactIds.has(id) || !artifactNodeIds.has(id) ||
+        !authorityArtifactMatchesCase(artifactsById.get(id), item) ||
+        !nodes.some((node) =>
+          node.ref.kind === "artifact" && node.ref.id === id &&
+          node.verificationCaseRefs?.includes(item.key)
+        )
+      )
+    ) ||
+    catalog.issues.some((item) => !artifactIds.has(item.authorityArtifactId)) ||
+    nodes.some((node) =>
+      node.verificationCaseRefs?.some((key) => !knownCaseKeys.has(key)) ?? false
+    )
+  ) return false;
+
+  const unavailableCoverage =
+    catalog.coverage.filter((item) => item.status === "unavailable").length;
+  if (catalog.status === "observed") {
+    return unavailableCoverage === 0 && catalog.issues.length === 0;
+  }
+  if (catalog.status === "unavailable") {
+    return unavailableCoverage === catalog.coverage.length &&
+      catalog.cases.length === 0 && catalog.issues.length === 0 &&
+      nodes.every((node) => node.verificationCaseRefs === undefined);
+  }
+  return unavailableCoverage > 0 || catalog.issues.length > 0;
+}
+
+function isThreadVerificationCaseCoverage(
+  value: unknown,
+): value is ThreadVerificationCaseCoverage {
+  return isRecord(value) && hasExactKeys(value, ["family", "status"]) &&
+    isThreadVerificationCaseFamily(value.family) &&
+    (value.status === "observed" || value.status === "unavailable");
+}
+
+function hasExactVerificationCaseCoverage(
+  coverage: readonly ThreadVerificationCaseCoverage[],
+): boolean {
+  const families = coverage.map((item) => item.family);
+  return coverage.length === 3 && hasUniqueStrings(families) &&
+    families.includes("mechanical-proof") &&
+    families.includes("sensitivity-study") &&
+    families.includes("modelica-simulation");
+}
+
+function isThreadVerificationCase(
+  value: unknown,
+): value is ThreadVerificationCase {
+  if (!isRecord(value)) return false;
+  const candidate = value as Partial<ThreadVerificationCase>;
+  return hasExactKeys(value, [
+    "key",
+    "family",
+    "caseSchemaVersion",
+    "id",
+    "revision",
+    "scope",
+    "caseDigest",
+    "authorityArtifactIds",
+  ]) && typeof candidate.key === "string" && candidate.key.length > 0 &&
+    isThreadVerificationCaseFamily(candidate.family) &&
+    caseSchemaMatchesFamily(
+      candidate.family,
+      candidate.caseSchemaVersion,
+    ) &&
+    typeof candidate.id === "string" && candidate.id.length > 0 &&
+    isPositiveSafeInteger(candidate.revision) &&
+    typeof candidate.scope === "string" && candidate.scope.length > 0 &&
+    typeof candidate.caseDigest === "string" &&
+    isSha256Digest(candidate.caseDigest) &&
+    Array.isArray(candidate.authorityArtifactIds) &&
+    candidate.authorityArtifactIds.length > 0 &&
+    candidate.authorityArtifactIds.every((id) =>
+      typeof id === "string" && id.length > 0
+    ) && hasUniqueStrings(candidate.authorityArtifactIds);
+}
+
+function isThreadVerificationCaseIssue(
+  value: unknown,
+): value is ThreadVerificationCaseIssue {
+  return isRecord(value) && hasExactKeys(value, [
+    "family",
+    "authorityArtifactId",
+    "status",
+    "reason",
+  ]) && isThreadVerificationCaseFamily(value.family) &&
+    typeof value.authorityArtifactId === "string" &&
+    value.authorityArtifactId.length > 0 &&
+    ((value.status === "unavailable" &&
+      (value.reason === "capture-reader-unavailable" ||
+        value.reason === "capture-unavailable")) ||
+      (value.status === "error" &&
+        (value.reason === "artifact-binding-invalid" ||
+          value.reason === "capture-invalid" ||
+          value.reason === "case-binding-divergent")));
+}
+
+function isThreadVerificationCaseFamily(
+  value: unknown,
+): value is ThreadVerificationCaseFamily {
+  return value === "mechanical-proof" || value === "sensitivity-study" ||
+    value === "modelica-simulation";
+}
+
+function caseSchemaMatchesFamily(
+  family: ThreadVerificationCaseFamily | undefined,
+  schemaVersion: unknown,
+): boolean {
+  return (family === "mechanical-proof" &&
+    schemaVersion === "mechanical-proof-case/1.0") ||
+    (family === "sensitivity-study" &&
+      schemaVersion === "sensitivity-study-case/2.0") ||
+    (family === "modelica-simulation" &&
+      schemaVersion === "simulation-case/2.0");
+}
+
+function authorityArtifactMatchesCase(
+  artifact: ThreadArtifact | undefined,
+  verificationCase: ThreadVerificationCase,
+): boolean {
+  if (
+    !artifact || artifact.kind !== "document" ||
+    artifact.system !== "digital-thread" ||
+    artifact.producerRunId === undefined ||
+    artifact.revision !== verificationCase.caseDigest ||
+    artifact.fingerprint === undefined || artifact.uri === undefined
+  ) return false;
+  const fingerprint = /^sha256:([a-f0-9]{64})$/.exec(artifact.fingerprint);
+  if (!fingerprint) return false;
+  const captureDigest = fingerprint[1]!;
+  if (verificationCase.family === "mechanical-proof") {
+    return artifact.producedBy === "verify.seal-proof-case@1" &&
+      artifact.id === `fea-proof-${captureDigest}` &&
+      artifact.uri ===
+        `casys://fea-proof-case-capture/sha256/${captureDigest}`;
+  }
+  if (verificationCase.family === "sensitivity-study") {
+    return artifact.producedBy === "analyze.seal-sensitivity-study@1" &&
+      artifact.id === `sensitivity-case-${verificationCase.caseDigest}` &&
+      artifact.uri ===
+        `casys://sensitivity-study-case-capture/sha256/${captureDigest}`;
+  }
+  return artifact.producedBy === "simulate.seal-simulation-case@2" &&
+    captureDigest === verificationCase.caseDigest &&
+    artifact.id === `simulation-case-v2-${captureDigest}` &&
+    artifact.uri === `casys://simulation-case-v2/sha256/${captureDigest}`;
+}
+
 function isThreadGraph(value: unknown): value is ThreadGraph {
   if (!isRecord(value)) return false;
   const graph = value as Partial<ThreadGraph>;
@@ -1461,6 +1714,7 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
     "affectedComponentId",
     "activityRole",
     "evaluationFamily",
+    "verificationCaseRefs",
     "selection",
   ]) && typeof node.id === "string" && node.id.length > 0 &&
     isThreadGraphRef(node.ref) &&
@@ -1481,6 +1735,13 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
     (node.activityRole === undefined || node.activityRole === "milestone") &&
     (node.evaluationFamily === undefined ||
       node.evaluationFamily === "study-base") &&
+    (node.verificationCaseRefs === undefined ||
+      (Array.isArray(node.verificationCaseRefs) &&
+        node.verificationCaseRefs.length > 0 &&
+        node.verificationCaseRefs.every((key) =>
+          typeof key === "string" && key.length > 0
+        ) &&
+        hasUniqueStrings(node.verificationCaseRefs))) &&
     (node.selection === undefined || isThreadRef(node.selection));
 }
 

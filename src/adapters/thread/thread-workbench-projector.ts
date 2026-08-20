@@ -29,22 +29,26 @@ import type {
 } from "../../domain/thread/engineering-assertion.ts";
 import type {
   ThreadAction,
-  ThreadAnalysisScope,
   ThreadArtifact,
-  ThreadEvidenceFamilyGraph,
-  ThreadFlowStage,
+  ThreadObservation,
+  ThreadRequirement,
+  ThreadViolation,
+  ThreadWorkbenchSnapshot,
+} from "../../presentation/workbench/thread/snapshot.ts";
+import type {
+  ThreadAnalysisScope,
   ThreadFreshness,
   ThreadGraph,
   ThreadGraphEdge,
   ThreadGraphEdgeAttestation,
   ThreadGraphNode,
   ThreadGraphRef,
-  ThreadObservation,
   ThreadRef,
-  ThreadRequirement,
-  ThreadViolation,
-  ThreadWorkbenchSnapshot,
-} from "../../contracts/thread-workbench.ts";
+} from "../../presentation/workbench/thread/graph.ts";
+import type {
+  ThreadEvidenceFamilyGraph,
+  ThreadFlowStage,
+} from "../../presentation/workbench/thread/evidence.ts";
 
 /**
  * Pure presentation projection of a canonical digital-thread snapshot.
@@ -120,6 +124,17 @@ export function projectThreadWorkbenchSnapshot(
       files: [],
     },
     components,
+    verificationCases: {
+      schemaVersion: "thread-verification-cases/1.0",
+      status: "unavailable",
+      coverage: [
+        { family: "mechanical-proof", status: "unavailable" },
+        { family: "sensitivity-study", status: "unavailable" },
+        { family: "modelica-simulation", status: "unavailable" },
+      ],
+      cases: [],
+      issues: [],
+    },
     graph,
     evidenceFamilyGraph,
     // `current` excludes retired entities while retaining the immutable
@@ -268,6 +283,7 @@ function projectArtifact(
     fingerprint: fingerprint(artifact.fingerprint),
     uri: artifact.uri,
     producedBy: artifact.producer.tool,
+    producerRunId: artifact.producer.runId,
     dependsOn: [...artifact.inputArtifactIds],
     ...(attestation ? { attestation } : {}),
   };

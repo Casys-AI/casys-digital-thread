@@ -1,38 +1,61 @@
-/** shadcn/ui DropdownMenu (new-york), sur Radix. */
+/**
+ * Menu déroulant du cockpit, sur Ark UI.
+ *
+ * Ark porte le placement sur la racine — `align` est donc une prop de
+ * `DropdownMenu`, pas de son contenu. Les items d'Ark exigent un `value` ;
+ * il sert aussi de clé de sélection. Un item à cocher garde le menu ouvert
+ * (`closeOnSelect={false}`), là où Radix demandait `onSelect preventDefault`.
+ */
 
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { Menu as Ark } from "@ark-ui/react/menu";
+import { Portal } from "@ark-ui/react/portal";
 import type { ComponentProps, JSX } from "react";
 import { cn } from "../lib/utils.ts";
 
-export const DropdownMenu = DropdownMenuPrimitive.Root;
-export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
-export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
-export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
+export type DropdownMenuAlign = "start" | "center" | "end";
+
+export function DropdownMenu(
+  { align = "start", ...props }:
+    & { align?: DropdownMenuAlign }
+    & ComponentProps<typeof Ark.Root>,
+): JSX.Element {
+  const placement = align === "center" ? "bottom" : `bottom-${align}`;
+  return (
+    <Ark.Root
+      positioning={{ placement: placement as never, gutter: 4 }}
+      {...props}
+    />
+  );
+}
+
+export const DropdownMenuTrigger = Ark.Trigger;
+export const DropdownMenuGroup = Ark.ItemGroup;
 
 export function DropdownMenuContent(
-  { className, sideOffset = 4, ...props }: ComponentProps<
-    typeof DropdownMenuPrimitive.Content
-  >,
+  { className, children, ...props }: ComponentProps<typeof Ark.Content>,
 ): JSX.Element {
   return (
-    <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Content
-        sideOffset={sideOffset}
-        className={cn(
-          "z-50 min-w-[10rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95",
-          className,
-        )}
-        {...props}
-      />
-    </DropdownMenuPrimitive.Portal>
+    <Portal>
+      <Ark.Positioner>
+        <Ark.Content
+          className={cn(
+            "z-50 min-w-[10rem] overflow-hidden rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </Ark.Content>
+      </Ark.Positioner>
+    </Portal>
   );
 }
 
 export function DropdownMenuLabel(
-  { className, ...props }: ComponentProps<typeof DropdownMenuPrimitive.Label>,
+  { className, ...props }: ComponentProps<typeof Ark.ItemGroupLabel>,
 ): JSX.Element {
   return (
-    <DropdownMenuPrimitive.Label
+    <Ark.ItemGroupLabel
       className={cn(
         "px-2 py-1.5 text-xs font-medium text-muted-foreground",
         className,
@@ -42,18 +65,13 @@ export function DropdownMenuLabel(
   );
 }
 
+const ITEM_CLASS =
+  "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+
 export function DropdownMenuItem(
-  { className, ...props }: ComponentProps<typeof DropdownMenuPrimitive.Item>,
+  { className, ...props }: ComponentProps<typeof Ark.Item>,
 ): JSX.Element {
-  return (
-    <DropdownMenuPrimitive.Item
-      className={cn(
-        "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <Ark.Item className={cn(ITEM_CLASS, className)} {...props} />;
 }
 
 function MenuCheck(): JSX.Element {
@@ -75,59 +93,27 @@ function MenuCheck(): JSX.Element {
 }
 
 export function DropdownMenuCheckboxItem(
-  { className, children, checked, ...props }: ComponentProps<
-    typeof DropdownMenuPrimitive.CheckboxItem
-  >,
+  { className, children, ...props }: ComponentProps<typeof Ark.CheckboxItem>,
 ): JSX.Element {
   return (
-    <DropdownMenuPrimitive.CheckboxItem
-      checked={checked}
-      className={cn(
-        "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        className,
-      )}
+    <Ark.CheckboxItem
+      closeOnSelect={false}
+      className={cn(ITEM_CLASS, "pl-7", className)}
       {...props}
     >
-      <span className="absolute left-2 flex size-3.5 items-center justify-center">
-        <DropdownMenuPrimitive.ItemIndicator>
-          <MenuCheck />
-        </DropdownMenuPrimitive.ItemIndicator>
-      </span>
-      {children}
-    </DropdownMenuPrimitive.CheckboxItem>
-  );
-}
-
-export function DropdownMenuRadioItem(
-  { className, children, ...props }: ComponentProps<
-    typeof DropdownMenuPrimitive.RadioItem
-  >,
-): JSX.Element {
-  return (
-    <DropdownMenuPrimitive.RadioItem
-      className={cn(
-        "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        className,
-      )}
-      {...props}
-    >
-      <span className="absolute left-2 flex size-3.5 items-center justify-center">
-        <DropdownMenuPrimitive.ItemIndicator>
-          <span className="size-1.5 rounded-full bg-current" />
-        </DropdownMenuPrimitive.ItemIndicator>
-      </span>
-      {children}
-    </DropdownMenuPrimitive.RadioItem>
+      <Ark.ItemIndicator className="absolute left-2 flex size-3.5 items-center justify-center">
+        <MenuCheck />
+      </Ark.ItemIndicator>
+      <Ark.ItemText>{children}</Ark.ItemText>
+    </Ark.CheckboxItem>
   );
 }
 
 export function DropdownMenuSeparator(
-  { className, ...props }: ComponentProps<
-    typeof DropdownMenuPrimitive.Separator
-  >,
+  { className, ...props }: ComponentProps<typeof Ark.Separator>,
 ): JSX.Element {
   return (
-    <DropdownMenuPrimitive.Separator
+    <Ark.Separator
       className={cn("-mx-1 my-1 h-px bg-border", className)}
       {...props}
     />

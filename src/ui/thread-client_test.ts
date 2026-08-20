@@ -8,6 +8,8 @@ import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-work
 import {
   isEngineeringWorkbenchSnapshot,
   isThreadWorkbenchSnapshot,
+  type ThreadArtifact,
+  type ThreadGraphNode,
 } from "./src/thread/types.ts";
 
 Deno.test("native Workbench rejects a missing bootstrap instead of selecting a product fixture", async () => {
@@ -662,8 +664,7 @@ Deno.test("the Workbench contract accepts qualified analysis assertions and reje
   assertEquals(isThreadWorkbenchSnapshot(snapshot), true);
 
   const wrongAssertionId = structuredClone(snapshot);
-  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId =
-    "other-assertion";
+  wrongAssertionId.graph.edges.at(-1)!.analysis!.assertionId = "other-assertion";
   assertEquals(isThreadWorkbenchSnapshot(wrongAssertionId), false);
 
   const missingMeasurement = structuredClone(snapshot);
@@ -812,6 +813,104 @@ Deno.test("the Workbench contract accepts only an exact immutable predecessor re
   assertEquals(isThreadWorkbenchSnapshot(withPrevious), false);
 });
 
+Deno.test("the Workbench accepts only exact verification cases and known node memberships", () => {
+  const observed = structuredClone(GENERIC_THREAD_FIXTURE);
+  const caseDigest = "a".repeat(64);
+  const captureDigest = "c".repeat(64);
+  const authorityArtifactId = `fea-proof-${captureDigest}`;
+  observed.artifacts.push({
+    id: authorityArtifactId,
+    label: "Sealed proof case",
+    kind: "document",
+    system: "digital-thread",
+    revision: caseDigest,
+    freshness: "fresh",
+    fingerprint: `sha256:${captureDigest}`,
+    uri: `casys://fea-proof-case-capture/sha256/${captureDigest}`,
+    producedBy: "verify.seal-proof-case@1",
+    producerRunId: "run.proof.seal",
+    dependsOn: [],
+  } as ThreadArtifact);
+  observed.graph.nodes.push({
+    id: `artifact:${authorityArtifactId}`,
+    ref: { kind: "artifact", id: authorityArtifactId },
+    entityKind: "artifact",
+    artifactKind: "document",
+    label: "Sealed proof case",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Sealed proof case",
+    verificationCaseRefs: ["mechanical-proof:case-a"],
+  } as ThreadGraphNode);
+  observed.verificationCases = {
+    schemaVersion: "thread-verification-cases/1.0",
+    status: "observed",
+    coverage: [
+      { family: "mechanical-proof", status: "observed" },
+      { family: "sensitivity-study", status: "observed" },
+      { family: "modelica-simulation", status: "observed" },
+    ],
+    cases: [{
+      key: "mechanical-proof:case-a",
+      family: "mechanical-proof",
+      caseSchemaVersion: "mechanical-proof-case/1.0",
+      id: "case-a",
+      revision: 2,
+      scope: "Recorded structural proof case",
+      caseDigest,
+      authorityArtifactIds: [authorityArtifactId],
+    }],
+    issues: [],
+  };
+  assertEquals(isThreadWorkbenchSnapshot(observed), true);
+
+  const unknownMembership = structuredClone(observed);
+  unknownMembership.graph.nodes[0]!.verificationCaseRefs = ["missing-case"];
+  assertEquals(isThreadWorkbenchSnapshot(unknownMembership), false);
+
+  const malformedDigest = structuredClone(observed);
+  malformedDigest.verificationCases!.cases[0]!.caseDigest = "sha256:wrong";
+  assertEquals(isThreadWorkbenchSnapshot(malformedDigest), false);
+
+  const mismatchedSchema = structuredClone(observed);
+  mismatchedSchema.verificationCases!.cases[0]!.caseSchemaVersion =
+    "sensitivity-study-case/2.0" as never;
+  assertEquals(isThreadWorkbenchSnapshot(mismatchedSchema), false);
+
+  const wrongAuthority = structuredClone(observed);
+  wrongAuthority.verificationCases!.cases[0]!.authorityArtifactIds = [
+    "ART-FEA-018",
+  ];
+  assertEquals(isThreadWorkbenchSnapshot(wrongAuthority), false);
+
+  const missingProducerRun = structuredClone(observed);
+  delete missingProducerRun.artifacts.find((artifact) =>
+    artifact.id === authorityArtifactId
+  )!.producerRunId;
+  assertEquals(isThreadWorkbenchSnapshot(missingProducerRun), false);
+
+  const foreignServer = structuredClone(observed);
+  foreignServer.artifacts.find((artifact) => artifact.id === authorityArtifactId)!
+    .system = "foreign-server";
+  assertEquals(isThreadWorkbenchSnapshot(foreignServer), false);
+
+  const unavailableFamily = structuredClone(observed);
+  unavailableFamily.verificationCases!.coverage[0]!.status = "unavailable";
+  unavailableFamily.verificationCases!.status = "unresolved";
+  assertEquals(isThreadWorkbenchSnapshot(unavailableFamily), false);
+});
+
+Deno.test("thread-workbench/0.1 keeps the case extension additive and fail-closed", () => {
+  const legacy = structuredClone(GENERIC_THREAD_FIXTURE) as
+    & typeof GENERIC_THREAD_FIXTURE
+    & { verificationCases?: unknown };
+  delete legacy.verificationCases;
+  assertEquals(isThreadWorkbenchSnapshot(legacy), true);
+
+  legacy.graph.nodes[0]!.verificationCaseRefs = ["hidden-case"];
+  assertEquals(isThreadWorkbenchSnapshot(legacy), false);
+});
+
 Deno.test("the Workbench contract requires evidence-backed component facets", () => {
   const missingComponents = JSON.parse(
     JSON.stringify(GENERIC_THREAD_FIXTURE),
@@ -829,8 +928,7 @@ Deno.test("the Workbench contract requires evidence-backed component facets", ()
   partDefinition.components.components[0].bindings[0].kind = "part-definition";
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), true);
 
-  partDefinition.components.components[0].bindings[0].kind =
-    "invented" as never;
+  partDefinition.components.components[0].bindings[0].kind = "invented" as never;
   assertEquals(isThreadWorkbenchSnapshot(partDefinition), false);
 
   const withAttributes = structuredClone(GENERIC_THREAD_FIXTURE);

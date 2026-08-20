@@ -20,3 +20,28 @@ export function compactTechnicalIdentifier(value: string): string {
   }
   return `${trimmed.slice(0, 16)}…${trimmed.slice(-8)}`;
 }
+
+/**
+ * Compact each segment of a technical summary (`step · <sha256>`), leaving the
+ * human-readable segments untouched. Presentation only: callers keep the
+ * complete string for the accessible name and for copying.
+ */
+export function compactTechnicalSummary(value: string): string {
+  return value
+    .split(" · ")
+    .map((segment) => compactTechnicalIdentifier(segment))
+    .join(" · ");
+}
+
+/**
+ * Shorten fingerprints *embedded inside* a label
+ * (`geometry-preview-<64 hex>-assembly`), where the identity is glued to
+ * readable words rather than isolated in its own segment. Presentation only:
+ * the complete label stays available for the accessible name and for copying.
+ */
+export function compactEmbeddedFingerprints(value: string): string {
+  return value.replace(
+    /[a-f0-9]{32,}/g,
+    (match) => `${match.slice(0, 12)}…${match.slice(-6)}`,
+  );
+}

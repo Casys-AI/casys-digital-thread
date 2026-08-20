@@ -1,7 +1,7 @@
 import type {
   CockpitFleetProjection,
   CockpitFleetServer,
-} from "../../contracts/cockpit-fleet.ts";
+} from "../../presentation/workbench/fleet/projection.ts";
 
 /**
  * Narrow declared-fleet projection for the read-only cockpit BFF.

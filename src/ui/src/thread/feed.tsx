@@ -15,13 +15,7 @@ import {
   type ReviewIntentTransmissionState,
 } from "../project/review-intent-model.ts";
 import { Badge } from "../ui/badge.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.tsx";
+import { Select } from "../ui/select.tsx";
 import { Button } from "../ui/button.tsx";
 import type { ThreadStreamStatus } from "./client.ts";
 import {
@@ -39,6 +33,10 @@ import {
   refKey,
   traceThreadLineage,
 } from "./feed-model.ts";
+import {
+  compactEmbeddedFingerprints,
+  compactTechnicalSummary,
+} from "./compact-identifier-model.ts";
 import { ThreadGraph, type ThreadGraphSelection } from "./graph.tsx";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
@@ -272,28 +270,22 @@ export function ThreadFeed({
             Part
           </span>
           <Select
+            aria-labelledby="feed-component-filter-label"
+            className="min-w-44"
             value={filterComponentId ?? "entire-project"}
+            options={[
+              { value: "entire-project", label: "Entire project" },
+              ...filterOptions.map((opt) => ({
+                value: opt.id,
+                label: opt.label,
+              })),
+            ]}
             onValueChange={(value) => {
               onFilterChange(
                 value === "entire-project" ? undefined : value as FeedScope,
               );
             }}
-          >
-            <SelectTrigger
-              aria-labelledby="feed-component-filter-label"
-              className="min-w-44"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="entire-project">Entire project</SelectItem>
-              {filterOptions.map((opt) => (
-                <SelectItem key={opt.id} value={opt.id}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
         </div>
       )}
 
@@ -308,339 +300,342 @@ export function ThreadFeed({
         </div>
       )}
 
-      <ol className="thread-feed-list" aria-label="Linked engineering activity">
-        {rows.map((row) => {
-          if (row.kind === "day") {
-            return (
-              <li key={row.key} className="thread-feed-dayhead">
-                <span>
-                  {row.label} · {row.count} recorded fact
-                  {row.count === 1 ? "" : "s"}
-                </span>
-                {row.first && (
-                  <span className="flex items-center gap-2">
-                    <span
-                      className={livePulseClass(streamStatus, followLive)}
-                      aria-hidden="true"
-                    />
-                    <button
-                      type="button"
-                      aria-pressed={followLive}
-                      className="cursor-pointer font-mono text-[10px] uppercase tracking-[.08em] text-muted-foreground hover:text-foreground"
-                      onClick={() => onFollowLiveChange(!followLive)}
-                    >
-                      {followLive ? "Pause follow" : "Resume live"}
-                    </button>
+      <div className="thread-feed-rail-grid">
+        <div className="thread-feed-rail-line" aria-hidden="true" />
+        <ol
+          className="thread-feed-list"
+          aria-label="Linked engineering activity"
+        >
+          {rows.map((row) => {
+            if (row.kind === "day") {
+              return (
+                <li key={row.key} className="thread-feed-dayhead">
+                  <span>
+                    {row.label} · {row.count} recorded fact
+                    {row.count === 1 ? "" : "s"}
                   </span>
-                )}
-              </li>
-            );
-          }
-          const { entry, index } = row;
-          if (entry.kind === "review") {
-            const status = activityReviewStatus(entry.review);
-            const transmissionState = transmissionFor(entry.review);
-            const displayStatus = effectiveActivityReviewStatus(
-              status,
+                  {row.first && (
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={livePulseClass(streamStatus, followLive)}
+                        aria-hidden="true"
+                      />
+                      <button
+                        type="button"
+                        aria-pressed={followLive}
+                        className="cursor-pointer font-mono text-[10px] uppercase tracking-[.08em] text-muted-foreground hover:text-foreground"
+                        onClick={() => onFollowLiveChange(!followLive)}
+                      >
+                        {followLive ? "Pause follow" : "Resume live"}
+                      </button>
+                    </span>
+                  )}
+                </li>
+              );
+            }
+            const { entry, index } = row;
+            if (entry.kind === "review") {
+              const status = activityReviewStatus(entry.review);
+              const transmissionState = transmissionFor(entry.review);
+              const displayStatus = effectiveActivityReviewStatus(
+                status,
+                transmissionState,
+              );
+              return (
+                <li
+                  id={entry.review.anchorId}
+                  key={entry.key}
+                  className="thread-feed-entry"
+                  data-review-status={displayStatus}
+                  data-canonical-review-status={status}
+                  style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
+                >
+                  <span className="thread-feed-dot" aria-hidden="true" />
+                  <div className="thread-feed-event">
+                    <ActivityReviewFeedCard
+                      record={entry.review}
+                      onOpenEvidence={onOpenReviewEvidence}
+                      transmissionState={transmissionState}
+                      onSubmitIntent={onSubmitReviewIntent
+                        ? (action, comment) =>
+                          onSubmitReviewIntent(entry.review, action, comment)
+                        : undefined}
+                      onRetryIntent={onRetryReviewIntent
+                        ? () => onRetryReviewIntent(entry.review)
+                        : undefined}
+                      onRefreshIntent={onRefreshReviewIntents}
+                    />
+                  </div>
+                </li>
+              );
+            }
+            const node = entry.node;
+            const attachedReview = entry.review;
+            const reviewStatus = attachedReview
+              ? activityReviewStatus(attachedReview)
+              : undefined;
+            const transmissionState = attachedReview
+              ? transmissionFor(attachedReview)
+              : { kind: "idle" as const };
+            const reviewDisplayStatus = effectiveActivityReviewStatus(
+              reviewStatus,
               transmissionState,
             );
+            const active = isActivityEntryExpanded(focus, node);
+            const lineage = active
+              ? traceThreadLineage(nodes, edges, focus)
+              : undefined;
+            // True upstream+downstream count for the collapsed card badge:
+            // uses the raw graph lineage (full depth, not bounded).
+            const lineageCount = lineage
+              ? lineage.upstream.length + lineage.downstream.length +
+                lineage.feedback.length
+              : traceThreadLineage(nodes, edges, node.ref).upstream.length +
+                traceThreadLineage(nodes, edges, node.ref).downstream.length;
+
+            // Compact counters for the expanded lineage header: reflect what the
+            // sigma vignette actually renders (bounded neighbourhood, depth 2).
+            const compact = active && evidenceModel
+              ? compactLineageCounters(evidenceModel, node.ref)
+              : undefined;
+            const currency = activityCurrency(node, familyGraph);
+            // 7a: a pending decision reads as ONE warning-bordered card —
+            // the fact button and its review composer share the outline.
+            const needsReviewBorder = reviewDisplayStatus === "to-review" ||
+              reviewDisplayStatus === "revision-requested";
+
             return (
               <li
-                id={entry.review.anchorId}
+                id={attachedReview?.anchorId}
                 key={entry.key}
                 className="thread-feed-entry"
-                data-review-status={displayStatus}
-                data-canonical-review-status={status}
+                data-active={active ? "true" : "false"}
+                data-kind={node.entityKind}
+                data-authority={node.entityKind === "artifact" &&
+                    node.artifactKind === "document" &&
+                    isArchitectureSysmlSealArtifactId(node.ref.id)
+                  ? "documentary"
+                  : undefined}
+                data-currency={currency}
+                data-freshness={currency}
+                data-review-status={reviewDisplayStatus}
+                data-canonical-review-status={reviewStatus}
                 style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
               >
-                <div
-                  className="grid content-start justify-items-end gap-1 pt-3 pr-2 font-mono text-xs text-muted-foreground"
-                  aria-label={entry.recordedAt}
-                >
-                  <span>{formatFeedTime(entry.recordedAt)}</span>
-                  <span>{formatFeedDate(entry.recordedAt)}</span>
-                </div>
-                <div className="thread-feed-rail" aria-hidden="true">
-                  <i />
-                </div>
+                <span className="thread-feed-dot" aria-hidden="true" />
                 <div className="thread-feed-event">
-                  <ActivityReviewFeedCard
-                    record={entry.review}
-                    onOpenEvidence={onOpenReviewEvidence}
-                    transmissionState={transmissionState}
-                    onSubmitIntent={onSubmitReviewIntent
-                      ? (action, comment) =>
-                        onSubmitReviewIntent(entry.review, action, comment)
-                      : undefined}
-                    onRetryIntent={onRetryReviewIntent
-                      ? () => onRetryReviewIntent(entry.review)
-                      : undefined}
-                    onRefreshIntent={onRefreshReviewIntents}
-                  />
+                  <button
+                    type="button"
+                    className={cn(
+                      "grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-lg border bg-card px-3.5 py-3 text-left shadow-sm",
+                      "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                      needsReviewBorder ? "border-warning/40" : "border-border",
+                      active && "rounded-b-none bg-muted/50",
+                      attachedReview && "rounded-b-none",
+                    )}
+                    aria-expanded={active}
+                    onClick={() => onSelectNode(node, "feed")}
+                  >
+                    <span className="grid min-w-0 gap-1.5">
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span
+                          className="shrink-0 font-mono text-[10px] text-muted-foreground"
+                          title={node.recordedAt}
+                        >
+                          {formatFeedTime(node.recordedAt)}
+                        </span>
+                        <span className="thread-feed-eyebrow shrink-0">
+                          {activityKindLabel(node)}
+                        </span>
+                        <span
+                          className="min-w-0 truncate text-[12.5px] font-medium"
+                          title={node.label}
+                        >
+                          {compactEmbeddedFingerprints(node.label)}
+                        </span>
+                      </span>
+                      <span
+                        className="truncate font-mono text-[11px] text-muted-foreground"
+                        title={`${node.system} · ${node.summary}`}
+                      >
+                        {node.system} · {compactTechnicalSummary(node.summary)}
+                      </span>
+                    </span>
+                    <span className="grid justify-items-end gap-1 text-xs">
+                      {reviewDisplayStatus && (
+                        <Badge
+                          variant={reviewDisplayBadgeVariant(
+                            reviewDisplayStatus,
+                          )}
+                          data-review-status={reviewDisplayStatus}
+                        >
+                          {activityReviewDisplayStatusLabel(
+                            reviewDisplayStatus,
+                          )}
+                        </Badge>
+                      )}
+                      <span
+                        data-state={currency}
+                        className={freshnessClass(currency)}
+                      >
+                        {currency}
+                      </span>
+                      {isVerdictNode(node) && onOpenEvidenceAnchored
+                        ? (
+                          <span
+                            role="link"
+                            tabIndex={0}
+                            className="cursor-pointer text-xs font-medium text-brand"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onOpenEvidenceAnchored(node.ref);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") {
+                                return;
+                              }
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onOpenEvidenceAnchored(node.ref);
+                            }}
+                          >
+                            Lineage →
+                          </span>
+                        )
+                        : (
+                          <span className="text-xs text-muted-foreground">
+                            {lineageCount} linked
+                          </span>
+                        )}
+                    </span>
+                  </button>
+
+                  {attachedReview && (
+                    <ActivityReviewFeedCard
+                      record={attachedReview}
+                      onOpenEvidence={onOpenReviewEvidence}
+                      transmissionState={transmissionState}
+                      onSubmitIntent={onSubmitReviewIntent
+                        ? (action, comment) =>
+                          onSubmitReviewIntent(attachedReview, action, comment)
+                        : undefined}
+                      onRetryIntent={onRetryReviewIntent
+                        ? () => onRetryReviewIntent(attachedReview)
+                        : undefined}
+                      onRefreshIntent={onRefreshReviewIntents}
+                    />
+                  )}
+
+                  {active && lineage && (
+                    <section
+                      className="thread-feed-lineage"
+                      aria-label={`Live lineage for ${node.label}`}
+                    >
+                      <header>
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Lineage assembled from recorded relations
+                          </p>
+                          <p className="text-sm font-semibold">
+                            Complete chain for this event
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          {compact
+                            ? (
+                              <span className="text-xs text-muted-foreground">
+                                {compact.total} items · depth 2 ·{" "}
+                                {compact.upstream} upstream /{" "}
+                                {compact.downstream} downstream
+                              </span>
+                            )
+                            : (
+                              <span className="text-xs text-muted-foreground">
+                                {lineage.upstream.length} upstream ·{" "}
+                                {lineage.downstream.length} downstream
+                              </span>
+                            )}
+                          {onOpenEvidenceAnchored && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onOpenEvidenceAnchored(node.ref)}
+                            >
+                              Open evidence canvas
+                            </Button>
+                          )}
+                        </div>
+                      </header>
+                      <RecomputeHistoryPanel
+                        nodes={nodes}
+                        edges={edges}
+                        focus={node.ref}
+                        onSelectNode={(related) =>
+                          onSelectNode(related, "lineage")}
+                      />
+                      {lineageCount === 0
+                        ? (
+                          <p className="px-8 py-8 text-sm text-muted-foreground">
+                            This fact is recorded, but no causal relation
+                            connects it to another fact yet.
+                          </p>
+                        )
+                        : evidenceModel
+                        ? (
+                          <FeedLineageGraph
+                            evidenceModel={evidenceModel}
+                            focusRef={node.ref}
+                            selection={selection}
+                            onSelectNode={(related) =>
+                              onSelectNode(related, "lineage")}
+                            ariaLabel={`Complete recorded lineage for ${node.label}`}
+                          />
+                        )
+                        : (
+                          <ThreadGraph
+                            key={refKey(node.ref)}
+                            nodes={[
+                              ...lineage.upstream.map((step) => step.node),
+                              node,
+                              ...lineage.feedback.map((step) =>
+                                step.node
+                              ),
+                              ...lineage.downstream.map((step) => step.node),
+                            ]}
+                            edges={lineage.edges}
+                            focus={node.ref}
+                            selection={selection}
+                            showSupporting
+                            showDensityControl={false}
+                            animate
+                            ariaLabel={`Complete recorded lineage for ${node.label}`}
+                            onSelectionChange={(next) => {
+                              if (next?.kind === "edge") {
+                                const edge = next.occurrence?.edge ??
+                                  edges.find((item) => item.id === next.id);
+                                if (edge) {
+                                  onSelectEdge(edge);
+                                }
+                              } else if (next?.kind === "node") {
+                                const selected = nodes.find((item) =>
+                                  refKey(item.ref) === refKey(next.ref)
+                                );
+                                if (selected) {
+                                  onSelectNode(selected, "lineage");
+                                }
+                              }
+                            }}
+                            onInspect={onInspect}
+                          />
+                        )}
+                    </section>
+                  )}
                 </div>
               </li>
             );
-          }
-          const node = entry.node;
-          const attachedReview = entry.review;
-          const reviewStatus = attachedReview
-            ? activityReviewStatus(attachedReview)
-            : undefined;
-          const transmissionState = attachedReview
-            ? transmissionFor(attachedReview)
-            : { kind: "idle" as const };
-          const reviewDisplayStatus = effectiveActivityReviewStatus(
-            reviewStatus,
-            transmissionState,
-          );
-          const active = isActivityEntryExpanded(focus, node);
-          const lineage = active
-            ? traceThreadLineage(nodes, edges, focus)
-            : undefined;
-          // True upstream+downstream count for the collapsed card badge:
-          // uses the raw graph lineage (full depth, not bounded).
-          const lineageCount = lineage
-            ? lineage.upstream.length + lineage.downstream.length +
-              lineage.feedback.length
-            : traceThreadLineage(nodes, edges, node.ref).upstream.length +
-              traceThreadLineage(nodes, edges, node.ref).downstream.length;
-
-          // Compact counters for the expanded lineage header: reflect what the
-          // sigma vignette actually renders (bounded neighbourhood, depth 2).
-          const compact = active && evidenceModel
-            ? compactLineageCounters(evidenceModel, node.ref)
-            : undefined;
-          const currency = activityCurrency(node, familyGraph);
-          // 7a: a pending decision reads as ONE warning-bordered card —
-          // the fact button and its review composer share the outline.
-          const needsReviewBorder = reviewDisplayStatus === "to-review" ||
-            reviewDisplayStatus === "revision-requested";
-
-          return (
-            <li
-              id={attachedReview?.anchorId}
-              key={entry.key}
-              className="thread-feed-entry"
-              data-active={active ? "true" : "false"}
-              data-kind={node.entityKind}
-              data-authority={node.entityKind === "artifact" &&
-                  node.artifactKind === "document" &&
-                  isArchitectureSysmlSealArtifactId(node.ref.id)
-                ? "documentary"
-                : undefined}
-              data-currency={currency}
-              data-freshness={currency}
-              data-review-status={reviewDisplayStatus}
-              data-canonical-review-status={reviewStatus}
-              style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
-            >
-              <div
-                className="grid content-start justify-items-end gap-1 pt-3 pr-2 font-mono text-xs text-muted-foreground"
-                aria-label={node.recordedAt}
-              >
-                <span>{formatFeedTime(node.recordedAt)}</span>
-                <span>{formatFeedDate(node.recordedAt)}</span>
-              </div>
-              <div className="thread-feed-rail" aria-hidden="true">
-                <i />
-              </div>
-              <div className="thread-feed-event">
-                <button
-                  type="button"
-                  className={cn(
-                    "grid w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-lg border bg-card p-4 text-left shadow-sm",
-                    "hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                    needsReviewBorder ? "border-warning/40" : "border-border",
-                    active && "rounded-b-none bg-muted/50",
-                    attachedReview && "rounded-b-none",
-                  )}
-                  aria-expanded={active}
-                  onClick={() => onSelectNode(node, "feed")}
-                >
-                  <span className="grid min-w-0 gap-1">
-                    <span className="thread-feed-eyebrow truncate">
-                      {activityKindLabel(node)}
-                    </span>
-                    <span className="truncate text-sm font-semibold">
-                      {node.label}
-                    </span>
-                    <span className="truncate font-mono text-xs text-muted-foreground">
-                      {node.system} · {node.summary}
-                    </span>
-                  </span>
-                  <span className="grid justify-items-end gap-1 text-xs">
-                    {reviewDisplayStatus && (
-                      <Badge
-                        variant={reviewDisplayBadgeVariant(
-                          reviewDisplayStatus,
-                        )}
-                        data-review-status={reviewDisplayStatus}
-                      >
-                        {activityReviewDisplayStatusLabel(
-                          reviewDisplayStatus,
-                        )}
-                      </Badge>
-                    )}
-                    <span
-                      data-state={currency}
-                      className={freshnessClass(currency)}
-                    >
-                      {currency}
-                    </span>
-                    {isVerdictNode(node) && onOpenEvidenceAnchored
-                      ? (
-                        <span
-                          role="link"
-                          tabIndex={0}
-                          className="cursor-pointer text-xs font-medium text-brand"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onOpenEvidenceAnchored(node.ref);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter" && event.key !== " ") {
-                              return;
-                            }
-                            event.preventDefault();
-                            event.stopPropagation();
-                            onOpenEvidenceAnchored(node.ref);
-                          }}
-                        >
-                          Lineage →
-                        </span>
-                      )
-                      : (
-                        <span className="text-xs text-muted-foreground">
-                          {lineageCount} linked
-                        </span>
-                      )}
-                  </span>
-                </button>
-
-                {attachedReview && (
-                  <ActivityReviewFeedCard
-                    record={attachedReview}
-                    onOpenEvidence={onOpenReviewEvidence}
-                    transmissionState={transmissionState}
-                    onSubmitIntent={onSubmitReviewIntent
-                      ? (action, comment) =>
-                        onSubmitReviewIntent(attachedReview, action, comment)
-                      : undefined}
-                    onRetryIntent={onRetryReviewIntent
-                      ? () => onRetryReviewIntent(attachedReview)
-                      : undefined}
-                    onRefreshIntent={onRefreshReviewIntents}
-                  />
-                )}
-
-                {active && lineage && (
-                  <section
-                    className="thread-feed-lineage"
-                    aria-label={`Live lineage for ${node.label}`}
-                  >
-                    <header>
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground">
-                          Lineage assembled from recorded relations
-                        </p>
-                        <p className="text-sm font-semibold">
-                          Complete chain for this event
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-end gap-2">
-                        {compact
-                          ? (
-                            <span className="text-xs text-muted-foreground">
-                              {compact.total} items · depth 2 ·{" "}
-                              {compact.upstream} upstream / {compact.downstream}
-                              {" "}
-                              downstream
-                            </span>
-                          )
-                          : (
-                            <span className="text-xs text-muted-foreground">
-                              {lineage.upstream.length} upstream ·{" "}
-                              {lineage.downstream.length} downstream
-                            </span>
-                          )}
-                        {onOpenEvidenceAnchored && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onOpenEvidenceAnchored(node.ref)}
-                          >
-                            Open evidence canvas
-                          </Button>
-                        )}
-                      </div>
-                    </header>
-                    <RecomputeHistoryPanel
-                      nodes={nodes}
-                      edges={edges}
-                      focus={node.ref}
-                      onSelectNode={(related) =>
-                        onSelectNode(related, "lineage")}
-                    />
-                    {lineageCount === 0
-                      ? (
-                        <p className="px-8 py-8 text-sm text-muted-foreground">
-                          This fact is recorded, but no causal relation connects
-                          it to another fact yet.
-                        </p>
-                      )
-                      : evidenceModel
-                      ? (
-                        <FeedLineageGraph
-                          evidenceModel={evidenceModel}
-                          focusRef={node.ref}
-                          selection={selection}
-                          onSelectNode={(related) =>
-                            onSelectNode(related, "lineage")}
-                          ariaLabel={`Complete recorded lineage for ${node.label}`}
-                        />
-                      )
-                      : (
-                        <ThreadGraph
-                          key={refKey(node.ref)}
-                          nodes={[
-                            ...lineage.upstream.map((step) => step.node),
-                            node,
-                            ...lineage.feedback.map((step) => step.node),
-                            ...lineage.downstream.map((step) => step.node),
-                          ]}
-                          edges={lineage.edges}
-                          focus={node.ref}
-                          selection={selection}
-                          showSupporting
-                          showDensityControl={false}
-                          animate
-                          ariaLabel={`Complete recorded lineage for ${node.label}`}
-                          onSelectionChange={(next) => {
-                            if (next?.kind === "edge") {
-                              const edge = next.occurrence?.edge ??
-                                edges.find((item) => item.id === next.id);
-                              if (edge) {
-                                onSelectEdge(edge);
-                              }
-                            } else if (next?.kind === "node") {
-                              const selected = nodes.find((item) =>
-                                refKey(item.ref) === refKey(next.ref)
-                              );
-                              if (selected) {
-                                onSelectNode(selected, "lineage");
-                              }
-                            }
-                          }}
-                          onInspect={onInspect}
-                        />
-                      )}
-                  </section>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+          })}
+        </ol>
+      </div>
       {threadIdentity && (
         <p className="mt-3.5 font-mono text-[10px] text-muted-foreground">
           {feedStreamFooterLabel(streamStatus, followLive)} ·{" "}
@@ -839,15 +834,5 @@ function formatFeedTime(value: string | undefined): string {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).format(date);
-}
-
-function formatFeedDate(value: string | undefined): string {
-  if (!value) return "not dated";
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return "not dated";
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
   }).format(date);
 }

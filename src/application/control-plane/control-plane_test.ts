@@ -7,13 +7,9 @@ import type {
   McpProbeResult,
   ObservedRunCatalog,
 } from "./ports.ts";
-import type {
-  DesiredServer,
-  FleetManifest,
-  ObservedContainer,
-  RunDetail,
-  RunSummary,
-} from "../../contracts/console.ts";
+import type { RunDetail, RunSummary } from "./read-model/engineering-run.ts";
+import type { DesiredServer, FleetManifest } from "./read-model/fleet-manifest.ts";
+import type { ObservedContainer } from "./read-model/fleet-observation.ts";
 
 Deno.test("ControlPlane combines honest offline fleet data with labelled demo run", async () => {
   const runs = await loadRunFixtures([

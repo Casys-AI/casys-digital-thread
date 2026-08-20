@@ -44,6 +44,25 @@ export interface RequirementMatrixRow {
   readonly verdictTrail: readonly RequirementVerdictTrailStep[];
 }
 
+/**
+ * The mark a row carries when the project has recorded nothing for a field.
+ * It is a *display* value; deciding whether something was recorded is the
+ * model's job, so views ask the predicates below instead of comparing it.
+ */
+export const UNRECORDED_FIELD = "—";
+
+export function hasRecordedObservation(row: RequirementMatrixRow): boolean {
+  return row.observationId !== undefined && row.computed !== UNRECORDED_FIELD;
+}
+
+export function hasRecordedMargin(row: RequirementMatrixRow): boolean {
+  return row.marginLabel !== UNRECORDED_FIELD;
+}
+
+export function hasRecordedEvidence(row: RequirementMatrixRow): boolean {
+  return row.evidenceLabel !== UNRECORDED_FIELD;
+}
+
 export interface RequirementMatrixView {
   readonly rows: readonly RequirementMatrixRow[];
   readonly counts: {
@@ -138,9 +157,11 @@ function toRow(
     lastVerdict: lastVerdictLabel(requirement, observation, violation),
     observationId: observation?.id,
     violationId: violation?.id,
-    computed: observation?.display ?? "—",
-    marginLabel: violation?.margin ?? "—",
-    evidenceLabel: artifact ? `${artifact.label} · ${artifact.system}` : "—",
+    computed: observation?.display ?? UNRECORDED_FIELD,
+    marginLabel: violation?.margin ?? UNRECORDED_FIELD,
+    evidenceLabel: artifact
+      ? `${artifact.label} · ${artifact.system}`
+      : UNRECORDED_FIELD,
     artifactRef: artifact
       ? {
         id: artifact.id,

@@ -2,10 +2,8 @@ import {
   type EngineeringWorkbenchSnapshot,
   isEngineeringWorkbenchSnapshot,
 } from "./types.ts";
-import {
-  type CockpitFleetProjection,
-  isCockpitFleetProjection,
-} from "../../../contracts/cockpit-fleet.ts";
+import type { CockpitFleetProjection } from "../../../presentation/workbench/fleet/projection.ts";
+import { isCockpitFleetProjection } from "../../../presentation/workbench/fleet/decoder.ts";
 
 export interface ThreadWorkbenchClient {
   readonly source: "injected" | "http" | "unconfigured";
@@ -44,8 +42,7 @@ export class StaticThreadWorkbenchClient implements ThreadWorkbenchClient {
  * Deliberately visible missing-bootstrap state. The browser must never
  * substitute a recorded product fixture for the active engineering project.
  */
-export class UnconfiguredThreadWorkbenchClient
-  implements ThreadWorkbenchClient {
+export class UnconfiguredThreadWorkbenchClient implements ThreadWorkbenchClient {
   readonly source = "unconfigured" as const;
 
   load(): Promise<EngineeringWorkbenchSnapshot> {

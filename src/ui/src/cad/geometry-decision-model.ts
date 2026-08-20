@@ -424,7 +424,9 @@ function hex64(
   const s = String(raw);
   if (!FINGERPRINT_RE.test(s)) {
     throw new Error(
-      `${key} must be a 64-char lowercase hex SHA-256 (got: ${s.slice(0, 16)}…)`,
+      `${key} must be a 64-char lowercase hex SHA-256 (got: ${
+        s.slice(0, 16)
+      }…)`,
     );
   }
   return s;
@@ -507,10 +509,14 @@ function parseFormats(
   trimLegacyWhitespace = false,
 ): string[] {
   const parts = raw.split(",");
-  const formats = trimLegacyWhitespace ? parts.map((value) => value.trim()) : parts;
+  const formats = trimLegacyWhitespace
+    ? parts.map((value) => value.trim())
+    : parts;
   if (
     formats.length === 0 || new Set(formats).size !== formats.length ||
-    formats.some((format) => format !== "step" && format !== "gltf" && format !== "stl")
+    formats.some((format) =>
+      format !== "step" && format !== "gltf" && format !== "stl"
+    )
   ) {
     throw new Error(`${key} must contain unique step, gltf, or stl values`);
   }
@@ -568,7 +574,9 @@ function assertV2IdentityContract(
     partDefinitions.map((definition) => definition.elementId),
     "PartDefinition elementId",
   );
-  const crossKindCollision = [...definitionIds].find((id) => componentIds.has(id));
+  const crossKindCollision = [...definitionIds].find((id) =>
+    componentIds.has(id)
+  );
   if (crossKindCollision) {
     throw new Error(
       `Semantic elementId ${crossKindCollision} is reused across PartUsage and PartDefinition`,

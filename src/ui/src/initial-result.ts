@@ -1,4 +1,4 @@
-import type { ConsoleSnapshot } from "../../contracts/console.ts";
+import type { ConsoleSnapshot } from "../../application/control-plane/read-model/console-snapshot.ts";
 
 /** Minimal shape of the MCP Apps result notification delivered by a host. */
 export interface InitialToolResult {
@@ -25,9 +25,7 @@ export function toolResultErrorMessage(
   const messages = result.content.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
     const block = entry as { type?: unknown; text?: unknown };
-    return block.type === "text" && typeof block.text === "string"
-      ? [block.text]
-      : [];
+    return block.type === "text" && typeof block.text === "string" ? [block.text] : [];
   });
   return messages.length > 0 ? messages.join(" ") : undefined;
 }

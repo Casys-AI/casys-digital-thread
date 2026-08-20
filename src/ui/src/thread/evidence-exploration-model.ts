@@ -33,10 +33,15 @@ const dagre = dagreLib as any;
 // import from this module get the full exploration API without knowing where
 // each function lives internally.
 export {
+  DISPLAY_KIND_COLOR_TOKEN,
   DISPLAY_KIND_LABELS,
   type DisplayKind,
   displayKindOf,
   isDisplayKindVisible,
+} from "./essential-graph-filter.ts";
+import {
+  DISPLAY_KIND_COLOR_TOKEN,
+  displayKindOf,
 } from "./essential-graph-filter.ts";
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
@@ -154,9 +159,9 @@ interface ExplorationVisualEdgeGroup {
 
 /** Prepared model consumed directly by the EvidenceExploration component. */
 /**
- * One entry of the tool color key: exactly the color the canvas paints for
- * nodes produced by this system. The legend must never show a color mapping
- * that differs from what `nodeColorFor` actually renders.
+ * Une entrée du regroupement par système producteur. Elle ne porte AUCUNE
+ * couleur : le canvas peint par type d'enregistrement, pas par outil, et une
+ * couleur d'outil ici serait un mapping que rien ne rend.
  */
 export interface SystemLegendItem {
   /** Stable visual family id (e.g. "calculix"). */
@@ -165,8 +170,6 @@ export interface SystemLegendItem {
   readonly systems: readonly string[];
   /** Human label (e.g. "FEA · CalculiX"). */
   readonly label: string;
-  /** The exact node color used on the canvas for this system. */
-  readonly color: string;
   /** Number of visible nodes produced by this system. */
   readonly count: number;
 }
@@ -562,10 +565,6 @@ export function buildExplorationModel(
       system,
       systems: [...entry.systems].sort(),
       label: SYSTEM_LEGEND_LABEL[system] ?? system,
-      color: nodeColorFor(
-        { system } as ThreadGraphNode,
-        tokens,
-      ),
       count: entry.count,
     }));
 
@@ -863,30 +862,15 @@ function dagreNodeBox(
  * Node color per dominant system. Colours match the thread-blue/green/amber
  * tokens so the graph reads as the same design system as the SVG canvas.
  */
+/**
+ * La couleur d'un nœud vient de son TYPE d'enregistrement, pas du système qui
+ * l'a produit : un provider est un moyen remplaçable, la nature de la preuve
+ * ne l'est pas. C'est aussi ce qui rend la légende TYPES exacte — auparavant
+ * elle affichait la couleur d'outil majoritaire d'un type et mentait donc
+ * pour ses nœuds minoritaires.
+ */
 function nodeColorFor(node: ThreadGraphNode, tokens: CssTokens): string {
-  switch (evidenceSystemFamily(node.system)) {
-    case "syson":
-    case "sysml":
-      return tokens.cyan;
-    case "build123d":
-    case "build123d-sandbox":
-    case "cad":
-      return tokens.amber;
-    case "calculix":
-      return tokens.red;
-    case "modelica":
-    case "openmodelica":
-    case "mcp-modelica":
-      return tokens.violet;
-    case "erpnext":
-      return tokens.blue;
-    case "digital-thread":
-    case "brief":
-    case "thread":
-      return tokens.green;
-    default:
-      return tokens.muted;
-  }
+  return tokens[DISPLAY_KIND_COLOR_TOKEN[displayKindOf(node)]];
 }
 
 export interface EvidenceMinimapNode {

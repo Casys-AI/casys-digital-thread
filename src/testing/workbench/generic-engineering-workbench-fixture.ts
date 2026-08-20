@@ -1,8 +1,8 @@
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import {
   type EngineeringEvidenceWorkbenchSnapshot,
-  LIVE_THREAD_OVERLAY_SCHEMA,
-} from "../../contracts/engineering-workbench.ts";
+} from "../../presentation/workbench/engineering/evidence.ts";
+import { LIVE_THREAD_OVERLAY_SCHEMA } from "../../presentation/workbench/engineering/schema.ts";
 import { GENERIC_THREAD_FIXTURE } from "./generic-thread-workbench-fixture.ts";
 
 /** Labelled UI fallback. It demonstrates project control, never production truth. */

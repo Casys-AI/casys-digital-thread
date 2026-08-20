@@ -12,9 +12,11 @@ import type {
   ThreadArchitectureSysmlSealPresentation,
   ThreadArchitectureSysmlSealSpan,
   ThreadArchitectureSysmlSealUnresolved,
+} from "../../presentation/workbench/thread/architecture.ts";
+import type {
   ThreadArtifact,
   ThreadWorkbenchSnapshot,
-} from "../../contracts/thread-workbench.ts";
+} from "../../presentation/workbench/thread/snapshot.ts";
 import type {
   SourceAnalysisDependency,
   SourceAnalysisSpan,

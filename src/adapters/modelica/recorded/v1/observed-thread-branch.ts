@@ -2,7 +2,7 @@ import type {
   EvidenceArtifact,
   RunDetail,
   RunMeasurement,
-} from "../../../../contracts/console.ts";
+} from "../../../../application/control-plane/read-model/engineering-run.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,

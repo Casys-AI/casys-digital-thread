@@ -20,11 +20,11 @@ export interface OverviewLane {
 
 /** Display lanes of mockup 2a — composition only, not a second provenance. */
 export const OVERVIEW_LANES: readonly OverviewLane[] = [
-  { id: "requirements", title: "Requirements", color: "#6e56cf" },
-  { id: "system-model", title: "System model", color: "#3f68c4" },
-  { id: "geometry", title: "Geometry", color: "#157489" },
-  { id: "physics", title: "Physics", color: "#9a5b12" },
-  { id: "verdicts", title: "Verdicts", color: "#1a7f4e" },
+  { id: "requirements", title: "Requirements", color: "#7c3aed" },
+  { id: "system-model", title: "System model", color: "#2563eb" },
+  { id: "geometry", title: "Geometry", color: "#0e7490" },
+  { id: "physics", title: "Physics", color: "#a16207" },
+  { id: "verdicts", title: "Verdicts", color: "#15803d" },
 ];
 
 export const OVERVIEW_HERO_WIDTH = 1230;

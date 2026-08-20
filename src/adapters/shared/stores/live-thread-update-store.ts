@@ -2,22 +2,22 @@ import type {
   ThreadGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
-  ThreadWorkbenchSnapshot,
-} from "../../../contracts/thread-workbench.ts";
-import {
-  LIVE_THREAD_OVERLAY_SCHEMA,
-  type LiveThreadGraphState,
-  type LiveThreadUpdateState,
-  type LiveThreadWorkbenchSnapshot,
-} from "../../../contracts/engineering-workbench.ts";
+} from "../../../presentation/workbench/thread/graph.ts";
+import type { ThreadWorkbenchSnapshot } from "../../../presentation/workbench/thread/snapshot.ts";
+import { LIVE_THREAD_OVERLAY_SCHEMA } from "../../../presentation/workbench/engineering/schema.ts";
+import type {
+  LiveThreadGraphState,
+  LiveThreadUpdateState,
+  LiveThreadWorkbenchSnapshot,
+} from "../../../presentation/workbench/engineering/live-overlay.ts";
 
-export { LIVE_THREAD_OVERLAY_SCHEMA } from "../../../contracts/engineering-workbench.ts";
+export { LIVE_THREAD_OVERLAY_SCHEMA } from "../../../presentation/workbench/engineering/schema.ts";
 export type {
   LiveThreadGraphState,
   LiveThreadOverlay,
   LiveThreadUpdateState,
   LiveThreadWorkbenchSnapshot,
-} from "../../../contracts/engineering-workbench.ts";
+} from "../../../presentation/workbench/engineering/live-overlay.ts";
 
 export const LIVE_THREAD_UPDATE_SCHEMA = "live-thread-update/1.0" as const;
 

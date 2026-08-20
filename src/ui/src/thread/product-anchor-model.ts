@@ -1,4 +1,7 @@
-import type { ThreadComponentProvider, ThreadWorkbenchSnapshot } from "./types.ts";
+import type {
+  ThreadComponentProvider,
+  ThreadWorkbenchSnapshot,
+} from "./types.ts";
 
 export type ProductStructureAvailability =
   | {
@@ -45,7 +48,9 @@ export function productStructureAvailability(
         component.kind === "assembly" && component.parentId === undefined
       ).length,
     partDefinitionCount: uniquePartDefinitionCount(components),
-    partOccurrenceCount: components.filter((component) => component.kind === "part")
+    partOccurrenceCount: components.filter((component) =>
+      component.kind === "part"
+    )
       .reduce((count, component) => count + component.quantity, 0),
   };
 }

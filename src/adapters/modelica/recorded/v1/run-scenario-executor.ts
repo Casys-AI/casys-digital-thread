@@ -96,7 +96,10 @@ import {
 } from "../../../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
-import type { EvidenceArtifact, RunDetail } from "../../../../contracts/console.ts";
+import type {
+  EvidenceArtifact,
+  RunDetail,
+} from "../../../../application/control-plane/read-model/engineering-run.ts";
 import {
   parseSimulationCaseDecisionParameters,
   SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,

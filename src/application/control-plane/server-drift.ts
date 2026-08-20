@@ -1,10 +1,7 @@
-import type {
-  DesiredServer,
-  DriftField,
-  DriftStatus,
-  ObservedServer,
-  ServerRecord,
-} from "../../contracts/console.ts";
+import type { DriftField, ServerRecord } from "./read-model/fleet-drift.ts";
+import type { DesiredServer } from "./read-model/fleet-manifest.ts";
+import type { ObservedServer } from "./read-model/fleet-observation.ts";
+import type { DriftStatus } from "./read-model/status.ts";
 
 export function buildServerRecord(
   desired: DesiredServer,

@@ -274,7 +274,8 @@ import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "./src/orchestration/o
 import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./src/orchestration/operations/fea-isolated-static-proof.ts";
-import type { FleetManifest, RunDetail } from "./src/contracts/console.ts";
+import type { RunDetail } from "./src/application/control-plane/read-model/engineering-run.ts";
+import type { FleetManifest } from "./src/application/control-plane/read-model/fleet-manifest.ts";
 import type { ObservedRunCatalog } from "./src/application/control-plane/ports.ts";
 import { registerControlPlaneTools } from "./src/tools/control-plane.ts";
 import {

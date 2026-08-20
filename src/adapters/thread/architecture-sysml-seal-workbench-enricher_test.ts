@@ -13,7 +13,7 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ThreadWorkbenchSnapshot } from "../../contracts/thread-workbench.ts";
+import type { ThreadWorkbenchSnapshot } from "../../presentation/workbench/thread/snapshot.ts";
 import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "./architecture-sysml-seal-workbench-enricher.ts";
 
 const SOURCE_TEXT = `package DroneV4 {

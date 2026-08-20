@@ -1,4 +1,7 @@
-import type { DesiredServer, FleetManifest } from "../../contracts/console.ts";
+import type {
+  DesiredServer,
+  FleetManifest,
+} from "../../application/control-plane/read-model/fleet-manifest.ts";
 
 /** Desired MCP fleet state for the control-plane. Not a human page. */
 export interface ManifestLoaderOptions {

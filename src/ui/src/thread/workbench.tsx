@@ -9,10 +9,10 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu.tsx";
-import { cn } from "../lib/utils.ts";
 import type {
   ProjectReviewIntent,
   ProjectReviewIntentAction,
@@ -72,7 +72,7 @@ import {
   type ThreadStreamStatus,
   type ThreadWorkbenchClient,
 } from "./client.ts";
-import type { CockpitFleetProjection } from "../../../contracts/cockpit-fleet.ts";
+import type { CockpitFleetProjection } from "../../../presentation/workbench/fleet/projection.ts";
 import { activityFeedNodes, type FeedScope } from "./feed-model.ts";
 import { shouldAcceptWorkbenchUpdate } from "./live-update.ts";
 import { ThreadFeed } from "./feed.tsx";
@@ -96,14 +96,17 @@ import {
 } from "./evidence-graph-model.ts";
 import { EvidenceExploration } from "./evidence-exploration.tsx";
 import {
+  filterGraphByVerificationCase,
+  reconcileVerificationCaseContext,
+  UNAVAILABLE_VERIFICATION_CASE_CATALOG,
+  type VerificationCaseFilter,
+} from "./verification-case-model.ts";
+import {
   buildPartAnchorageResolution,
   type PartAnchorageResolution,
 } from "./part-anchorage-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
-import {
-  ToolInspectorPanel,
-  type WorkbenchToolIdentity,
-} from "./tool-inspectors.tsx";
+import { ToolInspectorPanel, type WorkbenchToolIdentity } from "./tool-inspectors.tsx";
 import {
   graphNodeForSelection,
   resolveToolInspectorTarget,
@@ -235,6 +238,9 @@ export function ThreadWorkbench({
   // Profondeur du voisinage en vue locale (façon Obsidian). Décision
   // opérateur 2026-08-08 : défaut 1 — les voisins immédiats seulement.
   const [localDepth, setLocalDepth] = useState<1 | 2 | 3>(1);
+  const [verificationCaseFilter, setVerificationCaseFilter] = useState<
+    VerificationCaseFilter
+  >({ kind: "all" });
   // Panneau burger des réglages du graphe (fermé par défaut).
   // Type visibility for the full-map Exploration view (kind-projection, dagre
   // remounts on change). Defaults: artifact/observation/requirement/evaluation/
@@ -358,8 +364,7 @@ export function ThreadWorkbench({
       } else {
         const thread = next.thread;
         setSelectedComponentId(thread.components.components[0]?.id);
-        const liveNode =
-          activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
+        const liveNode = activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
         const initialSelection: ThreadRef = liveNode?.selection ??
           (thread.violations[0]
             ? { kind: "violation", id: thread.violations[0].id }
@@ -498,26 +503,46 @@ export function ThreadWorkbench({
   // resolves highlighted edge occurrences are the same objects.
   const presentedMemberRef = presentedVersionRef;
 
-  const versionedProvenanceMemo = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") {
-      return undefined;
-    }
+  const evidenceRawGraphMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
     const thread = workbench.thread;
     const closedIds = new Set(
       buildCurrentProjectWork(workbench.project).closedActionTargetIds,
     );
+    return graphWithoutAnalysisOverlay(
+      graphWithoutClosedActions(thread.graph, thread.actions, closedIds),
+    );
+  }, [workbench]);
+
+  const versionedProvenanceMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") {
+      return undefined;
+    }
+    if (!evidenceRawGraphMemo) return undefined;
     return buildVersionedProvenanceProjection(
-      graphWithoutAnalysisOverlay(
-        graphWithoutClosedActions(
-          thread.graph,
-          thread.actions,
-          closedIds,
-        ),
-      ),
-      thread.evidenceFamilyGraph,
+      evidenceRawGraphMemo,
+      workbench.thread.evidenceFamilyGraph,
       { presentedMemberRef },
     );
-  }, [workbench, presentedMemberRef]);
+  }, [workbench, evidenceRawGraphMemo, presentedMemberRef]);
+
+  const verificationRawGraphMemo = useMemo(() => {
+    if (!evidenceRawGraphMemo) return undefined;
+    return filterGraphByVerificationCase(
+      evidenceRawGraphMemo,
+      verificationCaseFilter,
+    );
+  }, [evidenceRawGraphMemo, verificationCaseFilter]);
+
+  const verificationVersionedProvenanceMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!verificationRawGraphMemo) return undefined;
+    return buildVersionedProvenanceProjection(
+      verificationRawGraphMemo,
+      workbench.thread.evidenceFamilyGraph,
+      { presentedMemberRef },
+    );
+  }, [workbench, verificationRawGraphMemo, presentedMemberRef]);
 
   // Memoize evidenceModel on the workbench + presented version so sigma is
   // not killed on highlight/depth changes. Presenting a family member is a
@@ -526,27 +551,48 @@ export function ThreadWorkbench({
     if (!workbench || workbench.surface !== "evidence") {
       return null as unknown as EvidenceGraphModel;
     }
+    if (!evidenceRawGraphMemo) return null as unknown as EvidenceGraphModel;
     const thread = workbench.thread;
-    const closedIds = new Set(
-      buildCurrentProjectWork(workbench.project).closedActionTargetIds,
+    return buildEvidenceGraphModel(
+      evidenceRawGraphMemo,
+      thread.evidenceFamilyGraph,
+      {
+        isAnalyzeInstrumentNode: isFoldedEvidenceNode,
+        intentionallyIsolatedSystems: [
+          "openmodelica",
+          "mcp-modelica",
+          "modelica",
+        ],
+        versionedProjection: versionedProvenanceMemo!,
+      },
     );
-    const rawGraph = graphWithoutAnalysisOverlay(
-      graphWithoutClosedActions(
-        thread.graph,
-        thread.actions,
-        closedIds,
-      ),
+  }, [workbench, evidenceRawGraphMemo, versionedProvenanceMemo]);
+
+  const verificationEvidenceModelMemo = useMemo((): EvidenceGraphModel => {
+    if (
+      !workbench || workbench.surface !== "evidence" ||
+      !verificationRawGraphMemo || !verificationVersionedProvenanceMemo
+    ) {
+      return null as unknown as EvidenceGraphModel;
+    }
+    return buildEvidenceGraphModel(
+      verificationRawGraphMemo,
+      workbench.thread.evidenceFamilyGraph,
+      {
+        isAnalyzeInstrumentNode: isFoldedEvidenceNode,
+        intentionallyIsolatedSystems: [
+          "openmodelica",
+          "mcp-modelica",
+          "modelica",
+        ],
+        versionedProjection: verificationVersionedProvenanceMemo,
+      },
     );
-    return buildEvidenceGraphModel(rawGraph, thread.evidenceFamilyGraph, {
-      isAnalyzeInstrumentNode: isFoldedEvidenceNode,
-      intentionallyIsolatedSystems: [
-        "openmodelica",
-        "mcp-modelica",
-        "modelica",
-      ],
-      versionedProjection: versionedProvenanceMemo!,
-    });
-  }, [workbench, versionedProvenanceMemo]);
+  }, [
+    workbench,
+    verificationRawGraphMemo,
+    verificationVersionedProvenanceMemo,
+  ]);
 
   // ---------------------------------------------------------------------------
   // Part anchorage — memoized on snapshot (same cost centre as evidenceModel).
@@ -617,6 +663,64 @@ export function ThreadWorkbench({
     );
   }, [evidenceModel, explorationMapKinds, versionedProvenanceMemo]);
 
+  const verificationFullMapCanvasMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (
+      !verificationVersionedProvenanceMemo || !verificationEvidenceModelMemo
+    ) {
+      return undefined;
+    }
+    return buildEvidenceCanvasProjection(
+      verificationEvidenceModelMemo,
+      verificationVersionedProvenanceMemo.collapsedVersionCount,
+      undefined,
+      verificationVersionedProvenanceMemo.visibleRefByMemberRef,
+    );
+  }, [
+    workbench,
+    verificationVersionedProvenanceMemo,
+    verificationEvidenceModelMemo,
+  ]);
+
+  const verificationEvidenceCanvasMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (
+      !verificationVersionedProvenanceMemo ||
+      !verificationEvidenceModelMemo ||
+      !verificationFullMapCanvasMemo
+    ) return undefined;
+    const focus = presentedMemberRef ?? lineageFocus;
+    if (!focus) return verificationFullMapCanvasMemo;
+    return buildEvidenceCanvasProjection(
+      verificationEvidenceModelMemo,
+      verificationVersionedProvenanceMemo.collapsedVersionCount,
+      focus,
+      verificationVersionedProvenanceMemo.visibleRefByMemberRef,
+    );
+  }, [
+    workbench,
+    verificationVersionedProvenanceMemo,
+    verificationEvidenceModelMemo,
+    verificationFullMapCanvasMemo,
+    lineageFocus,
+    presentedMemberRef,
+  ]);
+
+  const verificationKindProjectionMemo = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!verificationEvidenceModelMemo) return undefined;
+    return buildExplorationKindProjection(
+      verificationEvidenceModelMemo,
+      explorationMapKinds,
+      verificationVersionedProvenanceMemo?.collapsedVersionCount ?? 0,
+    );
+  }, [
+    workbench,
+    verificationEvidenceModelMemo,
+    explorationMapKinds,
+    verificationVersionedProvenanceMemo,
+  ]);
+
   // The renderer re-creates synthetic stub objects for each projection. Keep
   // one current occurrence index for the active canvas so a controlled keyed
   // selection can remap to that exact object, or be cleared after SSE if its
@@ -636,23 +740,97 @@ export function ThreadWorkbench({
     explorationKindProjectionMemo,
   ]);
 
+  const verificationGraphSelectionIndexMemo = useMemo(() => {
+    if (
+      !verificationVersionedProvenanceMemo ||
+      !verificationEvidenceCanvasMemo
+    ) return undefined;
+    const activeProjection = !verificationEvidenceCanvasMemo.isFiltered
+      ? (verificationKindProjectionMemo ?? verificationEvidenceCanvasMemo)
+      : verificationEvidenceCanvasMemo;
+    return buildVersionedGraphSelectionIndex(
+      verificationVersionedProvenanceMemo,
+      activeProjection.edges.filter((edge) => edge.id.startsWith("stub:")),
+    );
+  }, [
+    verificationVersionedProvenanceMemo,
+    verificationEvidenceCanvasMemo,
+    verificationKindProjectionMemo,
+  ]);
+
   // An occurrence key is an exact selection contract. When a live snapshot
   // changes duplicate cardinality or removes a stub, do not let an inspector
   // retain a previous object or degrade to edge.id: close it deterministically.
   useEffect(() => {
     if (graphSelection?.kind !== "edge" || !graphSelection.occurrence) return;
-    if (!graphSelectionIndexMemo) return;
+    const activeVersionedProvenance = activeView === "verification"
+      ? verificationVersionedProvenanceMemo
+      : versionedProvenanceMemo;
+    const activeSelectionIndex = activeView === "verification"
+      ? verificationGraphSelectionIndexMemo
+      : graphSelectionIndexMemo;
+    if (!activeVersionedProvenance || !activeSelectionIndex) return;
     if (
       isStaleAmbiguousVersionedEdgeSelection(
-        versionedProvenanceMemo!,
+        activeVersionedProvenance,
         graphSelection,
-        graphSelectionIndexMemo,
+        activeSelectionIndex,
       )
     ) {
       setGraphSelection(undefined);
       setInspectorOpen(false);
     }
-  }, [graphSelection, graphSelectionIndexMemo, versionedProvenanceMemo]);
+  }, [
+    activeView,
+    graphSelection,
+    graphSelectionIndexMemo,
+    verificationGraphSelectionIndexMemo,
+    versionedProvenanceMemo,
+    verificationVersionedProvenanceMemo,
+  ]);
+
+  useEffect(() => {
+    if (
+      !workbench || workbench.surface !== "evidence" ||
+      !evidenceRawGraphMemo
+    ) return;
+    const transientRefs: ThreadGraphRef[] = [];
+    if (graphSelection?.kind === "node") {
+      transientRefs.push(graphSelection.ref);
+    } else if (graphSelection?.kind === "edge" && graphSelection.occurrence) {
+      transientRefs.push(
+        graphSelection.occurrence.edge.from,
+        graphSelection.occurrence.edge.to,
+      );
+    }
+    if (lineageFocus) transientRefs.push(lineageFocus);
+    if (presentedVersionRef) transientRefs.push(presentedVersionRef);
+    if (inspectorOpen && graphSelection === undefined && selection) {
+      const selectedNode = graphNodeForSelection(workbench.thread, selection);
+      if (selectedNode) transientRefs.push(selectedNode.ref);
+    }
+    const reconciliation = reconcileVerificationCaseContext(
+      workbench.thread.verificationCases ??
+        UNAVAILABLE_VERIFICATION_CASE_CATALOG,
+      evidenceRawGraphMemo,
+      verificationCaseFilter,
+      transientRefs,
+    );
+    if (!reconciliation.resetTransientState) return;
+    setPresentedVersionRef(undefined);
+    setLineageFocus(undefined);
+    setGraphSelection(undefined);
+    setInspectorOpen(false);
+  }, [
+    evidenceRawGraphMemo,
+    graphSelection,
+    inspectorOpen,
+    lineageFocus,
+    presentedVersionRef,
+    selection,
+    verificationCaseFilter,
+    workbench,
+  ]);
 
   const pushWorkspaceHash = (hash: string) => {
     if (globalThis.location && globalThis.history) {
@@ -673,6 +851,12 @@ export function ThreadWorkbench({
 
   const changeView = (next: ProjectWorkspaceView) => {
     lastScrolledDeepLinkRef.current = undefined;
+    if (next === "verification" && activeView !== "verification") {
+      // Entering Verification from another surface is an explicit new scope.
+      // Never carry a previous case/version restriction into that navigation.
+      setVerificationCaseFilter({ kind: "all" });
+      setPresentedVersionRef(undefined);
+    }
     setActiveView(next);
     setActiveDeepLink(undefined);
     // A selected record can belong to another tool surface. Keep the main
@@ -681,10 +865,20 @@ export function ThreadWorkbench({
     // Le fragment suit l'espace ouvert : recharger, revenir en arriere ou
     // partager le lien ramene au meme endroit du cockpit.
     pushWorkspaceHash(
-      next === "product"
-        ? productFacetHash(activeProductFacet)
-        : projectViewHash(next),
+      next === "product" ? productFacetHash(activeProductFacet) : projectViewHash(next),
     );
+  };
+
+  /**
+   * Inspecter est une destination, pas un panneau qui se déplie n'importe où.
+   * L'inspecteur vit dans Verification : toute demande d'inspection, d'où
+   * qu'elle vienne, y conduit. `changeView` referme le tiroir au passage,
+   * la réouverture qui suit est donc volontaire et non un reste d'état.
+   */
+  const openInspector = () => {
+    if (activeView !== "verification") changeView("verification");
+    setDrawerMode("tool");
+    setInspectorOpen(true);
   };
 
   const openProjectDeepLink = (target: ProjectDeepLinkTarget) => {
@@ -716,6 +910,7 @@ export function ThreadWorkbench({
    * the anchored ref via buildEvidenceCanvasProjection.
    */
   const openEvidenceAnchored = (ref: ThreadGraphRef) => {
+    setVerificationCaseFilter({ kind: "all" });
     setLineageFocus(ref);
     setGraphSelection({ kind: "node", ref });
     changeView("verification");
@@ -939,10 +1134,24 @@ export function ThreadWorkbench({
   // control and selection highlights must never remount the canvas.
   // We know they are defined here because the planning/documentary early
   // returns have already fired.
-  const versionedProvenance = versionedProvenanceMemo!;
-  const evidenceCanvas = evidenceCanvasMemo!;
-  const fullMapCanvas = fullMapCanvasMemo!;
-  const graphSelectionIndex = graphSelectionIndexMemo!;
+  const versionedProvenance = activeView === "verification"
+    ? verificationVersionedProvenanceMemo!
+    : versionedProvenanceMemo!;
+  const evidenceCanvas = activeView === "verification"
+    ? verificationEvidenceCanvasMemo!
+    : evidenceCanvasMemo!;
+  const fullMapCanvas = activeView === "verification"
+    ? verificationFullMapCanvasMemo!
+    : fullMapCanvasMemo!;
+  const graphSelectionIndex = activeView === "verification"
+    ? verificationGraphSelectionIndexMemo!
+    : graphSelectionIndexMemo!;
+  const displayedEvidenceModel = activeView === "verification"
+    ? verificationEvidenceModelMemo
+    : evidenceModel;
+  const displayedKindProjection = activeView === "verification"
+    ? verificationKindProjectionMemo
+    : explorationKindProjectionMemo;
 
   // Visible-depth display filter (local view only). The neighbourhood is
   // computed at max depth; here we derive what the chosen depth actually
@@ -963,7 +1172,7 @@ export function ThreadWorkbench({
   // Compute which DisplayKinds are present in the model (post-fold) so the
   // burger menu only shows toggles for types that actually exist in the data.
   const presentKinds = new Set<DisplayKind>(
-    evidenceModel.nodes.map((n) => displayKindOf(n)),
+    displayedEvidenceModel.nodes.map((n) => displayKindOf(n)),
   );
 
   const currentDecisionEvidence = (decisionId?: string) => {
@@ -1000,6 +1209,7 @@ export function ThreadWorkbench({
       candidate.ref.kind === reference.kind && candidate.ref.id === reference.id
     );
     if (!node) return;
+    setVerificationCaseFilter({ kind: "all" });
     setLineageFocus(node.ref);
     setGraphSelection({ kind: "node", ref: node.ref });
     if (node.selection) setSelection(node.selection);
@@ -1031,8 +1241,7 @@ export function ThreadWorkbench({
     }
     setGraphSelection({ kind: "node", ref: node.ref });
     if (options.inspect !== false) {
-      setDrawerMode("tool");
-      setInspectorOpen(true);
+      openInspector();
     }
     if (node.selection) {
       setSelection(node.selection);
@@ -1073,9 +1282,16 @@ export function ThreadWorkbench({
       setInspectorOpen(false);
     }
     if (next?.kind === "edge") {
-      setDrawerMode("tool");
-      setInspectorOpen(true);
+      openInspector();
     }
+  };
+
+  const changeVerificationCaseFilter = (next: VerificationCaseFilter) => {
+    setVerificationCaseFilter(next);
+    setPresentedVersionRef(undefined);
+    setLineageFocus(undefined);
+    setGraphSelection(undefined);
+    setInspectorOpen(false);
   };
 
   const changeFollowLive = (next: boolean) => {
@@ -1097,8 +1313,7 @@ export function ThreadWorkbench({
   const inspectComponentBinding = (binding: ThreadComponentBinding) => {
     if (!binding.selection) return;
     selectThreadElement(binding.selection);
-    setDrawerMode("tool");
-    setInspectorOpen(true);
+    openInspector();
   };
 
   const changeComponentProvider = (provider: ThreadComponentProvider) => {
@@ -1158,7 +1373,7 @@ export function ThreadWorkbench({
   const inspectorTarget = resolveToolInspectorTarget(
     snapshot,
     graphSelection,
-    selection,
+    inspectorOpen ? selection : undefined,
   );
   const selectedGraphNode = inspectorTarget.node;
   const inspectorRecord = inspectorTarget.record;
@@ -1171,72 +1386,89 @@ export function ThreadWorkbench({
   const inspector = (
     <aside
       id="thread-tool-inspector"
-      className="thread-tool-drawer space-y-3 p-3"
-      aria-label="Active engineering tool workspace"
+      className="thread-tool-drawer flex min-h-0 flex-col"
+      aria-label="Evidence inspector"
     >
-      {selectedEdge
-        ? (
-          <GraphEdgeInspector
-            snapshot={snapshot}
-            edge={selectedEdge}
-            history={selectedEdgeGroup}
-            onSelectGraphNode={selectGraphNode}
-          />
-        )
-        : (
-          <>
-            <Tabs
-              value={drawerMode}
-              onValueChange={(mode) => setDrawerMode(mode as "tool" | "record")}
-            >
-              <TabsList aria-label="Inspector mode" className="w-full">
-                <TabsTrigger value="tool" className="flex-1">
-                  Tool context
-                </TabsTrigger>
-                <TabsTrigger
-                  value="record"
-                  className="flex-1"
-                  disabled={!inspectorRecord}
-                >
-                  Exact record
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {selectedVersionFamily && (
-              <EvidenceVersionHistory
-                family={selectedVersionFamily}
-                selectedRef={presentedVersionRef ?? selectedGraphNode?.ref}
-                onSelectVersion={selectPresentedVersion}
-              />
-            )}
-            {drawerMode === "tool"
-              ? (
-                <ToolInspectorPanel
-                  snapshot={snapshot}
-                  node={selectedGraphNode}
-                  selection={inspectorRecord}
-                  onSelect={selectThreadElement}
-                  onSelectGraphNode={selectGraphNode}
-                  onOpenToolView={openToolView}
-                  availableFullViews={["syson", "build123d", "erpnext"]}
+      <header className="border-b border-border px-3 py-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-brand">
+            Inspector
+          </p>
+          <Badge variant="secondary" className="font-mono text-[9px]">
+            Read only
+          </Badge>
+        </div>
+        <p className="mt-1 truncate text-xs font-medium text-foreground">
+          {selectedEdge
+            ? "Recorded relation"
+            : selectedGraphNode?.label ?? "No record selected"}
+        </p>
+      </header>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        {selectedEdge
+          ? (
+            <GraphEdgeInspector
+              snapshot={snapshot}
+              edge={selectedEdge}
+              history={selectedEdgeGroup}
+              onSelectGraphNode={selectGraphNode}
+            />
+          )
+          : (
+            <>
+              <Tabs
+                value={drawerMode}
+                onValueChange={(mode) => setDrawerMode(mode as "tool" | "record")}
+              >
+                <TabsList aria-label="Inspector mode" className="w-full">
+                  <TabsTrigger value="tool" className="flex-1">
+                    Tool context
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="record"
+                    className="flex-1"
+                    disabled={!inspectorRecord}
+                  >
+                    Exact record
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {selectedVersionFamily && (
+                <EvidenceVersionHistory
+                  family={selectedVersionFamily}
+                  selectedRef={presentedVersionRef ?? selectedGraphNode?.ref}
+                  onSelectVersion={selectPresentedVersion}
                 />
-              )
-              : inspectorRecord
-              ? (
-                <SelectionInspector
-                  snapshot={snapshot}
-                  selection={inspectorRecord}
-                  onSelect={selectThreadElement}
-                />
-              )
-              : (
-                <EmptyNotice>
-                  This graph entity has no richer record projection. Use the
-                  tool context to inspect its recorded neighbours.
-                </EmptyNotice>
               )}
-          </>
-        )}
+              {drawerMode === "tool"
+                ? (
+                  <ToolInspectorPanel
+                    snapshot={snapshot}
+                    node={selectedGraphNode}
+                    selection={inspectorRecord}
+                    onSelect={selectThreadElement}
+                    onSelectGraphNode={selectGraphNode}
+                    onOpenToolView={openToolView}
+                    availableFullViews={["syson", "build123d", "erpnext"]}
+                  />
+                )
+                : inspectorRecord
+                ? (
+                  <SelectionInspector
+                    snapshot={snapshot}
+                    selection={inspectorRecord}
+                    onSelect={selectThreadElement}
+                  />
+                )
+                : (
+                  <EmptyNotice>
+                    This graph entity has no richer record projection. Use the tool
+                    context to inspect its recorded neighbours.
+                  </EmptyNotice>
+                )}
+            </>
+          )}
+      </div>
     </aside>
   );
 
@@ -1285,9 +1517,8 @@ export function ThreadWorkbench({
           </strong>
           <span>
             The technical thread is at revision{" "}
-            {workbench.alignment.currentThreadRevision}, while project decisions
-            remain anchored to revision{" "}
-            {workbench.alignment.projectThreadRevision}.
+            {workbench.alignment.currentThreadRevision}, while project decisions remain
+            anchored to revision {workbench.alignment.projectThreadRevision}.
           </span>
         </Notice>
       )}
@@ -1301,10 +1532,9 @@ export function ThreadWorkbench({
               : "references do"} not resolve in this thread revision
           </strong>
           <span>
-            These project records cite thread entities or snapshots that the
-            exact revision cannot resolve (usually residues of abandoned work).
-            The rest of this page resolved.{" "}
-            {workbench.unresolvedEvidenceReferences
+            These project records cite thread entities or snapshots that the exact
+            revision cannot resolve (usually residues of abandoned work). The rest of
+            this page resolved. {workbench.unresolvedEvidenceReferences
               .map((issue) => issue.path)
               .join(", ")}
           </span>
@@ -1356,31 +1586,6 @@ export function ThreadWorkbench({
                     double-click node → local view · click background → full map
                   </p>
                 )}
-                {activeView !== "verification" &&
-                  !(activeView === "product" &&
-                    activeProductFacet !== "structure") &&
-                  (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      aria-expanded={inspectorOpen}
-                      aria-controls="thread-tool-inspector"
-                      onClick={() => setInspectorOpen((open) => !open)}
-                    >
-                      {inspectorOpen ? "Close details" : "Inspect selection"}
-                    </Button>
-                  )}
-                {activeView === "verification" && inspectorOpen && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    aria-expanded="true"
-                    aria-controls="thread-tool-inspector"
-                    onClick={() => setInspectorOpen(false)}
-                  >
-                    Close details
-                  </Button>
-                )}
               </div>
             </div>
             {activeView === "work" && (
@@ -1392,13 +1597,13 @@ export function ThreadWorkbench({
               <MetricTiles
                 items={summaryMetrics(
                   snapshot,
-                  paintedDossierMetric(evidenceModel, fullMapCanvas),
+                  paintedDossierMetric(displayedEvidenceModel, fullMapCanvas),
                 )}
               />
             )}
             <div
               className={`thread-graph-workspace ${
-                inspectorOpen ? "" : "is-wide"
+                activeView === "verification" ? "is-verification" : "is-wide"
               }`}
             >
               <div
@@ -1462,14 +1667,13 @@ export function ThreadWorkbench({
                             edge,
                           },
                         });
-                        setDrawerMode("tool");
-                        setInspectorOpen(true);
+                        openInspector();
                       }}
                       onInspect={(next, node) => {
                         setSelection(next);
                         setLineageFocus(node.ref);
-                        setDrawerMode("tool");
-                        setInspectorOpen(true);
+                        setGraphSelection({ kind: "node", ref: node.ref });
+                        openInspector();
                       }}
                       onOpenEvidenceAnchored={openEvidenceAnchored}
                       onOpenReviewEvidence={openPublishedEvidence}
@@ -1503,7 +1707,7 @@ export function ThreadWorkbench({
                           {evidenceCanvas.isFiltered
                             ? `${explorationLocalVisibleCount} items shown · local view · depth ${localDepth}`
                             : (() => {
-                              const kp = explorationKindProjectionMemo ??
+                              const kp = displayedKindProjection ??
                                 evidenceCanvas;
                               const parts: string[] = [
                                 `${kp.displayedCount} items shown`,
@@ -1523,34 +1727,7 @@ export function ThreadWorkbench({
                         </p>
                       </div>
                       <div className="evidence-graph-menu">
-                        {(evidenceCanvas.isFiltered || presentedMemberRef) && (
-                          <div
-                            className="absolute right-14 top-10 z-10 flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 shadow-sm"
-                            role="group"
-                            aria-label="Neighbor depth"
-                          >
-                            <span className="px-1 font-mono text-[9px] font-medium uppercase tracking-[.08em] text-muted-foreground">
-                              Depth
-                            </span>
-                            {([1, 2, 3] as const).map((depth) => (
-                              <button
-                                key={depth}
-                                type="button"
-                                aria-pressed={localDepth === depth}
-                                className={cn(
-                                  "size-5 rounded font-mono text-[10.5px] tabular-nums",
-                                  localDepth === depth
-                                    ? "bg-brand/10 font-semibold text-brand"
-                                    : "text-muted-foreground hover:bg-muted",
-                                )}
-                                onClick={() => setLocalDepth(depth)}
-                              >
-                                {depth}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <DropdownMenu>
+                        <DropdownMenu align="end">
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="outline"
@@ -1561,52 +1738,62 @@ export function ThreadWorkbench({
                               ☰
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Show</DropdownMenuLabel>
-                            {(Object.keys(
-                              DISPLAY_KIND_LABELS,
-                            ) as DisplayKind[]).map(
-                              (kind) => {
-                                if (!presentKinds.has(kind)) return null;
-                                const currentKinds = evidenceCanvas.isFiltered
-                                  ? explorationLocalKinds
-                                  : explorationMapKinds;
-                                const setCurrentKinds = evidenceCanvas
-                                    .isFiltered
-                                  ? setExplorationLocalKinds
-                                  : setExplorationMapKinds;
-                                return (
-                                  <DropdownMenuCheckboxItem
-                                    key={kind}
-                                    checked={currentKinds[kind]}
-                                    onCheckedChange={(checked) =>
-                                      setCurrentKinds((prev) => ({
-                                        ...prev,
-                                        [kind]: checked === true,
-                                      }))}
-                                    onSelect={(event) => event.preventDefault()}
-                                  >
-                                    {DISPLAY_KIND_LABELS[kind]}
-                                  </DropdownMenuCheckboxItem>
-                                );
-                              },
-                            )}
+                          <DropdownMenuContent>
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel>Show</DropdownMenuLabel>
+                              {(Object.keys(
+                                DISPLAY_KIND_LABELS,
+                              ) as DisplayKind[]).map(
+                                (kind) => {
+                                  if (!presentKinds.has(kind)) return null;
+                                  const currentKinds = evidenceCanvas.isFiltered
+                                    ? explorationLocalKinds
+                                    : explorationMapKinds;
+                                  const setCurrentKinds = evidenceCanvas
+                                      .isFiltered
+                                    ? setExplorationLocalKinds
+                                    : setExplorationMapKinds;
+                                  return (
+                                    <DropdownMenuCheckboxItem
+                                      key={kind}
+                                      value={kind}
+                                      checked={currentKinds[kind]}
+                                      onCheckedChange={(checked) =>
+                                        setCurrentKinds((prev) => ({
+                                          ...prev,
+                                          [kind]: checked === true,
+                                        }))}
+                                    >
+                                      {DISPLAY_KIND_LABELS[kind]}
+                                    </DropdownMenuCheckboxItem>
+                                  );
+                                },
+                              )}
+                            </DropdownMenuGroup>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
                       <EvidenceExploration
-                        key={presentedMemberRef
-                          ? `version:${versionedRefKey(presentedMemberRef)}`
-                          : "live-map"}
-                        evidenceModel={evidenceModel}
+                        key={`${
+                          verificationCaseFilter.kind === "case"
+                            ? verificationCaseFilter.caseKey
+                            : "all-cases"
+                        }:${
+                          presentedMemberRef
+                            ? `version:${versionedRefKey(presentedMemberRef)}`
+                            : "live-map"
+                        }`}
+                        evidenceModel={displayedEvidenceModel}
                         projection={presentedMemberRef ||
                             evidenceCanvas.isFiltered
                           ? evidenceCanvas
-                          : (explorationKindProjectionMemo ?? evidenceCanvas)}
+                          : (displayedKindProjection ?? evidenceCanvas)}
                         displayDepth={presentedMemberRef ||
                             evidenceCanvas.isFiltered
                           ? localDepth
                           : undefined}
+                        neighborDepth={localDepth}
+                        onNeighborDepthChange={setLocalDepth}
                         visibleKinds={presentedMemberRef ||
                             evidenceCanvas.isFiltered
                           ? explorationLocalKinds
@@ -1621,7 +1808,12 @@ export function ThreadWorkbench({
                           presentedMemberRef ?? lineageFocus,
                         )}
                         onSelectionChange={selectVerificationGraphItem}
-                        fullMapProjection={explorationKindProjectionMemo ??
+                        verificationCases={snapshot.verificationCases ??
+                          UNAVAILABLE_VERIFICATION_CASE_CATALOG}
+                        verificationCaseNodes={evidenceRawGraphMemo!.nodes}
+                        verificationCaseFilter={verificationCaseFilter}
+                        onVerificationCaseFilterChange={changeVerificationCaseFilter}
+                        fullMapProjection={displayedKindProjection ??
                           fullMapCanvas}
                         onEnterLocalView={(ref) => {
                           const node = graphNodeByRef(snapshot, ref);
@@ -1664,7 +1856,7 @@ export function ThreadWorkbench({
                     />
                   )}
               </div>
-              {inspectorOpen && inspector}
+              {activeView === "verification" && inspector}
             </div>
           </section>
         )}
@@ -1783,9 +1975,7 @@ function MetricTiles(
 }
 
 function Mono({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <code className="font-mono text-xs text-muted-foreground">{children}</code>
-  );
+  return <code className="font-mono text-xs text-muted-foreground">{children}</code>;
 }
 
 function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
@@ -1843,12 +2033,11 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "asserted-by",
         label: "Asserted by",
-        value:
-          `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
-            edge.analysis.assertedBy.version
-              ? ` @ ${edge.analysis.assertedBy.version}`
-              : ""
-          }`,
+        value: `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
+          edge.analysis.assertedBy.version
+            ? ` @ ${edge.analysis.assertedBy.version}`
+            : ""
+        }`,
       },
       {
         id: "analysis-scope",
@@ -1937,10 +2126,9 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
         {!edge.attestation && edge.analysis
           ? (
             <Notice title="Qualified analysis assertion" tone="info">
-              This semantic relation is backed by the exact evidence listed
-              above and is classified as{" "}
-              {edge.analysis.epistemicBasis}. It does not grant execution
-              authority.
+              This semantic relation is backed by the exact evidence listed above and is
+              classified as{" "}
+              {edge.analysis.epistemicBasis}. It does not grant execution authority.
             </Notice>
           )
           : !edge.attestation && (
@@ -1994,9 +2182,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
     return <ChangeInspector snapshot={snapshot} />;
   }
   if (selection.kind === "artifact") {
-    const artifact = snapshot.artifacts.find((item) =>
-      item.id === selection.id
-    );
+    const artifact = snapshot.artifacts.find((item) => item.id === selection.id);
     return artifact
       ? (
         <ArtifactInspector
@@ -2008,9 +2194,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Artifact not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "observation") {
-    const observation = snapshot.observations.find((item) =>
-      item.id === selection.id
-    );
+    const observation = snapshot.observations.find((item) => item.id === selection.id);
     return observation
       ? (
         <ObservationInspector
@@ -2022,9 +2206,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Observation not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "requirement") {
-    const requirement = snapshot.requirements.find((item) =>
-      item.id === selection.id
-    );
+    const requirement = snapshot.requirements.find((item) => item.id === selection.id);
     return requirement
       ? (
         <RequirementInspector
@@ -2035,9 +2217,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       )
       : <EmptyNotice>Requirement not present in this snapshot.</EmptyNotice>;
   }
-  const violation = snapshot.violations.find((item) =>
-    item.id === selection.id
-  );
+  const violation = snapshot.violations.find((item) => item.id === selection.id);
   return violation
     ? (
       <ViolationInspector
@@ -2125,8 +2305,8 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
       <FactList items={artifactFacts(artifact)} />
       {artifact.freshness === "stale" && (
         <Notice title="Evidence invalidated" tone="warning">
-          This result predates a dependency. It remains available for provenance
-          but cannot support a current verdict.
+          This result predates a dependency. It remains available for provenance but
+          cannot support a current verdict.
         </Notice>
       )}
       {artifact.attestation && (
@@ -2134,9 +2314,7 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
           title={artifact.attestation.status === "verified"
             ? "Producer / consumer hash verified"
             : "Producer / consumer hash mismatch"}
-          tone={artifact.attestation.status === "verified"
-            ? "success"
-            : "danger"}
+          tone={artifact.attestation.status === "verified" ? "success" : "danger"}
         >
           {artifact.attestation.status === "verified"
             ? "The consumer used the exact fingerprint emitted by its upstream producer."
@@ -2452,9 +2630,7 @@ function summaryMetrics(
       label: "Evidence currency",
       value: artifacts.length,
       unit: `current${
-        historicalArtifactCount > 0
-          ? ` · ${historicalArtifactCount} historical`
-          : ""
+        historicalArtifactCount > 0 ? ` · ${historicalArtifactCount} historical` : ""
       }`,
       detail: stale > 0
         ? `${fresh} fresh · ${stale} current stale`
@@ -2468,9 +2644,7 @@ function summaryMetrics(
       unit: noCriterion ? "modelled" : "passing",
       detail: noCriterion
         ? "No model-owned criterion"
-        : `${failed} failed · ${
-          requirements.length - passed - failed
-        } unresolved` +
+        : `${failed} failed · ${requirements.length - passed - failed} unresolved` +
           (historicalRequirementCount > 0
             ? ` · ${historicalRequirementCount} prior version${
               historicalRequirementCount === 1 ? "" : "s"
@@ -2485,11 +2659,7 @@ function summaryMetrics(
       unit: "open",
       detail: snapshot.violations[0]?.id ??
         (noCriterion ? "verdict unavailable" : "no active violation"),
-      tone: snapshot.violations.length
-        ? "danger"
-        : noCriterion
-        ? "warning"
-        : "success",
+      tone: snapshot.violations.length ? "danger" : noCriterion ? "warning" : "success",
     },
   ];
 }

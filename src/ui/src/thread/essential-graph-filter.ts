@@ -100,6 +100,36 @@ export const DISPLAY_KIND_LABELS: Record<DisplayKind, string> = {
 };
 
 /**
+ * Jeton de couleur de chaque type d'enregistrement.
+ *
+ * La couleur dit la NATURE de la preuve, jamais l'outil qui l'a produite :
+ * un provider se remplace, la nature du fait ne change pas. Les types se
+ * répartissent dans la même famille chromatique que les voies du fil —
+ * exigence violet, modèle système bleu, géométrie cyan, mesure ambre,
+ * verdict vert, violation rouge — pour qu'Overview et Verification se
+ * lisent avec les mêmes réflexes.
+ */
+export const DISPLAY_KIND_COLOR_TOKEN: Record<
+  DisplayKind,
+  "green" | "amber" | "red" | "cyan" | "blue" | "violet" | "muted"
+> = {
+  "requirement": "violet",
+  "sysml-element": "blue",
+  "analysis": "blue",
+  "artifact": "cyan",
+  "cad-lever": "cyan",
+  "observation": "amber",
+  "change": "amber",
+  "evaluation": "green",
+  "study-base-evaluation": "green",
+  "violation": "red",
+  "supporting-artifact": "muted",
+  "consumption": "muted",
+  "action": "muted",
+  "cad-unnamed-literal": "muted",
+};
+
+/**
  * Returns the display classification of a graph node.
  *
  * A node whose entityKind is "artifact" AND whose artifactKind belongs to

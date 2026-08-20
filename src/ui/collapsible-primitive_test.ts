@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("Collapsible wraps Radix and is the disclosure for earlier gates", async () => {
+Deno.test("Collapsible wraps Ark UI and is the disclosure for earlier gates", async () => {
   const primitive = await Deno.readTextFile(
     new URL("./src/ui/collapsible.tsx", import.meta.url),
   );
@@ -8,8 +8,8 @@ Deno.test("Collapsible wraps Radix and is the disclosure for earlier gates", asy
     new URL("./src/project/overview.tsx", import.meta.url),
   );
 
-  assertStringIncludes(primitive, 'from "@radix-ui/react-collapsible"');
-  assertStringIncludes(primitive, "export const Collapsible");
+  assertStringIncludes(primitive, 'from "@ark-ui/react/collapsible"');
+  assertStringIncludes(primitive, "export function Collapsible");
   assertStringIncludes(primitive, "export function CollapsibleTrigger");
   assertStringIncludes(primitive, "export function CollapsibleContent");
 
@@ -51,12 +51,17 @@ Deno.test("collapsed earlier gates and compact spine keep planned completed as B
   const compactEnd = overview.indexOf("function NowPanel", compactStart);
   const compact = overview.slice(compactStart, compactEnd);
   assertEquals(compactStart >= 0, true);
-  assertStringIncludes(compact, "<Badge");
-  assertStringIncludes(
-    compact,
-    "variant={recordStatusVariant(item.status)}",
+  // Le bandeau n'écrit plus le statut sous chaque gate — répété huit fois il
+  // cassait la ligne. Il doit rester dans le nom accessible de l'étape, et
+  // l'état doit se distinguer par la FORME du nœud, pas par la seule couleur.
+  const spineStart = overview.indexOf("function SpinePhase(");
+  const spine = overview.slice(
+    spineStart,
+    overview.indexOf("function ", spineStart + 10),
   );
-  assertStringIncludes(compact, "{phaseStatusLabel(item.status)}");
+  assertStringIncludes(spine, "phaseStatusLabel(item.status)");
+  assertStringIncludes(spine, "aria-label=");
+  assertStringIncludes(overview, "border-2 border-success bg-background");
   assertEquals(
     compact.includes('className="sr-only"'),
     false,

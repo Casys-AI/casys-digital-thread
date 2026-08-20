@@ -5,11 +5,13 @@ import type {
   ThreadEvidenceFamilyGraphEdge,
   ThreadEvidenceFamilyOmittedCycleEdge,
   ThreadEvidenceFamilyOmittedSelfLoop,
+} from "../../presentation/workbench/thread/evidence.ts";
+import type {
   ThreadGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
-} from "../../contracts/thread-workbench.ts";
+} from "../../presentation/workbench/thread/graph.ts";
 
 /**
  * Build the compact, revision-aware quotient graph used by the Workbench.

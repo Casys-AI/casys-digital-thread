@@ -6,8 +6,18 @@
   border: 1px solid var(--line);
   background: var(--thread-panel);
 }
+.thread-graph-workspace.is-verification {
+  grid-template-columns: minmax(0, 1fr) 312px;
+  align-items: stretch;
+}
 .thread-graph-workspace.is-wide {
   grid-template-columns: minmax(0, 1fr);
+}
+.thread-graph-workspace.is-verification > .thread-tool-drawer {
+  border: 0;
+  border-left: 1px solid var(--thread-border);
+  border-radius: 0;
+  box-shadow: none;
 }
 .thread-graph-stage {
   min-width: 0;
@@ -20,57 +30,52 @@
 .thread-feed {
   min-width: 0;
 }
+/* Gabarit du journal : un rail continu en gouttière, les faits en colonne.
+   Chaque carte porte sa pastille en absolu, alignée sur le rail. */
+.thread-feed-rail-grid {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  column-gap: 0.875rem;
+}
+.thread-feed-rail-line {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  border-right: 2px solid var(--thread-border);
+}
 .thread-feed-list {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .thread-feed-entry {
+  position: relative;
   min-width: 0;
-  display: grid;
-  grid-template-columns: 56px 24px minmax(0, 1fr);
   opacity: 0;
   animation: thread-feed-arrive 320ms ease forwards;
 }
-.thread-feed-rail {
-  position: relative;
-}
-.thread-feed-rail::before {
-  content: "";
+.thread-feed-dot {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 11px;
-  width: 1px;
-}
-.thread-feed-entry:first-child .thread-feed-rail::before {
-  top: 1.15rem;
-}
-.thread-feed-entry:last-child .thread-feed-rail::before {
-  bottom: calc(100% - 1.2rem);
-}
-.thread-feed-rail i {
-  position: absolute;
-  z-index: 1;
   top: 1rem;
-  left: 7px;
+  left: -21px;
+  z-index: 1;
   width: 9px;
   height: 9px;
   border: 2px solid var(--thread-panel);
   border-radius: 50%;
+  background: var(--thread-border);
 }
-.thread-feed-entry[data-active="true"] .thread-feed-rail::before {
+.thread-feed-entry[data-active="true"] .thread-feed-dot {
   background: var(--thread-focus);
 }
-.thread-feed-entry[data-active="true"] .thread-feed-rail i {
-  background: var(--thread-focus);
-  box-shadow: none;
-}
-.thread-feed-entry[data-freshness="stale"] .thread-feed-rail i,
-.thread-feed-entry[data-freshness="running"] .thread-feed-rail i {
+.thread-feed-entry[data-freshness="stale"] .thread-feed-dot,
+.thread-feed-entry[data-freshness="running"] .thread-feed-dot {
   background: var(--thread-warning);
 }
-.thread-feed-entry[data-freshness="failed"] .thread-feed-rail i {
+.thread-feed-entry[data-freshness="failed"] .thread-feed-dot {
   background: var(--thread-red);
 }
 .thread-feed-event {
@@ -370,6 +375,21 @@ node; their canonical records and internal relations live in the inspector.
 .evidence-exploration-stage > div {
   width: 100% !important;
   height: 100% !important;
+}
+
+.verification-depth-range {
+  accent-color: var(--thread-focus);
+}
+
+@media (max-width: 1120px) {
+  .thread-graph-workspace.is-verification {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .thread-graph-workspace.is-verification > .thread-tool-drawer {
+    border-top: 1px solid var(--thread-border);
+    border-left: 0;
+  }
 }
 
 /* ---------------------------------------------------------------------------

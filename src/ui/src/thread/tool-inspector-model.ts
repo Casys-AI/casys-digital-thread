@@ -252,7 +252,9 @@ export function resolveToolInspectorContext(
     observation.requirementIds.forEach((id) => requirementIds.add(id));
   }
 
-  const selectedArtifactId = targetRef?.kind === "artifact" ? targetRef.id : undefined;
+  const selectedArtifactId = targetRef?.kind === "artifact"
+    ? targetRef.id
+    : undefined;
   const selectedArtifact = snapshot.artifacts.find((item) =>
     item.id === selectedArtifactId
   );
@@ -283,14 +285,18 @@ export function resolveToolInspectorContext(
     }
   }
 
-  const artifacts = snapshot.artifacts.filter((item) => artifactIds.has(item.id));
+  const artifacts = snapshot.artifacts.filter((item) =>
+    artifactIds.has(item.id)
+  );
   const observations = snapshot.observations.filter((item) =>
     observationIds.has(item.id)
   );
   const requirements = snapshot.requirements.filter((item) =>
     requirementIds.has(item.id)
   );
-  const violations = snapshot.violations.filter((item) => violationIds.has(item.id));
+  const violations = snapshot.violations.filter((item) =>
+    violationIds.has(item.id)
+  );
   const relatedIds = new Set([
     ...(targetRef ? [targetRef.id] : []),
     ...artifacts.map((item) => item.id),
@@ -309,7 +315,8 @@ export function resolveToolInspectorContext(
   return {
     owner,
     target: targetRef,
-    graphOnlyNodes: resolveToolFacetInventory(snapshot, owner.id).graphOnlyNodes,
+    graphOnlyNodes:
+      resolveToolFacetInventory(snapshot, owner.id).graphOnlyNodes,
     artifacts,
     observations,
     requirements,
@@ -401,12 +408,15 @@ export interface ArchitectureSysmlSealInspectorView {
   readonly notSyson: true;
   readonly notWriteArchitecture: true;
   readonly notCompilationAdmission: true;
-  readonly symbolsStatus: ThreadArchitectureSysmlSealPresentation["symbolsStatus"];
-  readonly sourceStatus: ThreadArchitectureSysmlSealPresentation["sourceStatus"];
+  readonly symbolsStatus:
+    ThreadArchitectureSysmlSealPresentation["symbolsStatus"];
+  readonly sourceStatus:
+    ThreadArchitectureSysmlSealPresentation["sourceStatus"];
   readonly sourceText?: string;
   readonly symbols: readonly ThreadArchitectureSysmlSealSymbol[];
   readonly incidences: readonly ThreadArchitectureSysmlSealIncidence[];
-  readonly unresolvedConstructs: readonly ThreadArchitectureSysmlSealUnresolved[];
+  readonly unresolvedConstructs:
+    readonly ThreadArchitectureSysmlSealUnresolved[];
 }
 
 /**
@@ -505,7 +515,9 @@ function documentaryUnresolved(
   return {
     id: construct.id,
     kind: construct.kind,
-    ...(sourceObserved && construct.message ? { message: construct.message } : {}),
+    ...(sourceObserved && construct.message
+      ? { message: construct.message }
+      : {}),
     ...(sourceObserved && construct.span ? { span: construct.span } : {}),
   };
 }
@@ -543,14 +555,20 @@ function ownerForTarget(
     node.selection && sameRef(node.selection, selection)
   );
   if (graphNode) return toolIdentity(graphNode.system);
-  const stage = snapshot.flow.find((item) => sameRef(item.selection, selection));
+  const stage = snapshot.flow.find((item) =>
+    sameRef(item.selection, selection)
+  );
   if (stage) return toolIdentity(stage.system);
   if (selection.kind === "artifact") {
-    const artifact = snapshot.artifacts.find((item) => item.id === selection.id);
+    const artifact = snapshot.artifacts.find((item) =>
+      item.id === selection.id
+    );
     if (artifact) return toolIdentity(artifact.system);
   }
   if (selection.kind === "observation") {
-    const observation = snapshot.observations.find((item) => item.id === selection.id);
+    const observation = snapshot.observations.find((item) =>
+      item.id === selection.id
+    );
     const artifact = snapshot.artifacts.find((item) =>
       item.id === observation?.sourceArtifactId
     );
@@ -596,5 +614,7 @@ function compareGraphOnlyNodes(
   const kindOrder = left.ref.kind.localeCompare(right.ref.kind);
   if (kindOrder !== 0) return kindOrder;
   const labelOrder = left.label.localeCompare(right.label);
-  return labelOrder !== 0 ? labelOrder : left.ref.id.localeCompare(right.ref.id);
+  return labelOrder !== 0
+    ? labelOrder
+    : left.ref.id.localeCompare(right.ref.id);
 }

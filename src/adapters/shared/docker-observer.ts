@@ -1,5 +1,6 @@
 import type { ContainerObserver } from "../../application/control-plane/ports.ts";
-import type { DesiredServer, ObservedContainer } from "../../contracts/console.ts";
+import type { DesiredServer } from "../../application/control-plane/read-model/fleet-manifest.ts";
+import type { ObservedContainer } from "../../application/control-plane/read-model/fleet-observation.ts";
 
 export interface CommandResult {
   success: boolean;

@@ -62,7 +62,7 @@ export function OverviewThreadHero({
             key={edge.key}
             d={edge.d}
             fill="none"
-            stroke={edge.emphasis ? "#5e6ad2" : "#c6cbd2"}
+            stroke={edge.emphasis ? "#0e7490" : "#c6cbd2"}
             strokeWidth={edge.emphasis ? 2 : 1.2}
             opacity={edge.emphasis ? 1 : 0.6}
           />
@@ -83,7 +83,7 @@ function HeroNode({ item }: { item: OverviewHeroNode }): JSX.Element {
         cy={item.y}
         r={item.emphasis ? 8 : 7}
         fill={item.color}
-        stroke={item.emphasis ? "#5e6ad2" : "none"}
+        stroke={item.emphasis ? "#0e7490" : "none"}
         strokeWidth={item.emphasis ? 2 : 0}
       />
       <text
@@ -92,7 +92,7 @@ function HeroNode({ item }: { item: OverviewHeroNode }): JSX.Element {
         fontFamily="ui-monospace, Menlo, monospace"
         fontSize="9.5"
         fontWeight={item.emphasis ? 600 : 400}
-        fill={item.emphasis ? "#5e6ad2" : "#52525c"}
+        fill={item.emphasis ? "#0e7490" : "#52525c"}
       >
         {label.length > 22 ? `${label.slice(0, 20)}…` : label}
       </text>

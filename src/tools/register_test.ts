@@ -14,11 +14,9 @@ import {
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../domain/modelica/qualified-kit/run-proposal.ts";
 import { VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION } from "../orchestration/operations/fea-isolated-static-proof.ts";
 import type { ProjectRunExecutor } from "../application/ports/in/project-run-executor.ts";
-import type {
-  FleetManifest,
-  ObservedContainer,
-  RunDetail,
-} from "../contracts/console.ts";
+import type { RunDetail } from "../application/control-plane/read-model/engineering-run.ts";
+import type { FleetManifest } from "../application/control-plane/read-model/fleet-manifest.ts";
+import type { ObservedContainer } from "../application/control-plane/read-model/fleet-observation.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import {

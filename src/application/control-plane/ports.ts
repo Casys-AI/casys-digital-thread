@@ -1,11 +1,7 @@
-import type {
-  Availability,
-  DesiredServer,
-  ObservedContainer,
-  ObservedMcp,
-  RunDetail,
-  RunSummary,
-} from "../../contracts/console.ts";
+import type { DesiredServer } from "./read-model/fleet-manifest.ts";
+import type { ObservedContainer, ObservedMcp } from "./read-model/fleet-observation.ts";
+import type { RunDetail, RunSummary } from "./read-model/engineering-run.ts";
+import type { Availability } from "./read-model/status.ts";
 import type { IsoDateTime } from "../../domain/kernel/primitives.ts";
 
 /** Live MCP discovery result consumed by the control-plane, not a page DTO. */

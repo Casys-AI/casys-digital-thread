@@ -1,16 +1,34 @@
-/** shadcn/ui Tabs (new-york), sur Radix — navigation clavier incluse. */
+/**
+ * Onglets du cockpit, sur Ark UI — navigation clavier incluse.
+ *
+ * `onValueChange` garde la signature plate `(value: string) => void` des
+ * appelants ; Ark passe un objet de détails, la conversion est ici.
+ * `role="tablist"` reste écrit en clair : Ark ne le pose qu'au runtime et un
+ * test de présentation le cherche dans la source.
+ */
 
-import * as TabsPrimitive from "@radix-ui/react-tabs";
+import { Tabs as Ark } from "@ark-ui/react/tabs";
 import type { ComponentProps, JSX } from "react";
 import { cn } from "../lib/utils.ts";
 
-export const Tabs = TabsPrimitive.Root;
-
-export function TabsList(
-  { className, ...props }: ComponentProps<typeof TabsPrimitive.List>,
+export function Tabs(
+  { onValueChange, ...props }:
+    & { onValueChange?: (value: string) => void }
+    & Omit<ComponentProps<typeof Ark.Root>, "onValueChange">,
 ): JSX.Element {
   return (
-    <TabsPrimitive.List
+    <Ark.Root
+      onValueChange={(details) => onValueChange?.(details.value)}
+      {...props}
+    />
+  );
+}
+
+export function TabsList(
+  { className, ...props }: ComponentProps<typeof Ark.List>,
+): JSX.Element {
+  return (
+    <Ark.List
       role="tablist"
       className={cn(
         "inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground",
@@ -22,12 +40,12 @@ export function TabsList(
 }
 
 export function TabsTrigger(
-  { className, ...props }: ComponentProps<typeof TabsPrimitive.Trigger>,
+  { className, ...props }: ComponentProps<typeof Ark.Trigger>,
 ): JSX.Element {
   return (
-    <TabsPrimitive.Trigger
+    <Ark.Trigger
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+        "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[selected]:bg-background data-[selected]:text-foreground data-[selected]:shadow-sm",
         className,
       )}
       {...props}
@@ -36,10 +54,10 @@ export function TabsTrigger(
 }
 
 export function TabsContent(
-  { className, ...props }: ComponentProps<typeof TabsPrimitive.Content>,
+  { className, ...props }: ComponentProps<typeof Ark.Content>,
 ): JSX.Element {
   return (
-    <TabsPrimitive.Content
+    <Ark.Content
       className={cn(
         "mt-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         className,

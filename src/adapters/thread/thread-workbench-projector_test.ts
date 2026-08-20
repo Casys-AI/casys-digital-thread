@@ -24,6 +24,17 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
   assertEquals(projection.schemaVersion, "thread-workbench/0.1");
   assertEquals(projection.source, "observed");
   assertEquals(projection.subject.label, "Generic Product GEN-01");
+  assertEquals(projection.verificationCases, {
+    schemaVersion: "thread-verification-cases/1.0",
+    status: "unavailable",
+    coverage: [
+      { family: "mechanical-proof", status: "unavailable" },
+      { family: "sensitivity-study", status: "unavailable" },
+      { family: "modelica-simulation", status: "unavailable" },
+    ],
+    cases: [],
+    issues: [],
+  });
   assertEquals(projection.evidenceFamilyGraph, {
     schemaVersion: "thread-evidence-family-graph/1.0",
     asOf: { snapshotId: "thread-generic-r2", revision: 2 },

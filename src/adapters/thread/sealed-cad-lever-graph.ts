@@ -10,7 +10,7 @@ import type {
   ThreadGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
-} from "../../contracts/thread-workbench.ts";
+} from "../../presentation/workbench/thread/graph.ts";
 import type {
   SealedAdmissionCadLever,
   SealedAdmissionUnnamedCadLiteral,

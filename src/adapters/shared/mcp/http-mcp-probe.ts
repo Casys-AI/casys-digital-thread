@@ -2,11 +2,11 @@ import type {
   McpProbe,
   McpProbeResult,
 } from "../../../application/control-plane/ports.ts";
+import type { DesiredServer } from "../../../application/control-plane/read-model/fleet-manifest.ts";
 import type {
-  DesiredServer,
   ObservedMcp,
   ObservedTool,
-} from "../../../contracts/console.ts";
+} from "../../../application/control-plane/read-model/fleet-observation.ts";
 
 export type {
   McpProbe,

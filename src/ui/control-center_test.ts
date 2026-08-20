@@ -121,9 +121,13 @@ Deno.test("Activity reuses one exact GLB viewer across selectable PartDefinition
   assertStringIncludes(viewer, "aria-pressed={isSelected}");
   assertStringIncludes(viewer, "url={selected.asset.path}");
   assertEquals(viewer.match(/<GltfAssetCanvas/g)?.length, 1);
-  assertStringIncludes(source, "STEP remains the");
-  assertStringIncludes(source, "authoritative per-part CAD");
-  assertStringIncludes(source, "no per-part browser viewer is");
+  // Les phrases d'autorité vivent dans du JSX que `deno fmt` re-enroule : on
+  // normalise les blancs avant de les chercher, sinon un simple retour à la
+  // ligne casse la garde sans que la phrase ait changé.
+  const prose = source.replace(/\s+/g, " ");
+  assertStringIncludes(prose, "STEP remains the");
+  assertStringIncludes(prose, "authoritative per-part CAD");
+  assertStringIncludes(prose, "no per-part browser viewer is");
   assertStringIncludes(source, "Sealed part presentation · exact recorded GLB");
   assertStringIncludes(
     source,

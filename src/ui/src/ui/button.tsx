@@ -1,7 +1,10 @@
-/** shadcn/ui Button (new-york). `asChild` délègue le rendu via Radix Slot. */
+/**
+ * Bouton du cockpit. `asChild` délègue le rendu à l'enfant unique, sans
+ * dépendance de slot : les classes du bouton sont fusionnées dans les siennes.
+ */
 
-import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { cloneElement, isValidElement } from "react";
 import type { ButtonHTMLAttributes, JSX } from "react";
 import { cn } from "../lib/utils.ts";
 
@@ -46,19 +49,14 @@ export function Button(
   { className, variant, size, type = "button", asChild = false, ...props }:
     ButtonProps,
 ): JSX.Element {
-  if (asChild) {
-    return (
-      <Slot
-        className={cn(buttonVariants({ variant, size, className }))}
-        {...props}
-      />
-    );
+  const classes = cn(buttonVariants({ variant, size, className }));
+  if (asChild && isValidElement(props.children)) {
+    const child = props.children as JSX.Element;
+    const { children: _children, ...rest } = props;
+    return cloneElement(child, {
+      ...rest,
+      className: cn(classes, (child.props as { className?: string }).className),
+    });
   }
-  return (
-    <button
-      type={type}
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  );
+  return <button type={type} className={classes} {...props} />;
 }

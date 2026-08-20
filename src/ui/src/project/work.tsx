@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import type {
   CockpitFleetProjection,
-} from "../../../contracts/cockpit-fleet.ts";
+} from "../../../presentation/workbench/fleet/projection.ts";
 import { recordStatusVariant } from "./record-status.ts";
 import type {
   EngineeringAgentRun,
@@ -442,10 +442,9 @@ function MrtrCard({
             </p>
           )}
         <p className="text-[11px] text-muted-foreground leading-snug pt-1">
-          Signed retry via{" "}
-          <span className="font-mono text-[10px]">elicitation</span>{" "}
-          in the paired conversation — the cockpit only projects the pending
-          state.
+          Signed retry via <span className="font-mono text-[10px]">elicitation</span>
+          {" "}
+          in the paired conversation — the cockpit only projects the pending state.
         </p>
       </CardContent>
       <div className="border-t border-border bg-muted/30 px-3 py-1.5 font-mono text-[9.5px] text-muted-foreground">
@@ -508,9 +507,7 @@ function QueueCard({
         {runs.length > 0
           ? (
             <ul>
-              {runs.map((run) => (
-                <QueueRow key={run.id} run={run} project={project} />
-              ))}
+              {runs.map((run) => <QueueRow key={run.id} run={run} project={project} />)}
             </ul>
           )
           : (

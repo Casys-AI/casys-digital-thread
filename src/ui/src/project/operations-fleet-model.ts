@@ -10,7 +10,7 @@
 
 import type {
   CockpitFleetProjection,
-} from "../../../contracts/cockpit-fleet.ts";
+} from "../../../presentation/workbench/fleet/projection.ts";
 import type {
   EngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project.ts";

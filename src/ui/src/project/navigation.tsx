@@ -62,13 +62,13 @@ export function ProjectCockpitHeader({
       <Separator orientation="vertical" />
       <div className="flex min-w-0 items-center gap-2">
         <TooltipProvider delayDuration={250}>
-          <Tooltip>
+          <Tooltip side="bottom" align="start">
             <TooltipTrigger asChild>
               <h1 className="min-w-0 cursor-default truncate text-sm font-medium">
                 {projectName}
               </h1>
             </TooltipTrigger>
-            <TooltipContent side="bottom" align="start">
+            <TooltipContent>
               <span className="font-mono">
                 {projectId} · R{revision} · {context}
               </span>

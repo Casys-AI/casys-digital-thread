@@ -1,11 +1,13 @@
 import { assert, assertEquals } from "@std/assert";
 import type {
   ThreadEvidenceFamily,
+} from "../../presentation/workbench/thread/evidence.ts";
+import type {
   ThreadGraph,
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
-} from "../../contracts/thread-workbench.ts";
+} from "../../presentation/workbench/thread/graph.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 
 const AT = "2026-08-03T13:15:00.000Z";

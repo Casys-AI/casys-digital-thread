@@ -61,6 +61,21 @@ export default defineConfig({
     workbenchRootRewrite(),
   ],
   base: "./",
+  /**
+   * Le cockpit rend en Preact. Ark UI ne publie pas de paquet Preact : on
+   * garde `@ark-ui/react` et on redirige react/react-dom vers `preact/compat`,
+   * de sorte qu'aucun react-dom n'entre dans le bundle.
+   */
+  resolve: {
+    alias: {
+      "react/jsx-runtime": "preact/jsx-runtime",
+      "react/jsx-dev-runtime": "preact/jsx-dev-runtime",
+      "react-dom/client": "preact/compat/client",
+      "react-dom/test-utils": "preact/test-utils",
+      "react-dom": "preact/compat",
+      react: "preact/compat",
+    },
+  },
   server: {
     host: "127.0.0.1",
     port: nativeUiPort,

@@ -4,7 +4,7 @@
  * Navigation contract (4b, full canvas only):
  *   - clic noeud     → inspect the recorded item (no local expansion)
  *   - double-clic    → local neighbourhood around that item
- *   - clic fond      → full map + inspector closed
+ *   - clic fond      → full map + inspector cleared
  *   - compact feed   → single click stays in Activity; double-clic recenters
  *
  * Ce composant est mince : toute la logique métier vit dans
@@ -18,12 +18,11 @@ import {
   buildEvidenceMinimapView,
   buildExplorationModel,
   buildExplorationRelationRecords,
+  DISPLAY_KIND_COLOR_TOKEN,
   DISPLAY_KIND_LABELS,
   type DisplayKind,
   displayKindOf,
   type EvidenceMinimapView,
-  evidenceSystemFamily,
-  type ExplorationLegendItem,
   isDisplayKindVisible,
   readCssTokens,
   type SigmaEdgeAttrs,
@@ -32,26 +31,21 @@ import {
 import type { EvidenceGraphModel } from "./evidence-graph-model.ts";
 import type { EvidenceCanvasProjection } from "./evidence-canvas-model.ts";
 import { Button } from "../ui/button.tsx";
-import type { ThreadGraphRef } from "./types.ts";
+import { cn } from "../lib/utils.ts";
+import type {
+  ThreadGraphNode,
+  ThreadGraphRef,
+  ThreadVerificationCaseCatalog,
+  ThreadVerificationCaseFamily,
+} from "./types.ts";
 import type { ThreadGraphSelection } from "./graph.tsx";
 import { isUiOnlyPresentationEdge } from "../cad/cad-presentation-projection.ts";
+import {
+  buildVerificationCaseLegend,
+  type VerificationCaseFilter,
+} from "./verification-case-model.ts";
 
 /** Returns the most frequently occurring color in the map, or the fallback. */
-function dominantColor(
-  colorFrequencies: Map<string, number> | undefined,
-  fallback: string,
-): string {
-  if (!colorFrequencies || colorFrequencies.size === 0) return fallback;
-  let best = fallback;
-  let bestCount = 0;
-  for (const [color, count] of colorFrequencies) {
-    if (count > bestCount) {
-      bestCount = count;
-      best = color;
-    }
-  }
-  return best;
-}
 
 const legendRowClass =
   "flex items-center justify-between gap-2 rounded-sm px-1 py-[3px] text-[11.5px] leading-tight";
@@ -59,6 +53,7 @@ const legendCountClass =
   "font-mono text-[10px] text-muted-foreground tabular-nums";
 const legendTitleClass =
   "mb-0.5 font-mono text-[9.5px] font-medium uppercase tracking-[0.1em] text-muted-foreground";
+const NEIGHBOR_DEPTHS = [1, 2, 3] as const;
 
 export interface EvidenceExplorationProps {
   evidenceModel: EvidenceGraphModel;
@@ -84,6 +79,13 @@ export interface EvidenceExplorationProps {
    */
   displayDepth?: number;
   /**
+   * Persistent radius control shown in the Verification rail. Unlike
+   * `displayDepth`, this value remains visible on the full map so the reviewer
+   * can choose the radius that will be used on the next local view.
+   */
+  neighborDepth?: 1 | 2 | 3;
+  onNeighborDepthChange?: (depth: 1 | 2 | 3) => void;
+  /**
    * Type visibility filter for the LOCAL view. A node is hidden when its
    * DisplayKind maps to false in this record. Pure in-place sigma reducer:
    * toggling shows or hides nodes without re-layout or camera reset.
@@ -93,6 +95,12 @@ export interface EvidenceExplorationProps {
    * be omitted.
    */
   visibleKinds?: Record<DisplayKind, boolean>;
+  /** Exact sealed cases available to the full Verification canvas. */
+  verificationCases?: ThreadVerificationCaseCatalog;
+  /** Unfiltered, version-aware nodes used for stable case membership counts. */
+  verificationCaseNodes?: readonly ThreadGraphNode[];
+  verificationCaseFilter?: VerificationCaseFilter;
+  onVerificationCaseFilterChange?: (filter: VerificationCaseFilter) => void;
   /**
    * Compact mode — intended for the feed card vignette (FeedLineageGraph).
    *
@@ -113,12 +121,18 @@ export function EvidenceExploration({
   evidenceModel,
   projection,
   displayDepth,
+  neighborDepth,
+  onNeighborDepthChange,
   visibleKinds,
   selection,
   focus: _focus,
   onSelectionChange,
   fullMapProjection,
   onEnterLocalView,
+  verificationCases,
+  verificationCaseNodes,
+  verificationCaseFilter = { kind: "all" },
+  onVerificationCaseFilterChange,
   compact = false,
 }: EvidenceExplorationProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -330,7 +344,7 @@ export function EvidenceExploration({
   // Truthful legend counters: when the visible-depth or type filter hides nodes,
   // the TYPES, OUTILS and COMPOSANTES counts must reflect what is on screen,
   // not the computed max-depth neighbourhood.
-  const { legend, systemLegend, kindLegend } = useMemo(() => {
+  const kindLegend = useMemo(() => {
     const depths = projection.isFiltered
       ? projection.localDepthByRefKey
       : undefined;
@@ -348,13 +362,9 @@ export function EvidenceExploration({
     if (!filtersActive) {
       // Compute kindLegend from all visible nodes in the full projection.
       const kindCounts = new Map<DisplayKind, number>();
-      const kindColors = new Map<DisplayKind, Map<string, number>>();
       explorationModel.graph.forEachNode((_key, attrs) => {
         const dk = displayKindOf(attrs.node);
         kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
-        const cMap = kindColors.get(dk) ?? new Map<string, number>();
-        cMap.set(attrs.color, (cMap.get(attrs.color) ?? 0) + 1);
-        kindColors.set(dk, cMap);
       });
       const kl = ([...kindCounts.entries()] as [DisplayKind, number][])
         .filter(([, count]) => count > 0)
@@ -362,40 +372,16 @@ export function EvidenceExploration({
           kind,
           label: DISPLAY_KIND_LABELS[kind],
           count,
-          color: dominantColor(
-            kindColors.get(kind),
-            explorationModel.tokens.muted,
-          ),
+          color: explorationModel
+            .tokens[DISPLAY_KIND_COLOR_TOKEN[kind]],
         }));
-      return {
-        legend: explorationModel.legend,
-        systemLegend: explorationModel.systemLegend,
-        kindLegend: kl,
-      };
+      return kl;
     }
-    const systemCounts = new Map<string, number>();
-    const visibleSystemsByFamily = new Map<string, Set<string>>();
-    const componentCounts = new Map<number, number>();
     const kindCounts = new Map<DisplayKind, number>();
-    const kindColors = new Map<DisplayKind, Map<string, number>>();
     explorationModel.graph.forEachNode((key, attrs) => {
       if (!isVisible(key, attrs)) return;
-      const system = evidenceSystemFamily(attrs.node.system);
-      systemCounts.set(system, (systemCounts.get(system) ?? 0) + 1);
-      const visibleSystems = visibleSystemsByFamily.get(system) ?? new Set();
-      visibleSystems.add(attrs.node.system);
-      visibleSystemsByFamily.set(system, visibleSystems);
-      if (attrs.componentId !== undefined) {
-        componentCounts.set(
-          attrs.componentId,
-          (componentCounts.get(attrs.componentId) ?? 0) + 1,
-        );
-      }
       const dk = displayKindOf(attrs.node);
       kindCounts.set(dk, (kindCounts.get(dk) ?? 0) + 1);
-      const cMap = kindColors.get(dk) ?? new Map<string, number>();
-      cMap.set(attrs.color, (cMap.get(attrs.color) ?? 0) + 1);
-      kindColors.set(dk, cMap);
     });
     const kl = ([...kindCounts.entries()] as [DisplayKind, number][])
       .filter(([, count]) => count > 0)
@@ -403,31 +389,31 @@ export function EvidenceExploration({
         kind,
         label: DISPLAY_KIND_LABELS[kind],
         count,
-        color: dominantColor(
-          kindColors.get(kind),
-          explorationModel.tokens.muted,
-        ),
+        color: explorationModel.tokens[DISPLAY_KIND_COLOR_TOKEN[kind]],
       }));
-    return {
-      systemLegend: explorationModel.systemLegend
-        .map((item) => ({
-          ...item,
-          systems: [...(visibleSystemsByFamily.get(item.system) ?? [])].sort(),
-          count: systemCounts.get(item.system) ?? 0,
-        }))
-        .filter((item) => item.count > 0),
-      legend: explorationModel.legend
-        .map((item) => ({
-          ...item,
-          visibleNodeCount: item.componentIds.reduce(
-            (acc, id) => acc + (componentCounts.get(id) ?? 0),
-            0,
-          ),
-        }))
-        .filter((item) => item.visibleNodeCount > 0),
-      kindLegend: kl,
-    };
+    return kl;
   }, [explorationModel, displayDepth, visibleKinds, projection]);
+
+  const verificationCaseLegend = useMemo(
+    () =>
+      verificationCases && verificationCaseNodes
+        ? buildVerificationCaseLegend(
+          verificationCases,
+          verificationCaseNodes,
+        )
+        : [],
+    [verificationCases, verificationCaseNodes],
+  );
+  const allCaseAxisNodeCount = verificationCaseNodes?.length ?? 0;
+  const selectedCaseUnavailable = verificationCaseFilter.kind === "case" &&
+    !verificationCaseLegend.some((item) =>
+      item.case.key === verificationCaseFilter.caseKey
+    );
+  const verificationCaseTraceGapCount = verificationCases
+    ? verificationCases.issues.length +
+      verificationCases.coverage.filter((item) => item.status === "unavailable")
+        .length
+    : 0;
 
   // Sigma's canvas itself is pointer-oriented. The full Exploration view has
   // an equivalent, keyboard-reachable record list below: every visible node
@@ -492,31 +478,6 @@ export function EvidenceExploration({
           className="flex w-[208px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-muted/30 px-2.5 py-3 text-[11.5px] max-[720px]:w-full max-[720px]:flex-none max-[720px]:flex-row max-[720px]:flex-wrap max-[720px]:border-r-0 max-[720px]:border-b"
           aria-label="Evidence legend"
         >
-          {systemLegend.length > 0 && (
-            <div className="flex min-w-[10rem] flex-col">
-              <p className={legendTitleClass}>Tools</p>
-              {systemLegend.map((item) => (
-                <span
-                  key={item.system}
-                  className={legendRowClass}
-                  aria-label={`${item.label} — ${item.count} visible items — recorded as ${
-                    item.systems.join(", ")
-                  }`}
-                  title={`Recorded systems: ${item.systems.join(", ")}`}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span
-                      className="size-[7px] shrink-0 rounded-[2px]"
-                      style={{ background: item.color }}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate">{item.label}</span>
-                  </span>
-                  <span className={legendCountClass}>{item.count}</span>
-                </span>
-              ))}
-            </div>
-          )}
           {kindLegend.length > 0 && (
             <div className="flex min-w-[10rem] flex-col">
               <p className={legendTitleClass}>Types</p>
@@ -539,17 +500,130 @@ export function EvidenceExploration({
               ))}
             </div>
           )}
-          {legend.length > 0 && (
+          {verificationCases && (
             <div className="flex min-w-[10rem] flex-col">
-              <p className={legendTitleClass}>Components</p>
-              {legend.map((item) => (
-                <LegendChip
-                  key={item.componentIds[0]}
-                  item={item}
-                  sigma={sigmaRef}
-                  graph={explorationModel.graph}
-                />
-              ))}
+              <p className={legendTitleClass}>Cases</p>
+              {verificationCases.status === "unavailable" && (
+                <p className="px-1 py-1 text-[11px] text-muted-foreground">
+                  Unavailable
+                </p>
+              )}
+              {verificationCases.status === "unresolved" && (
+                <p className="px-1 pb-1 text-[10px] text-warning">
+                  Unresolved · {verificationCaseTraceGapCount} trace
+                  {verificationCaseTraceGapCount === 1 ? " gap" : " gaps"}
+                </p>
+              )}
+              {selectedCaseUnavailable && (
+                <p className="px-1 pb-1 text-[10px] text-warning">
+                  Selected case unavailable · choose another scope
+                </p>
+              )}
+              {verificationCaseLegend.length === 0 && (
+                <p className="px-1 py-1 text-[11px] text-muted-foreground">
+                  No recorded cases
+                </p>
+              )}
+              <button
+                type="button"
+                className={cn(
+                  legendRowClass,
+                  "w-full text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                  verificationCaseFilter.kind === "all" &&
+                    "bg-accent text-accent-foreground",
+                )}
+                aria-pressed={verificationCaseFilter.kind === "all"}
+                onClick={() =>
+                  onVerificationCaseFilterChange?.({ kind: "all" })}
+              >
+                <span className="truncate">All records</span>
+                <span className={legendCountClass}>
+                  {allCaseAxisNodeCount}
+                </span>
+              </button>
+              {verificationCaseLegend.map((item) => {
+                const selected = verificationCaseFilter.kind === "case" &&
+                  verificationCaseFilter.caseKey === item.case.key;
+                return (
+                  <button
+                    key={item.case.key}
+                    type="button"
+                    className={cn(
+                      legendRowClass,
+                      "w-full text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                      selected &&
+                        "bg-accent text-accent-foreground",
+                    )}
+                    title={item.case.scope}
+                    aria-pressed={selected}
+                    aria-label={`${item.case.id}, revision ${item.case.revision}, ${item.nodeCount} linked records`}
+                    onClick={() =>
+                      onVerificationCaseFilterChange?.({
+                        kind: "case",
+                        caseKey: item.case.key,
+                      })}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate">
+                        {item.case.id} · r{item.case.revision}
+                      </span>
+                      <span className="block truncate text-[9.5px] text-muted-foreground">
+                        {verificationCaseFamilyLabel(
+                          item.case.family,
+                        )}
+                      </span>
+                    </span>
+                    <span className={legendCountClass}>
+                      {item.nodeCount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {neighborDepth !== undefined && (
+            <div className="mt-1 flex min-w-[10rem] flex-col gap-1.5 border-t border-border pt-2.5">
+              <div className="flex items-center justify-between gap-3">
+                <p className={legendTitleClass}>Depth</p>
+                <output
+                  className="font-mono text-[11px] font-semibold tabular-nums text-brand"
+                  htmlFor="verification-neighbor-depth"
+                >
+                  {neighborDepth}
+                </output>
+              </div>
+              <input
+                id="verification-neighbor-depth"
+                className="verification-depth-range w-full cursor-pointer"
+                type="range"
+                min="1"
+                max="3"
+                step="1"
+                value={neighborDepth}
+                aria-label="Neighbor depth"
+                aria-valuetext={`${neighborDepth} ${
+                  neighborDepth === 1 ? "hop" : "hops"
+                }`}
+                onInput={(event) => {
+                  const value = Number(event.currentTarget.value);
+                  if (value === 1 || value === 2 || value === 3) {
+                    onNeighborDepthChange?.(value);
+                  }
+                }}
+              />
+              <div
+                className="flex justify-between px-px font-mono text-[9px] tabular-nums text-muted-foreground"
+                aria-hidden="true"
+              >
+                {NEIGHBOR_DEPTHS.map((depth) => (
+                  <span key={depth}>{depth}</span>
+                ))}
+              </div>
+              <p className="text-[9.5px] leading-snug text-muted-foreground">
+                {projection.isFiltered
+                  ? "Visible neighborhood radius"
+                  : "Radius for the next local view"}
+              </p>
             </div>
           )}
           <ExplorationKeyboardNavigation
@@ -775,53 +849,10 @@ function ExplorationKeyboardNavigation({
   );
 }
 
-function LegendChip({
-  item,
-  sigma: sigmaRef,
-  graph,
-}: {
-  item: ExplorationLegendItem;
-  sigma: { current: Sigma<SigmaNodeAttrs, SigmaEdgeAttrs> | undefined };
-  graph: ReturnType<
-    typeof buildExplorationModel
-  >["graph"];
-}): JSX.Element {
-  const handleClick = () => {
-    const s = sigmaRef.current;
-    if (!s) return;
-    // Collect x/y of all nodes belonging to ANY component in this legend entry.
-    // componentIds may cover multiple raw components merged under the same name.
-    const componentIdSet = new Set(item.componentIds);
-    const positions: { x: number; y: number }[] = [];
-    graph.forEachNode((_key, attrs) => {
-      if (
-        attrs.componentId !== undefined && componentIdSet.has(attrs.componentId)
-      ) {
-        const disp = s.getNodeDisplayData(_key);
-        if (disp) positions.push({ x: disp.x, y: disp.y });
-      }
-    });
-    if (positions.length === 0) return;
-    const cx = positions.reduce((acc, p) => acc + p.x, 0) / positions.length;
-    const cy = positions.reduce((acc, p) => acc + p.y, 0) / positions.length;
-    s.getCamera().animate({ x: cx, y: cy, ratio: 0.6 }, { duration: 400 });
-  };
-
-  return (
-    <button
-      type="button"
-      className={`${legendRowClass} w-full text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring`}
-      onClick={handleClick}
-      title={`Focus the camera on component "${item.name}"`}
-      aria-label={`${item.name} — ${item.visibleNodeCount} facts`}
-    >
-      {
-        /* No color dot: node colors encode the producing TOOL (see the Tools
-          key above); painting component chips with a second palette made the
-          two mappings contradict each other on screen. */
-      }
-      <span className="truncate">{item.name}</span>
-      <span className={legendCountClass}>{item.visibleNodeCount}</span>
-    </button>
-  );
+function verificationCaseFamilyLabel(
+  family: ThreadVerificationCaseFamily,
+): string {
+  if (family === "mechanical-proof") return "Mechanical proof";
+  if (family === "sensitivity-study") return "Sensitivity study";
+  return "Modelica simulation";
 }

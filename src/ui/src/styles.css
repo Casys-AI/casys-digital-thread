@@ -50,7 +50,15 @@
   --ui-border: oklch(0.92 0.004 286.32);
   --ui-input: oklch(0.92 0.004 286.32);
   --ui-ring: oklch(0.705 0.015 286.067);
-  --ui-brand: #5e6ad2;
+  --ui-brand: #0e7490;
+  --ui-brand-strong: #155e75;
+  /* Couleurs de voie du fil exécutable. Ce sont des identités de discipline,
+     pas des états : elles ne varient jamais avec un statut. */
+  --ui-lane-req: #7c3aed;
+  --ui-lane-model: #2563eb;
+  --ui-lane-geom: #0e7490;
+  --ui-lane-phys: #a16207;
+  --ui-lane-verdict: #15803d;
   --ui-radius: 0.625rem;
 }
 
@@ -76,6 +84,12 @@
   --color-input: var(--ui-input);
   --color-ring: var(--ui-ring);
   --color-brand: var(--ui-brand);
+  --color-brand-strong: var(--ui-brand-strong);
+  --color-lane-req: var(--ui-lane-req);
+  --color-lane-model: var(--ui-lane-model);
+  --color-lane-geom: var(--ui-lane-geom);
+  --color-lane-phys: var(--ui-lane-phys);
+  --color-lane-verdict: var(--ui-lane-verdict);
   --radius-sm: calc(var(--ui-radius) - 4px);
   --radius-md: calc(var(--ui-radius) - 2px);
   --radius-lg: var(--ui-radius);

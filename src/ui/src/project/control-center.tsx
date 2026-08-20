@@ -105,7 +105,9 @@ export function ReviewNotifications({
               <strong
                 className={cn(
                   "text-xl font-semibold tabular-nums",
-                  needsReviewCount === 0 ? "text-muted-foreground/50" : "text-warning",
+                  needsReviewCount === 0
+                    ? "text-muted-foreground/50"
+                    : "text-warning",
                 )}
               >
                 {needsReviewCount}
@@ -121,7 +123,9 @@ export function ReviewNotifications({
               <strong
                 className={cn(
                   "text-xl font-semibold tabular-nums",
-                  pendingResultCount === 0 ? "text-muted-foreground/50" : "text-brand",
+                  pendingResultCount === 0
+                    ? "text-muted-foreground/50"
+                    : "text-brand",
                 )}
               >
                 {pendingResultCount}
@@ -245,7 +249,8 @@ function ReviewInboxHandoff({
         variant="outline"
         size="sm"
         className="shrink-0"
-        onClick={() => nextReview ? onOpenReview?.(nextReview.id) : onOpenActivity?.()}
+        onClick={() =>
+          nextReview ? onOpenReview?.(nextReview.id) : onOpenActivity?.()}
         disabled={nextReview ? !onOpenReview : !onOpenActivity}
       >
         {state.action}
@@ -450,7 +455,8 @@ export function ActivityReviewFeedCard({
                     ? (
                       <>
                         <p className="text-sm text-muted-foreground">
-                          Validate this exact proposal, or describe what must change.
+                          Validate this exact proposal, or describe what must
+                          change.
                         </p>
                         <div
                           className="flex flex-wrap gap-2"
@@ -595,7 +601,9 @@ export function ActivityReviewFeedCard({
           </dd>
           <dt className="text-xs text-muted-foreground">Scope</dt>
           <dd className="text-sm">
-            {record.decision?.inputFingerprint ? "Exact input bound" : "Record only"}
+            {record.decision?.inputFingerprint
+              ? "Exact input bound"
+              : "Record only"}
           </dd>
           <dt className="text-xs text-muted-foreground">Recorded</dt>
           <dd className="font-mono text-xs text-muted-foreground">
@@ -643,7 +651,9 @@ function ReviewIntentTransmissionBadge(
     : state.kind === "stale"
     ? "Stale"
     : "Send failed";
-  const variant = state.kind === "error" || state.kind === "stale" ? "warning" : "info";
+  const variant = state.kind === "error" || state.kind === "stale"
+    ? "warning"
+    : "info";
   return (
     <Badge
       variant={variant}
@@ -1064,7 +1074,9 @@ function GeometryDecisionDetails(
     partDefinitionIds.has(asset.partDefinitionElementId) &&
     asset.format === "gltf" && asset.path !== undefined && asset.path.length > 0
   );
-  const assemblyGlbDigest = view.assemblyFiles.find((file) => file.format === "gltf")
+  const assemblyGlbDigest = view.assemblyFiles.find((file) =>
+    file.format === "gltf"
+  )
     ?.digest;
   const hasPreviewablePartGlb = previewablePartGlbs.length > 0 &&
     !isDuplicateSealedGlbCopy(
@@ -1117,7 +1129,8 @@ function GeometryDecisionDetails(
                         key={`${asset.digest}:${asset.format}`}
                       >
                         <span className="font-mono text-xs text-muted-foreground">
-                          {asset.format.toUpperCase()} · {shortDigest(asset.digest)}
+                          {asset.format.toUpperCase()} ·{" "}
+                          {shortDigest(asset.digest)}
                         </span>
                         {asset.path
                           ? (
@@ -1150,15 +1163,15 @@ function GeometryDecisionDetails(
               ? (
                 <p className="pt-3 text-sm text-muted-foreground">
                   These files share the same bundle decision. STEP remains the
-                  authoritative per-part CAD; the selected GLB is its visual review
-                  derivative. Every exact file stays downloadable above.
+                  authoritative per-part CAD; the selected GLB is its visual
+                  review derivative. Every exact file stays downloadable above.
                 </p>
               )
               : (
                 <p className="pt-3 text-sm text-muted-foreground">
                   These files are validated by the same bundle decision. STEP is
-                  downloadable for downstream part work; no per-part browser viewer is
-                  claimed.
+                  downloadable for downstream part work; no per-part browser
+                  viewer is claimed.
                 </p>
               )}
           </section>
@@ -1199,7 +1212,8 @@ function GeometryDecisionDetails(
                           occurrence.partDefinitionElementId}
                       </strong>
                       <small className="mt-0.5 block font-mono text-xs text-muted-foreground">
-                        T [{occurrence.translationMm.join(", ")}] mm · R [{occurrence
+                        T [{occurrence.translationMm.join(", ")}] mm · R
+                        [{occurrence
                           .rotationDeg.join(", ")}]°
                       </small>
                     </dd>
@@ -1212,8 +1226,8 @@ function GeometryDecisionDetails(
       )}
       {view.schemaVersion === "geometry-manifest/1.0" && (
         <p className="text-sm text-muted-foreground">
-          Legacy assembly-only review · no independent PartDefinition CAD was included
-          in this decision.
+          Legacy assembly-only review · no independent PartDefinition CAD was
+          included in this decision.
         </p>
       )}
       <details>
@@ -1233,7 +1247,8 @@ function GeometryDecisionDetails(
             <>
               <dt className="text-xs text-muted-foreground">Replaces</dt>
               <dd className="font-mono text-xs text-muted-foreground">
-                {view.predecessor.artifactId} · {shortDigest(view.predecessor.digest)}
+                {view.predecessor.artifactId} ·{" "}
+                {shortDigest(view.predecessor.digest)}
               </dd>
             </>
           )}
@@ -1253,7 +1268,9 @@ function GeometryDecisionDetails(
           <dt className="text-xs text-muted-foreground">Assembly</dt>
           <dd className="font-mono text-xs text-muted-foreground">
             {view.assemblyFiles.map((file) =>
-              `${file.format.toUpperCase()} ${file.name} ${shortDigest(file.digest)}`
+              `${file.format.toUpperCase()} ${file.name} ${
+                shortDigest(file.digest)
+              }`
             ).join(" · ") || "None recorded"}
           </dd>
           {view.partDefinitions.length > 0 && (
@@ -1298,7 +1315,9 @@ function PartDefinitionGlbReview(
       candidate.format === "gltf" && candidate.path !== undefined &&
       candidate.path.length > 0
     );
-    return asset?.path ? [{ definition, asset: { ...asset, path: asset.path } }] : [];
+    return asset?.path
+      ? [{ definition, asset: { ...asset, path: asset.path } }]
+      : [];
   });
   const previewIdentity = previews.map(({ definition, asset }) =>
     `${definition.elementId}:${asset.digest}:${asset.path}`
@@ -1310,7 +1329,9 @@ function PartDefinitionGlbReview(
     setSelectedDefinitionId(previews[0]?.definition.elementId);
   }, [previewIdentity]);
   const selected =
-    previews.find(({ definition }) => definition.elementId === selectedDefinitionId) ??
+    previews.find(({ definition }) =>
+      definition.elementId === selectedDefinitionId
+    ) ??
       previews[0];
   if (!selected) return null;
   const copy = partDefinitionPreviewCopy(mode);
@@ -1349,7 +1370,8 @@ function PartDefinitionGlbReview(
                   )}
                   data-selected={isSelected ? "true" : "false"}
                   aria-pressed={isSelected}
-                  onClick={() => setSelectedDefinitionId(preview.definition.elementId)}
+                  onClick={() =>
+                    setSelectedDefinitionId(preview.definition.elementId)}
                 >
                   <strong className="text-sm font-medium">
                     {preview.definition.label}
@@ -1431,7 +1453,8 @@ function partDefinitionPreviewCopy(
   }
   if (mode === "historical") {
     return {
-      label: "Validated historical part proposal · result not in current graph · GLB",
+      label:
+        "Validated historical part proposal · result not in current graph · GLB",
       ariaLabel: "Interactive historical PartDefinition proposal",
       loadingLabel: "Loading historical part proposal…",
       errorLabel: "Historical part proposal unavailable",

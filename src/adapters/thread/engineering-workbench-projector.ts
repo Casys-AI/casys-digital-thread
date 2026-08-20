@@ -5,29 +5,39 @@ import type {
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
-import {
-  ENGINEERING_WORKBENCH_SCHEMA,
-  type EngineeringDocumentaryTechnicalStart,
-  type EngineeringDocumentaryTechnicalStartState,
-  type EngineeringDocumentaryTechnicalStartStep,
-  type EngineeringDocumentaryWorkbenchSnapshot,
-  type EngineeringEvidenceWorkbenchSnapshot,
-  type EngineeringPlanningActivity,
-  type EngineeringPlanningBaselineRun,
-  type EngineeringPlanningWorkbenchSnapshot,
-  type EngineeringTechnicalBaselineStatus,
-  type EngineeringWorkbenchUnresolvedEvidenceReference,
-  type LiveThreadWorkbenchSnapshot,
-} from "../../contracts/engineering-workbench.ts";
+import { ENGINEERING_WORKBENCH_SCHEMA } from "../../presentation/workbench/engineering/schema.ts";
+import type {
+  EngineeringDocumentaryTechnicalStart,
+  EngineeringDocumentaryTechnicalStartState,
+  EngineeringDocumentaryTechnicalStartStep,
+  EngineeringDocumentaryWorkbenchSnapshot,
+} from "../../presentation/workbench/engineering/documentary.ts";
+import type {
+  EngineeringEvidenceWorkbenchSnapshot,
+  EngineeringWorkbenchUnresolvedEvidenceReference,
+} from "../../presentation/workbench/engineering/evidence.ts";
+import type {
+  EngineeringPlanningActivity,
+  EngineeringPlanningBaselineRun,
+  EngineeringPlanningWorkbenchSnapshot,
+  EngineeringTechnicalBaselineStatus,
+} from "../../presentation/workbench/engineering/planning.ts";
+import type { LiveThreadWorkbenchSnapshot } from "../../presentation/workbench/engineering/live-overlay.ts";
 import type { LiveThreadUpdate } from "../shared/stores/live-thread-update-store.ts";
 
-export { ENGINEERING_WORKBENCH_SCHEMA } from "../../contracts/engineering-workbench.ts";
+export { ENGINEERING_WORKBENCH_SCHEMA } from "../../presentation/workbench/engineering/schema.ts";
 export type {
   EngineeringDocumentaryTechnicalStart,
   EngineeringDocumentaryTechnicalStartState,
   EngineeringDocumentaryTechnicalStartStep,
   EngineeringDocumentaryWorkbenchSnapshot,
+} from "../../presentation/workbench/engineering/documentary.ts";
+export type {
   EngineeringEvidenceWorkbenchSnapshot,
+  EngineeringWorkbenchAlignment,
+  EngineeringWorkbenchBaseSnapshot,
+} from "../../presentation/workbench/engineering/evidence.ts";
+export type {
   EngineeringPlanningActivity,
   EngineeringPlanningActivityMilestone,
   EngineeringPlanningAgentRunStatus,
@@ -35,10 +45,8 @@ export type {
   EngineeringPlanningBaselineRunMilestone,
   EngineeringPlanningWorkbenchSnapshot,
   EngineeringTechnicalBaselineStatus,
-  EngineeringWorkbenchAlignment,
-  EngineeringWorkbenchBaseSnapshot,
-  EngineeringWorkbenchSnapshot,
-} from "../../contracts/engineering-workbench.ts";
+} from "../../presentation/workbench/engineering/planning.ts";
+export type { EngineeringWorkbenchSnapshot } from "../../presentation/workbench/engineering/snapshot.ts";
 
 /**
  * Compose project intent and observed thread evidence without deriving new

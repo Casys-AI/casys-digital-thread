@@ -15,10 +15,22 @@ import {
   sealedAssemblyGlbAsset,
 } from "../thread/component-workspace-model.ts";
 import { OverviewThreadHero } from "./overview-thread-hero.tsx";
+import { Progress } from "@ark-ui/react/progress";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent } from "../ui/card.tsx";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog.tsx";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx";
 import {
   Collapsible,
   CollapsibleContent,
@@ -30,7 +42,12 @@ import {
   type ProductWorkspaceFacet,
   type ProjectDeepLinkTarget,
 } from "./navigation-model.ts";
-import { buildRequirementMatrix } from "./product-requirements-model.ts";
+import {
+  buildRequirementMatrix,
+  hasRecordedEvidence,
+  hasRecordedMargin,
+  type RequirementMatrixRow,
+} from "./product-requirements-model.ts";
 import {
   buildProjectReviewRecords,
   currentProjectReview,
@@ -364,6 +381,9 @@ function SpinePhase(
     <li
       data-state={item.status}
       aria-current={item.status === "active" ? "step" : undefined}
+      aria-label={`${item.phase.name} — ${item.completedWorkItems}/${item.totalWorkItems} ${
+        phaseStatusLabel(item.status)
+      }`}
       className="flex min-w-0 flex-1 items-center"
     >
       <span
@@ -406,16 +426,22 @@ function SpinePhase(
         // jamais ici, le remap de lifecycleEffectivePhaseStatus le fait
         // passer en `blocked`, donc la phase s'ouvre.
         : (
-          <div className="mx-1.5 flex min-w-0 flex-wrap items-center gap-1.5">
-            <span className="font-mono text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-              {item.phase.name}{" "}
-              <span className="text-muted-foreground/80">
-                {item.completedWorkItems}/{item.totalWorkItems}
-              </span>
+          // Le bandeau ne répète plus le statut sous chaque gate : aligné huit
+          // fois, « Gate satisfied » cassait la ligne sans rien apprendre.
+          // L'état se lit à la FORME du nœud — plein, anneau, ou vide — et le
+          // mot reste dans le nom accessible de l'étape, pas en décor.
+          <div className="mx-1.5 flex min-w-0 items-baseline gap-1.5">
+            <span className="truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
+              {item.phase.name}
             </span>
-            <Badge variant={recordStatusVariant(item.status)}>
-              {phaseStatusLabel(item.status)}
-            </Badge>
+            <span
+              className={cn(
+                "shrink-0 font-mono text-[10.5px] font-medium tabular-nums",
+                phaseStatusTextClass(item.status),
+              )}
+            >
+              {item.completedWorkItems}/{item.totalWorkItems}
+            </span>
           </div>
         )}
       {!isLast && (
@@ -490,20 +516,65 @@ function OverviewReviewBanner({
               Open published result
             </Button>
           )}
-          <Button
-            size="sm"
-            className="h-7 bg-zinc-900 px-3 text-xs text-zinc-50 hover:bg-zinc-800"
-            onClick={() => {
-              if (nextReview) {
-                onOpenDeepLink?.(reviewDeepLinkTarget(nextReview.id));
-                onOpenActivity?.(nextReview.decision?.id);
-                return;
-              }
-              onOpenActivity?.();
-            }}
-          >
-            Open in Activity
-          </Button>
+          {nextReview
+            ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    className="h-7 bg-zinc-900 px-3 text-xs text-zinc-50 hover:bg-zinc-800"
+                  >
+                    Open in Activity
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="text-[13px]">
+                      {nextReview.title}
+                    </DialogTitle>
+                    <DialogDescription className="text-[11.5px] leading-relaxed">
+                      {nextReview.question}
+                    </DialogDescription>
+                  </DialogHeader>
+                  {nextReview.summary && (
+                    <p className="m-0 text-[11.5px] text-muted-foreground">
+                      {nextReview.summary}
+                    </p>
+                  )}
+                  <p className="m-0 font-mono text-[10px] text-muted-foreground">
+                    Signing happens in the paired conversation, never here.
+                  </p>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button variant="outline" size="sm" className="h-7">
+                        Close
+                      </Button>
+                    </DialogClose>
+                    <DialogClose asChild>
+                      <Button
+                        size="sm"
+                        className="h-7 bg-zinc-900 px-3 text-xs text-zinc-50 hover:bg-zinc-800"
+                        onClick={() => {
+                          onOpenDeepLink?.(reviewDeepLinkTarget(nextReview.id));
+                          onOpenActivity?.(nextReview.decision?.id);
+                        }}
+                      >
+                        Continue in Activity →
+                      </Button>
+                    </DialogClose>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )
+            : (
+              <Button
+                size="sm"
+                className="h-7 bg-zinc-900 px-3 text-xs text-zinc-50 hover:bg-zinc-800"
+                onClick={() => onOpenActivity?.()}
+              >
+                Open in Activity
+              </Button>
+            )}
         </div>
       </CardContent>
     </Card>
@@ -538,46 +609,83 @@ function OverviewVerdictTiles({
         </Button>
       </div>
       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
-        {matrix.rows.map((row) => (
-          <Card
-            key={row.id}
-            className={cn(
-              "gap-0 py-0 shadow-sm",
-              row.status === "unresolved" && "border-dashed border-brand/50",
-            )}
-          >
-            <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate font-mono text-[10px] font-medium text-brand">
-                  {row.id}
-                </span>
-                <Badge variant={recordStatusVariant(row.status)}>
-                  {row.status}
-                </Badge>
-              </div>
-              <p className="m-0 truncate text-xs font-medium">{row.label}</p>
-              <p className="m-0 truncate font-mono text-xs tabular-nums text-muted-foreground">
-                {row.lastVerdict}
-              </p>
-              <div
-                aria-hidden="true"
-                className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted"
-              >
-                <div
-                  className={cn(
-                    "h-full rounded-full",
-                    row.status === "pass" && "w-full bg-success",
-                    row.status === "fail" && "w-full bg-warning",
-                    row.status === "unresolved" &&
-                      "w-full bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_12px)] opacity-40",
-                  )}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {matrix.rows.map((row) => <VerdictTile key={row.id} row={row} />)}
       </div>
     </section>
+  );
+}
+
+/**
+ * Une tuile de verdict. La barre est un `Progress` d'Ark, donc porteuse de
+ * `role="progressbar"` : sans valeur numérique enregistrée elle reste
+ * indéterminée plutôt que de simuler un remplissage. La marge n'apparaît que
+ * lorsqu'une violation en a produit une, et son tooltip cite la preuve.
+ */
+function VerdictTile({ row }: { row: RequirementMatrixRow }): JSX.Element {
+  const running = row.status === "unresolved";
+  const hasMargin = hasRecordedMargin(row);
+  const hasEvidence = hasRecordedEvidence(row);
+  return (
+    <Card
+      className={cn(
+        "gap-0 py-0 shadow-sm",
+        running && "border-dashed border-brand/50 bg-brand/[0.03]",
+      )}
+    >
+      <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate font-mono text-[10px] font-medium text-brand">
+            {row.id}
+          </span>
+          <Badge variant={recordStatusVariant(row.status)}>
+            {row.status}
+          </Badge>
+        </div>
+        <p className="m-0 truncate text-xs font-medium">{row.label}</p>
+        <Progress.Root
+          value={null}
+          className="block"
+          aria-label={`${row.label} — ${row.status}`}
+        >
+          <Progress.ValueText asChild>
+            <p className="m-0 truncate font-mono text-xs tabular-nums text-muted-foreground">
+              {row.lastVerdict}
+            </p>
+          </Progress.ValueText>
+          <Progress.Track className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+            <Progress.Range
+              className={cn(
+                "h-full w-full rounded-full",
+                row.status === "pass" && "bg-success",
+                row.status === "fail" && "bg-warning",
+                running &&
+                  "bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_12px)] opacity-40",
+              )}
+            />
+          </Progress.Track>
+        </Progress.Root>
+        {hasMargin && (
+          <Tooltip side="top">
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "mt-1.5 block w-full cursor-help truncate text-right font-mono text-[10px] font-medium",
+                  row.status === "fail" ? "text-warning" : "text-success",
+                )}
+              >
+                {row.marginLabel}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <span className="font-mono">
+                {hasEvidence ? row.evidenceLabel : row.expression}
+              </span>
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

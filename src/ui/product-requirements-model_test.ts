@@ -338,3 +338,21 @@ function requirementFamily(): ThreadEvidenceFamily {
     }],
   };
 }
+
+Deno.test("views ask the model whether a field was recorded instead of matching its placeholder", async () => {
+  // La marque « — » est une valeur d'affichage. Une vue qui la compare
+  // reprend une décision qui appartient au modèle, et se casse
+  // silencieusement le jour où la marque change.
+  const views = [
+    "./src/project/overview.tsx",
+    "./src/project/product-requirements-matrix.tsx",
+  ];
+  for (const view of views) {
+    const source = await Deno.readTextFile(new URL(view, import.meta.url));
+    assertEquals(
+      /[!=]==\s*"—"/.test(source),
+      false,
+      `${view} compares the unrecorded placeholder instead of asking the model`,
+    );
+  }
+});

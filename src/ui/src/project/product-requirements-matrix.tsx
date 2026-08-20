@@ -13,6 +13,8 @@ import { recordStatusVariant } from "./record-status.ts";
 import {
   buildRequirementMatrix,
   filterRequirementRows,
+  hasRecordedMargin,
+  hasRecordedObservation,
   type RequirementMatrixFilter,
   type RequirementMatrixRow,
   type RequirementVerdictTrailStep,
@@ -278,7 +280,7 @@ function EvidenceChain({
     });
   }
 
-  if (row.observationId && row.computed !== "—") {
+  if (hasRecordedObservation(row)) {
     links.push({
       label: "OBSERVATION",
       title: `${row.computed} · ${row.observationId}`,
@@ -287,7 +289,7 @@ function EvidenceChain({
   }
 
   if (links.length > 0) {
-    const verdictTitle = row.marginLabel !== "—"
+    const verdictTitle = hasRecordedMargin(row)
       ? `${row.status.toUpperCase()} · ${row.marginLabel}`
       : row.status.toUpperCase();
     links.push({

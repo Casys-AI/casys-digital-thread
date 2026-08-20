@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { ThreadWorkbenchSnapshot } from "../../contracts/thread-workbench.ts";
+import type { ThreadWorkbenchSnapshot } from "../../presentation/workbench/thread/snapshot.ts";
 import { enrichThreadWorkbenchWithSealedCadLevers } from "./sealed-cad-lever-workbench-enricher.ts";
 
 const DIGEST = "a".repeat(64);

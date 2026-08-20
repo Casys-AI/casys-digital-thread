@@ -490,10 +490,11 @@ Deno.test(
       new Map(),
     );
 
-    // Tokens avec une couleur cyan distincte
+    // Tokens avec une couleur violette distincte : une exigence est peinte
+    // par son TYPE, et ce type prend le jeton violet.
     const customTokens: CssTokens = {
       ...FALLBACK_TOKENS,
-      cyan: "#123456",
+      violet: "#123456",
     };
 
     const model = buildExplorationModel(
@@ -510,13 +511,13 @@ Deno.test(
     assertEquals(
       sysonColor,
       "#123456",
-      "La couleur du nœud syson doit utiliser tokens.cyan",
+      "La couleur d'une exigence doit utiliser tokens.violet",
     );
   },
 );
 
 Deno.test(
-  "build123d-sandbox uses the existing CAD color instead of the muted fallback",
+  "a sandbox CAD artifact is painted by type and keeps its declared family",
   () => {
     const sandboxCad = node(
       "CAD-SANDBOX",
@@ -526,20 +527,25 @@ Deno.test(
     );
     const customTokens: CssTokens = {
       ...FALLBACK_TOKENS,
-      amber: "#a15c00",
+      cyan: "#0e7490",
       muted: "#777777",
     };
     const model = buildMinimalModel([sandboxCad], [], customTokens);
 
+    // La couleur vient du type d'enregistrement, jamais du système : un
+    // provider nouveau ne peut donc plus tomber dans le gris par défaut.
     assertEquals(
       model.graph.getNodeAttribute("artifact:CAD-SANDBOX", "color"),
-      "#a15c00",
+      "#0e7490",
+    );
+    assertNotEquals(
+      model.graph.getNodeAttribute("artifact:CAD-SANDBOX", "color"),
+      customTokens.muted,
     );
     assertEquals(model.systemLegend, [{
       system: "build123d-sandbox",
       systems: ["build123d-sandbox"],
       label: "build123d · CAD",
-      color: "#a15c00",
       count: 1,
     }]);
   },
@@ -720,7 +726,7 @@ Deno.test(
 // ---------------------------------------------------------------------------
 
 Deno.test(
-  "modelica nodes are painted violet, never the muted fallback",
+  "an artifact is painted by its type, whichever tool produced it",
   () => {
     const model = buildMinimalModel(
       [
@@ -732,14 +738,17 @@ Deno.test(
         id: "s1",
       })],
     );
-    const attrs = model.graph.getNodeAttributes("artifact:m1");
-    assertEquals(attrs.color, FALLBACK_TOKENS.violet);
-    assertNotEquals(attrs.color, FALLBACK_TOKENS.muted);
+    const modelica = model.graph.getNodeAttributes("artifact:m1");
+    const syson = model.graph.getNodeAttributes("artifact:s1");
+    // Deux outils différents, un seul type : une seule couleur. C'est ce qui
+    // rend la légende des types exacte au lieu d'afficher une dominante.
+    assertEquals(modelica.color, syson.color);
+    assertNotEquals(modelica.color, FALLBACK_TOKENS.muted);
   },
 );
 
 Deno.test(
-  "the tool color key lists visible families with the exact canvas colors",
+  "the tool key lists one entry per visible family and claims no color",
   () => {
     const model = buildMinimalModel(
       [
@@ -762,16 +771,16 @@ Deno.test(
       model.systemLegend.map((item) => [item.system, item]),
     );
     assertEquals(bySystem.size, 3, "One legend entry per visible family.");
-    // The legend color must equal the color painted on the canvas node.
-    assertEquals(
-      bySystem.get("modelica")?.color,
-      model.graph.getNodeAttributes("artifact:m1").color,
-    );
-    assertEquals(
-      bySystem.get("calculix")?.color,
-      model.graph.getNodeAttributes("artifact:c1").color,
-    );
     assertEquals(bySystem.get("modelica")?.count, 1);
+    // Le canvas ne peint plus par outil : une couleur ici serait un mapping
+    // que rien ne rend.
+    for (const item of model.systemLegend) {
+      assertEquals(
+        Object.hasOwn(item, "color"),
+        false,
+        "a producer family must not carry a canvas color",
+      );
+    }
   },
 );
 
@@ -791,17 +800,10 @@ Deno.test(
       system: "calculix",
       systems: ["calculix", "mcp-calculix"],
       label: "CalculiX · FEA",
-      color: FALLBACK_TOKENS.red,
       count: 2,
     }]);
-    assertEquals(
-      model.graph.getNodeAttribute("artifact:c1", "color"),
-      FALLBACK_TOKENS.red,
-    );
-    assertEquals(
-      model.graph.getNodeAttribute("artifact:c2", "color"),
-      FALLBACK_TOKENS.red,
-    );
+    // Regrouper deux couches d'enregistrement sous une famille ne doit pas
+    // toucher le système déclaré de chaque nœud : c'est la provenance.
     assertEquals(
       model.graph.getNodeAttribute("artifact:c1", "node").system,
       "calculix",

@@ -1,4 +1,4 @@
-import type { RunDetail } from "../../contracts/console.ts";
+import type { RunDetail } from "../../application/control-plane/read-model/engineering-run.ts";
 
 /** Checked-in run evidence for the control-plane catalog. Demo stays labelled. */
 export interface RunFixtureLoaderOptions {

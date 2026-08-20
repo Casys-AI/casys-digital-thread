@@ -1,17 +1,14 @@
 import { buildServerRecord } from "./server-drift.ts";
+import type { ConsoleMode, ConsoleSnapshot } from "./read-model/console-snapshot.ts";
+import type { RunDetail, RunSummary } from "./read-model/engineering-run.ts";
+import type { ServerRecord } from "./read-model/fleet-drift.ts";
+import type { DesiredServer, FleetManifest } from "./read-model/fleet-manifest.ts";
+import type { FleetCounts } from "./read-model/fleet-snapshot.ts";
 import type {
-  Availability,
-  ConsoleMode,
-  ConsoleSnapshot,
-  DesiredServer,
-  FleetCounts,
-  FleetManifest,
   ObservedContainer,
   ObservedServer,
-  RunDetail,
-  RunSummary,
-  ServerRecord,
-} from "../../contracts/console.ts";
+} from "./read-model/fleet-observation.ts";
+import type { Availability } from "./read-model/status.ts";
 import type {
   ContainerObserver,
   McpProbe,

@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { buildOperationsFleetView } from "./src/project/operations-fleet-model.ts";
-import type { CockpitFleetProjection } from "../contracts/cockpit-fleet.ts";
+import type { CockpitFleetProjection } from "../presentation/workbench/fleet/projection.ts";
 import type { ThreadFlowStage, ThreadWorkbenchSnapshot } from "./src/thread/types.ts";
 
 function stage(

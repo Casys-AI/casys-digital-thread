@@ -296,6 +296,43 @@ Deno.test("native Workbench labels a dangling decision evidence reference instea
   );
 });
 
+Deno.test("native Workbench applies the verification-case read model after pure projection", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    verificationCaseCaptures: {
+      mechanicalProof: { read: () => Promise.resolve(undefined) },
+      sensitivityStudy: { read: () => Promise.resolve(undefined) },
+      modelicaSimulationV2: { read: () => Promise.resolve(undefined) },
+    },
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json();
+
+  assertEquals(response.status, 200);
+  assertEquals(body.surface, "evidence");
+  assertEquals(body.thread.verificationCases, {
+    schemaVersion: "thread-verification-cases/1.0",
+    status: "observed",
+    coverage: [
+      { family: "mechanical-proof", status: "observed" },
+      { family: "sensitivity-study", status: "observed" },
+      { family: "modelica-simulation", status: "observed" },
+    ],
+    cases: [],
+    issues: [],
+  });
+});
+
 Deno.test("native Workbench hides durable unattached generic requirements and geometry snapshots", async () => {
   for (
     const operation of [

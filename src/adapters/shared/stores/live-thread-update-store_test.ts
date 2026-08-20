@@ -3,7 +3,7 @@ import { GENERIC_THREAD_FIXTURE } from "../../../testing/workbench/generic-threa
 import type {
   ThreadGraphEdge,
   ThreadGraphNode,
-} from "../../../contracts/thread-workbench.ts";
+} from "../../../presentation/workbench/thread/graph.ts";
 import {
   FileLiveThreadUpdateStore,
   LiveThreadUpdateStore,

@@ -19,13 +19,6 @@ interface ArchitectureCycleAllowance {
   readonly rationale: string;
 }
 
-interface ArchitectureImportAllowance {
-  readonly source: string;
-  readonly target: string;
-  readonly kind: ImportKind;
-  readonly rationale: string;
-}
-
 const SCAN_ROOTS = ["server.ts", "src", "scripts"] as const;
 const EXCLUDED_DIRECTORY_NAMES = new Set([
   "dist",
@@ -40,43 +33,14 @@ const EXCLUDED_DIRECTORY_NAMES = new Set([
  */
 const ALLOWED_TYPE_MEDIATED_CYCLES: readonly ArchitectureCycleAllowance[] = [];
 
-/**
- * Browser-safe contracts still project two domain-owned types. Keep these
- * bridges exact and type-only: any broader contract dependency is rejected,
- * and the gate asks us to remove an allowance as soon as its import disappears.
- */
-const ALLOWED_CONTRACT_DOMAIN_IMPORTS: readonly ArchitectureImportAllowance[] = [{
-  source: "src/contracts/console.ts",
-  target: "src/domain/kernel/primitives.ts",
-  kind: "type-only",
-  rationale: "The Console DTO currently reuses the domain-owned IsoDateTime brand.",
-}, {
-  source: "src/contracts/engineering-workbench.ts",
-  target: "src/domain/project/engineering-project.ts",
-  kind: "type-only",
-  rationale: "The Workbench DTO currently projects three domain-owned project types.",
-}];
-
 Deno.test("production imports preserve inward architecture boundaries and remain runtime-acyclic", async () => {
   const modules = await productionModules();
   const imports = await resolvedImports(modules);
   const unresolved = await unresolvedTypeScriptImports(modules);
   const forbiddenImports = imports.filter(isForbiddenLayerImport);
-  const allowedImportKeys = new Set(
-    ALLOWED_CONTRACT_DOMAIN_IMPORTS.map(importAllowanceKey),
-  );
   const boundaryViolations = forbiddenImports
-    .filter((dependency) => !allowedImportKeys.has(importKey(dependency)))
     .map(formatImport)
     .toSorted();
-  const observedAllowedImports = [
-    ...new Set(
-      forbiddenImports
-        .map(importKey)
-        .filter((key) => allowedImportKeys.has(key)),
-    ),
-  ].toSorted();
-  const declaredAllowedImports = [...allowedImportKeys].toSorted();
   const runtimeCycles = cycleSignatures(
     modules,
     imports.filter((dependency) => dependency.kind === "runtime"),
@@ -90,22 +54,12 @@ Deno.test("production imports preserve inward architecture boundaries and remain
   assertEquals(
     boundaryViolations,
     [],
-    "Domain stays inward; application ports and use cases follow their explicit dependency directions; tools may not import adapters or UI; contracts may not cross layers except through an exact declared type bridge.",
+    "Domain stays inward; application never depends on presentation; presentation read models depend only on presentation or domain; tools may not import adapters, presentation, or UI.",
   );
   assertEquals(
-    observedAllowedImports,
-    declaredAllowedImports,
-    "Every contract-to-domain allowance must match one live import exactly; remove stale allowances instead of preserving hidden debt.",
-  );
-  assertEquals(
-    ALLOWED_CONTRACT_DOMAIN_IMPORTS.every((entry) =>
-      entry.source.startsWith("src/contracts/") &&
-      entry.target.startsWith("src/domain/") &&
-      entry.kind === "type-only" &&
-      entry.rationale.trim().length > 0
-    ),
-    true,
-    "Contract-to-domain allowances must remain exact, erased type bridges with a rationale.",
+    await directoryExists("src/contracts"),
+    false,
+    "The unowned src/contracts bucket is retired; place read models in their application or presentation owner.",
   );
   assertEquals(
     runtimeCycles,
@@ -169,6 +123,47 @@ Deno.test("the import scanner distinguishes erased type edges from runtime edges
   );
 });
 
+Deno.test("presentation remains outward of application and depends on domain by type only", () => {
+  const edge = (
+    source: string,
+    target: string,
+    kind: ImportKind,
+  ): ModuleImport => ({ source, target, kind, specifier: target });
+
+  assertEquals([
+    isForbiddenLayerImport(edge(
+      "src/application/control-plane/control-plane.ts",
+      "src/presentation/workbench/thread/snapshot.ts",
+      "type-only",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/application/control-plane/control-plane.ts",
+      "src/presentation/workbench/thread/snapshot.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/adapters/thread/thread-workbench-projector.ts",
+      "src/presentation/workbench/thread/snapshot.ts",
+      "type-only",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/ui/src/thread/types.ts",
+      "src/presentation/workbench/thread/snapshot.ts",
+      "type-only",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/presentation/workbench/engineering/snapshot.ts",
+      "src/domain/project/engineering-project.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/presentation/workbench/engineering/snapshot.ts",
+      "src/domain/project/engineering-project.ts",
+      "type-only",
+    )),
+  ], [true, true, false, false, true, false]);
+});
+
 Deno.test("runtime cycle detection rejects cycles while type-only back edges remain reportable", () => {
   const modules = new Set(["src/a.ts", "src/b.ts"]);
   const runtimeCycle: ModuleImport[] = [{
@@ -218,6 +213,15 @@ async function productionModules(): Promise<ReadonlySet<string>> {
     }
   }
   return modules;
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    return (await Deno.stat(path)).isDirectory;
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return false;
+    throw error;
+  }
 }
 
 async function collectModules(
@@ -517,7 +521,7 @@ function formatImport(dependency: ModuleImport): string {
 }
 
 function isForbiddenLayerImport(dependency: ModuleImport): boolean {
-  const { source, target } = dependency;
+  const { kind, source, target } = dependency;
   if (source.startsWith("src/domain/")) {
     return !target.startsWith("src/domain/");
   }
@@ -538,30 +542,17 @@ function isForbiddenLayerImport(dependency: ModuleImport): boolean {
   if (source.startsWith("src/application/")) {
     return [
       "src/adapters/",
+      "src/presentation/",
       "src/tools/",
       "src/ui/",
     ].some((prefix) => target.startsWith(prefix));
   }
   if (source.startsWith("src/tools/")) {
-    return ["src/adapters/", "src/ui/"].some((prefix) => target.startsWith(prefix));
+    return ["src/adapters/", "src/presentation/", "src/ui/"].some((prefix) =>
+      target.startsWith(prefix)
+    );
   }
-  if (!source.startsWith("src/contracts/")) return false;
-  return [
-    "src/domain/",
-    "src/application/",
-    "src/adapters/",
-    "src/tools/",
-    "src/orchestration/",
-    "src/ui/",
-  ].some((prefix) => target.startsWith(prefix));
-}
-
-function importKey(
-  dependency: Pick<ModuleImport, "source" | "target" | "kind">,
-): string {
-  return `${dependency.source} -> ${dependency.target} (${dependency.kind})`;
-}
-
-function importAllowanceKey(allowance: ArchitectureImportAllowance): string {
-  return importKey(allowance);
+  if (!source.startsWith("src/presentation/")) return false;
+  if (target.startsWith("src/presentation/")) return false;
+  return !(kind === "type-only" && target.startsWith("src/domain/"));
 }

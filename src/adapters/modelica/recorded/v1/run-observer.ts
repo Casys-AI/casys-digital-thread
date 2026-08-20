@@ -6,7 +6,7 @@ import type {
   RunStage,
   RunStatus,
   RunSummary,
-} from "../../../../contracts/console.ts";
+} from "../../../../application/control-plane/read-model/engineering-run.ts";
 import type { ObservedRunCatalog } from "../../../../application/control-plane/ports.ts";
 
 const MCP_PROTOCOL_VERSION = "2026-07-28";

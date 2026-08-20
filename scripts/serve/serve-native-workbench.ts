@@ -24,10 +24,12 @@ import type { ProjectReviewIntentStore } from "../../src/application/ports/out/p
 import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
 } from "../../src/adapters/shared/cas/file-capture-store.ts";
@@ -93,8 +95,12 @@ import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../src/a
 import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "../../src/adapters/thread/architecture-sysml-seal-workbench-enricher.ts";
 import { enrichThreadWorkbenchWithSealedCadLevers } from "../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
 import type { SealedCadLeverAdmissionReader } from "../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
+import {
+  enrichThreadWorkbenchWithVerificationCases,
+  type VerificationCaseWorkbenchEnricherDependencies,
+} from "../../src/adapters/thread/verification-case-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../src/adapters/thread/cockpit-fleet-projector.ts";
-import type { CockpitFleetProjection } from "../../src/contracts/cockpit-fleet.ts";
+import type { CockpitFleetProjection } from "../../src/presentation/workbench/fleet/projection.ts";
 import type { ArchitectureSysmlSealCaptureReader } from "../../src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts";
 import type { ArchitectureSysmlSourceAnalysisReader } from "../../src/application/ports/out/architecture/agent-seal/architecture-sysml-source-analysis-reader.ts";
 import {
@@ -180,6 +186,8 @@ export interface NativeWorkbenchHandlerOptions {
    * The pure projector never reads this store.
    */
   technicalCompilationAdmissions?: SealedCadLeverAdmissionReader;
+  /** Optional exact CAS reopen of supported sealed engineering cases. */
+  verificationCaseCaptures?: VerificationCaseWorkbenchEnricherDependencies;
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
@@ -795,6 +803,7 @@ async function projectWorkbenchSnapshot(
     await projectThreadSnapshot(
       snapshot,
       options,
+      validatedProject.project.id,
       subjectId,
       componentCatalog,
       updates,
@@ -952,6 +961,7 @@ function workbenchDataSource(projection: EngineeringWorkbenchSnapshot): string {
 async function projectThreadSnapshot(
   snapshot: ThreadSnapshot,
   options: NativeWorkbenchHandlerOptions,
+  projectId: string,
   subjectId: string,
   componentCatalog: ThreadComponentCatalog | undefined,
   liveUpdates?: LiveThreadUpdate[],
@@ -969,12 +979,19 @@ async function projectThreadSnapshot(
         sources: options.architectureSysmlSources,
       })
       : projected;
-  const canonical = options.technicalCompilationAdmissions
+  const withCadLevers = options.technicalCompilationAdmissions
     ? await enrichThreadWorkbenchWithSealedCadLevers(
       withArchitecture,
       options.technicalCompilationAdmissions,
     )
     : withArchitecture;
+  const canonical = options.verificationCaseCaptures
+    ? await enrichThreadWorkbenchWithVerificationCases(
+      withCadLevers,
+      options.verificationCaseCaptures,
+      { projectId },
+    )
+    : withCadLevers;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
@@ -1196,6 +1213,8 @@ if (import.meta.main) {
     ARCHITECTURE_CAPTURE_DESCRIPTOR.directory;
   const geometryCaptureDirectory = cliArgs["geometry-capture-dir"] ??
     GEOMETRY_CAPTURE_DESCRIPTOR.directory;
+  const recordedAnalysisDirectory = cliArgs["recorded-analysis-dir"] ??
+    "state/local/recorded-analysis";
   const store = new FileThreadSnapshotStore(snapshotDirectory);
   const projectSnapshots = new OrderedExactThreadSnapshotReader([
     store,
@@ -1271,6 +1290,28 @@ if (import.meta.main) {
         : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
     },
   };
+  const modelicaSimulationCases = new FileByteStore({
+    kind: "simulation-case-v2",
+    directory: `${recordedAnalysisDirectory}/modelica/simulation-cases`,
+    uriNamespace: "simulation-case-v2",
+    label: "Recorded Modelica simulation case",
+  });
+  const verificationCaseCaptures: VerificationCaseWorkbenchEnricherDependencies = {
+    mechanicalProof: new FileCaptureStore(
+      FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+    ),
+    sensitivityStudy: new FileCaptureStore(
+      SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
+    ),
+    modelicaSimulationV2: {
+      read: async (fingerprint) => {
+        const stored = await modelicaSimulationCases.read(fingerprint);
+        return stored === undefined
+          ? undefined
+          : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
+      },
+    },
+  };
   // The paired MCP owns all project commands and initialisation. The cockpit
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
@@ -1332,6 +1373,7 @@ if (import.meta.main) {
     architectureSysmlSeals,
     architectureSysmlSources,
     technicalCompilationAdmissions,
+    verificationCaseCaptures,
     liveUpdates,
     reviewIntents,
     reviewIntentSignal: {

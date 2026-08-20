@@ -10,7 +10,7 @@
 import type {
   ThreadArtifact,
   ThreadWorkbenchSnapshot,
-} from "../../contracts/thread-workbench.ts";
+} from "../../presentation/workbench/thread/snapshot.ts";
 import {
   listSealedAdmissionCadLevers,
   listSealedAdmissionUnnamedCadLiterals,

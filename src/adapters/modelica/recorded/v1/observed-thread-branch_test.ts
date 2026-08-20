@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import type { RunDetail } from "../../../../contracts/console.ts";
+import type { RunDetail } from "../../../../application/control-plane/read-model/engineering-run.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtension } from "../../../../domain/thread/thread-snapshot-extension.ts";
 import {

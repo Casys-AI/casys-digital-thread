@@ -1,5 +1,8 @@
 import { assertEquals } from "@std/assert";
-import type { ThreadGraph, ThreadGraphNode } from "../../contracts/thread-workbench.ts";
+import type {
+  ThreadGraph,
+  ThreadGraphNode,
+} from "../../presentation/workbench/thread/graph.ts";
 import type { SealedAdmissionCadLever } from "../../domain/compile/admission/sealed-cad-levers.ts";
 import {
   projectSealedCadLeverGraph,
