@@ -8,6 +8,9 @@ Call these two read-only tools instead of typing `fea.proof.*` or guessing the
 There is no `fea.run.*` grammar. Product run is isolated
 `verify.run-fea-static-proof@3`. Historical MCP `@1`/`@2` are not registered.
 
+Domain contracts: [mechanical proof case V1](../../reference/domains/fea/mechanical-proof-case-v1.md)
+and [CalculiX static proof V3](../../reference/domains/fea/calculix-static-proof-v3.md).
+
 ## The short path
 
 ```jsonc

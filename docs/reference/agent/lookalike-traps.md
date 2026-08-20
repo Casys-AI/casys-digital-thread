@@ -21,6 +21,9 @@ microVM: [admitted source isolated execution](../pipeline/admitted-source-isolat
 
 ## CAD and compile
 
+Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) and
+[execution paths](../domains/cad/execution-paths.md).
+
 | This                                                      | Is                                                                                                            | Is not                                                       |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `project_geometry_preview` + `design.write-geometry@1`    | Retired product entry. Preview is not registered. `write-geometry` refuses a draft without an admission stamp | Isolated compiler execution or a photo STEP                  |
@@ -32,6 +35,9 @@ microVM: [admitted source isolated execution](../pipeline/admitted-source-isolat
 | `design.seal-isolated-geometry@1`                         | Provider-free Thread-document seal of isolated execution                                                      | Canonical STEP, cad-model, `write-geometry`, or FEA geometry |
 
 ## Modelica
+
+Domain contracts: [closed subset](../domains/modelica/closed-subset-v1.md) and
+[execution profiles](../domains/modelica/execution-profiles.md).
 
 | This                                    | Is                                                                             | Is not                                                                        |
 | --------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
@@ -47,6 +53,9 @@ the product `.mo`. Same image family `casys/modelica-microsandbox-worker`; kit
 `ENTRYPOINT` pins one `.mo`, admitted worker runs `/input/source.mo`.
 
 ## FEA, sensitivity, correction
+
+Domain contracts: [mechanical proof case](../domains/fea/mechanical-proof-case-v1.md)
+and [CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 
 | This                                         | Is                                                                                               | Is not                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -89,4 +98,3 @@ CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.
 | `config/*-api/` inventory JSON          | Documentary pinned-language ground truth                                                  | A compiler driver or generated qualification table                |
 | `console_*` on `:3020/mcp`              | Control-plane fleet and indexed-run reads                                                 | The native cockpit (`preview:thread` / `preview:cockpit`)         |
 | `preview:browser` / `ui://casys-digital-thread/console` | Retired Console MCP App. The task refuses                                      | A product page or a registered MCP resource                       |
-

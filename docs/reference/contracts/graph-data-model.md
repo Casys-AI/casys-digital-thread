@@ -50,7 +50,7 @@ Sources:
 - Analysis index:
   [`src/domain/thread/analysis-graph.ts`](../../../src/domain/thread/analysis-graph.ts)
 - BFF DTO:
-  [`src/contracts/thread-workbench.ts`](../../../src/contracts/thread-workbench.ts)
+  [`src/presentation/workbench/thread/snapshot.ts`](../../../src/presentation/workbench/thread/snapshot.ts)
 - Projector:
   [`src/adapters/thread/thread-workbench-projector.ts`](../../../src/adapters/thread/thread-workbench-projector.ts)
 - Evidence policy:

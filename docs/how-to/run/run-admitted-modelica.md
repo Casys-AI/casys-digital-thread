@@ -9,6 +9,8 @@ reopen those bytes in the local microVM. Do **not** call
 
 Contract: [admitted source isolated execution](../../reference/pipeline/admitted-source-isolated-execution.md).
 Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md).
+Domain limits: [Modelica closed subset v1](../../reference/domains/modelica/closed-subset-v1.md)
+and [execution profiles](../../reference/domains/modelica/execution-profiles.md).
 
 Do not walk this on a behave vehicle that already has a joined `pass` (including
 `wall-hook-wh01` after FEA `@2` pass). Start a **new** thermal project.

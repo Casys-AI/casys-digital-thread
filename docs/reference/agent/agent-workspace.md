@@ -379,33 +379,21 @@ result depends on engine-internal ordering are compiled too and carry a determin
 _class_ in the evidence instead of being excluded. Why and how:
 [closed-language compilation](../../explanations/product/closed-language-compilation.md).
 
-| Profile / analyzer                                                     | Language               | Qualifies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Leaves unresolved                                                       |
-| ---------------------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `sysml-architecture-closed-subset-v1`                                  | SysML v2 closed subset | `package { part def }`, empty-or-block `part def`, `part usage : Type;`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Comments, strings, numbers, attributes, `requirement`, anything else    |
-| Rendered architecture companion                                        | Server-rendered SysML  | Manifest-attested PartUsage→target only                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Arbitrary SysML                                                         |
-| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.6.0**)   | Python / build123d     | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Ellipsoid`, `Wedge`, `Rectangle`, `Circle`, `Ellipse`, `RegularPolygon`, `Pos`, `Rot`, `Compound`; `+`/`-` same-kind; named `Pos`/`Rot` bindings and left-associative `Pos`/`Rot`/`Plane.XY\|XZ\|YZ\|YX\|ZX\|ZY` * solid or sketch; `scale(solid, scalar)`; `fillet(solid, scalar)` or `fillet(solid.edges(), radius=scalar or positional)`; `chamfer(solid, scalar)` or `chamfer(solid.edges(), scalar)`; `extrude(sketch, amount=scalar or positional, optional taper=scalar)`; `offset(solid, amount)`; `revolve(sketch, Axis.X\|Y\|Z)`; math scalars `pi`/`e`/`tau`; numeric params; one solid `result` | D4-allowed but unproven syntax; a sketch is never a valid result; `&`/` |
-| `modelica-closed-subset-v1` (`modelica-qualified-mo-subset` **1.0.0**) | Modelica               | LinearThermalRamp closed subset                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Everything else; 0 of 286 MSL packages                                  |
-| Python CAD frontend (legacy preview)                                   | Python                 | Conservative bindings into `result`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Calls, imports, branches, functions…                                    |
-| Project-brief frontend                                                 | Canonical brief JSON   | Item ids + explicit V2 gate dependencies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Prose inference, V1 gates                                               |
+| Profile / analyzer                                                     | Language               | Boundary | Domain contract |
+| ---------------------------------------------------------------------- | ---------------------- | -------- | --------------- |
+| `sysml-architecture-closed-subset-v1`                                  | SysML v2 closed subset | `package`, `part def`, `part usage`; other constructs stay unresolved | This page |
+| Rendered architecture companion                                        | Server-rendered SysML  | Manifest-attested PartUsage→target only | This page |
+| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.6.0**)   | Python / Build123d     | Finite geometry algebra, numeric parameters, one solid `result` | [CAD closed subset](../domains/cad/build123d-closed-subset-v1.md) |
+| `modelica-closed-subset-v1` (`modelica-qualified-mo-subset` **1.0.0**) | Modelica               | One LinearThermalRamp family; 0 of 286 MSL packages | [Modelica closed subset](../domains/modelica/closed-subset-v1.md) |
+| Python CAD frontend (legacy preview)                                   | Python                 | Conservative bindings into `result` | Historical only |
+| Project-brief frontend                                                 | Canonical brief JSON   | Item ids + explicit V2 gate dependencies | This page |
 
 Bindings published by the architecture SysML analyzer are **symbol ids**, never labels.
 Labels are display data.
 
-Qualified Build123d 1.6.0 extends the 1.5.0 subset with named `Pos`/`Rot` bindings,
-`Plane.XY|XZ|YZ|YX|ZX|ZY *` shape, `offset(solid, amount)`,
-`revolve(sketch, Axis.X|Y|Z)`, and extrude `taper=`. Previously qualified bundles stay
-bit-identical; the public analysis identity does not change for existing sources. A
-sketch is never a valid `result`. `shell` is not a 0.11.1 algebra function and stays
-unresolved. Same-kind `&` is parsed in the frontend but D4 rejects the token before
-analysis. `Ellipsoid` is in this hand table and in D4; it is **absent** from the 0.11.1
-inventory — a phantom, not a next idiom.
-
-There is no Next AST lock. The accepted next family is **F1** in
-[the full-compilation plan](../../rfcs/build123d/build123d-full-compilation-plan.md): generate
-qualification tables from the inventory (plus type methods), replace this hand `Map`,
-and bump the analyzer to 2.0.0. Do not add `Polygon` / `filter_by` / another 1.7.0 lot
-by hand. Inventories under `config/*-api/` are documentary ground truth until that
-generator (or the equivalent for SysML / Modelica / CalculiX) consumes them.
+Exact accepted constructs, exclusions and extension rules live with their bounded
+contexts under [engineering domains](../domains/README.md). Inventories under
+`config/*-api/` remain documentary ground truth until a domain compiler consumes them.
 
 ## 7. Golden path (generic V3)
 
@@ -451,19 +439,21 @@ measurement, or a verdict.
 
 Hexagonal. Dependencies point inward. Adapters never become domain authority.
 
-| Layer       | Path                                                  | May import       | Must not                                     |
-| ----------- | ----------------------------------------------------- | ---------------- | -------------------------------------------- |
-| Domain      | `src/domain/`                                         | domain + kernel  | `Deno.*`, `fetch`, MCP, UI, Graphology       |
-| Application | `src/application/`                                    | domain + ports   | Concrete adapters                            |
-| Adapters    | `src/adapters/`                                       | ports + domain   | Become the public contract                   |
-| Operations  | `src/orchestration/operations/`                       | domain contracts | Provider tool names in the planning registry |
-| Tools       | `src/tools/`                                          | inbound ports    | Own CAS/provider clients                     |
-| Composition | `server.ts`                                           | everything       | Leak handles into domain                     |
-| UI          | `src/ui/src/`                                         | `src/contracts/` | Command authority, MCP credentials           |
-| Tests       | `*_test.ts` colocated; UI tests at `src/ui/*_test.ts` | `@std/assert`    | React/DOM render tests                       |
+| Layer        | Path                                                  | May import                                 | Must not                                     |
+| ------------ | ----------------------------------------------------- | ------------------------------------------ | -------------------------------------------- |
+| Domain       | `src/domain/`                                         | domain + kernel                            | `Deno.*`, `fetch`, MCP, UI, Graphology       |
+| Application  | `src/application/`                                    | domain + ports + owned read models         | Concrete adapters or presentation            |
+| Presentation | `src/presentation/`                                   | presentation + domain types (`type-only`)  | Use cases, adapters, tools, UI               |
+| Adapters     | `src/adapters/`                                       | ports + domain + read models               | Become the public contract                   |
+| Operations   | `src/orchestration/operations/`                       | domain contracts                           | Provider tool names in the planning registry |
+| Tools        | `src/tools/`                                          | inbound ports + application read models    | Own CAS/provider clients or presentation     |
+| Composition  | `server.ts`                                           | everything                                 | Leak handles into domain                     |
+| UI           | `src/ui/src/`                                         | presentation + application read models     | Command authority, MCP credentials           |
+| Tests        | `*_test.ts` colocated; UI tests at `src/ui/*_test.ts` | `@std/assert`                              | React/DOM render tests                       |
 
 Second axis: **authority context**, not pipeline verb. Layers stay at
-`src/{domain,application,adapters}/` so the import gate remains prefix-true. Compile
+`src/{domain,application,presentation,adapters}/` so the import gate remains
+prefix-true. Compile
 kernel is `src/domain/compile/` (isolation, admission, source, ROP, brief) — not
 `domain/analysis/`. A new Modelica, CAD, FEA or compile module does **not** land in a
 retired dump (`domain/analysis/`, `adapters/captures/`, `adapters/executors/`). Shared

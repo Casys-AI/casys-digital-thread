@@ -90,6 +90,13 @@ vivante. Index, statuts et « lire plutôt » :
 - [Workspace source map](reference/runtime/workspace-source-map.md)
 - [MCP console](reference/runtime/console.md)
 
+### Reference — `domains/`
+
+- [Engineering domains](reference/domains/README.md)
+- [CAD](reference/domains/cad/README.md)
+- [Modelica](reference/domains/modelica/README.md)
+- [FEA](reference/domains/fea/README.md)
+
 ### Reference — `pipeline/`
 
 - [Source analysis and authority pipeline](reference/pipeline/analysis-authority-pipeline.md)

@@ -84,6 +84,7 @@ recorded in provenance. Do not invent another.
 ## 5. Geometry
 
 Two paths. They are not substitutes.
+Contract: [CAD execution paths](../../reference/domains/cad/execution-paths.md).
 
 | Path                    | Ops                                                                                                                         | What a success is        |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------ |

@@ -1,0 +1,30 @@
+# CAD domain reference
+
+Audience: both · Diátaxis: reference · Kind: contract
+
+This directory is the living reference for the CAD domain. It separates the source
+language the atelier can currently understand from the two ways admitted source can
+produce geometry. RFCs describe delivered work or future direction; they are not the
+runtime contract.
+
+Read:
+
+1. [Build123d closed subset v1](build123d-closed-subset-v1.md) — D4, the analyzer,
+   supported forms, explicit gaps, and admission limits.
+2. [CAD execution paths](execution-paths.md) — canonical admitted export versus the
+   documentary isolated microVM path.
+
+Shared contracts:
+
+- [Source analysis and authority pipeline](../../pipeline/analysis-authority-pipeline.md)
+  for capture → analysis → MRTR → dispatch.
+- [Admitted source isolated execution](../../pipeline/admitted-source-isolated-execution.md)
+  for the reusable local-microVM pattern.
+- [Run the behave loop from zero](../../../how-to/behave/run-the-behave-loop-from-zero.md)
+  for the product walk.
+
+The project may capture source inside the closed language; that does not grant the agent
+authority to invent unreviewed CAD text for a renderer path. The server owns the
+analyzer, compilation profile, provider/runtime, command, paths, formats, limits,
+validation, and recovery. A human signs each consequential MRTR. No successful CAD
+execution is a requirement verdict.

@@ -80,11 +80,18 @@ The doctrine is not CAD-specific. Every engineering language in the toolchain fo
 | Modelica  | The Modelica Language Specification grammar + the versioned MSL classes shipped in the pinned OpenModelica image                                                             | Closed-subset parser for product `.mo`; kit self-declaration is image smoke only                | `modelica-closed-subset-v1` (compile + admitted run) and the separate qualified linear thermal kit         |
 | CalculiX  | Two closed objects: our declarative case schemas (`mechanical-proof-case/1.0`, sensitivity 2.0…) that the server lowers, and the pinned solver's finite card set behind them | The case schemas are ours; the card set comes from the pinned CCX documentation                 | linear-static proof + two-solve sensitivity; modal/buckling/thermal are future families                    |
 
-One structural difference is worth naming: for Build123d, SysML and Modelica the agent
-_writes the language itself_, so coverage means compiling what the agent writes. For
-CalculiX the agent writes our declarative case language and the server generates the
-solver deck — the agent never writes `.inp`. Both shapes are closed-language
-compilation; the second simply owns both sides of the lowering.
+Current domain contracts:
+
+- [CAD](../../reference/domains/cad/README.md)
+- [Modelica](../../reference/domains/modelica/README.md)
+- [FEA](../../reference/domains/fea/README.md)
+
+One structural difference is worth naming: Build123d, SysML and Modelica admit exact
+closed-language source bytes, so coverage means compiling the source that the project
+sealed. CalculiX does not admit solver source: the server selects a catalogued
+declarative case and generates the solver deck — the agent never writes `.inp` or
+chooses its parameters. Both shapes are closed-language compilation; the second owns
+both sides of the lowering.
 
 ## Where the direction lives in the repo
 
