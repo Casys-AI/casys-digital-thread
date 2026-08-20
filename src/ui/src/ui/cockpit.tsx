@@ -12,7 +12,7 @@
  */
 
 import type { ComponentChildren } from "preact";
-import type { ComponentProps, JSX } from "react";
+import type { JSX } from "react";
 import { cn } from "../lib/utils.ts";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip.tsx";
 
@@ -33,6 +33,16 @@ export const SECTION_LABEL =
  */
 export const LANE_LABEL =
   "font-mono text-[9.5px] font-semibold uppercase tracking-[0.1em]";
+
+/**
+ * Surface de carte : bord, fond, coins, ombre. Une seule définition.
+ *
+ * `Card` la porte pour le cas courant. La constante existe pour les surfaces
+ * qui ne sont pas un <div> — un <dl> de mesures, un <button> cliquable — afin
+ * qu'elles restent la même carte sans recopier les classes.
+ */
+export const CARD_SURFACE =
+  "rounded-lg border border-border bg-card text-card-foreground shadow-sm";
 
 /** Ligne de données : mono discret, pour les identités et les empreintes. */
 export const DATA_LINE = "font-mono text-[10px] text-muted-foreground";
@@ -77,48 +87,6 @@ export function Gap({ children = "gap" }: { children?: ComponentChildren }) {
     <span className="inline-flex items-center rounded-md border border-dashed border-lane-phys/50 px-1.5 py-px font-mono text-[9.5px] font-semibold uppercase tracking-[0.06em] text-lane-phys">
       {children}
     </span>
-  );
-}
-
-/** Carte du cockpit : bord, fond de carte, coins et débordement maîtrisés. */
-export function Panel(
-  { className, children, ...props }: ComponentProps<"section">,
-): JSX.Element {
-  return (
-    <section
-      className={cn(
-        "overflow-hidden rounded-lg border border-border bg-card shadow-sm",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </section>
-  );
-}
-
-/** Chapeau de carte : titre à gauche, mention technique à droite. */
-export function PanelHead(
-  { title, right, className }: {
-    title: ComponentChildren;
-    right?: ComponentChildren;
-    className?: string;
-  },
-): JSX.Element {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-3 border-b border-border px-3 py-2",
-        className,
-      )}
-    >
-      <span className={SECTION_LABEL}>{title}</span>
-      {right !== undefined && (
-        <span className="font-mono text-[9.5px] text-muted-foreground">
-          {right}
-        </span>
-      )}
-    </div>
   );
 }
 

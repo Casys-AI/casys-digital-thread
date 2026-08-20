@@ -11,7 +11,7 @@
  * evidence-exploration-model.ts et evidence-canvas-model.ts.
  */
 
-import { SECTION_LABEL } from "../ui/cockpit.tsx";
+import { CARD_SURFACE, SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sigma from "sigma";
@@ -472,7 +472,12 @@ export function EvidenceExploration({
   ]);
 
   return (
-    <div className="evidence-exploration relative flex min-h-[540px] overflow-hidden rounded-lg border border-border bg-card max-[720px]:flex-col">
+    <div
+      className={cn(
+        "evidence-exploration relative flex min-h-[540px] overflow-hidden max-[720px]:flex-col",
+        CARD_SURFACE,
+      )}
+    >
       {!compact && (
         <aside
           className="flex w-[208px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-muted/30 px-2.5 py-3 text-[11.5px] max-[720px]:w-full max-[720px]:flex-none max-[720px]:flex-row max-[720px]:flex-wrap max-[720px]:border-r-0 max-[720px]:border-b"

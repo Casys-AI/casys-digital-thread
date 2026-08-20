@@ -25,7 +25,11 @@ Deno.test("views compose the shared vocabulary instead of rewriting its chrome",
       }
       if (!entry.name.endsWith(".tsx")) continue;
       const source = await Deno.readTextFile(child);
-      if (/uppercase tracking-\[0\.1em\]/.test(source)) {
+      // Deux rôles, une seule définition : le libellé et la surface de carte.
+      if (
+        /uppercase tracking-\[0\.1em\]/.test(source) ||
+        /rounded-lg border border-border bg-card/.test(source)
+      ) {
         offenders.push(entry.name);
       }
     }
@@ -35,7 +39,7 @@ Deno.test("views compose the shared vocabulary instead of rewriting its chrome",
   assertEquals(
     offenders,
     [],
-    `these views hand-roll a label role instead of using PAGE_EYEBROW, SECTION_LABEL or LANE_LABEL: ${
+    `these views hand-roll a shared role instead of using PAGE_EYEBROW, SECTION_LABEL, LANE_LABEL, CARD_SURFACE or Card: ${
       offenders.join(", ")
     }`,
   );

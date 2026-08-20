@@ -1,3 +1,4 @@
+import { CARD_SURFACE } from "../ui/cockpit.tsx";
 import type { JSX, ReactNode } from "react";
 import { cn } from "../lib/utils.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
@@ -837,7 +838,7 @@ function InspectorMetrics({
       {items.map((metric) => (
         <article
           key={metric.id}
-          className="rounded-lg border border-border bg-card p-3"
+          className={cn("p-3", CARD_SURFACE)}
           data-metric={metric.id}
           data-tone={metric.tone}
         >

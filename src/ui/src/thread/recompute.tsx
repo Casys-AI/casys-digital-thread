@@ -1,3 +1,4 @@
+import { CARD_SURFACE } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import { cn } from "../lib/utils.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
@@ -271,7 +272,10 @@ function EvidenceButton({
       data-role={role}
       data-freshness={node.freshness}
       aria-label={`${roleLabel(role)} evidence: ${node.label}`}
-      className="flex w-full flex-col items-start gap-0.5 rounded-lg border border-border bg-card p-3 text-left shadow-sm hover:bg-muted/50"
+      className={cn(
+        "flex w-full flex-col items-start gap-0.5 p-3 text-left shadow-sm hover:bg-muted/50",
+        CARD_SURFACE,
+      )}
       onClick={() => onSelectNode(node)}
     >
       <small className="text-xs font-medium text-muted-foreground">

@@ -41,7 +41,7 @@ export function ProjectBriefElicitation({
       </header>
 
       <div className="grid items-start gap-3.5 lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
-        <Card className="gap-0 overflow-hidden">
+        <Card className="overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
             <span className={SECTION_LABEL}>
               Framing questions

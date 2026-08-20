@@ -1,3 +1,4 @@
+import { CARD_SURFACE } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -339,7 +340,7 @@ export function ActivityReviewFeedCard({
   };
   return (
     <details
-      className="rounded-lg border border-border bg-card shadow-sm"
+      className={cn("shadow-sm", CARD_SURFACE)}
       data-review-status={displayStatus}
       data-canonical-review-status={status}
       data-representation={record.representation}

@@ -1,3 +1,4 @@
+import { CARD_SURFACE } from "../ui/cockpit.tsx";
 import type { JSX } from "react";
 import type {
   CockpitFleetProjection,
@@ -61,10 +62,10 @@ export function ProjectWorkRibbon({
       className="grid grid-cols-1 gap-3 md:grid-cols-3"
       aria-label="Shared work plan"
     >
-      <Card className="gap-0 p-3 shadow-sm">
+      <Card className="p-3">
         <AgentNowRibbon project={project} presentation={agentNow} />
       </Card>
-      <Card className="gap-0 p-3 shadow-sm">
+      <Card className="p-3">
         <RibbonFacts
           label="AGENT QUESTION"
           value={decisionToReview?.title ??
@@ -80,7 +81,7 @@ export function ProjectWorkRibbon({
           badgeVariant={decisionBadge.variant}
         />
       </Card>
-      <Card className="gap-0 p-3 shadow-sm">
+      <Card className="p-3">
         <RibbonFacts
           label="OPEN BLOCKER"
           value={blocker?.title ?? "Clear"}
@@ -254,7 +255,7 @@ export function ProjectOperations({
       </div>
 
       {/* Full run journal — collapsed by default */}
-      <details className="rounded-lg border border-border bg-card overflow-hidden">
+      <details className={cn("overflow-hidden", CARD_SURFACE)}>
         <summary className="cursor-pointer px-4 py-3 font-mono text-[10px] text-muted-foreground select-none">
           {"Full run journal · "}
           <span className="tabular-nums">{project.agentRuns.length}</span>

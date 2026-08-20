@@ -1,4 +1,4 @@
-import { PAGE_EYEBROW, SECTION_LABEL } from "../ui/cockpit.tsx";
+import { CARD_SURFACE, PAGE_EYEBROW, SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { JSX, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Splitter } from "@ark-ui/react/splitter";
@@ -123,7 +123,12 @@ export function ComponentWorkspace({
             {selected.label}
           </h3>
         </div>
-        <dl className="grid shrink-0 grid-cols-2 divide-x divide-border overflow-hidden rounded-lg border border-border bg-card sm:grid-cols-3">
+        <dl
+          className={cn(
+            "grid shrink-0 grid-cols-2 divide-x divide-border overflow-hidden sm:grid-cols-3",
+            CARD_SURFACE,
+          )}
+        >
           <div className="flex flex-col gap-0.5 px-3 py-1.5">
             <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
               Catalog
@@ -182,7 +187,7 @@ export function ComponentWorkspace({
         className="flex items-stretch"
       >
         <Splitter.Panel id="viewer" className="min-w-0">
-          <Card className="min-w-0 overflow-hidden py-0">
+          <Card className="min-w-0 overflow-hidden">
             <CardContent className="flex flex-col gap-0 p-0">
               <StructurePartChips
                 components={components}
@@ -328,7 +333,7 @@ function SysmlRail({
     ).length;
   return (
     <aside className="flex min-w-0 flex-col gap-3">
-      <Card className="gap-0 py-0">
+      <Card>
         <CardHeader className="flex-row items-center justify-between gap-2 px-3 py-2">
           <p className={SECTION_LABEL}>
             SysML v2 · {terminology.heading}
@@ -352,7 +357,7 @@ function SysmlRail({
       </Card>
 
       {(selected.attributes ?? []).length > 0 && (
-        <Card className="gap-0 py-0">
+        <Card>
           <CardHeader className="px-3 py-2">
             <p className={SECTION_LABEL}>
               AttributeUsage
@@ -379,7 +384,7 @@ function SysmlRail({
       )}
 
       {subtree.anchoredRequirements.length > 0 && (
-        <Card className="gap-0 py-0">
+        <Card>
           <CardHeader className="px-3 py-2">
             <p className={SECTION_LABEL}>
               Requirements & constraints · anchored
@@ -397,7 +402,8 @@ function SysmlRail({
         <button
           type="button"
           className={cn(
-            "flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left hover:border-brand/30",
+            "flex items-center justify-between gap-3 px-3 py-2 text-left hover:border-brand/30",
+            CARD_SURFACE,
             focusRing,
           )}
           data-provider={activeProvider}
@@ -756,7 +762,7 @@ function SealedAssemblyGlbViewer({ asset, captureArtifact }: {
   captureArtifact: ThreadArtifact;
 }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div className={cn("overflow-hidden", CARD_SURFACE)}>
       <header className="flex items-center justify-between gap-4 border-b border-border px-3 py-3 max-md:flex-col max-md:items-start">
         <div className="min-w-0 space-y-1">
           <small className="text-xs font-medium text-muted-foreground">
@@ -809,7 +815,7 @@ function PartDefinitionGlbViewer({
   presentationArtifact: ThreadArtifact;
 }): JSX.Element {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div className={cn("overflow-hidden", CARD_SURFACE)}>
       <header className="flex items-center justify-between gap-4 border-b border-border px-3 py-3 max-md:flex-col max-md:items-start">
         <div className="min-w-0 space-y-1">
           <small className="text-xs font-medium text-muted-foreground">
@@ -926,7 +932,7 @@ function CadStlViewer({ preview, authoritativeArtifact, snapshot }: {
   }, [preview.url]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div className={cn("overflow-hidden", CARD_SURFACE)}>
       <div
         className="relative h-[clamp(360px,47vh,570px)] overflow-hidden"
         aria-label="Interactive STL geometry"

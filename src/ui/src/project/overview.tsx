@@ -17,7 +17,12 @@ import {
 import { OverviewThreadHero } from "./overview-thread-hero.tsx";
 import { Progress } from "@ark-ui/react/progress";
 import { cn } from "../lib/utils.ts";
-import { PAGE_EYEBROW, PanelFoot, SECTION_LABEL } from "../ui/cockpit.tsx";
+import {
+  CARD_SURFACE,
+  PAGE_EYEBROW,
+  PanelFoot,
+  SECTION_LABEL,
+} from "../ui/cockpit.tsx";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent } from "../ui/card.tsx";
@@ -138,7 +143,12 @@ export function ProjectOverview({
           data-tone={statusTone}
           aria-label={`Project status: ${statusLabel}`}
         >
-          <dl className="grid max-w-full grid-cols-[minmax(0,1.4fr)_auto_auto] divide-x divide-border overflow-hidden rounded-lg border border-border bg-card">
+          <dl
+            className={cn(
+              "grid max-w-full grid-cols-[minmax(0,1.4fr)_auto_auto] divide-x divide-border overflow-hidden",
+              CARD_SURFACE,
+            )}
+          >
             <div className="flex min-w-0 flex-col gap-px px-3 py-1.5">
               <dt className="font-mono text-[9px] font-medium tracking-wider text-muted-foreground">
                 Status
@@ -199,7 +209,7 @@ export function ProjectOverview({
         onOpenEvidence={onOpenEvidence}
       />
 
-      <Card className="gap-0 overflow-hidden py-0 shadow-sm">
+      <Card className="overflow-hidden">
         <section aria-labelledby="project-phase-title">
           <h3 id="project-phase-title" className="sr-only">Project path</h3>
           {/* display:grid retire le rôle liste sous VoiceOver/Safari. */}
@@ -293,7 +303,7 @@ export function ProjectOverview({
           sealedAssemblyGlb?.uri && "lg:grid-cols-[minmax(0,1fr)_340px]",
         )}
       >
-        <Card className="gap-0 overflow-hidden py-0 shadow-sm">
+        <Card className="overflow-hidden">
           <NowPanel
             project={project}
             activeRun={currentFocus.activeRun}
@@ -305,7 +315,7 @@ export function ProjectOverview({
           />
         </Card>
         {sealedAssemblyGlb?.uri && (
-          <Card className="gap-0 overflow-hidden py-0 shadow-sm">
+          <Card className="overflow-hidden">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <p className={cn("m-0", SECTION_LABEL)}>
                 Sealed assembly preview · GLB

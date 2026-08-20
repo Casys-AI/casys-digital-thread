@@ -1,4 +1,4 @@
-import { PAGE_EYEBROW } from "../ui/cockpit.tsx";
+import { CARD_SURFACE, PAGE_EYEBROW } from "../ui/cockpit.tsx";
 import { Fragment, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
@@ -40,7 +40,12 @@ export function ProductRequirementsMatrix({
         <p className={cn("mb-0", PAGE_EYEBROW)}>
           Verification · requirement verdicts
         </p>
-        <dl className="grid shrink-0 grid-cols-3 divide-x divide-border overflow-hidden rounded-lg border border-border bg-card font-mono tabular-nums">
+        <dl
+          className={cn(
+            "grid shrink-0 grid-cols-3 divide-x divide-border overflow-hidden font-mono tabular-nums",
+            CARD_SURFACE,
+          )}
+        >
           <CoverageCell
             label="VERIFIED"
             value={`${matrix.counts.pass}/${matrix.counts.all} PASS`}
@@ -91,7 +96,7 @@ export function ProductRequirementsMatrix({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
+      <div className={cn("overflow-hidden shadow-sm", CARD_SURFACE)}>
         <div
           className={cn(
             "grid font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground",

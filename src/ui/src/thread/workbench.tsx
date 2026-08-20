@@ -1,4 +1,5 @@
-import { PAGE_EYEBROW } from "../ui/cockpit.tsx";
+import { cn } from "../lib/utils.ts";
+import { CARD_SURFACE, PAGE_EYEBROW } from "../ui/cockpit.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
@@ -1975,7 +1976,7 @@ function MetricTiles(
       {items.map((metric) => (
         <article
           key={metric.id}
-          className="rounded-lg border border-border bg-card p-3"
+          className={cn("p-3", CARD_SURFACE)}
           data-metric={metric.id}
           data-tone={metric.tone ?? "neutral"}
         >
