@@ -83,9 +83,11 @@ automatiquement. **`src/ui/src`** reste hors de ce graphe — c'est `deno task c
 jamais rapporter une suite verte obtenue avec `--no-check` : la vérification a été
 désactivée, pas satisfaite.
 
-**`src/ui/dist/**` est commité.** Toute modification de `src/ui/src/` exige de rebuilder
-les surfaces concernées et de commiter le bundle régénéré, sinon le preview et la
-ressource MCP servent l'ancienne UI.
+**`src/ui/dist/**` n'est PAS commité** — c'est une sortie de build, ignorée par git.
+Les surfaces qui la servent la construisent d'abord (`preview:cockpit`, `start:agent`,
+`verify:thread:presentation`) ; `preview:thread` sert depuis Vite et n'en a pas besoin.
+Un clone frais exige donc `npm --prefix src/ui ci` avant la première de ces tâches.
+Ni la CI ni le serveur MCP ne lisent ce dossier.
 
 ## Conventions
 

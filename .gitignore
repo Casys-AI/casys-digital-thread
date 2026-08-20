@@ -5,6 +5,11 @@
 cad-exports/
 node_modules/
 src/ui/.vite/
+# Bundle du cockpit : c'est une SORTIE de build, pas une source. Les surfaces
+# qui le servent le construisent d'abord (preview:cockpit, start:agent,
+# verify:thread:presentation) ; preview:thread sert depuis Vite. Ni la CI ni
+# le serveur MCP n'en dépendent.
+src/ui/dist/
 state/local/
 
 # Réglages Claude Code et worktrees d'agents : purement locaux, et un worktree
