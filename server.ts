@@ -19,6 +19,7 @@ import {
   requestUsesExplicitLoopbackHost,
 } from "./src/adapters/loopback-host.ts";
 import { FileThreadSnapshotStore } from "./src/adapters/shared/stores/file-thread-snapshot-store.ts";
+import { installGracefulHttpShutdown } from "./src/adapters/shared/graceful-http-shutdown.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -2073,7 +2074,7 @@ if (import.meta.main) {
       ? await createLocalCalculixIsolatedExecutionServerOptions()
       : undefined,
   });
-  await app.startHttp({
+  const http = await app.startHttp({
     port,
     hostname,
     corsOrigins: ["http://127.0.0.1", "http://localhost"],
@@ -2096,6 +2097,16 @@ if (import.meta.main) {
           "Project mutation tools disabled: non-loopback MCP binding exposes the read-only fleet console only.",
         );
       }
+    },
+  });
+  installGracefulHttpShutdown(http, {
+    onError(error, context) {
+      console.error(
+        `Casys digital-thread console ${context.phase} failed after ${
+          context.signal ?? "listener disposal"
+        } signal handling:`,
+        error,
+      );
     },
   });
 }
