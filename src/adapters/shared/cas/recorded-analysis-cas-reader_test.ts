@@ -37,7 +37,7 @@ interface TupleReaderPort {
 }
 
 Deno.test(
-  "RecordedAnalysisCasReader reads every reviewed Modelica byte store plus proof and requirements captures",
+  "RecordedAnalysisCasReader reads every reviewed Modelica store plus proof, catalog-offer, and requirements captures",
   async () => {
     const fixture = await createFixture();
     try {
@@ -49,6 +49,10 @@ Deno.test(
         saveBytes(fixture.qualificationCaptures, "qualification capture"),
       ]);
       const proof = await saveText(fixture.proofCaptures, "proof capture");
+      const catalogOffer = await saveText(
+        fixture.sensitivityCatalogOffers,
+        "catalog offer capture",
+      );
       const requirements = await saveRequirementsText(
         fixture.requirementsCaptures,
         "FixtureComponent",
@@ -66,6 +70,7 @@ Deno.test(
         assertEquals(await reader.read(value.tuple), value.bytes);
       }
       assertEquals(await reader.read(proof.tuple), proof.bytes);
+      assertEquals(await reader.read(catalogOffer.tuple), catalogOffer.bytes);
       assertEquals(await reader.read(requirements.tuple), requirements.bytes);
       assertEquals(
         await reader.read(threadArtifact(proof.tuple, proof.fingerprint)),
@@ -111,6 +116,11 @@ Deno.test(
       tuple(`casys://unreviewed/sha256/${digest}`, digest),
       tuple(`casys://simulation-case-v2/not-sha256/${digest}`, digest),
       tuple(`casys://simulation-case-v2/sha256/${digest}`, digest, "text/plain"),
+      tuple(
+        `casys://sensitivity-catalog-offer-capture/sha256/${digest}`,
+        digest,
+        "text/plain",
+      ),
       tuple(`file:///private/recorded-analysis/${digest}`, digest),
       tuple(`mcp://modelica/resources/${digest}`, digest),
       tuple(`casys://requirements-capture/sha256/${digest}`, digest),
@@ -191,6 +201,16 @@ Deno.test(
       );
       await assertRejects(() => fixture.reader().read(proof.tuple), Error);
 
+      const catalogOffer = await saveText(
+        fixture.sensitivityCatalogOffers,
+        "catalog offer before tamper",
+      );
+      await Deno.writeFile(
+        fixture.sensitivityCatalogOffers.pathFor(catalogOffer.fingerprint),
+        encoder.encode("tampered catalog offer bytes"),
+      );
+      await assertRejects(() => fixture.reader().read(catalogOffer.tuple), Error);
+
       const requirements = await saveRequirementsText(
         fixture.requirementsCaptures,
         "FixtureComponent",
@@ -215,6 +235,7 @@ interface Fixture {
   readonly sourceCaptures: FileByteStore<"modelica-qualified-source-capture">;
   readonly qualificationCaptures: FileByteStore<"simulation-case-qualification">;
   readonly proofCaptures: FileCaptureStore<"fea-proof-case">;
+  readonly sensitivityCatalogOffers: FileCaptureStore<"sensitivity-catalog-offer">;
   readonly requirementsCaptures: FileCaptureStore<"requirements-capture">;
   readonly bindings: () => RecordedAnalysisCasStoreBinding[];
   readonly reader: () => RecordedAnalysisCasReader;
@@ -254,6 +275,12 @@ async function createFixture(): Promise<Fixture> {
     uriNamespace: "fea-proof-case-capture",
     label: "FEA proof case",
   });
+  const sensitivityCatalogOffers = new FileCaptureStore({
+    kind: "sensitivity-catalog-offer",
+    directory: `${directory}/sensitivity-catalog-offers`,
+    uriNamespace: "sensitivity-catalog-offer-capture",
+    label: "Sensitivity catalog offer",
+  });
   const requirementsCaptures = new FileCaptureStore({
     kind: "requirements-capture",
     directory: `${directory}/requirements-captures`,
@@ -288,6 +315,11 @@ async function createFixture(): Promise<Fixture> {
       store: proofCaptures,
     },
     {
+      namespace: "sensitivity-catalog-offer-capture",
+      storage: "text",
+      store: sensitivityCatalogOffers,
+    },
+    {
       namespace: "requirements-capture",
       storage: "text",
       store: requirementsCaptures,
@@ -302,6 +334,7 @@ async function createFixture(): Promise<Fixture> {
     sourceCaptures,
     qualificationCaptures,
     proofCaptures,
+    sensitivityCatalogOffers,
     requirementsCaptures,
     bindings,
     reader: () => new RecordedAnalysisCasReader({ stores: bindings() }),
@@ -336,8 +369,8 @@ async function saveBytes<K extends string>(
   };
 }
 
-async function saveText(
-  store: FileCaptureStore<"fea-proof-case">,
+async function saveText<K extends string>(
+  store: FileCaptureStore<K>,
   text: string,
 ): Promise<StoredValue> {
   const bytes = encoder.encode(text);
@@ -472,6 +505,13 @@ function countingBindings(
       namespace: "fea-proof-case-capture",
       storage: "text",
       store: text<"fea-proof-case">("fea-proof-case-capture"),
+    },
+    {
+      namespace: "sensitivity-catalog-offer-capture",
+      storage: "text",
+      store: text<"sensitivity-catalog-offer">(
+        "sensitivity-catalog-offer-capture",
+      ),
     },
     {
       namespace: "requirements-capture",

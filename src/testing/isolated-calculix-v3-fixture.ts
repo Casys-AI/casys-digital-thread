@@ -437,6 +437,9 @@ async function createIsolatedCalculixFixture(
 }
 
 async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
+  const artifactChangedAt = Number.isNaN(Date.parse(sealedAt))
+    ? fresh().changedAt
+    : sealedAt;
   const subjectId = ancestor.subject.id;
   const stepBytes = new TextEncoder().encode(
     "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n",
@@ -512,6 +515,9 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
   };
   const proofCase = validateMechanicalProofCase(rawProof);
   const proofText = canonicalProofText(proofCase);
+  const proofDigest = await fingerprintResourceBytes(
+    new TextEncoder().encode(proofText),
+  );
   const proofCaptureText = JSON.stringify({
     canonicalProofText: proofText,
     geometryArtifact: {
@@ -520,7 +526,7 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
       producerRunId: geometryArtifact.producer.runId,
     },
     operation: { id: "verify.seal-proof-case", version: "1" },
-    proofDigest: await fingerprintResourceBytes(new TextEncoder().encode(proofText)),
+    proofDigest,
     requirementsArtifact: {
       id: requirementsArtifact.id,
       fingerprint: requirementsArtifact.fingerprint,
@@ -547,19 +553,23 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
   const canonicalCaptureText = deterministicJson(JSON.parse(proofCaptureText));
   const proofBytes = new TextEncoder().encode(canonicalCaptureText);
   const proofFingerprint = await fingerprint(proofBytes);
-  const proofArtifact = artifact(
-    "fixture-proof-capture",
-    "document",
-    proofFingerprint,
-    `casys://fixture-fea-proof-capture/sha256/${proofFingerprint.digest}`,
-    "application/json",
-    [geometryArtifact.id, requirementsArtifact.id, stepArtifact.id],
-    {
-      serverId: "digital-thread",
-      tool: "verify.seal-proof-case@1",
-      runId: "run:fixture-seal-proof",
-    },
-  );
+  const proofArtifact = {
+    ...artifact(
+      `fea-proof-${proofFingerprint.digest}`,
+      "document",
+      proofFingerprint,
+      `casys://fea-proof-case-capture/sha256/${proofFingerprint.digest}`,
+      "application/json",
+      [geometryArtifact.id, requirementsArtifact.id, stepArtifact.id],
+      {
+        serverId: "digital-thread",
+        tool: "verify.seal-proof-case@1",
+        runId: "run:fixture-seal-proof",
+      },
+    ),
+    version: proofDigest,
+    freshness: { ...fresh(), changedAt: artifactChangedAt },
+  };
   const requirements: TracedRequirement[] = proofCase.requirements.map((
     requirement,
   ) => ({

@@ -47,6 +47,10 @@ const PROFILE = {
     storage: "text",
     mediaTypes: ["application/json"],
   },
+  "sensitivity-catalog-offer-capture": {
+    storage: "text",
+    mediaTypes: ["application/json"],
+  },
   "requirements-capture": {
     storage: "text",
     mediaTypes: ["application/json"],
@@ -95,6 +99,12 @@ type FeaProofCaptureStoreBinding = {
   readonly store: FileCaptureStore<"fea-proof-case">;
 };
 
+type SensitivityCatalogOfferCaptureStoreBinding = {
+  readonly namespace: "sensitivity-catalog-offer-capture";
+  readonly storage: "text";
+  readonly store: FileCaptureStore<"sensitivity-catalog-offer">;
+};
+
 type RequirementsCaptureStoreBinding = {
   readonly namespace: "requirements-capture";
   readonly storage: "text";
@@ -109,6 +119,7 @@ type RequirementsCaptureStoreBinding = {
 export type RecordedAnalysisCasStoreBinding =
   | ModelicaByteStoreBinding
   | FeaProofCaptureStoreBinding
+  | SensitivityCatalogOfferCaptureStoreBinding
   | RequirementsCaptureStoreBinding;
 
 export interface RecordedAnalysisCasReaderOptions {

@@ -1047,6 +1047,12 @@ async function createProjectControl(
   const feaProofCaptures = new FileCaptureStore(
     FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   );
+  // The ROP authority audit reopens this optional sidecar from the same
+  // immutable store used by the proof-seal executor. The namespace remains a
+  // closed, code-owned member of RecordedAnalysisCasReader.
+  const sensitivityCatalogOfferCaptures = new FileCaptureStore(
+    SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
+  );
   // Requirements are likewise a historical shared CAS. Model authoring, the
   // proof-case seal, the isolated @3 run and the ROP2 reader must resolve the
   // same immutable bytes, including when a deployment overrides only their
@@ -1089,6 +1095,11 @@ async function createProjectControl(
         store: feaProofCaptures,
       },
       {
+        namespace: "sensitivity-catalog-offer-capture",
+        storage: "text",
+        store: sensitivityCatalogOfferCaptures,
+      },
+      {
         namespace: "requirements-capture",
         storage: "text",
         store: requirementsCaptures,
@@ -1098,6 +1109,7 @@ async function createProjectControl(
   const recordedPlanResolver = new ResolvedOperationPlanResolver({
     snapshots: threadSnapshots,
     artifacts: recordedAnalysisCas,
+    admissions: technicalCompilationAdmissions,
     stepAssets: new FileCanonicalAssetReader({
       directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
     }),
@@ -1465,9 +1477,6 @@ async function createProjectControl(
     admissionReviewer: recordedPlanResolver,
     projects: runtime.projects,
   });
-  const sensitivityCatalogOfferCaptures = new FileCaptureStore(
-    SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
-  );
   const genericVerifySealProofCase = new VerifySealProofCaseRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,

@@ -29,6 +29,7 @@ import {
   parseFeaProofCaseCapture,
 } from "../../../domain/fea/seal-case/fea-proof-case-capture.ts";
 import {
+  type FeaProofDecisionParameters,
   feaProofDecisionParametersToMap,
   parseFeaProofDecisionParameters,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
@@ -62,8 +63,11 @@ import type {
   ThreadArtifact,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
+import { archivedRefKeys } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
+import { parseSensitivityCatalogOfferCapture } from "../../../domain/sensitivity/study/sensitivity-catalog-offer-capture.ts";
 import type { CanonicalAssetReader } from "../../../application/ports/out/canonical-asset-reader.ts";
+import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import type {
   FeaIsolatedRunAdmissionReview,
   FeaIsolatedRunAdmissionReviewer,
@@ -109,6 +113,8 @@ export interface ResolvedOperationPlanResolverOptions {
   readonly snapshots: ExactThreadSnapshotReader;
   readonly artifacts: RecordedPlanArtifactReader;
   readonly stepAssets: CanonicalAssetReader;
+  /** Canonical reopen of an admission named by a signed sensitivity opt-in. */
+  readonly admissions?: Pick<TechnicalCompilationAdmissionReader, "read">;
   readonly calculix?: {
     readonly elementOrder?: 1 | 2;
     readonly timeoutMs?: number;
@@ -618,6 +624,8 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
       proof,
       proofArtifact,
       this.options.snapshots,
+      this.options.admissions,
+      (artifact) => this.#artifactBytes(artifact),
     );
     if (
       stepArtifact.kind !== "step" ||
@@ -1211,6 +1219,8 @@ async function assertFeaProofSealProjectHistory(
   proof: ProofCapture,
   proofArtifact: ThreadArtifact,
   snapshots: ExactThreadSnapshotReader,
+  admissions: Pick<TechnicalCompilationAdmissionReader, "read"> | undefined,
+  readArtifactBytes: (artifact: ThreadArtifact) => Promise<Uint8Array>,
 ): Promise<void> {
   const workItem = project.workItems.find((item) =>
     item.id === proof.case.authorization.workItemId
@@ -1252,7 +1262,10 @@ async function assertFeaProofSealProjectHistory(
     );
   }
   await assertFeaSealRunInputFingerprint(project, run, workItem);
-  await assertFeaSealDecisionMatchesProof(decision, proof);
+  const decisionParameters = await assertFeaSealDecisionMatchesProof(
+    decision,
+    proof,
+  );
 
   const resultReference = run.resultSnapshot;
   const rawResult = await snapshots.get(resultReference.snapshotId);
@@ -1286,8 +1299,26 @@ async function assertFeaProofSealProjectHistory(
   const sealedArtifact = artifactById(sealResult, proofArtifact.id);
   if (
     !sameExactArtifactIdentity(sealedArtifact, proofArtifact) ||
-    !isExactFeaSealArtifact(sealedArtifact, run.id) ||
-    !exactArtifactEvidence(run.evidenceRefs, resultReference, proofArtifact.id) ||
+    !isExactFeaSealArtifact(
+      sealedArtifact,
+      sealResult,
+      run.id,
+      proof.sealedAt,
+      decisionParameters.proofDigest,
+    ) ||
+    !await exactFeaSealEvidence(
+      run.evidenceRefs,
+      resultReference,
+      project.project.id,
+      sealBasis,
+      sealResult,
+      proofArtifact,
+      run.id,
+      proof.sealedAt,
+      decisionParameters,
+      admissions,
+      readArtifactBytes,
+    ) ||
     !await threadSnapshotDescendsFrom(currentBasis, sealResult, snapshots)
   ) {
     throw new TypeError(
@@ -1363,7 +1394,7 @@ async function assertFeaSealRunInputFingerprint(
 async function assertFeaSealDecisionMatchesProof(
   decision: EngineeringDecision,
   proof: ProofCapture,
-): Promise<void> {
+): Promise<FeaProofDecisionParameters> {
   try {
     const parameters = parseFeaProofDecisionParameters(
       feaProofDecisionParametersToMap(decision.proposal!.parameters),
@@ -1385,6 +1416,7 @@ async function assertFeaSealDecisionMatchesProof(
     ) {
       throw new Error("sealed declaration or source artifact identity diverges");
     }
+    return parameters;
   } catch (cause) {
     throw new TypeError(
       `FEA proof authority MRTR does not match the sealed proof: ${
@@ -1394,21 +1426,164 @@ async function assertFeaSealDecisionMatchesProof(
   }
 }
 
-function isExactFeaSealArtifact(artifact: ThreadArtifact, runId: string): boolean {
-  return artifact.producer.serverId === "digital-thread" &&
+function isExactFeaSealArtifact(
+  artifact: ThreadArtifact,
+  snapshot: ThreadSnapshot,
+  runId: string,
+  sealedAt: string,
+  proofDigest: string,
+): boolean {
+  const captureDigest = artifact.fingerprint.digest;
+  return artifact.kind === "document" &&
+    artifact.mediaType === "application/json" &&
+    artifact.fingerprint.algorithm === "sha256" &&
+    artifact.id === `fea-proof-${captureDigest}` &&
+    artifact.version === proofDigest &&
+    artifact.uri === `casys://fea-proof-case-capture/sha256/${captureDigest}` &&
+    artifact.freshness.status === "fresh" &&
+    artifact.freshness.changedAt === sealedAt &&
+    !archivedRefKeys(snapshot).has(`artifact:${artifact.id}`) &&
+    artifact.producer.serverId === "digital-thread" &&
     artifact.producer.tool === "verify.seal-proof-case@1" &&
     artifact.producer.runId === runId;
 }
 
-function exactArtifactEvidence(
+async function exactFeaSealEvidence(
   evidenceRefs: readonly EngineeringThreadEntityRef[],
   result: { readonly snapshotId: string; readonly revision: number },
-  artifactId: string,
-): boolean {
-  return evidenceRefs.length === 1 &&
-    evidenceRefs[0]?.snapshotId === result.snapshotId &&
-    evidenceRefs[0]?.snapshotRevision === result.revision &&
-    evidenceRefs[0]?.kind === "artifact" && evidenceRefs[0]?.id === artifactId;
+  projectId: string,
+  sealBasis: ThreadSnapshot,
+  sealResult: ThreadSnapshot,
+  proofArtifact: ThreadArtifact,
+  runId: string,
+  sealedAt: string,
+  decisionParameters: FeaProofDecisionParameters,
+  admissions: Pick<TechnicalCompilationAdmissionReader, "read"> | undefined,
+  readArtifactBytes: (artifact: ThreadArtifact) => Promise<Uint8Array>,
+): Promise<boolean> {
+  const signedCatalog = decisionParameters.sensitivityCatalog;
+  const expectedEvidenceCount = signedCatalog === undefined ? 1 : 2;
+  if (evidenceRefs.length !== expectedEvidenceCount) return false;
+  const onResult = (ref: EngineeringThreadEntityRef) =>
+    ref.snapshotId === result.snapshotId &&
+    ref.snapshotRevision === result.revision &&
+    ref.kind === "artifact";
+  if (!evidenceRefs.every(onResult)) return false;
+  const ids = evidenceRefs.map((ref) => ref.id);
+  if (new Set(ids).size !== ids.length) return false;
+  if (ids[0] !== proofArtifact.id) return false;
+  const basisArtifactIds = new Set(sealBasis.artifacts.map((artifact) => artifact.id));
+  const artifactsPublishedBySealRun = sealResult.artifacts.filter((artifact) =>
+    !basisArtifactIds.has(artifact.id) &&
+    artifact.producer.serverId === "digital-thread" &&
+    artifact.producer.tool === "verify.seal-proof-case@1" &&
+    artifact.producer.runId === runId
+  );
+  if (
+    artifactsPublishedBySealRun.length !== ids.length ||
+    artifactsPublishedBySealRun.some((artifact) => !ids.includes(artifact.id))
+  ) {
+    return false;
+  }
+  if (signedCatalog === undefined) return true;
+
+  const offerId = ids[1];
+  if (!offerId) return false;
+  const offerMatches = sealResult.artifacts.filter((artifact) =>
+    artifact.id === offerId
+  );
+  return offerMatches.length === 1 &&
+    await isExactFeaSensitivityCatalogOffer(
+      offerMatches[0],
+      projectId,
+      sealBasis,
+      sealResult,
+      proofArtifact,
+      runId,
+      sealedAt,
+      decisionParameters,
+      admissions,
+      readArtifactBytes,
+    );
+}
+
+async function isExactFeaSensitivityCatalogOffer(
+  artifact: ThreadArtifact,
+  projectId: string,
+  sealBasis: ThreadSnapshot,
+  sealResult: ThreadSnapshot,
+  proofArtifact: ThreadArtifact,
+  runId: string,
+  sealedAt: string,
+  decisionParameters: FeaProofDecisionParameters,
+  admissions: Pick<TechnicalCompilationAdmissionReader, "read"> | undefined,
+  readArtifactBytes: (artifact: ThreadArtifact) => Promise<Uint8Array>,
+): Promise<boolean> {
+  const signedCatalog = decisionParameters.sensitivityCatalog;
+  if (signedCatalog === undefined) return false;
+  const digest = artifact.fingerprint.digest;
+  if (
+    artifact.kind !== "document" ||
+    artifact.mediaType !== "application/json" ||
+    artifact.freshness.status !== "fresh" ||
+    artifact.fingerprint.algorithm !== "sha256" ||
+    artifact.id !== `sensitivity-catalog-offer-${digest}` ||
+    artifact.uri !==
+      `casys://sensitivity-catalog-offer-capture/sha256/${digest}` ||
+    artifact.producer.serverId !== "digital-thread" ||
+    artifact.producer.tool !== "verify.seal-proof-case@1" ||
+    artifact.producer.runId !== runId ||
+    artifact.freshness.changedAt !== sealedAt ||
+    archivedRefKeys(sealResult).has(`artifact:${artifact.id}`) ||
+    artifact.inputArtifactIds.length !== 2 ||
+    artifact.inputArtifactIds[0] !== proofArtifact.id
+  ) {
+    return false;
+  }
+  const admissionId = artifact.inputArtifactIds[1];
+  if (!admissionId || admissionId !== signedCatalog.admissionArtifact.id) {
+    return false;
+  }
+  const admissionMatches = sealBasis.artifacts.filter((candidate) =>
+    candidate.id === admissionId
+  );
+  if (admissionMatches.length !== 1 || admissions === undefined) {
+    return false;
+  }
+  const admission = admissionMatches[0];
+
+  try {
+    const reopenedAdmission = await admissions.read({
+      projectId,
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: sealBasis.id,
+        revision: sealBasis.revision,
+        subjectId: sealBasis.subject.id,
+      },
+      artifactId: admission.id,
+      artifactFingerprint: signedCatalog.admissionArtifact.fingerprint,
+    });
+    if (reopenedAdmission === undefined) return false;
+    const capture = await parseSensitivityCatalogOfferCapture(
+      decodeUtf8(
+        await readArtifactBytes(artifact),
+        "sensitivity catalog offer capture",
+      ),
+    );
+    return artifact.version === signedCatalog.digest &&
+      capture.trustedRunId === runId &&
+      capture.sealedAt === sealedAt &&
+      capture.offerDigest === signedCatalog.digest &&
+      capture.offer.authority.proofDigest === decisionParameters.proofDigest &&
+      capture.offer.authority.admissionArtifact.id === admission.id &&
+      fingerprintsEqual(
+        capture.offer.authority.admissionArtifact.fingerprint,
+        admission.fingerprint,
+      ) && reopenedAdmission.trustedRunId === admission.producer.runId;
+  } catch {
+    return false;
+  }
 }
 
 function isExactSealArtifact(artifact: ThreadArtifact, runId: string): boolean {

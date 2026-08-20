@@ -12,6 +12,11 @@ import {
 } from "../../../domain/fea/seal-case/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
 import {
+  compileSensitivityCatalogOffer,
+  SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
+  SENSITIVITY_CATALOG_OFFER_SCHEMA,
+} from "../../../domain/sensitivity/study/sensitivity-catalog-from-proof.ts";
+import {
   canonicalSimulationCaseV2Text,
   validateSimulationCaseV2,
 } from "../../../domain/modelica/recorded/simulation-case-v2.ts";
@@ -412,6 +417,147 @@ Deno.test("ResolvedOperationPlanResolver rejects a CalculiX proof-seal result wi
         new ResolvedOperationPlanResolver(fixture.dependencies).resolve(fixture.input),
       TypeError,
       mutation === "evidence" ? "FEA proof authority" : "direct immutable child",
+      mutation,
+    );
+  }
+});
+
+Deno.test("ResolvedOperationPlanResolver accepts a CalculiX proof-seal that also recorded the signed catalog offer", async () => {
+  const fixture = await calculixFixture({ sensitivityCatalogOffer: "exact" });
+  const plan = await new ResolvedOperationPlanResolver(fixture.dependencies)
+    .resolve(fixture.input);
+  validateResolvedOperationPlanV2(plan);
+  assertEquals(plan.authorization.methodQualification.fingerprint, {
+    algorithm: "sha256",
+    digest: fixture.proofArtifact.fingerprint.digest,
+  });
+  assertEquals(
+    fixture.input.project.agentRuns.find((run) => run.id === "seal-fea")
+      ?.evidenceRefs.map((reference) => reference.id),
+    [fixture.proofArtifact.id, fixture.sensitivityCatalogOffer?.id],
+  );
+});
+
+Deno.test("ResolvedOperationPlanResolver rejects a catalog offer that was not signed in the proof-seal MRTR", async () => {
+  const fixture = await calculixFixture({
+    sensitivityCatalogOffer: "unsigned",
+  });
+  await assertRejects(
+    () =>
+      new ResolvedOperationPlanResolver(fixture.dependencies).resolve(
+        fixture.input,
+      ),
+    TypeError,
+    "FEA proof authority result, evidence, producer, or preserved seal lineage is not exact.",
+  );
+});
+
+Deno.test("ResolvedOperationPlanResolver rejects an unsigned catalog offer hidden outside completed evidenceRefs", async () => {
+  const fixture = await calculixFixture({
+    sensitivityCatalogOffer: "unsigned",
+  });
+  const project = fixture.input.project as unknown as MutableProject;
+  const run = requireProjectEntry(project.agentRuns, "seal-fea", "seal run");
+  run.evidenceRefs = run.evidenceRefs.slice(0, 1);
+  await refreshQueueBasisProjectFingerprint(fixture.input);
+  await assertRejects(
+    () =>
+      new ResolvedOperationPlanResolver(fixture.dependencies).resolve(
+        fixture.input,
+      ),
+    TypeError,
+    "FEA proof authority result, evidence, producer, or preserved seal lineage is not exact.",
+  );
+});
+
+Deno.test("ResolvedOperationPlanResolver rejects a signed catalog opt-in whose completed run omits the offer evidence", async () => {
+  const fixture = await calculixFixture({ sensitivityCatalogOffer: "exact" });
+  const project = fixture.input.project as unknown as MutableProject;
+  const run = requireProjectEntry(project.agentRuns, "seal-fea", "seal run");
+  run.evidenceRefs = run.evidenceRefs.slice(0, 1);
+  await refreshQueueBasisProjectFingerprint(fixture.input);
+  await assertRejects(
+    () =>
+      new ResolvedOperationPlanResolver(fixture.dependencies).resolve(
+        fixture.input,
+      ),
+    TypeError,
+    "FEA proof authority result, evidence, producer, or preserved seal lineage is not exact.",
+  );
+});
+
+Deno.test("ResolvedOperationPlanResolver rejects a phantom prefixed catalog-offer evidence ref", async () => {
+  const fixture = await calculixFixture();
+  const project = fixture.input.project as unknown as MutableProject;
+  const run = requireProjectEntry(project.agentRuns, "seal-fea", "seal run");
+  const proofRef = run.evidenceRefs[0];
+  if (!proofRef) throw new Error("Missing test proof evidence ref.");
+  run.evidenceRefs = [
+    proofRef,
+    {
+      snapshotId: proofRef.snapshotId,
+      snapshotRevision: proofRef.snapshotRevision,
+      kind: "artifact",
+      id: `sensitivity-catalog-offer-${"a".repeat(64)}`,
+    },
+  ];
+  await refreshQueueBasisProjectFingerprint(fixture.input);
+  await assertRejects(
+    () =>
+      new ResolvedOperationPlanResolver(fixture.dependencies).resolve(fixture.input),
+    TypeError,
+    "FEA proof authority result, evidence, producer, or preserved seal lineage is not exact.",
+  );
+});
+
+Deno.test("ResolvedOperationPlanResolver rejects a proof capture published under a noncanonical artifact id", async () => {
+  const fixture = await calculixFixture({ aliasProofId: true });
+  await assertRejects(
+    () =>
+      new ResolvedOperationPlanResolver(fixture.dependencies).resolve(
+        fixture.input,
+      ),
+    TypeError,
+    "FEA proof authority result, evidence, producer, or preserved seal lineage is not exact.",
+  );
+});
+
+Deno.test("ResolvedOperationPlanResolver rejects a catalog offer from the wrong producer or run", async () => {
+  for (const mutation of ["wrong-producer", "wrong-run"] as const) {
+    const fixture = await calculixFixture({ sensitivityCatalogOffer: mutation });
+    await assertRejects(
+      () =>
+        new ResolvedOperationPlanResolver(fixture.dependencies).resolve(
+          fixture.input,
+        ),
+      TypeError,
+      "FEA proof authority result, evidence, producer, or preserved seal lineage is not exact.",
+      mutation,
+    );
+  }
+});
+
+Deno.test("ResolvedOperationPlanResolver rejects a signed catalog offer whose closed authority tuple drifts", async () => {
+  for (
+    const mutation of [
+      "wrong-inputs",
+      "wrong-admission-input",
+      "wrong-signed-admission",
+      "wrong-version",
+      "wrong-proof-authority",
+      "missing-capture",
+      "corrupt-capture",
+      "admission-unavailable",
+    ] as const
+  ) {
+    const fixture = await calculixFixture({ sensitivityCatalogOffer: mutation });
+    await assertRejects(
+      () =>
+        new ResolvedOperationPlanResolver(fixture.dependencies).resolve(
+          fixture.input,
+        ),
+      TypeError,
+      "FEA proof authority result, evidence, producer, or preserved seal lineage is not exact.",
       mutation,
     );
   }
@@ -1012,22 +1158,64 @@ async function modelicaFixture(
 async function calculixFixture(
   options: {
     aliasStepId?: boolean;
+    aliasProofId?: boolean;
     transplantedProofAuthority?: boolean;
     unrelatedProofBasis?: boolean;
     stepUri?: (digest: string) => string;
     stepKind?: ThreadArtifact["kind"];
     stepMediaType?: string;
     operationVersion?: "2" | "3";
+    sensitivityCatalogOffer?:
+      | "exact"
+      | "unsigned"
+      | "wrong-producer"
+      | "wrong-run"
+      | "wrong-inputs"
+      | "wrong-admission-input"
+      | "wrong-signed-admission"
+      | "wrong-version"
+      | "wrong-proof-authority"
+      | "missing-capture"
+      | "corrupt-capture"
+      | "admission-unavailable";
   } = {},
 ) {
   const rawProof = JSON.parse(
     await Deno.readTextFile(
-      "config/mechanical-proof-cases/desk-lamp-dl01-articulated-arm-cantilever.json",
+      options.sensitivityCatalogOffer
+        ? "config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json"
+        : "config/mechanical-proof-cases/desk-lamp-dl01-articulated-arm-cantilever.json",
     ),
   );
   const stepBytes = new TextEncoder().encode("ISO-10303-21; synthetic exact STEP");
   const stepFp = await rawFingerprint(stepBytes);
-  const ancestor = baseSnapshot("proof-base", 1, "subject-fea");
+  const initialAncestor = baseSnapshot("proof-base", 1, "subject-fea");
+  const admissionDigest = "f".repeat(64);
+  const sensitivityCatalogAdmission = options.sensitivityCatalogOffer
+    ? {
+      ...threadArtifact(
+        `technical-compilation-admission-${admissionDigest}`,
+        "document",
+        { algorithm: "sha256", digest: admissionDigest },
+        `casys://technical-compilation-admission-capture/sha256/${admissionDigest}`,
+        "application/json",
+        [],
+        {
+          serverId: "digital-thread",
+          tool: "compile.seal-admission@1",
+          runId: "seal-admission",
+        },
+      ),
+      version: admissionDigest,
+    }
+    : undefined;
+  const ancestor = sensitivityCatalogAdmission
+    ? successor(
+      initialAncestor,
+      [sensitivityCatalogAdmission],
+      "catalog-offer-admission-seal",
+    )
+    : initialAncestor;
   const unrelated = options.unrelatedProofBasis
     ? baseSnapshot("proof-unrelated", 1, ancestor.subject.id)
     : undefined;
@@ -1053,6 +1241,7 @@ async function calculixFixture(
     bytes: stepBytes.byteLength,
   };
   const proofCase = validateMechanicalProofCase(rawProof);
+  const proofDigest = (await sha256Fingerprint(proofCase)).digest;
   const proofText = canonicalProofText(proofCase);
   const boundStepId = options.aliasStepId ? "alias-step" : "expected-step";
   const captureStepId = "expected-step";
@@ -1103,7 +1292,7 @@ async function calculixFixture(
     schemaVersion: "fea-proof-case-capture/1.0",
     operation: { id: "verify.seal-proof-case", version: "1" },
     trustedRunId: "seal-fea",
-    proofDigest: (await sha256Fingerprint(proofCase)).digest,
+    proofDigest,
     canonicalProofText: proofText,
     geometryArtifact: {
       id: geometryCapture.id,
@@ -1130,15 +1319,111 @@ async function calculixFixture(
   });
   const proofBytes = new TextEncoder().encode(proofCaptureText);
   const proofFp = await rawFingerprint(proofBytes);
-  const proofArtifact = threadArtifact(
-    "proof-artifact",
-    "document",
-    proofFp,
-    casUri("fea-proof-case-capture", proofFp.digest),
-    "application/json",
-    [geometryCapture.id, requirementsArtifact.id, capturedStepArtifact.id],
-    proofProducer,
-  );
+  const proofArtifact = {
+    ...threadArtifact(
+      options.aliasProofId ? "proof-artifact-alias" : `fea-proof-${proofFp.digest}`,
+      "document",
+      proofFp,
+      casUri("fea-proof-case-capture", proofFp.digest),
+      "application/json",
+      [geometryCapture.id, requirementsArtifact.id, capturedStepArtifact.id],
+      proofProducer,
+    ),
+    version: proofDigest,
+  };
+  const compiledCatalogOffer = options.sensitivityCatalogOffer &&
+      sensitivityCatalogAdmission
+    ? compileSensitivityCatalogOffer(
+      proofCase,
+      [{
+        semanticKey: "arm_thickness",
+        value: 10,
+        sourceId: "source.arm",
+        sourceSymbolId: "parameter.arm-thickness",
+        parameterBindingId: "binding.arm-thickness",
+        parameterSysmlElementId: "sysml.arm-thickness",
+        resultSymbolId: "artifact.result",
+      }],
+      {
+        proofDigest: options.sensitivityCatalogOffer === "wrong-proof-authority"
+          ? "0".repeat(64)
+          : proofDigest,
+        admissionArtifact: {
+          id: sensitivityCatalogAdmission.id,
+          fingerprint: sensitivityCatalogAdmission.fingerprint,
+        },
+        source: {
+          id: "source.arm",
+          fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+        },
+        resultBinding: {
+          id: "binding.result",
+          sourceSymbolId: "artifact.result",
+          modelElementId: proofCase.target.modelElementId,
+        },
+      },
+    )
+    : undefined;
+  if (compiledCatalogOffer && compiledCatalogOffer.status !== "ready-for-opt-in") {
+    throw new Error(
+      `Expected a ready sensitivity catalog offer, got ${compiledCatalogOffer.status}.`,
+    );
+  }
+  const catalogOfferDigest = compiledCatalogOffer
+    ? (await sha256Fingerprint(compiledCatalogOffer)).digest
+    : undefined;
+  const catalogOfferCaptureText = compiledCatalogOffer && catalogOfferDigest
+    ? deterministicJson({
+      schemaVersion: SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
+      operation: { id: "verify.seal-proof-case", version: "1" },
+      trustedRunId: "seal-fea",
+      sealedAt: AT,
+      offerDigest: catalogOfferDigest,
+      offer: compiledCatalogOffer,
+    })
+    : undefined;
+  const catalogOfferCaptureBytes = catalogOfferCaptureText
+    ? new TextEncoder().encode(catalogOfferCaptureText)
+    : undefined;
+  const catalogOfferCaptureFingerprint = catalogOfferCaptureBytes
+    ? await rawFingerprint(catalogOfferCaptureBytes)
+    : undefined;
+  const sensitivityCatalogOffer = options.sensitivityCatalogOffer &&
+      sensitivityCatalogAdmission && catalogOfferDigest &&
+      catalogOfferCaptureFingerprint
+    ? {
+      ...threadArtifact(
+        `sensitivity-catalog-offer-${catalogOfferCaptureFingerprint.digest}`,
+        "document",
+        catalogOfferCaptureFingerprint,
+        `casys://sensitivity-catalog-offer-capture/sha256/${catalogOfferCaptureFingerprint.digest}`,
+        "application/json",
+        options.sensitivityCatalogOffer === "wrong-inputs"
+          ? [
+            proofArtifact.id,
+            sensitivityCatalogAdmission.id,
+            geometryCapture.id,
+          ]
+          : options.sensitivityCatalogOffer === "wrong-admission-input"
+          ? [proofArtifact.id, geometryCapture.id]
+          : [proofArtifact.id, sensitivityCatalogAdmission.id],
+        {
+          serverId: options.sensitivityCatalogOffer === "wrong-producer"
+            ? "foreign-thread"
+            : "digital-thread",
+          tool: options.sensitivityCatalogOffer === "wrong-producer"
+            ? "foreign.seal@1"
+            : "verify.seal-proof-case@1",
+          runId: options.sensitivityCatalogOffer === "wrong-run"
+            ? "foreign-seal-run"
+            : "seal-fea",
+        },
+      ),
+      version: options.sensitivityCatalogOffer === "wrong-version"
+        ? "2".repeat(64)
+        : catalogOfferDigest,
+    }
+    : undefined;
   const stepArtifact = options.aliasStepId
     ? threadArtifact(
       boundStepId,
@@ -1156,18 +1441,37 @@ async function calculixFixture(
     capturedStepArtifact,
     ...(stepArtifact === capturedStepArtifact ? [] : [stepArtifact]),
     proofArtifact,
+    ...(sensitivityCatalogOffer ? [sensitivityCatalogOffer] : []),
   ];
   const basis = successor(ancestor, basisArtifacts, "proof-seal");
-  const stores = new Map([[ancestor.id, ancestor], [basis.id, basis]]);
+  const stores = new Map([
+    [initialAncestor.id, initialAncestor],
+    [ancestor.id, ancestor],
+    [basis.id, basis],
+  ]);
   if (unrelated) stores.set(unrelated.id, unrelated);
   const sealBasis = snapshotReference(ancestor);
   const sealProposal = {
     summary: "Seal the exact reviewed FEA proof case.",
     parameters: encodeFeaProofDecisionParameters(
-      (await sha256Fingerprint(proofCase)).digest,
+      proofDigest,
       proofCase,
       { id: geometryCapture.id, fingerprint: geometryCapture.fingerprint },
       { id: requirementsArtifact.id, fingerprint: requirementsArtifact.fingerprint },
+      sensitivityCatalogOffer && catalogOfferDigest &&
+        options.sensitivityCatalogOffer !== "unsigned"
+        ? {
+          schemaVersion: SENSITIVITY_CATALOG_OFFER_SCHEMA,
+          digest: catalogOfferDigest,
+          admissionArtifact: {
+            id: sensitivityCatalogAdmission!.id,
+            fingerprint: options.sensitivityCatalogOffer ===
+                "wrong-signed-admission"
+              ? { algorithm: "sha256", digest: "3".repeat(64) }
+              : sensitivityCatalogAdmission!.fingerprint,
+          },
+        }
+        : undefined,
     ),
   };
   const sealDecisionFingerprint = await sha256Fingerprint({
@@ -1239,7 +1543,10 @@ async function calculixFixture(
       completedAt: AT,
       basis: { kind: "thread-snapshot", ...sealBasis },
       inputFingerprint: sealRunFingerprint,
-      evidenceRefs: artifactEvidenceRefs(basis, [proofArtifact]),
+      evidenceRefs: artifactEvidenceRefs(basis, [
+        proofArtifact,
+        ...(sensitivityCatalogOffer ? [sensitivityCatalogOffer] : []),
+      ]),
       resultSnapshot: snapshotReference(basis),
     },
     decision: sealDecision,
@@ -1258,16 +1565,61 @@ async function calculixFixture(
     ],
     history,
   });
+  const bytesByUri = new Map<string, Uint8Array>([[proofArtifact.uri!, proofBytes]]);
+  if (
+    sensitivityCatalogOffer?.uri && catalogOfferCaptureBytes &&
+    options.sensitivityCatalogOffer !== "missing-capture"
+  ) {
+    bytesByUri.set(
+      sensitivityCatalogOffer.uri,
+      options.sensitivityCatalogOffer === "corrupt-capture"
+        ? new TextEncoder().encode("corrupt capture")
+        : catalogOfferCaptureBytes,
+    );
+  }
   return {
     proofCase,
     proofArtifact,
+    sensitivityCatalogOffer,
     stepArtifact,
     stepBytes,
     input,
     stores,
     dependencies: {
       snapshots: exactSnapshotReader(stores),
-      artifacts: artifactReader(new Map([[proofArtifact.uri!, proofBytes]])),
+      artifacts: artifactReader(bytesByUri),
+      ...(sensitivityCatalogAdmission
+        ? {
+          admissions: {
+            read: (request: {
+              projectId: string;
+              basis: {
+                snapshotId: string;
+                revision: number;
+                subjectId: string;
+              };
+              artifactId: string;
+              artifactFingerprint: ContentFingerprint;
+            }) =>
+              Promise.resolve(
+                options.sensitivityCatalogOffer === "admission-unavailable" ||
+                  request.projectId !== proofCase.project.id ||
+                  request.basis.snapshotId !== ancestor.id ||
+                  request.basis.revision !== ancestor.revision ||
+                  request.basis.subjectId !== ancestor.subject.id ||
+                  request.artifactId !== sensitivityCatalogAdmission.id ||
+                  request.artifactFingerprint.algorithm !==
+                    sensitivityCatalogAdmission.fingerprint.algorithm ||
+                  request.artifactFingerprint.digest !==
+                    sensitivityCatalogAdmission.fingerprint.digest
+                  ? undefined
+                  : ({
+                    trustedRunId: sensitivityCatalogAdmission.producer.runId,
+                  } as never),
+              ),
+          },
+        }
+        : {}),
       stepAssets: {
         read: (_digest: string) => Promise.resolve(stepBytes),
       } satisfies CanonicalAssetReader,
