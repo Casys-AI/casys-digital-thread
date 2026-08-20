@@ -30,17 +30,18 @@ export interface VerificationCaseContextReconciliation {
   resetTransientState: boolean;
 }
 
-export const UNAVAILABLE_VERIFICATION_CASE_CATALOG: ThreadVerificationCaseCatalog = {
-  schemaVersion: "thread-verification-cases/1.0",
-  status: "unavailable",
-  coverage: [
-    { family: "mechanical-proof", status: "unavailable" },
-    { family: "sensitivity-study", status: "unavailable" },
-    { family: "modelica-simulation", status: "unavailable" },
-  ],
-  cases: [],
-  issues: [],
-};
+export const UNAVAILABLE_VERIFICATION_CASE_CATALOG:
+  ThreadVerificationCaseCatalog = {
+    schemaVersion: "thread-verification-cases/1.0",
+    status: "unavailable",
+    coverage: [
+      { family: "mechanical-proof", status: "unavailable" },
+      { family: "sensitivity-study", status: "unavailable" },
+      { family: "modelica-simulation", status: "unavailable" },
+    ],
+    cases: [],
+    issues: [],
+  };
 
 export function buildVerificationCaseLegend(
   catalog: ThreadVerificationCaseCatalog,

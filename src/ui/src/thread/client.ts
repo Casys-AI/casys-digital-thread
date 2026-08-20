@@ -42,7 +42,8 @@ export class StaticThreadWorkbenchClient implements ThreadWorkbenchClient {
  * Deliberately visible missing-bootstrap state. The browser must never
  * substitute a recorded product fixture for the active engineering project.
  */
-export class UnconfiguredThreadWorkbenchClient implements ThreadWorkbenchClient {
+export class UnconfiguredThreadWorkbenchClient
+  implements ThreadWorkbenchClient {
   readonly source = "unconfigured" as const;
 
   load(): Promise<EngineeringWorkbenchSnapshot> {

@@ -697,7 +697,9 @@ export function isThreadWorkbenchSnapshot(
     Array.isArray(candidate.artifacts) &&
     candidate.artifacts.every(isThreadArtifact) &&
     (candidate.verificationCases === undefined
-      ? candidate.graph.nodes.every((node) => node.verificationCaseRefs === undefined)
+      ? candidate.graph.nodes.every((node) =>
+        node.verificationCaseRefs === undefined
+      )
       : isThreadVerificationCaseCatalog(
         candidate.verificationCases,
         candidate.artifacts,
@@ -1503,7 +1505,9 @@ function isThreadVerificationCaseCatalog(
     `${item.family}:${item.caseDigest}`
   );
   if (!hasUniqueStrings(exactCaseIdentities)) return false;
-  const authorityIds = catalog.cases.flatMap((item) => item.authorityArtifactIds);
+  const authorityIds = catalog.cases.flatMap((item) =>
+    item.authorityArtifactIds
+  );
   if (!hasUniqueStrings(authorityIds)) return false;
   const coverageByFamily = new Map(
     catalog.coverage.map((item) => [item.family, item.status]),
