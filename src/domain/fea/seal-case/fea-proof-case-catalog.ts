@@ -37,6 +37,10 @@ export const FEA_PROOF_CASE_SOURCES: ReadonlyMap<string, string> = new Map([
     "config/mechanical-proof-cases/cantilever-arm-ca01-arm-cantilever.json",
   ],
   [
+    "cantilever-arm-ca02-arm-cantilever",
+    "config/mechanical-proof-cases/cantilever-arm-ca02-arm-cantilever.json",
+  ],
+  [
     "wall-hook-wh01-hook-cantilever",
     "config/mechanical-proof-cases/wall-hook-wh01-hook-cantilever.json",
   ],

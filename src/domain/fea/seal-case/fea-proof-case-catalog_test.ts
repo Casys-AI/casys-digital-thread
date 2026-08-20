@@ -29,6 +29,19 @@ Deno.test("the FEA proof-case catalog names only reviewed files and refuses unkn
   );
   assertEquals(ca01.id, "cantilever-arm-ca01-arm-cantilever");
   assertEquals(ca01.project.id, "cantilever-arm-ca01");
+  assertEquals(
+    isKnownFeaProofCaseId("cantilever-arm-ca02-arm-cantilever"),
+    true,
+  );
+  const ca02 = validateMechanicalProofCase(
+    JSON.parse(
+      await Deno.readTextFile(
+        "config/mechanical-proof-cases/cantilever-arm-ca02-arm-cantilever.json",
+      ),
+    ),
+  );
+  assertEquals(ca02.id, "cantilever-arm-ca02-arm-cantilever");
+  assertEquals(ca02.project.id, "cantilever-arm-ca02");
 });
 
 Deno.test("unique catalog selection stays unresolved when several cases share a project", () => {

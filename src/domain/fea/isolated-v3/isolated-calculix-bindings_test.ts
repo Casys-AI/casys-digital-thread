@@ -4,7 +4,22 @@ import {
   isolatedCalculixBindingRejectionMessage,
   isolatedCalculixReviewProposal,
   rejectCadModelGeometryLookalikes,
+  selectSealedFeaProofArtifact,
 } from "./isolated-calculix-bindings.ts";
+import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "../seal-case/fea-proof-proposal.ts";
+
+function sealedDocument(id: string) {
+  return {
+    id,
+    kind: "document",
+    freshness: { status: "fresh" },
+    producer: {
+      serverId: "digital-thread",
+      tool:
+        `${VERIFY_SEAL_PROOF_CASE_OPERATION.id}@${VERIFY_SEAL_PROOF_CASE_OPERATION.version}`,
+    },
+  };
+}
 
 Deno.test("isolated CalculiX names a cad-model geometry binding as the lookalike refusal", () => {
   const diagnostic = diagnoseIsolatedCalculixGeometryArtifact({
@@ -50,6 +65,19 @@ Deno.test("cad-model lookalikes collapse to one diagnostic naming every sibling"
   assertEquals(rejected[0]?.code, "geometry-is-cad-model");
   assertEquals(rejected[0]?.artifactId, "geometry-aaaa");
   assertEquals(rejected[0]?.message.includes("cad-asset-assembly"), true);
+});
+
+Deno.test("isolated CalculiX unique proof selection ignores a sibling catalog offer", () => {
+  const proofId = `fea-proof-${"a".repeat(64)}`;
+  const selected = selectSealedFeaProofArtifact({
+    artifacts: [
+      sealedDocument(proofId),
+      sealedDocument(`sensitivity-catalog-offer-${"b".repeat(64)}`),
+    ],
+  } as never);
+  assertEquals(selected.status, "ok");
+  if (selected.status !== "ok") return;
+  assertEquals(selected.artifact.id, proofId);
 });
 
 Deno.test("isolated CalculiX review proposal restates bindings and never invents fea.run.*", () => {

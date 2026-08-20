@@ -195,6 +195,8 @@ export function selectSealedFeaProofArtifact(
   const seals = snapshot.artifacts.filter((artifact) =>
     artifact.kind === ISOLATED_CALCULIX_PROOF_KIND &&
     artifact.freshness.status === "fresh" &&
+    // The same seal may also publish a sensitivity-catalog-offer document.
+    artifact.id.startsWith("fea-proof-") &&
     artifact.producer.tool ===
       `${VERIFY_SEAL_PROOF_CASE_OPERATION.id}@${VERIFY_SEAL_PROOF_CASE_OPERATION.version}`
   );
