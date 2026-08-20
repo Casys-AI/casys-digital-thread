@@ -1534,6 +1534,8 @@ async function createProjectControl(
     snapshots: activeThreadSnapshots,
     admissions: technicalCompilationAdmissions,
     captures: sensitivityCaseCaptures,
+    catalogOffers: sensitivityCatalogOfferCaptures,
+    proofCaptures: feaProofCaptures,
     lease,
   });
   const analyzeRunFeaSensitivity =

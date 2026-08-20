@@ -5,14 +5,13 @@ authority transition explicit and reviewable. The agent talks directly to the Ca
 Digital Thread MCP server. Provider MCP servers remain private backend dependencies;
 they are never a second, bypassable tool surface.
 
-| Open | Owns |
-| ---- | ---- |
-| [Compilation and isolation](compilation-and-isolation.md) | Admission compiler, CAD/Modelica/CalculiX isolated verticals (extracted) |
-| [Admitted source isolated execution](admitted-source-isolated-execution.md) | Shared reopen → microVM pattern |
-| Contracts and ownership | `source-analysis/1.0` vs assertions vs Thread |
-| Implemented verticals | Legacy CAD preview, brief, SysML renderer, agent-authored SysML |
-| Current authority boundary | What is live vs documentary |
-
+| Open                                                                        | Owns                                                                     |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [Compilation and isolation](compilation-and-isolation.md)                   | Admission compiler, CAD/Modelica/CalculiX isolated verticals (extracted) |
+| [Admitted source isolated execution](admitted-source-isolated-execution.md) | Shared reopen → microVM pattern                                          |
+| Contracts and ownership                                                     | `source-analysis/1.0` vs assertions vs Thread                            |
+| Implemented verticals                                                       | Legacy CAD preview, brief, SysML renderer, agent-authored SysML          |
+| Current authority boundary                                                  | What is live vs documentary                                              |
 
 ```mermaid
 flowchart TD
@@ -117,8 +116,8 @@ code-owned adapter lowers the semantic action immediately before dispatch; the e
 captures the exact provider resources that were actually observed.
 
 `resolved-operation-plan/1.0` remains readable as an earlier design contract. It is not
-the queue-to-execution authority for isolated analysis. Historical MCP FEA `@1`/`@2`
-and recorded Modelica scenario/seal versions are not registered and cannot be queued.
+the queue-to-execution authority for isolated analysis. Historical MCP FEA `@1`/`@2` and
+recorded Modelica scenario/seal versions are not registered and cannot be queued.
 Product FEA run is `verify.run-fea-static-proof@3`.
 
 ## Authority rules
@@ -143,11 +142,11 @@ Product FEA run is `verify.run-fea-static-proof@3`.
 ## Hexagonal placement
 
 The source, assertion, graph, admission and resolved-plan contracts live in
-`src/domain/compile/` (`source/`, `admission/`, `rop/`, `brief/`) and import no MCP, storage, provider, UI, Graphology or SysML
-code. Language frontends and provider lowerings are adapters. The agent-facing
-project-control tools validate MCP input and call inward-facing use cases; they do not
-own provider clients or CAS stores. Capture returns
-`technical-source-capture-review/1.0` (`parser`, `levers`, opaque `reference`).
+`src/domain/compile/` (`source/`, `admission/`, `rop/`, `brief/`) and import no MCP,
+storage, provider, UI, Graphology or SysML code. Language frontends and provider
+lowerings are adapters. The agent-facing project-control tools validate MCP input and
+call inward-facing use cases; they do not own provider clients or CAS stores. Capture
+returns `technical-source-capture-review/1.0` (`parser`, `levers`, opaque `reference`).
 Compilation preview accepts only `result.reference`. Unresolved previews hoist join
 `gaps` beside the closed compilation document. Exact operation dispatch lives under
 `src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
@@ -378,8 +377,9 @@ semantic identity. The live producer is `analyze.run-fea-sensitivity@1` after
 `analyze.seal-sensitivity-study@1`. Seal parameters come from the read-only
 `project_sensitivity_study_seal_review` compiler (catalog template, or unique signed
 catalog-offer + its signed `compile.seal-admission@1` admission when the catalog does
-not uniquely select). The caller never invents `sensitivity.case.*` or a `cadSource`. A
-project without a reviewed catalog JSON and without a unique signed offer
+not uniquely select). `analyze.seal-sensitivity-study@1` reopens that same unique offer;
+it does not invent a catalog JSON. The caller never invents `sensitivity.case.*` or a
+`cadSource`. A project without a reviewed catalog JSON and without a unique signed offer
 (`desk-lamp-dl06` before the FEA opt-in) stays `catalog-absent`. After its two solver
 runs, the sensitivity path creates one observed `measured-local-sensitivity` assertion
 per declared response metric, including the reviewed finite-difference case, base and
@@ -578,9 +578,9 @@ profiles remain absent and therefore fail closed.
 Historical recorded Modelica `@1`/`@2` and MCP FEA `@1`/`@2` are not registered and
 cannot be queued. They are not fallbacks for `simulate.run-qualified-modelica-kit@1`,
 `simulate.run-admitted-modelica@1`, or `verify.run-fea-static-proof@3`, and old ROP2
-plans are never redirected to a local executor. Conversely, the local Modelica
-operation remains the one fixed linear-ramp conformance kit rather than a replacement
-for historical arbitrary approved provider scenarios. Provider availability, an
-approved MRTR, a queued run or an isolated-worker smoke is never proof of a product
-execution; that requires the exact registered executor, runtime resources and
-resulting Thread evidence to be composed, captured and reread.
+plans are never redirected to a local executor. Conversely, the local Modelica operation
+remains the one fixed linear-ramp conformance kit rather than a replacement for
+historical arbitrary approved provider scenarios. Provider availability, an approved
+MRTR, a queued run or an isolated-worker smoke is never proof of a product execution;
+that requires the exact registered executor, runtime resources and resulting Thread
+evidence to be composed, captured and reread.

@@ -1,9 +1,10 @@
 /**
  * Provider-free executor for `analyze.seal-sensitivity-study@1`.
  *
- * Seals a reviewed sensitivity-study-case/2.0 into the Thread. The catalog
- * holds the scientific template; the signed MRTR binds cadSource. No CAD or
- * CalculiX call is made.
+ * Seals a reviewed sensitivity-study-case/2.0 into the Thread. A known catalog
+ * id still opens the reviewed JSON. Otherwise the unique signed catalog offer
+ * on the exact run-basis snapshot is reopened and recompiled. The signed MRTR
+ * binds cadSource. No CAD or CalculiX call is made.
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
@@ -16,7 +17,12 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import {
+  type ContentAddressedCaptureReader,
+  reopenSignedCatalogOffer,
+} from "../../../application/use-cases/sensitivity/study/reopen-signed-catalog-offer.ts";
 import { assertSensitivityLiveMethod } from "../../../domain/sensitivity/study/sensitivity-live-method.ts";
+import type { SensitivityStudySealAuthorityKind } from "../../../domain/sensitivity/study/sensitivity-catalog-offer-join.ts";
 import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   canonicalSensitivityStudyCaseText,
@@ -31,6 +37,7 @@ import {
 } from "../../../domain/sensitivity/study/sensitivity-study-case-catalog.ts";
 import {
   assembleSensitivityStudyCaseV2,
+  type SensitivityStudyCaseTemplate,
   validateSensitivityStudyCaseTemplate,
 } from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
 import {
@@ -108,6 +115,8 @@ export interface AnalyzeSealSensitivityStudyRunExecutorDependencies {
   readonly admissions: TechnicalCompilationAdmissionReader;
   readonly captures: FileCaptureStore<"sensitivity-study-case">;
   readonly lease: EngineeringProjectRunLease;
+  readonly catalogOffers?: ContentAddressedCaptureReader;
+  readonly proofCaptures?: ContentAddressedCaptureReader;
   readonly readTextFile?: (path: string) => Promise<string>;
 }
 
@@ -118,6 +127,8 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
   readonly #admissions: TechnicalCompilationAdmissionReader;
   readonly #captures: FileCaptureStore<"sensitivity-study-case">;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #catalogOffers: ContentAddressedCaptureReader | undefined;
+  readonly #proofCaptures: ContentAddressedCaptureReader | undefined;
   readonly #readTextFile: (path: string) => Promise<string>;
 
   constructor(deps: AnalyzeSealSensitivityStudyRunExecutorDependencies) {
@@ -127,6 +138,8 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     this.#admissions = deps.admissions;
     this.#captures = deps.captures;
     this.#lease = deps.lease;
+    this.#catalogOffers = deps.catalogOffers;
+    this.#proofCaptures = deps.proofCaptures;
     this.#readTextFile = deps.readTextFile ?? Deno.readTextFile.bind(Deno);
   }
 
@@ -159,8 +172,16 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
         `Sensitivity decision parameters are invalid: ${errorMessage(error)}`,
       );
     }
-    const { studyCase, caseDigest } = await this.#loadAndVerifyCase(decisionParams);
     const basis = requireBasis(run);
+    const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
+    const { studyCase, caseDigest, authority } = await this.#loadAndVerifyCase(
+      decisionParams,
+      {
+        projectId: command.projectId,
+        basis,
+        snapshot: basisSnapshot,
+      },
+    );
     if (studyCase.project.id !== command.projectId) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
@@ -194,6 +215,7 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
           decisionParams,
           studyCase,
           caseDigest,
+          authority,
         ),
     );
   }
@@ -211,6 +233,7 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
     decisionParams: SensitivityStudyDecisionParameters,
     studyCase: SensitivityStudyCaseV2,
     caseDigest: string,
+    authority: SensitivityStudySealAuthorityKind,
   ): Promise<EngineeringProjectSnapshot> {
     let snapshotSaveMayHaveBeenDispatched = false;
     let claimed = false;
@@ -303,7 +326,9 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
           "The exact compilation admission named by cadSource could not be reopened.",
         );
       }
-      assertAdmittedParameterMatchesCase(reopened, studyCase);
+      if (authority === "catalog") {
+        assertAdmittedParameterMatchesCase(reopened, studyCase);
+      }
 
       const sealedAt = requiredStart(run);
       const capture: SensitivityStudyCaseCapture = {
@@ -419,16 +444,64 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
 
   async #loadAndVerifyCase(
     decisionParams: SensitivityStudyDecisionParameters,
-  ): Promise<
-    { readonly studyCase: SensitivityStudyCaseV2; readonly caseDigest: string }
-  > {
+    context: {
+      readonly projectId: string;
+      readonly basis: EngineeringThreadSnapshotBasis;
+      readonly snapshot: ThreadSnapshot;
+    },
+  ): Promise<{
+    readonly studyCase: SensitivityStudyCaseV2;
+    readonly caseDigest: string;
+    readonly authority: SensitivityStudySealAuthorityKind;
+  }> {
     const casePath = sensitivityStudyCaseSourcePath(decisionParams.id);
-    if (!casePath) {
+    if (casePath) {
+      return {
+        ...await this.#assembleVerifiedCase(
+          await this.#readCatalogTemplate(casePath),
+          decisionParams,
+        ),
+        authority: "catalog",
+      };
+    }
+    const offered = await reopenSignedCatalogOffer({
+      projectId: context.projectId,
+      namedCaseId: decisionParams.id,
+      basis: context.basis,
+      snapshot: context.snapshot,
+      admissions: this.#admissions,
+      catalogOffers: this.#catalogOffers,
+      proofCaptures: this.#proofCaptures,
+    });
+    if (offered.status === "absent") {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Sensitivity case "${decisionParams.id}" is not in the server-side catalog.`,
+        `Sensitivity case "${decisionParams.id}" is not in the server-side catalog ` +
+          "and no unique signed catalog offer is on the current tip.",
       );
     }
+    if (offered.status !== "ok") {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        offered.diagnostics.map((item) => item.message).join(" "),
+      );
+    }
+    if (
+      deterministicJson(offered.cadSource) !==
+        deterministicJson(decisionParams.cadSource)
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The signed MRTR cadSource does not match the recompiled catalog-offer admission.",
+      );
+    }
+    return {
+      ...await this.#assembleVerifiedCase(offered.template, decisionParams),
+      authority: "signed-offer",
+    };
+  }
+
+  async #readCatalogTemplate(casePath: string) {
     let raw: string;
     try {
       raw = await this.#readTextFile(casePath);
@@ -447,15 +520,23 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
         `Sensitivity case file "${casePath}" is not valid JSON.`,
       );
     }
-    let template;
     try {
-      template = validateSensitivityStudyCaseTemplate(parsed);
+      return validateSensitivityStudyCaseTemplate(parsed);
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
         `Sensitivity case template failed validation: ${errorMessage(error)}`,
       );
     }
+  }
+
+  async #assembleVerifiedCase(
+    template: SensitivityStudyCaseTemplate,
+    decisionParams: SensitivityStudyDecisionParameters,
+  ): Promise<{
+    readonly studyCase: SensitivityStudyCaseV2;
+    readonly caseDigest: string;
+  }> {
     const studyCase = assembleSensitivityStudyCaseV2(
       template,
       decisionParams.cadSource,

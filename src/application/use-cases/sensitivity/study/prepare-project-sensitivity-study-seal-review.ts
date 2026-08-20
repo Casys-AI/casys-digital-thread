@@ -21,16 +21,11 @@ import type {
 } from "../../../ports/in/sensitivity/study/project-sensitivity-study-seal-review.ts";
 import type { CataloguedMechanicalProofCaseReader } from "../../../ports/out/fea/seal-case/catalogued-mechanical-proof-case-reader.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
-import { parseFeaProofCaseCapture } from "../../../../domain/fea/seal-case/fea-proof-case-capture.ts";
-import { compileSensitivityCatalogOfferFromAdmission } from "../../../../domain/sensitivity/study/sensitivity-catalog-from-proof.ts";
-import { parseSensitivityCatalogOfferCapture } from "../../../../domain/sensitivity/study/sensitivity-catalog-offer-capture.ts";
+import { shouldOpenSignedCatalogOffer } from "../../../../domain/sensitivity/study/sensitivity-catalog-offer-join.ts";
 import {
-  bindSignedCatalogOffer,
-  bindSignedOfferAdmissionArtifact,
-  joinProofCaptureForOfferDigest,
-  selectUniqueSignedCatalogOffer,
-  shouldOpenSignedCatalogOffer,
-} from "../../../../domain/sensitivity/study/sensitivity-catalog-offer-join.ts";
+  type ContentAddressedCaptureReader,
+  reopenSignedCatalogOffer,
+} from "./reopen-signed-catalog-offer.ts";
 import { assertSensitivityLiveMethod } from "../../../../domain/sensitivity/study/sensitivity-live-method.ts";
 import {
   isKnownSensitivityStudyCaseId,
@@ -41,9 +36,7 @@ import {
 } from "../../../../domain/sensitivity/study/sensitivity-study-case-catalog.ts";
 import {
   listCompileAdmissionArtifacts,
-  listFeaProofCaseArtifacts,
   listRejectedCadSourceLookalikes,
-  listSensitivityCatalogOfferArtifacts,
   matchAdmittedSensitivityParameter,
   sensitivityCadSourceUri,
   type SensitivityStudySealDiagnostic,
@@ -69,7 +62,6 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
@@ -102,9 +94,7 @@ export class ProjectSensitivityStudySealReviewError extends Error {
   }
 }
 
-export interface ContentAddressedCaptureReader {
-  read(fingerprint: ContentFingerprint): Promise<string | undefined>;
-}
+export type { ContentAddressedCaptureReader };
 
 export interface PrepareProjectSensitivityStudySealReviewDependencies {
   readonly snapshots: FeaReviewSnapshotStore;
@@ -322,12 +312,15 @@ export class PrepareProjectSensitivityStudySealReview
     ) {
       return catalogued;
     }
-    const offered = await this.#openOfferedCase(
+    const offered = await reopenSignedCatalogOffer({
       projectId,
-      caseId,
+      namedCaseId: caseId,
       basis,
       snapshot,
-    );
+      admissions: this.#admissions,
+      catalogOffers: this.#catalogOffers,
+      proofCaptures: this.#proofCaptures,
+    });
     if (offered.status !== "absent") return offered;
     return catalogued;
   }
@@ -535,215 +528,6 @@ export class PrepareProjectSensitivityStudySealReview
       },
     };
   }
-
-  async #openOfferedCase(
-    projectId: string,
-    caseId: string | undefined,
-    basis: EngineeringThreadSnapshotBasis,
-    snapshot: ThreadSnapshot,
-  ): Promise<
-    | OpenedSignedOfferCase
-    | {
-      readonly status: "unresolved" | "unavailable";
-      readonly caseId: string;
-      readonly diagnostics: readonly SensitivityStudySealDiagnostic[];
-    }
-    | { readonly status: "absent" }
-  > {
-    const selected = selectUniqueSignedCatalogOffer(
-      listSensitivityCatalogOfferArtifacts(snapshot),
-    );
-    if (selected.status === "absent") return { status: "absent" };
-    if (selected.status === "ambiguous") {
-      return offeredFailure("unresolved", caseId, {
-        code: "catalog-offer-ambiguous",
-        artifactId: null,
-        message: `Several signed sensitivity catalog offers are on the current tip: ${
-          selected.artifacts.map((item) => item.id).join(", ")
-        }. Name is not enough; uniqueness failed.`,
-      });
-    }
-    const catalogOffers = this.#catalogOffers;
-    const proofCaptures = this.#proofCaptures;
-    if (!catalogOffers || !proofCaptures) {
-      return offeredFailure("unavailable", caseId, {
-        code: "catalog-offer-unavailable",
-        artifactId: selected.artifact.id,
-        message:
-          "A signed sensitivity catalog offer is on the current tip, but the review has no offer or proof capture reader.",
-      });
-    }
-    const offerArtifact = selected.artifact;
-    let raw: string | undefined;
-    try {
-      raw = await catalogOffers.read(offerArtifact.fingerprint);
-    } catch {
-      return offeredFailure("unavailable", caseId, {
-        code: "catalog-offer-unavailable",
-        artifactId: offerArtifact.id,
-        message:
-          "The signed sensitivity catalog offer could not be reopened. Uniqueness of the case join is unproven.",
-      });
-    }
-    if (raw === undefined) {
-      return offeredFailure("unavailable", caseId, {
-        code: "catalog-offer-unavailable",
-        artifactId: offerArtifact.id,
-        message:
-          "The signed sensitivity catalog offer is registered on the tip but its capture is unavailable.",
-      });
-    }
-    let capture;
-    try {
-      capture = await parseSensitivityCatalogOfferCapture(raw);
-    } catch (error) {
-      return offeredFailure("unresolved", caseId, {
-        code: "catalog-offer-integrity-failed",
-        artifactId: offerArtifact.id,
-        message: error instanceof Error
-          ? error.message
-          : "The signed sensitivity catalog offer capture is invalid.",
-      });
-    }
-    const proofJoin = await this.#reopenUniqueProofForOffer(
-      capture.offer.authority.proofDigest,
-      snapshot,
-      proofCaptures,
-    );
-    if (proofJoin.status !== "ok") {
-      return offeredFailure(proofJoin.status, caseId, proofJoin.diagnostic);
-    }
-    const { proofCapture } = proofJoin;
-    const signedAdmission = capture.offer.authority.admissionArtifact;
-    const boundAdmission = bindSignedOfferAdmissionArtifact({
-      admissionArtifact: snapshot.artifacts.find((artifact) =>
-        artifact.id === signedAdmission.id
-      ),
-      signedAdmission,
-    });
-    if (boundAdmission.status !== "ok") {
-      return offeredFailure("unresolved", caseId, boundAdmission.diagnostic);
-    }
-    const admissionArtifact = boundAdmission.artifact;
-    let reopened;
-    try {
-      reopened = await this.#admissions.read({
-        projectId,
-        basis,
-        artifactId: admissionArtifact.id,
-        artifactFingerprint: admissionArtifact.fingerprint,
-      });
-    } catch {
-      return offeredFailure("unavailable", caseId, {
-        code: "admission-unavailable",
-        artifactId: admissionArtifact.id,
-        message:
-          "The signed catalog-offer admission could not be reopened. No decisionParameters.",
-      });
-    }
-    if (!reopened) {
-      return offeredFailure("unavailable", caseId, {
-        code: "admission-unavailable",
-        artifactId: admissionArtifact.id,
-        message:
-          "The signed catalog-offer admission is unavailable. No decisionParameters.",
-      });
-    }
-    const bound = await bindSignedCatalogOffer({
-      offerArtifact,
-      offerDigest: capture.offerDigest,
-      recompiled: compileSensitivityCatalogOfferFromAdmission({
-        proofCase: proofCapture.proofCase,
-        proofDigest: proofCapture.proofDigest,
-        admissionArtifact: {
-          id: admissionArtifact.id,
-          fingerprint: admissionArtifact.fingerprint,
-        },
-        document: reopened.document,
-      }),
-      proofCase: proofCapture.proofCase,
-      proofDigest: proofCapture.proofDigest,
-      admissionArtifact,
-      namedCaseId: caseId,
-      projectId,
-      subjectId: snapshot.subject.id,
-    });
-    if (bound.status !== "ok") {
-      return offeredFailure("unresolved", caseId, bound.diagnostic);
-    }
-    return {
-      status: "ok",
-      source: "signed-offer",
-      caseId: bound.caseId,
-      template: bound.template,
-      artifact: admissionArtifact,
-      cadSource: bound.cadSource,
-    };
-  }
-
-  async #reopenUniqueProofForOffer(
-    proofDigest: string,
-    snapshot: ThreadSnapshot,
-    proofCaptures: ContentAddressedCaptureReader,
-  ): Promise<
-    | {
-      readonly status: "ok";
-      readonly proofArtifact: ThreadArtifact;
-      readonly proofCapture: Awaited<ReturnType<typeof parseFeaProofCaseCapture>>;
-    }
-    | {
-      readonly status: "unresolved" | "unavailable";
-      readonly diagnostic: SensitivityStudySealDiagnostic;
-    }
-  > {
-    const candidates = listFeaProofCaseArtifacts(snapshot);
-    if (candidates.length === 0) {
-      return {
-        status: "unresolved",
-        diagnostic: {
-          code: "catalog-offer-integrity-failed",
-          artifactId: null,
-          message:
-            "The current tip has no sealed FEA proof capture for the signed catalog offer.",
-        },
-      };
-    }
-    const attempts = [];
-    for (const artifact of candidates) {
-      let proofText: string | undefined;
-      try {
-        proofText = await proofCaptures.read(artifact.fingerprint);
-      } catch {
-        attempts.push({ status: "unread" as const, artifact });
-        continue;
-      }
-      if (proofText === undefined) {
-        attempts.push({ status: "unread" as const, artifact });
-        continue;
-      }
-      try {
-        const proofCapture = await parseFeaProofCaseCapture(proofText);
-        if (proofCapture.proofDigest === proofDigest) {
-          attempts.push({
-            status: "matched" as const,
-            artifact,
-            proofCapture,
-          });
-        } else {
-          attempts.push({ status: "other" as const, artifact });
-        }
-      } catch {
-        attempts.push({ status: "invalid" as const, artifact });
-      }
-    }
-    const joined = joinProofCaptureForOfferDigest(attempts);
-    if (joined.status !== "ok") return joined;
-    return {
-      status: "ok",
-      proofArtifact: joined.artifact,
-      proofCapture: joined.proofCapture,
-    };
-  }
 }
 
 type OpenedSignedOfferCase = {
@@ -943,22 +727,6 @@ function identityDiagnostics(
     });
   }
   return diagnostics;
-}
-
-function offeredFailure(
-  status: "unresolved" | "unavailable",
-  caseId: string | undefined,
-  diagnostic: SensitivityStudySealDiagnostic,
-): {
-  readonly status: "unresolved" | "unavailable";
-  readonly caseId: string;
-  readonly diagnostics: readonly SensitivityStudySealDiagnostic[];
-} {
-  return {
-    status,
-    caseId: caseId ?? "",
-    diagnostics: [diagnostic],
-  };
 }
 
 function unresolved(

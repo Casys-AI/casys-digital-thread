@@ -87,18 +87,17 @@ the arguments already include `commandId`. `cockpit_focus_set` may omit
 
 ### Control-plane fleet reads
 
-Ops tools on the same `:3020/mcp` server. They are not a human page. The retired
-Console MCP App (`ui://casys-digital-thread/console`) is not registered;
-`preview:browser` refuses. Product inspection is `preview:thread` /
-`preview:cockpit`.
+Ops tools on the same `:3020/mcp` server. They are not a human page. The retired Console
+MCP App (`ui://casys-digital-thread/console`) is not registered; `preview:browser`
+refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 
-| Tool                    | Authority          | Effect                                                                 |
-| ----------------------- | ------------------ | ---------------------------------------------------------------------- |
-| `console_snapshot`      | Read               | Desired versus observed MCP fleet and indexed run summaries            |
-| `console_server_detail` | Read               | One server: desired state, observation, image/trust, drift             |
-| `console_run_list`      | Read               | Indexed engineering-run summaries                                      |
-| `console_run_detail`    | Read               | Evidence, observations, comparison verdict, provenance                 |
-| `console_refresh`       | App-only leftover  | Probe refresh; not listed to ordinary MCP clients; no shipped App calls it |
+| Tool                    | Authority         | Effect                                                                     |
+| ----------------------- | ----------------- | -------------------------------------------------------------------------- |
+| `console_snapshot`      | Read              | Desired versus observed MCP fleet and indexed run summaries                |
+| `console_server_detail` | Read              | One server: desired state, observation, image/trust, drift                 |
+| `console_run_list`      | Read              | Indexed engineering-run summaries                                          |
+| `console_run_detail`    | Read              | Evidence, observations, comparison verdict, provenance                     |
+| `console_refresh`       | App-only leftover | Probe refresh; not listed to ordinary MCP clients; no shipped App calls it |
 
 ### Project lifecycle
 
@@ -229,7 +228,8 @@ How-to:
 [Compile sensitivity-study parameters](../how-to/compile-sensitivity-parameters.md).
 
 `desk-lamp-dl06` has no reviewed catalog JSON. A unique signed catalog-offer on the
-current tip is enough for this compiler; the review / seal / run tools stay.
+current tip is enough for this compiler; the seal reopens that same offer. The review /
+seal / run tools stay.
 
 ### Technical compilation / isolated execution
 
@@ -468,21 +468,22 @@ retired dump (`domain/analysis/`, `adapters/captures/`, `adapters/executors/`). 
 adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
 [workspace source map](workspace-source-map.md).
 
-| Context    | Domain root            | Do not merge                                                       |
-| ---------- | ---------------------- | ------------------------------------------------------------------ |
-| `modelica` | `src/domain/modelica/` | `admitted/` ≠ `qualified-kit/` ≠ `recorded/`                       |
-| `cad`      | `src/domain/cad/`      | `source/` ≠ `isolated/` ≠ `canonical/` ≠ `sealed-isolated/`        |
-| `fea`      | `src/domain/fea/`      | `seal-case/` ≠ `isolated-v3/`                                      |
-| `compile`  | `src/domain/compile/`  | Isolation ≠ admission ≠ source ≠ ROP ≠ brief; CAD **and** Modelica |
-| `project`  | `src/domain/project/`  | Ledger and brief; not Thread bytes                                 |
-| `thread`   | `src/domain/thread/`   | Canonical snapshot; not a project command                          |
-| `kernel`      | `src/domain/kernel/`      | Shared primitives only                                             |
-| `sensitivity` | `src/domain/sensitivity/` | `study/` ≠ `edges/` ≠ `base-evaluation/` ≠ `vector-correction/` ≠ `correction-source/` ≠ `live-fea/` |
-| `control-plane` | `src/application/control-plane/` | Fleet ops service + `console_*` tools. No domain kernel. Not a cockpit page |
+| Context         | Domain root                      | Do not merge                                                                                         |
+| --------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `modelica`      | `src/domain/modelica/`           | `admitted/` ≠ `qualified-kit/` ≠ `recorded/`                                                         |
+| `cad`           | `src/domain/cad/`                | `source/` ≠ `isolated/` ≠ `canonical/` ≠ `sealed-isolated/`                                          |
+| `fea`           | `src/domain/fea/`                | `seal-case/` ≠ `isolated-v3/`                                                                        |
+| `compile`       | `src/domain/compile/`            | Isolation ≠ admission ≠ source ≠ ROP ≠ brief; CAD **and** Modelica                                   |
+| `project`       | `src/domain/project/`            | Ledger and brief; not Thread bytes                                                                   |
+| `thread`        | `src/domain/thread/`             | Canonical snapshot; not a project command                                                            |
+| `kernel`        | `src/domain/kernel/`             | Shared primitives only                                                                               |
+| `sensitivity`   | `src/domain/sensitivity/`        | `study/` ≠ `edges/` ≠ `base-evaluation/` ≠ `vector-correction/` ≠ `correction-source/` ≠ `live-fea/` |
+| `control-plane` | `src/application/control-plane/` | Fleet ops service + `console_*` tools. No domain kernel. Not a cockpit page                          |
 
 The same split lives under
 `src/adapters/{modelica,cad,fea,compile,architecture,inspection-drone,sensitivity,make,control-plane,shared}/`
-and `src/application/{ports,use-cases}/{modelica,cad,fea,compile,architecture,sensitivity}/`.
+and
+`src/application/{ports,use-cases}/{modelica,cad,fea,compile,architecture,sensitivity}/`.
 Folder = authority; lookalikes stay in sibling directories. Control-plane adapters are
 fleet-manifest + run fixtures. Cross-authority adapters (MCP HTTP, project/thread
 stores, microsandbox backend, byte/CAS, generic WAL helpers, executor-run-helpers,

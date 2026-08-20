@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { ReopenedTechnicalCompilationAdmission } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import {
@@ -7,13 +7,16 @@ import {
   type FailRunCommand,
   type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import { PrepareProjectSensitivityStudySealReview } from "../../../application/use-cases/sensitivity/study/prepare-project-sensitivity-study-seal-review.ts";
 import {
-  encodeSensitivityStudyDecisionParameters,
-} from "../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
-import {
-  assembleSensitivityStudyCaseV2,
-  validateSensitivityStudyCaseTemplate,
-} from "../../../domain/sensitivity/study/sensitivity-study-template.ts";
+  SIGNED_OFFER_AT,
+  SIGNED_OFFER_CASE_ID,
+  SIGNED_OFFER_PROJECT_ID,
+  SIGNED_OFFER_SUBJECT_ID,
+  signedCatalogOfferFixture,
+  snapshotWithAdmissionTool,
+} from "../../../application/use-cases/sensitivity/study/signed-catalog-offer-test-support.ts";
+import { parseSensitivityStudyDecisionParameters } from "../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
@@ -24,23 +27,31 @@ import {
   SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX,
 } from "./analyze-seal-sensitivity-study-run-executor.ts";
 
-const AT = "2026-08-14T00:00:00.000Z";
-const PROJECT_ID = "desk-lamp-dl04";
-const SUBJECT_ID = "lamp-arm";
+const AT = SIGNED_OFFER_AT;
+const PROJECT_ID = SIGNED_OFFER_PROJECT_ID;
+const SUBJECT_ID = SIGNED_OFFER_SUBJECT_ID;
 const RUN_ID = "run.sensitivity-seal";
-const WORK_ID = "work.sensitivity-seal";
-const DECISION_ID = "decision.sensitivity-seal";
+const WORK_ID = "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness";
+const DECISION_ID = "dec-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness";
 const APPROVAL_ID = "approval.sensitivity-seal";
 const COMMAND_ID = "command.sensitivity-seal";
-const ADMISSION_ID = "compile-admission-1";
-const ADMISSION_DIGEST = "a".repeat(64);
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 const HUMAN = { kind: "human" as const, actorId: "human:test" };
+const REAL_CATALOG = {
+  async read(path: string): Promise<string | undefined> {
+    try {
+      return await Deno.readTextFile(path);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return undefined;
+      throw error;
+    }
+  },
+};
 
 Deno.test(
-  "analyze.seal-sensitivity-study@1 publishes a document artifact and never calls a provider",
+  "analyze.seal-sensitivity-study@1 seals the unique signed catalog offer",
   async () => {
-    const fixture = await createFixture();
+    const fixture = await createOfferFixture();
     const project = await fixture.executor.execute(AGENT, fixture.command);
     const run = project.agentRuns[0]!;
     assertEquals(run.status, "completed");
@@ -57,14 +68,13 @@ Deno.test(
     assertEquals(snapshot?.observations.length, 0);
     assertEquals(snapshot?.evaluations.length, 0);
     assertEquals(snapshot?.violations.length, 0);
-    assertEquals(fixture.admissions.reads.length, 1);
   },
 );
 
 Deno.test(
   "the sealed case digest matches the human-signed MRTR parameter",
   async () => {
-    const fixture = await createFixture();
+    const fixture = await createOfferFixture();
     await fixture.executor.execute(AGENT, fixture.command);
     const captureText = [...fixture.captures.values()][0]!;
     const capture = JSON.parse(captureText) as { caseDigest: string };
@@ -98,28 +108,92 @@ Deno.test(
   },
 );
 
-Deno.test("an unknown catalog id is indistinguishable from an absent case", async () => {
-  const fixture = await createFixture({ caseId: "unknown-case" });
-  await assertRejects(
-    () => fixture.executor.execute(AGENT, fixture.command),
-    EngineeringProjectCommandError,
-    "not in the server-side catalog",
-  );
-});
+Deno.test(
+  "an offer-compiled id without a unique signed offer is refused before claim",
+  async () => {
+    const fixture = await createOfferFixture({ omitOffer: true });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "not in the server-side catalog",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+  },
+);
 
-Deno.test("cadSource is re-read from the Thread and rejected on sha256 mismatch", async () => {
-  const fixture = await createFixture({ admissionDigest: "b".repeat(64) });
-  await assertRejects(
-    () => fixture.executor.execute(AGENT, fixture.command),
-    EngineeringProjectCommandError,
-    "sha256",
-  );
-});
+Deno.test(
+  "several signed offers refuse the seal before claim",
+  async () => {
+    const fixture = await createOfferFixture({ extraOffer: true });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "Several signed sensitivity catalog offers",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+  },
+);
+
+Deno.test(
+  "a named id that is not the compiled offer id is catalog-offer-case-mismatch",
+  async () => {
+    const fixture = await createOfferFixture({ namedCaseId: "invented-dl06-case" });
+    const error = await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+    );
+    assertStringIncludes(error.message, "invented-dl06-case");
+    assertStringIncludes(error.message, SIGNED_OFFER_CASE_ID);
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+  },
+);
+
+Deno.test(
+  "a truncated offer is catalog-offer-integrity-failed and does not throw TypeError",
+  async () => {
+    const fixture = await createOfferFixture({ truncatedOffer: true });
+    const error = await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+    );
+    assertStringIncludes(error.message, "authority");
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+  },
+);
+
+Deno.test(
+  "a constructor-only admission refuses the offer-compiled seal",
+  async () => {
+    const fixture = await createOfferFixture({
+      admissionSource: "from build123d import Box\nresult = Box(220, 20, 10)\n",
+    });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "no longer compiles",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+  },
+);
+
+Deno.test(
+  "cadSource sha256 that is not the recompiled offer admission is refused",
+  async () => {
+    const fixture = await createOfferFixture({
+      cadSourceSha256: "b".repeat(64),
+    });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "cadSource",
+    );
+  },
+);
 
 Deno.test(
   "cadSource that is not a compile.seal-admission@1 admission is rejected",
   async () => {
-    const fixture = await createFixture({
+    const fixture = await createOfferFixture({
       admissionTool: "design.execute-build123d@1",
     });
     await assertRejects(
@@ -130,167 +204,134 @@ Deno.test(
   },
 );
 
-Deno.test("a sibling sensitivity case sealed earlier never blocks a new digest", async () => {
-  const fixture = await createFixture({ siblingCaseDigest: "b".repeat(64) });
-  const project = await fixture.executor.execute(AGENT, fixture.command);
-  const run = project.agentRuns[0]!;
-  assertEquals(run.status, "completed");
-  const snapshot = await fixture.snapshots.getFresh(run.resultSnapshot!.snapshotId);
-  const sealed = snapshot?.artifacts.filter((item) =>
-    item.producer.tool === "analyze.seal-sensitivity-study@1"
-  );
-  assertEquals(sealed?.length, 2);
-});
+Deno.test(
+  "a sibling sensitivity case sealed earlier never blocks a new digest",
+  async () => {
+    const fixture = await createOfferFixture({ siblingCaseDigest: "b".repeat(64) });
+    const project = await fixture.executor.execute(AGENT, fixture.command);
+    const run = project.agentRuns[0]!;
+    assertEquals(run.status, "completed");
+    const snapshot = await fixture.snapshots.getFresh(run.resultSnapshot!.snapshotId);
+    const sealed = snapshot?.artifacts.filter((item) =>
+      item.producer.tool === "analyze.seal-sensitivity-study@1"
+    );
+    assertEquals(sealed?.length, 2);
+  },
+);
 
-Deno.test("a completed run replays the capture without a second provider call", async () => {
-  const fixture = await createFixture();
-  await fixture.executor.execute(AGENT, fixture.command);
-  const firstReads = fixture.admissions.reads.length;
-  const again = await fixture.executor.execute(AGENT, fixture.command);
-  assertEquals(again.agentRuns[0]?.status, "completed");
-  assertEquals(fixture.admissions.reads.length, firstReads);
-});
+Deno.test(
+  "a completed run replays without writing a second capture",
+  async () => {
+    const fixture = await createOfferFixture();
+    await fixture.executor.execute(AGENT, fixture.command);
+    const firstCaptures = [...fixture.captures.values()].length;
+    const again = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(again.agentRuns[0]?.status, "completed");
+    assertEquals([...fixture.captures.values()].length, firstCaptures);
+  },
+);
 
-async function createFixture(options: {
-  readonly caseId?: string;
-  readonly admissionDigest?: string;
-  readonly admissionTool?: string;
-  /** Seal a sibling sensitivity case (different digest) into the basis. */
-  readonly siblingCaseDigest?: string;
-} = {}) {
-  const templateText = await Deno.readTextFile(
-    "config/sensitivity-study-cases/dl04-size-z-sensitivity.json",
-  );
-  const template = validateSensitivityStudyCaseTemplate(JSON.parse(templateText));
-  const cadSource = {
-    artifactUri: `thread-artifact://${PROJECT_ID}/${ADMISSION_ID}`,
-    sha256: ADMISSION_DIGEST,
-  };
-  const studyCase = assembleSensitivityStudyCaseV2(template, cadSource);
-  const caseDigest = options.caseId === undefined
-    ? (await sha256Fingerprint(studyCase)).digest
-    : "c".repeat(64);
-  const parameters = encodeSensitivityStudyDecisionParameters(
-    caseDigest,
-    options.caseId ? { ...studyCase, id: options.caseId } : studyCase,
-  );
-  const admissionFingerprint = {
-    algorithm: "sha256" as const,
-    digest: options.admissionDigest ?? ADMISSION_DIGEST,
-  };
-  const admissionArtifact = {
-    id: ADMISSION_ID,
-    name: "Compilation admission",
-    kind: "document" as const,
-    version: admissionFingerprint.digest,
-    fingerprint: admissionFingerprint,
-    uri:
-      `casys://technical-compilation-admission-capture/sha256/${admissionFingerprint.digest}`,
-    mediaType: "application/json",
-    producer: {
-      serverId: "digital-thread",
-      tool: options.admissionTool ?? "compile.seal-admission@1",
-      runId: "run.admission",
+Deno.test(
+  "a digest-valid offer whose inputManifest lacks the lever still seals",
+  async () => {
+    const fixture = await createOfferFixture({ emptyInputManifest: true });
+    const project = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(project.agentRuns[0]?.status, "completed");
+  },
+);
+
+Deno.test(
+  "an offer on the tip without capture readers is refused, not a catalog fallback",
+  async () => {
+    const fixture = await createOfferFixture({ omitReaders: true });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "no offer or proof capture reader",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+  },
+);
+
+async function createOfferFixture(
+  options: {
+    readonly omitOffer?: boolean;
+    readonly extraOffer?: boolean;
+    readonly truncatedOffer?: boolean;
+    readonly admissionSource?: string;
+    readonly namedCaseId?: string;
+    readonly cadSourceSha256?: string;
+    readonly admissionTool?: string;
+    readonly siblingCaseDigest?: string;
+    readonly emptyInputManifest?: boolean;
+    readonly omitReaders?: boolean;
+  } = {},
+) {
+  const compiled = await signedCatalogOfferFixture();
+  const review = new PrepareProjectSensitivityStudySealReview({
+    snapshots: {
+      get: (id: string) =>
+        Promise.resolve(id === compiled.snapshot.id ? compiled.snapshot : undefined),
+      latest: () => Promise.resolve(compiled.snapshot),
+      save: () => Promise.reject(new Error("review must not persist")),
     },
-    inputArtifactIds: [],
-    freshness: fresh(AT),
-  };
-  const siblingFingerprint = {
-    algorithm: "sha256" as const,
-    digest: options.siblingCaseDigest ?? "",
-  };
-  const siblingArtifacts = options.siblingCaseDigest === undefined ? [] : [{
-    id: `sensitivity-case-${options.siblingCaseDigest}`,
-    name: "Sensitivity study case sibling",
-    kind: "document" as const,
-    version: options.siblingCaseDigest,
-    fingerprint: siblingFingerprint,
-    uri: `${SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX}${options.siblingCaseDigest}`,
-    mediaType: "application/json",
-    producer: {
-      serverId: "digital-thread",
-      tool: "analyze.seal-sensitivity-study@1",
-      runId: "run.sibling-seal",
+    projects: {
+      get: (projectId: string) =>
+        Promise.resolve(
+          projectId === PROJECT_ID ? emptyProject(compiled.snapshot) : undefined,
+        ),
     },
-    inputArtifactIds: [],
-    freshness: fresh(AT),
-  }];
-  const siblingChanges = siblingArtifacts.map((artifact) => ({
-    id: `change.${artifact.id}`,
-    kind: "created" as const,
-    target: { kind: "artifact" as const, id: artifact.id },
-    summary: `Seal the reviewed FEA sensitivity study case: captured ${artifact.name}.`,
-    afterFingerprint: siblingFingerprint,
-  }));
-  const siblingProvenance = siblingChanges.map((change) => ({
-    id: `provenance.${change.id}`,
-    relation: "changes" as const,
-    from: { kind: "change" as const, id: change.id },
-    to: change.target,
-    rationale: "The applied change introduced the sibling sensitivity case.",
-  }));
-  const basisSnapshot = validateThreadSnapshot({
-    schemaVersion: "1.0",
-    id: "snapshot.sensitivity.r1",
-    revision: 1,
-    generatedAt: AT,
-    subject: {
-      id: SUBJECT_ID,
-      name: "Sensitivity fixture",
-      kind: "system",
-      version: "r1",
-      modelArtifactId: "artifact.brief",
-    },
-    freshness: fresh(AT),
-    changeSet: {
-      id: "change-set.admission",
-      name: "Admission",
-      status: "applied",
-      createdAt: AT,
-      appliedAt: AT,
-      changes: [{
-        id: "change.admission",
-        kind: "created",
-        target: { kind: "artifact", id: admissionArtifact.id },
-        summary: "Sealed the compilation admission.",
-        afterFingerprint: admissionFingerprint,
-      }, ...siblingChanges],
-    },
-    artifacts: [
-      {
-        id: "artifact.brief",
-        name: "Brief",
-        kind: "document",
-        version: "1",
-        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-        producer: {
-          serverId: "digital-thread",
-          tool: "baseline.from-approved-brief@1",
-          runId: "run.brief",
-        },
-        inputArtifactIds: [],
-        freshness: fresh(AT),
-      },
-      admissionArtifact,
-      ...siblingArtifacts,
-    ],
-    consumptions: [],
-    observations: [],
-    requirements: [],
-    evaluations: [],
-    violations: [],
-    provenance: [{
-      id: "provenance.change.admission",
-      relation: "changes",
-      from: { kind: "change", id: "change.admission" },
-      to: { kind: "artifact", id: admissionArtifact.id },
-      rationale: "The applied change introduced the admission.",
-    }, ...siblingProvenance],
-    proposedActions: [],
+    catalogReader: REAL_CATALOG,
+    admissions: compiled.admissions,
+    catalogOffers: compiled.catalogOffers,
+    proofCaptures: compiled.proofCaptures,
   });
+  const compiledReview = await review.execute({
+    projectId: PROJECT_ID,
+    basis: compiled.basis,
+  });
+  if (compiledReview.status !== "resolved") {
+    throw new Error(
+      `Expected a compiled offer, got ${compiledReview.status}: ${
+        compiledReview.diagnostics.map((item) => item.code).join(", ")
+      }`,
+    );
+  }
+  const parameters = compiledReview.decisionParameters.map((item) => {
+    if (options.namedCaseId && item.key === "sensitivity.case.id") {
+      return { ...item, value: options.namedCaseId };
+    }
+    if (
+      options.cadSourceSha256 &&
+      item.key === "sensitivity.case.cadSource.sha256"
+    ) {
+      return { ...item, value: options.cadSourceSha256 };
+    }
+    return item;
+  });
+  const caseDigest = parseSensitivityStudyDecisionParameters(
+    compiledReview.decisionParameters,
+  ).caseDigest;
+
+  const live = options.omitOffer ? compiled : await signedCatalogOfferFixture({
+    extraOffer: options.extraOffer,
+    truncatedOffer: options.truncatedOffer,
+    admissionSource: options.admissionSource,
+    emptyInputManifest: options.emptyInputManifest,
+  });
+  let snapshot = options.omitOffer
+    ? snapshotWithoutOffers(compiled.snapshot)
+    : live.snapshot;
+  if (options.admissionTool) {
+    snapshot = snapshotWithAdmissionTool(snapshot, options.admissionTool);
+  }
+  if (options.siblingCaseDigest) {
+    snapshot = snapshotWithSiblingCase(snapshot, options.siblingCaseDigest);
+  }
+
   const reviewBasis = {
-    snapshotId: basisSnapshot.id,
-    revision: basisSnapshot.revision,
+    snapshotId: snapshot.id,
+    revision: snapshot.revision,
     subjectId: SUBJECT_ID,
   };
   const runBasis = { kind: "thread-snapshot" as const, ...reviewBasis };
@@ -393,9 +434,9 @@ async function createFixture(options: {
     blockers: [],
     commandReceipts: [],
   } as unknown as MutableProject;
-  const snapshots = new MemorySnapshots(basisSnapshot);
+  const snapshots = new MemorySnapshots(snapshot);
   const captures = new MemoryCaptures();
-  const admissions = new FakeAdmissions();
+  const admissions = new RecordingAdmissions(live.admissions);
   const commands = new MemoryCommands(project);
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project as unknown as EngineeringProjectSnapshot),
@@ -409,6 +450,7 @@ async function createFixture(options: {
     captures,
     admissions,
     snapshots,
+    project,
     command: {
       commandId: COMMAND_ID,
       projectId: PROJECT_ID,
@@ -423,18 +465,105 @@ async function createFixture(options: {
       admissions,
       captures: captures as never,
       lease: { withLease: (_projectId, _scope, operation) => operation() },
-      readTextFile: (path) => {
-        if (path.endsWith("dl04-size-z-sensitivity.json")) {
-          return Promise.resolve(templateText);
-        }
-        return Promise.reject(new Error(`unexpected path ${path}`));
-      },
+      ...(options.omitReaders ? {} : {
+        catalogOffers: live.catalogOffers,
+        proofCaptures: live.proofCaptures,
+      }),
     }),
   };
 }
 
-function fresh(changedAt: string) {
-  return { status: "fresh" as const, changedAt, invalidatedByChangeIds: [] };
+function emptyProject(snapshot: ThreadSnapshot): EngineeringProjectSnapshot {
+  return {
+    schemaVersion: "3.0",
+    id: `${PROJECT_ID}:r12`,
+    revision: 12,
+    generatedAt: AT,
+    project: {
+      id: PROJECT_ID,
+      name: "Desk Lamp",
+      subjectId: snapshot.subject.id,
+      objective: { title: "Study", statement: "Seal the sensitivity study." },
+    },
+    threadSnapshots: [{
+      snapshotId: snapshot.id,
+      revision: snapshot.revision,
+      subjectId: snapshot.subject.id,
+    }],
+    phases: [],
+    workItems: [],
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  } as EngineeringProjectSnapshot;
+}
+
+function snapshotWithoutOffers(snapshot: ThreadSnapshot): ThreadSnapshot {
+  const artifacts = snapshot.artifacts.filter((item) =>
+    !item.id.startsWith("sensitivity-catalog-offer-")
+  );
+  return validateThreadSnapshot({
+    ...snapshot,
+    artifacts,
+    changeSet: {
+      ...snapshot.changeSet,
+      changes: snapshot.changeSet.changes.filter((change) =>
+        !change.target.id.startsWith("sensitivity-catalog-offer-")
+      ),
+    },
+    provenance: snapshot.provenance.filter((item) =>
+      !("id" in item.to && item.to.id.startsWith("sensitivity-catalog-offer-"))
+    ),
+  });
+}
+
+function snapshotWithSiblingCase(
+  snapshot: ThreadSnapshot,
+  digest: string,
+): ThreadSnapshot {
+  const fingerprint = { algorithm: "sha256" as const, digest };
+  const sibling = {
+    id: `sensitivity-case-${digest}`,
+    name: "Sensitivity study case sibling",
+    kind: "document" as const,
+    version: digest,
+    fingerprint,
+    uri: `${SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX}${digest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "analyze.seal-sensitivity-study@1",
+      runId: "run.sibling-seal",
+    },
+    inputArtifactIds: [] as string[],
+    freshness: {
+      status: "fresh" as const,
+      changedAt: AT,
+      invalidatedByChangeIds: [],
+    },
+  };
+  return validateThreadSnapshot({
+    ...snapshot,
+    artifacts: [...snapshot.artifacts, sibling],
+    changeSet: {
+      ...snapshot.changeSet,
+      changes: [...snapshot.changeSet.changes, {
+        id: `change.${sibling.id}`,
+        kind: "created" as const,
+        target: { kind: "artifact" as const, id: sibling.id },
+        summary: "Seal the reviewed FEA sensitivity study case: captured sibling.",
+        afterFingerprint: fingerprint,
+      }],
+    },
+    provenance: [...snapshot.provenance, {
+      id: `provenance.${sibling.id}`,
+      relation: "changes" as const,
+      from: { kind: "change" as const, id: `change.${sibling.id}` },
+      to: { kind: "artifact" as const, id: sibling.id },
+      rationale: "The applied change introduced the sibling sensitivity case.",
+    }],
+  });
 }
 
 class MemorySnapshots {
@@ -477,30 +606,18 @@ class MemoryCaptures {
   }
 }
 
-class FakeAdmissions {
+class RecordingAdmissions {
   readonly reads: unknown[] = [];
+  constructor(
+    private readonly inner: {
+      read(
+        request: unknown,
+      ): Promise<ReopenedTechnicalCompilationAdmission | undefined>;
+    },
+  ) {}
   read(request: unknown) {
     this.reads.push(request);
-    return Promise.resolve({
-      document: {
-        inputManifest: {
-          sources: [{
-            sourceText: "size_z = 50\nresult = Box(1, 1, size_z)\n",
-            analysis: {
-              symbols: [{
-                id: "sym:size_z",
-                kind: "parameter",
-                name: "size_z",
-                span: {
-                  start: { line: 1, column: 0 },
-                  end: { line: 1, column: 6 },
-                },
-              }],
-            },
-          }],
-        },
-      },
-    } as unknown as ReopenedTechnicalCompilationAdmission);
+    return this.inner.read(request);
   }
 }
 

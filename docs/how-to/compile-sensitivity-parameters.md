@@ -6,9 +6,8 @@ writes nothing and grants no MRTR.
 `analyze.seal-sensitivity-study@1` is a provider-free Thread-document seal. It is not a
 solve and not `verify.seal-proof-case@1`. The review and seal live under
 [`src/application/use-cases/sensitivity/study/`](../../src/application/use-cases/sensitivity/study/)
-and
-[`src/adapters/sensitivity/study/`](../../src/adapters/sensitivity/study/).
-They are not `compile.seal-admission@1`.
+and [`src/adapters/sensitivity/study/`](../../src/adapters/sensitivity/study/). They are
+not `compile.seal-admission@1`.
 
 The MCP process must be the current `server.ts`. A server started before this tool was
 registered will not list it. Restart with `deno task start` or `deno task start:yolo`,
@@ -46,21 +45,22 @@ not a borrowed case. A named id that is not the compiled offer id is
 `desk-lamp-dl06` has no reviewed catalog JSON. Omitted `caseId` stays `catalog-absent`
 until a unique signed `sensitivity-catalog-offer` exists on the current tip. After the
 FEA-seal opt-in publishes that offer, this same tool reopens it, recompiles it, and
-copies the sealed proof mesh target size as `step`. It does not invent mesh, loads, or a
-dl06 JSON, and it does not retire this review tool. A named historical `caseId` still
-wins over an offer. Several offers stay `catalog-offer-ambiguous`.
+copies the sealed proof mesh target size as `step`. `analyze.seal-sensitivity-study@1`
+reopens that same unique signed offer; it does not invent mesh, loads, or a dl06 JSON,
+and it does not retire this review tool. A named historical `caseId` still wins over an
+offer. Several offers stay `catalog-offer-ambiguous`.
 
 ## What a live call returns
 
 These are loopback `tools/call` results on a current `:3020` process, not softened
 labels.
 
-| Call                                                                         | Status       | Diagnostic                                                                 |
-| ---------------------------------------------------------------------------- | ------------ | -------------------------------------------------------------------------- |
-| `{ "projectId": "desk-lamp-dl06" }`                                          | `unresolved` | `catalog-absent` — no catalog JSON and no unique signed offer on the tip   |
-| `{ "projectId": "desk-lamp-dl06", "caseId": "dl05-arm-thickness-isolated" }` | `unresolved` | `project-mismatch` and `subject-mismatch` — the catalogued case stays dl05 |
+| Call                                                                         | Status       | Diagnostic                                                                                      |
+| ---------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
+| `{ "projectId": "desk-lamp-dl06" }`                                          | `unresolved` | `catalog-absent` — no catalog JSON and no unique signed offer on the tip                        |
+| `{ "projectId": "desk-lamp-dl06", "caseId": "dl05-arm-thickness-isolated" }` | `unresolved` | `project-mismatch` and `subject-mismatch` — the catalogued case stays dl05                      |
 | `{ "projectId": "desk-lamp-dl05" }`                                          | `unresolved` | `catalog-ambiguous` when the tip has no unique signed offer; name `dl05-arm-thickness-isolated` |
-| `{ "projectId": "desk-lamp-dl05", "caseId": "dl05-arm-thickness-isolated" }` | `unresolved` | `admission-ambiguous` when several admissions bind `arm_thickness`         |
+| `{ "projectId": "desk-lamp-dl05", "caseId": "dl05-arm-thickness-isolated" }` | `unresolved` | `admission-ambiguous` when several admissions bind `arm_thickness`                              |
 
 `resolved` with `next.append` / `next.propose` appears only when that project has a
 unique current admission for the template `semanticKey` and the identities are not
