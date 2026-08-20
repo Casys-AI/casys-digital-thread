@@ -43,6 +43,9 @@ export interface OverviewHeroNode {
 export interface OverviewHeroEdge {
   readonly key: string;
   readonly d: string;
+  /** Clés des nœuds placés que cette arête relie, telles quelles. */
+  readonly source: string;
+  readonly target: string;
   readonly emphasis: boolean;
 }
 
@@ -110,6 +113,8 @@ export function buildOverviewThreadHero(
     edges.push({
       key: edge.id,
       d: `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`,
+      source: from.key,
+      target: to.key,
       emphasis: from.emphasis || to.emphasis,
     });
   }
