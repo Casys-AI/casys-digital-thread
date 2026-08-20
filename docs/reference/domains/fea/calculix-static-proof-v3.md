@@ -50,6 +50,9 @@ environment or native solver argument. The worker imports the qualified
 `@casys/mcp-calculix` core library, but it does not call an MCP CalculiX server and the
 published operation does not claim `mcp-calculix` provenance.
 
+The executor cross-binds the complete worker output to the resolved operation plan,
+sealed proof, input bundle, registered profile and canonical STEP before publication.
+
 ## Exact output batch
 
 All nine files are required, externally byte-counted and SHA-256 hashed, then published

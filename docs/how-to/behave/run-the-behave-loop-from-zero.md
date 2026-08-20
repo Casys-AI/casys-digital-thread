@@ -99,7 +99,7 @@ authority and not a DFM target.
 Not required to close behave. When walked, it is the CAD analog for `.mo`, not the kit:
 
 ```text
-project_technical_source_capture          # modelica-closed-subset-v1
+project_technical_source_capture          # modelica-closed-subset-v2
   → project_technical_compilation_preview
   → compile.seal-admission@1
   → project_admitted_modelica_run_review

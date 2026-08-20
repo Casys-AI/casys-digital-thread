@@ -195,12 +195,12 @@ never an implicit requirement verdict, evaluation, violation or action. Replay r
 the durable claim, inner WAL, evidence and Thread successor without another solver call.
 
 `simulate.run-admitted-modelica@1` is the CAD analog: it reopens
-`compile.seal-admission@1` Modelica closed-subset bytes and executes those bytes. It is
-not the pinned kit, not recorded `@2`, and does not accept caller `modelicaText`. Both
-CAD execute and admitted Modelica share
+`compile.seal-admission@1` Modelica v2 closed-subset bytes and executes those bytes. It
+is not the pinned qualified-kit V1, not recorded `@2`, and does not accept caller
+`modelicaText`. Both CAD execute and admitted Modelica share
 `ReopenAdmittedCompilationSource` → `IsolatedCodeRunner`. One Modelica image family
 (`casys/modelica-microsandbox-worker`): kit `ENTRYPOINT` pins one `.mo`; admitted
-backend args select `modelica-closed-subset-v1/run.ts` on `/input/source.mo`. Kit
+backend args select `modelica-closed-subset-v2/run.ts` on `/input/source.mo`. Kit
 qualification stays on digest `7d3fdeabe794…`. Product AX:
 [run admitted Modelica](../../how-to/run/run-admitted-modelica.md). Pattern:
 [admitted source isolated execution](admitted-source-isolated-execution.md).
@@ -235,4 +235,3 @@ nor grants it execution or decision authority.
 This is the reusable product boundary, not a claim that every language frontend or
 backend route is already activated. A route without a qualified profile, exact bindings,
 review or executor remains non-dispatchable.
-

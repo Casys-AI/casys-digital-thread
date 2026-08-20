@@ -11,6 +11,11 @@ There is no `fea.run.*` grammar. Product run is isolated
 Domain contracts: [mechanical proof case V1](../../reference/domains/fea/mechanical-proof-case-v1.md)
 and [CalculiX static proof V3](../../reference/domains/fea/calculix-static-proof-v3.md).
 
+The Git catalog is data, not a compiler capability switch: a new project proof adds one
+validated JSON declaration and one `config/mechanical-proof-cases/catalog.json` entry.
+A new physics/method needs shared schema, generic lowering, and qualification; do not
+try to encode it as another V1 catalog field.
+
 ## The short path
 
 ```jsonc

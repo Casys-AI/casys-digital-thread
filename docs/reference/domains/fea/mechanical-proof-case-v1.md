@@ -56,15 +56,28 @@ must not be smuggled into V1 through an extra JSON field or a hand-written solve
 
 ## Catalog and authority
 
-A declaration file is candidate configuration, not execution authority. The server
-resolves the unique eligible entry from `FEA_PROOF_CASE_SOURCES`, validates its
-canonical bytes and compiles the review envelopes. The caller does not choose the case
-or send material, mesh, loads, boxes, hashes, units or SysON identifiers.
+A declaration file is candidate configuration, not execution authority. The server opens
+the versioned `mechanical-proof-case-catalog/1.0` manifest at
+`config/mechanical-proof-cases/catalog.json`, resolves its fixed id-to-file entry, then
+validates the declared JSON and its matching case id. The application sees an opaque
+`caseId`, never a filesystem path. If `caseId` is omitted,
+`project_fea_proof_seal_review` selects exactly one readable declaration whose
+`project.id` matches; zero or several matches stay unresolved.
+
+A new project proof case therefore adds one versioned JSON declaration and one manifest
+entry, with no TypeScript project map or server path change. That extends data only. A
+new analysis capability still requires a shared schema, generic lowering, and qualified
+method; it must not be represented as an extra field in a V1 case. The caller does not
+send material, mesh, loads, boxes, hashes, units or SysON identifiers.
 
 `project_fea_proof_seal_review` is read-only. The agent uses its returned
 `next.append.arguments` and `next.propose.arguments`; a human signs the exact MRTR.
 `verify.seal-proof-case@1` then reopens the catalog bytes and publishes a
 content-addressed Thread document.
+
+Missing and ambiguous catalog matches remain `catalog-absent` and `catalog-ambiguous`.
+They never authorize a sibling manifest, caller-supplied solver values, or a
+hand-authored replacement declaration.
 
 The case's `authorization.workItemId` and `authorization.decisionId` identify that seal
 decision only. Running [`verify.run-fea-static-proof@3`](calculix-static-proof-v3.md)

@@ -179,20 +179,21 @@ rewritten. New canonical STEP comes only from `project_admitted_geometry_export`
 after a parameterized admission. `design.write-geometry@1` refuses a preview
 photo draft (`admission_required`). Modelica qualification is out of this rule.
 
-The sensitivity catalog is not a forgotten `config/` file. When the human validates that
-project's FEA proof case, the server may offer one false-by-default opt-in compiled from
-the exact proof facts plus the unique causally joined admission lever. The offer
-requires the admission source fingerprint and bytes to match the proof CAD definition
-and its `result` binding to represent the proof target. The same FEA-seal MRTR signs the
-offer digest and admission identity. Execution reopens and recompiles both authorities
-before publishing a separate catalog-offer artifact derived from the proof and
-admission. No exact join → no checkbox. No opt-in → no artifact. The offer still leaves
-`step` uncompiled. `project_sensitivity_study_seal_review` is the next authority: it
-reopens that unique signed offer and copies the sealed proof mesh target size as the
-first-order-forward step. Mesh, loads and metric ids stay copied facts. Historical
-`config/sensitivity-study-cases/*.json` templates remain for already-catalogued
-vehicles. The review, seal and run tools stay; what becomes historical is authoring a
-new catalog JSON for a project that already has a unique signed offer.
+The sensitivity catalog is a reviewed, server-owned JSON manifest, not a TypeScript
+project map. A new catalogued vehicle adds one manifest entry and one exact JSON
+template; the review and seal reopen that same entry through the application reader,
+never a caller-selected path. A catalog match wins. When the human instead validates a
+project's FEA proof case, the server may offer one false-by-default signed-offer route
+compiled from the exact proof facts plus the unique causally joined admission lever. The
+offer requires the admission source fingerprint and bytes to match the proof CAD
+definition and its `result` binding to represent the proof target. The same FEA-seal
+MRTR signs the offer digest and admission identity. Execution reopens and recompiles
+both authorities before publishing a separate catalog-offer artifact derived from the
+proof and admission. No exact join → no checkbox. No opt-in → no artifact. The offer
+still leaves `step` uncompiled. When the JSON catalog is absent or ambiguous,
+`project_sensitivity_study_seal_review` may reopen that unique signed offer and copy the
+sealed proof mesh target size as the first-order-forward step. Mesh, loads and metric
+ids stay copied facts; neither route lets an agent invent them.
 
 The constrained vehicles (`desk-lamp-dl04` / `desk-lamp-dl05`) have played **behave**.
 Make and buy stay later V1 work. Do not open those branches to make the current head

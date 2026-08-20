@@ -9,10 +9,14 @@ runtime contract.
 
 Read:
 
-1. [Build123d closed subset v1](build123d-closed-subset-v1.md) — D4, the analyzer,
+1. [CAD coverage](coverage.md) — current product surface, unsupported constructs,
+   candidates, and explicit non-goals.
+2. [Build123d closed subset v1](build123d-closed-subset-v1.md) — D4, the analyzer,
    supported forms, explicit gaps, and admission limits.
-2. [CAD execution paths](execution-paths.md) — canonical admitted export versus the
+3. [CAD execution paths](execution-paths.md) — canonical admitted export versus the
    documentary isolated microVM path.
+4. [Extension runbook](../../../how-to/extend/cad-surface.md) — the required end-to-end
+   work to add a construct without widening authority.
 
 Shared contracts:
 

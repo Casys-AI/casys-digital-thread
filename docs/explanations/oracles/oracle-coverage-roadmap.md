@@ -9,6 +9,13 @@ Audience: both · Diátaxis: explanation · Kind: contract
 > [oracle-market-study-2026-08-05](oracle-market-study-2026-08-05.md). This page records
 > the conclusions the roadmap acts on — it is strategy, not evidence.
 
+> **Current product boundary.** The percentages and “nearly-free” native-CalculiX claim
+> below are market-study hypotheses, not current capability or decision maturity. The
+> current FEA contract is [linear-static only](../../reference/domains/fea/coverage.md);
+> a new analysis family needs the complete contract → lowering → worker → evidence →
+> oracle → replay path. [Behave decision roadmap](../product/behave-decision-roadmap.md)
+> governs the product sequence.
+
 ## The demand, measured where it lives
 
 The target segment (advanced makers, small design offices, early hardware startups)

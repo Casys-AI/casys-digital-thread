@@ -1,6 +1,6 @@
 # Documentation
 
-Audience: both · Diátaxis: map · Kind: how-to
+Audience: both · Diátaxis: navigation · Kind: index
 
 Ce dépôt classe la doc avec [Diátaxis](https://diataxis.fr/) (`tutorials/`, `how-to/`,
 `reference/`, `explanations/`, `legacy/`), puis par thème. Les titres de pages restent
@@ -8,10 +8,9 @@ en anglais. Les RFCs ont leur propre foyer : ce ne sont pas des pages Diátaxis.
 
 ## En 30 secondes
 
-L’atelier commande dans le chat. Le cockpit observe. Les labels
-(`unavailable`, `unresolved`, `error`, `provisional`, `documentary`, `unverified`,
-`demo`, `TRACE GAP`, `UNLINKED`, `pass`) se lisent tels quels — ce ne sont pas des
-succès cachés.
+L’atelier commande dans le chat. Le cockpit observe. Les labels (`unavailable`,
+`unresolved`, `error`, `provisional`, `documentary`, `unverified`, `demo`, `TRACE GAP`,
+`UNLINKED`, `pass`) se lisent tels quels — ce ne sont pas des succès cachés.
 
 ## Si tu es un humain
 
@@ -40,10 +39,9 @@ Ne paraphrase pas. Lis dans cet ordre :
 
 ## Qu’est-ce qu’un RFC
 
-Un RFC ici est un **brief de chantier** ou une **étude** — parfois rejetée. Ce n’est
-pas le how-to ni le contrat produit. Une fois le lot fusionné, la vérité est la page
-vivante. Index, statuts et « lire plutôt » :
-[docs/rfcs/README.md](rfcs/README.md).
+Un RFC ici est un **brief de chantier** ou une **étude** — parfois rejetée. Ce n’est pas
+le how-to ni le contrat produit. Une fois le lot fusionné, la vérité est la page
+vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/README.md).
 
 ## Catalogue Diátaxis
 
@@ -78,6 +76,10 @@ vivante. Index, statuts et « lire plutôt » :
 ### How-to — `extend/`
 
 - [Add a recorded analysis engine](how-to/extend/add-a-recorded-analysis-engine.md)
+- [Extend the FEA product surface](how-to/extend/fea-surface.md)
+- [Extend admitted Modelica coverage](how-to/extend/modelica-surface.md)
+- [Extend the CAD closed subset](how-to/extend/cad-surface.md)
+- [Extend the generic SysML surface](how-to/extend/sysml-surface.md)
 
 ### Reference — `agent/`
 
@@ -96,6 +98,7 @@ vivante. Index, statuts et « lire plutôt » :
 - [CAD](reference/domains/cad/README.md)
 - [Modelica](reference/domains/modelica/README.md)
 - [FEA](reference/domains/fea/README.md)
+- [SysML](reference/domains/sysml/README.md)
 
 ### Reference — `pipeline/`
 
@@ -115,7 +118,9 @@ vivante. Index, statuts et « lire plutôt » :
 
 ### Reference — `providers/`
 
+- [Provider references](reference/providers/README.md)
 - [Building blocks](reference/providers/building-blocks.md)
+- [SysON surface](reference/providers/syson/README.md)
 - [Providers, analyses, evidence and oracles](reference/providers/provider-analysis-oracle-taxonomy.md)
 - [Oracle units](reference/providers/oracle-units.md)
 
@@ -125,6 +130,7 @@ vivante. Index, statuts et « lire plutôt » :
 - [Proofs and verdicts](explanations/product/proofs-and-verdicts.md)
 - [Industry positioning](explanations/product/positioning.md)
 - [Closed-language compilation](explanations/product/closed-language-compilation.md)
+- [Behave decision roadmap](explanations/product/behave-decision-roadmap.md)
 
 ### Explanations — `cockpit/`
 

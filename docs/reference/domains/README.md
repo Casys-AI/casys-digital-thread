@@ -11,6 +11,7 @@ OpenModelica to Modelica, and CalculiX to FEA.
 | CAD      | Closed-language geometry source, execution drafts, canonical geometry | [CAD](cad/README.md)           |
 | Modelica | Closed-source dynamic simulation and documentary observations         | [Modelica](modelica/README.md) |
 | FEA      | Mechanical proof declarations, isolated solves and evaluated criteria | [FEA](fea/README.md)           |
+| SysML    | Bounded architecture source, renderer, captures and Thread documents  | [SysML](sysml/README.md)       |
 
 Shared contracts remain outside these folders:
 
@@ -24,3 +25,7 @@ Shared contracts remain outside these folders:
 Domain pages do not redefine project lifecycle, MRTR or Thread contracts. They link to
 those shared references and describe only the language, method and evidence owned by the
 domain.
+
+SysON is a provider shared by the SysML, FEA and sensitivity surfaces. The SysML pages
+describe the language and evidence contracts owned here; the provider calls, runtime and
+recovery boundary remain under [provider references](../providers/syson/README.md).

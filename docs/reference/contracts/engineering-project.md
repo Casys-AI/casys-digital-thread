@@ -330,9 +330,10 @@ executor.
 thread without any provider call. Its signed MRTR proposal carries every consequential
 input in the flat `fea.proof.*` grammar: case ID, digest, geometry and requirements
 artifact identities, target model element, STEP byte count, and material constants. The
-executor resolves the case path through the server-owned `FEA_PROOF_CASE_SOURCES`
-catalog — the agent never supplies a path or raw case bytes — validates the JSON against
-`mechanical-proof-case/1.0`, computes `canonicalProofText` and its SHA-256, and fails
+executor resolves that id through the server-owned
+`config/mechanical-proof-cases/catalog.json` manifest — the agent never supplies a
+path or raw case bytes — validates the JSON against `mechanical-proof-case/1.0`,
+computes `canonicalProofText` and its SHA-256, and fails
 immediately if the MRTR-signed digest diverges. It then verifies the geometry artifact
 by kind, fingerprint, and `geometry-capture/2.0` schema, confirms the target
 `PartDefinition` model element in that capture, re-reads the requirements-capture to
@@ -670,9 +671,10 @@ call. `simulate.run-modelica-scenario@1` verifies kit bounds through
 `modelica_run_get`, and publishes unit-carrying observations only — a structural
 triple-lock enforces `verdictStatus: not_evaluated` and re-dispatch after a known
 provider run-id is forbidden. `verify.seal-proof-case@1` resolves the reviewed proof
-case through `FEA_PROOF_CASE_SOURCES`, cross-checks the MRTR-signed digest and every
-parameter against the canonical bytes, verifies geometry and requirements-tip links in
-the basis, and publishes the content-addressed mandate with no provider call.
+case by id through the versioned `config/mechanical-proof-cases/catalog.json` manifest,
+cross-checks the MRTR-signed digest and every parameter against the canonical bytes,
+verifies geometry and requirements-tip links in the basis, and publishes the
+content-addressed mandate with no provider call.
 `verify.run-fea-static-proof@1` stages the STEP content-addressed, dispatches
 `calculix_solve_static` from sealed proof parameters only, evaluates through the SysON
 oracle, and publishes a fail-closed verdict with named violations and proposed actions;

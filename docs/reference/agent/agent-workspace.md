@@ -179,7 +179,7 @@ How-to: [Compile brief parameters](../../how-to/compile/compile-brief-parameters
 | `project_fea_proof_seal_review`   | None   | `decisionParameters` plus `next.append` / `next.propose` for `verify.seal-proof-case@1` |
 | `project_fea_isolated_run_review` | None   | Isolated `@3` bindings plus guarded hops. `geometry` = canonical part STEP              |
 
-The caller may name only `projectId`, plus the false-by-default
+The caller names `projectId`, with optional `caseId`, `basis`, and false-by-default
 `sensitivityCatalogOptIn` on the proof-seal review. Omitted `caseId` / `proofArtifactId`
 / `basis` are resolved server-side (unique catalog case, unique sealed document, unique
 current Thread tip). That tip is not `latest`. There is no `fea.run.*` grammar: numbers
@@ -301,7 +301,7 @@ Unknown ids/versions are indistinguishable from absent.
 | `design.write-geometry@1`                           | trusted                   | none (seal)                  | Canonical geometry capture                                                                                              | Re-execution of CAD                                                  |
 | `verify.seal-proof-case@1`                          | trusted                   | none                         | Sealed proof-case; optional signed catalog-offer artifact                                                               | A solve or complete sensitivity case                                 |
 | `verify.run-fea-static-proof@3`                     | trusted                   | local microVM + SysON oracle | Isolated CalculiX verdict                                                                                               | Historical MCP FEA, agent `.inp`, or a cad-model as `geometry`       |
-| `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | One fixed linear-ramp kit                                                                                               | Admitted closed-subset `.mo`                                         |
+| `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | Separate fixed LinearThermalRamp qualified-kit V1 smoke                                                                | Admitted closed-subset `.mo`                                         |
 | `simulate.run-admitted-modelica@1`                  | trusted                   | local microVM                | Documentary run of sealed `compile.seal-admission@1` Modelica bytes                                                     | The pinned kit or caller `modelicaText`                              |
 | `analyze.seal-sensitivity-study@1`                  | trusted                   | none                         | Sealed 2.0 study-case document                                                                                          | A solve or a verdict                                                 |
 | `analyze.run-fea-sensitivity@1`                     | trusted                   | isolated CAD + CalculiX MCP  | Dimensioned observations + study capture                                                                                | A verdict or `@2` ROP plan                                           |
@@ -384,7 +384,7 @@ _class_ in the evidence instead of being excluded. Why and how:
 | `sysml-architecture-closed-subset-v1`                                  | SysML v2 closed subset | `package`, `part def`, `part usage`; other constructs stay unresolved | This page |
 | Rendered architecture companion                                        | Server-rendered SysML  | Manifest-attested PartUsage→target only | This page |
 | `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.6.0**)   | Python / Build123d     | Finite geometry algebra, numeric parameters, one solid `result` | [CAD closed subset](../domains/cad/build123d-closed-subset-v1.md) |
-| `modelica-closed-subset-v1` (`modelica-qualified-mo-subset` **1.0.0**) | Modelica               | One LinearThermalRamp family; 0 of 286 MSL packages | [Modelica closed subset](../domains/modelica/closed-subset-v1.md) |
+| `modelica-closed-subset-v2` (`modelica-qualified-mo-subset` **2.0.0**) | Modelica               | Bounded generic scalar models with exact experiment annotation; no MSL packages | [Modelica language](../domains/modelica/language.md) |
 | Python CAD frontend (legacy preview)                                   | Python                 | Conservative bindings into `result` | Historical only |
 | Project-brief frontend                                                 | Canonical brief JSON   | Item ids + explicit V2 gate dependencies | This page |
 

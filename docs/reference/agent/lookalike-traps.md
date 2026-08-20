@@ -36,16 +36,16 @@ Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) 
 
 ## Modelica
 
-Domain contracts: [closed subset](../domains/modelica/closed-subset-v1.md) and
-[execution profiles](../domains/modelica/execution-profiles.md).
+Domain contracts: [language](../domains/modelica/language.md) and
+[execution](../domains/modelica/execution.md).
 
 | This                                    | Is                                                                             | Is not                                                                        |
 | --------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | `simulate.run-modelica-scenario@1` / `@2` | Historical provider Modelica. Not registered                                 | Admitted `@1` or the pinned kit                                               |
-| `simulate.run-qualified-modelica-kit@1` | One code-owned LinearThermalRamp kit in the local microVM                      | Admitted `.mo` execution or recorded `@2`                                     |
+| `simulate.run-qualified-modelica-kit@1` | Separate code-owned LinearThermalRamp qualified-kit V1 smoke in the local microVM | Admitted `.mo` execution or recorded `@2`                                  |
 | `simulate.run-admitted-modelica@1`      | Reopen `compile.seal-admission@1` Modelica bytes and run them in isolation     | The pinned kit, `@2`, or caller `modelicaText`                                |
 
-Product Modelica: capture (`modelica-closed-subset-v1`) → compilation preview →
+Product Modelica: capture (`modelica-closed-subset-v2`) → compilation preview →
 `compile.seal-admission@1` → `project_admitted_modelica_run_review` →
 `simulate.run-admitted-modelica@1`. How-to:
 [run admitted Modelica](../../how-to/run/run-admitted-modelica.md). The kit is image smoke, not

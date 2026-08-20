@@ -69,7 +69,7 @@ template bytes.
 ## Sequence
 
 ```text
-project_sensitivity_study_seal_review   # catalog id → sensitivity.case.*; cadSource = admission
+project_sensitivity_study_seal_review   # JSON manifest case or signed offer → sensitivity.case.*; cadSource = admission
   → analyze.seal-sensitivity-study@1
   → analyze.run-fea-sensitivity@1          # observations only
   → project_sensitivity_base_evaluation_review

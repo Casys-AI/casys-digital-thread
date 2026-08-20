@@ -2,21 +2,24 @@
 
 Audience: both · Diátaxis: reference · Kind: index
 
-The Modelica bounded context owns closed-subset source analysis and admission, local
-execution evidence and documentary observations. Its code keeps `source/`, `admitted/`,
-`qualified-kit/` and historical `recorded/` authorities separate. It does not own
-requirement evaluation or a product verdict.
+The Modelica bounded context owns the generic admitted source path: bounded source
+analysis, admission, direct OpenModelica execution in a local microVM, and documentary
+observations. Its current product profile is `modelica-closed-subset-v2` / `2.0.0`;
+there is no admitted-source v1 fallback.
 
 Start with:
 
-- [Closed subset v1](closed-subset-v1.md) — the exact `.mo` form that the admitted
-  worker can execute, its fixed scenario, and the known frontend/worker gap.
-- [Execution profiles](execution-profiles.md) — qualified kit versus admitted source,
-  authority, outputs and replay.
+- [Language](language.md) defines the bounded, family-free Modelica grammar and the
+  source-owned experiment annotation.
+- [Execution](execution.md) defines server-owned execution, OMC/DASSL, evidence and the
+  documentary boundary.
+- [Coverage](coverage.md) inventories the current executable surface, the deliberately
+  unsupported surface, and extension candidates.
+- [Extension runbook](../../../how-to/extend/modelica-surface.md) is the implementation
+  and proof checklist for a new language/profile version. A new model instance within
+  the current grammar needs no code change.
 
-To operate the product path, follow
-[Run admitted Modelica](../../../how-to/run/run-admitted-modelica.md). The shared
-reopen-to-microVM contract lives in
+Operate the path with
+[Run admitted Modelica](../../../how-to/run/run-admitted-modelica.md). Its shared
+reopen-to-microVM contract is
 [Admitted source isolated execution](../../pipeline/admitted-source-isolated-execution.md).
-The wider compiler doctrine lives in
-[Closed-language compilation](../../../explanations/product/closed-language-compilation.md).

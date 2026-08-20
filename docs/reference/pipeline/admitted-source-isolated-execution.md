@@ -60,7 +60,7 @@ image (`closed-subset-worker` or similar).
 | Worker                                                                 | Selected how                                              | Source bytes                         | Qualification |
 | ---------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------ | ------------- |
 | `/opt/casys/profiles/modelica-qualified-kit-v1/run.ts`                 | Image `ENTRYPOINT`. Kit `@1` composition.                 | Pinned kit `.mo` inside the image    | Digest `7d3fdeabe794…` (unchanged) |
-| `/opt/casys/profiles/modelica-closed-subset-v1/run.ts`                 | Backend args in the admitted composition.                 | `/input/source.mo` from admission    | Separate local pin (see `server.ts`) |
+| `/opt/casys/profiles/modelica-closed-subset-v2/run.ts`                 | Backend args in the admitted composition.                 | Generic bounded `/input/source.mo` from admission | Separate local pin (see `server.ts`) |
 
 Kit qualification stays on the old digest until a later bake of
 [`images/modelica-microsandbox-worker/Dockerfile`](../../../images/modelica-microsandbox-worker/Dockerfile)
@@ -75,7 +75,7 @@ must update that constant. Do not reuse the kit qualification digest for admitte
 ## Product Modelica AX
 
 ```text
-project_technical_source_capture          # modelica-closed-subset-v1; pass result.reference
+project_technical_source_capture          # modelica-closed-subset-v2; pass result.reference
   -> project_technical_compilation_preview
   -> compile.seal-admission@1
   -> project_admitted_modelica_run_review
