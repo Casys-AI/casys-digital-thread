@@ -1,3 +1,5 @@
+import { marginLabel, requirementMargin } from "./requirement-margin-model.ts";
+import { compactEmbeddedFingerprints } from "../thread/compact-identifier-model.ts";
 import type { JSX } from "react";
 import { recordStatusVariant } from "./record-status.ts";
 import type {
@@ -635,28 +637,44 @@ function OverviewVerdictTiles({
 function VerdictTile({ row }: { row: RequirementMatrixRow }): JSX.Element {
   const running = row.status === "unresolved";
   const hasMargin = hasRecordedMargin(row);
+  // La position dans l'intervalle admissible : c'est elle qui distingue une
+  // exigence tenue de justesse d'une exigence tenue largement.
+  const margin = requirementMargin(row.expression, row.computed);
   const hasEvidence = hasRecordedEvidence(row);
   return (
     <Card
       className={cn(
-        "gap-0 py-0 shadow-sm",
         running && "border-dashed border-brand/50 bg-brand/[0.03]",
       )}
     >
       <CardContent className="flex flex-col gap-0.5 px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-mono text-[10px] font-medium text-brand">
-            {row.id}
+          {
+            /* Le NOM de l'exigence porte le titre : son identifiant tronqué
+              n'apprenait rien et poussait le nom en second rang. */
+          }
+          <span className="truncate text-[12.5px] font-medium">
+            {row.label}
           </span>
-          <Badge variant={recordStatusVariant(row.status)}>
-            {row.status}
-          </Badge>
+          <Badge variant={recordStatusVariant(row.status)}>{row.status}</Badge>
         </div>
-        <p className="m-0 truncate text-xs font-medium">{row.label}</p>
+        <span
+          className="truncate font-mono text-[9.5px] text-muted-foreground"
+          title={row.id}
+        >
+          {compactEmbeddedFingerprints(row.id)}
+        </span>
         <Progress.Root
-          value={null}
-          className="block"
-          aria-label={`${row.label} — ${row.status}`}
+          // Une jauge n'existe que si la limite ET la mesure sont lisibles
+          // dans ce qui a été enregistré. Sinon elle reste indéterminée
+          // plutôt que de suggérer une position qu'on n'a pas mesurée.
+          value={margin ? Math.round(margin.used * 100) : null}
+          min={0}
+          max={100}
+          className="mt-1 block"
+          aria-label={margin
+            ? `${row.label} — ${marginLabel(margin)}`
+            : `${row.label} — ${row.status}`}
         >
           <Progress.ValueText asChild>
             <p className="m-0 truncate font-mono text-xs tabular-nums text-muted-foreground">
@@ -664,18 +682,29 @@ function VerdictTile({ row }: { row: RequirementMatrixRow }): JSX.Element {
             </p>
           </Progress.ValueText>
           <Progress.Track className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
-            <Progress.Range
-              className={cn(
-                "h-full w-full rounded-full",
-                row.status === "pass" && "bg-success",
-                row.status === "fail" && "bg-warning",
-                running &&
-                  "bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_12px)] opacity-40",
+            {
+              /* Sans limite comparable, la piste reste VIDE. La remplir se
+                lirait « intervalle consommé à 100 % », soit l'inverse de
+                « on ne sait pas situer cette mesure ». Le statut, lui, est
+                déjà porté par la pastille. */
+            }
+            {running
+              ? (
+                <span className="block h-full w-full bg-[repeating-linear-gradient(90deg,var(--color-brand)_0_6px,transparent_6px_12px)] opacity-40" />
+              )
+              : margin === undefined
+              ? null
+              : (
+                <Progress.Range
+                  className={cn(
+                    "h-full rounded-full",
+                    row.status === "fail" ? "bg-warning" : "bg-success",
+                  )}
+                />
               )}
-            />
           </Progress.Track>
         </Progress.Root>
-        {hasMargin && (
+        {(margin !== undefined || hasMargin) && (
           <Tooltip side="top">
             <TooltipTrigger asChild>
               <button
@@ -685,12 +714,16 @@ function VerdictTile({ row }: { row: RequirementMatrixRow }): JSX.Element {
                   row.status === "fail" ? "text-warning" : "text-success",
                 )}
               >
-                {row.marginLabel}
+                {margin ? marginLabel(margin) : row.marginLabel}
               </button>
             </TooltipTrigger>
             <TooltipContent>
               <span className="font-mono">
-                {hasEvidence ? row.evidenceLabel : row.expression}
+                {margin
+                  ? `${row.expression} · ${row.computed}`
+                  : hasEvidence
+                  ? row.evidenceLabel
+                  : row.expression}
               </span>
             </TooltipContent>
           </Tooltip>
