@@ -47,9 +47,14 @@ Human MRTR. Queue. Execute `compile.seal-admission@1`.
 
 ## 3. Review and run
 
-`project_admitted_modelica_run_review` with `projectId`. It reopens the sealed
-admission and returns parameters for `simulate.run-admitted-modelica@1`. There is no
-`modelicaText` field.
+Call `project_admitted_modelica_run_review` with `projectId` only. Do not derive or pass
+a Thread basis, admission id, or fingerprint. The server reopens the unique current
+Thread tip, then selects exactly one fresh, non-archived canonical `document` produced
+by `digital-thread` / `compile.seal-admission@1`. Zero candidates — including stale,
+archived, malformed, or foreign-producer lookalikes — and several candidates fail
+closed. The exact admission validator reopens those server-selected bytes and returns
+parameters for
+`simulate.run-admitted-modelica@1`. There is no `modelicaText` field.
 
 Human MRTR. Queue. Execute `simulate.run-admitted-modelica@1`.
 
@@ -58,11 +63,13 @@ requirement verdict. Replay must not dispatch the solver again.
 
 ## Refusals
 
-| Unharnessed move                         | Harness                                                                 |
-| ---------------------------------------- | ----------------------------------------------------------------------- |
-| Kit `@1` for product `.mo`               | Kit worker pins image source. Product path is admitted `@1`             |
-| Recorded `@2` for local closed-subset    | Different authority (ROP / provider)                                    |
-| Extra `modelicaText` binding             | Registry refuses it                                                     |
-| `latest` as Thread basis                 | Server current tip only                                                 |
-| Second Modelica image name               | One family: `casys/modelica-microsandbox-worker`                        |
-| Walk on WH01 after FEA `pass`            | New thermal vehicle                                                     |
+| Unharnessed move                        | Harness                                                              |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| Kit `@1` for product `.mo`              | Kit worker pins image source. Product path is admitted `@1`          |
+| Recorded `@2` for local closed-subset   | Different authority (ROP / provider)                                 |
+| Extra `modelicaText` binding            | Registry refuses it                                                  |
+| Caller Thread/admission identity        | Tool accepts `projectId` only; server selects the current exact join |
+| Stale or wrong-producer admission       | Not a fresh `digital-thread` `compile.seal-admission@1` candidate    |
+| Two fresh admissions on the current tip | Ambiguous; server refuses to choose                                  |
+| Second Modelica image name              | One family: `casys/modelica-microsandbox-worker`                     |
+| Walk on WH01 after FEA `pass`           | New thermal vehicle                                                  |

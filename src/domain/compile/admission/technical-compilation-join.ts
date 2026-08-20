@@ -92,11 +92,14 @@ export function deriveUniqueTechnicalCompilationBindings(
   const bindings: TechnicalSemanticBinding[] = [];
   for (const source of sources) {
     const sourceId = source.analysis.source.id;
-    const results = source.analysis.symbols.filter((symbol) =>
-      symbol.kind === "artifact" && symbol.name === "result"
+    const representedArtifacts = source.analysis.symbols.filter((symbol) =>
+      symbol.kind === "artifact" &&
+      (symbol.name === "result" ||
+        (source.analysis.source.role === "modelica-model" &&
+          source.analysis.source.language === "modelica"))
     );
-    if (results.length === 1 && partDefinitions.length === 1) {
-      const result = results[0]!;
+    if (representedArtifacts.length === 1 && partDefinitions.length === 1) {
+      const result = representedArtifacts[0]!;
       const part = partDefinitions[0]!;
       bindings.push({
         id: `binding:${sourceId}:${result.id}:represents`,

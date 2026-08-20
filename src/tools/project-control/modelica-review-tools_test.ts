@@ -4,20 +4,8 @@ import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../applicati
 import type { ProjectAdmittedModelicaRunReviewResult } from "../../application/ports/in/modelica/admitted-run-review.ts";
 import { registerProjectModelicaReviewTools } from "./modelica-review-tools.ts";
 
-const ARTIFACT_DIGEST = "a".repeat(64);
-const REVIEW_COMMAND = {
+const ADMITTED_REVIEW_REQUEST = {
   projectId: "project.drip-tray",
-  basis: {
-    kind: "thread-snapshot",
-    snapshotId: "snapshot.9",
-    revision: 9,
-    subjectId: "subject.drip-tray",
-  },
-  artifactId: `technical-compilation-admission-${ARTIFACT_DIGEST}`,
-  artifactFingerprint: {
-    algorithm: "sha256",
-    digest: ARTIFACT_DIGEST,
-  },
 } as const;
 
 const MODELICA_REVIEW_COMMAND = {
@@ -30,7 +18,7 @@ const MODELICA_REVIEW_COMMAND = {
   },
 } as const;
 
-Deno.test("admitted Modelica review is conditional, closed, and rejects caller Modelica text", async () => {
+Deno.test("admitted Modelica review exposes only projectId and rejects caller-selected identities", async () => {
   const absent = new CapturingApp();
   registerProjectModelicaReviewTools(absent as unknown as McpApp, {});
   assertEquals(absent.hasTool("project_admitted_modelica_run_review"), false);
@@ -53,19 +41,27 @@ Deno.test("admitted Modelica review is conditional, closed, and rejects caller M
   });
 
   const response = await app.handler("project_admitted_modelica_run_review")(
-    structuredClone(REVIEW_COMMAND),
+    structuredClone(ADMITTED_REVIEW_REQUEST),
   ) as Record<string, unknown>;
   assert(response.structuredContent === resultIdentity);
-  assertEquals(calls, [REVIEW_COMMAND]);
-  assertStringIncludes(response.content as string, REVIEW_COMMAND.artifactId);
+  assertEquals(calls, [ADMITTED_REVIEW_REQUEST]);
+  assertStringIncludes(response.content as string, "current Thread tip");
   assertStringIncludes(response.content as string, "no source bytes");
 
   const tool = app.tool("project_admitted_modelica_run_review");
+  assertEquals(tool.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
   const inputSchema = tool.inputSchema as Record<string, unknown>;
   assertEquals(
     Object.keys(inputSchema.properties as Record<string, unknown>).sort(),
-    ["artifactFingerprint", "artifactId", "basis", "projectId"],
+    ["projectId"],
   );
+  assertEquals(inputSchema.required, ["projectId"]);
+  assertClosedObjectSchemas(inputSchema);
   assertEquals(
     Object.keys(inputSchema.properties as Record<string, unknown>).some((key) =>
       ["sourceText", "modelicaText", "runtime", "profile", "provider"].includes(
@@ -79,13 +75,27 @@ Deno.test("admitted Modelica review is conditional, closed, and rejects caller M
   await assertRejects(
     () =>
       handler({
-        ...structuredClone(REVIEW_COMMAND),
+        ...structuredClone(ADMITTED_REVIEW_REQUEST),
         modelicaText: "model CallerSelected end CallerSelected;",
       }) as Promise<unknown>,
     TypeError,
     "unsupported field(s): modelicaText",
   );
-  assertEquals(calls, [REVIEW_COMMAND]);
+  await assertRejects(
+    () =>
+      handler({
+        ...structuredClone(ADMITTED_REVIEW_REQUEST),
+        basis: structuredClone(MODELICA_REVIEW_COMMAND.basis),
+        artifactId: `technical-compilation-admission-${"a".repeat(64)}`,
+        artifactFingerprint: {
+          algorithm: "sha256",
+          digest: "a".repeat(64),
+        },
+      }) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): basis, artifactId, artifactFingerprint",
+  );
+  assertEquals(calls, [ADMITTED_REVIEW_REQUEST]);
 });
 
 Deno.test("qualified Modelica review exposes one closed two-field input and forwards it exactly", async () => {

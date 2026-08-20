@@ -24,6 +24,7 @@ import {
 } from "./file-execution-attempt-store.ts";
 
 const AT = "2026-08-20T05:00:00.000Z";
+const RUN_PERMISSION = await Deno.permissions.query({ name: "run" });
 
 Deno.test("admitted Modelica WAL follows the exact generation-zero path and completes only with its Thread successor", async () => {
   await withStore(async (store, directory) => {
@@ -389,63 +390,68 @@ Deno.test("admitted Modelica WAL rejects noncanonical and fingerprint-divergent 
   });
 });
 
-Deno.test("two Deno processes consume each admitted Modelica dispatch transition exactly once", async () => {
-  const directory = await Deno.realPath(
-    await Deno.makeTempDir({ prefix: "admitted-modelica-wal-race-" }),
-  );
-  try {
-    const store = new FileAdmittedModelicaExecutionAttemptStore(directory);
-    const fixture = await walFixture();
-    const prepared = await store.prepare(fixture.identity, AT);
-    const key = keyFor(prepared);
+Deno.test({
+  name:
+    "two Deno processes consume each admitted Modelica dispatch transition exactly once",
+  ignore: RUN_PERMISSION.state !== "granted",
+  async fn() {
+    const directory = await Deno.realPath(
+      await Deno.makeTempDir({ prefix: "admitted-modelica-wal-race-" }),
+    );
+    try {
+      const store = new FileAdmittedModelicaExecutionAttemptStore(directory);
+      const fixture = await walFixture();
+      const prepared = await store.prepare(fixture.identity, AT);
+      const key = keyFor(prepared);
 
-    const firstDispatches = await raceDispatchInSeparateProcesses(
-      directory,
-      "markDispatching",
-      { ...key, dispatchedAt: AT },
-    );
-    assertEquals(
-      firstDispatches.map((transition) => transition.outcome).sort(),
-      ["already-transitioned", "transitioned-now"],
-    );
-    assertEquals(firstDispatches[0]!.attempt, firstDispatches[1]!.attempt);
-    assertEquals(
-      await new FileAdmittedModelicaExecutionAttemptStore(directory).read(
-        fixture.identity.projectId,
-        fixture.identity.agentRunId,
-      ),
-      firstDispatches[0]!.attempt,
-    );
+      const firstDispatches = await raceDispatchInSeparateProcesses(
+        directory,
+        "markDispatching",
+        { ...key, dispatchedAt: AT },
+      );
+      assertEquals(
+        firstDispatches.map((transition) => transition.outcome).sort(),
+        ["already-transitioned", "transitioned-now"],
+      );
+      assertEquals(firstDispatches[0]!.attempt, firstDispatches[1]!.attempt);
+      assertEquals(
+        await new FileAdmittedModelicaExecutionAttemptStore(directory).read(
+          fixture.identity.projectId,
+          fixture.identity.agentRunId,
+        ),
+        firstDispatches[0]!.attempt,
+      );
 
-    await store.markGenerationZeroCleaned({
-      ...key,
-      destruction: fixture.generationZeroDestruction,
-    });
-    const advance = await createIsolatedOutputProducerGenerationAdvance({
-      runId: fixture.identity.executionRunId,
-      closedGeneration: 0,
-      nextGeneration: 1,
-    });
-    const redispatches = await raceDispatchInSeparateProcesses(
-      directory,
-      "markRedispatching",
-      { ...key, advance, dispatchedAt: AT },
-    );
-    assertEquals(
-      redispatches.map((transition) => transition.outcome).sort(),
-      ["already-transitioned", "transitioned-now"],
-    );
-    assertEquals(redispatches[0]!.attempt, redispatches[1]!.attempt);
-    assertEquals(
-      await new FileAdmittedModelicaExecutionAttemptStore(directory).read(
-        fixture.identity.projectId,
-        fixture.identity.agentRunId,
-      ),
-      redispatches[0]!.attempt,
-    );
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
+      await store.markGenerationZeroCleaned({
+        ...key,
+        destruction: fixture.generationZeroDestruction,
+      });
+      const advance = await createIsolatedOutputProducerGenerationAdvance({
+        runId: fixture.identity.executionRunId,
+        closedGeneration: 0,
+        nextGeneration: 1,
+      });
+      const redispatches = await raceDispatchInSeparateProcesses(
+        directory,
+        "markRedispatching",
+        { ...key, advance, dispatchedAt: AT },
+      );
+      assertEquals(
+        redispatches.map((transition) => transition.outcome).sort(),
+        ["already-transitioned", "transitioned-now"],
+      );
+      assertEquals(redispatches[0]!.attempt, redispatches[1]!.attempt);
+      assertEquals(
+        await new FileAdmittedModelicaExecutionAttemptStore(directory).read(
+          fixture.identity.projectId,
+          fixture.identity.agentRunId,
+        ),
+        redispatches[0]!.attempt,
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
 });
 
 Deno.test("admitted Modelica WAL rejects every skipped, reversed and divergent transition", async () => {

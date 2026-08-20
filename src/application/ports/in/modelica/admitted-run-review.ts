@@ -1,9 +1,10 @@
 /**
  * Inward port for preparing the human review of one admitted Modelica run.
  *
- * The caller names only an exact Thread basis and the sealed compilation
- * admission already attached to it. Runtime, isolation, output, profile and
- * source facts are reopened or selected behind server-owned outward ports.
+ * The public caller names only the project. A server-owned resolver selects
+ * the unique current Thread tip and its unique fresh sealed compilation
+ * admission before delegating to the exact command below. Runtime, isolation,
+ * output, profile and source facts stay behind server-owned outward ports.
  */
 
 import type { ModelicaAdmittedRunAdmission } from "../../../../domain/modelica/admitted/run-proposal.ts";
@@ -13,6 +14,17 @@ import type {
   EngineeringThreadSnapshotBasis,
 } from "../../../../domain/project/engineering-project.ts";
 
+/** Closed public request: no Thread or admission identity is caller-selected. */
+export interface ProjectAdmittedModelicaRunReviewRequest {
+  readonly projectId: string;
+}
+
+/**
+ * Exact server-internal join passed to the sealed-admission validator.
+ *
+ * The run executor also uses this shape to revalidate a signed MRTR against
+ * its immutable basis. It is intentionally not the MCP tool input schema.
+ */
 export interface ProjectAdmittedModelicaRunReviewCommand {
   readonly projectId: string;
   readonly basis: EngineeringThreadSnapshotBasis;

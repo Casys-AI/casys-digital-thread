@@ -18,6 +18,7 @@ import type {
 } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import { FixedAdmittedModelicaExecutionProfileCatalog } from "./execution-profile-catalog.ts";
 import { MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "./closed-subset-v1/worker-contract.ts";
+import { MODELICA_MICROSANDBOX_WORKER_CONTRACT } from "../qualified-kit/kit-v1/worker-contract.ts";
 
 export interface AdmittedModelicaExecutionProfileServerOptions {
   readonly imageReference: string;
@@ -80,6 +81,10 @@ export async function createAdmittedModelicaExecutionComposition(
     sdk: await createLocalMicrosandboxSdk(),
     imageReference: profile.runtimeBackend.imageReference,
     expectedImageUser: worker.expectedImageUser,
+    expectedImageEntrypoint: Object.freeze([
+      MODELICA_MICROSANDBOX_WORKER_CONTRACT.executable,
+      ...MODELICA_MICROSANDBOX_WORKER_CONTRACT.args,
+    ]),
     executable: worker.executable,
     args: worker.args,
     workdir: worker.workDirectory,

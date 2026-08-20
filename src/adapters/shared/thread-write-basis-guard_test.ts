@@ -31,6 +31,7 @@ import {
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
@@ -174,11 +175,12 @@ Deno.test("recorded @2 writers participate in the same basis exclusion", async (
   }
 });
 
-Deno.test("local Modelica and CalculiX @3 writers share the same Thread-basis exclusion", async () => {
+Deno.test("local Modelica and CalculiX writers share the same Thread-basis exclusion", async () => {
   const current = run("geometry", "queued");
   for (
     const [index, operation] of [
       SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
+      SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
       VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
     ].entries()
   ) {

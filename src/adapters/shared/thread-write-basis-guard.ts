@@ -38,6 +38,7 @@ import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
 import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
@@ -67,6 +68,7 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${DESIGN_EXECUTE_BUILD123D_OPERATION.id}@${DESIGN_EXECUTE_BUILD123D_OPERATION.version}`,
   `${DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.id}@${DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.version}`,
   `${SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.id}@${SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.version}`,
+  `${SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id}@${SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version}`,
   `${ARCHIVE_LINEAGE_OPERATION.id}@${ARCHIVE_LINEAGE_OPERATION.version}`,
   `${SYSON_MODEL_SEED_OPERATION.id}@${SYSON_MODEL_SEED_OPERATION.version}`,
   `${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.id}@${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.version}`,

@@ -65,7 +65,12 @@ export class ReopenAdmittedCompilationSource
 
     let reopened: ReopenedTechnicalCompilationAdmission | undefined;
     try {
-      reopened = await this.#admissions.read(command);
+      reopened = await this.#admissions.read({
+        projectId: command.projectId,
+        basis: command.basis,
+        artifactId: command.artifactId,
+        artifactFingerprint: command.artifactFingerprint,
+      });
     } catch {
       throw reopenError(
         "admission_resolution_failed",

@@ -246,7 +246,7 @@ seal / run tools stay.
 | `project_sensitivity_base_evaluation_review` | None               | Ready only if study metrics join Thread requirements exactly                                                                     |
 | `project_corrected_admission_review`         | None               | Parameters for `compile.seal-admission@1` from a corrected source                                                                |
 | `project_modelica_qualified_kit_run_review`  | None               | Parameters for the one local Modelica kit                                                                                        |
-| `project_admitted_modelica_run_review`       | None               | Parameters for `simulate.run-admitted-modelica@1`. Reopens sealed Modelica admission. No `modelicaText`                          |
+| `project_admitted_modelica_run_review`       | None               | `projectId` only. Server selects current tip + unique fresh sealed Modelica admission. No `modelicaText`                         |
 | `project_geometry_preview`                   | None               | Not registered. Not a product entry                                                                                              |
 
 `project_technical_compilation_preview` takes `projectId` and `result.reference` only.

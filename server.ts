@@ -68,6 +68,7 @@ import type { Build123dExecutionServerOptions } from "./src/adapters/cad/isolate
 import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
 import { createAdmittedModelicaExecutionComposition } from "./src/adapters/modelica/admitted/execution-composition.ts";
 import { PrepareProjectAdmittedModelicaRunReview } from "./src/application/use-cases/modelica/admitted/prepare-run-review.ts";
+import { ResolveProjectAdmittedModelicaRunReview } from "./src/application/use-cases/modelica/admitted/resolve-run-review.ts";
 import {
   DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
   DesignSealIsolatedGeometryRunExecutor,
@@ -242,6 +243,7 @@ import {
 } from "./src/adapters/shared/cas/file-capture-store.ts";
 import { FileRequirementsAttemptStore } from "./src/adapters/architecture/requirements/file-requirements-attempt-store.ts";
 import { FileBuild123dExecutionAttemptStore } from "./src/adapters/cad/isolated/file-build123d-execution-attempt-store.ts";
+import { FileAdmittedModelicaExecutionAttemptStore } from "./src/adapters/modelica/admitted/file-execution-attempt-store.ts";
 import { FileModelicaIsolatedExecutionAttemptStore } from "./src/adapters/modelica/qualified-kit/attempt-store.ts";
 import { FileCalculixIsolatedProductAttemptStore } from "./src/adapters/fea/isolated-v3/file-calculix-isolated-product-attempt-store.ts";
 import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/shared/cas/file-capture-store.ts";
@@ -359,7 +361,7 @@ export const LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE =
 export const LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894" as const;
 export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
-  "casys/modelica-microsandbox-worker@sha256:d92793e42b81fedd4391c4c2a0a0b9cab06934deef22498902e338cb09c73bcd" as const;
+  "casys/modelica-microsandbox-worker@sha256:8e9403242c6adb0223930a036017f90c305a0091643c9a076a2cc4ff39db03ec" as const;
 export const LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE =
   "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2" as const;
 const LOCAL_CALCULIX_WRAPPER_SHA256 =
@@ -1268,11 +1270,18 @@ async function createProjectControl(
         captures: modelicaExecutionCaptures,
         lease,
       });
-  const admittedModelicaRunReview = admittedModelicaExecution === undefined
+  const exactAdmittedModelicaRunReview = admittedModelicaExecution === undefined
     ? undefined
     : new PrepareProjectAdmittedModelicaRunReview({
       admissions: technicalCompilationAdmissions,
       profiles: admittedModelicaExecution.profiles,
+    });
+  const admittedModelicaRunReview = exactAdmittedModelicaRunReview === undefined
+    ? undefined
+    : new ResolveProjectAdmittedModelicaRunReview({
+      projects: runtime.projects,
+      snapshots: build123dThreadSnapshots,
+      exactReview: exactAdmittedModelicaRunReview,
     });
   const simulateRunAdmittedModelica =
     admittedModelicaExecution?.execution === undefined ||
@@ -1285,7 +1294,11 @@ async function createProjectControl(
         admissions: technicalCompilationAdmissions,
         profiles: admittedModelicaExecution.profiles,
         runner: admittedModelicaExecution.execution.runner,
+        recovery: admittedModelicaExecution.execution.recovery,
         publications: admittedModelicaExecution.execution.publications,
+        attempts: new FileAdmittedModelicaExecutionAttemptStore(
+          `${recordedAnalysisDirectory}/modelica/admitted/attempts`,
+        ),
         captures: admittedModelicaCaptures,
         lease,
       });

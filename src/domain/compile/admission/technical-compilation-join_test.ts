@@ -115,6 +115,47 @@ Deno.test("unique result and unique PartDefinition become represents", () => {
   );
 });
 
+Deno.test("unique Modelica root model and unique PartDefinition become represents", () => {
+  assertEquals(
+    deriveUniqueTechnicalCompilationBindings(
+      [modelicaSource("source.modelica")],
+      [part("sysml.ramp", "MyRamp")],
+    ),
+    [{
+      id: "binding:source.modelica:artifact.MyRamp:represents",
+      sourceId: "source.modelica",
+      sourceSymbolId: "artifact.MyRamp",
+      sysmlElementId: "sysml.ramp",
+      sysmlElementKind: "PartDefinition",
+      relation: "represents",
+    }],
+  );
+});
+
+Deno.test("several Modelica artifacts do not invent a represented root", () => {
+  const source = modelicaSource("source.modelica");
+  assertEquals(
+    deriveUniqueTechnicalCompilationBindings(
+      [{
+        ...source,
+        analysis: {
+          ...source.analysis,
+          symbols: [
+            ...source.analysis.symbols,
+            {
+              id: "artifact.OtherModel",
+              kind: "artifact",
+              name: "OtherModel",
+            },
+          ],
+        },
+      }],
+      [part("sysml.ramp", "MyRamp")],
+    ),
+    [],
+  );
+});
+
 Deno.test("several PartDefinitions do not invent a result join", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
@@ -219,6 +260,16 @@ function modelicaSource(id: string): {
         role: "modelica-model",
         language: "modelica",
       },
+      symbols: cad.analysis.symbols.map((symbol) =>
+        symbol.kind === "artifact"
+          ? { ...symbol, id: "artifact.MyRamp", name: "MyRamp" }
+          : symbol
+      ),
+      dependencies: cad.analysis.dependencies.map((dependency) =>
+        dependency.toSymbolId === "artifact.result"
+          ? { ...dependency, toSymbolId: "artifact.MyRamp" }
+          : dependency
+      ),
     },
   };
 }

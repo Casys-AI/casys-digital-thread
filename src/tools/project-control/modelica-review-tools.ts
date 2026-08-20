@@ -4,14 +4,10 @@ import type {
   ProjectModelicaQualifiedKitRunReviewUseCase,
 } from "../../application/ports/in/modelica/qualified-kit-run-review.ts";
 import type {
-  ProjectAdmittedModelicaRunReviewCommand,
+  ProjectAdmittedModelicaRunReviewRequest,
   ProjectAdmittedModelicaRunReviewUseCase,
 } from "../../application/ports/in/modelica/admitted-run-review.ts";
-import {
-  FINGERPRINT_SCHEMA,
-  OBJECT_OUTPUT_SCHEMA,
-  READ_ONLY_ANNOTATIONS,
-} from "./mcp-tool-schemas.ts";
+import { OBJECT_OUTPUT_SCHEMA, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
 
 export interface ProjectModelicaReviewToolDependencies {
   /** Read-only preparation of the one code-owned qualified Modelica kit run. */
@@ -45,7 +41,7 @@ export function registerProjectModelicaReviewTools(
       const result = await review.execute(command);
       return {
         content:
-          `Admitted Modelica execution review for sealed admission ${command.artifactId} was prepared from exact server-reopened facts. The returned admission and decisionParameters are review material only: they contain no source bytes or runtime capability, no code was executed, and no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority was created.`,
+          "Admitted Modelica execution review for the unique fresh sealed admission on the current Thread tip was prepared from exact server-reopened facts. The returned admission and decisionParameters are review material only: they contain no source bytes or runtime capability, no code was executed, and no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority was created.",
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -74,16 +70,13 @@ const TECHNICAL_THREAD_BASIS_SCHEMA = {
 const projectAdmittedModelicaRunReviewTool: MCPTool = {
   name: "project_admitted_modelica_run_review",
   description:
-    "Prepare the exact human-review identity and canonical MRTR parameters for one future admitted Modelica closed-subset execution by reopening a sealed technical-compilation admission and joining it to the server-owned execution profile. This provider-free read performs no code execution, returns no source bytes or runtime capability, mutates no EngineeringProject or Thread state, and grants no MRTR, provider, or dispatch authority. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; Modelica text, runtime, isolation, output, profile, command, tool and transport facts remain server-owned. This is not simulate.run-qualified-modelica-kit@1 and not simulate.run-modelica-scenario@2.",
+    "Prepare the exact human-review identity and canonical MRTR parameters for one future admitted Modelica closed-subset execution. The caller names only projectId; the server reopens the unique current Thread tip, selects its unique fresh non-archived canonical digital-thread compile.seal-admission@1 document, and joins it to the server-owned execution profile. Missing, stale, archived, malformed, foreign-producer, or ambiguous admissions fail closed. This provider-free read performs no code execution, returns no source bytes or runtime capability, mutates no EngineeringProject or Thread state, and grants no MRTR, provider, or dispatch authority. Modelica text, Thread and artifact identities, runtime, isolation, output, profile, command, tool and transport facts remain server-owned. This is not simulate.run-qualified-modelica-kit@1 and not simulate.run-modelica-scenario@2.",
   inputSchema: {
     type: "object",
     properties: {
       projectId: TECHNICAL_ID_SCHEMA,
-      basis: TECHNICAL_THREAD_BASIS_SCHEMA,
-      artifactId: TECHNICAL_ID_SCHEMA,
-      artifactFingerprint: FINGERPRINT_SCHEMA,
     },
-    required: ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    required: ["projectId"],
     additionalProperties: false,
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,
@@ -109,21 +102,15 @@ const projectModelicaQualifiedKitRunReviewTool: MCPTool = {
 
 function admittedModelicaRunReviewCommand(
   value: Record<string, unknown>,
-): ProjectAdmittedModelicaRunReviewCommand {
+): ProjectAdmittedModelicaRunReviewRequest {
   exactKeys(
     value,
-    ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    ["projectId"],
     [],
     "admittedModelicaRunReview",
   );
   return {
     projectId: technicalId(value.projectId, "projectId"),
-    basis: technicalThreadBasis(value.basis, "basis"),
-    artifactId: technicalId(value.artifactId, "artifactId"),
-    artifactFingerprint: fingerprintInput(
-      value.artifactFingerprint,
-      "artifactFingerprint",
-    ),
   };
 }
 
@@ -145,7 +132,7 @@ function modelicaQualifiedKitRunReviewCommand(
 function technicalThreadBasis(
   value: unknown,
   name: string,
-): ProjectAdmittedModelicaRunReviewCommand["basis"] {
+): ProjectModelicaQualifiedKitRunReviewCommand["basis"] {
   const basis = exactRecord(value, name);
   exactKeys(basis, ["kind", "snapshotId", "revision", "subjectId"], [], name);
   if (basis.kind !== "thread-snapshot") {
@@ -178,18 +165,6 @@ function exactNonEmptyText(value: unknown, name: string): string {
     throw new TypeError(`${name} must be non-empty without edge whitespace`);
   }
   return value;
-}
-
-function fingerprintInput(value: unknown, name: string) {
-  const record = exactRecord(value, name);
-  exactKeys(record, ["algorithm", "digest"], [], name);
-  if (record.algorithm !== "sha256") {
-    throw new TypeError(`${name}.algorithm must be sha256`);
-  }
-  if (typeof record.digest !== "string" || !/^[a-f0-9]{64}$/.test(record.digest)) {
-    throw new TypeError(`${name}.digest must be 64 lowercase hex characters`);
-  }
-  return { algorithm: "sha256" as const, digest: record.digest };
 }
 
 function exactRecord(value: unknown, name: string): Record<string, unknown> {

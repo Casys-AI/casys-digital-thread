@@ -69,6 +69,7 @@ Deno.test("admitted compilation reopen returns exact Modelica bytes for the micr
     new TextDecoder().decode(request.source.bytes),
     MODELICA_QUALIFIED_MODEL_SOURCE,
   );
+  assertEquals(fixture.reader.requests, [fixture.command]);
 });
 
 Deno.test("admitted compilation reopen refuses the wrong compilation target", async () => {
@@ -99,8 +100,13 @@ Deno.test("admitted compilation reopen rejects caller source text", async () => 
 });
 
 class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
+  readonly requests: unknown[] = [];
+
   constructor(public result: ReopenedTechnicalCompilationAdmission) {}
-  read(): Promise<ReopenedTechnicalCompilationAdmission | undefined> {
+  read(
+    request: Parameters<TechnicalCompilationAdmissionReader["read"]>[0],
+  ): Promise<ReopenedTechnicalCompilationAdmission | undefined> {
+    this.requests.push(structuredClone(request));
     return Promise.resolve(structuredClone(this.result));
   }
 }
@@ -288,6 +294,7 @@ async function harness() {
     admission,
     document: compiled.document,
   };
+  const reader = new FakeAdmissionReader(reopened);
   return {
     command: {
       projectId: "project.ramp",
@@ -300,8 +307,7 @@ async function harness() {
       artifactId: `technical-compilation-admission-${artifactFingerprint.digest}`,
       artifactFingerprint,
     },
-    service: new ReopenAdmittedCompilationSource({
-      admissions: new FakeAdmissionReader(reopened),
-    }),
+    reader,
+    service: new ReopenAdmittedCompilationSource({ admissions: reader }),
   };
 }

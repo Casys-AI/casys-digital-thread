@@ -88,6 +88,19 @@ flag the descriptor stays registered and the dispatcher is fail-closed.
 A successful isolated Modelica run is documentary. It is not a requirement verdict and
 not `simulate.run-qualified-modelica-kit@1`.
 
+## Admitted Modelica replay boundary
+
+Only the invocation that just claimed a queued run may create its WAL and dispatch
+generation 0. A run already marked `running` or `publishing` without that WAL is
+quarantined; the server never adopts it as a new attempt. After an uncertain outcome,
+the executor first reopens the exact CAS publication. A proven absence may authorize one
+generation-1 dispatch, but only after durable generation-0 cleanup and a one-shot WAL
+transition. There is no generation 2.
+
+Publishing and completed replay reopen the exact receipt, capture, immutable project
+revisions and Thread successor without invoking the worker. These rules deliberately do
+not preserve pre-WAL development runs.
+
 ## Hexagonal placement
 
 | Layer        | Owns                                                                                          | Must not                                      |
