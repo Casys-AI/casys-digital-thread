@@ -16,7 +16,7 @@ import {
   resolveSealedAssemblyGeometry,
   sealedAssemblyGlbAsset,
 } from "../thread/component-workspace-model.ts";
-import { OverviewThreadFlow } from "./overview-thread-flow.tsx";
+import { OverviewThreadHero } from "./overview-thread-hero.tsx";
 import { Progress } from "@ark-ui/react/progress";
 import { cn } from "../lib/utils.ts";
 import {
@@ -287,7 +287,7 @@ export function ProjectOverview({
             ))}
           </ol>
         </section>
-        <OverviewThreadFlow
+        <OverviewThreadHero
           thread={thread}
           onOpenEvidence={() => onNavigate("verification")}
         />

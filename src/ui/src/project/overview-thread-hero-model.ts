@@ -18,16 +18,10 @@ export interface OverviewLane {
   readonly color: string;
 }
 
-/**
- * Voies d'affichage — composition seule, pas une seconde provenance.
- *
- * Le modèle système vient en premier parce que c'est lui qui DÉCLARE les
- * exigences : les placer avant lui obligeait quatorze arêtes à remonter le
- * fil, contre dix dans cet ordre (mesuré sur le graphe enregistré).
- */
+/** Display lanes of mockup 2a — composition only, not a second provenance. */
 export const OVERVIEW_LANES: readonly OverviewLane[] = [
-  { id: "system-model", title: "System model", color: "#2563eb" },
   { id: "requirements", title: "Requirements", color: "#7c3aed" },
+  { id: "system-model", title: "System model", color: "#2563eb" },
   { id: "geometry", title: "Geometry", color: "#0e7490" },
   { id: "physics", title: "Physics", color: "#a16207" },
   { id: "verdicts", title: "Verdicts", color: "#15803d" },
@@ -49,9 +43,6 @@ export interface OverviewHeroNode {
 export interface OverviewHeroEdge {
   readonly key: string;
   readonly d: string;
-  /** Clés des nœuds placés que cette arête relie, telles quelles. */
-  readonly source: string;
-  readonly target: string;
   readonly emphasis: boolean;
 }
 
@@ -69,8 +60,7 @@ export interface OverviewThreadHeroView {
 const COLUMN_WIDTH = OVERVIEW_HERO_WIDTH / OVERVIEW_LANES.length;
 const MAX_PER_LANE = 4;
 const NODE_TOP = 56;
-// L'écart vertical laisse passer les liens entre deux cartes de 46 px de haut.
-const NODE_GAP = 72;
+const NODE_GAP = 60;
 
 /**
  * 2a hero: essential recorded nodes, stacked in the five mockup lanes.
@@ -92,26 +82,8 @@ export function buildOverviewThreadHero(
     verdicts: 0,
   };
 
-  // Producteurs déclarés de chaque nœud, lus sur le graphe COMPLET : le
-  // filtre essentiel écarte les artefacts de solveur, donc l'arête qui dit
-  // d'où vient une mesure n'existe plus dans `essential`.
-  const nodeByRefKey = new Map(
-    thread.graph.nodes.map((item) => [refKey(item.ref), item]),
-  );
-  const producersByRefKey = new Map<string, ThreadGraphNode[]>();
-  for (const edge of thread.graph.edges) {
-    const producer = nodeByRefKey.get(refKey(edge.from));
-    if (!producer) continue;
-    const target = refKey(edge.to);
-    const producers = producersByRefKey.get(target) ?? [];
-    producers.push(producer);
-    producersByRefKey.set(target, producers);
-  }
-
   for (const node of essential.nodes) {
-    const lane = node.entityKind === "observation"
-      ? measurementLaneFor(node, producersByRefKey) ?? overviewLaneFor(node)
-      : overviewLaneFor(node);
+    const lane = overviewLaneFor(node);
     if (!lane) continue;
     const index = counts[lane];
     if (index >= MAX_PER_LANE) continue;
@@ -138,8 +110,6 @@ export function buildOverviewThreadHero(
     edges.push({
       key: edge.id,
       d: `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`,
-      source: from.key,
-      target: to.key,
       emphasis: from.emphasis || to.emphasis,
     });
   }
@@ -156,25 +126,6 @@ export function buildOverviewThreadHero(
     nodes: placed,
     edges,
   };
-}
-
-/**
- * Voie d'une mesure, lue sur ses producteurs enregistrés.
- *
- * Une observation n'est pas un jugement : elle appartient à la discipline qui
- * l'a produite. `maxDisplacement measured by local CalculiX` déclare pourtant
- * `digital-thread` comme système, donc seule l'arête vers son `solver-result`
- * dit d'où elle vient. On lit le graphe, jamais le libellé.
- */
-function measurementLaneFor(
-  node: ThreadGraphNode,
-  producersByRefKey: ReadonlyMap<string, readonly ThreadGraphNode[]>,
-): OverviewLaneId | undefined {
-  for (const producer of producersByRefKey.get(refKey(node.ref)) ?? []) {
-    const lane = overviewLaneFor(producer);
-    if (lane === "physics" || lane === "geometry") return lane;
-  }
-  return undefined;
 }
 
 export function overviewLaneFor(
@@ -198,11 +149,8 @@ export function overviewLaneFor(
   if (node.entityKind !== "artifact") return undefined;
 
   const haystack = `${node.system} ${node.artifactKind ?? ""}`.toLowerCase();
-  // `solver-input` / `solver-result` sont des genres d'artefact ENREGISTRÉS :
-  // les omettre laissait la voie physique vide alors qu'un solveur avait
-  // tourné, parce que ces artefacts déclarent `digital-thread` comme système.
   if (
-    /calculix|gmsh|fea|modelica|thermal|ccx|frd|mesh|solver/.test(haystack)
+    /calculix|gmsh|fea|modelica|thermal|ccx|frd|mesh/.test(haystack)
   ) {
     return "physics";
   }

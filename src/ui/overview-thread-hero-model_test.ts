@@ -11,24 +11,13 @@ Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids
     GENERIC_THREAD_FIXTURE.graph.nodes.map((node) => node.ref.id),
   );
 
-  // Les cinq voies sont là, sans doublon ni oubli.
-  const laneIds = hero.lanes.map((column) => column.lane.id);
-  assertEquals([...laneIds].sort(), [
-    "geometry",
-    "physics",
+  assertEquals(hero.lanes.map((column) => column.lane.id), [
     "requirements",
     "system-model",
+    "geometry",
+    "physics",
     "verdicts",
   ]);
-  // Et elles suivent le sens du fil : le modèle système déclare les
-  // exigences, donc il les précède ; le verdict clôt la lecture. Figer la
-  // liste entière rendrait le test faux au premier réordonnancement légitime.
-  assertEquals(
-    laneIds.indexOf("system-model") < laneIds.indexOf("requirements"),
-    true,
-    "the system model declares the requirements, so it comes first",
-  );
-  assertEquals(laneIds.at(-1), "verdicts");
   assertEquals(
     hero.nodes.every((item) => fixtureIds.has(item.node.ref.id)),
     true,
@@ -49,13 +38,9 @@ Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids
     hero.nodes.find((item) => item.node.ref.id === "ART-CAD-018")?.lane,
     "geometry",
   );
-  // Une mesure appartient à la discipline qui l'a produite, pas au verdict :
-  // une contrainte mesurée par un solveur est de la physique. Le jugement,
-  // lui, reste un verdict. Confondre les deux laissait la voie physique vide
-  // alors qu'un solveur avait tourné.
   assertEquals(
     hero.nodes.find((item) => item.node.ref.id === "OBS-STRESS-MAX")?.lane,
-    "physics",
+    "verdicts",
   );
 });
 
