@@ -289,6 +289,7 @@ export function ProjectOverview({
         </section>
         <OverviewThreadFlow
           thread={thread}
+          project={project}
           onOpenEvidence={() => onNavigate("verification")}
         />
       </Card>

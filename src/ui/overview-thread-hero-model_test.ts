@@ -1,18 +1,25 @@
 import { assertEquals } from "@std/assert";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
+import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import {
   buildOverviewThreadHero,
   overviewLaneFor,
 } from "./src/project/overview-thread-hero-model.ts";
 
 Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids", () => {
-  const hero = buildOverviewThreadHero(GENERIC_THREAD_FIXTURE);
+  // Fixture sans provenance d'étape : le fil doit retomber sur les
+  // disciplines, pas se vider.
+  const hero = buildOverviewThreadHero(GENERIC_THREAD_FIXTURE, {
+    agentRuns: [],
+    workItems: [],
+    phases: [],
+  } as unknown as EngineeringProjectSnapshot);
   const fixtureIds = new Set(
     GENERIC_THREAD_FIXTURE.graph.nodes.map((node) => node.ref.id),
   );
 
   // Les cinq voies sont là, sans doublon ni oubli.
-  const laneIds = hero.lanes.map((column) => column.lane.id);
+  const laneIds = hero.lanes.map((column) => column.id);
   assertEquals([...laneIds].sort(), [
     "geometry",
     "physics",

@@ -35,6 +35,7 @@ import {
   compactTechnicalSummary,
 } from "../thread/compact-identifier-model.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import {
   buildOverviewThreadHero,
   type OverviewHeroNode,
@@ -145,12 +146,17 @@ const NODE_TYPES = { thread: ThreadFlowNode };
 
 export function OverviewThreadFlow({
   thread,
+  project,
   onOpenEvidence,
 }: {
   readonly thread: ThreadWorkbenchSnapshot;
+  readonly project: EngineeringProjectSnapshot;
   readonly onOpenEvidence: () => void;
 }): JSX.Element {
-  const view = useMemo(() => buildOverviewThreadHero(thread), [thread]);
+  const view = useMemo(
+    () => buildOverviewThreadHero(thread, project),
+    [thread, project],
+  );
 
   const nodes = useMemo<Node[]>(
     () =>
@@ -225,16 +231,19 @@ export function OverviewThreadFlow({
       >
         {view.lanes.map((column, index) => (
           <div
-            key={column.lane.id}
+            key={column.id}
             className={index > 0
               ? "border-l border-dashed border-border px-4 py-2"
               : "px-4 py-2"}
           >
-            <p
-              className={cn("m-0", LANE_LABEL)}
-              style={{ color: column.lane.color }}
-            >
-              {column.lane.title}
+            {
+              /* Le titre est celui de l'ÉTAPE, comme dans le bandeau de
+                gates juste au-dessus : le fil et les gates parlent enfin de
+                la même chose. La couleur, elle, reste sur les nœuds — c'est
+                leur discipline, pas celle de la colonne. */
+            }
+            <p className={cn("m-0", LANE_LABEL, "text-foreground/70")}>
+              {column.title}
             </p>
             <p className="m-0 font-mono text-[9.5px] text-muted-foreground">
               {column.systems.join(" · ") || "none recorded"}
