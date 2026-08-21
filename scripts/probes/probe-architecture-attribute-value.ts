@@ -252,7 +252,7 @@ export async function probeArchitectureAttributeValue(
     );
 
     const typeLabel = firstLabel(typeQuery);
-    const valueText = firstLabel(valueQuery) ?? firstLiteral(valueQuery);
+    const valueText = firstLiteral(valueQuery) ?? firstLabel(valueQuery);
     const unit = firstUnit(valueQuery);
     const readback = {
       kind: typeof got.structuredContent.kind === "string"
@@ -266,7 +266,7 @@ export async function probeArchitectureAttributeValue(
       unit,
     };
     const complete = typeLabel === PROBE_ARCHITECTURE_ATTRIBUTE_SHAPE.sysmlType &&
-      valueText !== undefined &&
+      valueText === PROBE_ARCHITECTURE_ATTRIBUTE_SHAPE.literal &&
       unit === PROBE_ARCHITECTURE_ATTRIBUTE_SHAPE.unit;
     return await withCleanup(client, projectId, {
       ...base,

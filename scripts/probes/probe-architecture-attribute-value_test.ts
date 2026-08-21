@@ -12,11 +12,11 @@ import {
 } from "./probe-architecture-attribute-value.ts";
 
 Deno.test(
-  "architecture attribute probe records insert, readback and cleanup without inventing type or unit",
+  "architecture attribute probe stays unresolved on the live OperatorExpression readback",
   async () => {
     const client = new FakeSyson();
     const result = await probeArchitectureAttributeValue({ client });
-    assertEquals(result.status, "ok");
+    assertEquals(result.status, "unresolved");
     assertEquals(result.sandboxProjectDeleted, true);
     assertEquals(
       result.insertedSysml,
@@ -26,8 +26,8 @@ Deno.test(
       kind: "sysml::AttributeUsage",
       label: "probeHandle",
       typeLabel: "LengthValue",
-      valueText: "1",
-      unit: "mm",
+      valueText: "OperatorExpression",
+      unit: undefined,
     });
     assertEquals(
       client.names,
@@ -51,24 +51,41 @@ Deno.test(
 );
 
 Deno.test(
-  "architecture attribute probe stays unresolved when value and unit are absent from readback",
+  "architecture attribute probe stays unresolved when FeatureValue rereads OperatorExpression even with a unit",
   async () => {
-    const client = new FakeSyson({ omitValue: true });
+    const client = new FakeSyson({ valueShape: "operator-with-unit" });
     const result = await probeArchitectureAttributeValue({ client });
     assertEquals(result.status, "unresolved");
-    assertEquals(result.readback?.typeLabel, "LengthValue");
-    assertEquals(result.readback?.unit, undefined);
-    assertEquals(result.sandboxProjectDeleted, true);
+    assertEquals(result.readback?.valueText, "OperatorExpression");
+    assertEquals(result.readback?.unit, "mm");
   },
 );
+
+Deno.test(
+  "architecture attribute probe is ok only when type, inserted literal and unit all reread",
+  async () => {
+    const client = new FakeSyson({ valueShape: "exact-scalar" });
+    const result = await probeArchitectureAttributeValue({ client });
+    assertEquals(result.status, "ok");
+    assertEquals(result.readback, {
+      kind: "sysml::AttributeUsage",
+      label: "probeHandle",
+      typeLabel: "LengthValue",
+      valueText: "1",
+      unit: "mm",
+    });
+  },
+);
+
+type FakeValueShape = "live" | "exact-scalar" | "operator-with-unit";
 
 class FakeSyson implements McpToolClient {
   readonly names: string[] = [];
   readonly expressions: string[] = [];
-  readonly #omitValue: boolean;
+  readonly #valueShape: FakeValueShape;
 
-  constructor(options: { readonly omitValue?: boolean } = {}) {
-    this.#omitValue = options.omitValue === true;
+  constructor(options: { readonly valueShape?: FakeValueShape } = {}) {
+    this.#valueShape = options.valueShape ?? "live";
   }
 
   callTool(call: McpToolCall): Promise<McpToolResult> {
@@ -134,13 +151,26 @@ class FakeSyson implements McpToolClient {
             }],
           };
         }
-        if (this.#omitValue) {
+        if (this.#valueShape === "exact-scalar") {
           return {
             objectId: "attr-1",
             expression,
             type: "objects",
-            count: 0,
-            results: [],
+            count: 1,
+            results: [{ value: "1", unit: "mm" }],
+          };
+        }
+        if (this.#valueShape === "operator-with-unit") {
+          return {
+            objectId: "attr-1",
+            expression,
+            type: "objects",
+            count: 1,
+            results: [{
+              kind: "sysml::OperatorExpression",
+              label: "OperatorExpression",
+              unit: "mm",
+            }],
           };
         }
         return {
@@ -148,7 +178,10 @@ class FakeSyson implements McpToolClient {
           expression,
           type: "objects",
           count: 1,
-          results: [{ value: "1", unit: "mm" }],
+          results: [{
+            kind: "sysml::OperatorExpression",
+            label: "OperatorExpression",
+          }],
         };
       }
       case "syson_project_delete":

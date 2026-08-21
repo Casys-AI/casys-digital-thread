@@ -144,7 +144,7 @@ Deno.test(
 );
 
 Deno.test(
-  "fresh lamp requirements review keeps scalar criteria unresolved without invented thresholds",
+  "fresh lamp requirements review refuses thresholds traced to an open-question or exclusion",
   async () => {
     const { store } = await seedApprovedArticulatedLedDeskLampStructureBrief();
     const review = new PrepareProjectBriefRequirementsReview({ projects: store });
