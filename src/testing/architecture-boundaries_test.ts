@@ -25,6 +25,11 @@ const EXCLUDED_DIRECTORY_NAMES = new Set([
   "node_modules",
   "testing",
 ]);
+const RETIRED_DIRECTORIES = [
+  "src/contracts",
+  "src/domain/modelica/recorded",
+  "src/adapters/modelica/recorded",
+] as const;
 
 /**
  * Type imports are erased, so they cannot form a runtime initialization cycle.
@@ -56,10 +61,14 @@ Deno.test("production imports preserve inward architecture boundaries and remain
     [],
     "Domain stays inward; application never depends on presentation; presentation read models depend only on presentation or domain; tools may not import adapters, presentation, or UI.",
   );
+  const resurrected = [];
+  for (const directory of RETIRED_DIRECTORIES) {
+    if (await directoryExists(directory)) resurrected.push(directory);
+  }
   assertEquals(
-    await directoryExists("src/contracts"),
-    false,
-    "The unowned src/contracts bucket is retired; place read models in their application or presentation owner.",
+    resurrected,
+    [],
+    "Unowned contracts and recorded-Modelica islands must not reappear.",
   );
   assertEquals(
     runtimeCycles,
@@ -161,7 +170,27 @@ Deno.test("presentation remains outward of application and depends on domain by 
       "src/domain/project/engineering-project.ts",
       "type-only",
     )),
-  ], [true, true, false, false, true, false]);
+    isForbiddenLayerImport(edge(
+      "src/presentation/workbench/engineering/snapshot.ts",
+      "src/application/control-plane/control-plane.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/presentation/workbench/engineering/snapshot.ts",
+      "src/application/control-plane/control-plane.ts",
+      "type-only",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/presentation/workbench/engineering/snapshot.ts",
+      "src/tools/control-plane.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/presentation/workbench/engineering/snapshot.ts",
+      "src/tools/control-plane.ts",
+      "type-only",
+    )),
+  ], [true, true, false, false, true, false, true, true, true, true]);
 });
 
 Deno.test("runtime cycle detection rejects cycles while type-only back edges remain reportable", () => {
