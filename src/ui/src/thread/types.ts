@@ -1555,10 +1555,9 @@ function hasExactVerificationCaseCoverage(
   coverage: readonly ThreadVerificationCaseCoverage[],
 ): boolean {
   const families = coverage.map((item) => item.family);
-  return coverage.length === 3 && hasUniqueStrings(families) &&
+  return coverage.length === 2 && hasUniqueStrings(families) &&
     families.includes("mechanical-proof") &&
-    families.includes("sensitivity-study") &&
-    families.includes("modelica-simulation");
+    families.includes("sensitivity-study");
 }
 
 function isThreadVerificationCase(
@@ -1616,8 +1615,7 @@ function isThreadVerificationCaseIssue(
 function isThreadVerificationCaseFamily(
   value: unknown,
 ): value is ThreadVerificationCaseFamily {
-  return value === "mechanical-proof" || value === "sensitivity-study" ||
-    value === "modelica-simulation";
+  return value === "mechanical-proof" || value === "sensitivity-study";
 }
 
 function caseSchemaMatchesFamily(
@@ -1627,9 +1625,7 @@ function caseSchemaMatchesFamily(
   return (family === "mechanical-proof" &&
     schemaVersion === "mechanical-proof-case/1.0") ||
     (family === "sensitivity-study" &&
-      schemaVersion === "sensitivity-study-case/2.0") ||
-    (family === "modelica-simulation" &&
-      schemaVersion === "simulation-case/2.0");
+      schemaVersion === "sensitivity-study-case/2.0");
 }
 
 function authorityArtifactMatchesCase(
@@ -1652,16 +1648,11 @@ function authorityArtifactMatchesCase(
       artifact.uri ===
         `casys://fea-proof-case-capture/sha256/${captureDigest}`;
   }
-  if (verificationCase.family === "sensitivity-study") {
-    return artifact.producedBy === "analyze.seal-sensitivity-study@1" &&
-      artifact.id === `sensitivity-case-${verificationCase.caseDigest}` &&
-      artifact.uri ===
-        `casys://sensitivity-study-case-capture/sha256/${captureDigest}`;
-  }
-  return artifact.producedBy === "simulate.seal-simulation-case@2" &&
-    captureDigest === verificationCase.caseDigest &&
-    artifact.id === `simulation-case-v2-${captureDigest}` &&
-    artifact.uri === `casys://simulation-case-v2/sha256/${captureDigest}`;
+  return verificationCase.family === "sensitivity-study" &&
+    artifact.producedBy === "analyze.seal-sensitivity-study@1" &&
+    artifact.id === `sensitivity-case-${verificationCase.caseDigest}` &&
+    artifact.uri ===
+      `casys://sensitivity-study-case-capture/sha256/${captureDigest}`;
 }
 
 function isThreadGraph(value: unknown): value is ThreadGraph {

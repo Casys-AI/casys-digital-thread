@@ -58,7 +58,7 @@ temporary state. That focused approval gate itself does not execute Build123d.
 `--yolo` is accepted only when the effective MCP hostname is an explicit loopback
 hostname; a non-loopback binding is rejected before startup. The startup-owned gate
 table auto-confirms positive `project_brief_confirm`, `project_decision_approve`, queued
-`project_agent_run_cancel`, and `project_work_item_supersede_unstarted`. Those paths
+and `project_agent_run_cancel`. Those paths
 still call the canonical command services and persist the fixed origin
 `{ kind: "human", actorId: "local-yolo:startup-opt-in" }` plus an explicit YOLO
 rationale; they do not fabricate an MCP elicitation response.

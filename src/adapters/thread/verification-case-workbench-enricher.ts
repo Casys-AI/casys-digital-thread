@@ -39,20 +39,7 @@ import {
 import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
-import {
-  canonicalSimulationCaseV2Text,
-  validateSimulationCaseV2,
-} from "../../domain/modelica/recorded/simulation-case-v2.ts";
-import {
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-} from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
-import {
-  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-} from "../../domain/modelica/recorded/simulation-case-proposal.ts";
-
 const SHA256 = /^[a-f0-9]{64}$/;
-const MODELICA_SIMULATION_CASE_V2_URI_PREFIX = "casys://simulation-case-v2/";
-const MODELICA_SIMULATION_CASE_V1_URI_PREFIX = "casys://simulation-case-capture/";
 
 const CASE_LINEAGE_RELATIONS = new Set<ThreadGraphRelation>([
   "derived_from",
@@ -72,7 +59,6 @@ export interface VerificationCaseCaptureReader {
 export interface VerificationCaseWorkbenchEnricherDependencies {
   readonly mechanicalProof?: VerificationCaseCaptureReader;
   readonly sensitivityStudy?: VerificationCaseCaptureReader;
-  readonly modelicaSimulationV2?: VerificationCaseCaptureReader;
 }
 
 interface ExtractedCaseBase {
@@ -101,10 +87,6 @@ type ExtractedCase =
     | {
       readonly family: "sensitivity-study";
       readonly caseSchemaVersion: "sensitivity-study-case/2.0";
-    }
-    | {
-      readonly family: "modelica-simulation";
-      readonly caseSchemaVersion: "simulation-case/2.0";
     }
   );
 
@@ -368,49 +350,6 @@ function caseDrivers(
         };
       },
     },
-    {
-      family: "modelica-simulation",
-      producedBy:
-        `${SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION.version}`,
-      artifactIdPrefix: "simulation-case-v2-",
-      uriPrefix: MODELICA_SIMULATION_CASE_V2_URI_PREFIX,
-      reader: dependencies.modelicaSimulationV2,
-      extract: (text, fingerprint) => {
-        const simulationCase = validateSimulationCaseV2(JSON.parse(text));
-        if (canonicalSimulationCaseV2Text(simulationCase) !== text) {
-          throw new TypeError(
-            "Modelica simulation case bytes are not the canonical declaration.",
-          );
-        }
-        return Promise.resolve({
-          family: "modelica-simulation",
-          caseSchemaVersion: simulationCase.schemaVersion,
-          id: simulationCase.id,
-          revision: simulationCase.revision,
-          scope: simulationCase.scope,
-          caseDigest: fingerprint.digest,
-          projectId: simulationCase.project.id,
-          subjectId: simulationCase.project.subjectId,
-          expectedAuthorityArtifactId: `simulation-case-v2-${fingerprint.digest}`,
-          inputArtifacts: [],
-        });
-      },
-    },
-    {
-      family: "modelica-simulation",
-      producedBy:
-        `${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.version}`,
-      artifactIdPrefix: "simulation-case-",
-      uriPrefix: MODELICA_SIMULATION_CASE_V1_URI_PREFIX,
-      advertiseCoverage: false,
-      // The historical V1 parser remains private and deliberately partial.
-      // Detect its exact seal, but keep it unresolved instead of duplicating a
-      // permissive parser or silently omitting it from the Cases axis.
-      extract: () =>
-        Promise.reject(
-          new TypeError("Historical Modelica V1 case reader is unavailable."),
-        ),
-    },
   ];
 }
 
@@ -565,13 +504,6 @@ function projectCaseDeclaration(
     authorityArtifactIds: [authorityArtifactId],
   };
   if (extracted.family === "mechanical-proof") {
-    return {
-      ...common,
-      family: extracted.family,
-      caseSchemaVersion: extracted.caseSchemaVersion,
-    };
-  }
-  if (extracted.family === "sensitivity-study") {
     return {
       ...common,
       family: extracted.family,

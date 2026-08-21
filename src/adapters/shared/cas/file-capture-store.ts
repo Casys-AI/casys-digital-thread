@@ -523,69 +523,6 @@ export const FEA_VERDICT_ARTIFACT_URI_ROOT =
   "casys://fea-verdict-capture/proof/" as const;
 
 /**
- * Content-addressed store for `modelica-scenario-run-capture/1.0` envelopes
- * produced by `simulate.run-modelica-scenario@1` after a successful provider
- * dispatch.  Each envelope embeds both the normalized simulate and run_get
- * provider responses, enabling offline double-attestation.
- *
- * URI: `casys://modelica-scenario-run-capture/sha256/<providerRunRecordFp>`.
- */
-export const MODELICA_SCENARIO_RUN_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
-  "modelica-scenario-run"
-> = {
-  kind: "modelica-scenario-run",
-  directory: "state/local/modelica-scenario-run-captures",
-  uriNamespace: "modelica-scenario-run-capture",
-  label: "Modelica scenario run",
-};
-
-/**
- * Content-addressed store for `modelica-scenario-execution-receipt/1.0` envelopes
- * produced by `simulate.run-modelica-scenario@1` after both CAS objects are saved.
- * The receipt asserts the lineage between the human-signed simulation case and the
- * concrete provider run record.
- *
- * URI: `casys://modelica-scenario-receipt-capture/sha256/<receiptFp>`.
- */
-export const MODELICA_SCENARIO_RECEIPT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
-  "modelica-scenario-receipt"
-> = {
-  kind: "modelica-scenario-receipt",
-  directory: "state/local/modelica-scenario-receipt-captures",
-  uriNamespace: "modelica-scenario-receipt-capture",
-  label: "Modelica scenario receipt",
-};
-
-/**
- * Content-addressed store for `simulation-case-capture/1.0` envelopes produced
- * by `simulate.seal-simulation-case@1`. The sealed case is the execution
- * authority every `simulate.run-modelica-scenario@1` run re-reads by
- * content-address; the authoring JSON never reaches the run path.
- *
- * URI: `casys://simulation-case-capture/sha256/<captureFp>`.
- */
-export const SIMULATION_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
-  "simulation-case"
-> = {
-  kind: "simulation-case",
-  directory: "state/local/simulation-case-captures",
-  uriNamespace: "simulation-case-capture",
-  label: "Simulation case",
-};
-
-/**
- * Shared URI prefix for all simulation-case capture artifacts.
- *
- * Used by `simulate.seal-simulation-case@1` (to build the artifact URI) and
- * by `simulate.run-modelica-scenario@1` (to identify simulation-case artifacts
- * in ancestor snapshots by URI prefix). Must remain stable — changing it would
- * invalidate URIs already written in immutable proof files.
- * Must be consistent with SIMULATION_CASE_CAPTURE_DESCRIPTOR.uriNamespace.
- */
-export const SIMULATION_CASE_CAPTURE_URI_PREFIX =
-  "casys://simulation-case-capture/" as const;
-
-/**
  * Content-addressed store for `modelica-thermal-method-sheet/1.0`.
  * The sheet is a reviewed method document, not admission or OMC authority.
  *

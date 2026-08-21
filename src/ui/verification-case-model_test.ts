@@ -20,8 +20,7 @@ const catalog: ThreadVerificationCaseCatalog = {
   coverage: [
     { family: "mechanical-proof", status: "observed" },
     { family: "sensitivity-study", status: "observed" },
-    { family: "modelica-simulation", status: "observed" },
-  ],
+      ],
   cases: [
     {
       key: caseA,

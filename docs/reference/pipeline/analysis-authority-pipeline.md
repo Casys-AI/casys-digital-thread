@@ -322,10 +322,10 @@ reviewed declaration
   -> measured local response, when an experiment exists
 ```
 
-A `simulation-case/1.0`, `simulation-case/2.0` or `mechanical-proof-case/1.0` remains a
-reviewed declaration, not a generic native-source AST. The recorded vertical crosses an
-exact, identity-bound MCP `resources/read` boundary and saves then rereads every
-acquired byte through local CAS.
+A `mechanical-proof-case/1.0` remains a reviewed declaration, not a generic native-source
+AST. The recorded CalculiX vertical crosses an exact, identity-bound MCP
+`resources/read` boundary and saves then rereads every acquired byte through local CAS.
+Historical `simulation-case/1.0`/`2.0` seals are retired and not registered.
 
 For a mechanical proof, this vertical deliberately has two non-substitutable admissions.
 The declaration's `authorization` is a **seal authorization**: it names the reviewed
@@ -337,27 +337,8 @@ verify the historical seal lineage, but must not require the seal work or decisi
 to equal the run work or decision IDs. This separation prevents a proof file or a prior
 approval from becoming a reusable solver capability.
 
-Modelica `@2` consumes only `simulation-case/2.0`. This additive successor leaves
-`simulation-case/1.0` and its `scenario.sha256` field unchanged as `@1` history. V2
-instead records two provider facts with different meanings: `scenario.sourceSha256`
-fingerprints the exact native scenario resource bytes, while `scenario.projectionSha256`
-fingerprints the provider's canonical public scenario projection. The seal checks the
-former against both the qualified manifest's scenario resource and its acquired CAS
-bytes; it recomputes the latter from the manifest's public projection and checks it
-against `scenarioProjectionSha256`. The projection is therefore manifest-attested data,
-not a second source resource.
-
-`simulate.seal-simulation-case@2` is a planless registered operation gated by the exact
-human-approved MRTR over that closed V2 declaration. It accepts no
-`resolved-operation-plan/2.0`; it reads the provider-qualified kit manifest and exact
-model, scenario and optional parameter-schema resources, then seals distinct case,
-method-manifest, source and qualification artefacts. The later
-`simulate.run-modelica-scenario@2` is separately queued with one server-sealed plan
-bound to the exact `simulationCase` and `methodManifest` thread artifacts. It rereads
-those artifacts and the qualification-owned sources before submission, then captures the
-resumable request, resolved parameters, model, scenario, script, diagnostics, evidence,
-`run.json` and, on success, result CSV. It publishes normalized observations only: no
-requirement, evaluation, violation, action or verdict is manufactured.
+Historical `simulate.seal-simulation-case@1`/`@2` and
+`simulate.run-modelica-scenario@1`/`@2` are not registered and are not fallbacks.
 
 Isolated CalculiX `@3`, admitted CAD/Modelica microVM runs, and the closed-subset
 catalogue:

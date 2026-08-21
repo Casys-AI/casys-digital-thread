@@ -30,8 +30,7 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
     coverage: [
       { family: "mechanical-proof", status: "unavailable" },
       { family: "sensitivity-study", status: "unavailable" },
-      { family: "modelica-simulation", status: "unavailable" },
-    ],
+          ],
     cases: [],
     issues: [],
   });

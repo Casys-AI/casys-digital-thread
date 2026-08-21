@@ -12,18 +12,6 @@ import {
   SYSON_MODEL_SEED_OPERATION,
 } from "../../domain/architecture/seed/syson-model-seed-proposal.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
-import { validateSimulationCase } from "../../domain/modelica/recorded/simulation-case.ts";
-import {
-  encodeSimulationCaseDecisionParameters,
-} from "../../domain/modelica/recorded/simulation-case-proposal.ts";
-import { validateSimulationCaseV2 } from "../../domain/modelica/recorded/simulation-case-v2.ts";
-import {
-  encodeSimulationCaseV2DecisionParameters,
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-} from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
-import {
-  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-} from "../../domain/modelica/recorded/simulation-case-proposal.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
@@ -336,99 +324,6 @@ Deno.test("a decision shared by distinct operations must satisfy every declared 
   );
 });
 
-Deno.test("simulation-case proposal validation routes @1 to V1 and seal @2 to the closed V2 grammar", () => {
-  const v1 = neutralSimulationCaseV1();
-  const v2 = neutralSimulationCaseV2();
-  const v1Parameters = encodeSimulationCaseDecisionParameters("a".repeat(64), v1);
-  const v2Parameters = encodeSimulationCaseV2DecisionParameters("b".repeat(64), v2);
-  assertProposalMatchesOperationGrammar(
-    SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-    v1Parameters,
-  );
-  assertProposalMatchesOperationGrammar(
-    SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-    v2Parameters,
-  );
-  assertThrows(
-    () =>
-      assertProposalMatchesOperationGrammar(
-        SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-        v1Parameters,
-      ),
-    ProposalGrammarError,
-  );
-  assertThrows(
-    () =>
-      assertProposalMatchesOperationGrammar(
-        SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-        v2Parameters,
-      ),
-    ProposalGrammarError,
-  );
-});
-
-function neutralSimulationCaseV1() {
-  return validateSimulationCase({
-    schemaVersion: "simulation-case/1.0",
-    id: "thermal-system-nominal-v1",
-    revision: 1,
-    scope: "Neutral thermal-system routing fixture.",
-    evidenceBoundary: "Proposal grammar only; no provider run is asserted.",
-    project: {
-      id: "thermal-system-project",
-      subjectId: "project:thermal-system",
-      baseThreadSnapshot: {
-        id: "project:thermal-system:r3",
-        revision: 3,
-        subjectId: "project:thermal-system",
-      },
-    },
-    kit: {
-      modelId: "thermal-system-model",
-      modelVersion: "1.0.0",
-      modelSha256: "c".repeat(64),
-    },
-    scenario: { id: "nominal-heating", sha256: "d".repeat(64) },
-    parameters: [{ id: "targetTemperature", value: 333.15, unit: "K" }],
-    expectedMetrics: [{ id: "peakTemperature", unit: "K" }],
-    parameterMode: "explicit-overrides",
-    timeoutMs: 15_000,
-  });
-}
-
-function neutralSimulationCaseV2() {
-  return validateSimulationCaseV2({
-    schemaVersion: "simulation-case/2.0",
-    id: "thermal-system-nominal-v2",
-    revision: 1,
-    scope: "Neutral thermal-system routing fixture.",
-    evidenceBoundary: "Proposal grammar only; no provider run is asserted.",
-    project: {
-      id: "thermal-system-project",
-      subjectId: "project:thermal-system",
-      baseThreadSnapshot: {
-        id: "project:thermal-system:r3",
-        revision: 3,
-        subjectId: "project:thermal-system",
-      },
-    },
-    kit: {
-      modelId: "thermal-system-model",
-      modelVersion: "2.0.0",
-      modelSha256: "e".repeat(64),
-    },
-    scenario: {
-      id: "nominal-heating",
-      sourceSha256: "f".repeat(64),
-      projectionSha256: "0".repeat(64),
-    },
-    parameters: [{ id: "targetTemperature", value: 333.15, unit: "K" }],
-    expectedMetrics: [{ id: "peakTemperature", unit: "K" }],
-    parameterMode: "explicit-overrides",
-    timeoutMs: 15_000,
-  });
-}
-
 Deno.test("every operation carrying an MRTR grammar is gated", () => {
   // Adding a sealed or model-writing operation without registering its grammar
   // would silently reopen the round trip this module exists to close.
@@ -450,8 +345,6 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "record.reconcile-uncertain-writer@1",
     "simulate.run-admitted-modelica@1",
     "simulate.run-qualified-modelica-kit@1",
-    "simulate.seal-simulation-case@1",
-    "simulate.seal-simulation-case@2",
     "verify.evaluate-admitted-modelica-observations@1",
     "verify.seal-modelica-thermal-method-sheet@1",
     "verify.seal-proof-case@1",

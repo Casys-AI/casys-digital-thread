@@ -25,9 +25,6 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../orchestration/operations/fea-isolated-static-proof.ts";
-import {
-  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
-} from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
@@ -143,8 +140,8 @@ Deno.test("recorded @2 writers participate in the same basis exclusion", async (
   const current = run("geometry", "queued");
   for (
     const [index, operation] of [
-      SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
       VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
+      VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
     ].entries()
   ) {
     const sibling = {

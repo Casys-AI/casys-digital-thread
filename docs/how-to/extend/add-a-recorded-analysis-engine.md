@@ -4,8 +4,9 @@ Audience: agent · Diátaxis: how-to · Kind: how-to
 
 Use this checklist when a new engineering engine must accept a reviewed artefact from an
 agent-led project, execute privately through MCP, and return evidence that survives
-recovery. It follows the Modelica and CalculiX `@2` vertical; it is not a recipe for a
-generic workflow runner.
+recovery. It follows the CalculiX recorded-static `@2` and isolated `@3` verticals; it
+is not a recipe for a generic workflow runner. Historical recorded Modelica `@1`/`@2`
+are retired and are not a template.
 
 ## 1. State the capability in the right vocabulary
 
@@ -34,8 +35,7 @@ source boundary and parser contract first; do not bypass the qualified-method bo
 ## 3. Add the one-action ROP2 plan
 
 Define the action, resource profile and recovery policy in
-`src/domain/compile/rop/` (and the authority domain: `src/domain/modelica/`,
-`src/domain/fea/`, …). Add a
+`src/domain/compile/rop/` (and the authority domain: `src/domain/fea/`, …). Add a
 registered `@2` descriptor whose run bindings are exact Thread artefacts and whose
 `resolvedOperationPlan` is `2.0`. Extend `ResolvedOperationPlanResolver` so queueing
 rereads the direct approved MRTR decision, immutable thread basis, qualified method and

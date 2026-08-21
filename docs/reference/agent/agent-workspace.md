@@ -119,7 +119,6 @@ refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 | `project_agent_run_execute`                                        | Server dispatch  | One queued registered operation. Same read-time `join` / `observations` hoist as `project_snapshot`.                                                                                                                                                                                 |
 | `project_agent_run_cancel`                                         | Human MRTR       | Still-queued run only                                                                                                                                                                                                                                                                |
 | `project_agent_run_plan_get`                                       | Read             | Inspect sealed `resolved-operation-plan/2.0`; does not execute                                                                                                                                                                                                                       |
-| `project_work_item_supersede_unstarted`                            | Recovery         | Replace unstarted work                                                                                                                                                                                                                                                               |
 | `cockpit_focus_set` / `cockpit_focus_snapshot`                     | UI routing       | Point the cockpit at one durable project                                                                                                                                                                                                                                             |
 | `project_review_intent_list` / `project_review_intent_acknowledge` | Review outbox    | Receipt of a Workbench intent; never an approval                                                                                                                                                                                                                                     |
 
@@ -469,7 +468,7 @@ adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
 
 | Context         | Domain root                      | Do not merge                                                                                         |
 | --------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `modelica`      | `src/domain/modelica/`           | `admitted/` ≠ `qualified-kit/` ≠ `recorded/`                                                         |
+| `modelica`      | `src/domain/modelica/`           | `admitted/` ≠ `qualified-kit/` ≠ retired recorded island (observer left for R03)                     |
 | `cad`           | `src/domain/cad/`                | `source/` ≠ `isolated/` ≠ `canonical/` ≠ `sealed-isolated/`                                          |
 | `fea`           | `src/domain/fea/`                | `seal-case/` ≠ `isolated-v3/`                                                                        |
 | `compile`       | `src/domain/compile/`            | Isolation ≠ admission ≠ source ≠ ROP ≠ brief; CAD **and** Modelica                                   |
@@ -501,7 +500,7 @@ UI change under `src/ui/src/` → rebuild the product bundle (`build:thread`) an
 | --------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `state/local/engineering-projects/`                                         | Immutable project revisions                                |
 | `state/local/thread-snapshots/`                                             | Canonical Thread revisions                                 |
-| `state/local/recorded-analysis/`                                            | Compilation, isolated CAD, recorded Modelica/CalculiX, ROP |
+| `state/local/recorded-analysis/`                                            | Compilation, isolated CAD/Modelica, recorded CalculiX, ROP |
 | `state/local/recorded-analysis/architecture-sysml/{sources,analyses,seals}` | Agent-authored SysML CAS                                   |
 | `state/local/sysml-source-captures/`                                        | Renderer `sysml-source-capture/1.0`                        |
 | `state/local/architecture-captures/`                                        | `architecture-capture/3.0` (SysON write)                   |

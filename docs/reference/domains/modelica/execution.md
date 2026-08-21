@@ -41,4 +41,6 @@ generation-1 dispatch only after exact absence and cleanup are proven. There is 
 generation 2, and pre-WAL development runs are not adopted as current authority.
 
 `simulate.run-qualified-modelica-kit@1` is a separate image-owned conformance path;
-historical recorded Modelica operations are not fallbacks for admitted source.
+historical `simulate.seal-simulation-case@1`/`@2` and
+`simulate.run-modelica-scenario@1`/`@2` are retired and not registered; they are not
+fallbacks for admitted source.

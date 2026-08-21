@@ -47,7 +47,7 @@ Both bind one `compilationAdmission` artifact. Both refuse extra source-text bin
 | Lookalike                                  | Why it is different                                                                 |
 | ------------------------------------------ | ----------------------------------------------------------------------------------- |
 | `simulate.run-qualified-modelica-kit@1`    | Image smoke. Worker ENTRYPOINT pins one LinearThermalRamp kit. Empty bindings. No caller `.mo`. |
-| `simulate.run-modelica-scenario@2`         | Recorded provider MCP. ROP 2.0. Not local isolation.                                |
+| `simulate.run-modelica-scenario@1`/`@2`    | Retired recorded-provider route. Not registered. Not a fallback.                    |
 | `verify.run-fea-static-proof@3`            | Isolated CalculiX. Agent never writes `.inp`. Server lowers a sealed proof + STEP.  |
 | `design.write-geometry@1`                  | Canonical STEP seal of admitted export. Not isolated execution.                     |
 | Caller `modelicaText` / CAD script in MRTR | Refused. Source comes only from the sealed admission.                               |

@@ -3,8 +3,9 @@ import type { RegisteredEngineeringOperation } from "./operation-contract.ts";
 /**
  * Isolated CalculiX product run. Historical MCP FEA @1/@2 stay as thin
  * identity constants for `unknown_operation` tests and ROP kind guards; they
- * are not registered and cannot be queued. Recorded Modelica `@1`/`@2`
- * identities live under `src/domain/modelica/recorded/`.
+ * are not registered and cannot be queued. Historical recorded Modelica
+ * `simulate.seal-simulation-case@1/@2` and `simulate.run-modelica-scenario@1/@2`
+ * are likewise unregistered; they are not a fallback for admitted or kit runs.
  */
 export const VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION = {
   id: "verify.run-fea-static-proof",

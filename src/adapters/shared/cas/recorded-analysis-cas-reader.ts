@@ -14,7 +14,6 @@ import {
 } from "../../../domain/compile/source/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { ThreadArtifact } from "../../../domain/thread/thread-snapshot.ts";
-import { FileByteStore } from "./file-byte-store.ts";
 import { FileCaptureStore } from "./file-capture-store.ts";
 
 const PROBE_FINGERPRINT: ContentFingerprint = {
@@ -23,26 +22,6 @@ const PROBE_FINGERPRINT: ContentFingerprint = {
 };
 
 const PROFILE = {
-  "simulation-case-v2": {
-    storage: "bytes",
-    mediaTypes: ["application/json"],
-  },
-  "modelica-qualified-provider-manifest": {
-    storage: "bytes",
-    mediaTypes: ["application/json"],
-  },
-  "modelica-qualified-source": {
-    storage: "bytes",
-    mediaTypes: ["application/json", "text/x-modelica"],
-  },
-  "modelica-qualified-source-capture": {
-    storage: "bytes",
-    mediaTypes: ["application/json"],
-  },
-  "simulation-case-qualification": {
-    storage: "bytes",
-    mediaTypes: ["application/json"],
-  },
   "fea-proof-case-capture": {
     storage: "text",
     mediaTypes: ["application/json"],
@@ -65,33 +44,6 @@ export interface RecordedAnalysisCasTuple {
   readonly sha256: string;
   readonly mediaType: string;
 }
-
-type ModelicaByteStoreBinding =
-  | {
-    readonly namespace: "simulation-case-v2";
-    readonly storage: "bytes";
-    readonly store: FileByteStore<"simulation-case-v2">;
-  }
-  | {
-    readonly namespace: "modelica-qualified-provider-manifest";
-    readonly storage: "bytes";
-    readonly store: FileByteStore<"modelica-qualified-provider-manifest">;
-  }
-  | {
-    readonly namespace: "modelica-qualified-source";
-    readonly storage: "bytes";
-    readonly store: FileByteStore<"modelica-qualified-source">;
-  }
-  | {
-    readonly namespace: "modelica-qualified-source-capture";
-    readonly storage: "bytes";
-    readonly store: FileByteStore<"modelica-qualified-source-capture">;
-  }
-  | {
-    readonly namespace: "simulation-case-qualification";
-    readonly storage: "bytes";
-    readonly store: FileByteStore<"simulation-case-qualification">;
-  };
 
 type FeaProofCaptureStoreBinding = {
   readonly namespace: "fea-proof-case-capture";
@@ -117,20 +69,12 @@ type RequirementsCaptureStoreBinding = {
  * asset reader.
  */
 export type RecordedAnalysisCasStoreBinding =
-  | ModelicaByteStoreBinding
   | FeaProofCaptureStoreBinding
   | SensitivityCatalogOfferCaptureStoreBinding
   | RequirementsCaptureStoreBinding;
 
 export interface RecordedAnalysisCasReaderOptions {
   readonly stores: readonly RecordedAnalysisCasStoreBinding[];
-}
-
-interface ByteStoreReader {
-  uriFor(fingerprint: ContentFingerprint): string;
-  read(
-    fingerprint: ContentFingerprint,
-  ): Promise<{ readonly byteLength: number; copy(): Uint8Array } | undefined>;
 }
 
 interface TextStoreReader {
@@ -146,21 +90,15 @@ export interface RecordedAnalysisArtifactRead {
   readonly bytes: Uint8Array;
 }
 
-type RegisteredStore =
-  | {
-    readonly storage: "bytes";
-    readonly mediaTypes: readonly string[];
-    readonly store: ByteStoreReader;
-  }
-  | {
-    readonly storage: "text";
-    readonly mediaTypes: readonly string[];
-    readonly store: TextStoreReader;
-  };
+type RegisteredStore = {
+  readonly storage: "text";
+  readonly mediaTypes: readonly string[];
+  readonly store: TextStoreReader;
+};
 
 /**
- * A local read adapter that structurally satisfies both Thread-artifact reader
- * ports and the Modelica tuple reader port without importing either executor.
+ * A local read adapter that structurally satisfies Thread-artifact reader
+ * ports without importing an executor.
  */
 export class RecordedAnalysisCasReader {
   readonly #stores: ReadonlyMap<RecordedAnalysisCasNamespace, RegisteredStore>;
@@ -189,17 +127,11 @@ export class RecordedAnalysisCasReader {
       }
       stores.set(
         binding.namespace,
-        binding.storage === "bytes"
-          ? {
-            storage: "bytes",
-            mediaTypes: profile.mediaTypes,
-            store: binding.store,
-          }
-          : {
-            storage: "text",
-            mediaTypes: profile.mediaTypes,
-            store: binding.store,
-          },
+        {
+          storage: "text",
+          mediaTypes: profile.mediaTypes,
+          store: binding.store,
+        },
       );
     }
     if (stores.size !== Object.keys(PROFILE).length) {
@@ -308,9 +240,7 @@ export class RecordedAnalysisCasReader {
         "Recorded-analysis CAS URI does not match its exact local store.",
       );
     }
-    const bytes = registered.storage === "bytes"
-      ? await readBytes(registered.store)
-      : await readTextBytes(registered.store);
+    const bytes = await readTextBytes(registered.store);
     if (!bytes) return undefined;
     if (await fingerprintResourceBytes(bytes) !== expected.sha256) {
       throw new TypeError(
@@ -326,11 +256,6 @@ export class RecordedAnalysisCasReader {
       );
     }
     return Uint8Array.from(bytes);
-
-    async function readBytes(store: ByteStoreReader): Promise<Uint8Array | undefined> {
-      const stored = await store.read(fingerprint);
-      return stored ? stored.copy() : undefined;
-    }
 
     async function readTextBytes(
       store: TextStoreReader,

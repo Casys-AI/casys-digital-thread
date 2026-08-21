@@ -2,8 +2,7 @@
  * One fixture-only, non-authoritative causal smoke:
  * ProjectBrief -> proposal compilation -> unresolved cross-source compilation
  * -> exact code-owned CAD qualification -> ephemeral native SysON anchor
- * -> build123d/CalculiX evidence -> proven SysON cleanup -> separate Modelica
- * provider conformance.
+ * -> build123d/CalculiX evidence -> proven SysON cleanup.
  */
 
 import {
@@ -17,7 +16,6 @@ import {
 } from "../../src/adapters/architecture/renderer/rendered-architecture-sysml-analyzer.ts";
 import { HttpMcpResourceReader } from "../../src/adapters/shared/mcp/http-mcp-resource-reader.ts";
 import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
-import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";
 import type { SourceAnalysisBundle } from "../../src/domain/compile/source/source-analysis.ts";
 import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
 import { parseArchitectureProposalParameters } from "../../src/domain/architecture/renderer/architecture-proposal.ts";
@@ -46,11 +44,8 @@ import {
   type NativeCalculixAdapter,
   type NativeMechanicalSmokeClients,
   type NativeMechanicalSmokeSummary,
-  type NativeModelicaAdapter,
-  type NativeModelicaConformanceSummary,
   type NativeSysmlMechanicalAnchor,
   runNativeMechanicalSmoke,
-  runNativeModelicaConformance,
 } from "./native-smoke.ts";
 import {
   type EphemeralSysonAnchor,
@@ -122,18 +117,15 @@ export interface IntegratedAdmissionSmokeDependencies {
   readonly syson?: SysonSmokeTestSeam;
   readonly mechanicalClients: NativeMechanicalSmokeClients;
   readonly bridge: NativeAssetBridge;
-  readonly modelicaClient: McpToolClient;
   readonly calculixAdapter?: NativeCalculixAdapter;
-  readonly modelicaAdapter?: NativeModelicaAdapter;
   readonly pollDelay?: (milliseconds: number) => Promise<void>;
   /** Test-only orchestration seam; liveIntegratedDependencies never sets it. */
   readonly testStages?: {
     readonly withSysonAnchor: typeof withEphemeralSysonAnchor;
     readonly runMechanical: typeof runNativeMechanicalSmoke;
-    readonly runModelica: typeof runNativeModelicaConformance;
   };
   readonly observeStage?: (
-    stage: "compilation-closed" | "syson-cleanup-proven" | "modelica-closed",
+    stage: "compilation-closed" | "syson-cleanup-proven",
   ) => void;
 }
 
@@ -194,14 +186,6 @@ export interface IntegratedAdmissionSmokeSummary {
     readonly normalizedResultSha256: string;
     readonly resourceReadsVerified: 9;
   };
-  readonly modelica: {
-    readonly scope: "solver-conformance-only-not-physical-block-evidence";
-    readonly manifestSha256: string;
-    readonly requestId: string;
-    readonly requestSha256: string;
-    readonly runId: string;
-    readonly status: "succeeded";
-  };
 }
 
 export async function runIntegratedAdmissionSmoke(
@@ -219,8 +203,6 @@ export async function runIntegratedAdmissionSmoke(
     withEphemeralSysonAnchor;
   const runMechanical = dependencies.testStages?.runMechanical ??
     runNativeMechanicalSmoke;
-  const runModelica = dependencies.testStages?.runModelica ??
-    runNativeModelicaConformance;
 
   const anchorRun = await withAnchor(
     async (anchor) => {
@@ -256,18 +238,6 @@ export async function runIntegratedAdmissionSmoke(
     );
   }
   dependencies.observeStage?.("syson-cleanup-proven");
-
-  // This invocation is deliberately after withEphemeralSysonAnchor has
-  // returned, which means delete + filtered absence are already proven.
-  const modelica: NativeModelicaConformanceSummary = await runModelica(
-    dependencies.modelicaClient,
-    dependencies.modelicaAdapter,
-    dependencies.pollDelay,
-  );
-  if (modelica.status !== "succeeded") {
-    throw new Error("The fixed Modelica conformance branch did not succeed.");
-  }
-  dependencies.observeStage?.("modelica-closed");
 
   const { mechanical, anchor } = anchorRun.useResult;
   const criteria = anchor.requirements.criteria;
@@ -330,14 +300,6 @@ export async function runIntegratedAdmissionSmoke(
       executionIdentitySha256: mechanical.calculix.executionIdentitySha256,
       normalizedResultSha256: mechanical.calculix.normalizedResultSha256,
       resourceReadsVerified: 9,
-    },
-    modelica: {
-      scope: modelica.scope,
-      manifestSha256: modelica.manifestSha256,
-      requestId: modelica.requestId,
-      requestSha256: modelica.requestSha256,
-      runId: modelica.runId,
-      status: "succeeded",
     },
   };
   return Object.freeze(summary);
@@ -605,10 +567,6 @@ export function liveIntegratedDependencies(): IntegratedAdmissionSmokeDependenci
       }),
     },
     bridge: new DockerComposeNativeAssetBridge(),
-    modelicaClient: new HttpMcpToolClient({
-      mcpUrl: "http://127.0.0.1:3016/mcp",
-      timeoutMs: 180_000,
-    }),
   };
 }
 

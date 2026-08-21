@@ -3,10 +3,6 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
 } from "../../domain/fea/seal-case/fea-proof-proposal.ts";
-import {
-  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-} from "../../domain/modelica/recorded/simulation-case-proposal.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/architecture/renderer/architecture-proposal.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts";
@@ -30,10 +26,6 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../orchestration/operations/fea-isolated-static-proof.ts";
-import {
-  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-} from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
@@ -63,10 +55,6 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
   `${VERIFY_SEAL_PROOF_CASE_OPERATION.id}@${VERIFY_SEAL_PROOF_CASE_OPERATION.version}`,
   `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,
-  `${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_OPERATION.version}`,
-  `${SIMULATE_RUN_MODELICA_SCENARIO_OPERATION.id}@${SIMULATE_RUN_MODELICA_SCENARIO_OPERATION.version}`,
-  `${SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION.id}@${SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION.version}`,
-  `${SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION.id}@${SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION.version}`,
   `${VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION.version}`,
   `${VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION.version}`,
   `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}`,

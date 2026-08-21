@@ -130,8 +130,7 @@ export function projectThreadWorkbenchSnapshot(
       coverage: [
         { family: "mechanical-proof", status: "unavailable" },
         { family: "sensitivity-study", status: "unavailable" },
-        { family: "modelica-simulation", status: "unavailable" },
-      ],
+              ],
       cases: [],
       issues: [],
     },

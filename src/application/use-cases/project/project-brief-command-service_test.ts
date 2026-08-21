@@ -943,8 +943,8 @@ Deno.test("a plan 2.0 registered operation seals a server reference before its V
   const queued = await commands.queueRun(AGENT, {
     ...context("queue-plan-2", planned.revision),
     runId: planRef.planId,
-    workItemId: "simulate-modelica-recorded",
-    summary: "Queue a test-only registered recorded plan.",
+    workItemId: "verify-fea-isolated",
+    summary: "Queue a test-only registered isolated FEA plan.",
     basis: queueBasis,
   });
   const run = queued.agentRuns[0]!;
@@ -1016,7 +1016,7 @@ Deno.test("a plan 2.0 registered operation seals a server reference before its V
   const cancelled = await commands.cancelQueuedRun(HUMAN, {
     ...context("cancel-plan-2-terminal", queued.revision),
     runId: planRef.planId,
-    rationale: "Cancel this recorded run before any claim or provider execution.",
+    rationale: "Cancel this isolated FEA run before any claim or provider execution.",
   });
   assertEquals(cancelled.agentRuns[0]?.status, "cancelled");
   const foreignTerminalPlan = structuredClone(cancelled);
@@ -1067,7 +1067,7 @@ Deno.test("a plan 2.0 sealing failure leaves the V3 project uncommitted", async 
       commands.queueRun(AGENT, {
         ...context("queue-plan-2-forged-plan", planned.revision),
         runId: "run:plan-2-forged-plan",
-        workItemId: "simulate-modelica-recorded",
+        workItemId: "verify-fea-isolated",
         summary: "A caller must never choose a plan reference.",
         basis: queueBasis,
         resolvedOperationPlan: {
@@ -1085,7 +1085,7 @@ Deno.test("a plan 2.0 sealing failure leaves the V3 project uncommitted", async 
       commands.queueRun(AGENT, {
         ...context("queue-plan-2-failure", planned.revision),
         runId: "run:plan-2-failure",
-        workItemId: "simulate-modelica-recorded",
+        workItemId: "verify-fea-isolated",
         summary: "The synthetic sealer must stop the queue transition.",
         basis: queueBasis,
       }),
@@ -1117,7 +1117,7 @@ Deno.test("a closed @2 operation cannot queue without a plan sealer or persist w
       commands.queueRun(AGENT, {
         ...context("queue-plan-2-no-sealer", planned.revision),
         runId: "run:plan-2-no-sealer",
-        workItemId: "simulate-modelica-recorded",
+        workItemId: "verify-fea-isolated",
         summary: "A closed operation requires a server plan sealer.",
         basis: queueBasis,
       }),
@@ -1420,10 +1420,10 @@ function recordedPlanPlanCommand(commandId: string, expectedRevision: number) {
   const command = baselinePlanCommand(commandId, expectedRevision);
   command.workItems[0] = {
     ...command.workItems[0],
-    id: "simulate-modelica-recorded",
+    id: "verify-fea-isolated",
     operation: {
-      id: "simulate.run-modelica-scenario",
-      version: "2",
+      id: "verify.run-fea-static-proof",
+      version: "3",
       bindings: [{
         name: "approvedBrief",
         source: { kind: "approved-brief" as const },
@@ -1437,21 +1437,21 @@ function recordedPlanTestRegistry(): EngineeringProjectPlanOperationRegistry {
   return {
     validate(input) {
       if (
-        input.operation.id !== "simulate.run-modelica-scenario" ||
-        input.operation.version !== "2"
+        input.operation.id !== "verify.run-fea-static-proof" ||
+        input.operation.version !== "3"
       ) {
         throw new TypeError(
-          "Test registry permits only simulate.run-modelica-scenario@2.",
+          "Test registry permits only verify.run-fea-static-proof@3.",
         );
       }
       return {
         operation: {
-          id: "simulate.run-modelica-scenario",
-          version: "2",
+          id: "verify.run-fea-static-proof",
+          version: "3",
           startingPoint: "idea-or-spec",
-          title: "Recorded Modelica simulation",
+          title: "Isolated CalculiX static proof",
           description: "Test-only closed operation marker; no executor is activated.",
-          workItemKind: "simulate",
+          workItemKind: "verify",
           execution: "trusted",
           resolvedOperationPlan: "2.0",
         },

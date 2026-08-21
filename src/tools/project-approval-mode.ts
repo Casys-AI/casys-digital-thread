@@ -22,7 +22,6 @@ export const HUMAN_CONFIRMATION_GATES = [
   "decision-approve",
   "decision-reject",
   "queued-run-cancel",
-  "unstarted-supersede",
   "human-only-execute",
 ] as const;
 
@@ -32,7 +31,6 @@ const YOLO_AUTO_GATES: readonly HumanConfirmationGate[] = [
   "brief-confirm",
   "decision-approve",
   "queued-run-cancel",
-  "unstarted-supersede",
 ];
 
 export const INTERACTIVE_PROJECT_APPROVAL_MODE: ProjectApprovalMode = {

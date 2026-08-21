@@ -2,7 +2,6 @@ import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { ThreadArtifact } from "../../../domain/thread/thread-snapshot.ts";
-import { FileByteStore } from "./file-byte-store.ts";
 import { FileCaptureStore } from "./file-capture-store.ts";
 import {
   RecordedAnalysisCasReader,
@@ -31,23 +30,16 @@ interface ExactThreadArtifactReaderPort {
   >;
 }
 
-/** Mirrors the tuple reader port consumed by the recorded Modelica executor. */
+/** Mirrors the exact local CAS tuple reader port. */
 interface TupleReaderPort {
   read(expected: Readonly<RecordedAnalysisCasTuple>): Promise<Uint8Array | undefined>;
 }
 
 Deno.test(
-  "RecordedAnalysisCasReader reads every reviewed Modelica store plus proof, catalog-offer, and requirements captures",
+  "RecordedAnalysisCasReader reads proof, catalog-offer, and requirements captures",
   async () => {
     const fixture = await createFixture();
     try {
-      const modelicaValues = await Promise.all([
-        saveBytes(fixture.simulationCases, "simulation case"),
-        saveBytes(fixture.providerManifests, "qualified manifest"),
-        saveBytes(fixture.qualifiedSources, "model M end M;", "text/x-modelica"),
-        saveBytes(fixture.sourceCaptures, "source capture"),
-        saveBytes(fixture.qualificationCaptures, "qualification capture"),
-      ]);
       const proof = await saveText(fixture.proofCaptures, "proof capture");
       const catalogOffer = await saveText(
         fixture.sensitivityCatalogOffers,
@@ -59,16 +51,13 @@ Deno.test(
       );
 
       const reader = fixture.reader();
-      const modelicaReader: TupleReaderPort = reader;
+      const tupleReader: TupleReaderPort = reader;
       const recordedPlanReader: ThreadArtifactReaderPort = reader;
       const feaPlanReader: ExactThreadArtifactReaderPort = reader;
-      assertEquals(typeof modelicaReader.read, "function");
+      assertEquals(typeof tupleReader.read, "function");
       assertEquals(typeof recordedPlanReader.read, "function");
       assertEquals(typeof feaPlanReader.readArtifact, "function");
 
-      for (const value of modelicaValues) {
-        assertEquals(await reader.read(value.tuple), value.bytes);
-      }
       assertEquals(await reader.read(proof.tuple), proof.bytes);
       assertEquals(await reader.read(catalogOffer.tuple), catalogOffer.bytes);
       assertEquals(await reader.read(requirements.tuple), requirements.bytes);
@@ -114,8 +103,8 @@ Deno.test(
     const digest = "a".repeat(64);
     const rejected = [
       tuple(`casys://unreviewed/sha256/${digest}`, digest),
-      tuple(`casys://simulation-case-v2/not-sha256/${digest}`, digest),
-      tuple(`casys://simulation-case-v2/sha256/${digest}`, digest, "text/plain"),
+      tuple(`casys://fea-proof-case-capture/not-sha256/${digest}`, digest),
+      tuple(`casys://fea-proof-case-capture/sha256/${digest}`, digest, "text/plain"),
       tuple(
         `casys://sensitivity-catalog-offer-capture/sha256/${digest}`,
         digest,
@@ -138,7 +127,7 @@ Deno.test(
   async () => {
     const fixture = await createFixture();
     try {
-      const saved = await saveBytes(fixture.simulationCases, "case bytes");
+      const saved = await saveText(fixture.proofCaptures, "proof bytes");
       const reader = fixture.reader();
       await assertRejects(
         () => reader.read({ ...saved.tuple, byteCount: saved.tuple.byteCount + 1 }),
@@ -166,9 +155,9 @@ Deno.test(
       );
       const swapped: RecordedAnalysisCasStoreBinding[] = [
         {
-          namespace: "simulation-case-v2",
+          namespace: "fea-proof-case-capture",
           storage: "bytes",
-          store: fixture.qualifiedSources,
+          store: fixture.proofCaptures,
         } as unknown as RecordedAnalysisCasStoreBinding,
         ...bindings.slice(1),
       ];
@@ -187,13 +176,6 @@ Deno.test(
   async () => {
     const fixture = await createFixture();
     try {
-      const modelica = await saveBytes(fixture.simulationCases, "case before tamper");
-      await Deno.writeFile(
-        `${fixture.byteDirectory}/${modelica.fingerprint.digest}`,
-        encoder.encode("tampered modelica bytes"),
-      );
-      await assertRejects(() => fixture.reader().read(modelica.tuple), Error);
-
       const proof = await saveText(fixture.proofCaptures, "proof before tamper");
       await Deno.writeFile(
         fixture.proofCaptures.pathFor(proof.fingerprint),
@@ -228,12 +210,6 @@ Deno.test(
 
 interface Fixture {
   readonly directory: string;
-  readonly byteDirectory: string;
-  readonly simulationCases: FileByteStore<"simulation-case-v2">;
-  readonly providerManifests: FileByteStore<"modelica-qualified-provider-manifest">;
-  readonly qualifiedSources: FileByteStore<"modelica-qualified-source">;
-  readonly sourceCaptures: FileByteStore<"modelica-qualified-source-capture">;
-  readonly qualificationCaptures: FileByteStore<"simulation-case-qualification">;
   readonly proofCaptures: FileCaptureStore<"fea-proof-case">;
   readonly sensitivityCatalogOffers: FileCaptureStore<"sensitivity-catalog-offer">;
   readonly requirementsCaptures: FileCaptureStore<"requirements-capture">;
@@ -243,32 +219,6 @@ interface Fixture {
 
 async function createFixture(): Promise<Fixture> {
   const directory = await Deno.makeTempDir({ prefix: "recorded-analysis-cas-reader-" });
-  const byteDirectory = `${directory}/simulation-cases`;
-  const simulationCases = byteStore(
-    "simulation-case-v2",
-    byteDirectory,
-    "simulation-case-v2",
-  );
-  const providerManifests = byteStore(
-    "modelica-qualified-provider-manifest",
-    `${directory}/provider-manifests`,
-    "modelica-qualified-provider-manifest",
-  );
-  const qualifiedSources = byteStore(
-    "modelica-qualified-source",
-    `${directory}/qualified-sources`,
-    "modelica-qualified-source",
-  );
-  const sourceCaptures = byteStore(
-    "modelica-qualified-source-capture",
-    `${directory}/source-captures`,
-    "modelica-qualified-source-capture",
-  );
-  const qualificationCaptures = byteStore(
-    "simulation-case-qualification",
-    `${directory}/qualification-captures`,
-    "simulation-case-qualification",
-  );
   const proofCaptures = new FileCaptureStore({
     kind: "fea-proof-case",
     directory: `${directory}/proof-captures`,
@@ -288,27 +238,6 @@ async function createFixture(): Promise<Fixture> {
     label: "Requirements",
   });
   const bindings = (): RecordedAnalysisCasStoreBinding[] => [
-    { namespace: "simulation-case-v2", storage: "bytes", store: simulationCases },
-    {
-      namespace: "modelica-qualified-provider-manifest",
-      storage: "bytes",
-      store: providerManifests,
-    },
-    {
-      namespace: "modelica-qualified-source",
-      storage: "bytes",
-      store: qualifiedSources,
-    },
-    {
-      namespace: "modelica-qualified-source-capture",
-      storage: "bytes",
-      store: sourceCaptures,
-    },
-    {
-      namespace: "simulation-case-qualification",
-      storage: "bytes",
-      store: qualificationCaptures,
-    },
     {
       namespace: "fea-proof-case-capture",
       storage: "text",
@@ -327,45 +256,11 @@ async function createFixture(): Promise<Fixture> {
   ];
   return {
     directory,
-    byteDirectory,
-    simulationCases,
-    providerManifests,
-    qualifiedSources,
-    sourceCaptures,
-    qualificationCaptures,
     proofCaptures,
     sensitivityCatalogOffers,
     requirementsCaptures,
     bindings,
     reader: () => new RecordedAnalysisCasReader({ stores: bindings() }),
-  };
-}
-
-function byteStore<K extends string>(
-  kind: K,
-  directory: string,
-  uriNamespace: string,
-): FileByteStore<K> {
-  return new FileByteStore({ kind, directory, uriNamespace, label: kind });
-}
-
-async function saveBytes<K extends string>(
-  store: FileByteStore<K>,
-  text: string,
-  mediaType = "application/json",
-): Promise<StoredValue> {
-  const bytes = encoder.encode(text);
-  const fingerprint = await contentFingerprint(bytes);
-  const receipt = await store.save(fingerprint, bytes);
-  return {
-    bytes,
-    fingerprint,
-    tuple: {
-      uri: receipt.uri,
-      byteCount: receipt.byteCount,
-      sha256: fingerprint.digest,
-      mediaType,
-    },
   };
 }
 
@@ -457,15 +352,6 @@ function threadArtifact(
 function countingBindings(
   onRead: () => void,
 ): RecordedAnalysisCasStoreBinding[] {
-  const bytes = <K extends string>(namespace: string) =>
-    ({
-      uriFor: (fingerprint: ContentFingerprint) =>
-        `casys://${namespace}/sha256/${fingerprint.digest}`,
-      read: () => {
-        onRead();
-        return Promise.resolve(undefined);
-      },
-    }) as unknown as FileByteStore<K>;
   const text = <K extends string>(namespace: string) =>
     ({
       uriFor: (fingerprint: ContentFingerprint) =>
@@ -476,31 +362,6 @@ function countingBindings(
       },
     }) as unknown as FileCaptureStore<K>;
   return [
-    {
-      namespace: "simulation-case-v2",
-      storage: "bytes",
-      store: bytes("simulation-case-v2"),
-    },
-    {
-      namespace: "modelica-qualified-provider-manifest",
-      storage: "bytes",
-      store: bytes("modelica-qualified-provider-manifest"),
-    },
-    {
-      namespace: "modelica-qualified-source",
-      storage: "bytes",
-      store: bytes("modelica-qualified-source"),
-    },
-    {
-      namespace: "modelica-qualified-source-capture",
-      storage: "bytes",
-      store: bytes("modelica-qualified-source-capture"),
-    },
-    {
-      namespace: "simulation-case-qualification",
-      storage: "bytes",
-      store: bytes("simulation-case-qualification"),
-    },
     {
       namespace: "fea-proof-case-capture",
       storage: "text",

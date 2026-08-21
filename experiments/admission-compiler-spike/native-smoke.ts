@@ -11,17 +11,12 @@
  *   -> exact STEP handoff through an injected NativeAssetBridge
  *   -> one recorded CalculiX solve and request-id readback
  *
- * Modelica's LinearThermalRamp runs as a separate solver-conformance branch.
- * It is intentionally not presented as a physical thermal model of the block.
  */
 
 import type { McpToolClient } from "../../src/application/ports/out/mcp-tool-client.ts";
 import {
   McpCalculixRecordedStaticAdapter,
 } from "./mcp-calculix-recorded-static-adapter.ts";
-import {
-  McpModelicaResumableAdapter,
-} from "../../src/adapters/modelica/recorded/v2/resumable-adapter.ts";
 import type {
   CalculixRecordedStaticCapturedEvidence,
   CalculixRecordedStaticCapturedResource,
@@ -34,12 +29,6 @@ import {
   type MechanicalProofCase,
   validateMechanicalProofCase,
 } from "../../src/domain/fea/seal-case/mechanical-proof-case.ts";
-import type {
-  ModelicaResumableManifest,
-  ModelicaResumableManifestSelection,
-  ModelicaResumableRequest,
-  ModelicaResumableSubmission,
-} from "../../src/domain/modelica/recorded/resumable-capabilities.ts";
 import {
   fingerprintResourceBytes,
   type ProviderResourceReader,
@@ -56,17 +45,10 @@ const ENDPOINTS = Object.freeze({
   syson: "http://127.0.0.1:3009/mcp",
   build123dSandbox: "http://127.0.0.1:3024/mcp",
   calculix: "http://127.0.0.1:3015/mcp",
-  modelica: "http://127.0.0.1:3016/mcp",
 });
 
 export const NATIVE_MECHANICAL_BUILD123D_SCRIPT = "from build123d import Align, Box\n" +
   "result = Box(20, 20, 20, align=(Align.MIN, Align.MIN, Align.MIN))\n";
-
-const MODELICA_SELECTION = Object.freeze({
-  modelId: "linear-thermal-ramp-v1",
-  modelVersion: "0.1.0",
-  scenarioId: "linear-ramp-nominal",
-});
 
 const CALCULIX_RESOURCE_PROFILE = Object.freeze(
   [
@@ -128,16 +110,6 @@ export interface NativeCalculixAdapter {
     completed: CalculixRecordedStaticCompleted,
     resources: readonly CalculixRecordedStaticCapturedResource[],
   ): Promise<CalculixRecordedStaticCapturedEvidence>;
-}
-
-export interface NativeModelicaAdapter {
-  getManifest(
-    selection: ModelicaResumableManifestSelection,
-  ): Promise<ModelicaResumableManifest>;
-  submit(submission: ModelicaResumableSubmission): Promise<ModelicaResumableRequest>;
-  getRequest(
-    submission: ModelicaResumableSubmission,
-  ): Promise<ModelicaResumableRequest>;
 }
 
 export interface NativeMechanicalSmokeAdapterOverrides {
@@ -216,19 +188,6 @@ export interface NativeMechanicalSmokeSummary {
     readonly normalizedResultSha256: string;
     readonly solveAcknowledged: boolean;
   };
-}
-
-export interface NativeModelicaConformanceSummary {
-  readonly scope: "solver-conformance-only-not-physical-block-evidence";
-  readonly manifestSha256: string;
-  readonly requestId: string;
-  readonly requestSha256: string;
-  readonly runId: string;
-  readonly status: "succeeded" | "failed" | "timed_out";
-  readonly metrics: Readonly<
-    Record<string, { readonly value: number; readonly unit: string }>
-  >;
-  readonly submitAcknowledged: boolean;
 }
 
 export interface NativeAssetBridgeRuntime {
@@ -664,118 +623,9 @@ export function dryRunSummary(): Readonly<Record<string, unknown>> {
       subject: "GenericSupport/SupportBlock",
       build123d: "fixed Box(20,20,20), STEP only, sandbox endpoint",
       calculix: "fixed-bottom/load-top, E=70000 MPa, nu=0.33, force=[0,0,-10] N",
-      modelica: "linear-thermal-ramp-v1@0.1.0 / linear-ramp-nominal; conformance only",
     },
     providerSelectionAcceptedFromCaller: false,
   });
-}
-
-export async function runNativeModelicaConformance(
-  client: McpToolClient,
-  override?: NativeModelicaAdapter,
-  pollDelay: (milliseconds: number) => Promise<void> = delay,
-): Promise<NativeModelicaConformanceSummary> {
-  const adapter = override ?? new McpModelicaResumableAdapter(client);
-  const manifest = await adapter.getManifest(MODELICA_SELECTION);
-  assertFixedModelicaManifest(manifest);
-  const submission: ModelicaResumableSubmission = Object.freeze({
-    requestId: `native-smoke-modelica-${crypto.randomUUID()}`,
-    manifest,
-    parameters: Object.freeze({
-      initial_temperature: Object.freeze({ value: 20, unit: "degC" }),
-      heating_rate: Object.freeze({ value: 1, unit: "K/s" }),
-    }),
-    timeoutMs: 120000,
-  });
-
-  let submitAcknowledged = false;
-  let submitAck: ModelicaResumableRequest | undefined;
-  let submitFailure: unknown;
-  try {
-    // Exactly one submit. A transport uncertainty is closed by request_get.
-    submitAck = await adapter.submit(submission);
-    if (
-      submitAck.requestId !== submission.requestId ||
-      submitAck.manifestSha256 !== manifest.fingerprint
-    ) {
-      throw new TypeError(
-        "Modelica submit ACK differs from the fixed request/manifest identity.",
-      );
-    }
-    submitAcknowledged = true;
-  } catch (error) {
-    submitFailure = error;
-  }
-
-  let request: ModelicaResumableRequest;
-  try {
-    request = await awaitModelicaReadback(adapter, submission, pollDelay);
-  } catch (readbackFailure) {
-    throw new AggregateError(
-      [submitFailure, readbackFailure].filter((cause) => cause !== undefined),
-      "Modelica submit/readback did not close without redispatch.",
-    );
-  }
-  if (request.status !== "completed" || !request.completedRun) {
-    throw new Error("Modelica request_get did not return a completed run.");
-  }
-  if (
-    submitAck !== undefined &&
-    (submitAck.requestId !== request.requestId ||
-      submitAck.requestSha256 !== request.requestSha256 ||
-      submitAck.manifestSha256 !== request.manifestSha256)
-  ) {
-    throw new TypeError("Modelica submit ACK and request_get identities diverged.");
-  }
-  if (request.completedRun.status !== "succeeded") {
-    throw new Error(
-      `Modelica conformance run completed as ${request.completedRun.status}.`,
-    );
-  }
-  const metricKeys = Object.keys(request.completedRun.metrics).sort();
-  if (deterministicJson(metricKeys) !== deterministicJson(["temperature_final"])) {
-    throw new TypeError(
-      "Modelica ramp must return exactly the temperature_final conformance metric.",
-    );
-  }
-  const finalTemperature = request.completedRun.metrics.temperature_final;
-  if (
-    finalTemperature.unit !== "degC" ||
-    !Number.isFinite(finalTemperature.value) ||
-    Math.abs(finalTemperature.value - 22) >= 1e-6
-  ) {
-    throw new TypeError(
-      "Modelica ramp temperature_final must attest the fixed 22 degC conformance result.",
-    );
-  }
-  return Object.freeze({
-    scope: "solver-conformance-only-not-physical-block-evidence",
-    manifestSha256: manifest.fingerprint,
-    requestId: request.requestId,
-    requestSha256: request.requestSha256,
-    runId: request.completedRun.runId,
-    status: request.completedRun.status,
-    metrics: request.completedRun.metrics,
-    submitAcknowledged,
-  });
-}
-
-async function awaitModelicaReadback(
-  adapter: Pick<NativeModelicaAdapter, "getRequest">,
-  submission: ModelicaResumableSubmission,
-  pollDelay: (milliseconds: number) => Promise<void>,
-): Promise<ModelicaResumableRequest> {
-  for (let attempt = 0; attempt < 150; attempt++) {
-    const request = await adapter.getRequest(submission);
-    if (request.status === "completed") return request;
-    if (request.status === "rejected" || request.status === "recovery_required") {
-      throw new Error(`Modelica request_get closed as ${request.status}.`);
-    }
-    await pollDelay(1000);
-  }
-  throw new Error(
-    "Modelica request_get did not complete inside the 150 s smoke bound.",
-  );
 }
 
 async function awaitCalculixReadback(
@@ -1071,33 +921,6 @@ export function anchoredMechanicalProofCase(
       limit: { value: vonMises.limitValue, unit: "Pa" },
     }],
   });
-}
-
-function assertFixedModelicaManifest(manifest: ModelicaResumableManifest): void {
-  if (
-    manifest.selection.modelId !== MODELICA_SELECTION.modelId ||
-    manifest.selection.modelVersion !== MODELICA_SELECTION.modelVersion ||
-    manifest.selection.scenarioId !== MODELICA_SELECTION.scenarioId
-  ) {
-    throw new TypeError("Modelica manifest differs from the fixed conformance kit.");
-  }
-  const parameters = [...manifest.parameters]
-    .map((parameter) => ({
-      id: parameter.id,
-      unit: parameter.unit,
-      minimum: parameter.minimum,
-      maximum: parameter.maximum,
-    }))
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const expected = [
-    { id: "heating_rate", unit: "K/s", minimum: 0.1, maximum: 10 },
-    { id: "initial_temperature", unit: "degC", minimum: -50, maximum: 100 },
-  ];
-  if (deterministicJson(parameters) !== deterministicJson(expected)) {
-    throw new TypeError(
-      "Modelica manifest parameter surface is not the fixed ramp profile.",
-    );
-  }
 }
 
 export function parseSysonProjectList(

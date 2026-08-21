@@ -7,11 +7,6 @@ import type {
   CalculixRecordedStaticPlan,
   CalculixRecordedStaticRecovery,
 } from "./calculix-recorded-capabilities.ts";
-import type {
-  ModelicaResumableManifest,
-  ModelicaResumableRequest,
-  ModelicaResumableSubmission,
-} from "../../src/domain/modelica/recorded/resumable-capabilities.ts";
 import {
   createProviderResourceRead,
   type ExpectedProviderResource,
@@ -30,13 +25,11 @@ import {
   dryRunSummary,
   type NativeAssetBridge,
   type NativeCalculixAdapter,
-  type NativeModelicaAdapter,
   type NativeStepExport,
   type NativeSysmlMechanicalAnchor,
   parseBuild123dStepExport,
   parseSysonProjectList,
   runNativeMechanicalSmoke,
-  runNativeModelicaConformance,
   type StagedNativeStep,
 } from "./native-smoke.ts";
 
@@ -269,22 +262,6 @@ Deno.test("anchored native mechanical fake E2E executes once, recovers by GET on
     { value: 100_000_000, unit: "Pa" },
   ]);
   assertEquals(summary.sysmlAnchor.supportBlockPartDefinitionId, "part-def-support");
-});
-
-Deno.test("Modelica conformance remains a separately invocable non-product branch", async () => {
-  const modelica = new FakeModelicaAdapter();
-  const summary = await runNativeModelicaConformance(
-    new FakeToolClient(() => {
-      throw new Error("override should prevent this MCP client call");
-    }),
-    modelica,
-    () => Promise.resolve(),
-  );
-  assertEquals(modelica.manifestCalls, 1);
-  assertEquals(modelica.submitCalls, 1);
-  assertEquals(modelica.getCalls, 1);
-  assertEquals(summary.scope, "solver-conformance-only-not-physical-block-evidence");
-  assertEquals(summary.metrics.temperature_final, { value: 22, unit: "degC" });
 });
 
 Deno.test("native mechanical smoke rejects foreign targets, units and cardinality before providers", async () => {
@@ -649,58 +626,6 @@ class FakeCalculixAdapter implements NativeCalculixAdapter {
   }
 }
 
-class FakeModelicaAdapter implements NativeModelicaAdapter {
-  manifestCalls = 0;
-  submitCalls = 0;
-  getCalls = 0;
-
-  getManifest(): Promise<ModelicaResumableManifest> {
-    this.manifestCalls += 1;
-    return Promise.resolve(fakeModelicaManifest());
-  }
-
-  submit(submission: ModelicaResumableSubmission): Promise<ModelicaResumableRequest> {
-    this.submitCalls += 1;
-    return Promise.resolve({
-      requestId: submission.requestId,
-      requestSha256: "c".repeat(64),
-      manifestSha256: submission.manifest.fingerprint,
-      status: "pending",
-    });
-  }
-
-  getRequest(
-    submission: ModelicaResumableSubmission,
-  ): Promise<ModelicaResumableRequest> {
-    this.getCalls += 1;
-    return Promise.resolve({
-      requestId: submission.requestId,
-      requestSha256: "c".repeat(64),
-      manifestSha256: submission.manifest.fingerprint,
-      status: "completed",
-      completedRun: {
-        requestId: submission.requestId,
-        requestSha256: "c".repeat(64),
-        manifestSha256: submission.manifest.fingerprint,
-        runId: "run_01234567-89ab-4cde-8fab-0123456789ab",
-        status: "succeeded",
-        startedAt: "2026-08-13T00:00:00.000Z",
-        completedAt: "2026-08-13T00:00:01.000Z",
-        resolvedParameters: submission.parameters,
-        metrics: { temperature_final: { value: 22, unit: "degC" } },
-        warnings: [],
-        artifacts: [],
-        runJson: {
-          uri: "casys://modelica/runs/test/run.json",
-          mediaType: "application/json",
-          byteCount: 1,
-          sha256: "d".repeat(64),
-        },
-      },
-    });
-  }
-}
-
 async function recordedResources(
   stepBytes: Uint8Array,
 ): Promise<readonly (ExpectedProviderResource & { readonly role: string })[]> {
@@ -776,73 +701,6 @@ function stepExport(sha256: string): NativeStepExport {
     containerPath: `/exports/${EXPORT_NAME}.step`,
     byteCount: STEP_BYTES.byteLength,
     sha256,
-  };
-}
-
-function fakeModelicaManifest(): ModelicaResumableManifest {
-  return {
-    schemaVersion: "modelica-qualified-manifest/1.0",
-    contractVersion: "2.1",
-    selection: {
-      modelId: "linear-thermal-ramp-v1",
-      modelVersion: "0.1.0",
-      scenarioId: "linear-ramp-nominal",
-    },
-    fingerprint: "b".repeat(64),
-    modelName: "LinearThermalRamp",
-    model: {
-      uri: "casys://modelica/kits/linear-thermal-ramp-v1/0.1.0/model.mo",
-      mediaType: "text/x-modelica",
-      byteCount: 1,
-      sha256: "1".repeat(64),
-      qualification: "qualified-kit",
-    },
-    scenario: {
-      uri:
-        "casys://modelica/kits/linear-thermal-ramp-v1/0.1.0/scenarios/linear-ramp-nominal.json",
-      mediaType: "application/json",
-      byteCount: 1,
-      sha256: "2".repeat(64),
-      qualification: "qualified-kit",
-    },
-    scenarioPublic: {
-      id: "linear-ramp-nominal",
-      description: "fixed conformance ramp",
-      startTimeS: 0,
-      stopTimeS: 2,
-      numberOfIntervals: 2,
-      solver: "dassl",
-      targetTemperature: { value: 22, unit: "degC" },
-    },
-    scenarioProjectionSha256: "3".repeat(64),
-    parameters: [{
-      id: "initial_temperature",
-      modelicaName: "initialTemperature",
-      modelicaType: "Real",
-      description: "initial",
-      unit: "degC",
-      minimum: -50,
-      maximum: 100,
-      conversion: { from: "degC", to: "degC", factor: 1, offset: 0 },
-    }, {
-      id: "heating_rate",
-      modelicaName: "heatingRate",
-      modelicaType: "Real",
-      description: "rate",
-      unit: "K/s",
-      minimum: 0.1,
-      maximum: 10,
-      conversion: { from: "K/s", to: "K/s", factor: 1, offset: 0 },
-    }],
-    producedMetrics: [{
-      id: "temperature_final",
-      unit: "degC",
-      description: "final conformance value",
-      required: true,
-    }],
-    resultNormalizer: { id: "linear-ramp-normalizer", version: "1.0.0" },
-    lowering: { id: "modelica.omc", version: "1.0.0" },
-    engine: { name: "OpenModelica", version: "test", mslVersion: "test" },
   };
 }
 

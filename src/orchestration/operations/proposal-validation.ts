@@ -23,16 +23,6 @@ import {
   parseSensitivityStudyDecisionParameters,
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import {
-  parseSimulationCaseDecisionParameters,
-  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-  simulationCaseDecisionParametersToMap,
-} from "../../domain/modelica/recorded/simulation-case-proposal.ts";
-import {
-  parseSimulationCaseV2DecisionParameters,
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-  simulationCaseV2DecisionParametersToMap,
-} from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
-import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
 } from "../../domain/architecture/renderer/architecture-proposal.ts";
@@ -217,22 +207,6 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION),
     (parameters) => {
       parseSensitivityStudyDecisionParameters(parameters);
-    },
-  ],
-  [
-    keyOf(SIMULATE_SEAL_SIMULATION_CASE_OPERATION),
-    (parameters) => {
-      parseSimulationCaseDecisionParameters(
-        simulationCaseDecisionParametersToMap(parameters),
-      );
-    },
-  ],
-  [
-    keyOf(SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION),
-    (parameters) => {
-      parseSimulationCaseV2DecisionParameters(
-        simulationCaseV2DecisionParametersToMap(parameters),
-      );
     },
   ],
   [

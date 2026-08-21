@@ -29,8 +29,9 @@ engineering meaning.
 - Isolated CalculiX `@3` is a local microVM engine path, not an oracle. The proof
   method is separately qualified. Historical MCP recorded-static adapters are not
   product.
-- `McpModelicaResumableAdapter` is a resumable dynamic-system engine adapter. The
-  qualified kit manifest identifies the method.
+- Historical recorded Modelica `@1`/`@2` adapters are retired. Current Modelica engines
+  are admitted closed-subset L3 and the pinned qualified kit, not a provider-recorded
+  scenario island.
 - SysON is a model/constraint engine. `syson_constraint_evaluate` is an evaluation
   capability. Digital Thread persists the exact request/structured-response envelope, so
   SysON is not falsely declared producer of a file it did not store.
@@ -40,21 +41,11 @@ engineering meaning.
 This lets a new engine add a provider adapter and an explicit method contract, rather
 than a new taxonomy branch for every vendor.
 
-## Recorded Modelica and CalculiX verticals
+## Recorded CalculiX vertical
 
-The two `@2` recorded-analysis run operations use one server-created,
-`resolved-operation-plan/2.0` per queued run. It binds the exact MRTR approval, method,
-thread basis and input artefacts before any provider call. The Modelica `@2` seal is
-planless because it creates the qualified case and method artefacts consumed by a later
-planned run. `@1` operations remain intact and historical; they are not silently
-upgraded.
-
-Modelica is an engine and modelling language. The `@2` seal accepts only a qualified-kit
-manifest and captures the exact model, scenario and optional parameter schema using
-identity-bound MCP resources. The run captures its resumable request, parameters, model,
-scenario, script, diagnostics, evidence, `run.json` and, on success, result CSV. It
-publishes observations without requirements, evaluations, violations, actions or a
-verdict.
+`resolved-operation-plan/2.0` binds the exact MRTR approval, method, thread basis and
+input artefacts before a recorded CalculiX `@2` or isolated `@3` run. Historical
+recorded Modelica `@1`/`@2` are not registered and are not a second ROP arm.
 
 CalculiX is an FEA engine. The `@2` run rereads the proof and exact STEP, stages only
 the private input, then captures exactly nine recorded resources: STEP, request JSON,
@@ -76,8 +67,10 @@ vocabulary:
 3. `src/adapters/shared/mcp/http-mcp-resource-reader.ts` reads one exact provider resource; it
    exposes no discovery authority. `src/adapters/shared/cas/` saves/rereads bytes, ledger
    and manifest.
-4. `src/adapters/modelica/recorded/` and `src/adapters/sensitivity/live-fea/` own fixed
-   MCP tools and envelopes. Executors cannot construct arbitrary provider arguments.
+4. `src/adapters/sensitivity/live-fea/` owns fixed MCP tools and envelopes. Executors
+   cannot construct arbitrary provider arguments. The historical
+   `src/adapters/modelica/recorded/` island is retired except the V1 run observer left
+   for R03.
 5. Generic WAL helpers live in `src/adapters/shared/wal/`. Typed WAL and executors live
    next to the authority (`src/adapters/modelica/`, `src/adapters/fea/`, …). Modelica WAL
    and executors live under `src/adapters/modelica/`.

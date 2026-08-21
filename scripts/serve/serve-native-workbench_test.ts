@@ -22,10 +22,6 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
 } from "../../src/domain/fea/seal-case/fea-proof-proposal.ts";
-import {
-  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-} from "../../src/domain/modelica/recorded/simulation-case-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../src/domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../src/domain/modelica/admitted/run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../src/domain/thread/thread-retirement.ts";
@@ -38,10 +34,6 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../src/orchestration/operations/fea-isolated-static-proof.ts";
-import {
-  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-} from "../../src/domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
@@ -309,7 +301,6 @@ Deno.test("native Workbench applies the verification-case read model after pure 
     verificationCaseCaptures: {
       mechanicalProof: { read: () => Promise.resolve(undefined) },
       sensitivityStudy: { read: () => Promise.resolve(undefined) },
-      modelicaSimulationV2: { read: () => Promise.resolve(undefined) },
     },
   });
 
@@ -326,8 +317,7 @@ Deno.test("native Workbench applies the verification-case read model after pure 
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "observed" },
-      { family: "modelica-simulation", status: "observed" },
-    ],
+          ],
     cases: [],
     issues: [],
   });
@@ -409,12 +399,8 @@ Deno.test("native Workbench classifies every known durable writer before attachm
   const operations = [
     VERIFY_SEAL_PROOF_CASE_OPERATION,
     VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
-    SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-    SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
     COMPILE_SEAL_ADMISSION_OPERATION,
     DESIGN_EXECUTE_BUILD123D_OPERATION,
-    SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-    SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
     VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
     SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
     SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,

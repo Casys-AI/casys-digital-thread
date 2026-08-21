@@ -88,8 +88,7 @@ export const GENERIC_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
     coverage: [
       { family: "mechanical-proof", status: "unavailable" },
       { family: "sensitivity-study", status: "unavailable" },
-      { family: "modelica-simulation", status: "unavailable" },
-    ],
+          ],
     cases: [],
     issues: [],
   },

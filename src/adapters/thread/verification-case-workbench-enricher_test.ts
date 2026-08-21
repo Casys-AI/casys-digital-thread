@@ -31,10 +31,6 @@ import {
   type SensitivityStudyCaseV2,
   validateSensitivityStudyCaseV2,
 } from "../../domain/sensitivity/study/sensitivity-study-v2.ts";
-import {
-  canonicalSimulationCaseV2Text,
-  validateSimulationCaseV2,
-} from "../../domain/modelica/recorded/simulation-case-v2.ts";
 import { enrichThreadWorkbenchWithVerificationCases } from "./verification-case-workbench-enricher.ts";
 
 const PROOF_CASE = validateMechanicalProofCase(JSON.parse(
@@ -71,7 +67,6 @@ Deno.test(
             Promise.resolve(captureByDigest.get(fingerprint.digest)),
         },
         sensitivityStudy: { read: () => Promise.resolve(undefined) },
-        modelicaSimulationV2: { read: () => Promise.resolve(undefined) },
       },
       CASE_CONTEXT,
     );
@@ -184,7 +179,6 @@ Deno.test(
               fingerprint.digest === captureDigest ? captureText : undefined,
             ),
         },
-        modelicaSimulationV2: { read: () => Promise.resolve(undefined) },
       },
       CASE_CONTEXT,
     );
@@ -237,137 +231,6 @@ Deno.test(
 );
 
 Deno.test(
-  "verification case enricher reopens an exact Modelica V2 declaration",
-  async () => {
-    const snapshot = workbenchFor([]);
-    const simulationCase = validateSimulationCaseV2({
-      schemaVersion: "simulation-case/2.0",
-      id: "thermal-hover",
-      revision: 3,
-      scope: "Thermal hover verification",
-      evidenceBoundary: "qualified-modelica-kit",
-      project: {
-        id: PROOF_CASE.project.id,
-        subjectId: PROOF_CASE.project.subjectId,
-        baseThreadSnapshot: {
-          id: snapshot.id,
-          revision: 1,
-          subjectId: PROOF_CASE.project.subjectId,
-        },
-      },
-      kit: {
-        modelId: "thermal-model",
-        modelVersion: "1.0.0",
-        modelSha256: "6".repeat(64),
-      },
-      scenario: {
-        id: "hover",
-        sourceSha256: "7".repeat(64),
-        projectionSha256: "8".repeat(64),
-      },
-      parameters: [],
-      expectedMetrics: [{ id: "temperature", unit: "K" }],
-      parameterMode: "explicit-overrides",
-      timeoutMs: 10_000,
-    });
-    const caseText = canonicalSimulationCaseV2Text(simulationCase);
-    const caseDigest = (await sha256Fingerprint(simulationCase)).digest;
-    const authorityId = `simulation-case-v2-${caseDigest}`;
-    snapshot.artifacts.push({
-      id: authorityId,
-      label: "Presentation does not carry Modelica identity",
-      kind: "document",
-      system: "digital-thread",
-      revision: caseDigest,
-      freshness: "fresh",
-      fingerprint: `sha256:${caseDigest}`,
-      uri: `casys://simulation-case-v2/sha256/${caseDigest}`,
-      producedBy: "simulate.seal-simulation-case@2",
-      producerRunId: "run.modelica.v2.seal",
-      dependsOn: [],
-    });
-    snapshot.graph.nodes.push(
-      graphNode("artifact", authorityId, "Modelica case", "digital-thread"),
-    );
-    snapshot.graph.edges.push(
-      edge("input_to", "artifact", authorityId, "artifact", "result"),
-    );
-
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
-      snapshot,
-      {
-        mechanicalProof: { read: () => Promise.resolve(undefined) },
-        sensitivityStudy: { read: () => Promise.resolve(undefined) },
-        modelicaSimulationV2: {
-          read: (fingerprint) =>
-            Promise.resolve(fingerprint.digest === caseDigest ? caseText : undefined),
-        },
-      },
-      CASE_CONTEXT,
-    );
-
-    assertEquals(enriched.verificationCases.status, "observed");
-    assertEquals(enriched.verificationCases.cases, [{
-      key: `verification-case:modelica-simulation:${caseDigest}`,
-      family: "modelica-simulation",
-      caseSchemaVersion: "simulation-case/2.0",
-      id: "thermal-hover",
-      revision: 3,
-      scope: "Thermal hover verification",
-      caseDigest,
-      authorityArtifactIds: [authorityId],
-    }]);
-    assertEquals(
-      nodeByRef(enriched, "artifact:result")?.verificationCaseRefs,
-      [`verification-case:modelica-simulation:${caseDigest}`],
-    );
-  },
-);
-
-Deno.test(
-  "verification case enricher exposes a historical Modelica V1 seal as unresolved",
-  async () => {
-    const snapshot = workbenchFor([]);
-    const captureDigest = "9".repeat(64);
-    const authorityId = `simulation-case-${captureDigest}`;
-    snapshot.artifacts.push({
-      id: authorityId,
-      label: "Historical Modelica case",
-      kind: "document",
-      system: "digital-thread",
-      revision: "8".repeat(64),
-      freshness: "fresh",
-      fingerprint: `sha256:${captureDigest}`,
-      uri: `casys://simulation-case-capture/sha256/${captureDigest}`,
-      producedBy: "simulate.seal-simulation-case@1",
-      producerRunId: "run.modelica.v1.seal",
-      dependsOn: [],
-    });
-    snapshot.graph.nodes.push(
-      graphNode("artifact", authorityId, "Historical case", "digital-thread"),
-    );
-
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
-      snapshot,
-      {
-        mechanicalProof: { read: () => Promise.resolve(undefined) },
-        sensitivityStudy: { read: () => Promise.resolve(undefined) },
-        modelicaSimulationV2: { read: () => Promise.resolve(undefined) },
-      },
-      CASE_CONTEXT,
-    );
-
-    assertEquals(enriched.verificationCases.status, "unresolved");
-    assertEquals(enriched.verificationCases.issues, [{
-      family: "modelica-simulation",
-      authorityArtifactId: authorityId,
-      status: "unavailable",
-      reason: "capture-reader-unavailable",
-    }]);
-  },
-);
-
-Deno.test(
   "verification case enricher keeps a known seal unresolved when its reader is unavailable",
   async () => {
     const proof = await sealedProof(PROOF_CASE, "run.seal.unavailable");
@@ -415,7 +278,6 @@ Deno.test(
           },
         },
         sensitivityStudy: { read: () => Promise.resolve(undefined) },
-        modelicaSimulationV2: { read: () => Promise.resolve(undefined) },
       },
       CASE_CONTEXT,
     );
@@ -495,8 +357,7 @@ Deno.test(
         {
           mechanicalProof: { read: () => Promise.resolve(proof.captureText) },
           sensitivityStudy: { read: () => Promise.resolve(undefined) },
-          modelicaSimulationV2: { read: () => Promise.resolve(undefined) },
-        },
+          },
         mutation.context,
       );
       assertEquals(enriched.verificationCases.cases, [], mutation.name);
@@ -507,48 +368,6 @@ Deno.test(
         reason: "case-binding-divergent",
       }], mutation.name);
     }
-  },
-);
-
-Deno.test(
-  "historical Modelica V1 lookalikes fail binding before reader availability",
-  async () => {
-    const snapshot = workbenchFor([]);
-    const digest = "d".repeat(64);
-    const authorityId = `simulation-case-${digest}`;
-    snapshot.artifacts.push({
-      id: authorityId,
-      label: "Foreign lookalike",
-      kind: "document",
-      system: "foreign-server",
-      revision: "e".repeat(64),
-      freshness: "fresh",
-      fingerprint: `sha256:${digest}`,
-      uri: `casys://simulation-case-capture/sha256/${digest}`,
-      producedBy: "simulate.seal-simulation-case@1",
-      producerRunId: "run.foreign",
-      dependsOn: [],
-    });
-    snapshot.graph.nodes.push(
-      graphNode("artifact", authorityId, "Foreign lookalike", "foreign-server"),
-    );
-
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
-      snapshot,
-      {
-        mechanicalProof: { read: () => Promise.resolve(undefined) },
-        sensitivityStudy: { read: () => Promise.resolve(undefined) },
-        modelicaSimulationV2: { read: () => Promise.resolve(undefined) },
-      },
-      CASE_CONTEXT,
-    );
-
-    assertEquals(enriched.verificationCases.issues, [{
-      family: "modelica-simulation",
-      authorityArtifactId: authorityId,
-      status: "error",
-      reason: "artifact-binding-invalid",
-    }]);
   },
 );
 
@@ -698,7 +517,6 @@ function workbenchFor(proofs: readonly SealedProof[]): ThreadWorkbenchSnapshot {
       coverage: [
         { family: "mechanical-proof", status: "unavailable" },
         { family: "sensitivity-study", status: "unavailable" },
-        { family: "modelica-simulation", status: "unavailable" },
       ],
       cases: [],
       issues: [],

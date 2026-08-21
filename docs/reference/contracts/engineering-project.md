@@ -176,25 +176,9 @@ its exact reference to that run. The plan carries no provider endpoint, tool, ra
 arguments, path or agent-authored recovery graph. `project_agent_run_plan_get` is an
 inspection read; it does not execute a plan.
 
-`simulate.seal-simulation-case@2` is deliberately planless: its exact human-approved
-MRTR authorizes the seal, but no `resolved-operation-plan/2.0` is created for it. The
-operation accepts only the closed `simulation-case/2.0` declaration. Unlike V1's
-historical `scenario.sha256`, V2 separates `scenario.sourceSha256`, the fingerprint of
-the provider-native scenario resource bytes, from `scenario.projectionSha256`, the
-fingerprint recomputed over the provider's canonical public projection. It validates
-both against the qualified Modelica manifest, acquires the manifest-declared model,
-native scenario and optional schema by exact MCP resource identity, then seals the
-distinct case, method-manifest, source and qualification artifacts. The public
-projection stays a manifest-attested fact; it is not represented as a second source
-resource.
-
-`simulate.run-modelica-scenario@2` is a separate reviewed run. Queueing derives its
-one-action `resolved-operation-plan/2.0` from exact `simulationCase` and
-`methodManifest` thread bindings and the qualification seal. The executor rereads the
-canonical V2 case, method manifest and qualification-owned sources before submission,
-journals before the provider boundary, captures every returned resource to CAS and
-publishes observations only. If the provider request is known it uses `request_get`;
-after the resource capture, recovery uses only local CAS.
+Historical `simulate.seal-simulation-case@1`/`@2` and
+`simulate.run-modelica-scenario@1`/`@2` are not registered. They are not a fallback for
+`simulate.run-admitted-modelica@1` or `simulate.run-qualified-modelica-kit@1`.
 
 `verify.run-fea-static-proof@3` rereads the sealed proof and exact STEP, runs
 gmsh+CCX in the digest-pinned microVM, and then journals a separate SysON constraint
@@ -288,43 +272,6 @@ encoding, so no ID can forge another target list — and the approver sees preci
 will be retired. The executor computes the domain-pure archive cascade, refuses a fully
 redundant closure, and publishes the successor snapshot with CAS readback. It makes no
 provider call; history stays readable while current views exclude the retired lines.
-
-`simulate.seal-simulation-case@1` seals the human-reviewed OpenModelica simulation case
-into the thread without any provider call. Its signed MRTR proposal carries the flat
-`sim.case.*` grammar: case ID, digest, kit model ID and SHA-256, scenario ID and
-SHA-256, explicit parameter overrides with units, timeout, and expected metric names and
-units. The executor resolves the case path through the server-owned
-`SIMULATION_CASE_SOURCES` catalog — the agent never supplies a path or raw case bytes —
-validates the JSON against the `simulation-case/1.0` contract, computes
-`canonicalCaseText` and its SHA-256, and fails immediately if the MRTR-signed digest
-diverges. The Modelica kit lives outside the thread in the provider's own store;
-`inputArtifactIds` is intentionally empty — claiming consumption for bytes that cannot
-be verified by content address would be a false attestation. The honest boundary is the
-`{modelSha256, scenarioSha256}` pair sealed inside `canonicalCaseText`. The
-`simulation-case-capture/1.0` record is stored by content address; the thread extension
-receives one `document` artifact (version = `caseDigest`, the monotony-ratchet key). No
-`simulate.run-modelica-scenario@1` run may proceed without this sealed mandate. This V1
-contract and its single `scenario.sha256` field remain unchanged as historical `@1`
-authority; `@2` neither accepts nor retroactively relabels them.
-
-`simulate.run-modelica-scenario@1` is observational: it never produces a verdict and a
-structural triple-lock (`verdictStatus: not_evaluated`, `requirements: []`, zero
-passed/failed/unresolved counts) is enforced verbatim by `validateThreadSnapshot` before
-any snapshot is persisted. The executor re-reads the `simulation-case-capture/1.0` by
-content address, verifies the bound `simulationCase` artifact's `caseDigest` in the
-current basis, and confirms kit availability and each parameter's bounds and unit
-through `modelica_kit_list` before any dispatch. A `planDigest` commits the exact
-simulate request to the WAL in `dispatched` state before `modelica_simulate`. The
-three-state WAL (`dispatched → provider-run-known → completed`) embeds the canonical
-simulate envelope at `provider-run-known` so recovery resumes exclusively from
-`modelica_run_get`; re-simulating a run whose provider run-id is already recorded is
-structurally forbidden. Double attestation compares the `modelica_simulate` response
-against `modelica_run_get`. Two CAS objects are produced: a provider run record
-(producer `modelica`) sealing the raw normalized provider envelopes, and an execution
-receipt (producer `digital-thread`) asserting the lineage from the human-signed
-simulation-case artifact to the concrete provider run. No verdict, `TracedRequirement`,
-evaluation, or violation is ever produced; evaluation belongs to SysON, not to this
-executor.
 
 `verify.seal-proof-case@1` seals the human-reviewed mechanical proof case into the
 thread without any provider call. Its signed MRTR proposal carries every consequential
@@ -663,14 +610,7 @@ and architecture checks; for v2, the manifest must cover every captured PartUsag
 every distinct targeted PartDefinition. The provider execution occurred earlier in the
 isolated preview boundary. `record.archive-lineage@1` runs the governed retirement
 cascade with no provider call, gated by a human-approved decision sealing the exact
-thread-entity targets. `simulate.seal-simulation-case@1` resolves the reviewed case
-through `SIMULATION_CASE_SOURCES`, cross-checks every MRTR field, and publishes the
-content-addressed simulation-case mandate with empty `inputArtifactIds` and no provider
-call. `simulate.run-modelica-scenario@1` verifies kit bounds through
-`modelica_kit_list`, dispatches `modelica_simulate`, double-attests the result through
-`modelica_run_get`, and publishes unit-carrying observations only — a structural
-triple-lock enforces `verdictStatus: not_evaluated` and re-dispatch after a known
-provider run-id is forbidden. `verify.seal-proof-case@1` resolves the reviewed proof
+thread-entity targets. `verify.seal-proof-case@1` resolves the reviewed proof
 case by id through the versioned `config/mechanical-proof-cases/catalog.json` manifest,
 cross-checks the MRTR-signed digest and every parameter against the canonical bytes,
 verifies geometry and requirements-tip links in the basis, and publishes the

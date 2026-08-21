@@ -432,13 +432,6 @@ export function registerProjectControlTools(
   });
 
   app.registerTool(
-    projectWorkItemSupersedeUnstartedTool,
-    async (args, context) => {
-      return await handleUnstartedWorkItemSupersession(args, context, dependencies);
-    },
-  );
-
-  app.registerTool(
     projectWorkItemAbandonTool,
     async (args, context) => {
       return await handleWorkItemAbandonment(args, context, dependencies);
@@ -794,31 +787,6 @@ const projectAgentRunExecuteTool: MCPTool = {
   annotations: PROJECT_EXECUTION_ANNOTATIONS,
 };
 
-const projectWorkItemSupersedeUnstartedTool: MCPTool = {
-  name: "project_work_item_supersede_unstarted",
-  description:
-    "Ask the paired MCP host to present a narrowly registered human-only closeout for an evidence-free legacy simulation-case seal that never acquired a run. The only allowed transition is simulate.seal-simulation-case@1 to an already-approved @2 successor decision with identical operation bindings. The accepted MRTR writes the inverse historical decision link, revokes the predecessor pending approval, and records a project-only supersession receipt. No provider, agent run, or ThreadSnapshot is created.",
-  inputSchema: mutationSchema({
-    workItemId: { type: "string", minLength: 1 },
-    predecessorDecisionId: { type: "string", minLength: 1 },
-    successorWorkItemId: { type: "string", minLength: 1 },
-    successorDecisionId: { type: "string", minLength: 1 },
-    rationale: {
-      type: "string",
-      minLength: 1,
-      description: "Human-recorded reason for superseding the unstarted legacy work.",
-    },
-  }, [
-    "workItemId",
-    "predecessorDecisionId",
-    "successorWorkItemId",
-    "successorDecisionId",
-    "rationale",
-  ]),
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: PROJECT_HUMAN_CONFIRMATION_ANNOTATIONS,
-};
-
 /**
  * Human-only governed abandonment for work items that never acquired a run.
  *
@@ -1158,88 +1126,6 @@ async function handleQueuedRunCancellation(
   );
 }
 
-async function handleUnstartedWorkItemSupersession(
-  args: Record<string, unknown>,
-  context: ToolHandlerContext | undefined,
-  dependencies: ProjectControlToolDependencies,
-) {
-  const common = commonMutation(args);
-  const workItemId = requiredString(args.workItemId, "workItemId");
-  const predecessorDecisionId = requiredString(
-    args.predecessorDecisionId,
-    "predecessorDecisionId",
-  );
-  const successorWorkItemId = requiredString(
-    args.successorWorkItemId,
-    "successorWorkItemId",
-  );
-  const successorDecisionId = requiredString(
-    args.successorDecisionId,
-    "successorDecisionId",
-  );
-  const rationale = requiredString(args.rationale, "rationale");
-  const current = await requiredUnstartedSupersession(
-    dependencies.projects,
-    common.projectId,
-    common.expectedRevision,
-    { workItemId, predecessorDecisionId, successorWorkItemId, successorDecisionId },
-  );
-  const approvalMode = dependencies.approvalMode ??
-    INTERACTIVE_PROJECT_APPROVAL_MODE;
-  if (autoConfirms(approvalMode, "unstarted-supersede")) {
-    const snapshot = await dependencies.commands.supersedeUnstartedWorkItem(
-      approvalMode.origin,
-      {
-        ...common,
-        workItemId,
-        predecessorDecisionId,
-        successorWorkItemId,
-        successorDecisionId,
-        rationale: localYoloRationale(
-          `unstarted supersession ${workItemId}`,
-          rationale,
-        ),
-      },
-    );
-    return await projectResult(
-      `YOLO local startup opt-in auto-superseded unstarted work item ${workItemId} at project revision ${snapshot.revision}. No MCP elicitation response was fabricated, and no agent run, provider call, or ThreadSnapshot was created.`,
-      snapshot,
-      dependencies.threadSnapshots,
-    );
-  }
-  const confirmation = unstartedSupersessionConfirmationResponse(context);
-  if (confirmation === undefined) {
-    return unstartedSupersessionConfirmationRequest(
-      current,
-      { workItemId, predecessorDecisionId, successorWorkItemId, successorDecisionId },
-      rationale,
-    );
-  }
-  if (!confirmation) {
-    return await projectResult(
-      `Unstarted work item ${workItemId} was not superseded. No project state changed; continue the paired conversation.`,
-      current,
-      dependencies.threadSnapshots,
-    );
-  }
-  const snapshot = await dependencies.commands.supersedeUnstartedWorkItem(
-    elicitedHumanOrigin(context),
-    {
-      ...common,
-      workItemId,
-      predecessorDecisionId,
-      successorWorkItemId,
-      successorDecisionId,
-      rationale,
-    },
-  );
-  return await projectResult(
-    `The paired MCP host recorded human supersession of unstarted work item ${workItemId} at project revision ${snapshot.revision}. No agent run, provider call, or ThreadSnapshot was created.`,
-    snapshot,
-    dependencies.threadSnapshots,
-  );
-}
-
 async function handleWorkItemAbandonment(
   args: Record<string, unknown>,
   context: ToolHandlerContext | undefined,
@@ -1564,93 +1450,6 @@ function runCancellationConfirmationResponse(
   );
 }
 
-function unstartedSupersessionConfirmationRequest(
-  snapshot: EngineeringProjectSnapshot,
-  ids: {
-    workItemId: string;
-    predecessorDecisionId: string;
-    successorWorkItemId: string;
-    successorDecisionId: string;
-  },
-  rationale: string,
-) {
-  const predecessor = snapshot.decisions.find((decision) =>
-    decision.id === ids.predecessorDecisionId
-  )!;
-  const successor = snapshot.decisions.find((decision) =>
-    decision.id === ids.successorDecisionId
-  )!;
-  return {
-    resultType: "input_required",
-    inputRequests: {
-      unstarted_work_item_supersession_confirmation: {
-        method: "elicitation/create",
-        params: {
-          mode: "form",
-          message:
-            `Supersede unstarted work item “${ids.workItemId}” and revoke its pending approval for “${predecessor.title}”? ` +
-            `The registered replacement is work item “${ids.successorWorkItemId}” with already-approved decision “${successor.title}”, explicitly linked as its successor. ` +
-            `This records only project history: no agent run, provider call, or ThreadSnapshot will be created. Recorded rationale: ${rationale}. Confirm this exact supersession, or decline and continue the conversation.`,
-          requestedSchema: {
-            type: "object",
-            properties: {
-              confirmed: {
-                type: "boolean",
-                title: "Confirm unstarted work supersession",
-                description:
-                  "I confirm the exact legacy work item and pending approval should be superseded by the displayed approved successor decision.",
-              },
-            },
-            required: ["confirmed"],
-            additionalProperties: false,
-          },
-        },
-      },
-    },
-  };
-}
-
-function unstartedSupersessionConfirmationResponse(
-  context?: ToolHandlerContext,
-): boolean | undefined {
-  if (context?.inputResponses === undefined) return undefined;
-  if (context.retryVerified !== true) {
-    throw new TypeError(
-      "Unstarted work-item supersession requires an MCP retry with verified signed request state.",
-    );
-  }
-  const response = exactRecord(
-    context.inputResponses.unstarted_work_item_supersession_confirmation,
-    "inputResponses.unstarted_work_item_supersession_confirmation",
-  );
-  exactKeys(
-    response,
-    ["action"],
-    ["content"],
-    "inputResponses.unstarted_work_item_supersession_confirmation",
-  );
-  const action = oneOf(
-    response.action,
-    ["accept", "decline", "cancel"] as const,
-    "inputResponses.unstarted_work_item_supersession_confirmation.action",
-  );
-  if (action !== "accept") return false;
-  const content = exactRecord(
-    response.content,
-    "inputResponses.unstarted_work_item_supersession_confirmation.content",
-  );
-  exactKeys(
-    content,
-    ["confirmed"],
-    [],
-    "inputResponses.unstarted_work_item_supersession_confirmation.content",
-  );
-  return requiredBoolean(
-    content.confirmed,
-    "inputResponses.unstarted_work_item_supersession_confirmation.content.confirmed",
-  );
-}
-
 function decisionConfirmationRequest(
   snapshot: EngineeringProjectSnapshot,
   decisionId: string,
@@ -1789,55 +1588,6 @@ async function requiredQueuedRun(
   ) {
     throw new TypeError(
       `Agent run ${runId} is not an unclaimed queued run at project revision ${expectedRevision}.`,
-    );
-  }
-  return snapshot;
-}
-
-async function requiredUnstartedSupersession(
-  store: EngineeringProjectSnapshotReader,
-  projectId: string,
-  expectedRevision: number,
-  ids: {
-    workItemId: string;
-    predecessorDecisionId: string;
-    successorWorkItemId: string;
-    successorDecisionId: string;
-  },
-): Promise<EngineeringProjectSnapshot> {
-  const snapshot = await requiredProjectRevision(store, projectId, expectedRevision);
-  const work = snapshot.workItems.find((item) => item.id === ids.workItemId);
-  const successorWork = snapshot.workItems.find((item) =>
-    item.id === ids.successorWorkItemId
-  );
-  const predecessor = snapshot.decisions.find((decision) =>
-    decision.id === ids.predecessorDecisionId
-  );
-  const successor = snapshot.decisions.find((decision) =>
-    decision.id === ids.successorDecisionId
-  );
-  const pendingApproval = predecessor?.approvalIds.some((id) =>
-    snapshot.approvals.find((approval) => approval.id === id)?.status === "pending"
-  );
-  if (
-    !work || !successorWork || !predecessor || !successor ||
-    work.status !== "waiting-for-decision" || work.evidenceRefs.length !== 0 ||
-    work.reconciliation !== undefined ||
-    snapshot.agentRuns.some((run) => run.workItemId === work.id) ||
-    work.operation?.id !== "simulate.seal-simulation-case" ||
-    work.operation.version !== "1" ||
-    !work.decisionIds.includes(predecessor.id) || predecessor.status !== "proposed" ||
-    !pendingApproval ||
-    successorWork.operation?.id !== "simulate.seal-simulation-case" ||
-    successorWork.operation.version !== "2" ||
-    deterministicJson(work.operation.bindings) !==
-      deterministicJson(successorWork.operation.bindings) ||
-    !successorWork.decisionIds.includes(successor.id) ||
-    successor.status !== "approved" ||
-    successorWork.evidenceRefs.length !== 0
-  ) {
-    throw new TypeError(
-      "The supplied work and decisions are not the exact eligible unstarted simulate.seal-simulation-case@1 to @2 supersession at this project revision.",
     );
   }
   return snapshot;

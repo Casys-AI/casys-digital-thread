@@ -17,7 +17,6 @@ import type {
 } from "./syson-smoke.ts";
 import {
   runNativeMechanicalSmoke,
-  runNativeModelicaConformance,
 } from "./native-smoke.ts";
 
 const SHA_A = "a".repeat(64);
@@ -160,34 +159,12 @@ Deno.test("integrated fake E2E preserves causal order, exact native IDs and non-
     };
   };
 
-  const fakeModelica: typeof runNativeModelicaConformance = async () => {
-    await Promise.resolve();
-    assertEquals(events.slice(-3), [
-      "syson:delete-1",
-      "syson:absence-readback",
-      "stage:syson-cleanup-proven",
-    ]);
-    events.push("modelica:manifest", "modelica:submit-1", "modelica:get-only");
-    return {
-      scope: "solver-conformance-only-not-physical-block-evidence",
-      manifestSha256: SHA_A,
-      requestId: "modelica-request-test",
-      requestSha256: SHA_B,
-      runId: "run_test",
-      status: "succeeded",
-      metrics: { temperature_final: { value: 22, unit: "degC" } },
-      submitAcknowledged: true,
-    };
-  };
-
   const summary = await runIntegratedAdmissionSmoke({
     mechanicalClients: forbiddenMechanicalClients(),
     bridge: forbiddenBridge(),
-    modelicaClient: forbiddenClient(),
     testStages: {
       withSysonAnchor: fakeWithSyson,
       runMechanical: fakeMechanical,
-      runModelica: fakeModelica,
     },
     observeStage: (stage) => events.push(`stage:${stage}`),
   });
@@ -203,10 +180,6 @@ Deno.test("integrated fake E2E preserves causal order, exact native IDs and non-
     "syson:delete-1",
     "syson:absence-readback",
     "stage:syson-cleanup-proven",
-    "modelica:manifest",
-    "modelica:submit-1",
-    "modelica:get-only",
-    "stage:modelica-closed",
   ]);
   assertEquals(candidateSent, false);
   assertEquals(summary.schemaVersion, "integrated-admission-smoke/0.1");
@@ -263,10 +236,6 @@ Deno.test("integrated fake E2E preserves causal order, exact native IDs and non-
   assertEquals(summary.fixtureQualification.admitted, false);
   assertEquals(summary.syson.cleanup, "deleted-and-absent");
   assertEquals(summary.calculix.resourceReadsVerified, 9);
-  assertEquals(
-    summary.modelica.scope,
-    "solver-conformance-only-not-physical-block-evidence",
-  );
 });
 
 function exactAnchor(): EphemeralSysonAnchor {

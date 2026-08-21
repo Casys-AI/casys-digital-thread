@@ -28,14 +28,13 @@ Audience: both · Diátaxis: reference · Kind: contract
 | Workbench projection         | [`src/adapters/thread/thread-workbench-projector.ts`](../../../src/adapters/thread/thread-workbench-projector.ts)                                                                                   |
 | Native Workbench UI          | [`src/ui/src/thread/`](../../../src/ui/src/thread)                                                                                                                                                         |
 | Modelica evidence            | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                                                                                                                                 |
-| Recorded-analysis ROP2 state | `state/local/recorded-analysis/`: fixed directories for plans, Modelica qualification/run capture, CalculiX run/evaluation capture and WAL; fixed CAS namespaces where applicable; not a provider volume |
+| Recorded-analysis ROP2 state | `state/local/recorded-analysis/`: fixed directories for plans, admitted/kit Modelica, CalculiX run/evaluation capture and WAL; fixed CAS namespaces where applicable; not a provider volume |
 | CAD/FEA exchange             | `exports` Docker volume, with producer and consumer SHA-256 attestation                                                                                                                                  |
 | ERP manufacturing truth      | ERPNext database, reached only through `mcp-erpnext`                                                                                                                                                     |
 | FEA proof (seal)             | [`src/adapters/fea/seal-case/verify-seal-proof-case-run-executor.ts`](../../../src/adapters/fea/seal-case/verify-seal-proof-case-run-executor.ts)                                                                   |
 | FEA proof (run)              | [`src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts`](../../../src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts)                                                     |
-| Modelica scenario (seal)     | [`src/adapters/modelica/recorded/v1/seal-case-executor.ts`](../../../src/adapters/modelica/recorded/v1/seal-case-executor.ts)                                                     |
-| Modelica scenario (run)      | [`src/adapters/modelica/recorded/v1/run-scenario-executor.ts`](../../../src/adapters/modelica/recorded/v1/run-scenario-executor.ts)                                                   |
-| Recorded Modelica `@2`       | [`src/adapters/modelica/recorded/v2/run-scenario-executor.ts`](../../../src/adapters/modelica/recorded/v2/run-scenario-executor.ts)                                             |
+| Admitted Modelica run        | [`src/adapters/modelica/admitted/run-executor.ts`](../../../src/adapters/modelica/admitted/run-executor.ts)                                                                 |
+| Qualified Modelica kit       | [`src/adapters/modelica/qualified-kit/run-executor.ts`](../../../src/adapters/modelica/qualified-kit/run-executor.ts)                                                       |
 
 A reviewed subject manifest is the sole cross-provider join authority for its project.
 Provider display names and matching labels are evidence for people, not a machine join

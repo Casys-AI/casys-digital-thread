@@ -599,7 +599,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_thermal_method_sheet_seal_review",
     "project_vector_correction_review",
     "project_work_item_abandon",
-    "project_work_item_supersede_unstarted",
   ]);
   assertEquals(app.hasResource(CONSOLE_RESOURCE_URI), false);
 
@@ -664,8 +663,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_thermal_method_sheet_seal_review",
       "project_vector_correction_review",
       "project_work_item_abandon",
-      "project_work_item_supersede_unstarted",
-    ]);
+      ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");
     assert(snapshotTool);
     assertEquals(snapshotTool._meta, undefined);
@@ -865,8 +863,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           "project_decision_reject",
           "project_agent_run_cancel",
           "project_work_item_abandon",
-          "project_work_item_supersede_unstarted",
-          "project_agent_run_queue",
+                "project_agent_run_queue",
         ]
           .includes(String(tool.name))
       ),
@@ -916,7 +913,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_technical_compilation_preview" ||
           tool.name === "project_technical_source_capture" ||
           tool.name === "project_work_item_abandon" ||
-          tool.name === "project_work_item_supersede_unstarted" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||
           tool.name === "project_isolated_geometry_seal_review" ||

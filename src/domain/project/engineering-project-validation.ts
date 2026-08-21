@@ -1019,32 +1019,19 @@ function validateWorkItemReconciliation(
     issue(issues, "invalid_type", path, "must be an object");
     return;
   }
-  const record = value as Record<string, unknown>;
-  const isUnstarted = "successorWorkItemId" in record ||
-    "predecessorDecisionId" in record || "successorDecisionId" in record;
   const input = exactRecord(
     value,
     path,
-    isUnstarted
-      ? [
-        "kind",
-        "reconciledAt",
-        "reconciledBy",
-        "successorWorkItemId",
-        "predecessorDecisionId",
-        "successorDecisionId",
-        "rationale",
-      ]
-      : [
-        "kind",
-        "reconciledAt",
-        "reconciledBy",
-        "failedRunId",
-        "successorRunId",
-        "successorRunSnapshot",
-        "successorEvidenceRefs",
-        "rationale",
-      ],
+    [
+      "kind",
+      "reconciledAt",
+      "reconciledBy",
+      "failedRunId",
+      "successorRunId",
+      "successorRunSnapshot",
+      "successorEvidenceRefs",
+      "rationale",
+    ],
     // successorSnapshot is absent for a direct reconciliation where the
     // successor run result is already the project thread head.
     ["successorSnapshot"],
@@ -1059,17 +1046,6 @@ function validateWorkItemReconciliation(
   );
   isoDateTime(input.reconciledAt, `${path}.reconciledAt`, issues);
   validateCommandActor(input.reconciledBy, `${path}.reconciledBy`, issues);
-  if (isUnstarted) {
-    nonEmptyString(input.successorWorkItemId, `${path}.successorWorkItemId`, issues);
-    nonEmptyString(
-      input.predecessorDecisionId,
-      `${path}.predecessorDecisionId`,
-      issues,
-    );
-    nonEmptyString(input.successorDecisionId, `${path}.successorDecisionId`, issues);
-    nonEmptyString(input.rationale, `${path}.rationale`, issues);
-    return;
-  }
   nonEmptyString(input.failedRunId, `${path}.failedRunId`, issues);
   nonEmptyString(input.successorRunId, `${path}.successorRunId`, issues);
   validateSnapshotRef(
@@ -1637,7 +1613,6 @@ function validateCommandReceipt(
       "project.plan-publish",
       "project.change-append",
       "work-item.reconcile-successor",
-      "work-item.supersede-unstarted",
       "work-item.abandon",
       "decision.propose",
       "decision.approve",
@@ -2147,7 +2122,6 @@ function validateInvariants(
   project.workItems.forEach((item, index) => {
     const reconciliation = item.reconciliation;
     if (!reconciliation) return;
-    if ("successorWorkItemId" in reconciliation) return;
     // successorSnapshot is absent for a direct reconciliation — skip the
     // cross-reference check for it when the field is undefined.
     const snapshotRefs: Array<
@@ -2514,61 +2488,6 @@ function validateWorkItemReconciliationInvariant(
       `${path}.evidenceRefs`,
       "reconciled failed work must not claim successor evidence as its own",
     );
-  }
-  if ("successorWorkItemId" in reconciliation) {
-    const predecessorDecision = project.decisions.find((decision) =>
-      decision.id === reconciliation.predecessorDecisionId
-    );
-    const successorWork = project.workItems.find((work) =>
-      work.id === reconciliation.successorWorkItemId
-    );
-    const successorDecision = project.decisions.find((decision) =>
-      decision.id === reconciliation.successorDecisionId
-    );
-    if (project.agentRuns.some((run) => run.workItemId === item.id)) {
-      issue(
-        issues,
-        "invalid_transition",
-        `${path}.reconciliation`,
-        "an unstarted supersession cannot name a work item with any agent run",
-      );
-    }
-    if (
-      !predecessorDecision || predecessorDecision.status !== "superseded" ||
-      !item.decisionIds.includes(predecessorDecision.id) ||
-      !successorWork || successorWork.id === item.id ||
-      successorWork.operation?.id !== "simulate.seal-simulation-case" ||
-      successorWork.operation.version !== "2" ||
-      !successorDecision || successorDecision.status !== "approved" ||
-      !(successorDecision.supersedesDecisionId === predecessorDecision.id ||
-        predecessorDecision.supersededByDecisionId === successorDecision.id) ||
-      !successorWork.decisionIds.includes(successorDecision.id) ||
-      item.operation?.id !== "simulate.seal-simulation-case" ||
-      item.operation.version !== "1" ||
-      deterministicJson(item.operation.bindings) !==
-        deterministicJson(successorWork.operation.bindings)
-    ) {
-      issue(
-        issues,
-        "invalid_transition",
-        `${path}.reconciliation`,
-        "must record the exact approved simulate.seal-simulation-case@2 successor decision for the unstarted @1 work item",
-      );
-    }
-    const approvals = predecessorDecision
-      ? predecessorDecision.approvalIds.map((id) =>
-        project.approvals.find((approval) => approval.id === id)
-      )
-      : [];
-    if (!approvals.some((approval) => approval?.status === "revoked")) {
-      issue(
-        issues,
-        "invalid_transition",
-        `${path}.reconciliation.predecessorDecisionId`,
-        "must retain a revoked pending predecessor approval",
-      );
-    }
-    return;
   }
   if (reconciliation.failedRunId === reconciliation.successorRunId) {
     issue(
@@ -3968,9 +3887,6 @@ function isResolvedOperationPlanV2Operation(
   operation: EngineeringWorkItem["operation"],
 ): boolean {
   return (
-    operation?.id === "simulate.run-modelica-scenario" &&
-    operation.version === "2"
-  ) || (
     operation?.id === "verify.run-fea-static-proof" &&
     (operation.version === "2" || operation.version === "3")
   );
@@ -4531,8 +4447,7 @@ function validateCommandReceiptInvariant(
   if (
     (receipt.type === "project.brief-approve" ||
       receipt.type === "project.brief-reject" ||
-      receipt.type === "agent-run.cancel" ||
-      receipt.type === "work-item.supersede-unstarted") &&
+      receipt.type === "agent-run.cancel") &&
     receipt.actor.origin !== "human"
   ) {
     issue(
@@ -4665,7 +4580,6 @@ function allEvidenceRefs(
   );
   project.workItems.forEach((item, index) => {
     if (!item.reconciliation) return;
-    if ("successorWorkItemId" in item.reconciliation) return;
     add(
       item.reconciliation.successorEvidenceRefs,
       `$.workItems[${index}].reconciliation.successorEvidenceRefs`,

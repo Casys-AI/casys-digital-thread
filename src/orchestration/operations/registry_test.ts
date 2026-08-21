@@ -12,10 +12,6 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./fea-isolated-static-proof.ts";
-import {
-  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-} from "../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/sensitivity/correction-source/apply-correction-source.ts";
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts";
@@ -108,9 +104,9 @@ Deno.test("historical MCP FEA and recorded Modelica versions are neither lookupa
       { id: "verify.run-fea-static-proof", version: "1" },
       VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
       { id: "simulate.seal-simulation-case", version: "1" },
-      SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
+      { id: "simulate.seal-simulation-case", version: "2" },
       { id: "simulate.run-modelica-scenario", version: "1" },
-      SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
+      { id: "simulate.run-modelica-scenario", version: "2" },
     ]
   ) {
     assertEquals(getRegisteredEngineeringOperation(operation), undefined);

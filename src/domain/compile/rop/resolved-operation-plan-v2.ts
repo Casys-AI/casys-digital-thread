@@ -29,31 +29,6 @@ export const RESOLVED_OPERATION_PLAN_REF_SCHEMA =
   "resolved-operation-plan-ref/1.0" as const;
 export const RESOLVED_OPERATION_PLAN_URI_NAMESPACE = "resolved-operation-plan" as const;
 
-export const MODELICA_RESUMABLE_RESOURCE_PROFILE = deepFreeze(
-  {
-    id: "mcp-modelica.resumable-artifacts",
-    version: "2.1",
-    always: [
-      { role: "request", mediaType: "application/json" },
-      { role: "resolved_parameters", mediaType: "application/json" },
-      { role: "model", mediaType: "text/x-modelica" },
-      { role: "scenario", mediaType: "application/json" },
-      { role: "script", mediaType: "text/plain" },
-      { role: "diagnostics", mediaType: "text/plain" },
-      { role: "evidence", mediaType: "application/json" },
-      // The resumable 2.1 provider seals run.json separately from the
-      // artifact array.  It is nevertheless exact provider evidence and must
-      // cross the same resources/read -> CAS boundary as every other item.
-      { role: "run.json", mediaType: "application/json" },
-    ],
-    whenParameterSchemaRequired: {
-      role: "parameter_schema",
-      mediaType: "application/json",
-    },
-    whenRunSucceeded: { role: "result", mediaType: "text/csv" },
-  } as const,
-);
-
 export const CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE = deepFreeze(
   {
     id: "mcp-calculix.recorded-static-artifacts",
@@ -139,7 +114,6 @@ export interface ResolvedOperationPlanV2 {
   /** Exact captured artefacts consumed by the closed action. */
   readonly sources: readonly ResolvedOperationPlanSource[];
   readonly action:
-    | ResolvedModelicaSimulationAction
     | ResolvedCalculixStaticStructuralAction
     | ResolvedCalculixIsolatedStaticStructuralAction;
   /** Resource roles expected from the provider ledger/capture boundary. */
@@ -170,16 +144,6 @@ export type ResolvedOperationPlanExpectedResources =
     readonly ledgerSchema: "provider-resource-acquisition-ledger/1.0";
     readonly captureManifestSchema: "provider-artifact-capture-manifest/1.0";
     readonly resourceProfile: {
-      readonly id: "mcp-modelica.resumable-artifacts";
-      readonly version: "2.1";
-    };
-    /** Derived from the exact sealed provider manifest, never caller-selected. */
-    readonly parameterSchema: "required" | "absent";
-  }
-  | {
-    readonly ledgerSchema: "provider-resource-acquisition-ledger/1.0";
-    readonly captureManifestSchema: "provider-artifact-capture-manifest/1.0";
-    readonly resourceProfile: {
       readonly id: "mcp-calculix.recorded-static-artifacts";
       readonly version: "1.0";
     };
@@ -201,44 +165,9 @@ export type ResolvedOperationPlanRecovery =
     readonly capturedOutcome: "cas-only-recovery";
   }
   & (
-    | { readonly policy: "mcp-modelica.resumable-recovery@2.1" }
     | { readonly policy: "mcp-calculix.recorded-static-recovery@1.0" }
     | { readonly policy: "calculix-isolated-generation-recovery@1.0" }
   );
-
-export interface ResolvedModelicaSimulationAction {
-  readonly kind: "dynamic-system-simulation";
-  readonly provider: {
-    readonly id: "mcp-modelica";
-    readonly contract: { readonly id: "resumable"; readonly version: "2.1" };
-  };
-  readonly lowering: {
-    readonly id: "modelica-omc-lowering";
-    readonly version: "1.0.0";
-  };
-  /** Bounded kit identity which an executor must recross with the exact manifest bytes. */
-  readonly normalizer: {
-    readonly id: string;
-    readonly version: string;
-    readonly authority: "exact-provider-manifest";
-  };
-  readonly requestId: string;
-  readonly input: {
-    readonly simulationCase: {
-      readonly id: string;
-      readonly fingerprint: ContentFingerprint;
-      readonly sourceBinding: string;
-    };
-    /**
-     * Semantic fingerprint declared inside the exact provider manifest bytes.
-     * It is intentionally distinct from the CAS full-byte artifact fingerprint.
-     */
-    readonly providerManifestFingerprint: ContentFingerprint;
-    readonly methodManifestSourceBinding: string;
-    readonly scenarioStartTimeSeconds: number;
-    readonly effectiveTimeoutMs: number;
-  };
-}
 
 export interface ResolvedCalculixStaticStructuralAction {
   readonly kind: "static-structural-analysis";
@@ -293,9 +222,7 @@ export interface ResolvedCalculixIsolatedStaticStructuralAction {
 }
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
-const MODELICA_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const CALCULIX_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const MODELICA_MAX_TIMEOUT_MS = 120_000;
 const MEDIA_TYPE =
   /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*(?:; [a-z0-9!#$&^_.+-]+=(?:[a-z0-9!#$&^_.+-]+|"[^"\r\n]*"))*$/;
 const ROOT_KEYS = [
@@ -622,87 +549,6 @@ function parseSource(value: unknown, path: string): ResolvedOperationPlanSource 
 
 function parseAction(value: unknown, path: string): ResolvedOperationPlanV2["action"] {
   const root = dataRecord(value, path);
-  if (root.kind === "dynamic-system-simulation") {
-    const input = strictRecord(
-      value,
-      ["kind", "provider", "lowering", "normalizer", "requestId", "input"],
-      path,
-    );
-    const provider = strictRecord(
-      input.provider,
-      ["id", "contract"],
-      `${path}.provider`,
-    );
-    literal(provider.id, "mcp-modelica", `${path}.provider.id`);
-    const contract = strictRecord(
-      provider.contract,
-      ["id", "version"],
-      `${path}.provider.contract`,
-    );
-    literal(contract.id, "resumable", `${path}.provider.contract.id`);
-    literal(contract.version, "2.1", `${path}.provider.contract.version`);
-    const lowering = strictRecord(
-      input.lowering,
-      ["id", "version"],
-      `${path}.lowering`,
-    );
-    literal(lowering.id, "modelica-omc-lowering", `${path}.lowering.id`);
-    literal(lowering.version, "1.0.0", `${path}.lowering.version`);
-    const normalizer = boundedNormalizerIdentity(
-      input.normalizer,
-      `${path}.normalizer`,
-    );
-    const actionInput = strictRecord(
-      input.input,
-      [
-        "simulationCase",
-        "providerManifestFingerprint",
-        "methodManifestSourceBinding",
-        "scenarioStartTimeSeconds",
-        "effectiveTimeoutMs",
-      ],
-      `${path}.input`,
-    );
-    return {
-      kind: "dynamic-system-simulation",
-      provider: {
-        id: "mcp-modelica",
-        contract: { id: "resumable", version: "2.1" },
-      },
-      lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
-      normalizer,
-      requestId: providerRequestId(
-        input.requestId,
-        MODELICA_REQUEST_ID,
-        `${path}.requestId`,
-        "mcp-modelica 2.1",
-      ),
-      input: {
-        simulationCase: sourceBoundCaseIdentity(
-          actionInput.simulationCase,
-          `${path}.input.simulationCase`,
-        ),
-        providerManifestFingerprint: parseFingerprint(
-          actionInput.providerManifestFingerprint,
-          `${path}.input.providerManifestFingerprint`,
-        ),
-        methodManifestSourceBinding: safeId(
-          actionInput.methodManifestSourceBinding,
-          `${path}.input.methodManifestSourceBinding`,
-        ),
-        scenarioStartTimeSeconds: nonNegativeFinite(
-          actionInput.scenarioStartTimeSeconds,
-          `${path}.input.scenarioStartTimeSeconds`,
-        ),
-        effectiveTimeoutMs: boundedPositiveInteger(
-          actionInput.effectiveTimeoutMs,
-          MODELICA_MAX_TIMEOUT_MS,
-          `${path}.input.effectiveTimeoutMs`,
-          "mcp-modelica 2.1",
-        ),
-      },
-    };
-  }
   if (
     root.kind === "static-structural-analysis" ||
     root.kind === "isolated-static-structural-analysis"
@@ -863,36 +709,6 @@ function parseExpectedResources(
     ["id", "version"],
     `${path}.resourceProfile`,
   );
-  if (profile.id === MODELICA_RESUMABLE_RESOURCE_PROFILE.id) {
-    const input = strictRecord(
-      value,
-      [
-        "ledgerSchema",
-        "captureManifestSchema",
-        "resourceProfile",
-        "parameterSchema",
-      ],
-      path,
-    );
-    parseProviderEvidenceSchemas(input, path);
-    literal(
-      profile.version,
-      MODELICA_RESUMABLE_RESOURCE_PROFILE.version,
-      `${path}.resourceProfile.version`,
-    );
-    if (input.parameterSchema !== "required" && input.parameterSchema !== "absent") {
-      throw new TypeError(`${path}.parameterSchema must equal "required" or "absent".`);
-    }
-    return {
-      ledgerSchema: "provider-resource-acquisition-ledger/1.0",
-      captureManifestSchema: "provider-artifact-capture-manifest/1.0",
-      resourceProfile: {
-        id: "mcp-modelica.resumable-artifacts",
-        version: "2.1",
-      },
-      parameterSchema: input.parameterSchema,
-    };
-  }
   if (profile.id === CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE.id) {
     const input = strictRecord(
       value,
@@ -973,7 +789,6 @@ function parseRecovery(
     path,
   );
   if (
-    input.policy !== "mcp-modelica.resumable-recovery@2.1" &&
     input.policy !== "mcp-calculix.recorded-static-recovery@1.0" &&
     input.policy !== "calculix-isolated-generation-recovery@1.0"
   ) {
@@ -1018,14 +833,6 @@ function assertActionMatchesOperation(
 ): void {
   const operation = workItem.operation;
   if (
-    action.kind === "dynamic-system-simulation" &&
-    (operation.id !== "simulate.run-modelica-scenario" || operation.version !== "2")
-  ) {
-    throw new TypeError(
-      `${path}.kind dynamic-system-simulation requires simulate.run-modelica-scenario@2.`,
-    );
-  }
-  if (
     action.kind === "static-structural-analysis" &&
     (operation.id !== "verify.run-fea-static-proof" || operation.version !== "2")
   ) {
@@ -1048,9 +855,7 @@ function assertActionCaseMatchesSource(
   sources: readonly ResolvedOperationPlanSource[],
   path: string,
 ): void {
-  const caseIdentity = action.kind === "dynamic-system-simulation"
-    ? action.input.simulationCase
-    : action.input.proofCase;
+  const caseIdentity = action.input.proofCase;
   const source = sources.find((candidate) =>
     candidate.bindingName === caseIdentity.sourceBinding
   );
@@ -1063,40 +868,6 @@ function assertActionCaseMatchesSource(
     throw new TypeError(
       `${path} case fingerprint must equal its exact source artifact fingerprint.`,
     );
-  }
-  if (action.kind === "dynamic-system-simulation") {
-    assertSourceRoleAndMedia(
-      source,
-      "simulation-case",
-      "application/json",
-      `${path}.input.simulationCase.sourceBinding`,
-    );
-    const manifest = sources.find((candidate) =>
-      candidate.bindingName === action.input.methodManifestSourceBinding
-    );
-    if (!manifest) {
-      throw new TypeError(
-        `${path} methodManifestSourceBinding must name an exact $plan.sources binding.`,
-      );
-    }
-    assertDistinctSourceEvidence(
-      source,
-      manifest,
-      path,
-      "simulation case",
-      "method manifest",
-    );
-    assertSourceRoleAndMedia(
-      manifest,
-      "provider-manifest",
-      "application/json",
-      `${path}.input.methodManifestSourceBinding`,
-    );
-    // The manifest's inner providerManifestFingerprint is deliberately not
-    // compared with the CAS byte digest: provider manifests self-describe the
-    // digest of their unsigned semantic payload. The future @2 resolver and
-    // executor must parse these exact captured bytes and verify that relation.
-    return;
   }
   assertSourceRoleAndMedia(
     source,
@@ -1167,54 +938,6 @@ function assertProviderEvidenceMatchesAction(
   recovery: ResolvedOperationPlanRecovery,
   path: string,
 ): void {
-  if (action.kind === "dynamic-system-simulation") {
-    if (
-      expected.resourceProfile.id !== MODELICA_RESUMABLE_RESOURCE_PROFILE.id ||
-      !("parameterSchema" in expected) ||
-      recovery.policy !== "mcp-modelica.resumable-recovery@2.1"
-    ) {
-      throw new TypeError(
-        `${path} Modelica action requires its exact resource and recovery profiles.`,
-      );
-    }
-    if (
-      authorization.methodQualification.id !== "qualified-modelica-resumable" ||
-      authorization.methodQualification.version !== "2.1"
-    ) {
-      throw new TypeError(
-        `${path} Modelica action requires the qualified-modelica-resumable@2.1 method.`,
-      );
-    }
-    const required: Array<readonly [string, string, string]> = [
-      ["simulationCase", "simulation-case", "application/json"],
-      ["methodManifest", "provider-manifest", "application/json"],
-      ["qualificationAuthority", "qualification-authority", "application/json"],
-      ["modelSource", "model-source", "text/x-modelica"],
-      ["scenarioSource", "scenario-source", "application/json"],
-    ];
-    if (expected.parameterSchema === "required") {
-      required.push([
-        "parameterSchema",
-        "parameter-schema",
-        "application/json",
-      ]);
-    }
-    assertClosedSourceProfile(sources, required, `${path}.sources`);
-    const qualification = sources.find((source) =>
-      source.bindingName === "qualificationAuthority"
-    )!;
-    if (
-      !fingerprintsEqual(
-        qualification.artifact.fingerprint,
-        authorization.methodQualification.fingerprint,
-      )
-    ) {
-      throw new TypeError(
-        `${path}.authorization.methodQualification.fingerprint must equal the exact qualification authority artifact.`,
-      );
-    }
-    return;
-  }
   if (action.kind === "isolated-static-structural-analysis") {
     if (
       expected.resourceProfile.id !== CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE.id ||
@@ -1321,27 +1044,6 @@ function assertSourceRoleAndMedia(
       `${path} must name a ${expectedRole} source with ${expectedMediaType} media type.`,
     );
   }
-}
-
-function boundedNormalizerIdentity(
-  value: unknown,
-  path: string,
-): ResolvedModelicaSimulationAction["normalizer"] {
-  const input = strictRecord(value, ["id", "version", "authority"], path);
-  literal(input.authority, "exact-provider-manifest", `${path}.authority`);
-  return {
-    id: boundedToken(input.id, 128, `${path}.id`),
-    version: boundedToken(input.version, 64, `${path}.version`),
-    authority: "exact-provider-manifest",
-  };
-}
-
-function boundedToken(value: unknown, maximumLength: number, path: string): string {
-  const result = safeId(value, path);
-  if (result.length > maximumLength) {
-    throw new TypeError(`${path} must not exceed ${maximumLength} characters.`);
-  }
-  return result;
 }
 
 function parseFingerprint(value: unknown, path: string): ContentFingerprint {

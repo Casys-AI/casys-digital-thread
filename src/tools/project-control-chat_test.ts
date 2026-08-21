@@ -810,31 +810,6 @@ Deno.test("local YOLO auto-cancels a queued unclaimed run and still elicits reje
     },
   }]);
 
-  const supersessionApp = new CapturingApp();
-  const supersession = unstartedSupersessionSnapshot();
-  let superseded = 0;
-  registerProjectControlTools(supersessionApp as unknown as McpApp, {
-    ...dependencies(supersession, {
-      supersedeUnstartedWorkItem: () => {
-        superseded++;
-        return Promise.resolve(supersession);
-      },
-    }),
-    approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
-  });
-  const supersede = await supersessionApp.handler(
-    "project_work_item_supersede_unstarted",
-  )({
-    ...COMMON,
-    workItemId: "seal-v1",
-    predecessorDecisionId: "seal-v1-decision",
-    successorWorkItemId: "seal-v2",
-    successorDecisionId: "seal-v2-decision",
-    rationale: "Use the reviewed V2 replacement.",
-  }, clientContext()) as Record<string, unknown>;
-  assertStringIncludes(supersede.content as string, "YOLO local startup opt-in");
-  assertEquals(superseded, 1);
-
   const humanOnly = structuredClone(queued) as Mutable<EngineeringProjectSnapshot>;
   humanOnly.workItems[0]!.operation = {
     id: "record.reconcile-uncertain-writer",
@@ -1136,80 +1111,6 @@ Deno.test("project queued-run cancellation requires a verified human elicitation
       false,
       `${forbidden} must be server-owned`,
     );
-  }
-});
-
-Deno.test("project unstarted supersession requires a verified human MRTR retry", async () => {
-  const snapshot = unstartedSupersessionSnapshot();
-  const app = new CapturingApp();
-  const calls: Array<{ origin: unknown; command: Record<string, unknown> }> = [];
-  registerProjectControlTools(
-    app as unknown as McpApp,
-    dependencies(snapshot, {
-      supersedeUnstartedWorkItem: (origin, command) => {
-        calls.push({ origin, command: command as unknown as Record<string, unknown> });
-        return Promise.resolve(snapshot);
-      },
-    }),
-  );
-  const args = {
-    ...COMMON,
-    workItemId: "seal-v1",
-    predecessorDecisionId: "seal-v1-decision",
-    successorWorkItemId: "seal-v2",
-    successorDecisionId: "seal-v2-decision",
-    rationale: "The V1 seal was never queued; V2 is the reviewed replacement.",
-  };
-  const supersede = app.handler("project_work_item_supersede_unstarted");
-  const first = await supersede(args, clientContext()) as Record<string, unknown>;
-  assertEquals(first.resultType, "input_required");
-  assertEquals(calls, []);
-  const request = (first.inputRequests as Record<string, unknown>)
-    .unstarted_work_item_supersession_confirmation as Record<string, unknown>;
-  assertEquals(request.method, "elicitation/create");
-  assertStringIncludes(
-    (request.params as Record<string, unknown>).message as string,
-    "no agent run, provider call, or ThreadSnapshot will be created",
-  );
-  await assertRejects(
-    async () => {
-      await supersede(args, {
-        ...clientContext(),
-        retryVerified: false,
-        inputResponses: {
-          unstarted_work_item_supersession_confirmation: {
-            action: "accept",
-            content: { confirmed: true },
-          },
-        },
-      });
-    },
-    TypeError,
-    "verified signed request state",
-  );
-  assertEquals(calls, []);
-  await supersede(args, {
-    ...clientContext(),
-    retryVerified: true,
-    inputResponses: {
-      unstarted_work_item_supersession_confirmation: {
-        action: "accept",
-        content: { confirmed: true },
-      },
-    },
-  });
-  assertEquals(calls, [{
-    origin: { kind: "human", actorId: "mcp-elicitation:paired-chat@1" },
-    command: args,
-  }]);
-  const schema = app.tool("project_work_item_supersede_unstarted")
-    .inputSchema as Record<
-      string,
-      unknown
-    >;
-  const serialized = JSON.stringify(schema);
-  for (const forbidden of ["provider", "toolName", "resultSnapshot", "evidenceRefs"]) {
-    assertEquals(serialized.includes(forbidden), false, `${forbidden} is server-owned`);
   }
 });
 
@@ -1850,7 +1751,6 @@ function dependencies(
       approveDecision: () => Promise.resolve(snapshot),
       rejectDecision: () => Promise.resolve(snapshot),
       cancelQueuedRun: () => Promise.resolve(snapshot),
-      supersedeUnstartedWorkItem: () => Promise.resolve(snapshot),
       ...commandOverrides,
     } as unknown as EngineeringProjectCommandService,
   };
@@ -1876,50 +1776,50 @@ async function resolvedPlanInspectionFixture(): Promise<{
     revision: 7,
     subjectId: "chat-first-subject",
   };
-  const runId = "run:inspect-modelica-plan";
+  const runId = "run:inspect-fea-plan";
   const workItem = {
-    id: "simulate-modelica-recorded",
-    phaseId: "simulation",
-    title: "Recorded Modelica simulation",
-    description: "One test-only recorded Modelica operation.",
-    kind: "simulate" as const,
+    id: "verify-fea-isolated",
+    phaseId: "verification",
+    title: "Isolated CalculiX static proof",
+    description: "One test-only isolated FEA operation.",
+    kind: "verify" as const,
     operation: {
-      id: "simulate.run-modelica-scenario",
-      version: "2",
+      id: "verify.run-fea-static-proof",
+      version: "3",
       bindings: [],
     },
     status: "in-progress" as const,
     owner: "agent" as const,
     dependsOnWorkItemIds: [],
     evidenceRefs: [],
-    decisionIds: ["decision:modelica-method"],
+    decisionIds: ["decision:fea-method"],
     blockerIds: [],
   };
   const decision = {
-    id: "decision:modelica-method",
-    phaseId: "simulation",
-    title: "Qualified Modelica method",
-    question: "Approve the qualified method for this recorded Modelica scenario?",
+    id: "decision:fea-method",
+    phaseId: "verification",
+    title: "Qualified CalculiX method",
+    question: "Approve the qualified isolated CalculiX method?",
     status: "approved" as const,
     requestedAt: "2026-08-03T11:50:00.000Z",
     inputFingerprint: { algorithm: "sha256" as const, digest: "b".repeat(64) },
     inputEvidenceRefs: [],
-    approvalIds: ["approval:modelica-method"],
+    approvalIds: ["approval:fea-method"],
     proposal: {
-      summary: "Use the reviewed recorded Modelica method.",
+      summary: "Use the reviewed isolated CalculiX method.",
       parameters: [],
       proposedAt: "2026-08-03T11:50:00.000Z",
       proposedBy: { id: "agent:paired-chat", origin: "agent" as const },
     },
   };
   const approval = {
-    id: "approval:modelica-method",
+    id: "approval:fea-method",
     decisionId: decision.id,
     status: "approved" as const,
     requestedAt: "2026-08-03T11:51:00.000Z",
     decidedAt: "2026-08-03T11:52:00.000Z",
     decidedBy: "human:owner",
-    rationale: "The qualified recorded method is approved.",
+    rationale: "The qualified isolated method is approved.",
     decidedByOrigin: "human" as const,
     inputFingerprint: decision.inputFingerprint,
     inputEvidenceRefs: [],
@@ -1937,6 +1837,8 @@ async function resolvedPlanInspectionFixture(): Promise<{
     byteCount: 256,
     casUri: `casys://resolved-operation-plan/sha256/${"f".repeat(64)}`,
   };
+  const proofFingerprint = { algorithm: "sha256" as const, digest: "c".repeat(64) };
+  const profileFingerprint = { algorithm: "sha256" as const, digest: "e".repeat(64) };
   const plan: ResolvedOperationPlanV2 = {
     schemaVersion: "resolved-operation-plan/2.0",
     id: runId,
@@ -1965,9 +1867,9 @@ async function resolvedPlanInspectionFixture(): Promise<{
         approvalFingerprint: await sha256Fingerprint(approval),
       },
       methodQualification: {
-        id: "qualified-modelica-thermal",
-        version: "2.1",
-        fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+        id: "qualified-calculix-isolated-static-proof",
+        version: "1.0",
+        fingerprint: profileFingerprint,
       },
     },
     basis: {
@@ -1978,88 +1880,67 @@ async function resolvedPlanInspectionFixture(): Promise<{
       fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
     },
     sources: [{
-      bindingName: "modelSource",
-      role: "model-source",
+      bindingName: "proofCase",
+      role: "proof-case",
       threadRef: {
         snapshotId: threadBasis.snapshotId,
         snapshotRevision: threadBasis.revision,
         kind: "artifact",
-        id: "artifact:modelica-source",
+        id: "artifact.fea-proof-case",
       },
       artifact: {
-        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
-        byteCount: 42,
-        mediaType: "text/plain",
-        casUri: `casys://modelica-source/sha256/${"e".repeat(64)}`,
+        fingerprint: proofFingerprint,
+        byteCount: 127,
+        mediaType: "application/json",
+        casUri: `casys://fea-proof-case-capture/sha256/${proofFingerprint.digest}`,
       },
     }, {
-      bindingName: "methodManifest",
-      role: "provider-manifest",
+      bindingName: "geometry",
+      role: "geometry-source",
       threadRef: {
         snapshotId: threadBasis.snapshotId,
         snapshotRevision: threadBasis.revision,
         kind: "artifact",
-        id: "artifact:modelica-provider-manifest",
+        id: "artifact.geometry-step",
       },
       artifact: {
-        fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
-        byteCount: 43,
-        mediaType: "application/json",
-        casUri: `casys://modelica-provider-manifest/sha256/${"c".repeat(64)}`,
-      },
-    }, {
-      bindingName: "simulationCase",
-      role: "simulation-case",
-      threadRef: {
-        snapshotId: threadBasis.snapshotId,
-        snapshotRevision: threadBasis.revision,
-        kind: "artifact",
-        id: "artifact:simulation-case",
-      },
-      artifact: {
-        fingerprint: { algorithm: "sha256", digest: "9".repeat(64) },
-        byteCount: 44,
-        mediaType: "application/json",
-        casUri: `casys://simulation-case-capture/sha256/${"9".repeat(64)}`,
+        fingerprint: { algorithm: "sha256", digest: "8".repeat(64) },
+        byteCount: 128,
+        mediaType: "model/step",
+        casUri: `casys://thread-asset/sha256/${"8".repeat(64)}`,
       },
     }],
     action: {
-      kind: "dynamic-system-simulation",
-      provider: {
-        id: "mcp-modelica",
-        contract: { id: "resumable", version: "2.1" },
+      kind: "isolated-static-structural-analysis",
+      executor: {
+        id: "casys-local-microsandbox",
+        contract: { id: "calculix-static-proof-v1", version: "1.0.0" },
+        profileFingerprint,
       },
-      lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
-      normalizer: {
-        id: "modelica-run-normalizer",
-        version: "2.1",
-        authority: "exact-provider-manifest",
-      },
-      requestId: "request.inspect-modelica-plan",
+      lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
+      requestId: "request.calculix.local.1",
       input: {
-        simulationCase: {
-          id: "case:modelica-thermal",
-          fingerprint: { algorithm: "sha256", digest: "9".repeat(64) },
-          sourceBinding: "simulationCase",
+        proofCase: {
+          id: "drip-tray-static",
+          fingerprint: proofFingerprint,
+          sourceBinding: "proofCase",
         },
-        providerManifestFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
-        methodManifestSourceBinding: "methodManifest",
-        scenarioStartTimeSeconds: 0,
-        effectiveTimeoutMs: 30_000,
+        geometrySourceBinding: "geometry",
+        effectiveElementOrder: 2,
+        effectiveTimeoutMs: 60_000,
       },
     },
     expectedProviderResources: {
-      ledgerSchema: "provider-resource-acquisition-ledger/1.0",
-      captureManifestSchema: "provider-artifact-capture-manifest/1.0",
+      receiptSchema: "isolated-code-execution-receipt-record/1.0",
+      evidenceSchema: "calculix-isolated-static-evidence/1.0",
       resourceProfile: {
-        id: "mcp-modelica.resumable-artifacts",
-        version: "2.1",
+        id: "calculix-isolated.static-artifacts",
+        version: "1.0",
       },
-      parameterSchema: "absent",
     },
     recovery: {
-      policy: "mcp-modelica.resumable-recovery@2.1",
-      requestId: "request.inspect-modelica-plan",
+      policy: "calculix-isolated-generation-recovery@1.0",
+      requestId: "request.calculix.local.1",
       mode: "same-request-readback-no-blind-redispatch",
       ambiguousOutcome: "quarantine-for-human-review",
       capturedOutcome: "cas-only-recovery",
@@ -2074,22 +1955,22 @@ async function resolvedPlanInspectionFixture(): Promise<{
       id: runId,
       workItemId: workItem.id,
       status: "queued",
-      summary: "Queued recorded Modelica simulation.",
+      summary: "Queued isolated CalculiX static proof.",
       queuedAt: "2026-08-03T12:05:00.000Z",
       basis: threadBasis,
       inputFingerprint: FINGERPRINT,
       evidenceRefs: [],
       statusHistory: [{
-        commandId: "queue:inspect-modelica-plan",
+        commandId: "queue:inspect-fea-plan",
         status: "queued",
         at: "2026-08-03T12:05:00.000Z",
         actor: { id: "agent:paired-chat", origin: "agent" },
-        summary: "Queued recorded Modelica simulation.",
+        summary: "Queued isolated CalculiX static proof.",
       }],
       resolvedOperationPlan: ref,
     }],
     commandReceipts: [{
-      commandId: "queue:inspect-modelica-plan",
+      commandId: "queue:inspect-fea-plan",
       type: "agent-run.queue",
       actor: { id: "agent:paired-chat", origin: "agent" },
       issuedAt: "2026-08-03T12:05:00.000Z",
@@ -2194,97 +2075,6 @@ function projectSnapshot(
     blockers: [],
     commandReceipts: [],
   };
-}
-
-function unstartedSupersessionSnapshot(): EngineeringProjectSnapshot {
-  const snapshot = structuredClone(projectSnapshot()) as Mutable<
-    EngineeringProjectSnapshot
-  >;
-  const predecessor = snapshot.workItems[0]!;
-  predecessor.id = "seal-v1";
-  predecessor.phaseId = "modelica";
-  predecessor.status = "waiting-for-decision";
-  predecessor.operation = {
-    id: "simulate.seal-simulation-case",
-    version: "1",
-    bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
-  };
-  predecessor.decisionIds = ["seal-v1-decision"];
-  const successor: Mutable<EngineeringProjectSnapshot>["workItems"][number] = {
-    ...structuredClone(predecessor),
-    id: "seal-v2",
-    title: "Qualified Modelica seal V2",
-    status: "ready" as const,
-    operation: {
-      id: "simulate.seal-simulation-case",
-      version: "2",
-      bindings: [{
-        name: "approvedBrief",
-        source: { kind: "approved-brief" as const },
-      }],
-    },
-    decisionIds: ["seal-v2-decision"],
-  };
-  snapshot.workItems.push(successor);
-  snapshot.decisions = [
-    {
-      id: "seal-v1-decision",
-      phaseId: "modelica",
-      title: "Legacy seal V1",
-      question: "Approve the legacy seal?",
-      status: "proposed",
-      requestedAt: "2026-08-03T11:58:00.000Z",
-      inputFingerprint: FINGERPRINT,
-      inputEvidenceRefs: [],
-      approvalIds: ["seal-v1-approval"],
-      proposal: {
-        summary: "Legacy V1 seal.",
-        parameters: [{ key: "case", label: "Case", value: "v1" }],
-        proposedAt: "2026-08-03T11:58:00.000Z",
-        proposedBy: { id: "agent:paired-chat", origin: "agent" },
-      },
-    },
-    {
-      id: "seal-v2-decision",
-      phaseId: "modelica",
-      title: "Qualified seal V2",
-      question: "Approve the qualified seal?",
-      status: "approved",
-      requestedAt: "2026-08-03T11:58:00.000Z",
-      inputFingerprint: FINGERPRINT,
-      inputEvidenceRefs: [],
-      approvalIds: ["seal-v2-approval"],
-      proposal: {
-        summary: "Qualified V2 seal.",
-        parameters: [{ key: "case", label: "Case", value: "v2" }],
-        proposedAt: "2026-08-03T11:58:00.000Z",
-        proposedBy: { id: "agent:paired-chat", origin: "agent" },
-      },
-    },
-  ];
-  snapshot.approvals = [
-    {
-      id: "seal-v1-approval",
-      decisionId: "seal-v1-decision",
-      status: "pending",
-      requestedAt: "2026-08-03T11:58:00.000Z",
-      inputFingerprint: FINGERPRINT,
-      inputEvidenceRefs: [],
-    },
-    {
-      id: "seal-v2-approval",
-      decisionId: "seal-v2-decision",
-      status: "approved",
-      requestedAt: "2026-08-03T11:58:00.000Z",
-      decidedAt: "2026-08-03T11:59:00.000Z",
-      decidedBy: "operator",
-      decidedByOrigin: "human",
-      rationale: "Approved qualified replacement.",
-      inputFingerprint: FINGERPRINT,
-      inputEvidenceRefs: [],
-    },
-  ];
-  return snapshot;
 }
 
 const RELEASE_BASIS = {

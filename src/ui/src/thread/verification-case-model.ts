@@ -37,7 +37,6 @@ export const UNAVAILABLE_VERIFICATION_CASE_CATALOG:
     coverage: [
       { family: "mechanical-proof", status: "unavailable" },
       { family: "sensitivity-study", status: "unavailable" },
-      { family: "modelica-simulation", status: "unavailable" },
     ],
     cases: [],
     issues: [],

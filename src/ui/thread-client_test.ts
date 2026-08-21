@@ -848,8 +848,7 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "observed" },
-      { family: "modelica-simulation", status: "observed" },
-    ],
+          ],
     cases: [{
       key: "mechanical-proof:case-a",
       family: "mechanical-proof",

@@ -63,10 +63,6 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
 } from "../../src/domain/fea/seal-case/fea-proof-proposal.ts";
-import {
-  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-} from "../../src/domain/modelica/recorded/simulation-case-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../src/domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../src/domain/modelica/admitted/run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../src/domain/thread/thread-retirement.ts";
@@ -79,10 +75,6 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../src/orchestration/operations/fea-isolated-static-proof.ts";
-import {
-  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-} from "../../src/domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
@@ -897,12 +889,8 @@ const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   DESIGN_WRITE_GEOMETRY_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_OPERATION,
-  SIMULATE_RUN_MODELICA_SCENARIO_OPERATION,
   COMPILE_SEAL_ADMISSION_OPERATION,
   DESIGN_EXECUTE_BUILD123D_OPERATION,
-  SIMULATE_SEAL_SIMULATION_CASE_V2_OPERATION,
-  SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
@@ -1290,12 +1278,6 @@ if (import.meta.main) {
         : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
     },
   };
-  const modelicaSimulationCases = new FileByteStore({
-    kind: "simulation-case-v2",
-    directory: `${recordedAnalysisDirectory}/modelica/simulation-cases`,
-    uriNamespace: "simulation-case-v2",
-    label: "Recorded Modelica simulation case",
-  });
   const verificationCaseCaptures: VerificationCaseWorkbenchEnricherDependencies = {
     mechanicalProof: new FileCaptureStore(
       FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
@@ -1303,14 +1285,6 @@ if (import.meta.main) {
     sensitivityStudy: new FileCaptureStore(
       SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
     ),
-    modelicaSimulationV2: {
-      read: async (fingerprint) => {
-        const stored = await modelicaSimulationCases.read(fingerprint);
-        return stored === undefined
-          ? undefined
-          : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-      },
-    },
   };
   // The paired MCP owns all project commands and initialisation. The cockpit
   // reads existing immutable revisions and never seeds a fallback.

@@ -26,10 +26,6 @@ Deno.test("local YOLO auto-confirms positive approvals and queued recovery only"
     true,
   );
   assertEquals(
-    autoConfirms(LOCAL_YOLO_PROJECT_APPROVAL_MODE, "unstarted-supersede"),
-    true,
-  );
-  assertEquals(
     autoConfirms(LOCAL_YOLO_PROJECT_APPROVAL_MODE, "decision-reject"),
     false,
   );

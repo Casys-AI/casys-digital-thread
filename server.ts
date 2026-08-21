@@ -1055,36 +1055,6 @@ async function createProjectControl(
   const calculixLocalProfile = calculixIsolatedExecution === undefined
     ? undefined
     : await calculixIsolatedExecution.profiles.initial();
-  const recordedSimulationCases = new FileByteStore({
-    kind: "simulation-case-v2",
-    directory: `${recordedAnalysisDirectory}/modelica/simulation-cases`,
-    uriNamespace: "simulation-case-v2",
-    label: "Recorded Modelica simulation case",
-  });
-  const recordedModelicaManifests = new FileByteStore({
-    kind: "modelica-qualified-provider-manifest",
-    directory: `${recordedAnalysisDirectory}/modelica/provider-manifests`,
-    uriNamespace: "modelica-qualified-provider-manifest",
-    label: "Recorded qualified Modelica manifest",
-  });
-  const recordedModelicaSources = new FileByteStore({
-    kind: "modelica-qualified-source",
-    directory: `${recordedAnalysisDirectory}/modelica/qualified-sources`,
-    uriNamespace: "modelica-qualified-source",
-    label: "Recorded qualified Modelica source",
-  });
-  const recordedModelicaSourceCaptures = new FileByteStore({
-    kind: "modelica-qualified-source-capture",
-    directory: `${recordedAnalysisDirectory}/modelica/qualified-source-captures`,
-    uriNamespace: "modelica-qualified-source-capture",
-    label: "Recorded qualified Modelica source capture",
-  });
-  const recordedModelicaQualifications = new FileByteStore({
-    kind: "simulation-case-qualification",
-    directory: `${recordedAnalysisDirectory}/modelica/qualifications`,
-    uriNamespace: "simulation-case-qualification",
-    label: "Recorded Modelica simulation-case qualification",
-  });
   // One historical proof CAS instance is deliberately shared by the seal,
   // isolated @3 run and ROP2 reader. Its descriptor owns the pre-existing
   // on-disk location; moving it beneath the recorded-analysis root would make
@@ -1109,31 +1079,6 @@ async function createProjectControl(
   });
   const recordedAnalysisCas = new RecordedAnalysisCasReader({
     stores: [
-      {
-        namespace: "simulation-case-v2",
-        storage: "bytes",
-        store: recordedSimulationCases,
-      },
-      {
-        namespace: "modelica-qualified-provider-manifest",
-        storage: "bytes",
-        store: recordedModelicaManifests,
-      },
-      {
-        namespace: "modelica-qualified-source",
-        storage: "bytes",
-        store: recordedModelicaSources,
-      },
-      {
-        namespace: "modelica-qualified-source-capture",
-        storage: "bytes",
-        store: recordedModelicaSourceCaptures,
-      },
-      {
-        namespace: "simulation-case-qualification",
-        storage: "bytes",
-        store: recordedModelicaQualifications,
-      },
       {
         namespace: "fea-proof-case-capture",
         storage: "text",

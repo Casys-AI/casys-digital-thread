@@ -8,7 +8,7 @@ import type {
 export type ThreadVerificationCaseFamily =
   | "mechanical-proof"
   | "sensitivity-study"
-  | "modelica-simulation";
+;
 
 interface ThreadVerificationCaseBase {
   key: string;
@@ -24,7 +24,6 @@ export type ThreadVerificationCase =
   & (
     | { family: "mechanical-proof"; caseSchemaVersion: "mechanical-proof-case/1.0" }
     | { family: "sensitivity-study"; caseSchemaVersion: "sensitivity-study-case/2.0" }
-    | { family: "modelica-simulation"; caseSchemaVersion: "simulation-case/2.0" }
   );
 
 export interface ThreadVerificationCaseCoverage {

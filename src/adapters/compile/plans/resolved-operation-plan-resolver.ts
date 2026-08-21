@@ -7,7 +7,6 @@
 import {
   CALCULIX_ISOLATED_STATIC_RESOURCE_PROFILE,
   CALCULIX_RECORDED_STATIC_RESOURCE_PROFILE,
-  MODELICA_RESUMABLE_RESOURCE_PROFILE,
   RESOLVED_OPERATION_PLAN_V2_SCHEMA,
   resolvedOperationPlanIdForRun,
   type ResolvedOperationPlanSource,
@@ -15,12 +14,6 @@ import {
 } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
 import type { CalculixIsolatedExecutionProfile } from "../../../application/ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts";
 import { canonicalCalculixStepAssetCasUri } from "../../../domain/fea/isolated-v3/calculix-step-asset-uri.ts";
-import {
-  canonicalModelicaQualifiedManifestDocumentText,
-  type ModelicaQualifiedManifestDocument,
-  type ModelicaResumableResource,
-  validateModelicaQualifiedManifestDocument,
-} from "../../../domain/modelica/recorded/resumable-capabilities.ts";
 import {
   fingerprintResourceBytes,
 } from "../../../domain/compile/source/provider-resource-reader.ts";
@@ -37,11 +30,6 @@ import {
 } from "../../../domain/fea/seal-case/fea-proof-proposal.ts";
 import { isolatedCalculixBindingRejectionMessage } from "../../../domain/fea/isolated-v3/isolated-calculix-bindings.ts";
 import type { MechanicalProofCase } from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
-import {
-  canonicalSimulationCaseV2Text,
-  type SimulationCaseV2,
-  validateSimulationCaseV2,
-} from "../../../domain/modelica/recorded/simulation-case-v2.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -76,24 +64,9 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../../orchestration/operations/fea-isolated-static-proof.ts";
-import { SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION } from "../../../domain/modelica/recorded/simulation-case-v2-proposal.ts";
 import type { ExactThreadSnapshotReader } from "../../shared/stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../../shared/stores/thread-snapshot-lineage.ts";
-import {
-  canonicalModelicaQualifiedSourceCaptureText,
-  type ModelicaQualifiedSourceCaptureDocument,
-  type ModelicaQualifiedSourceRole,
-  validateModelicaQualifiedSourceCaptureDocument,
-} from "../../modelica/recorded/v2/qualified-source-capture.ts";
-import {
-  canonicalModelicaSimulationCaseQualificationCaptureText,
-  decodeExactUtf8,
-  type ModelicaQualificationCasReference,
-  type ModelicaSimulationCaseQualificationCapture,
-  validateModelicaSimulationCaseQualificationCapture,
-} from "../../modelica/recorded/v2/simulation-case-qualification-capture.ts";
 
-const MODELICA_OPERATION = SIMULATE_RUN_MODELICA_SCENARIO_V2_OPERATION;
 const CALCULIX_OPERATION = VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION;
 const CALCULIX_LOCAL_OPERATION = VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -188,9 +161,6 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
         fingerprint: await sha256Fingerprint(snapshot),
       },
     };
-    if (sameOperation(operation.id, operation.version, MODELICA_OPERATION)) {
-      return await this.#modelicaPlan(input, snapshot, common);
-    }
     if (
       sameOperation(operation.id, operation.version, CALCULIX_OPERATION) ||
       sameOperation(operation.id, operation.version, CALCULIX_LOCAL_OPERATION)
@@ -200,213 +170,6 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
     throw new TypeError(
       "resolved-operation-plan/2.0 is not defined for this operation.",
     );
-  }
-
-  async #modelicaPlan(
-    input: RegisteredRunPlanSealInput,
-    snapshot: ThreadSnapshot,
-    common: PlanCommon,
-  ): Promise<ResolvedOperationPlanV2> {
-    const bindings = exactBindings(input.workItem.operation!.bindings, [
-      "simulationCase",
-      "methodManifest",
-    ], snapshot);
-    const caseArtifact = bindings.simulationCase;
-    const manifestArtifact = bindings.methodManifest;
-    if (
-      caseArtifact.kind !== "document" ||
-      caseArtifact.mediaType !== "application/json" ||
-      manifestArtifact.kind !== "document" ||
-      manifestArtifact.mediaType !== "application/json"
-    ) {
-      throw new TypeError(
-        "Modelica case and method bindings must be distinct JSON documents.",
-      );
-    }
-    assertExactArtifactInputs(caseArtifact, [], "Modelica simulation case");
-    const simulationCase = await this.#simulationCase(caseArtifact);
-    if (
-      simulationCase.project.id !== input.project.project.id ||
-      simulationCase.project.subjectId !== snapshot.subject.id
-    ) {
-      throw new TypeError(
-        "Simulation case does not bind the recorded-plan project subject.",
-      );
-    }
-    await this.#assertCaseBasisIsAncestor(
-      snapshot,
-      simulationCase.project.baseThreadSnapshot,
-      "Simulation case",
-    );
-
-    const manifestBytes = await this.#artifactBytes(manifestArtifact);
-    const manifestText = decodeUtf8(manifestBytes, "Modelica qualified manifest");
-    const manifest = await validateModelicaQualifiedManifestDocument(
-      parseJson(manifestText, "Modelica qualified manifest"),
-    );
-    if (
-      await canonicalModelicaQualifiedManifestDocumentText(manifest) !== manifestText
-    ) {
-      throw new TypeError(
-        "Modelica qualified manifest CAS bytes are not canonical JSON.",
-      );
-    }
-    assertManifestMatchesCase(manifest, simulationCase);
-    const manifestResources: ModelicaBoundSource["entry"][] = [
-      {
-        bindingName: "modelSource",
-        role: "model-source",
-        captureRole: "model",
-        resource: manifest.model,
-      },
-      {
-        bindingName: "scenarioSource",
-        role: "scenario-source",
-        captureRole: "scenario",
-        resource: manifest.scenario,
-      },
-    ];
-    if (manifest.parameterSchema) {
-      manifestResources.push({
-        bindingName: "parameterSchema",
-        role: "parameter-schema",
-        captureRole: "parameter_schema",
-        resource: manifest.parameterSchema,
-      });
-    }
-    if (
-      new Set(manifestArtifact.inputArtifactIds).size !== manifestResources.length ||
-      manifestArtifact.inputArtifactIds.length !== manifestResources.length
-    ) {
-      throw new TypeError(
-        "Modelica method manifest inputArtifactIds must be exactly its qualified source artifacts.",
-      );
-    }
-    const sourceArtifacts = manifestResources.map((entry) => ({
-      entry,
-      artifact: exactManifestSourceArtifact(
-        snapshot,
-        manifestArtifact,
-        entry.resource,
-        entry.bindingName,
-      ),
-    }));
-    if (
-      sourceArtifacts.some(({ artifact }) =>
-        !manifestArtifact.inputArtifactIds.includes(artifact.id)
-      ) || new Set(sourceArtifacts.map(({ artifact }) => artifact.id)).size !==
-        manifestResources.length
-    ) {
-      throw new TypeError(
-        "Modelica method manifest does not bind each qualified source exactly once.",
-      );
-    }
-    for (const { entry, artifact } of sourceArtifacts) {
-      assertExactArtifactInputs(
-        artifact,
-        [],
-        `Modelica ${entry.bindingName} source`,
-      );
-    }
-    const qualification = await this.#qualificationAuthority(
-      input,
-      snapshot,
-      caseArtifact,
-      manifestArtifact,
-      simulationCase,
-      manifest,
-      sourceArtifacts,
-    );
-
-    const sources: ResolvedOperationPlanSource[] = [
-      await this.#artifactSource(
-        snapshot,
-        "simulationCase",
-        "simulation-case",
-        caseArtifact,
-      ),
-      await this.#artifactSource(
-        snapshot,
-        "methodManifest",
-        "provider-manifest",
-        manifestArtifact,
-      ),
-      sourceFromBytes(
-        snapshot,
-        "qualificationAuthority",
-        "qualification-authority",
-        qualification.artifact,
-        qualification.bytes,
-      ),
-    ];
-    for (const { entry, artifact } of sourceArtifacts) {
-      const bytes = await this.#artifactBytes(artifact);
-      assertResourceMatchesArtifact(entry.resource, artifact, bytes, entry.bindingName);
-      sources.push(sourceFromBytes(
-        snapshot,
-        entry.bindingName,
-        entry.role,
-        artifact,
-        bytes,
-      ));
-    }
-
-    const requestId = await requestIdFor(input.run.id, "modelica");
-    return {
-      ...common,
-      authorization: {
-        ...common.authorization,
-        methodQualification: {
-          id: "qualified-modelica-resumable",
-          version: "2.1",
-          fingerprint: qualification.artifact.fingerprint,
-        },
-      },
-      sources,
-      action: {
-        kind: "dynamic-system-simulation",
-        provider: {
-          id: "mcp-modelica",
-          contract: { id: "resumable", version: "2.1" },
-        },
-        lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
-        normalizer: {
-          ...manifest.resultNormalizer,
-          authority: "exact-provider-manifest",
-        },
-        requestId,
-        input: {
-          simulationCase: {
-            id: simulationCase.id,
-            fingerprint: caseArtifact.fingerprint,
-            sourceBinding: "simulationCase",
-          },
-          providerManifestFingerprint: {
-            algorithm: "sha256",
-            digest: manifest.fingerprint,
-          },
-          methodManifestSourceBinding: "methodManifest",
-          scenarioStartTimeSeconds: manifest.scenarioPublic.startTimeS,
-          effectiveTimeoutMs: simulationCase.timeoutMs,
-        },
-      },
-      expectedProviderResources: {
-        ledgerSchema: "provider-resource-acquisition-ledger/1.0",
-        captureManifestSchema: "provider-artifact-capture-manifest/1.0",
-        resourceProfile: {
-          id: MODELICA_RESUMABLE_RESOURCE_PROFILE.id,
-          version: MODELICA_RESUMABLE_RESOURCE_PROFILE.version,
-        },
-        parameterSchema: manifest.parameterSchema ? "required" : "absent",
-      },
-      recovery: {
-        policy: "mcp-modelica.resumable-recovery@2.1",
-        requestId,
-        mode: "same-request-readback-no-blind-redispatch",
-        ambiguousOutcome: "quarantine-for-human-review",
-        capturedOutcome: "cas-only-recovery",
-      },
-    };
   }
 
   async #calculixPlan(
@@ -707,150 +470,6 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
     );
   }
 
-  async #qualificationAuthority(
-    input: RegisteredRunPlanSealInput,
-    snapshot: ThreadSnapshot,
-    caseArtifact: ThreadArtifact,
-    manifestArtifact: ThreadArtifact,
-    simulationCase: SimulationCaseV2,
-    manifest: ModelicaQualifiedManifestDocument,
-    sourceArtifacts: readonly ModelicaBoundSource[],
-  ): Promise<{ readonly artifact: ThreadArtifact; readonly bytes: Uint8Array }> {
-    const candidates = snapshot.artifacts.filter((artifact) =>
-      artifact.id !== caseArtifact.id && artifact.id !== manifestArtifact.id &&
-      artifact.kind === "evidence" &&
-      artifact.mediaType === "application/json" &&
-      artifact.producer.tool === "simulate.seal-simulation-case@2" &&
-      artifact.inputArtifactIds.includes(caseArtifact.id) &&
-      artifact.inputArtifactIds.includes(manifestArtifact.id)
-    );
-    if (candidates.length !== 1) {
-      throw new TypeError(
-        "Modelica plan requires one unique qualification authority derived from case and manifest.",
-      );
-    }
-    const artifact = candidates[0];
-    const bytes = await this.#artifactBytes(artifact);
-    const authorityText = decodeExactUtf8(
-      bytes,
-      "Modelica qualification authority",
-    );
-    const authority = validateModelicaSimulationCaseQualificationCapture(
-      parseJson(authorityText, "Modelica qualification authority"),
-    );
-    if (
-      canonicalModelicaSimulationCaseQualificationCaptureText(authority) !==
-        authorityText
-    ) {
-      throw new TypeError(
-        "Modelica qualification authority CAS bytes are not canonical JSON.",
-      );
-    }
-    const sourceIds = sourceArtifacts.map(({ artifact }) => artifact.id);
-    const sourceCaptureIds = artifact.inputArtifactIds.filter((id) =>
-      id !== caseArtifact.id && id !== manifestArtifact.id &&
-      !sourceIds.includes(id)
-    );
-    if (sourceCaptureIds.length !== 1) {
-      throw new TypeError(
-        "Modelica qualification authority must name one exact source-capture input.",
-      );
-    }
-    const sourceCapture = artifactById(snapshot, sourceCaptureIds[0]);
-    assertExactArtifactInputs(
-      artifact,
-      [caseArtifact.id, manifestArtifact.id, sourceCapture.id, ...sourceIds],
-      "Modelica qualification authority",
-    );
-    assertExactArtifactInputs(
-      sourceCapture,
-      sourceIds,
-      "Modelica qualified source capture",
-    );
-    const sealArtifacts = [
-      caseArtifact,
-      manifestArtifact,
-      sourceCapture,
-      ...sourceArtifacts.map(({ artifact }) => artifact),
-    ];
-    if (sealArtifacts.some((candidate) => !sameProducer(candidate, artifact))) {
-      throw new TypeError(
-        "Modelica qualification evidence does not share one exact trusted seal producer.",
-      );
-    }
-    const [caseBytes, manifestBytes, sourceCaptureBytes] = await Promise.all([
-      this.#artifactBytes(caseArtifact),
-      this.#artifactBytes(manifestArtifact),
-      this.#artifactBytes(sourceCapture),
-    ]);
-    assertAuthorityRef(
-      authority.simulationCase,
-      caseArtifact,
-      caseBytes.byteLength,
-      "simulationCase",
-    );
-    assertAuthorityRef(
-      authority.manifest,
-      manifestArtifact,
-      manifestBytes.byteLength,
-      "manifest",
-    );
-    assertAuthorityRef(
-      authority.sourceCapture,
-      sourceCapture,
-      sourceCaptureBytes.byteLength,
-      "sourceCapture",
-    );
-    const captureText = decodeUtf8(
-      sourceCaptureBytes,
-      "Modelica qualified source capture",
-    );
-    const capture = validateModelicaQualifiedSourceCaptureDocument(
-      parseJson(captureText, "Modelica qualified source capture"),
-    );
-    if (canonicalModelicaQualifiedSourceCaptureText(capture) !== captureText) {
-      throw new TypeError(
-        "Modelica qualified source-capture CAS bytes are not canonical JSON.",
-      );
-    }
-    assertSourceCaptureMatchesManifest(capture, manifest, sourceArtifacts);
-    assertAuthoritySources(authority, capture, sourceArtifacts);
-    if (
-      authority.caseDigest !== await fingerprintResourceBytes(caseBytes) ||
-      authority.caseDigest !== caseArtifact.fingerprint.digest ||
-      canonicalSimulationCaseV2Text(simulationCase) !==
-        decodeUtf8(caseBytes, "simulation case artifact") ||
-      authority.trustedRunId !== artifact.producer.runId
-    ) {
-      throw new TypeError(
-        "Modelica qualification authority case or trusted seal-run identity diverges.",
-      );
-    }
-    await this.#assertCaseBasisIsAncestor(
-      snapshot,
-      {
-        id: authority.sealBasis.snapshotId,
-        revision: authority.sealBasis.revision,
-        subjectId: authority.sealBasis.subjectId,
-      },
-      "Modelica qualification authority",
-    );
-    await assertAuthorityProjectHistory(
-      input,
-      authority,
-      snapshot,
-      this.options.snapshots,
-      [
-        caseArtifact,
-        manifestArtifact,
-        sourceCapture,
-        ...sourceArtifacts.map(({ artifact }) => artifact),
-        artifact,
-      ],
-    );
-    return { artifact, bytes };
-  }
-
   async #artifactBytes(artifact: ThreadArtifact): Promise<Uint8Array> {
     canonicalArtifactUri(artifact);
     const bytes = await this.options.artifacts.read(Object.freeze({ ...artifact }));
@@ -867,20 +486,6 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
       );
     }
     return copy;
-  }
-
-  async #simulationCase(artifact: ThreadArtifact): Promise<SimulationCaseV2> {
-    const bytes = await this.#artifactBytes(artifact);
-    const caseText = decodeUtf8(bytes, "simulation case artifact");
-    const simulationCase = validateSimulationCaseV2(
-      parseJson(caseText, "canonical simulation case"),
-    );
-    if (canonicalSimulationCaseV2Text(simulationCase) !== caseText) {
-      throw new TypeError(
-        "Simulation case artifact does not contain canonical case bytes.",
-      );
-    }
-    return simulationCase;
   }
 
   async #proofCase(artifact: ThreadArtifact): Promise<FeaProofCaseCapture> {
@@ -923,16 +528,6 @@ interface ProofArtifactRef {
   readonly fingerprint: ContentFingerprint;
   readonly producerRunId: string;
 }
-interface ModelicaBoundSource {
-  readonly entry: {
-    readonly bindingName: string;
-    readonly role: string;
-    readonly captureRole: ModelicaQualifiedSourceRole;
-    readonly resource: ModelicaResumableResource;
-  };
-  readonly artifact: ThreadArtifact;
-}
-
 function exactProofInputArtifact(
   snapshot: ThreadSnapshot,
   reference: ProofArtifactRef,
@@ -948,111 +543,6 @@ function exactProofInputArtifact(
     );
   }
   return artifact;
-}
-
-function assertAuthorityRef(
-  reference: ModelicaQualificationCasReference,
-  artifact: ThreadArtifact,
-  byteCount: number,
-  label: string,
-): void {
-  if (
-    reference.sha256 !== artifact.fingerprint.digest ||
-    reference.uri !== canonicalArtifactUri(artifact) ||
-    reference.byteCount !== byteCount
-  ) {
-    throw new TypeError(
-      `Modelica qualification authority ${label} does not name the exact Thread CAS artifact.`,
-    );
-  }
-}
-
-function assertSourceCaptureMatchesManifest(
-  capture: ModelicaQualifiedSourceCaptureDocument,
-  manifest: ModelicaQualifiedManifestDocument,
-  sources: readonly ModelicaBoundSource[],
-): void {
-  if (
-    deterministicJson(capture.selection) !==
-      deterministicJson(manifest.selection) ||
-    capture.manifestFingerprint !== manifest.fingerprint ||
-    capture.artifacts.length !== sources.length
-  ) {
-    throw new TypeError(
-      "Modelica source capture does not bind the exact qualified manifest.",
-    );
-  }
-  for (const source of sources) {
-    const matches = capture.artifacts.filter((entry) =>
-      entry.role === source.entry.captureRole
-    );
-    if (matches.length !== 1) {
-      throw new TypeError(
-        `Modelica source capture does not uniquely bind ${source.entry.captureRole}.`,
-      );
-    }
-    const captured = matches[0];
-    const expectedResource = {
-      uri: source.entry.resource.uri,
-      mediaType: source.entry.resource.mediaType,
-      byteCount: source.entry.resource.byteCount,
-      sha256: source.entry.resource.sha256,
-    };
-    if (
-      deterministicJson(captured.resource) !== deterministicJson(expectedResource) ||
-      captured.cas.uri !== canonicalArtifactUri(source.artifact) ||
-      captured.cas.sha256 !== source.artifact.fingerprint.digest ||
-      captured.cas.byteCount !== source.entry.resource.byteCount
-    ) {
-      throw new TypeError(
-        `Modelica source capture ${source.entry.captureRole} tuple diverges from its manifest and Thread CAS artifact.`,
-      );
-    }
-  }
-}
-
-function assertAuthoritySources(
-  authority: ModelicaSimulationCaseQualificationCapture,
-  capture: ModelicaQualifiedSourceCaptureDocument,
-  sources: readonly ModelicaBoundSource[],
-): void {
-  if (
-    authority.sources.length !== sources.length ||
-    capture.artifacts.length !== sources.length
-  ) {
-    throw new TypeError(
-      "Modelica qualification authority sources are not the closed capture profile.",
-    );
-  }
-  for (const source of sources) {
-    const authorityMatches = authority.sources.filter((entry) =>
-      entry.role === source.entry.captureRole
-    );
-    const captureMatches = capture.artifacts.filter((entry) =>
-      entry.role === source.entry.captureRole
-    );
-    if (authorityMatches.length !== 1 || captureMatches.length !== 1) {
-      throw new TypeError(
-        `Modelica qualification authority does not uniquely bind ${source.entry.captureRole}.`,
-      );
-    }
-    const authoritySource = authorityMatches[0];
-    const captured = captureMatches[0];
-    if (
-      authoritySource.mediaType !== captured.resource.mediaType ||
-      authoritySource.resourceUri !== captured.resource.uri
-    ) {
-      throw new TypeError(
-        `Modelica qualification authority ${source.entry.captureRole} metadata diverges from its source capture.`,
-      );
-    }
-    assertAuthorityRef(
-      authoritySource.cas,
-      source.artifact,
-      captured.cas.byteCount,
-      `sources.${source.entry.captureRole}`,
-    );
-  }
 }
 
 function assertExactArtifactInputs(
@@ -1077,142 +567,6 @@ function sameProducer(left: ThreadArtifact, right: ThreadArtifact): boolean {
     left.producer.runId === right.producer.runId;
 }
 
-async function assertAuthorityProjectHistory(
-  input: RegisteredRunPlanSealInput,
-  authority: ModelicaSimulationCaseQualificationCapture,
-  currentBasis: ThreadSnapshot,
-  snapshots: ExactThreadSnapshotReader,
-  requiredSealArtifacts: readonly ThreadArtifact[],
-): Promise<void> {
-  const workItem = input.project.workItems.find((item) =>
-    item.id === authority.mrtr.workItemId
-  );
-  const run = input.project.agentRuns.find((item) =>
-    item.id === authority.trustedRunId
-  );
-  if (
-    !workItem || workItem.operation?.id !== "simulate.seal-simulation-case" ||
-    workItem.operation.version !== "2" ||
-    deterministicJson(workItem.operation.bindings) !==
-      deterministicJson([{
-        name: "approvedBrief",
-        source: { kind: "approved-brief" },
-      }]) ||
-    !workItem.decisionIds.includes(authority.mrtr.decisionId) ||
-    !run || run.workItemId !== workItem.id || run.status !== "completed" ||
-    !run.resultSnapshot || run.evidenceRefs.length === 0 ||
-    run.basis?.kind !== "thread-snapshot" ||
-    !sameDeclaredBasis(run.basis, authority.sealBasis) ||
-    run.startedAt !== authority.sealedAt
-  ) {
-    throw new TypeError(
-      "Modelica qualification authority is not backed by its completed registered @2 seal run.",
-    );
-  }
-  const resultReference = run.resultSnapshot;
-  const rawResult = await snapshots.get(resultReference.snapshotId);
-  if (
-    !rawResult || rawResult.id !== resultReference.snapshotId ||
-    rawResult.revision !== resultReference.revision ||
-    rawResult.subject.id !== resultReference.subjectId
-  ) {
-    throw new TypeError(
-      "Modelica qualification authority completed seal result snapshot is absent or does not exactly match its reference.",
-    );
-  }
-  const sealResult = validateThreadSnapshot(rawResult);
-  const rawSealBasis = await snapshots.get(authority.sealBasis.snapshotId);
-  if (
-    !rawSealBasis || rawSealBasis.id !== authority.sealBasis.snapshotId ||
-    rawSealBasis.revision !== authority.sealBasis.revision ||
-    rawSealBasis.subject.id !== authority.sealBasis.subjectId
-  ) {
-    throw new TypeError(
-      "Modelica qualification authority seal basis is absent or does not exactly match its reference.",
-    );
-  }
-  const sealBasis = validateThreadSnapshot(rawSealBasis);
-  if (
-    sealResult.revision !== sealBasis.revision + 1 ||
-    sealResult.previous?.snapshotId !== sealBasis.id ||
-    sealResult.previous.revision !== sealBasis.revision ||
-    !await threadSnapshotDescendsFrom(sealResult, sealBasis, snapshots)
-  ) {
-    throw new TypeError(
-      "Modelica qualification authority completed seal result is not the direct immutable child of its exact seal basis.",
-    );
-  }
-  assertSnapshotPreservesExactArtifacts(
-    sealResult,
-    requiredSealArtifacts,
-    "completed seal result snapshot",
-  );
-  const producedBySeal = sealResult.artifacts.filter((artifact) =>
-    isExactSealArtifact(artifact, run.id)
-  );
-  if (producedBySeal.length !== requiredSealArtifacts.length) {
-    throw new TypeError(
-      "Modelica qualification authority completed seal result does not contain exactly its authority, case, manifest, source capture and qualified sources.",
-    );
-  }
-  assertExactSealEvidenceRefs(run.evidenceRefs, resultReference, producedBySeal);
-  if (!await threadSnapshotDescendsFrom(currentBasis, sealResult, snapshots)) {
-    throw new TypeError(
-      "Modelica qualification authority current run basis does not descend from its completed seal result snapshot.",
-    );
-  }
-  assertSnapshotPreservesExactArtifacts(
-    currentBasis,
-    producedBySeal,
-    "current recorded-plan basis",
-  );
-  const decision = input.project.decisions.find((item) =>
-    item.id === authority.mrtr.decisionId
-  );
-  const approval = input.project.approvals.find((item) =>
-    item.id === authority.mrtr.approvalId
-  );
-  if (
-    !decision || decision.status !== "approved" || !decision.inputFingerprint ||
-    decision.inputFingerprint.algorithm !== "sha256" ||
-    decision.inputFingerprint.digest !== authority.mrtr.inputFingerprint ||
-    !sameDeclaredBasis(decision.baseSnapshot, authority.sealBasis) ||
-    !decision.approvalIds.includes(authority.mrtr.approvalId) ||
-    !decision.proposal ||
-    !approval || approval.status !== "approved" ||
-    approval.decisionId !== decision.id ||
-    approval.decidedByOrigin !== "human" ||
-    !approval.inputFingerprint ||
-    approval.inputFingerprint.algorithm !== "sha256" ||
-    !fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint) ||
-    !sameDeclaredBasis(approval.baseSnapshot, authority.sealBasis) ||
-    !sameEvidence(decision, approval.inputEvidenceRefs) ||
-    (await sha256Fingerprint(approval)).digest !==
-      authority.mrtr.approvalFingerprint ||
-    !fingerprintsEqual(
-      await sha256Fingerprint({
-        baseSnapshot: decision.baseSnapshot,
-        inputEvidenceRefs: decision.inputEvidenceRefs,
-        proposal: {
-          summary: decision.proposal.summary,
-          parameters: decision.proposal.parameters,
-        },
-      }),
-      decision.inputFingerprint,
-    )
-  ) {
-    throw new TypeError(
-      "Modelica qualification authority MRTR does not match the immutable project history.",
-    );
-  }
-}
-
-/**
- * Resolve the distinct human authority that produced a sealed FEA proof before
- * a later ROP2 run may bind it.  The run's own MRTR was already selected by
- * authorizationFor(); this history check deliberately never compares those
- * two decision or work-item IDs.
- */
 async function assertFeaProofSealProjectHistory(
   project: EngineeringProjectSnapshot,
   currentBasis: ThreadSnapshot,
@@ -1586,199 +940,6 @@ async function isExactFeaSensitivityCatalogOffer(
   }
 }
 
-function isExactSealArtifact(artifact: ThreadArtifact, runId: string): boolean {
-  return artifact.producer.serverId === "digital-thread" &&
-    artifact.producer.tool === "simulate.seal-simulation-case@2" &&
-    artifact.producer.runId === runId;
-}
-
-function assertSnapshotPreservesExactArtifacts(
-  snapshot: ThreadSnapshot,
-  expectedArtifacts: readonly ThreadArtifact[],
-  label: string,
-): void {
-  for (const expected of expectedArtifacts) {
-    const matches = snapshot.artifacts.filter((artifact) =>
-      artifact.id === expected.id
-    );
-    if (
-      matches.length !== 1 ||
-      !sameExactArtifactIdentity(matches[0], expected)
-    ) {
-      throw new TypeError(
-        `Modelica qualification authority ${label} does not retain exact seal artifact ${expected.id}.`,
-      );
-    }
-  }
-}
-
-function sameExactArtifactIdentity(
-  left: ThreadArtifact,
-  right: ThreadArtifact,
-): boolean {
-  try {
-    return left.id === right.id &&
-      fingerprintsEqual(left.fingerprint, right.fingerprint) &&
-      canonicalArtifactUri(left) === canonicalArtifactUri(right) &&
-      sameProducer(left, right);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Compare a public STEP binding without interpreting its route as a CAS URI.
- *
- * STEP routes are validated separately by canonicalCalculixStepAssetCasUri.
- */
-function sameBoundStepArtifact(
-  left: ThreadArtifact,
-  right: ThreadArtifact,
-): boolean {
-  return left.id === right.id &&
-    left.kind === right.kind &&
-    left.mediaType === right.mediaType &&
-    left.uri === right.uri &&
-    fingerprintsEqual(left.fingerprint, right.fingerprint) &&
-    sameProducer(left, right);
-}
-
-function assertExactSealEvidenceRefs(
-  evidenceRefs: readonly {
-    snapshotId: string;
-    snapshotRevision: number;
-    kind: string;
-    id: string;
-  }[],
-  resultSnapshot: {
-    readonly snapshotId: string;
-    readonly revision: number;
-  },
-  producedArtifacts: readonly ThreadArtifact[],
-): void {
-  const expectedIds = new Set(producedArtifacts.map((artifact) => artifact.id));
-  const seen = new Set<string>();
-  for (const reference of evidenceRefs) {
-    if (
-      reference.snapshotId !== resultSnapshot.snapshotId ||
-      reference.snapshotRevision !== resultSnapshot.revision ||
-      reference.kind !== "artifact" || !expectedIds.has(reference.id) ||
-      seen.has(reference.id)
-    ) {
-      throw new TypeError(
-        "Modelica qualification authority completed seal run evidenceRefs do not exactly cover its result artifacts.",
-      );
-    }
-    seen.add(reference.id);
-  }
-  if (seen.size !== expectedIds.size) {
-    throw new TypeError(
-      "Modelica qualification authority completed seal run evidenceRefs do not exactly cover its result artifacts.",
-    );
-  }
-}
-
-function assertManifestMatchesCase(
-  manifest: ModelicaQualifiedManifestDocument,
-  simulationCase: SimulationCaseV2,
-): void {
-  if (
-    manifest.selection.modelId !== simulationCase.kit.modelId ||
-    manifest.selection.modelVersion !== simulationCase.kit.modelVersion ||
-    manifest.selection.scenarioId !== simulationCase.scenario.id ||
-    manifest.model.sha256 !== simulationCase.kit.modelSha256 ||
-    manifest.scenario.sha256 !== simulationCase.scenario.sourceSha256 ||
-    manifest.scenarioProjectionSha256 !== simulationCase.scenario.projectionSha256
-  ) {
-    throw new TypeError(
-      "Modelica qualified manifest diverges from the sealed simulation case.",
-    );
-  }
-  if (
-    manifest.lowering.id !== "modelica-omc-lowering" ||
-    manifest.lowering.version !== "1.0.0"
-  ) {
-    throw new TypeError(
-      "Modelica qualified manifest does not declare the code-owned lowering.",
-    );
-  }
-  const parameters = new Map(
-    manifest.parameters.map((parameter) => [parameter.id, parameter]),
-  );
-  if (
-    parameters.size !== simulationCase.parameters.length ||
-    simulationCase.parameters.some((parameter) => {
-      const qualified = parameters.get(parameter.id);
-      return !qualified || qualified.unit !== parameter.unit ||
-        parameter.value < qualified.minimum || parameter.value > qualified.maximum;
-    })
-  ) {
-    throw new TypeError(
-      "Simulation case parameters do not exactly fit the qualified manifest.",
-    );
-  }
-  const metrics = new Map(
-    manifest.producedMetrics.map((metric) => [metric.id, metric]),
-  );
-  if (
-    metrics.size !== simulationCase.expectedMetrics.length ||
-    simulationCase.expectedMetrics.some((metric) =>
-      metrics.get(metric.id)?.unit !== metric.unit
-    )
-  ) {
-    throw new TypeError(
-      "Simulation case metrics do not exactly match the qualified manifest.",
-    );
-  }
-  if (
-    !Number.isSafeInteger(simulationCase.timeoutMs) || simulationCase.timeoutMs < 1 ||
-    simulationCase.timeoutMs > 120_000 || manifest.scenarioPublic.startTimeS < 0 ||
-    manifest.scenarioPublic.stopTimeS <= manifest.scenarioPublic.startTimeS ||
-    !manifest.resultNormalizer.id || !manifest.resultNormalizer.version
-  ) {
-    throw new TypeError(
-      "Modelica timeout, time bounds, or normalizer identity is invalid.",
-    );
-  }
-}
-
-function exactManifestSourceArtifact(
-  snapshot: ThreadSnapshot,
-  manifestArtifact: ThreadArtifact,
-  resource: ModelicaResumableResource,
-  label: string,
-): ThreadArtifact {
-  const candidates = manifestArtifact.inputArtifactIds
-    .map((id) => artifactById(snapshot, id))
-    .filter((artifact) => artifact.fingerprint.digest === resource.sha256);
-  if (candidates.length !== 1) {
-    throw new TypeError(`Modelica manifest does not thread-bind one exact ${label}.`);
-  }
-  return candidates[0];
-}
-
-function assertResourceMatchesArtifact(
-  resource: ModelicaResumableResource,
-  artifact: ThreadArtifact,
-  bytes: Uint8Array,
-  label: string,
-): void {
-  const expectedKind = label === "modelSource" ? "simulation-model" : "document";
-  if (
-    resource.sha256 !== artifact.fingerprint.digest ||
-    resource.byteCount !== bytes.byteLength ||
-    resource.mediaType !== artifact.mediaType ||
-    artifact.kind !== expectedKind ||
-    (label === "parameterSchema"
-      ? resource.qualification !== "compiler-derived-verified"
-      : resource.qualification !== "qualified-kit")
-  ) {
-    throw new TypeError(
-      `Modelica ${label} resource tuple diverges from its Thread CAS artifact.`,
-    );
-  }
-}
-
 function sourceFromBytes(
   snapshot: ThreadSnapshot,
   bindingName: string,
@@ -1920,13 +1081,7 @@ async function authorizationFor(input: RegisteredRunPlanSealInput) {
       "Recorded plan MRTR approval does not attest the exact decision evidence.",
     );
   }
-  const method = sameOperation(
-      input.workItem.operation!.id,
-      input.workItem.operation!.version,
-      MODELICA_OPERATION,
-    )
-    ? { id: "qualified-modelica-resumable", version: "2.1" }
-    : { id: "qualified-static-structural-proof-case", version: "1.0" };
+  const method = { id: "qualified-static-structural-proof-case", version: "1.0" };
   return {
     kind: "human-mrtr-and-qualified-method" as const,
     mrtr: {
@@ -2086,4 +1241,35 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function requiredMediaType(value: string | undefined, id: string): string {
   if (!value) throw new TypeError(`Thread artifact ${id} is missing its media type.`);
   return value;
+}
+
+function sameExactArtifactIdentity(
+  left: ThreadArtifact,
+  right: ThreadArtifact,
+): boolean {
+  try {
+    return left.id === right.id &&
+      fingerprintsEqual(left.fingerprint, right.fingerprint) &&
+      canonicalArtifactUri(left) === canonicalArtifactUri(right) &&
+      sameProducer(left, right);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Compare a public STEP binding without interpreting its route as a CAS URI.
+ *
+ * STEP routes are validated separately by canonicalCalculixStepAssetCasUri.
+ */
+function sameBoundStepArtifact(
+  left: ThreadArtifact,
+  right: ThreadArtifact,
+): boolean {
+  return left.id === right.id &&
+    left.kind === right.kind &&
+    left.mediaType === right.mediaType &&
+    left.uri === right.uri &&
+    fingerprintsEqual(left.fingerprint, right.fingerprint) &&
+    sameProducer(left, right);
 }

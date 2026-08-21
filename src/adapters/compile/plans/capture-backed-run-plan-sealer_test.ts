@@ -121,7 +121,7 @@ Deno.test("CaptureBackedRunPlanSealer recomputes the registered operation and di
 });
 
 function sealInput(): RegisteredRunPlanSealInput {
-  const runId = "run:modelica-recorded";
+  const runId = "run:calculix-isolated";
   return {
     project: {
       id: "project.cm01:project:r17:abcdabcdabcdabcd",
@@ -131,17 +131,17 @@ function sealInput(): RegisteredRunPlanSealInput {
       approvals: [mrtrApproval()],
     } as unknown as RegisteredRunPlanSealInput["project"],
     workItem: {
-      id: "simulate-thermal",
+      id: "verify-fea",
       operation: {
-        id: "simulate.run-modelica-scenario",
-        version: "2",
+        id: "verify.run-fea-static-proof",
+        version: "3",
         bindings: [],
       },
-      decisionIds: ["decision.thermal"],
+      decisionIds: ["decision.fea"],
     } as unknown as RegisteredRunPlanSealInput["workItem"],
     run: {
       id: runId,
-      workItemId: "simulate-thermal",
+      workItemId: "verify-fea",
       inputFingerprint: fingerprint("1"),
       basis: {
         kind: "thread-snapshot",
@@ -166,8 +166,8 @@ async function planFor(
   if (!run.inputFingerprint || !basis || basis.kind !== "thread-snapshot") {
     throw new Error("Test fixture requires a thread-snapshot candidate.");
   }
-  const sourceFingerprint = fingerprint("3");
-  const qualificationFingerprint = fingerprint("7");
+  const proofFingerprint = fingerprint("c");
+  const profileFingerprint = fingerprint("e");
   return {
     schemaVersion: "resolved-operation-plan/2.0",
     id: run.id,
@@ -189,15 +189,15 @@ async function planFor(
     authorization: {
       kind: "human-mrtr-and-qualified-method",
       mrtr: {
-        decisionId: "decision.thermal",
+        decisionId: "decision.fea",
         decisionInputFingerprint: fingerprint("5"),
-        approvalId: "approval.thermal",
+        approvalId: "approval.fea",
         approvalFingerprint: await sha256Fingerprint(mrtrApproval()),
       },
       methodQualification: {
-        id: "qualified-modelica-resumable",
-        version: "2.1",
-        fingerprint: qualificationFingerprint,
+        id: "qualified-calculix-isolated-static-proof",
+        version: "1.0",
+        fingerprint: profileFingerprint,
       },
     },
     basis: {
@@ -208,134 +208,67 @@ async function planFor(
       fingerprint: fingerprint("8"),
     },
     sources: [{
-      bindingName: "simulationCase",
-      role: "simulation-case",
+      bindingName: "proofCase",
+      role: "proof-case",
       threadRef: {
         snapshotId: basis.snapshotId,
         snapshotRevision: basis.revision,
         kind: "artifact",
-        id: "artifact.simulation-case",
+        id: "artifact.fea-proof-case",
       },
       artifact: {
-        fingerprint: fingerprint("9"),
-        byteCount: 12,
+        fingerprint: proofFingerprint,
+        byteCount: 127,
         mediaType: "application/json",
-        casUri: `casys://simulation-case-capture/sha256/${"9".repeat(64)}`,
+        casUri: `casys://fea-proof-case-capture/sha256/${proofFingerprint.digest}`,
       },
     }, {
-      bindingName: "methodManifest",
-      role: "provider-manifest",
+      bindingName: "geometry",
+      role: "geometry-source",
       threadRef: {
         snapshotId: basis.snapshotId,
         snapshotRevision: basis.revision,
         kind: "artifact",
-        id: "artifact.modelica-provider-manifest",
-      },
-      artifact: {
-        fingerprint: fingerprint("b"),
-        byteCount: 11,
-        mediaType: "application/json",
-        casUri: `casys://modelica-provider-manifest/sha256/${"b".repeat(64)}`,
-      },
-    }, {
-      bindingName: "qualificationAuthority",
-      role: "qualification-authority",
-      threadRef: {
-        snapshotId: basis.snapshotId,
-        snapshotRevision: basis.revision,
-        kind: "artifact",
-        id: "artifact.modelica-qualification-authority",
-      },
-      artifact: {
-        fingerprint: qualificationFingerprint,
-        byteCount: 13,
-        mediaType: "application/json",
-        casUri:
-          `casys://modelica-qualification-authority/sha256/${qualificationFingerprint.digest}`,
-      },
-    }, {
-      bindingName: "modelSource",
-      role: "model-source",
-      threadRef: {
-        snapshotId: basis.snapshotId,
-        snapshotRevision: basis.revision,
-        kind: "artifact",
-        id: "artifact.modelica",
-      },
-      artifact: {
-        fingerprint: sourceFingerprint,
-        byteCount: 10,
-        mediaType: "text/x-modelica",
-        casUri: `casys://modelica-source/sha256/${sourceFingerprint.digest}`,
-      },
-    }, {
-      bindingName: "scenarioSource",
-      role: "scenario-source",
-      threadRef: {
-        snapshotId: basis.snapshotId,
-        snapshotRevision: basis.revision,
-        kind: "artifact",
-        id: "artifact.modelica-scenario",
-      },
-      artifact: {
-        fingerprint: fingerprint("c"),
-        byteCount: 14,
-        mediaType: "application/json",
-        casUri: `casys://modelica-scenario-source/sha256/${"c".repeat(64)}`,
-      },
-    }, {
-      bindingName: "parameterSchema",
-      role: "parameter-schema",
-      threadRef: {
-        snapshotId: basis.snapshotId,
-        snapshotRevision: basis.revision,
-        kind: "artifact",
-        id: "artifact.modelica-parameter-schema",
+        id: "artifact.geometry-step",
       },
       artifact: {
         fingerprint: fingerprint("d"),
-        byteCount: 15,
-        mediaType: "application/json",
-        casUri: `casys://modelica-parameter-schema/sha256/${"d".repeat(64)}`,
+        byteCount: 128,
+        mediaType: "model/step",
+        casUri: `casys://thread-asset/sha256/${"d".repeat(64)}`,
       },
     }],
     action: {
-      kind: "dynamic-system-simulation",
-      provider: {
-        id: "mcp-modelica",
-        contract: { id: "resumable", version: "2.1" },
+      kind: "isolated-static-structural-analysis",
+      executor: {
+        id: "casys-local-microsandbox",
+        contract: { id: "calculix-static-proof-v1", version: "1.0.0" },
+        profileFingerprint,
       },
-      lowering: { id: "modelica-omc-lowering", version: "1.0.0" },
-      normalizer: {
-        id: "modelica-run-normalizer",
-        version: "2.1",
-        authority: "exact-provider-manifest",
-      },
-      requestId: "request.modelica",
+      lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
+      requestId: "request.calculix.local.1",
       input: {
-        simulationCase: {
-          id: "thermal-case",
-          fingerprint: fingerprint("9"),
-          sourceBinding: "simulationCase",
+        proofCase: {
+          id: "drip-tray-static",
+          fingerprint: proofFingerprint,
+          sourceBinding: "proofCase",
         },
-        providerManifestFingerprint: fingerprint("a"),
-        methodManifestSourceBinding: "methodManifest",
-        scenarioStartTimeSeconds: 0,
-        effectiveTimeoutMs: 30_000,
+        geometrySourceBinding: "geometry",
+        effectiveElementOrder: 2,
+        effectiveTimeoutMs: 60_000,
       },
     },
     expectedProviderResources: {
-      ledgerSchema: "provider-resource-acquisition-ledger/1.0",
-      captureManifestSchema: "provider-artifact-capture-manifest/1.0",
+      receiptSchema: "isolated-code-execution-receipt-record/1.0",
+      evidenceSchema: "calculix-isolated-static-evidence/1.0",
       resourceProfile: {
-        id: "mcp-modelica.resumable-artifacts",
-        version: "2.1",
+        id: "calculix-isolated.static-artifacts",
+        version: "1.0",
       },
-      parameterSchema: "required",
     },
     recovery: {
-      policy: "mcp-modelica.resumable-recovery@2.1",
-      requestId: "request.modelica",
+      policy: "calculix-isolated-generation-recovery@1.0",
+      requestId: "request.calculix.local.1",
       mode: "same-request-readback-no-blind-redispatch",
       ambiguousOutcome: "quarantine-for-human-review",
       capturedOutcome: "cas-only-recovery",
@@ -345,22 +278,22 @@ async function planFor(
 
 function mrtrDecision() {
   return {
-    id: "decision.thermal",
+    id: "decision.fea",
     status: "approved" as const,
     inputFingerprint: fingerprint("5"),
-    approvalIds: ["approval.thermal"],
+    approvalIds: ["approval.fea"],
   };
 }
 
 function mrtrApproval() {
   return {
-    id: "approval.thermal",
-    decisionId: "decision.thermal",
+    id: "approval.fea",
+    decisionId: "decision.fea",
     status: "approved" as const,
     requestedAt: "2026-08-11T00:00:00.000Z",
     decidedAt: "2026-08-11T00:01:00.000Z",
-    decidedBy: "human:thermal-reviewer",
-    rationale: "The qualified Modelica method is approved for this recorded case.",
+    decidedBy: "human:fea-reviewer",
+    rationale: "The qualified CalculiX method is approved for this recorded case.",
     decidedByOrigin: "human" as const,
     inputFingerprint: fingerprint("5"),
     inputEvidenceRefs: [],

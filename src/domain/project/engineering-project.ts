@@ -48,7 +48,6 @@ export type EngineeringProjectCommandName =
   | "project.plan-publish"
   | "project.change-append"
   | "work-item.reconcile-successor"
-  | "work-item.supersede-unstarted"
   | "work-item.abandon"
   | "decision.propose"
   | "decision.approve"
@@ -275,33 +274,8 @@ export interface EngineeringWorkItemRunSuccessorReconciliation {
   readonly rationale: string;
 }
 
-/**
- * Human-recorded closeout for a work item that never acquired a run.
- *
- * This is intentionally not a disguised failed run: the predecessor has no
- * `failedRunId`, no provider result and no successor evidence.  It records
- * only that its pending decision was replaced by one already-approved
- * successor decision for the narrowly registered operation transition.
- */
-export interface EngineeringWorkItemUnstartedSuccessorReconciliation {
-  readonly kind: "superseded-by-successor";
-  readonly reconciledAt: IsoDateTime;
-  readonly reconciledBy: EngineeringCommandActor;
-  readonly successorWorkItemId: string;
-  readonly predecessorDecisionId: string;
-  readonly successorDecisionId: string;
-  readonly rationale: string;
-  /** Deliberately absent: no run was ever queued or executed. */
-  readonly failedRunId?: never;
-  readonly successorRunId?: never;
-  readonly successorRunSnapshot?: never;
-  readonly successorSnapshot?: never;
-  readonly successorEvidenceRefs?: never;
-}
-
 export type EngineeringWorkItemSuccessorReconciliation =
-  | EngineeringWorkItemRunSuccessorReconciliation
-  | EngineeringWorkItemUnstartedSuccessorReconciliation;
+  EngineeringWorkItemRunSuccessorReconciliation;
 
 /** How a work item relates to one reviewed gate in the canonical brief. */
 export type EngineeringGateClaimRole = "contributes-to" | "satisfies";
