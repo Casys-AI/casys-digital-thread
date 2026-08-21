@@ -31,6 +31,10 @@ import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
+  DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+} from "../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
+import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
@@ -985,14 +989,64 @@ Deno.test("measured DFM seal and run operations are registered without replacing
 });
 
 Deno.test("a human-only operation declares its origin so a human can reach it", () => {
-  const reconcile = getRegisteredEngineeringOperation({
-    id: "record.reconcile-uncertain-writer",
-    version: "1",
-  })!;
-
-  // The executor refuses an agent origin. Without this declaration the surface
-  // that dispatches runs cannot know to offer the operator its elicitation, so
-  // the run becomes executable by nobody — and the write-basis lock it exists
-  // to lift never comes off.
-  assertEquals(reconcile.mustOrigin, "human");
+  const humanOnly = [
+    { id: "record.reconcile-uncertain-writer", version: "1" },
+    DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+    DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+  ];
+  for (const operation of humanOnly) {
+    const registered = getRegisteredEngineeringOperation(operation)!;
+    // The executor refuses an agent origin. Without this declaration the surface
+    // that dispatches runs cannot know to offer the operator its elicitation, so
+    // the run becomes executable by nobody.
+    assertEquals(registered.mustOrigin, "human");
+  }
 });
+
+Deno.test(
+  "admitted Modelica evaluation closeout is human-only, approvedBrief only, and rejects engine bindings",
+  () => {
+    for (
+      const operation of [
+        DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+        DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+      ]
+    ) {
+      const registered = getRegisteredEngineeringOperation(operation)!;
+      assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+      assertEquals(registered.workItemKind, "review");
+      assertEquals(registered.riskClass, "consequential");
+      assertEquals(registered.execution, "trusted");
+      assertEquals(registered.mustOrigin, "human");
+      assertEquals(registered.bindings, [{
+        name: "approvedBrief",
+        allowedSourceKinds: ["approved-brief"],
+      }]);
+
+      const extras = assertThrows(
+        () =>
+          validateRegisteredEngineeringOperationInput({
+            operation: {
+              ...operation,
+              bindings: [{
+                name: "sysonEnvelope",
+                source: {
+                  kind: "thread-entity" as const,
+                  reference: {
+                    snapshotId: "thread.snapshot.9",
+                    snapshotRevision: 9,
+                    kind: "artifact" as const,
+                    id: "artifact.syson",
+                  },
+                },
+              }],
+            },
+            stage: "queue",
+            basisKind: "thread-snapshot",
+          }),
+        EngineeringOperationRegistryError,
+      );
+      assertEquals(extras.code, "invalid_bindings");
+    }
+  },
+);

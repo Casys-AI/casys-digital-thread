@@ -20,6 +20,10 @@ import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/mode
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
+import {
+  DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+} from "../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "./fea-isolated-static-proof.ts";
@@ -438,6 +442,49 @@ const OPERATIONS = [
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Human-only L5 closeout of one exact L4 admitted Modelica evaluation
+   * capture. Reopens the signed capture and thermal method sheet. Never calls
+   * OMC or SysON. An L4 `pass` is never implicit L5.
+   */
+  {
+    id: DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION.id,
+    version: DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Accept the admitted Modelica evaluation closeout",
+    description:
+      "Reopen one exact L4 admitted observation evaluation capture and its thermal " +
+      "method sheet, recross the signed Thread basis, and record the human accept " +
+      "closeout. No engine is called. An L4 pass is not L5.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    mustOrigin: "human",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  {
+    id: DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION.id,
+    version: DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Reject the admitted Modelica evaluation closeout",
+    description:
+      "Reopen one exact L4 admitted observation evaluation capture and its thermal " +
+      "method sheet, recross the signed Thread basis, and record the human reject " +
+      "closeout. No engine is called. An L4 pass is not L5.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    mustOrigin: "human",
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],

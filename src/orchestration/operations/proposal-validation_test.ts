@@ -436,6 +436,8 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "analyze.seal-sensitivity-study@1",
     "architecture.seed-syson-model@2",
     "compile.seal-admission@1",
+    "decide.accept-admitted-modelica-evaluation@1",
+    "decide.reject-admitted-modelica-evaluation@1",
     "design.apply-vector-correction@1",
     "design.execute-build123d@1",
     "design.seal-isolated-geometry@1",

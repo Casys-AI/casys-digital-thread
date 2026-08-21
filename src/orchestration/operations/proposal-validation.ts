@@ -91,6 +91,12 @@ import {
   VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
 } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
+  DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+  parseAcceptAdmittedModelicaEvaluationParameters,
+  parseRejectAdmittedModelicaEvaluationParameters,
+} from "../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
+import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
   parseDfmDecisionParameters,
@@ -198,6 +204,14 @@ const PROPOSAL_VALIDATORS = new Map<
     (parameters) => {
       parseAdmittedObservationEvaluationParameters(parameters);
     },
+  ],
+  [
+    keyOf(DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION),
+    parseAcceptAdmittedModelicaEvaluationParameters,
+  ],
+  [
+    keyOf(DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION),
+    parseRejectAdmittedModelicaEvaluationParameters,
   ],
   [
     keyOf(ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION),

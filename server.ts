@@ -22,6 +22,7 @@ import { FileThreadSnapshotStore } from "./src/adapters/shared/stores/file-threa
 import { installGracefulHttpShutdown } from "./src/adapters/shared/graceful-http-shutdown.ts";
 import {
   ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR,
+  ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
   BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
@@ -100,6 +101,11 @@ import {
   VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
   VerifyEvaluateAdmittedModelicaObservationsRunExecutor,
 } from "./src/adapters/modelica/evaluation/verify-evaluate-admitted-modelica-observations-run-executor.ts";
+import {
+  DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+  DecideAdmittedModelicaEvaluationRunExecutor,
+} from "./src/adapters/modelica/evaluation/decide-admitted-modelica-evaluation-run-executor.ts";
 import { FileThermalMethodSheetStore } from "./src/adapters/modelica/thermal-method-sheet/file-thermal-method-sheet-store.ts";
 import { FileThermalMethodSheetSourceCaptureReader } from "./src/adapters/modelica/thermal-method-sheet/file-thermal-method-sheet-source-capture-reader.ts";
 import {
@@ -1332,6 +1338,20 @@ async function createProjectControl(
       lease,
     })
     : undefined;
+  const decideAdmittedModelicaEvaluation =
+    new DecideAdmittedModelicaEvaluationRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      sheets: thermalMethodSheets,
+      evaluationCaptures: admittedObservationEvaluationCaptures,
+      closeoutCaptures: new FileCaptureStore({
+        ...ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+        directory:
+          `${recordedAnalysisDirectory}/modelica/admitted-observation-evaluation-closeout-captures`,
+      }),
+      lease,
+    });
   const designExecuteBuild123d = build123dExecution?.execution === undefined
     ? undefined
     : new DesignExecuteBuild123dRunExecutor({
@@ -1968,6 +1988,14 @@ async function createProjectControl(
             executor: verifyEvaluateAdmittedModelicaObservations,
             unavailableMessage:
               "The server has no trusted verify.evaluate-admitted-modelica-observations@1 executor configured for this run (SysON provider is required).",
+          },
+          {
+            operation: DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+            executor: decideAdmittedModelicaEvaluation,
+          },
+          {
+            operation: DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+            executor: decideAdmittedModelicaEvaluation,
           },
           {
             operation: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,

@@ -621,6 +621,23 @@ export const ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR: CaptureStoreDes
 export const ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX =
   "casys://modelica-admitted-observation-evaluation-capture/" as const;
 
+/**
+ * Content-addressed store for human L5 closeout of an L4 admitted Modelica
+ * observation evaluation. Documentary only: no OMC or SysON call.
+ *
+ * URI: `casys://modelica-admitted-observation-evaluation-closeout/sha256/<fp>`.
+ */
+export const ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR:
+  CaptureStoreDescriptor<"modelica-admitted-observation-evaluation-closeout"> = {
+    kind: "modelica-admitted-observation-evaluation-closeout",
+    directory: "state/local/modelica-admitted-observation-evaluation-closeout-captures",
+    uriNamespace: "modelica-admitted-observation-evaluation-closeout",
+    label: "Admitted Modelica observation evaluation closeout",
+  };
+
+export const ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX =
+  "casys://modelica-admitted-observation-evaluation-closeout/" as const;
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {
