@@ -553,6 +553,82 @@ Deno.test("SysML root identity is engaged by the normalized anchor fingerprint",
   );
 });
 
+Deno.test(
+  "sealed AttributeUsage ownership is exact, provenance-bound, and backward compatible",
+  async () => {
+    const { input } = await fixture();
+    const historical = structuredClone(record(input.basis).sysmlAnchor) as Record<
+      string,
+      unknown
+    >;
+    const historicalFingerprint = await fingerprintTechnicalSysmlAnchor(historical);
+
+    const withOwner = structuredClone(historical);
+    const ownerElements = values(withOwner.elements);
+    const provenance = structuredClone(record(ownerElements[0]).provenance);
+    ownerElements.push({
+      id: "sysml.part.frame",
+      kind: "PartDefinition",
+      provenance,
+    });
+    const ownedAttribute = ownerElements.map(record).find((element) =>
+      element.id === "sysml.param.a"
+    );
+    assert(ownedAttribute);
+    ownedAttribute.parentElementId = "sysml.part.frame";
+
+    const withOwnerWithoutRelation = structuredClone(withOwner);
+    const unownedAttribute = values(withOwnerWithoutRelation.elements)
+      .map(record)
+      .find((element) => element.id === "sysml.param.a");
+    assert(unownedAttribute);
+    delete unownedAttribute.parentElementId;
+
+    const ownerlessFingerprint = await fingerprintTechnicalSysmlAnchor(
+      withOwnerWithoutRelation,
+    );
+    const ownedFingerprint = await fingerprintTechnicalSysmlAnchor(withOwner);
+    assert(historicalFingerprint.digest !== ownedFingerprint.digest);
+    assert(ownerlessFingerprint.digest !== ownedFingerprint.digest);
+
+    const nonPartParent = structuredClone(withOwner);
+    const nonPartAttribute = values(nonPartParent.elements).map(record).find(
+      (element) => element.id === "sysml.param.a",
+    );
+    assert(nonPartAttribute);
+    nonPartAttribute.parentElementId = "sysml.root.package";
+    await assertRejects(
+      async () => await fingerprintTechnicalSysmlAnchor(nonPartParent),
+      TypeError,
+      "parentElementId must name an exact PartDefinition",
+    );
+
+    const foreignProvenance = structuredClone(withOwner);
+    const foreignAttribute = values(foreignProvenance.elements).map(record).find(
+      (element) => element.id === "sysml.param.a",
+    );
+    assert(foreignAttribute);
+    record(foreignAttribute.provenance).captureId = "capture.foreign";
+    await assertRejects(
+      async () => await fingerprintTechnicalSysmlAnchor(foreignProvenance),
+      TypeError,
+      "parentElementId provenance must equal its PartDefinition owner",
+    );
+
+    const nonAttributeOwner = structuredClone(withOwner);
+    const owner = values(nonAttributeOwner.elements).map(record).find((element) =>
+      element.id === "sysml.part.frame"
+    );
+    assert(owner);
+    owner.parentElementId = "sysml.root.package";
+    await assertRejects(
+      async () => await fingerprintTechnicalSysmlAnchor(nonAttributeOwner),
+      TypeError,
+      "parentElementId is only valid for AttributeUsage",
+    );
+  },
+);
+
 Deno.test("technical compiler rejects foreign, kind-drifted, and duplicate bindings", async () => {
   const { input, catalog } = await fixture();
   const mutations: Array<{

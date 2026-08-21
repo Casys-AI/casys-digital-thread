@@ -534,6 +534,7 @@ function architectureElements(
         id: attribute.id,
         kind: attribute.kind,
         name: attribute.label,
+        parentElementId: definition.id,
         provenance,
       });
     }

@@ -166,6 +166,106 @@ Deno.test("several PartDefinitions do not invent a result join", () => {
   );
 });
 
+Deno.test(
+  "multi-part CAD binds result to the exact common owner of reachable lever attributes",
+  () => {
+    assertEquals(
+      deriveUniqueTechnicalCompilationBindings(
+        [cadSource("source.cad")],
+        [
+          part("sysml.arm", "Arm"),
+          part("sysml.base", "Base"),
+          attribute("sysml.arm.thickness", "thickness", "sysml.arm"),
+        ],
+      ),
+      [{
+        id: "binding:source.cad:artifact.result:represents",
+        sourceId: "source.cad",
+        sourceSymbolId: "artifact.result",
+        sysmlElementId: "sysml.arm",
+        sysmlElementKind: "PartDefinition",
+        relation: "represents",
+      }, {
+        id: "binding:source.cad:parameter.thickness:parameterizes",
+        sourceId: "source.cad",
+        sourceSymbolId: "parameter.thickness",
+        sysmlElementId: "sysml.arm.thickness",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      }],
+    );
+  },
+);
+
+Deno.test(
+  "multi-part CAD leaves result unbound when a reachable lever has no exact owner",
+  () => {
+    assertEquals(
+      deriveUniqueTechnicalCompilationBindings(
+        [cadSource("source.cad")],
+        [
+          part("sysml.arm", "Arm"),
+          part("sysml.base", "Base"),
+          attribute("sysml.thickness", "thickness"),
+        ],
+      ),
+      [{
+        id: "binding:source.cad:parameter.thickness:parameterizes",
+        sourceId: "source.cad",
+        sourceSymbolId: "parameter.thickness",
+        sysmlElementId: "sysml.thickness",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      }],
+    );
+  },
+);
+
+Deno.test(
+  "multi-part CAD leaves result unbound when reachable lever owners differ",
+  () => {
+    assertEquals(
+      deriveUniqueTechnicalCompilationBindings(
+        [cadSourceWithTwoReachableLevers("source.cad")],
+        [
+          part("sysml.arm", "Arm"),
+          part("sysml.base", "Base"),
+          attribute("sysml.arm.thickness", "thickness", "sysml.arm"),
+          attribute("sysml.base.width", "width", "sysml.base"),
+        ],
+      ),
+      [{
+        id: "binding:source.cad:parameter.thickness:parameterizes",
+        sourceId: "source.cad",
+        sourceSymbolId: "parameter.thickness",
+        sysmlElementId: "sysml.arm.thickness",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      }, {
+        id: "binding:source.cad:parameter.width:parameterizes",
+        sourceId: "source.cad",
+        sourceSymbolId: "parameter.width",
+        sysmlElementId: "sysml.base.width",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      }],
+    );
+  },
+);
+
+Deno.test(
+  "multi-part CAD leaves result unbound when a reachable lever has no AttributeUsage bind",
+  () => {
+    assertEquals(
+      deriveUniqueTechnicalCompilationBindings(
+        [cadSource("source.cad")],
+        [part("sysml.arm", "Arm"), part("sysml.base", "Base")],
+      ),
+      [],
+    );
+  },
+);
+
 Deno.test("unique AttributeUsage name joins a parameter as parameterizes", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
@@ -246,6 +346,52 @@ function cadSource(id: string): { sourceText: string; analysis: SourceAnalysisBu
   };
 }
 
+function cadSourceWithTwoReachableLevers(
+  id: string,
+): { sourceText: string; analysis: SourceAnalysisBundle } {
+  return {
+    sourceText: "width = 20\nthickness = 2\nresult = Box(width, 10, thickness)\n",
+    analysis: {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id,
+        role: "cad-script",
+        language: "python",
+        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+      },
+      analyzer: { id: "test.ast", version: "1.0.0" },
+      policy: { profile: "policy.python-safe", status: "passed", findings: [] },
+      symbols: [{
+        id: "parameter.width",
+        kind: "parameter",
+        name: "width",
+        span: { start: { line: 1, column: 0 }, end: { line: 1, column: 5 } },
+      }, {
+        id: "parameter.thickness",
+        kind: "parameter",
+        name: "thickness",
+        span: { start: { line: 2, column: 0 }, end: { line: 2, column: 9 } },
+      }, {
+        id: "artifact.result",
+        kind: "artifact",
+        name: "result",
+      }],
+      dependencies: [{
+        id: "dependency.width.result",
+        kind: "structural-incidence",
+        fromSymbolId: "parameter.width",
+        toSymbolId: "artifact.result",
+      }, {
+        id: "dependency.thickness.result",
+        kind: "structural-incidence",
+        fromSymbolId: "parameter.thickness",
+        toSymbolId: "artifact.result",
+      }],
+      unresolvedConstructs: [],
+    },
+  };
+}
+
 function modelicaSource(id: string): {
   sourceText: string;
   analysis: SourceAnalysisBundle;
@@ -313,6 +459,11 @@ function part(id: string, name: string) {
   return { id, kind: "PartDefinition", name };
 }
 
-function attribute(id: string, name: string) {
-  return { id, kind: "AttributeUsage", name };
+function attribute(id: string, name: string, parentElementId?: string) {
+  return {
+    id,
+    kind: "AttributeUsage",
+    name,
+    ...(parentElementId === undefined ? {} : { parentElementId }),
+  };
 }

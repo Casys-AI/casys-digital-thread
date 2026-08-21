@@ -92,6 +92,11 @@ export interface TechnicalSysmlElementRef {
    * Absent on historical documents; never invented by the compiler.
    */
   readonly name?: string;
+  /**
+   * Exact captured PartDefinition owner of an AttributeUsage. Historical
+   * documents omit this field; it is never reconstructed from labels.
+   */
+  readonly parentElementId?: string;
 }
 
 export interface TechnicalSysmlElementProvenance {
@@ -888,6 +893,7 @@ function parseSysmlAnchor(value: unknown, path: string): TechnicalSysmlAnchor {
     .map((item, index) => parseSysmlElement(item, `${path}.elements[${index}]`))
     .sort(compareById);
   rejectDuplicates(elements.map((element) => element.id), `${path}.elements ids`);
+  assertExactAttributeParents(elements, path);
   const rootElementId = safeId(anchor.rootElementId, `${path}.rootElementId`);
   literalValue(anchor.rootElementKind, "Package", `${path}.rootElementKind`);
   const rootElements = elements.filter((element) =>
@@ -934,10 +940,13 @@ function parseSysmlElement(
 ): TechnicalSysmlElementRef {
   const element = closedRecord(
     value,
-    ["id", "kind", "provenance", "name"],
+    ["id", "kind", "provenance", "name", "parentElementId"],
     ["id", "kind", "provenance"],
     path,
   );
+  const parentElementId = Object.hasOwn(element, "parentElementId")
+    ? safeId(element.parentElementId, `${path}.parentElementId`)
+    : undefined;
   const parsed: TechnicalSysmlElementRef = {
     id: safeId(element.id, `${path}.id`),
     kind: safeId(element.kind, `${path}.kind`),
@@ -945,12 +954,52 @@ function parseSysmlElement(
       element.provenance,
       `${path}.provenance`,
     ),
+    ...(parentElementId === undefined ? {} : { parentElementId }),
   };
   if (!Object.hasOwn(element, "name")) return parsed;
   return {
     ...parsed,
     name: nonEmptyText(element.name, `${path}.name`),
   };
+}
+
+/**
+ * Attribute ownership is an exact captured identity relation. It cannot be
+ * supplied for another metaclass, pointed at an arbitrary node, or spliced
+ * between captures with different provenance. Omitting it remains valid for
+ * immutable historical compilation documents.
+ */
+function assertExactAttributeParents(
+  elements: readonly TechnicalSysmlElementRef[],
+  path: string,
+): void {
+  const elementsById = new Map(elements.map((element) => [element.id, element]));
+  for (const element of elements) {
+    if (element.parentElementId === undefined) continue;
+    if (element.kind !== "AttributeUsage") {
+      throw new TypeError(
+        `${path}.elements.${element.id}.parentElementId is only valid for AttributeUsage.`,
+      );
+    }
+    const parent = elementsById.get(element.parentElementId);
+    if (parent?.kind !== "PartDefinition") {
+      throw new TypeError(
+        `${path}.elements.${element.id}.parentElementId must name an exact PartDefinition.`,
+      );
+    }
+    if (
+      element.provenance.artifactId !== parent.provenance.artifactId ||
+      element.provenance.captureId !== parent.provenance.captureId ||
+      !fingerprintsEqual(
+        element.provenance.artifactFingerprint,
+        parent.provenance.artifactFingerprint,
+      )
+    ) {
+      throw new TypeError(
+        `${path}.elements.${element.id}.parentElementId provenance must equal its PartDefinition owner.`,
+      );
+    }
+  }
 }
 
 function parseSysmlElementProvenance(

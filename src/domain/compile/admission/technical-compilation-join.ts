@@ -7,6 +7,7 @@
  */
 
 import { deepFreeze, rejectDuplicates } from "../../kernel/case-validation.ts";
+import { listAnalysisReachableNamedNumericLevers } from "../source/named-cad-levers.ts";
 import type { SourceAnalysisBundle } from "../source/source-analysis.ts";
 import type {
   TechnicalCompilationProfileCatalog,
@@ -23,6 +24,8 @@ export interface TechnicalCompilationJoinElement {
   readonly id: string;
   readonly kind: string;
   readonly name?: string;
+  /** Exact captured owner for an AttributeUsage; never a display-label join. */
+  readonly parentElementId?: string;
 }
 
 export function deriveTechnicalCompilationProfileRequests(
@@ -89,27 +92,11 @@ export function deriveUniqueTechnicalCompilationBindings(
   const partDefinitions = elements.filter((element) =>
     element.kind === "PartDefinition"
   );
+  const elementsById = new Map(elements.map((element) => [element.id, element]));
   const bindings: TechnicalSemanticBinding[] = [];
   for (const source of sources) {
     const sourceId = source.analysis.source.id;
-    const representedArtifacts = source.analysis.symbols.filter((symbol) =>
-      symbol.kind === "artifact" &&
-      (symbol.name === "result" ||
-        (source.analysis.source.role === "modelica-model" &&
-          source.analysis.source.language === "modelica"))
-    );
-    if (representedArtifacts.length === 1 && partDefinitions.length === 1) {
-      const result = representedArtifacts[0]!;
-      const part = partDefinitions[0]!;
-      bindings.push({
-        id: `binding:${sourceId}:${result.id}:represents`,
-        sourceId,
-        sourceSymbolId: result.id,
-        sysmlElementId: part.id,
-        sysmlElementKind: part.kind,
-        relation: "represents",
-      });
-    }
+    const parameterBindings: TechnicalSemanticBinding[] = [];
     for (const symbol of source.analysis.symbols) {
       if (symbol.kind !== "parameter") continue;
       const attributes = elements.filter((element) =>
@@ -117,13 +104,40 @@ export function deriveUniqueTechnicalCompilationBindings(
       );
       if (attributes.length !== 1) continue;
       const attribute = attributes[0]!;
-      bindings.push({
+      parameterBindings.push({
         id: `binding:${sourceId}:${symbol.id}:parameterizes`,
         sourceId,
         sourceSymbolId: symbol.id,
         sysmlElementId: attribute.id,
         sysmlElementKind: attribute.kind,
         relation: "parameterizes",
+      });
+    }
+    bindings.push(...parameterBindings);
+
+    const representedArtifacts = source.analysis.symbols.filter((symbol) =>
+      symbol.kind === "artifact" &&
+      (symbol.name === "result" ||
+        (source.analysis.source.role === "modelica-model" &&
+          source.analysis.source.language === "modelica"))
+    );
+    const representedPart = partDefinitions.length === 1
+      ? partDefinitions[0]
+      : deriveCadRepresentedPartDefinition(
+        source,
+        representedArtifacts,
+        parameterBindings,
+        elementsById,
+      );
+    if (representedArtifacts.length === 1 && representedPart !== undefined) {
+      const result = representedArtifacts[0]!;
+      bindings.push({
+        id: `binding:${sourceId}:${result.id}:represents`,
+        sourceId,
+        sourceSymbolId: result.id,
+        sysmlElementId: representedPart.id,
+        sysmlElementKind: representedPart.kind,
+        relation: "represents",
       });
     }
   }
@@ -134,6 +148,53 @@ export function deriveUniqueTechnicalCompilationBindings(
     "$derived.bindings source/symbol pairs",
   );
   return deepFreeze(bindings);
+}
+
+/**
+ * In a multi-PartDefinition architecture, a CAD result is bound only through
+ * every analysis-reachable named numeric lever. The target is the one exact
+ * parent identity shared by those uniquely joined AttributeUsages; labels,
+ * caller choice, and element order never participate.
+ */
+function deriveCadRepresentedPartDefinition(
+  source: TechnicalCompilationJoinSource,
+  representedArtifacts: SourceAnalysisBundle["symbols"],
+  parameterBindings: readonly TechnicalSemanticBinding[],
+  elementsById: ReadonlyMap<string, TechnicalCompilationJoinElement>,
+): TechnicalCompilationJoinElement | undefined {
+  if (
+    source.analysis.source.role !== "cad-script" ||
+    representedArtifacts.length !== 1
+  ) return undefined;
+
+  const levers = listAnalysisReachableNamedNumericLevers(
+    source.sourceText,
+    source.analysis,
+  );
+  // No reachable named lever is not evidence for an arbitrary target.
+  if (levers.length === 0) return undefined;
+
+  let parent: TechnicalCompilationJoinElement | undefined;
+  for (const lever of levers) {
+    const parameterizes = parameterBindings.filter((binding) =>
+      binding.sourceId === lever.sourceId &&
+      binding.sourceSymbolId === lever.sourceSymbolId &&
+      binding.relation === "parameterizes" &&
+      binding.sysmlElementKind === "AttributeUsage"
+    );
+    if (parameterizes.length !== 1) return undefined;
+
+    const attribute = elementsById.get(parameterizes[0]!.sysmlElementId);
+    if (
+      attribute?.kind !== "AttributeUsage" ||
+      attribute.parentElementId === undefined
+    ) return undefined;
+    const owner = elementsById.get(attribute.parentElementId);
+    if (owner?.kind !== "PartDefinition") return undefined;
+    if (parent !== undefined && parent.id !== owner.id) return undefined;
+    parent = owner;
+  }
+  return parent;
 }
 
 /**

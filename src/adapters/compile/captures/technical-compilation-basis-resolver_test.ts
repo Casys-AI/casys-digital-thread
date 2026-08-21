@@ -78,6 +78,31 @@ Deno.test("technical basis resolver reopens exact project Thread and canonical S
   }]);
 });
 
+Deno.test(
+  "technical basis resolver carries the exact owning PartDefinition for captured AttributeUsage",
+  async () => {
+    const fixture = await exactFixture({ frameAttribute: true });
+    const resolved = await fixture.resolver.resolve(fixture.request);
+    const attribute = resolved?.sysmlAnchor.elements.find((element) =>
+      element.id === "attribute-usage-frame-thickness"
+    );
+    assertEquals(attribute, {
+      id: "attribute-usage-frame-thickness",
+      kind: "AttributeUsage",
+      name: "thickness",
+      parentElementId: "part-definition-frame",
+      provenance: {
+        artifactId: fixture.architectureArtifactId,
+        artifactFingerprint: {
+          algorithm: "sha256",
+          digest: fixture.architectureDigest,
+        },
+        captureId: fixture.architectureDigest,
+      },
+    });
+  },
+);
+
 Deno.test("technical basis resolver rejects a foreign project attachment", async () => {
   const fixture = await exactFixture({ declareBasisInProject: false });
   await assertRejects(
@@ -245,6 +270,7 @@ interface FixtureOptions {
   readonly staleArchitecture?: boolean;
   readonly archiveArchitecture?: boolean;
   readonly duplicateSysmlId?: boolean;
+  readonly frameAttribute?: boolean;
   readonly requirementsCaptureVersion?: "v2" | "v3";
   readonly divergentConstraintSourceId?: boolean;
   readonly foreignRequirementsTargetId?: boolean;
@@ -316,6 +342,15 @@ async function exactFixture(options: FixtureOptions = {}) {
       kind: "PartDefinition",
       label: "Frame",
       usages: [],
+      ...(options.frameAttribute
+        ? {
+          attributes: [{
+            id: "attribute-usage-frame-thickness",
+            kind: "AttributeUsage",
+            label: "thickness",
+          }],
+        }
+        : {}),
     }],
     insertedAt: ARCHITECTURE_AT,
     sourceAnalyses: [{
