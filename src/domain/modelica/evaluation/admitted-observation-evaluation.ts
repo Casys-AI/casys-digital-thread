@@ -16,13 +16,21 @@ import {
   rejectDuplicates,
   safeId,
 } from "../../kernel/case-validation.ts";
+import { sha256Fingerprint } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
+import type { ModelicaThermalMethodSheet } from "../thermal-method-sheet.ts";
 
 export const MODELICA_ADMITTED_OBSERVATION_EVALUATION_METHOD_SCHEMA =
   "modelica-admitted-observation-evaluation-method/1.0" as const;
 
 export const MODELICA_ADMITTED_OBSERVATION_EVALUATION_PROFILE_ID =
   "admitted-modelica-observations-v1" as const;
+
+export const MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_SCHEMA =
+  "admitted-modelica-unit-policy/1.0" as const;
+export const MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_ID =
+  "admitted-modelica-unit-identity" as const;
+export const MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_VERSION = "1.0.0" as const;
 
 export type AdmittedObservationRole = "final" | "max_abs";
 
@@ -69,6 +77,53 @@ const ROOT_KEYS = [
 ] as const;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const ROLES = ["final", "max_abs"] as const;
+
+/** Exact-string unit match only. No conversion, no invented magnitude. */
+export const MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_DOCUMENT = deepFreeze({
+  schemaVersion: MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_SCHEMA,
+  id: MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_ID,
+  version: MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_VERSION,
+  kind: "identity",
+});
+
+export async function admittedModelicaUnitIdentityPolicy(): Promise<
+  AdmittedObservationUnitPolicy
+> {
+  return {
+    id: MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_ID,
+    version: MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_VERSION,
+    fingerprint: await sha256Fingerprint(
+      MODELICA_ADMITTED_UNIT_IDENTITY_POLICY_DOCUMENT,
+    ),
+  };
+}
+
+export function deriveAdmittedObservationEvaluationMethod(
+  sheet: ModelicaThermalMethodSheet,
+  unitPolicy: AdmittedObservationUnitPolicy,
+): AdmittedObservationEvaluationMethod {
+  return validateAdmittedObservationEvaluationMethod({
+    schemaVersion: MODELICA_ADMITTED_OBSERVATION_EVALUATION_METHOD_SCHEMA,
+    profile: {
+      id: MODELICA_ADMITTED_OBSERVATION_EVALUATION_PROFILE_ID,
+      version: "1.0.0",
+      admittedRoles: ["final", "max_abs"],
+    },
+    unitPolicy,
+    selections: sheet.outputs.map((output) => ({
+      outputSymbolId: output.modelSymbolId,
+      role: output.role,
+      requirementElementId: output.requirementElementId,
+      declaredUnit: output.declaredUnit,
+    })),
+  });
+}
+
+export function fingerprintAdmittedObservationEvaluationMethod(
+  method: AdmittedObservationEvaluationMethod,
+): Promise<ContentFingerprint> {
+  return sha256Fingerprint(validateAdmittedObservationEvaluationMethod(method));
+}
 
 export function validateAdmittedObservationEvaluationMethod(
   value: unknown,

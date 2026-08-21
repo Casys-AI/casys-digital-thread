@@ -1,5 +1,9 @@
 import { assertEquals, assertThrows } from "@std/assert";
+import { validateModelicaThermalMethodSheet } from "../thermal-method-sheet.ts";
+import { validThermalMethodSheetPlaceholder } from "../../../testing/modelica-thermal-method-sheet-fixtures.ts";
 import {
+  admittedModelicaUnitIdentityPolicy,
+  deriveAdmittedObservationEvaluationMethod,
   selectAdmittedObservationEvaluations,
   validateAdmittedObservationEvaluationMethod,
 } from "./admitted-observation-evaluation.ts";
@@ -27,6 +31,26 @@ function validMethod(): Record<string, unknown> {
     }],
   };
 }
+
+Deno.test(
+  "admitted observation method derives from a thermal method sheet without caller values",
+  async () => {
+    const sheet = validateModelicaThermalMethodSheet(
+      validThermalMethodSheetPlaceholder(),
+    );
+    const method = deriveAdmittedObservationEvaluationMethod(
+      sheet,
+      await admittedModelicaUnitIdentityPolicy(),
+    );
+    assertEquals(method.unitPolicy.id, "admitted-modelica-unit-identity");
+    assertEquals(method.selections, [{
+      outputSymbolId: "placeholder-output",
+      role: "final",
+      requirementElementId: "placeholder-requirement",
+      declaredUnit: "unit-pending-source",
+    }]);
+  },
+);
 
 Deno.test("admitted observation method accepts exact final/max_abs selections", () => {
   const method = validateAdmittedObservationEvaluationMethod(validMethod());
