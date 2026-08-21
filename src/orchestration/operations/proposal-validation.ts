@@ -83,6 +83,10 @@ import {
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
 } from "../../domain/modelica/admitted/run-proposal.ts";
 import {
+  parseThermalMethodSheetSealParameters,
+  VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
+} from "../../domain/modelica/thermal-method-sheet-proposal.ts";
+import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
   parseDfmDecisionParameters,
@@ -177,6 +181,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(VERIFY_SEAL_PROOF_CASE_OPERATION),
     (parameters) => {
       parseFeaProofDecisionParameters(feaProofDecisionParametersToMap(parameters));
+    },
+  ],
+  [
+    keyOf(VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION),
+    (parameters) => {
+      parseThermalMethodSheetSealParameters(parameters);
     },
   ],
   [

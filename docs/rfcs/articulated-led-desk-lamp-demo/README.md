@@ -158,7 +158,7 @@ not a substitute for persisted evidence.
 | 01  | in progress (P03)  | P01 `0488d98`; P02 `d2dcdac`; P03 `7d1c268` | three sibling `declared` questions; P04 parked on G2 | G2 for P04 |
 | 02  | in progress (A03)  | A01–A02 `98b57bf`; A03 this commit | typed/value AttributeUsage probe `unresolved` (type yes, value/unit no); A04 parked | A04 parked; 03/04/05 contracts |
 | 03  | in progress (M01)  | M01 this commit | catalog-absent + project/subject-mismatch vs dl05/CA02 | M02 parked on G2 |
-| 04  | in progress (T03)  | T01 `3624625`; T02 `becb44b`; T03 this commit | CAS save/read/reopen; URI only, no path | T04 |
+| 04  | in progress (T04)  | T03 `c861972`; T04 this commit | `verify.seal-modelica-thermal-method-sheet@1` MRTR identities only; YOLO may auto-confirm | T05 |
 | 05  | pending            | —               | —                                                                                                                                  | 06 after 03 and 04  |
 | 06  | pending            | —               | —                                                                                                                                  | 07                  |
 | 07  | pending            | —               | —                                                                                                                                  | 10                  |
