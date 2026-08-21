@@ -101,7 +101,6 @@ Deno.test("admitted execute reopens sealed Modelica bytes and never takes caller
     profiles: fixture.profiles,
     project: { project: { id: "project.ramp" } } as never,
     run: { id: "run.admitted", basis: fixture.command.basis } as never,
-    basisSnapshot: { id: "snapshot.8", revision: 8 } as never,
     admission: (await fixture.review.execute(fixture.command)).admission,
   });
   const sourceSha = (await fingerprintTechnicalSourceText(
@@ -128,7 +127,6 @@ Deno.test("admitted execute refuses a Build123d projection", async () => {
         profiles: fixture.profiles,
         project: { project: { id: "project.ramp" } } as never,
         run: { id: "run.admitted", basis: fixture.command.basis } as never,
-        basisSnapshot: { id: "snapshot.8", revision: 8 } as never,
         admission,
       }),
     Error,

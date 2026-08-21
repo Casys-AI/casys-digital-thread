@@ -18,7 +18,6 @@ import type {
   AdmittedModelicaExecutionAttemptKey,
   AdmittedModelicaExecutionAttemptStore,
   AdmittedModelicaExecutionThreadEvidence,
-  AdmittedModelicaExecutionThreadEvidenceInput,
 } from "../../../application/ports/out/modelica/admitted-execution-attempt-store.ts";
 import { fingerprintAdmittedModelicaExecutionAttemptIdentity } from "../../../application/ports/out/modelica/admitted-execution-attempt-store.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
@@ -27,11 +26,18 @@ import type {
   AdmittedModelicaExecutionProfile,
   AdmittedModelicaExecutionProfileCatalog,
 } from "../../../application/ports/out/modelica/admitted-execution-profile-catalog.ts";
-import { PrepareProjectAdmittedModelicaRunReview } from "../../../application/use-cases/modelica/admitted/prepare-run-review.ts";
 import {
-  isolatedRequestFromAdmittedSource,
-  ReopenAdmittedCompilationSource,
-} from "../../../application/use-cases/compile/admission/reopen-admitted-compilation-source.ts";
+  decideAdmittedModelicaAttemptResume,
+} from "../../../application/use-cases/modelica/admitted/attempt-resume-policy.ts";
+import {
+  type AdmittedExecutionRequest,
+  assertAdmittedModelicaAdmissionScope,
+  assertSameReviewedAdmittedModelicaAuthority,
+  reopenAdmittedExecutionRequest,
+  requireAdmittedModelicaExecutionShape,
+  requireReviewedAdmittedModelicaAuthority,
+  type ReviewedAdmittedModelicaAuthority,
+} from "../../../application/use-cases/modelica/admitted/reopen-reviewed-execution.ts";
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
@@ -39,25 +45,24 @@ import {
   type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
-  admittedModelicaExecutionContractFromSourceBytes,
-  assertAdmittedModelicaEvidenceMatchesContract,
-  createModelicaAdmittedExecutionCapture,
-  deriveAdmittedModelicaExecutionRunId,
   type ModelicaAdmittedExecutionCapture,
   validateModelicaAdmittedExecutionCapture,
 } from "../../../domain/modelica/admitted/execution-evidence.ts";
-import { parseAdmittedModelicaIsolatedEvidence } from "../../../domain/modelica/admitted/isolated-output.ts";
+import {
+  assertThreadEvidenceExact as assertDomainThreadEvidenceExact,
+  buildDocumentarySuccessor as buildDomainDocumentarySuccessor,
+  type DocumentarySuccessor,
+  exactAdmissionArtifact as findExactAdmissionArtifact,
+  threadEvidenceFor,
+} from "../../../domain/modelica/admitted/documentary-thread-evidence.ts";
+import { buildAdmittedModelicaPublishedOutputCapture } from "../../../domain/modelica/admitted/published-output-evidence.ts";
 import {
   type IsolatedCodeExecutionReceipt,
   type IsolatedCodeExecutionReceiptRecord,
   isolatedCodeExecutionReceiptRecord,
   type IsolatedCodeExecutionRequest,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
-import {
-  type ModelicaAdmittedRunAdmission,
-  parseModelicaAdmittedRunAdmissionParameters,
-  SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
-} from "../../../domain/modelica/admitted/run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../../domain/modelica/admitted/run-proposal.ts";
 
 import {
   deterministicJson,
@@ -65,11 +70,8 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
-import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import type {
   EngineeringAgentRun,
-  EngineeringApproval,
-  EngineeringDecision,
   EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
@@ -77,16 +79,8 @@ import type {
 } from "../../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
-  ThreadArtifactConsumption,
-  ThreadObservation,
-  ThreadProvenanceLink,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
-import { archivedRefKeys } from "../../../domain/thread/thread-snapshot.ts";
-import {
-  applyThreadSnapshotExtensionIfNew,
-  type ThreadSnapshotExtension,
-} from "../../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
@@ -103,7 +97,13 @@ import {
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
 
-export { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION };
+export { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION, reopenAdmittedExecutionRequest };
+
+type ReviewedAuthority = ReviewedAdmittedModelicaAuthority;
+const requireReviewedAuthority = requireReviewedAdmittedModelicaAuthority;
+const assertAdmissionScope = assertAdmittedModelicaAdmissionScope;
+const assertSameAuthority = assertSameReviewedAdmittedModelicaAuthority;
+const requireExecutionShape = requireAdmittedModelicaExecutionShape;
 
 export interface AdmittedModelicaThreadSnapshotStore extends ThreadSnapshotStore {
   getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined>;
@@ -133,19 +133,6 @@ export interface SimulateRunAdmittedModelicaRunExecutorDependencies {
   readonly attempts: AdmittedModelicaExecutionAttemptStore;
   readonly captures: AdmittedModelicaExecutionCaptureStore;
   readonly lease: EngineeringProjectRunLease;
-}
-
-interface ReviewedAuthority {
-  readonly decision: EngineeringDecision;
-  readonly approval: EngineeringApproval;
-  readonly proposal: NonNullable<EngineeringDecision["proposal"]>;
-  readonly admission: ModelicaAdmittedRunAdmission;
-}
-
-interface DocumentarySuccessor {
-  readonly snapshot: ThreadSnapshot;
-  readonly artifacts: readonly [ThreadArtifact, ThreadArtifact, ThreadArtifact];
-  readonly observations: readonly ThreadObservation[];
 }
 
 interface PersistedAdmittedExecutionCapture {
@@ -219,7 +206,6 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       profiles: this.d.profiles,
       project,
       run,
-      basisSnapshot: preClaimSnapshot,
       admission: authority.admission,
     });
     const firstClaim = run.status === "queued";
@@ -255,7 +241,6 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         profiles: this.d.profiles,
         project,
         run,
-        basisSnapshot,
         admission: authority.admission,
       });
       const identity = await attemptIdentity(
@@ -362,14 +347,20 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     dispatchedAt: string,
   ): Promise<AdmittedModelicaExecutionAttempt> {
     let attempt = initial;
-    if (attempt.phase === "completed") {
-      throw invalidTransition(
-        "The project run is active but its admitted Modelica journal is already completed.",
-      );
-    }
-    if (attempt.phase === "output-published") return attempt;
-
-    if (attempt.phase === "prepared") {
+    const decision = decideAdmittedModelicaAttemptResume({
+      phase: attempt.phase,
+      executionRunId: key.executionRunId,
+      producerGeneration: "dispatch" in attempt
+        ? attempt.dispatch.producerGeneration
+        : undefined,
+    });
+    if (decision.action === "already-published") return attempt;
+    if (decision.action === "transition-g0") {
+      if (attempt.phase !== "prepared") {
+        throw invalidTransition(
+          "The admitted Modelica journal phase is not recoverable.",
+        );
+      }
       const transition = await this.d.attempts.markDispatching({
         ...key,
         dispatchedAt,
@@ -384,12 +375,17 @@ export class SimulateRunAdmittedModelicaRunExecutor {
           "The admitted Modelica generation-zero dispatch acknowledgement is not exact.",
         );
       }
+      // Only this local transitioned-now may call runner.run.
       return transition.outcome === "transitioned-now"
         ? await this.#dispatchOnceOrRecover(context, attempt, key)
         : await this.#recoverDispatch(context, attempt, key, dispatchedAt);
     }
-
-    if (attempt.phase === "generation-zero-cleaned") {
+    if (decision.action === "advance-g1") {
+      if (attempt.phase !== "generation-zero-cleaned") {
+        throw invalidTransition(
+          "The admitted Modelica journal phase is not recoverable.",
+        );
+      }
       return await this.#redispatchGenerationOne(
         context,
         attempt,
@@ -397,11 +393,19 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         dispatchedAt,
       );
     }
-
-    if (attempt.phase === "dispatching") {
+    if (decision.action === "read-publication") {
+      if (attempt.phase !== "dispatching") {
+        throw invalidTransition(
+          "The admitted Modelica journal phase is not recoverable.",
+        );
+      }
       return await this.#recoverDispatch(context, attempt, key, dispatchedAt);
     }
-    throw invalidTransition("The admitted Modelica journal phase is not recoverable.");
+    throw invalidTransition(
+      decision.action === "quarantine"
+        ? decision.message
+        : "The admitted Modelica journal phase is not recoverable.",
+    );
   }
 
   async #dispatchOnceOrRecover(
@@ -441,35 +445,25 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         "The admitted Modelica publication cannot be resolved; no isolated redispatch is authorized.",
       );
     }
-    if (
-      resolution.runId !== key.executionRunId ||
-      resolution.producerGeneration !== attempt.dispatch.producerGeneration
-    ) {
-      throw invalidTransition(
-        "The admitted Modelica publication resolution names another producer generation.",
-      );
-    }
-    if (resolution.status === "published") {
-      if (
-        deterministicJson(resolution.ref) !==
-          deterministicJson(resolution.receipt.publication.ref)
-      ) {
-        throw invalidTransition(
-          "The admitted Modelica publication resolution reference differs from its receipt record.",
-        );
-      }
-      const receipt = await this.#reopenReceipt(resolution.receipt);
+    const decision = decideAdmittedModelicaAttemptResume({
+      phase: "dispatching",
+      executionRunId: key.executionRunId,
+      producerGeneration: attempt.dispatch.producerGeneration,
+      resolution,
+    });
+    if (decision.action === "adopt-publication") {
+      const receipt = await this.#reopenReceipt(decision.receipt);
       return await this.#recordPublishedReceipt(attempt, key, receipt);
     }
-    if (resolution.status === "outcome-unknown") {
-      throw invalidTransition(
-        "The admitted Modelica isolated-output outcome remains unknown; no redispatch is authorized.",
-      );
-    }
-    if (attempt.dispatch.producerGeneration === 1) {
+    if (decision.action === "close-g1") {
       await this.#proveGenerationClosed(key.executionRunId, 1);
+      throw invalidTransition(decision.message);
+    }
+    if (decision.action !== "cleanup-g0") {
       throw invalidTransition(
-        "The sole admitted Modelica retry generation produced no publication and was closed; no third dispatch exists.",
+        decision.action === "quarantine"
+          ? decision.message
+          : "The admitted Modelica journal phase is not recoverable.",
       );
     }
     const destruction = await this.#proveGenerationClosed(key.executionRunId, 0);
@@ -716,56 +710,21 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         "The admitted Modelica evidence and result bytes could not both be reopened.",
       );
     }
-    const [evidenceSha256, resultSha256] = await Promise.all([
-      fingerprintResourceBytes(evidenceBytes),
-      fingerprintResourceBytes(resultBytes),
-    ]);
-    if (
-      evidenceSha256 !== evidenceOutput.sha256 ||
-      resultSha256 !== resultOutput.sha256
-    ) {
-      throw invalidTransition(
-        "The admitted Modelica published bytes differ from their journaled output hashes.",
-      );
-    }
-    let evidence;
     try {
-      evidence = parseAdmittedModelicaIsolatedEvidence(evidenceBytes);
-    } catch {
-      throw invalidTransition(
-        "The admitted Modelica evidence does not match the generic v2 evidence contract.",
-      );
+      return await buildAdmittedModelicaPublishedOutputCapture({
+        projectId: project.project.id,
+        agentRunId: run.id,
+        executionRunId: context.request.runId,
+        admission: context.admission,
+        sourceBytes: context.request.source.bytes,
+        sourceSha256: context.request.source.sha256,
+        receipt,
+        evidenceBytes,
+        resultBytes,
+      });
+    } catch (error) {
+      throw domainTransition(error);
     }
-    if (
-      evidence.inputBundleSha256 !== context.request.source.sha256 ||
-      evidence.result.byteCount !== resultBytes.byteLength ||
-      evidence.result.sha256 !== resultSha256
-    ) {
-      throw invalidTransition(
-        "The admitted Modelica v2 evidence does not attest the reopened source and exact result bytes.",
-      );
-    }
-    let contract;
-    try {
-      contract = admittedModelicaExecutionContractFromSourceBytes(
-        context.request.source.bytes,
-      );
-      assertAdmittedModelicaEvidenceMatchesContract(evidence, contract);
-    } catch {
-      throw invalidTransition(
-        "The admitted Modelica evidence does not match the reopened source contract.",
-      );
-    }
-    return await createModelicaAdmittedExecutionCapture({
-      projectId: project.project.id,
-      agentRunId: run.id,
-      executionRunId: context.request.runId,
-      admission: context.admission,
-      sourceSha256: context.request.source.sha256,
-      receipt,
-      evidence,
-      contract,
-    });
   }
 
   async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
@@ -938,7 +897,6 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       profiles: this.d.profiles,
       project,
       run,
-      basisSnapshot,
       admission: currentAuthority.admission,
     });
     const identity = await attemptIdentity(
@@ -1227,109 +1185,6 @@ export class SimulateRunAdmittedModelicaRunExecutor {
   }
 }
 
-interface AdmittedExecutionRequest {
-  readonly admission: ModelicaAdmittedRunAdmission;
-  readonly executionProfile: AdmittedModelicaExecutionProfile;
-  readonly request: IsolatedCodeExecutionRequest;
-}
-
-export async function reopenAdmittedExecutionRequest(input: {
-  readonly admissions: TechnicalCompilationAdmissionReader;
-  readonly profiles: AdmittedModelicaExecutionProfileCatalog;
-  readonly project: EngineeringProjectSnapshot;
-  readonly run: EngineeringAgentRun;
-  readonly basisSnapshot: ThreadSnapshot;
-  readonly admission: ModelicaAdmittedRunAdmission;
-}): Promise<AdmittedExecutionRequest> {
-  const basis = requireBasis(input.run);
-  const review = await new PrepareProjectAdmittedModelicaRunReview({
-    admissions: input.admissions,
-    profiles: input.profiles,
-  }).execute({
-    projectId: input.project.project.id,
-    basis,
-    artifactId: input.admission.admissionArtifact.id,
-    artifactFingerprint: input.admission.admissionArtifact.fingerprint,
-  });
-  if (deterministicJson(review.admission) !== deterministicJson(input.admission)) {
-    throw invalidTransition(
-      "The reopened admitted Modelica review differs from the signed MRTR.",
-    );
-  }
-  let admitted;
-  try {
-    admitted = await new ReopenAdmittedCompilationSource({
-      admissions: input.admissions,
-    }).execute({
-      projectId: input.project.project.id,
-      basis,
-      artifactId: input.admission.admissionArtifact.id,
-      artifactFingerprint: input.admission.admissionArtifact.fingerprint,
-      expectedTarget: "modelica-source-qualification",
-    });
-  } catch {
-    throw invalidTransition(
-      "The reopened admission is not a ready Modelica compilation.",
-    );
-  }
-  if (
-    !fingerprintsEqual(
-      admitted.sourceFingerprint,
-      input.admission.compilation.source.sourceFingerprint,
-    ) ||
-    !fingerprintsEqual(
-      admitted.documentFingerprint,
-      input.admission.compilation.document.fingerprint,
-    )
-  ) {
-    throw invalidTransition(
-      "The reopened Modelica source is not the signed admission.",
-    );
-  }
-  const profile = await input.profiles.initial();
-  const executionRunId = await deriveAdmittedModelicaExecutionRunId(
-    input.project.project.id,
-    input.run.id,
-  );
-  const request = await isolatedRequestFromAdmittedSource({
-    runId: executionRunId,
-    sourceText: admitted.sourceText,
-    sourceSha256: admitted.sourceFingerprint.digest,
-    profile: profile.executionProfile,
-    policy: profile.isolationPolicy,
-    outputs: profile.outputManifest,
-    maximumSourceBytes: profile.maximumSourceBytes,
-  });
-  return {
-    admission: review.admission,
-    executionProfile: profile,
-    request,
-  };
-}
-
-function requireExecutionShape(
-  project: EngineeringProjectSnapshot,
-  run: EngineeringAgentRun,
-): void {
-  const workItem = project.workItems.find((item) => item.id === run.workItemId);
-  const operation = workItem?.operation;
-  const binding = operation?.bindings[0];
-  if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
-    run.baseSnapshot !== undefined || run.resolvedOperationPlan !== undefined ||
-    !workItem || operation?.id !== SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id ||
-    operation.version !== SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version ||
-    workItem.decisionIds.length !== 1 ||
-    operation.bindings.length !== 1 || binding?.name !== "compilationAdmission" ||
-    binding.source.kind !== "thread-entity" ||
-    binding.source.reference.kind !== "artifact"
-  ) {
-    throw invalidTransition(
-      `Run ${run.id} is not bound to simulate.run-admitted-modelica@1 with compilationAdmission.`,
-    );
-  }
-}
-
 function requireClaimedShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
@@ -1341,121 +1196,6 @@ function requireClaimedShape(
   ) {
     throw invalidTransition(
       "This executor may continue only the exact admitted Modelica run it claimed.",
-    );
-  }
-}
-
-async function requireReviewedAuthority(
-  project: EngineeringProjectSnapshot,
-  run: EngineeringAgentRun,
-): Promise<ReviewedAuthority> {
-  const workItem = project.workItems.find((item) => item.id === run.workItemId);
-  if (!workItem || workItem.decisionIds.length !== 1) {
-    throw invalidTransition(
-      "The admitted Modelica work item must name exactly one decision.",
-    );
-  }
-  const decision = project.decisions.find((item) =>
-    item.id === workItem.decisionIds[0]
-  );
-  if (
-    !decision || decision.status !== "approved" || !decision.proposal ||
-    !decision.inputFingerprint || decision.inputEvidenceRefs.length !== 1 ||
-    decision.inputEvidenceRefs[0]?.kind !== "artifact" ||
-    decision.approvalIds.length !== 1
-  ) {
-    throw invalidTransition(
-      "The admitted Modelica run requires one exact approved MRTR decision over one admission artifact.",
-    );
-  }
-  const approvals = project.approvals.filter((item) => item.decisionId === decision.id);
-  const approval = approvals[0];
-  const basis = requireBasis(run);
-  if (
-    approvals.length !== 1 || !approval ||
-    approval.id !== decision.approvalIds[0] ||
-    approval.status !== "approved" ||
-    approval.decidedByOrigin !== "human" ||
-    typeof approval.decidedBy !== "string" || approval.decidedBy.trim() === "" ||
-    typeof approval.decidedAt !== "string" ||
-    Number.isNaN(Date.parse(approval.decidedAt)) ||
-    !approval.inputFingerprint ||
-    !sameSnapshotBasis(decision.baseSnapshot, basis) ||
-    !sameSnapshotBasis(approval.baseSnapshot, basis) ||
-    !evidenceRefsEqual(approval.inputEvidenceRefs, decision.inputEvidenceRefs) ||
-    !fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
-  ) {
-    throw invalidTransition(
-      "The admitted Modelica decision must have one matching human approval on the exact run basis and admission evidence.",
-    );
-  }
-  const expectedDecisionFingerprint = await sha256Fingerprint({
-    baseSnapshot: decision.baseSnapshot,
-    inputEvidenceRefs: decision.inputEvidenceRefs,
-    proposal: {
-      summary: decision.proposal.summary,
-      parameters: decision.proposal.parameters,
-    },
-  });
-  if (!fingerprintsEqual(expectedDecisionFingerprint, decision.inputFingerprint)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      "The admitted Modelica decision fingerprint no longer seals its exact basis, evidence, summary and parameters.",
-    );
-  }
-  const expectedRunFingerprint = await sha256Fingerprint({
-    workItemId: workItem.id,
-    basis,
-    operation: {
-      id: workItem.operation?.id,
-      version: workItem.operation?.version,
-      bindings: workItem.operation?.bindings,
-    },
-    approvedDecisions: [{
-      id: decision.id,
-      inputFingerprint: decision.inputFingerprint,
-    }],
-  });
-  if (!fingerprintsEqual(run.inputFingerprint, expectedRunFingerprint)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      "The admitted Modelica run fingerprint no longer seals its sole MRTR decision, operation and basis.",
-    );
-  }
-  let admission: ModelicaAdmittedRunAdmission;
-  try {
-    admission = parseModelicaAdmittedRunAdmissionParameters(
-      decision.proposal.parameters,
-    );
-  } catch {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      "Admitted Modelica decision parameters failed exact closed-schema validation.",
-    );
-  }
-  return { decision, approval, proposal: decision.proposal, admission };
-}
-
-function assertAdmissionScope(
-  project: EngineeringProjectSnapshot,
-  run: EngineeringAgentRun,
-  decision: EngineeringDecision,
-  admission: ModelicaAdmittedRunAdmission,
-): void {
-  const basis = requireBasis(run);
-  const evidence = decision.inputEvidenceRefs[0];
-  const workItem = project.workItems.find((item) => item.id === run.workItemId)!;
-  const binding = workItem.operation!.bindings[0]!;
-  if (
-    decision.inputEvidenceRefs.length !== 1 || evidence?.kind !== "artifact" ||
-    evidence.snapshotId !== basis.snapshotId ||
-    evidence.snapshotRevision !== basis.revision ||
-    evidence.id !== admission.admissionArtifact.id ||
-    binding.source.kind !== "thread-entity" ||
-    deterministicJson(binding.source.reference) !== deterministicJson(evidence)
-  ) {
-    throw invalidTransition(
-      "The admitted Modelica binding, MRTR evidence, and admission artifact disagree.",
     );
   }
 }
@@ -1560,33 +1300,6 @@ function requiredRunFingerprint(run: EngineeringAgentRun): ContentFingerprint {
   return run.inputFingerprint;
 }
 
-function assertSameAuthority(
-  expected: ReviewedAuthority,
-  actual: ReviewedAuthority,
-): void {
-  if (deterministicJson(expected) !== deterministicJson(actual)) {
-    throw invalidTransition(
-      "The exact human-approved admitted Modelica authority changed during execution.",
-    );
-  }
-}
-
-function sameSnapshotBasis(
-  candidate: EngineeringDecision["baseSnapshot"],
-  expected: EngineeringThreadSnapshotBasis,
-): boolean {
-  return candidate?.snapshotId === expected.snapshotId &&
-    candidate.revision === expected.revision &&
-    candidate.subjectId === expected.subjectId;
-}
-
-function evidenceRefsEqual(
-  left: readonly EngineeringThreadEntityRef[],
-  right: readonly EngineeringThreadEntityRef[],
-): boolean {
-  return deterministicJson(left) === deterministicJson(right);
-}
-
 function buildDocumentarySuccessor(input: {
   readonly basisSnapshot: ThreadSnapshot;
   readonly basis: EngineeringThreadSnapshotBasis;
@@ -1596,163 +1309,20 @@ function buildDocumentarySuccessor(input: {
   readonly captureUri: string;
   readonly receipt: IsolatedCodeExecutionReceipt;
 }): DocumentarySuccessor {
-  const capturedAt = requiredStart(input.run);
-  const admissionArtifact = exactAdmissionArtifact(
-    input.basisSnapshot,
-    input.capture.admission.admissionArtifact.id,
-    input.capture.admission.admissionArtifact.fingerprint,
-  );
-  const operation = {
-    serverId: "digital-thread",
-    tool:
-      `${SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id}@${SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version}`,
-    runId: input.run.id,
-  };
-  const freshness = {
-    status: "fresh" as const,
-    changedAt: capturedAt,
-    invalidatedByChangeIds: [],
-  };
-  const outputs = new Map(
-    input.receipt.outputs.map((output) => [output.role, output]),
-  );
-  const evidenceOutput = outputs.get("evidence")!;
-  const resultOutput = outputs.get("result")!;
-  const captureArtifact: ThreadArtifact = {
-    id: `modelica-admitted-capture-${input.captureFingerprint.digest}`,
-    name: "Admitted Modelica execution capture",
-    kind: "document",
-    version: input.captureFingerprint.digest,
-    fingerprint: input.captureFingerprint,
-    uri: input.captureUri,
-    mediaType: "application/json",
-    producer: operation,
-    inputArtifactIds: [admissionArtifact.id],
-    freshness,
-  };
-  const evidenceArtifact: ThreadArtifact = {
-    id: `modelica-admitted-evidence-${evidenceOutput.sha256}`,
-    name: "Admitted Modelica normalized evidence",
-    kind: "evidence",
-    version: evidenceOutput.sha256,
-    fingerprint: { algorithm: "sha256", digest: evidenceOutput.sha256 },
-    uri: evidenceOutput.casUri,
-    mediaType: evidenceOutput.mediaType,
-    producer: operation,
-    inputArtifactIds: [admissionArtifact.id],
-    freshness,
-  };
-  const resultArtifact: ThreadArtifact = {
-    id: `modelica-admitted-result-${resultOutput.sha256}`,
-    name: "Admitted OpenModelica result",
-    kind: "solver-result",
-    version: resultOutput.sha256,
-    fingerprint: { algorithm: "sha256", digest: resultOutput.sha256 },
-    uri: resultOutput.casUri,
-    mediaType: resultOutput.mediaType,
-    producer: operation,
-    inputArtifactIds: [admissionArtifact.id],
-    freshness,
-  };
-  const consumption: ThreadArtifactConsumption = {
-    id: `consume-${admissionArtifact.id}-by-${captureArtifact.id}`,
-    artifactId: admissionArtifact.id,
-    consumer: operation,
-    observedFingerprint: admissionArtifact.fingerprint,
-    verifiedAt: capturedAt,
-    status: "verified",
-  };
-  const observations = admittedModelicaObservations({
-    capture: input.capture,
-    runId: input.run.id,
-    operation,
-    evidenceArtifactId: evidenceArtifact.id,
-    resultArtifactId: resultArtifact.id,
-    capturedAt,
-    freshness,
-  });
-  const provenance: ThreadProvenanceLink[] = [
-    ...[captureArtifact, evidenceArtifact, resultArtifact].map((artifact) => ({
-      id: `derived-from-${admissionArtifact.id}-by-${artifact.id}`,
-      relation: "derived_from" as const,
-      from: { kind: "artifact" as const, id: artifact.id },
-      to: { kind: "artifact" as const, id: admissionArtifact.id },
-      rationale:
-        "The admitted Modelica executor reopened the exact reviewed technical-compilation admission before isolated execution.",
-    })),
-    {
-      id: `uses-${consumption.id}`,
-      relation: "uses",
-      from: { kind: "consumption", id: consumption.id },
-      to: { kind: "artifact", id: admissionArtifact.id },
-      rationale:
-        "The execution verified the exact admission artifact fingerprint before dispatch.",
-    },
-    ...observations.flatMap((observation) =>
-      observation.source.artifactIds.map((artifactId) => ({
-        id: `${observation.id}-from-${artifactId}`,
-        relation: "derived_from" as const,
-        from: { kind: "observation" as const, id: observation.id },
-        to: { kind: "artifact" as const, id: artifactId },
-        rationale:
-          "The observation is reported by the exact normalized evidence and retained solver result.",
-      }))
-    ),
-  ];
-  const extension: ThreadSnapshotExtension = {
-    id: `simulate-run-admitted-modelica-${input.run.id}`,
-    name: "Record admitted Modelica isolated run",
-    subjectId: input.basis.subjectId,
-    capturedAt,
-    artifacts: [captureArtifact, evidenceArtifact, resultArtifact],
-    consumptions: [consumption],
-    observations,
-    requirements: [],
-    evaluations: [],
-    violations: [],
-    provenance,
-    proposedActions: [],
-  };
-  const applied = applyThreadSnapshotExtensionIfNew(
-    input.basisSnapshot,
-    extension,
-    { appliedAt: capturedAt },
-  );
-  if (!applied.applied) {
-    throw invalidTransition(
-      "The admitted Modelica documentary branch is already present.",
-    );
+  try {
+    return buildDomainDocumentarySuccessor({
+      basisSnapshot: input.basisSnapshot,
+      basis: input.basis,
+      runId: input.run.id,
+      capturedAt: requiredStart(input.run),
+      capture: input.capture,
+      captureFingerprint: input.captureFingerprint,
+      captureUri: input.captureUri,
+      receipt: input.receipt,
+    });
+  } catch (error) {
+    throw domainTransition(error);
   }
-  return {
-    snapshot: validateThreadSnapshot(applied.snapshot),
-    artifacts: [captureArtifact, evidenceArtifact, resultArtifact],
-    observations,
-  };
-}
-
-function admittedModelicaObservations(input: {
-  readonly capture: ModelicaAdmittedExecutionCapture;
-  readonly runId: string;
-  readonly operation: ThreadObservation["source"]["operation"];
-  readonly evidenceArtifactId: string;
-  readonly resultArtifactId: string;
-  readonly capturedAt: string;
-  readonly freshness: ThreadObservation["freshness"];
-}): ThreadObservation[] {
-  return input.capture.metrics.map((metric) => {
-    return {
-      id: `modelica-admitted-${metric.outputName}-${metric.statistic}-${input.runId}`,
-      name: `Admitted Modelica ${metric.outputName} ${metric.statistic}`,
-      metric: `${metric.outputName}.${metric.statistic}`,
-      quantity: { value: metric.value, unit: metric.unit },
-      source: {
-        operation: input.operation,
-        artifactIds: [input.evidenceArtifactId, input.resultArtifactId],
-        capturedAt: input.capturedAt,
-      },
-      freshness: input.freshness,
-    };
-  });
 }
 
 function exactAdmissionArtifact(
@@ -1760,26 +1330,11 @@ function exactAdmissionArtifact(
   id: string,
   fingerprint: ContentFingerprint,
 ): ThreadArtifact {
-  const digest = fingerprint.digest;
-  const matches = snapshot.artifacts.filter((artifact) =>
-    id === `technical-compilation-admission-${digest}` &&
-    artifact.id === id && artifact.kind === "document" &&
-    fingerprintsEqual(artifact.fingerprint, fingerprint) &&
-    artifact.version === digest &&
-    artifact.uri ===
-      `casys://technical-compilation-admission-capture/sha256/${digest}` &&
-    artifact.mediaType === "application/json" &&
-    artifact.freshness.status === "fresh" &&
-    artifact.producer.serverId === "digital-thread" &&
-    artifact.producer.tool === "compile.seal-admission@1" &&
-    !archivedRefKeys(snapshot).has(`artifact:${artifact.id}`)
-  );
-  if (matches.length !== 1) {
-    throw invalidTransition(
-      `Technical-compilation admission ${id} is absent, stale, archived, ambiguous, or has divergent identity, fingerprint, producer, URI, or media type in the exact Thread basis.`,
-    );
+  try {
+    return findExactAdmissionArtifact(snapshot, id, fingerprint);
+  } catch (error) {
+    throw domainTransition(error);
   }
-  return matches[0]!;
 }
 
 function artifactEvidence(
@@ -1794,34 +1349,14 @@ function artifactEvidence(
   };
 }
 
-function threadEvidenceFor(
-  expected: DocumentarySuccessor,
-): AdmittedModelicaExecutionThreadEvidenceInput {
-  const [capture, evidence, result] = expected.artifacts;
-  return {
-    snapshotId: expected.snapshot.id,
-    revision: expected.snapshot.revision,
-    subjectId: expected.snapshot.subject.id,
-    artifacts: {
-      capture: { id: capture.id, fingerprint: capture.fingerprint },
-      evidence: { id: evidence.id, fingerprint: evidence.fingerprint },
-      result: { id: result.id, fingerprint: result.fingerprint },
-    },
-  };
-}
-
 function assertThreadEvidenceExact(
   actual: AdmittedModelicaExecutionThreadEvidence,
   expected: DocumentarySuccessor,
 ): void {
-  const { fingerprint: _fingerprint, ...actualEvidence } = actual;
-  if (
-    deterministicJson(actualEvidence) !==
-      deterministicJson(threadEvidenceFor(expected))
-  ) {
-    throw invalidTransition(
-      "The admitted Modelica journal does not name the exact documentary Thread successor.",
-    );
+  try {
+    assertDomainThreadEvidenceExact(actual, expected);
+  } catch (error) {
+    throw domainTransition(error);
   }
 }
 
@@ -1937,4 +1472,10 @@ function boundedCause(error: unknown, maximum = 300): string {
 
 function invalidTransition(message: string): EngineeringProjectCommandError {
   return new EngineeringProjectCommandError("invalid_transition", message);
+}
+
+function domainTransition(error: unknown): EngineeringProjectCommandError {
+  return invalidTransition(
+    error instanceof Error ? error.message : String(error),
+  );
 }
