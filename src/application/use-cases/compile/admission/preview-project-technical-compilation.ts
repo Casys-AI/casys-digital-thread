@@ -38,7 +38,11 @@ import {
   deriveTechnicalCompilationProfileRequests,
   deriveUniqueTechnicalCompilationBindings,
 } from "../../../../domain/compile/admission/technical-compilation-join.ts";
-import { assembleTechnicalCompilationJoinGaps } from "../../../../domain/compile/admission/technical-compilation-preview-review.ts";
+import {
+  assembleTechnicalCompilationJoinGaps,
+  assembleThermalMethodSheetCompilationGaps,
+} from "../../../../domain/compile/admission/technical-compilation-preview-review.ts";
+import type { ThermalMethodSheetCompilationJoin } from "../../../ports/out/compile/admission/thermal-method-sheet-compilation-join.ts";
 import type { EngineeringProjectRevisionStore } from "../../../ports/out/engineering-project-revision-store.ts";
 import {
   parseExactThreadSnapshotBasis,
@@ -99,6 +103,11 @@ export interface PreviewProjectTechnicalCompilationDependencies {
   readonly draftStore: TechnicalCompilationDraftStore;
   /** Required to resolve an omitted basis to the unique current Thread tip. */
   readonly projects?: Pick<EngineeringProjectRevisionStore, "get">;
+  /**
+   * Optional unique join of a sealed thermal method sheet. Absence is not a
+   * compilation failure. Ambiguity fails closed.
+   */
+  readonly methodSheets?: ThermalMethodSheetCompilationJoin;
 }
 
 /**
@@ -117,6 +126,7 @@ export class PreviewProjectTechnicalCompilation
   readonly #profileCatalog: TechnicalCompilationProfileCatalogProvider;
   readonly #draftStore: TechnicalCompilationDraftStore;
   readonly #projects: Pick<EngineeringProjectRevisionStore, "get"> | undefined;
+  readonly #methodSheets: ThermalMethodSheetCompilationJoin | undefined;
 
   constructor(dependencies: PreviewProjectTechnicalCompilationDependencies) {
     this.#basisResolver = dependencies.basisResolver;
@@ -124,6 +134,7 @@ export class PreviewProjectTechnicalCompilation
     this.#profileCatalog = dependencies.profileCatalog;
     this.#draftStore = dependencies.draftStore;
     this.#projects = dependencies.projects;
+    this.#methodSheets = dependencies.methodSheets;
   }
 
   async execute(value: unknown): Promise<ProjectTechnicalCompilationPreviewResult> {
@@ -304,15 +315,53 @@ export class PreviewProjectTechnicalCompilation
       );
     }
 
-    const gaps = assembleTechnicalCompilationJoinGaps(
-      compiled.document.diagnostics,
-      joinSources,
-      basis.sysmlAnchor.elements,
-    );
+    let methodSheet;
+    try {
+      methodSheet = this.#methodSheets === undefined
+        ? undefined
+        : await this.#methodSheets.read({
+          projectId: command.projectId,
+          basis: {
+            kind: "thread-snapshot",
+            snapshotId: basis.thread.snapshotId,
+            revision: basis.thread.revision,
+            subjectId: basis.thread.subjectId,
+          },
+        });
+    } catch (cause) {
+      throw previewError(
+        "basis_integrity_failed",
+        "The thermal method sheet on this Thread basis is not an exact unique recross.",
+        cause,
+      );
+    }
+    if (
+      methodSheet !== undefined &&
+      (methodSheet.project.id !== command.projectId ||
+        methodSheet.subject.id !== basis.thread.subjectId)
+    ) {
+      throw previewError(
+        "basis_mismatch",
+        "The reopened thermal method sheet is foreign to the requested project revision.",
+      );
+    }
+    const gaps = [
+      ...assembleTechnicalCompilationJoinGaps(
+        compiled.document.diagnostics,
+        joinSources,
+        basis.sysmlAnchor.elements,
+      ),
+      ...assembleThermalMethodSheetCompilationGaps(
+        methodSheet,
+        joinSources,
+        bindings,
+        basis.sysmlAnchor.elements,
+      ),
+    ];
 
-    if (compiled.document.status !== "ready-for-review") {
+    if (compiled.document.status !== "ready-for-review" || gaps.length > 0) {
       return deepFreeze({
-        status: compiled.document.status,
+        status: compiled.document.status === "rejected" ? "rejected" : "unresolved",
         document: compiled.document,
         fingerprint: compiled.fingerprint,
         gaps,

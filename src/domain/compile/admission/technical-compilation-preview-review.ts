@@ -9,9 +9,11 @@
  */
 
 import { deepFreeze } from "../../kernel/case-validation.ts";
+import type { ModelicaThermalMethodSheet } from "../../modelica/thermal-method-sheet.ts";
 import type {
   TechnicalCompilationDiagnostic,
   TechnicalCompilationStatus,
+  TechnicalSemanticBinding,
 } from "./technical-compilation.ts";
 import type {
   TechnicalCompilationJoinElement,
@@ -25,6 +27,10 @@ export const TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY = {
     "The server joins result to a PartDefinition only when that join is unique. Do not pass bindings.",
   noUniqueAttributeUsage:
     "Declare attribute.<slug>.name and attribute.<slug>.parent on model.write-architecture@1 for this parameter name. Do not invent a binding or SysML text.",
+  thermalParameterizes:
+    "The thermal method sheet parameter must recross the unique v2 parameterizes binding for that exact source symbol and AttributeUsage. Do not invent a binding.",
+  thermalOutputRequirement:
+    "The thermal method sheet output must name an exact source symbol and RequirementUsage. Do not invent a requirement or observation.",
 } as const;
 
 export type TechnicalCompilationJoinGap =
@@ -55,6 +61,23 @@ export type TechnicalCompilationJoinGap =
     readonly candidateCount: number;
     readonly recovery:
       typeof TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.noUniqueAttributeUsage;
+  }
+  | {
+    readonly code: "thermal-method-sheet.parameter.unresolved";
+    readonly modelSymbolId: string;
+    readonly attributeUsageId: string;
+    readonly reason: "symbol-absent" | "no-unique-parameterizes";
+    readonly recovery:
+      typeof TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalParameterizes;
+  }
+  | {
+    readonly code: "thermal-method-sheet.output.unresolved";
+    readonly modelSymbolId: string;
+    readonly role: "final" | "max_abs";
+    readonly requirementElementId: string;
+    readonly reason: "symbol-absent" | "requirement-absent";
+    readonly recovery:
+      typeof TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalOutputRequirement;
   };
 
 /**
@@ -146,6 +169,84 @@ export function assembleTechnicalCompilationJoinGaps(
   return deepFreeze(gaps);
 }
 
+/**
+ * Recross one reviewed thermal method sheet against unique v2 parameterizes
+ * bindings and exact RequirementUsage identities. Absence of a sheet is not a
+ * gap: compilation does not invent a method. Named gaps never invent physics.
+ */
+export function assembleThermalMethodSheetCompilationGaps(
+  sheet: ModelicaThermalMethodSheet | undefined,
+  sources: readonly TechnicalCompilationJoinSource[],
+  bindings: readonly TechnicalSemanticBinding[],
+  elements: readonly TechnicalCompilationJoinElement[],
+): readonly TechnicalCompilationJoinGap[] {
+  if (sheet === undefined) return [];
+  const symbols = sources.flatMap((source) => source.analysis.symbols);
+  const gaps: TechnicalCompilationJoinGap[] = [];
+  for (const parameter of sheet.parameters) {
+    const symbolMatches = symbols.filter((symbol) =>
+      symbol.id === parameter.modelSymbolId && symbol.kind === "parameter"
+    );
+    if (symbolMatches.length !== 1) {
+      gaps.push({
+        code: "thermal-method-sheet.parameter.unresolved",
+        modelSymbolId: parameter.modelSymbolId,
+        attributeUsageId: parameter.attributeUsageId,
+        reason: "symbol-absent",
+        recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalParameterizes,
+      });
+      continue;
+    }
+    const parameterizes = bindings.filter((binding) =>
+      binding.relation === "parameterizes" &&
+      binding.sourceSymbolId === parameter.modelSymbolId &&
+      binding.sysmlElementId === parameter.attributeUsageId &&
+      binding.sysmlElementKind === "AttributeUsage"
+    );
+    if (parameterizes.length !== 1) {
+      gaps.push({
+        code: "thermal-method-sheet.parameter.unresolved",
+        modelSymbolId: parameter.modelSymbolId,
+        attributeUsageId: parameter.attributeUsageId,
+        reason: "no-unique-parameterizes",
+        recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalParameterizes,
+      });
+    }
+  }
+  for (const output of sheet.outputs) {
+    const symbolMatches = symbols.filter((symbol) =>
+      symbol.id === output.modelSymbolId
+    );
+    const requirements = elements.filter((element) =>
+      element.id === output.requirementElementId &&
+      element.kind === "RequirementUsage"
+    );
+    if (symbolMatches.length !== 1) {
+      gaps.push({
+        code: "thermal-method-sheet.output.unresolved",
+        modelSymbolId: output.modelSymbolId,
+        role: output.role,
+        requirementElementId: output.requirementElementId,
+        reason: "symbol-absent",
+        recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalOutputRequirement,
+      });
+      continue;
+    }
+    if (requirements.length !== 1) {
+      gaps.push({
+        code: "thermal-method-sheet.output.unresolved",
+        modelSymbolId: output.modelSymbolId,
+        role: output.role,
+        requirementElementId: output.requirementElementId,
+        reason: "requirement-absent",
+        recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalOutputRequirement,
+      });
+    }
+  }
+  gaps.sort(compareGaps);
+  return deepFreeze(gaps);
+}
+
 export function compilationPreviewContent(input: {
   readonly status: TechnicalCompilationStatus;
   readonly draftId?: string;
@@ -173,6 +274,18 @@ export function compilationPreviewContent(input: {
 function gapSentence(gap: TechnicalCompilationJoinGap): string {
   if (gap.code === "source.no-named-numeric-lever") {
     return `${gap.code} on ${gap.sourceId}: ${gap.recovery}`;
+  }
+  if (gap.code === "thermal-method-sheet.parameter.unresolved") {
+    return (
+      `${gap.code} ${gap.modelSymbolId} AttributeUsage ${gap.attributeUsageId} ` +
+      `(${gap.reason}): ${gap.recovery}`
+    );
+  }
+  if (gap.code === "thermal-method-sheet.output.unresolved") {
+    return (
+      `${gap.code} ${gap.modelSymbolId} ${gap.role} RequirementUsage ` +
+      `${gap.requirementElementId} (${gap.reason}): ${gap.recovery}`
+    );
   }
   const target = gap.relation === "represents"
     ? "PartDefinition(s)"
@@ -205,6 +318,12 @@ function compareGaps(
 function gapSortKey(gap: TechnicalCompilationJoinGap): string {
   if (gap.code === "source.no-named-numeric-lever") {
     return `${gap.code}\u0000${gap.sourceId}`;
+  }
+  if (gap.code === "thermal-method-sheet.parameter.unresolved") {
+    return `${gap.code}\u0000${gap.modelSymbolId}\u0000${gap.attributeUsageId}`;
+  }
+  if (gap.code === "thermal-method-sheet.output.unresolved") {
+    return `${gap.code}\u0000${gap.modelSymbolId}\u0000${gap.role}`;
   }
   return `${gap.code}\u0000${gap.sourceId}\u0000${gap.relation}\u0000${gap.symbolName}`;
 }

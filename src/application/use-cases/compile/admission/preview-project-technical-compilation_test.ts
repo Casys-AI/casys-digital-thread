@@ -662,7 +662,13 @@ Deno.test(
       result.gaps.map((gap) => gap.code),
       ["source.no-named-numeric-lever"],
     );
-    assertEquals(result.gaps[0]?.sourceId, "source.cad");
+    const leverGap = result.gaps[0];
+    assertEquals(
+      leverGap?.code === "source.no-named-numeric-lever"
+        ? leverGap.sourceId
+        : undefined,
+      "source.cad",
+    );
     assert(!Object.hasOwn(result, "draft"));
     assert(!Object.hasOwn(result, "decisionParameters"));
     assertEquals(photo.draftStore.saves, 0);

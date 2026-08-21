@@ -87,6 +87,7 @@ import { FileIsolatedOutputCas } from "./src/adapters/shared/cas/file-isolated-o
 import { FileModelicaIsolatedExecutionCaptureStore } from "./src/adapters/modelica/qualified-kit/isolated-execution-evidence.ts";
 import { ProjectThreadModelicaQualifiedKitReviewBasisAuthority } from "./src/adapters/modelica/qualified-kit/review-basis-authority.ts";
 import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/compile/admission/preview-project-technical-compilation.ts";
+import { CaptureBackedThermalMethodSheetCompilationJoin } from "./src/adapters/modelica/thermal-method-sheet/capture-backed-thermal-method-sheet-compilation-join.ts";
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
 import { PrepareProjectThermalMethodSheetSealReview } from "./src/application/use-cases/modelica/thermal-method-sheet/prepare-project-thermal-method-sheet-seal-review.ts";
@@ -1201,47 +1202,12 @@ async function createProjectControl(
     seedCaptures: sysonModelSeedCaptures,
     requirementsCaptures,
   });
-  const technicalCompilationPreview = new PreviewProjectTechnicalCompilation({
-    basisResolver: technicalCompilationBasis,
-    sourceReader: technicalCompilationSources,
-    profileCatalog: technicalCompilationProfiles,
-    draftStore: technicalCompilationDrafts,
-    projects: runtime.projects,
-  });
-  const compileSealAdmission = new CompileSealAdmissionRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    basisResolver: technicalCompilationBasis,
-    drafts: technicalCompilationDrafts,
-    sources: technicalCompilationSources,
-    profiles: technicalCompilationProfiles,
-    captures: technicalCompilationSeals,
-    lease,
-  });
-  const modelSealArchitectureSysml = new ModelSealArchitectureSysmlRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    sources: architectureSysmlSourceAnalysis,
-    captures: architectureSysmlSeals,
-    lease,
-  });
   const thermalMethodSheets = new FileThermalMethodSheetStore(
     new FileCaptureStore({
       ...THERMAL_METHOD_SHEET_CAPTURE_DESCRIPTOR,
       directory: `${recordedAnalysisDirectory}/modelica/thermal-method-sheet-captures`,
     }),
   );
-  const thermalMethodSheetSourceCaptures =
-    new FileThermalMethodSheetSourceCaptureReader(
-      technicalSourceAnalysisCaptures,
-    );
-  const thermalMethodSheetSealReview = new PrepareProjectThermalMethodSheetSealReview({
-    sheets: thermalMethodSheets,
-    sourceCaptures: thermalMethodSheetSourceCaptures,
-    basisResolver: technicalCompilationBasis,
-  });
   const thermalMethodSheetSealBytes = new FileByteStore({
     kind: "modelica-thermal-method-sheet-seal-capture",
     directory: `${recordedAnalysisDirectory}/modelica/thermal-method-sheet-seals`,
@@ -1266,6 +1232,48 @@ async function createProjectControl(
         : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
     },
   };
+  const thermalMethodSheetCompilationJoin =
+    new CaptureBackedThermalMethodSheetCompilationJoin({
+      snapshots: activeThreadSnapshots,
+      captures: thermalMethodSheetSeals,
+      sheets: thermalMethodSheets,
+    });
+  const technicalCompilationPreview = new PreviewProjectTechnicalCompilation({
+    basisResolver: technicalCompilationBasis,
+    sourceReader: technicalCompilationSources,
+    profileCatalog: technicalCompilationProfiles,
+    draftStore: technicalCompilationDrafts,
+    projects: runtime.projects,
+    methodSheets: thermalMethodSheetCompilationJoin,
+  });
+  const compileSealAdmission = new CompileSealAdmissionRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    basisResolver: technicalCompilationBasis,
+    drafts: technicalCompilationDrafts,
+    sources: technicalCompilationSources,
+    profiles: technicalCompilationProfiles,
+    captures: technicalCompilationSeals,
+    lease,
+  });
+  const modelSealArchitectureSysml = new ModelSealArchitectureSysmlRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    sources: architectureSysmlSourceAnalysis,
+    captures: architectureSysmlSeals,
+    lease,
+  });
+  const thermalMethodSheetSourceCaptures =
+    new FileThermalMethodSheetSourceCaptureReader(
+      technicalSourceAnalysisCaptures,
+    );
+  const thermalMethodSheetSealReview = new PrepareProjectThermalMethodSheetSealReview({
+    sheets: thermalMethodSheets,
+    sourceCaptures: thermalMethodSheetSourceCaptures,
+    basisResolver: technicalCompilationBasis,
+  });
   const verifySealModelicaThermalMethodSheet =
     new VerifySealModelicaThermalMethodSheetRunExecutor({
       projects: runtime.projects,

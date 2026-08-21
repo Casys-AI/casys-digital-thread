@@ -1,7 +1,10 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import type { SourceAnalysisBundle } from "../source/source-analysis.ts";
+import { validateModelicaThermalMethodSheet } from "../../modelica/thermal-method-sheet.ts";
+import { validThermalMethodSheetPlaceholder } from "../../../testing/modelica-thermal-method-sheet-fixtures.ts";
 import {
   assembleTechnicalCompilationJoinGaps,
+  assembleThermalMethodSheetCompilationGaps,
   compilationPreviewContent,
   TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY,
 } from "./technical-compilation-preview-review.ts";
@@ -217,4 +220,100 @@ function part(id: string, name: string) {
 
 function attribute(id: string, name: string) {
   return { id, kind: "AttributeUsage", name };
+}
+
+Deno.test(
+  "thermal method sheet recrosses unique parameterizes and exact RequirementUsage",
+  () => {
+    const sheet = validateModelicaThermalMethodSheet(
+      validThermalMethodSheetPlaceholder(),
+    );
+    assertEquals(
+      assembleThermalMethodSheetCompilationGaps(
+        sheet,
+        [modelicaSource()],
+        [parameterizesBinding()],
+        [
+          attribute("placeholder-attribute-usage", "placeholder"),
+          { id: "placeholder-requirement", kind: "RequirementUsage" },
+        ],
+      ),
+      [],
+    );
+  },
+);
+
+Deno.test("absent thermal method sheet does not invent compilation gaps", () => {
+  assertEquals(
+    assembleThermalMethodSheetCompilationGaps(
+      undefined,
+      [modelicaSource()],
+      [parameterizesBinding()],
+      [attribute("placeholder-attribute-usage", "placeholder")],
+    ),
+    [],
+  );
+});
+
+Deno.test(
+  "thermal method sheet parameter without unique parameterizes is a named gap",
+  () => {
+    const sheet = validateModelicaThermalMethodSheet(
+      validThermalMethodSheetPlaceholder(),
+    );
+    const gaps = assembleThermalMethodSheetCompilationGaps(
+      sheet,
+      [modelicaSource()],
+      [],
+      [{ id: "placeholder-requirement", kind: "RequirementUsage" }],
+    );
+    assertEquals(gaps, [{
+      code: "thermal-method-sheet.parameter.unresolved",
+      modelSymbolId: "placeholder-parameter",
+      attributeUsageId: "placeholder-attribute-usage",
+      reason: "no-unique-parameterizes",
+      recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalParameterizes,
+    }]);
+  },
+);
+
+function modelicaSource(): {
+  sourceText: string;
+  analysis: SourceAnalysisBundle;
+} {
+  return {
+    sourceText: "model Placeholder\nend Placeholder;\n",
+    analysis: {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id: "placeholder-module",
+        role: "modelica-model",
+        language: "modelica",
+        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+      },
+      analyzer: { id: "modelica-closed-subset", version: "2.0.0" },
+      policy: {
+        profile: "modelica-closed-subset-v2",
+        status: "passed",
+        findings: [],
+      },
+      symbols: [
+        { id: "placeholder-parameter", kind: "parameter", name: "param" },
+        { id: "placeholder-output", kind: "variable", name: "output" },
+      ],
+      dependencies: [],
+      unresolvedConstructs: [],
+    },
+  };
+}
+
+function parameterizesBinding() {
+  return {
+    id: "binding:placeholder-module:placeholder-parameter:parameterizes",
+    sourceId: "placeholder-module",
+    sourceSymbolId: "placeholder-parameter",
+    sysmlElementId: "placeholder-attribute-usage",
+    sysmlElementKind: "AttributeUsage",
+    relation: "parameterizes" as const,
+  };
 }
