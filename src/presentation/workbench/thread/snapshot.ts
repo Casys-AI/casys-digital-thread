@@ -85,6 +85,64 @@ export interface ThreadWorkbenchPreviousSnapshot {
   revision: number;
 }
 
+/** Read-only L5 static-mechanical closeout projection; no command surface. */
+export interface ThreadEvaluationCloseoutCriterion {
+  proofCriterionId: string;
+  evaluationId: string;
+  status: "pass" | "fail" | "unresolved" | "error";
+  evidenceArtifactId: string;
+}
+
+export interface ThreadEvaluationCloseoutEvidenceRef {
+  id: string;
+  fingerprint: string;
+  producerRunId: string;
+  freshness: "fresh" | "stale" | "unavailable";
+}
+
+export interface ThreadEvaluationCloseoutProofLimitations {
+  proofScope: string;
+  evidenceBoundary: string;
+  cadEngineeringBoundary: {
+    designIntent: "preserved" | "partial" | "lost";
+    editableCad: "native" | "reconstructed" | "absent";
+    manufacturability: "not-established";
+    limitations: string[];
+  };
+}
+
+/** Exact Thread tip reviewed by the human closeout; never a latest alias. */
+export interface ThreadEvaluationCloseoutBasis {
+  snapshotId: string;
+  revision: number;
+  fingerprint: string;
+}
+
+export interface ThreadEvaluationCloseoutCard {
+  artifactId: string;
+  captureFingerprint: string;
+  basis: ThreadEvaluationCloseoutBasis;
+  humanDisposition: "accept" | "reject";
+  rejectionDisposition: "none" | "mechanical-review-required";
+  acceptanceEligibility: boolean;
+  status: "current" | "historical" | "unresolved";
+  criteria: ThreadEvaluationCloseoutCriterion[];
+  proofLimitations: ThreadEvaluationCloseoutProofLimitations;
+  evidence: {
+    canonicalStep: ThreadEvaluationCloseoutEvidenceRef;
+    sealedProof: ThreadEvaluationCloseoutEvidenceRef;
+    executionEvidence: ThreadEvaluationCloseoutEvidenceRef;
+    evaluationCapture: ThreadEvaluationCloseoutEvidenceRef;
+  };
+}
+
+export interface ThreadEvaluationCloseoutIndex {
+  schemaVersion: "thread-evaluation-closeouts/1.0";
+  family: "static-mechanical";
+  status: "not-recorded" | "current" | "historical" | "unresolved" | "unavailable";
+  cards: ThreadEvaluationCloseoutCard[];
+}
+
 export interface ThreadWorkbenchSnapshot {
   schemaVersion: "thread-workbench/0.1";
   id: string;
@@ -97,6 +155,8 @@ export interface ThreadWorkbenchSnapshot {
   components: ThreadComponentCatalog;
   /** Absent means unavailable for older 0.1 producers; never an empty catalog. */
   verificationCases?: ThreadVerificationCaseCatalog;
+  /** Absent means the BFF has no local closeout-capture reader configured. */
+  evaluationCloseouts?: ThreadEvaluationCloseoutIndex;
   graph: ThreadGraph;
   evidenceFamilyGraph: ThreadEvidenceFamilyGraph;
   flow: ThreadFlowStage[];

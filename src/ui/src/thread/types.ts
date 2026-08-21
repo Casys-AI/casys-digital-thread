@@ -67,6 +67,12 @@ import type {
 import type {
   ThreadAction,
   ThreadArtifact,
+  ThreadEvaluationCloseoutBasis,
+  ThreadEvaluationCloseoutCard,
+  ThreadEvaluationCloseoutCriterion,
+  ThreadEvaluationCloseoutEvidenceRef,
+  ThreadEvaluationCloseoutIndex,
+  ThreadEvaluationCloseoutProofLimitations,
   ThreadObservation,
   ThreadRequirement,
   ThreadViolation,
@@ -86,6 +92,12 @@ import {
 export type {
   ThreadAction,
   ThreadArtifact,
+  ThreadEvaluationCloseoutBasis,
+  ThreadEvaluationCloseoutCard,
+  ThreadEvaluationCloseoutCriterion,
+  ThreadEvaluationCloseoutEvidenceRef,
+  ThreadEvaluationCloseoutIndex,
+  ThreadEvaluationCloseoutProofLimitations,
   ThreadObservation,
   ThreadRequirement,
   ThreadViolation,
@@ -666,6 +678,7 @@ export function isThreadWorkbenchSnapshot(
     "change",
     "components",
     "verificationCases",
+    "evaluationCloseouts",
     "graph",
     "evidenceFamilyGraph",
     "flow",
@@ -705,6 +718,8 @@ export function isThreadWorkbenchSnapshot(
         candidate.artifacts,
         candidate.graph,
       )) &&
+    (candidate.evaluationCloseouts === undefined ||
+      isThreadEvaluationCloseoutIndex(candidate.evaluationCloseouts, candidate)) &&
     Array.isArray(candidate.observations) &&
     candidate.observations.every(isThreadObservation) &&
     Array.isArray(candidate.requirements) &&
@@ -714,6 +729,153 @@ export function isThreadWorkbenchSnapshot(
     Array.isArray(candidate.actions) &&
     candidate.actions.every(isThreadAction) &&
     (candidate.live === undefined || isLiveThreadOverlay(candidate.live));
+}
+
+function isThreadEvaluationCloseoutIndex(
+  value: unknown,
+  snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts" | "previous">,
+): value is ThreadEvaluationCloseoutIndex {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "schemaVersion",
+    "family",
+    "status",
+    "cards",
+  ])) return false;
+  if (
+    value.schemaVersion !== "thread-evaluation-closeouts/1.0" ||
+    value.family !== "static-mechanical" ||
+    (value.status !== "not-recorded" && value.status !== "current" &&
+      value.status !== "historical" && value.status !== "unresolved" &&
+      value.status !== "unavailable") ||
+    !Array.isArray(value.cards) || !value.cards.every((card) =>
+      isThreadEvaluationCloseoutCard(card, snapshot)
+    )
+  ) return false;
+  const cards = value.cards as ThreadEvaluationCloseoutCard[];
+  if (value.status === "not-recorded") return cards.length === 0;
+  if (value.status === "current") return cards.some((card) => card.status === "current");
+  if (value.status === "historical") return cards.length > 0 && cards.every((card) => card.status === "historical");
+  return true;
+}
+
+function isThreadEvaluationCloseoutCard(
+  value: unknown,
+  snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts" | "previous">,
+): value is ThreadEvaluationCloseoutCard {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "artifactId",
+    "captureFingerprint",
+    "basis",
+    "humanDisposition",
+    "rejectionDisposition",
+    "acceptanceEligibility",
+    "status",
+    "criteria",
+    "proofLimitations",
+    "evidence",
+  ])) return false;
+  if (
+    typeof value.artifactId !== "string" || value.artifactId.length === 0 ||
+    typeof value.captureFingerprint !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/.test(value.captureFingerprint) ||
+    !isThreadEvaluationCloseoutBasis(value.basis) ||
+    (value.humanDisposition !== "accept" && value.humanDisposition !== "reject") ||
+    (value.rejectionDisposition !== "none" &&
+      value.rejectionDisposition !== "mechanical-review-required") ||
+    typeof value.acceptanceEligibility !== "boolean" ||
+    (value.status !== "current" && value.status !== "historical" && value.status !== "unresolved") ||
+    !Array.isArray(value.criteria) || !value.criteria.every(isThreadEvaluationCloseoutCriterion) ||
+    !isThreadEvaluationCloseoutProofLimitations(value.proofLimitations) ||
+    !isRecord(value.evidence) || !hasExactKeys(value.evidence, [
+      "canonicalStep",
+      "sealedProof",
+      "executionEvidence",
+      "evaluationCapture",
+    ]) ||
+    !isThreadEvaluationCloseoutEvidenceRef(value.evidence.canonicalStep) ||
+    !isThreadEvaluationCloseoutEvidenceRef(value.evidence.sealedProof) ||
+    !isThreadEvaluationCloseoutEvidenceRef(value.evidence.executionEvidence) ||
+    !isThreadEvaluationCloseoutEvidenceRef(value.evidence.evaluationCapture)
+  ) return false;
+  const criteria = value.criteria as ThreadEvaluationCloseoutCriterion[];
+  if (
+    criteria.length === 0 ||
+    new Set(criteria.map((criterion) => criterion.proofCriterionId)).size !== criteria.length ||
+    new Set(criteria.map((criterion) => criterion.evaluationId)).size !== criteria.length ||
+    (value.humanDisposition === "accept" &&
+      (!value.acceptanceEligibility || criteria.some((criterion) => criterion.status !== "pass"))) ||
+    (value.status === "current" &&
+      (!snapshot.previous ||
+        snapshot.previous.snapshotId !== value.basis.snapshotId ||
+        snapshot.previous.revision !== value.basis.revision ||
+        !snapshot.artifacts.some((artifact) => artifact.id === value.artifactId)))
+  ) return false;
+  return true;
+}
+
+function isThreadEvaluationCloseoutBasis(
+  value: unknown,
+): value is ThreadEvaluationCloseoutBasis {
+  return isRecord(value) && hasExactKeys(value, ["snapshotId", "revision", "fingerprint"]) &&
+    typeof value.snapshotId === "string" && value.snapshotId.length > 0 &&
+    isPositiveSafeInteger(value.revision) &&
+    typeof value.fingerprint === "string" && /^sha256:[a-f0-9]{64}$/.test(value.fingerprint);
+}
+
+function isThreadEvaluationCloseoutCriterion(
+  value: unknown,
+): value is ThreadEvaluationCloseoutCriterion {
+  return isRecord(value) && hasExactKeys(value, [
+    "proofCriterionId",
+    "evaluationId",
+    "status",
+    "evidenceArtifactId",
+  ]) && typeof value.proofCriterionId === "string" && value.proofCriterionId.length > 0 &&
+    typeof value.evaluationId === "string" && value.evaluationId.length > 0 &&
+    (value.status === "pass" || value.status === "fail" ||
+      value.status === "unresolved" || value.status === "error") &&
+    typeof value.evidenceArtifactId === "string" && value.evidenceArtifactId.length > 0;
+}
+
+function isThreadEvaluationCloseoutEvidenceRef(
+  value: unknown,
+): value is ThreadEvaluationCloseoutEvidenceRef {
+  return isRecord(value) && hasExactKeys(value, [
+    "id",
+    "fingerprint",
+    "producerRunId",
+    "freshness",
+  ]) && typeof value.id === "string" && value.id.length > 0 &&
+    typeof value.fingerprint === "string" && /^sha256:[a-f0-9]{64}$/.test(value.fingerprint) &&
+    typeof value.producerRunId === "string" && value.producerRunId.length > 0 &&
+    (value.freshness === "fresh" || value.freshness === "stale" ||
+      value.freshness === "unavailable");
+}
+
+function isThreadEvaluationCloseoutProofLimitations(
+  value: unknown,
+): value is ThreadEvaluationCloseoutProofLimitations {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "proofScope",
+    "evidenceBoundary",
+    "cadEngineeringBoundary",
+  ]) || typeof value.proofScope !== "string" || value.proofScope.length === 0 ||
+    typeof value.evidenceBoundary !== "string" || value.evidenceBoundary.length === 0 ||
+    !isRecord(value.cadEngineeringBoundary) ||
+    !hasExactKeys(value.cadEngineeringBoundary, [
+      "designIntent",
+      "editableCad",
+      "manufacturability",
+      "limitations",
+    ])) return false;
+  const boundary = value.cadEngineeringBoundary;
+  return (boundary.designIntent === "preserved" || boundary.designIntent === "partial" ||
+      boundary.designIntent === "lost") &&
+    (boundary.editableCad === "native" || boundary.editableCad === "reconstructed" ||
+      boundary.editableCad === "absent") &&
+    boundary.manufacturability === "not-established" &&
+    Array.isArray(boundary.limitations) && boundary.limitations.length > 0 &&
+    boundary.limitations.every((item) => typeof item === "string" && item.length > 0);
 }
 
 function isThreadSubject(

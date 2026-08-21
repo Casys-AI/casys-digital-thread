@@ -168,6 +168,24 @@ export const APPROVED_BRIEF_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Approved-brief",
 };
 
+/**
+ * Provider-free, human-signed closeout record for the generic static
+ * mechanical family.  This is distinct from the CalculiX execution and SysON
+ * evaluation stores: it records a consequence over already persisted L4
+ * evidence and never dispatches an engine or provider.
+ */
+export const EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "evaluation-closeout-capture"
+> = {
+  kind: "evaluation-closeout-capture",
+  directory: "state/local/evaluation-closeout-captures",
+  uriNamespace: "evaluation-closeout-capture",
+  label: "Evaluation closeout",
+};
+
+export const EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX =
+  "casys://evaluation-closeout-capture/" as const;
+
 export const SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "syson-model-seed"
 > = {

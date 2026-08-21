@@ -25,6 +25,10 @@ import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
 } from "../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
+import {
+  DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+  DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
+} from "../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "./fea-isolated-static-proof.ts";
@@ -511,6 +515,45 @@ const OPERATIONS = [
     riskClass: "consequential",
     execution: "trusted",
     mustOrigin: "human",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Generic static-mechanical L5. The server reopens current FEA @3 evidence
+   * and the sealed proof limitations; human disposition is never inferred
+   * from a literal L4 pass. An agent dispatches the provider-free run only
+   * after the exact human MRTR is approved. Both operations are documentary
+   * Thread writers, not correction/CAD/FEA grants.
+   */
+  {
+    id: DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION.id,
+    version: DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Accept the static-mechanical evaluation closeout",
+    description:
+      "Reopen one exact current static FEA @3 branch and its sealed proof limitations, then record a human accept closeout only when every declared L4 criterion is literal pass. No engine or SysON call occurs; an L4 pass is not L5.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  {
+    id: DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION.id,
+    version: DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Reject the static-mechanical evaluation closeout",
+    description:
+      "Reopen one exact current static FEA @3 branch and its sealed proof limitations, then record a human reject closeout. The bounded disposition is none or mechanical-review-required and grants no correction, CAD, FEA, engine, or SysON action.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],

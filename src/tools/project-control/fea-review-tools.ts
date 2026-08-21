@@ -1,6 +1,7 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import type { ProjectFeaProofSealReviewUseCase } from "../../application/ports/in/fea/seal-case/project-fea-proof-seal-review.ts";
 import type { ProjectFeaIsolatedRunReviewUseCase } from "../../application/ports/in/fea/isolated-v3/project-fea-isolated-run-review.ts";
+import type { ProjectEvaluationCloseoutReviewUseCase } from "../../application/ports/in/fea/evaluation-closeout/project-evaluation-closeout-review.ts";
 import {
   OBJECT_OUTPUT_SCHEMA,
   PROJECT_ID,
@@ -12,6 +13,8 @@ export interface ProjectFeaReviewToolDependencies {
   feaProofSealReview?: ProjectFeaProofSealReviewUseCase;
   /** Provider-free compilation of isolated @3 bindings from a sealed proof document. */
   feaIsolatedRunReview?: ProjectFeaIsolatedRunReviewUseCase;
+  /** Provider-free human L5 review of the exact current static FEA @3 branch. */
+  evaluationCloseoutReview?: ProjectEvaluationCloseoutReviewUseCase;
 }
 
 /** Register the provider-free FEA seal and isolated-run review surfaces. */
@@ -21,6 +24,29 @@ export function registerProjectFeaReviewTools(
 ): void {
   registerSeal(app, dependencies);
   registerIsolatedRun(app, dependencies);
+  registerEvaluationCloseout(app, dependencies);
+}
+
+function registerEvaluationCloseout(
+  app: McpApp,
+  dependencies: ProjectFeaReviewToolDependencies,
+): void {
+  if (!dependencies.evaluationCloseoutReview) return;
+  const review = dependencies.evaluationCloseoutReview;
+  app.registerTool(projectEvaluationCloseoutReviewTool, async (args) => {
+    const result = await review.execute(args);
+    const content = result.status === "resolved"
+      ? result.selected.acceptanceEligibility
+        ? "Resolved fresh static-mechanical L5 evidence on the unique current Thread tip. The server derived both human closeout grammars; accept is eligible only because every declared L4 criterion is literal pass. Present the exact consequences to the responsible human. Only after that person chooses and signs one disposition may the corresponding exact parameters enter the normal project change/decision flow. No solver, SysON, CAD, or correction action occurred."
+        : "Resolved fresh static-mechanical L5 evidence on the unique current Thread tip. Accept is unavailable because at least one declared L4 criterion is non-pass; the server derived only the bounded human reject closeout. Reject grants no correction, CAD, FEA, or provider action."
+      : result.status === "unavailable"
+      ? "Unavailable: the unique current static FEA @3 branch or one exact fresh evidence identity cannot be reopened. No human closeout parameters were generated."
+      : "Unresolved: current static FEA evidence is ambiguous, noncanonical, or has divergent provenance. No human closeout parameters were generated.";
+    return {
+      content,
+      structuredContent: result as unknown as Record<string, unknown>,
+    };
+  });
 }
 
 function registerSeal(
@@ -133,6 +159,20 @@ const projectFeaIsolatedRunReviewTool: MCPTool = {
           "Exact sealed fea-proof document artifact id on the named basis (kind: document). Omit it when the basis has exactly one.",
       },
     },
+    required: ["projectId"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const projectEvaluationCloseoutReviewTool: MCPTool = {
+  name: "project_evaluation_closeout_review",
+  description:
+    "Read-only review of the generic static-mechanical human L5 closeout. The caller names only projectId; the server selects the unique current Thread tip and reopens the exact canonical STEP, sealed proof, isolated execution evidence, L4 evaluation capture, criteria, proof limitations, producer runs and freshness. It returns closed accept/reject MRTR parameters only when their exact evidence resolves. Accept appears only when every declared L4 criterion is literal pass. Reject records only none or mechanical-review-required and grants no correction, CAD, FEA, solver, SysON, provider tool, argument, URI, threshold, result, or action. An L4 pass is never L5.",
+  inputSchema: {
+    type: "object",
+    properties: { projectId: PROJECT_ID },
     required: ["projectId"],
     additionalProperties: false,
   },

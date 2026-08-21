@@ -48,6 +48,10 @@ import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
 } from "../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
+import {
+  DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+  DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
+} from "../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/sensitivity/correction-source/apply-correction-source.ts";
 
 const THREAD_WRITE_OPERATIONS = new Set([
@@ -79,6 +83,8 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.id}@${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.version}`,
   `${DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION.id}@${DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION.version}`,
   `${DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION.id}@${DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION.version}`,
+  `${DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION.id}@${DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION.version}`,
+  `${DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION.id}@${DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION.version}`,
   `${COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.id}@${COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.version}`,
 ]);
 
@@ -95,6 +101,8 @@ const NON_RECONCILIABLE_THREAD_WRITE_FAILURE_CODES: ReadonlySet<string> = new Se
   "verify-evaluate-admitted-modelica-observations-thread-write-outcome-unknown",
   "decide-accept-admitted-modelica-evaluation-thread-write-outcome-unknown",
   "decide-reject-admitted-modelica-evaluation-thread-write-outcome-unknown",
+  "decide-accept-evaluation-closeout-thread-write-outcome-unknown",
+  "decide-reject-evaluation-closeout-thread-write-outcome-unknown",
   "analyze-seal-sensitivity-study-thread-write-outcome-unknown",
 ]);
 /**

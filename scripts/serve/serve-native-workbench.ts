@@ -12,6 +12,7 @@ import { FileCockpitFocusStore } from "../../src/adapters/project/file-cockpit-f
 import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
@@ -64,6 +65,10 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "../../src/orchestration/operations/fea-isolated-static-proof.ts";
 import {
+  DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+  DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
+} from "../../src/domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
+import {
   Base64EngineeringAssetReader,
   FileEngineeringAssetReader,
   OrderedEngineeringAssetReader,
@@ -79,6 +84,10 @@ import {
   enrichThreadWorkbenchWithVerificationCases,
   type VerificationCaseWorkbenchEnricherDependencies,
 } from "../../src/adapters/thread/verification-case-workbench-enricher.ts";
+import {
+  enrichThreadWorkbenchWithEvaluationCloseouts,
+  type EvaluationCloseoutCaptureReader,
+} from "../../src/adapters/thread/evaluation-closeout-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../src/adapters/thread/cockpit-fleet-projector.ts";
 import type { CockpitFleetProjection } from "../../src/presentation/workbench/fleet/projection.ts";
 import type { ArchitectureSysmlSealCaptureReader } from "../../src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts";
@@ -168,6 +177,8 @@ export interface NativeWorkbenchHandlerOptions {
   technicalCompilationAdmissions?: SealedCadLeverAdmissionReader;
   /** Optional exact CAS reopen of supported sealed engineering cases. */
   verificationCaseCaptures?: VerificationCaseWorkbenchEnricherDependencies;
+  /** Optional exact CAS reopen of provider-free static-mechanical L5 records. */
+  evaluationCloseoutCaptures?: EvaluationCloseoutCaptureReader;
   /** Optional non-canonical activity journal projected into the same feed. */
   liveUpdates?: LiveThreadUpdateJournal;
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
@@ -670,6 +681,8 @@ const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+  DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+  DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
 ] as const;
 
 function hasUnattachedDurableProjectOperation(
@@ -744,13 +757,19 @@ async function projectThreadSnapshot(
       options.technicalCompilationAdmissions,
     )
     : withArchitecture;
-  const canonical = options.verificationCaseCaptures
+  const withVerificationCases = options.verificationCaseCaptures
     ? await enrichThreadWorkbenchWithVerificationCases(
       withCadLevers,
       options.verificationCaseCaptures,
       { projectId },
     )
     : withCadLevers;
+  const canonical = options.evaluationCloseoutCaptures
+    ? await enrichThreadWorkbenchWithEvaluationCloseouts(
+      withVerificationCases,
+      options.evaluationCloseoutCaptures,
+    )
+    : withVerificationCases;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
@@ -1053,6 +1072,13 @@ if (import.meta.main) {
       SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
     ),
   };
+  const evaluationCloseoutCaptures: EvaluationCloseoutCaptureReader =
+    new FileCaptureStore({
+      ...EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+      directory: cliArgs["evaluation-closeout-capture-dir"] ??
+        `${recordedAnalysisDirectory}/calculix/evaluation-closeout-captures`,
+      syncBoundary: recordedAnalysisDirectory,
+    });
   // The paired MCP owns all project commands and initialisation. The cockpit
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
@@ -1108,6 +1134,7 @@ if (import.meta.main) {
     architectureSysmlSources,
     technicalCompilationAdmissions,
     verificationCaseCaptures,
+    evaluationCloseoutCaptures,
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),
     cockpitFleet: () =>

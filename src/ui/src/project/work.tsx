@@ -243,6 +243,10 @@ export function ProjectOperations({
         </p>
       )}
 
+      {thread.evaluationCloseouts && (
+        <EvaluationCloseoutCard index={thread.evaluationCloseouts} />
+      )}
+
       {/* MRTR + Queue */}
       <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <MrtrCard decisions={pendingDecisions} />
@@ -328,6 +332,84 @@ export function ProjectOperations({
         {" LLM inside any tool"}
       </p>
     </div>
+  );
+}
+
+/** Read-only L5 evidence card. The paired conversation owns every command. */
+function EvaluationCloseoutCard({
+  index,
+}: {
+  index: NonNullable<ThreadWorkbenchSnapshot["evaluationCloseouts"]>;
+}): JSX.Element {
+  const current = index.cards.find((card) => card.status === "current");
+  const card = current ?? index.cards[0];
+  const variant: BadgeVariant = index.status === "current"
+    ? "success"
+    : index.status === "historical" || index.status === "unresolved"
+    ? "warning"
+    : "secondary";
+  return (
+    <Card className="overflow-hidden" data-closeout-family="static-mechanical">
+      <CardHeader className="flex-row items-center justify-between gap-3 border-b border-border px-3 py-2">
+        <span className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground">
+          STATIC-MECHANICAL L5 CLOSEOUT
+        </span>
+        <Badge variant={variant}>{sentenceLabel(index.status)}</Badge>
+      </CardHeader>
+      <CardContent className="px-3 py-3">
+        {!card
+          ? (
+            <p className="text-sm text-muted-foreground">
+              No human static-mechanical closeout is recorded on this Thread.
+              L4 evidence, including a pass, is not L5.
+            </p>
+          )
+          : (
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={card.humanDisposition === "accept" ? "success" : "warning"}>
+                  Human {card.humanDisposition}
+                </Badge>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {card.acceptanceEligibility
+                    ? "all declared L4 criteria pass"
+                    : "accept not eligible"}
+                </span>
+                {card.humanDisposition === "reject" && (
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    disposition · {card.rejectionDisposition}
+                  </span>
+                )}
+              </div>
+              <ul className="space-y-1.5">
+                {card.criteria.map((criterion) => (
+                  <li
+                    key={criterion.evaluationId}
+                    className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs"
+                  >
+                    <Badge variant={criterion.status === "pass" ? "success" : criterion.status === "fail" ? "destructive" : "warning"}>
+                      {criterion.status}
+                    </Badge>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {criterion.proofCriterionId} → {criterion.evaluationId}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground leading-snug">
+                Proof boundary · {card.proofLimitations.proofScope}. Evidence
+                boundary · {card.proofLimitations.evidenceBoundary}.
+              </p>
+              <p className="font-mono text-[10px] text-muted-foreground break-all">
+                basis {card.basis.snapshotId}@{card.basis.revision} · STEP {card.evidence.canonicalStep.id} · proof {card.evidence.sealedProof.id} · execution {card.evidence.executionEvidence.id} · L4 {card.evidence.evaluationCapture.id}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Read-only record: no engine, SysON, CAD, correction, or MCP command is available here.
+              </p>
+            </div>
+          )}
+      </CardContent>
+    </Card>
   );
 }
 

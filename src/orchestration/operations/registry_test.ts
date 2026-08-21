@@ -32,6 +32,10 @@ import {
   DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
 } from "../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import {
+  DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+  DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
+} from "../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
+import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
@@ -1047,6 +1051,57 @@ Deno.test(
                     snapshotRevision: 9,
                     kind: "artifact" as const,
                     id: "artifact.syson",
+                  },
+                },
+              }],
+            },
+            stage: "queue",
+            basisKind: "thread-snapshot",
+          }),
+        EngineeringOperationRegistryError,
+      );
+      assertEquals(extras.code, "invalid_bindings");
+    }
+  },
+);
+
+Deno.test(
+  "static-mechanical closeout operations are consequential approvedBrief-only agent dispatches after human MRTR",
+  () => {
+    for (
+      const operation of [
+        DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+        DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
+      ]
+    ) {
+      const registered = getRegisteredEngineeringOperation(operation)!;
+      assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+      assertEquals(registered.workItemKind, "review");
+      assertEquals(registered.riskClass, "consequential");
+      assertEquals(registered.execution, "trusted");
+      // `mustOrigin: human` would route lifecycle commands through the human
+      // actor, but command policy reserves claim/publish/complete for the
+      // registered agent. The executor independently requires a human MRTR.
+      assertEquals(registered.mustOrigin, undefined);
+      assertEquals(registered.bindings, [{
+        name: "approvedBrief",
+        allowedSourceKinds: ["approved-brief"],
+      }]);
+
+      const extras = assertThrows(
+        () =>
+          validateRegisteredEngineeringOperationInput({
+            operation: {
+              ...operation,
+              bindings: [{
+                name: "providerEnvelope",
+                source: {
+                  kind: "thread-entity" as const,
+                  reference: {
+                    snapshotId: "thread.snapshot.9",
+                    snapshotRevision: 9,
+                    kind: "artifact" as const,
+                    id: "artifact.provider",
                   },
                 },
               }],

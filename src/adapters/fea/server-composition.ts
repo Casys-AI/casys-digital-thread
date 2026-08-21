@@ -19,6 +19,7 @@ import type { CaptureBackedRunPlanSealer } from "../compile/plans/capture-backed
 import type { ResolvedOperationPlanResolver } from "../compile/plans/resolved-operation-plan-resolver.ts";
 import { FileByteStore } from "../shared/cas/file-byte-store.ts";
 import {
+  EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
@@ -31,6 +32,9 @@ import type { CalculixIsolatedExecutionServerOptions } from "./isolated-v3/calcu
 import type { CalculixIsolatedExecutionComposition } from "./isolated-v3/calculix-isolated-execution-composition.ts";
 import { FileCalculixIsolatedProductAttemptStore } from "./isolated-v3/file-calculix-isolated-product-attempt-store.ts";
 import { VerifyRunFeaStaticProofV3RunExecutor } from "./isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts";
+import { FileCalculixIsolatedExecutionEvidenceStore } from "./isolated-v3/calculix-isolated-execution-evidence.ts";
+import { PrepareProjectEvaluationCloseoutReview } from "./evaluation-closeout/prepare-project-evaluation-closeout-review.ts";
+import { DecideStaticMechanicalEvaluationCloseoutRunExecutor } from "./evaluation-closeout/decide-static-mechanical-evaluation-closeout-run-executor.ts";
 import { CaptureBackedFeaProofSealRequirementsReviewer } from "./seal-case/capture-backed-fea-proof-seal-requirements-reviewer.ts";
 import { FileCataloguedMechanicalProofCaseReader } from "./seal-case/file-catalogued-mechanical-proof-case-reader.ts";
 import {
@@ -80,6 +84,12 @@ export interface FeaProject {
   readonly feaIsolatedRunReview: PrepareProjectFeaIsolatedRunReview;
   readonly genericVerifySealProofCase: VerifySealProofCaseRunExecutor;
   readonly isolatedCalculixRun: VerifyRunFeaStaticProofV3RunExecutor | undefined;
+  /** Provider-free human L5 review; it only reopens existing @3 evidence. */
+  readonly staticMechanicalEvaluationCloseoutReview:
+    PrepareProjectEvaluationCloseoutReview;
+  /** Provider-free human L5 documentary Thread writer. */
+  readonly decideStaticMechanicalEvaluationCloseout:
+    DecideStaticMechanicalEvaluationCloseoutRunExecutor;
 }
 
 export async function createCalculixCapability(
@@ -136,6 +146,26 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
   const feaProofStepAssets = new FileCanonicalAssetReader({
     directory: options.canonicalAssetDirectory,
   });
+  // These stores reopen existing FEA @3 evidence. They are composed even when
+  // no CalculiX/SysON runtime is configured because human closeout itself is
+  // provider-free and must never turn configuration absence into a new
+  // authority path.
+  const closeoutExecutionEvidence = new FileCalculixIsolatedExecutionEvidenceStore(
+    `${options.recordedAnalysisDirectory}/calculix/isolated-execution/evidence`,
+    options.recordedAnalysisDirectory,
+  );
+  const sysonEvaluationCaptures = new FileByteStore({
+    kind: "calculix-isolated-syson-evaluation",
+    directory:
+      `${options.recordedAnalysisDirectory}/calculix/isolated-execution/syson-evaluations`,
+    uriNamespace: "calculix-isolated-syson-evaluation",
+    label: "Isolated CalculiX SysON evaluation",
+  });
+  const closeoutCaptures = new FileCaptureStore({
+    ...EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+    directory: `${options.recordedAnalysisDirectory}/calculix/evaluation-closeout-captures`,
+    syncBoundary: options.recordedAnalysisDirectory,
+  });
   const feaProofSealReview = new PrepareProjectFeaProofSealReview({
     snapshots: options.snapshots,
     projects: options.projects,
@@ -164,6 +194,27 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
     catalog: proofCaseCatalogReader,
     lease: options.lease,
   });
+  const staticMechanicalEvaluationCloseoutReview =
+    new PrepareProjectEvaluationCloseoutReview({
+      projects: options.projects,
+      snapshots: options.snapshots,
+      artifacts: options.recordedAnalysisCas,
+      canonicalAssets: feaProofStepAssets,
+      executionEvidence: closeoutExecutionEvidence,
+      evaluationCaptures: sysonEvaluationCaptures,
+    });
+  const decideStaticMechanicalEvaluationCloseout =
+    new DecideStaticMechanicalEvaluationCloseoutRunExecutor({
+      projects: options.projects,
+      commands: options.commands,
+      snapshots: options.snapshots,
+      artifacts: options.recordedAnalysisCas,
+      canonicalAssets: feaProofStepAssets,
+      executionEvidence: closeoutExecutionEvidence,
+      evaluationCaptures: sysonEvaluationCaptures,
+      closeoutCaptures,
+      lease: options.lease,
+    });
   const isolatedCalculixRun = options.sysonMcpUrl &&
       options.calculix.isolatedExecution?.execution
     ? new VerifyRunFeaStaticProofV3RunExecutor({
@@ -178,13 +229,7 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
       profiles: options.calculix.isolatedExecution.profiles,
       executeIsolated: options.calculix.isolatedExecution.execution.execute,
       executionEvidence: options.calculix.isolatedExecution.execution.evidence,
-      sysonEvaluationCaptureStore: new FileByteStore({
-        kind: "calculix-isolated-syson-evaluation",
-        directory:
-          `${options.recordedAnalysisDirectory}/calculix/isolated-execution/syson-evaluations`,
-        uriNamespace: "calculix-isolated-syson-evaluation",
-        label: "Isolated CalculiX SysON evaluation",
-      }),
+      sysonEvaluationCaptureStore: sysonEvaluationCaptures,
       attempts: new FileCalculixIsolatedProductAttemptStore(
         `${options.recordedAnalysisDirectory}/calculix/isolated-execution/product-attempts`,
         options.recordedAnalysisDirectory,
@@ -201,5 +246,7 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
     feaIsolatedRunReview,
     genericVerifySealProofCase,
     isolatedCalculixRun,
+    staticMechanicalEvaluationCloseoutReview,
+    decideStaticMechanicalEvaluationCloseout,
   };
 }

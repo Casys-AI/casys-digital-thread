@@ -52,6 +52,10 @@ import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
 } from "./src/adapters/modelica/evaluation/decide-admitted-modelica-evaluation-run-executor.ts";
+import {
+  DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+  DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
+} from "./src/adapters/fea/evaluation-closeout/decide-static-mechanical-evaluation-closeout-run-executor.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "./src/adapters/modelica/thermal-method-sheet/verify-seal-modelica-thermal-method-sheet-run-executor.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "./src/domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
@@ -1013,6 +1017,8 @@ async function createProjectControl(
       briefRequirementsReview: architectureProject.briefRequirementsReview,
       feaProofSealReview: feaProject.feaProofSealReview,
       feaIsolatedRunReview: feaProject.feaIsolatedRunReview,
+      evaluationCloseoutReview:
+        feaProject.staticMechanicalEvaluationCloseoutReview,
       sensitivityStudySealReview: sensitivity.sensitivityStudySealReview,
       build123dExecutionReview: build123dCapability.build123dExecutionReview,
       isolatedGeometrySealReview: build123dCapability.isolatedGeometrySealReview,
@@ -1081,6 +1087,14 @@ async function createProjectControl(
           {
             operation: DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
             executor: modelicaProject.decideAdmittedModelicaEvaluation,
+          },
+          {
+            operation: DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
+            executor: feaProject.decideStaticMechanicalEvaluationCloseout,
+          },
+          {
+            operation: DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
+            executor: feaProject.decideStaticMechanicalEvaluationCloseout,
           },
           {
             operation: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
