@@ -77,6 +77,10 @@ import {
   VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
 } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import {
+  parseCrossDomainImpactManifestSealParameters,
+  VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
+} from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
+import {
   parseAdmittedObservationEvaluationParameters,
   VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
 } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
@@ -187,6 +191,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION),
     (parameters) => {
       parseThermalMethodSheetSealParameters(parameters);
+    },
+  ],
+  [
+    keyOf(VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION),
+    (parameters) => {
+      parseCrossDomainImpactManifestSealParameters(parameters);
     },
   ],
   [

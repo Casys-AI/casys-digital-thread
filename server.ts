@@ -53,6 +53,7 @@ import {
   DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
 } from "./src/adapters/modelica/evaluation/decide-admitted-modelica-evaluation-run-executor.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "./src/adapters/modelica/thermal-method-sheet/verify-seal-modelica-thermal-method-sheet-run-executor.ts";
+import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "./src/domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
 import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "./src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts";
 import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/compile/source/source-analysis-frontend-registry.ts";
@@ -179,6 +180,7 @@ import {
   createQualifiedModelicaCapability,
 } from "./src/adapters/modelica/server-composition.ts";
 import { createSensitivityComposition } from "./src/adapters/sensitivity/server-composition.ts";
+import { createCrossDomainImpactProject } from "./src/adapters/impact/server-composition.ts";
 
 const DEFAULT_PORT = 3020;
 const DEFAULT_HOSTNAME = "127.0.0.1";
@@ -767,6 +769,13 @@ async function createProjectControl(
     qualified: qualifiedModelica,
     admitted: admittedModelica,
   });
+  const impactProject = createCrossDomainImpactProject({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    lease,
+    recordedAnalysisDirectory,
+  });
   const feaProject = createFeaProject({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1015,6 +1024,8 @@ async function createProjectControl(
       admittedModelicaEvaluationReview:
         modelicaProject.admittedModelicaEvaluationReview,
       thermalMethodSheetSealReview: modelicaProject.thermalMethodSheetSealReview,
+      crossDomainImpactManifestSealReview:
+        impactProject.crossDomainImpactManifestSealReview,
       ledDriverSourceCapture: electrical.ledDriverSourceCapture,
       ledDriverSourceReview: electrical.ledDriverSourceReview,
       ...composePrivateBuild123dGeometrySurfaces(
@@ -1052,6 +1063,10 @@ async function createProjectControl(
           {
             operation: VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
             executor: modelicaProject.verifySealModelicaThermalMethodSheet,
+          },
+          {
+            operation: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
+            executor: impactProject.verifySealCrossDomainImpactManifest,
           },
           {
             operation: VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,

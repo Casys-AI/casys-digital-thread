@@ -548,6 +548,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_brief_requirements_review",
     "project_change_append",
     "project_corrected_admission_review",
+    "project_cross_domain_impact_manifest_seal_review",
     "project_decision_approve",
     "project_decision_propose",
     "project_decision_reject",
@@ -610,6 +611,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_brief_requirements_review",
       "project_change_append",
       "project_corrected_admission_review",
+      "project_cross_domain_impact_manifest_seal_review",
       "project_decision_approve",
       "project_decision_propose",
       "project_decision_reject",
@@ -841,6 +843,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_sensitivity_base_evaluation_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_corrected_admission_review" ||
+          tool.name === "project_cross_domain_impact_manifest_seal_review" ||
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
@@ -876,6 +879,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_sensitivity_base_evaluation_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_corrected_admission_review" ||
+          tool.name === "project_cross_domain_impact_manifest_seal_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
           tool.name === "project_admitted_modelica_evaluation_review",
       );

@@ -25,6 +25,7 @@ import {
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
+import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -96,6 +97,19 @@ Deno.test("operation lookup is exact and fails closed for unknown revisions", ()
   assertStringIncludes(error.message, "baseline.unknown@1");
   assertEquals(error.message.includes("tool"), false);
   assertEquals(error.message.includes("arguments"), false);
+});
+
+Deno.test("cross-domain impact-manifest seal is a provider-free review with only the approved brief binding", () => {
+  const operation = getRegisteredEngineeringOperation(
+    VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
+  )!;
+  assertEquals(operation.workItemKind, "review");
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.bindings, [{
+    name: "approvedBrief",
+    allowedSourceKinds: ["approved-brief"],
+  }]);
+  assertEquals(operation.decisionEvidenceScope, undefined);
 });
 
 Deno.test("historical MCP FEA and recorded Modelica versions are neither lookupable nor queueable", () => {

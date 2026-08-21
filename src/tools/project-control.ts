@@ -63,6 +63,10 @@ import {
   registerProjectModelicaReviewTools,
 } from "./project-control/modelica-review-tools.ts";
 import {
+  type ProjectCrossDomainImpactReviewToolDependencies,
+  registerProjectCrossDomainImpactReviewTools,
+} from "./project-control/impact-review-tools.ts";
+import {
   type ProjectArchitectureSysmlToolDependencies,
   registerProjectArchitectureSysmlTools,
 } from "./project-control/architecture-sysml-tools.ts";
@@ -109,6 +113,7 @@ export interface ProjectControlToolDependencies
   extends
     ProjectTechnicalCompilationToolDependencies,
     ProjectModelicaReviewToolDependencies,
+    ProjectCrossDomainImpactReviewToolDependencies,
     ProjectArchitectureSysmlToolDependencies,
     ProjectBriefCompilationToolDependencies,
     ProjectVectorCorrectionToolDependencies,
@@ -183,6 +188,7 @@ export function registerProjectControlTools(
 
   registerProjectTechnicalCompilationTools(app, dependencies);
   registerProjectModelicaReviewTools(app, dependencies);
+  registerProjectCrossDomainImpactReviewTools(app, dependencies);
   registerProjectArchitectureSysmlTools(app, dependencies);
   registerProjectBriefCompilationTools(app, dependencies);
   registerProjectVectorCorrectionTools(app, dependencies);

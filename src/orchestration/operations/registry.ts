@@ -19,6 +19,7 @@ import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivi
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
+import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -417,6 +418,31 @@ const OPERATIONS = [
       "supply Modelica text, provider tools, or solver arguments. This is not an " +
       "admitted run and not an evaluation.",
     workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Provider-free seal of one closed cross-domain impact manifest. The signed
+   * grammar contains reread identities only; no causal evaluation, gate-claim
+   * transition, solver/provider request, or caller-selected artifact path is
+   * exposed by this operation.
+   */
+  {
+    id: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id,
+    version: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed cross-domain impact manifest",
+    description:
+      "Reopen one exact closed cross-domain impact manifest, its named Thread lineage, " +
+      "declared mechanical evidence references, and current approved Brief V2 gate dependencies, " +
+      "then publish one documentary seal. Callers never supply branches, causal edges, artifacts, " +
+      "provider envelopes, solver arguments, or an evaluation result.",
+    workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
     bindings: [{

@@ -346,6 +346,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "simulate.run-admitted-modelica@1",
     "simulate.run-qualified-modelica-kit@1",
     "verify.evaluate-admitted-modelica-observations@1",
+    "verify.seal-cross-domain-impact-manifest@1",
     "verify.seal-modelica-thermal-method-sheet@1",
     "verify.seal-proof-case@1",
   ]);

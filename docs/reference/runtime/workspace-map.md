@@ -185,6 +185,16 @@ draft only. These operations are product-independent but deliberately bounded: t
 not provide a generic simulator, measurement source, requirement evaluator,
 manufacturing decision, or certification verdict.
 
+`project_cross_domain_impact_manifest_seal_review` is likewise read-only: its caller
+names only a project and an opaque manifest fingerprint. The server rereads the closed
+manifest, exact Thread lineage, declared mechanical evidence, and current approved Brief
+V2 gate dependencies; `verify.seal-cross-domain-impact-manifest@1` can then seal that
+same identity after a separate human MRTR. Neither surface evaluates a branch, changes a
+gate claim, calls a solver/provider, or creates a Workbench command path.
+The post-MRTR seal is one fresh documentary Thread document whose capture records those
+identities; it is not the later impact-evaluation capture: it creates no branch outcome,
+gate-claim transition, invalidation, proposed work item, or automatic rerun.
+
 Lookalike traps for agents: [lookalike traps](../agent/lookalike-traps.md).
 
 The legacy generic geometry boundary separates preview from seal, and it separates two
