@@ -51,19 +51,24 @@ import {
   requireExactSysonModelSeed,
 } from "../../../domain/architecture/seed/syson-model-seed.ts";
 import {
+  type AdoptedItem,
   type ArchitectureProposal,
   architectureWriteSelector,
+  type ExistingArchitectureStructure,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
   planArchitectureInsertion,
   renderArchitectureSysmlWithManifest,
 } from "../../../domain/architecture/renderer/architecture-proposal.ts";
+import {
+  type ArchitectureGraphRatchetResult,
+  ratchetArchitectureGraph,
+  verifyProposedArchitecturePresence,
+} from "../../../domain/architecture/renderer/architecture-graph-ratchet.ts";
+import { buildArchitectureThreadExtension } from "../../../domain/architecture/renderer/architecture-thread-extension.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
-  ThreadArtifactConsumption,
-  ThreadFreshness,
-  ThreadOperationRef,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
 import { archivedRefKeys } from "../../../domain/thread/thread-snapshot.ts";
@@ -77,6 +82,8 @@ import {
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
   ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+  architectureGraphFromCapture,
+  buildExactArchitectureCapture,
   type ExactArchitectureCapture,
   parseExactArchitectureCapture,
 } from "./architecture-capture.ts";
@@ -763,15 +770,11 @@ export class ModelWriteArchitectureRunExecutor {
       );
 
       // Step 13: build + save capture.
-      const captureRecord = {
-        schemaVersion: sealedSources.length > 0
-          ? ARCHITECTURE_CAPTURE_SCHEMA
-          : ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
-        operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+      const captureRecord = buildExactArchitectureCapture({
         trustedRunId: run.id,
         packageName: architectureProposal.packageName,
         systemName: architectureProposal.system.name,
-        package: { id: architecturePackageId, label: verified.packageLabel },
+        architecturePackage: { id: architecturePackageId, label: verified.packageLabel },
         seed: {
           artifactId: seedArtifact.id,
           fingerprint: seedVerifiedFingerprint,
@@ -786,36 +789,12 @@ export class ModelWriteArchitectureRunExecutor {
             },
           }
           : {}),
-        partDefinitions: verified.partDefs.map((pd) => {
-          const attributes = (pd.attributes ?? []).flatMap((attribute) =>
-            attribute.id
-              ? [{
-                id: attribute.id,
-                kind: "AttributeUsage" as const,
-                label: attribute.label,
-              }]
-              : []
-          );
-          return {
-            id: pd.id,
-            kind: "PartDefinition",
-            label: pd.label,
-            usages: pd.usages.map((usage) => ({
-              id: usage.id,
-              kind: "PartUsage",
-              label: usage.label,
-              targetId: usage.targetId,
-              targetKind: "PartDefinition",
-              targetLabel: usage.targetLabel,
-            })),
-            ...(attributes.length > 0 ? { attributes } : {}),
-          };
-        }),
+        live: verified,
         insertedAt: capturedAt,
         ...(sealedSources.length > 0
           ? { sourceAnalyses: sealedSources.map((source) => source.reference) }
           : {}),
-      };
+      });
       // Fingerprint the object so SHA-256 = SHA-256(raw text bytes of captureText).
       // FileCaptureStore.save verifies SHA-256 of raw bytes, so the fingerprint
       // must be computed on the object (= deterministicJson encoding), not on the
@@ -833,7 +812,7 @@ export class ModelWriteArchitectureRunExecutor {
 
       // Step 14: build + apply thread extension.
       const captureUri = this.#captures.uriFor(captureFp);
-      const extension = buildExtension({
+      const extension = buildArchitectureThreadExtension({
         base,
         seedArtifact,
         previousArchitectureArtifact,
@@ -1618,21 +1597,11 @@ export class ModelWriteArchitectureRunExecutor {
    * is required to make an old edge disappear.
    */
   async #assertNoUnattestedLiveArchitecture(
-    verified: NonNullable<Awaited<ReturnType<typeof extractArchitectureStructure>>>,
+    verified: ExistingArchitectureStructure,
     proposal: ArchitectureProposal,
     predecessor: ThreadArtifact | undefined,
   ): Promise<void> {
-    let predecessorPackage:
-      | { readonly id: string; readonly label: string }
-      | undefined;
-    const predecessorDefinitions: Array<{
-      id: string;
-      label: string;
-      usages: Array<
-        { id: string; label: string; targetId: string; targetLabel: string }
-      >;
-      attributes: Array<{ id: string; label: string }>;
-    }> = [];
+    let predecessorGraph: ExistingArchitectureStructure | undefined;
     if (predecessor) {
       const text = await this.#captures.read(predecessor.fingerprint);
       if (!text) {
@@ -1672,291 +1641,15 @@ export class ModelWriteArchitectureRunExecutor {
           "The predecessor architecture capture is not exact v2/v3 evidence.",
         );
       }
-      predecessorPackage = capture.package;
-      for (const part of capture.partDefinitions) {
-        predecessorDefinitions.push({
-          id: part.id,
-          label: part.label,
-          usages: part.usages.map((usage) => ({
-            id: usage.id,
-            label: usage.label,
-            targetId: usage.targetId,
-            targetLabel: usage.targetLabel,
-          })),
-          attributes: (part.attributes ?? []).map((attribute) => ({
-            id: attribute.id,
-            label: attribute.label,
-          })),
-        });
-      }
+      predecessorGraph = architectureGraphFromCapture(capture);
     }
-    const fail = (message: string): never => {
-      throw new EngineeringProjectCommandError("invalid_transition", message);
-    };
-    const increment = (counts: Map<string, number>, key: string): void => {
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    };
-    const edgeKey = (parent: string, label: string, target: string) =>
-      `${parent}\u0000${label}\u0000${target}`;
-
-    if (
-      predecessorPackage &&
-      (verified.packageId !== predecessorPackage.id ||
-        verified.packageLabel !== predecessorPackage.label)
-    ) {
-      fail(
-        "Verification failed: the attested predecessor Package was replaced or removed.",
-      );
-    }
-
-    // Definition labels are a multiset: a Set would silently admit a duplicate
-    // inherited PartDef.  The predecessor's provider ID remains authoritative.
-    const predecessorById = new Map<string, typeof predecessorDefinitions[number]>();
-    const predecessorLabels = new Map<string, number>();
-    const predecessorUsageIds = new Set<string>();
-    const predecessorAttributeIds = new Set<string>();
-    const inheritedAttributes = new Map<
-      string,
-      { id: string; label: string; parentId: string; parentLabel: string }
-    >();
-    const inheritedEdges = new Map<string, number>();
-    for (const part of predecessorDefinitions) {
-      if (predecessorById.has(part.id)) {
-        fail(
-          "Verification failed: the predecessor capture repeats a PartDefinition identity.",
-        );
-      }
-      predecessorById.set(part.id, part);
-      increment(predecessorLabels, part.label);
-      for (const usage of part.usages) {
-        if (predecessorUsageIds.has(usage.id)) {
-          fail(
-            "Verification failed: the predecessor capture repeats a PartUsage identity.",
-          );
-        }
-        predecessorUsageIds.add(usage.id);
-        increment(inheritedEdges, edgeKey(part.label, usage.label, usage.targetLabel));
-      }
-      for (const attribute of part.attributes) {
-        if (predecessorAttributeIds.has(attribute.id)) {
-          fail(
-            "Verification failed: the predecessor capture repeats an AttributeUsage identity.",
-          );
-        }
-        predecessorAttributeIds.add(attribute.id);
-        inheritedAttributes.set(attribute.id, {
-          id: attribute.id,
-          label: attribute.label,
-          parentId: part.id,
-          parentLabel: part.label,
-        });
-      }
-    }
-    if ([...predecessorLabels.values()].some((count) => count !== 1)) {
-      fail(
-        "Verification failed: the predecessor capture has ambiguous PartDefinition labels.",
-      );
-    }
-
-    const expectedDefinitionLabels = new Map(predecessorLabels);
-    for (
-      const label of [
-        proposal.system.name,
-        ...proposal.components.map((component) => component.name),
-      ]
-    ) {
-      if (!expectedDefinitionLabels.has(label)) expectedDefinitionLabels.set(label, 1);
-    }
-    const expectedNewEdges = new Map<string, number>();
-    for (const component of proposal.components) {
-      const key = edgeKey(
-        component.parentName,
-        component.usageName,
-        component.name,
-      );
-      if (!inheritedEdges.has(key)) increment(expectedNewEdges, key);
-    }
-
-    const actualById = new Map<string, typeof verified.partDefs[number]>();
-    const actualSemanticIds = new Set<string>([verified.packageId]);
-    const actualLabels = new Map<string, number>();
-    for (const part of verified.partDefs) {
-      if (!isPartDefinitionKind(part.kind ?? "")) {
-        fail(
-          "Verification failed: live architecture has an ambiguous PartDefinition identity.",
-        );
-      }
-      if (actualSemanticIds.has(part.id)) {
-        fail(
-          "Verification failed: live architecture repeats a semantic identity across its Package, PartDefinitions, or PartUsages.",
-        );
-      }
-      actualSemanticIds.add(part.id);
-      actualById.set(part.id, part);
-      increment(actualLabels, part.label);
-    }
-    if (
-      actualLabels.size !== expectedDefinitionLabels.size ||
-      [...expectedDefinitionLabels].some(([label, count]) =>
-        actualLabels.get(label) !== count
-      )
-    ) {
-      fail(
-        "Verification failed: live architecture contains an unreviewed PartDefinition addition, removal, replacement, or duplicate.",
-      );
-    }
-
-    // Every inherited definition and occurrence must survive with its exact
-    // provider identity.  Distinct legitimate occurrences of one target PartDef
-    // remain distinct because this compares occurrence IDs, never target sets.
-    for (const prior of predecessorDefinitions) {
-      const livePart = actualById.get(prior.id);
-      if (!livePart || livePart.label !== prior.label) {
-        fail(
-          "Verification failed: an attested predecessor PartDefinition was replaced or removed.",
-        );
-      }
-      if (!livePart) continue;
-      const liveUsageById = new Map(livePart.usages.map((usage) => [usage.id, usage]));
-      if (liveUsageById.size !== livePart.usages.length) {
-        fail("Verification failed: live architecture repeats a PartUsage identity.");
-      }
-      for (const priorUsage of prior.usages) {
-        const liveUsage = liveUsageById.get(priorUsage.id);
-        if (
-          !liveUsage || !isPartUsageKind(liveUsage.kind ?? "") ||
-          liveUsage.label !== priorUsage.label ||
-          liveUsage.targetId !== priorUsage.targetId ||
-          !isPartDefinitionKind(liveUsage.targetKind ?? "") ||
-          liveUsage.targetLabel !== priorUsage.targetLabel
-        ) {
-          fail(
-            "Verification failed: an attested predecessor PartUsage was replaced or removed.",
-          );
-        }
-      }
-    }
-
-    const remainingNewEdges = new Map(expectedNewEdges);
-    for (const part of verified.partDefs) {
-      for (const usage of part.usages) {
-        if (
-          typeof usage.id !== "string" || typeof usage.targetId !== "string" ||
-          typeof usage.targetLabel !== "string" ||
-          !isPartUsageKind(usage.kind ?? "") ||
-          !isPartDefinitionKind(usage.targetKind ?? "") ||
-          actualById.get(usage.targetId)?.label !== usage.targetLabel
-        ) {
-          fail(
-            "Verification failed: live architecture has an invalid or ambiguous PartUsage occurrence.",
-          );
-        }
-        const usageId = usage.id!;
-        if (actualSemanticIds.has(usageId)) {
-          fail(
-            "Verification failed: live architecture repeats a semantic identity across its Package, PartDefinitions, or PartUsages.",
-          );
-        }
-        actualSemanticIds.add(usageId);
-        if (predecessorUsageIds.has(usageId)) continue;
-        const key = edgeKey(part.label, usage.label, usage.targetLabel);
-        const remaining = remainingNewEdges.get(key) ?? 0;
-        if (remaining <= 0) {
-          fail(
-            "Verification failed: live architecture contains an unreviewed PartUsage occurrence outside the attested predecessor plus proposal graph.",
-          );
-        }
-        remainingNewEdges.set(key, remaining - 1);
-      }
-    }
-    if ([...remainingNewEdges.values()].some((count) => count !== 0)) {
-      fail(
-        "Verification failed: a proposal PartUsage occurrence is absent from live architecture.",
-      );
-    }
-
-    // AttributeUsage is part of the attested architecture graph too. Preserve
-    // every inherited provider identity exactly, and permit only one fresh
-    // attribute for each reviewed proposal name/owner pair not already inherited.
-    const attributeKey = (parent: string, label: string) => `${parent}\u0000${label}`;
-    const inheritedAttributeKeys = new Set(
-      [...inheritedAttributes.values()].map((attribute) =>
-        attributeKey(attribute.parentLabel, attribute.label)
-      ),
+    requireAcceptedArchitectureRatchet(
+      ratchetArchitectureGraph({
+        predecessor: predecessorGraph,
+        proposal,
+        live: verified,
+      }),
     );
-    const expectedNewAttributes = new Map<string, number>();
-    for (const attribute of proposal.attributes ?? []) {
-      const key = attributeKey(attribute.parentName, attribute.name);
-      if (!inheritedAttributeKeys.has(key)) {
-        increment(expectedNewAttributes, key);
-      }
-    }
-
-    const actualAttributeIds = new Set<string>();
-    const observedNewAttributes = new Map<string, number>();
-    for (const part of verified.partDefs) {
-      for (const attribute of part.attributes ?? []) {
-        const attributeId = attribute.id;
-        if (typeof attributeId !== "string" || attributeId.length === 0) {
-          fail(
-            "Verification failed: live architecture has an invalid or repeated AttributeUsage identity.",
-          );
-        }
-        const exactAttributeId = attributeId as string;
-        if (
-          !isAttributeUsageKind(attribute.kind ?? "") ||
-          actualSemanticIds.has(exactAttributeId) ||
-          actualAttributeIds.has(exactAttributeId)
-        ) {
-          fail(
-            "Verification failed: live architecture has an invalid or repeated AttributeUsage identity.",
-          );
-        }
-        actualAttributeIds.add(exactAttributeId);
-        actualSemanticIds.add(exactAttributeId);
-        const inherited = inheritedAttributes.get(exactAttributeId);
-        if (inherited !== undefined) {
-          if (
-            inherited.label !== attribute.label ||
-            inherited.parentId !== part.id ||
-            inherited.parentLabel !== part.label
-          ) {
-            fail(
-              "Verification failed: an attested predecessor AttributeUsage was replaced or moved.",
-            );
-          }
-          continue;
-        }
-        const key = attributeKey(part.label, attribute.label);
-        if (inheritedAttributeKeys.has(key)) {
-          fail(
-            "Verification failed: an attested predecessor AttributeUsage was replaced or moved.",
-          );
-        }
-        const expected = expectedNewAttributes.get(key) ?? 0;
-        if (expected <= 0) {
-          fail(
-            "Verification failed: live architecture contains an unreviewed AttributeUsage outside the attested predecessor plus proposal graph.",
-          );
-        }
-        observedNewAttributes.set(key, (observedNewAttributes.get(key) ?? 0) + 1);
-      }
-    }
-
-    for (const inherited of inheritedAttributes.values()) {
-      if (!actualAttributeIds.has(inherited.id)) {
-        fail(
-          "Verification failed: an attested predecessor AttributeUsage was replaced or removed.",
-        );
-      }
-    }
-    for (const [key, expected] of expectedNewAttributes) {
-      if (observedNewAttributes.get(key) !== expected) {
-        fail(
-          "Verification failed: a proposal AttributeUsage is absent from live architecture.",
-        );
-      }
-    }
   }
 
   async #assertPredecessorCaptureExact(
@@ -2391,28 +2084,7 @@ export class ModelWriteArchitectureRunExecutor {
       );
     }
 
-    const verified = {
-      packageId: capture.package.id,
-      packageLabel: capture.package.label,
-      partDefs: capture.partDefinitions.map((part) => ({
-        id: part.id,
-        kind: part.kind,
-        label: part.label,
-        usages: part.usages.map((usage) => ({
-          id: usage.id,
-          kind: usage.kind,
-          label: usage.label,
-          targetId: usage.targetId,
-          targetKind: usage.targetKind,
-          targetLabel: usage.targetLabel,
-        })),
-        attributes: (part.attributes ?? []).map((attribute) => ({
-          id: attribute.id,
-          kind: attribute.kind,
-          label: attribute.label,
-        })),
-      })),
-    };
+    const verified = architectureGraphFromCapture(capture);
     try {
       verifyAllComponentsPresent(verified, architectureProposal, []);
       await this.#assertPredecessorCaptureExact(
@@ -2495,7 +2167,7 @@ export class ModelWriteArchitectureRunExecutor {
     try {
       rebuilt = applyThreadSnapshotExtensionIfNew(
         base,
-        buildExtension({
+        buildArchitectureThreadExtension({
           base,
           seedArtifact,
           previousArchitectureArtifact: expectedPredecessorArtifact,
@@ -2840,251 +2512,22 @@ function isPartDefinitionKind(kind: string): boolean {
 
 // ── Private: post-insertion verification ─────────────────────────────────────
 
-function verifyAllComponentsPresent(
-  verified: Awaited<ReturnType<typeof extractArchitectureStructure>>,
-  proposal: ArchitectureProposal,
-  adopted: ReturnType<typeof planArchitectureInsertion>["adopted"],
+function requireAcceptedArchitectureRatchet(
+  result: ArchitectureGraphRatchetResult,
 ): void {
-  if (!verified) return;
-
-  // PARTIEL — re-check for ambiguous PartDef labels that could have appeared
-  // after the preflight (e.g. from a concurrent insertion). `new Map(pairs)`
-  // silently picks the last entry for a duplicate key, making every subsequent
-  // parent→usage→cible triple underdetermined. Reject explicitly.
-  const labelCounts = new Map<string, number>();
-  for (const pd of verified.partDefs) {
-    labelCounts.set(pd.label, (labelCounts.get(pd.label) ?? 0) + 1);
-  }
-  const duplicates = [...labelCounts.entries()]
-    .filter(([, count]) => count > 1)
-    .map(([label]) => label);
-  if (duplicates.length > 0) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `Verification failed: ambiguous PartDefinition labels after insertion: ` +
-        `${duplicates.join(", ")}. Manual SysON inspection required.`,
-    );
-  }
-
-  const presentByLabel = new Map(verified.partDefs.map((pd) => [pd.label, pd]));
-
-  // System must be present.
-  if (!presentByLabel.has(proposal.system.name)) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `Verification failed: system PartDef "${proposal.system.name}" is absent after insertion.`,
-    );
-  }
-
-  // Finding 1 — verify the FULL parent→usage→cible structure, not just PartDef
-  // existence. A wrong type (e.g. `wing : Motor` instead of `wing : Wing`) or
-  // a usage under the wrong parent must be rejected as a structural divergence.
-  for (const component of proposal.components) {
-    const componentDef = presentByLabel.get(component.name);
-    if (!componentDef) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Verification failed: component PartDef "${component.name}" is absent after insertion.`,
-      );
-    }
-    const parentDef = presentByLabel.get(component.parentName);
-    if (!parentDef) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Verification failed: parent PartDef "${component.parentName}" for component ` +
-          `"${component.name}" is absent after insertion.`,
-      );
-    }
-    const usagesWithProposedName = parentDef.usages.filter(
-      (u) => u.label === component.usageName,
-    );
-    if (usagesWithProposedName.length > 1) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Verification failed: usage "${component.usageName}" appears ` +
-          `${usagesWithProposedName.length} times under "${component.parentName}". ` +
-          "A unique parent→usage→target relationship is required.",
-      );
-    }
-    const matchingUsage = usagesWithProposedName[0];
-    if (!matchingUsage) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Verification failed: usage "${component.usageName}" is absent under ` +
-          `"${component.parentName}" after insertion of component "${component.name}".`,
-      );
-    }
-    if (matchingUsage.targetLabel !== component.name) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Verification failed: usage "${component.usageName}" under "${component.parentName}" ` +
-          `types "${matchingUsage.targetLabel}" instead of the proposed "${component.name}".`,
-      );
-    }
-  }
-
-  // Previously adopted components must still be present.
-  for (const adoptedItem of adopted) {
-    if (!presentByLabel.has(adoptedItem.componentName)) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        `Verification failed: previously-adopted component "${adoptedItem.componentName}" ` +
-          "was removed from the model during this run.",
-      );
-    }
+  if (result.status === "rejected") {
+    throw new EngineeringProjectCommandError("invalid_transition", result.message);
   }
 }
 
-function isPartUsageKind(kind: string): boolean {
-  return kind === "PartUsage" || kind === "sysml::PartUsage" ||
-    kind.endsWith("entity=PartUsage");
-}
-
-function isAttributeUsageKind(kind: string): boolean {
-  return kind === "AttributeUsage" || kind === "sysml::AttributeUsage" ||
-    kind.endsWith("entity=AttributeUsage");
-}
-
-// ── Private: thread extension builder ────────────────────────────────────────
-
-function buildExtension(options: {
-  base: ThreadSnapshot;
-  seedArtifact: ThreadArtifact;
-  previousArchitectureArtifact: ThreadArtifact | undefined;
-  /** Finding 6 — fingerprint recomputed from the bytes actually read, not copied
-   * from the snapshot record. Proves a real byte-level verification occurred. */
-  seedVerifiedFingerprint: ContentFingerprint;
-  runId: string;
-  capturedAt: string;
-  captureFp: ContentFingerprint;
-  captureUri: string;
-  architectureProposal: ArchitectureProposal;
-  verified: NonNullable<Awaited<ReturnType<typeof extractArchitectureStructure>>>;
-}) {
-  const {
-    base,
-    seedArtifact,
-    previousArchitectureArtifact,
-    seedVerifiedFingerprint,
-    runId,
-    capturedAt,
-    captureFp,
-    captureUri,
-    architectureProposal,
-    verified,
-  } = options;
-
-  const artifactId = `architecture-${captureFp.digest}`;
-  const freshness: ThreadFreshness = {
-    status: "fresh",
-    changedAt: capturedAt,
-    invalidatedByChangeIds: [],
-  };
-  const producer: ThreadOperationRef = {
-    serverId: "syson",
-    tool: "syson_element_insert_sysml",
-    runId,
-  };
-
-  const artifact: ThreadArtifact = {
-    id: artifactId,
-    name: `Architecture: ${architectureProposal.packageName}`,
-    kind: "sysml-model",
-    version: captureFp.digest,
-    fingerprint: captureFp,
-    uri: captureUri,
-    mediaType: "application/json",
-    producer,
-    inputArtifactIds: [
-      seedArtifact.id,
-      ...(previousArchitectureArtifact ? [previousArchitectureArtifact.id] : []),
-    ],
-    freshness,
-  };
-
-  const extensionId = `model-write-architecture-${captureFp.digest}`;
-
-  const consumptionId = `consume-${seedArtifact.id}-by-${artifactId}`;
-  const consumption: ThreadArtifactConsumption = {
-    id: consumptionId,
-    artifactId: seedArtifact.id,
-    consumer: producer,
-    observedFingerprint: seedVerifiedFingerprint,
-    verifiedAt: capturedAt,
-    status: "verified",
-  };
-  const predecessorConsumption = previousArchitectureArtifact
-    ? {
-      id: `consume-${previousArchitectureArtifact.id}-by-${artifactId}`,
-      artifactId: previousArchitectureArtifact.id,
-      consumer: producer,
-      observedFingerprint: previousArchitectureArtifact.fingerprint,
-      verifiedAt: capturedAt,
-      status: "verified" as const,
-    }
-    : undefined;
-
-  const provenance = [
-    {
-      id: `derived-from-seed-${captureFp.digest}`,
-      relation: "derived_from" as const,
-      from: { kind: "artifact" as const, id: artifactId },
-      to: { kind: "artifact" as const, id: seedArtifact.id },
-      rationale:
-        "The architecture package was inserted into the SysON model container " +
-        "created by the seed run.",
-    },
-    ...(previousArchitectureArtifact
-      ? [{
-        id: `derived-from-architecture-${captureFp.digest}`,
-        relation: "derived_from" as const,
-        from: { kind: "artifact" as const, id: artifactId },
-        to: { kind: "artifact" as const, id: previousArchitectureArtifact.id },
-        rationale:
-          "The exact previous generic architecture capture was re-read as the predecessor of this enrichment.",
-      }, {
-        id: `uses-${predecessorConsumption!.id}`,
-        relation: "uses" as const,
-        from: { kind: "consumption" as const, id: predecessorConsumption!.id },
-        to: { kind: "artifact" as const, id: previousArchitectureArtifact.id },
-        rationale:
-          "The executor re-read the exact previous generic architecture capture before enriching it.",
-      }]
-      : []),
-    {
-      id: `uses-${consumptionId}`,
-      relation: "uses" as const,
-      from: { kind: "consumption" as const, id: consumptionId },
-      to: { kind: "artifact" as const, id: seedArtifact.id },
-      rationale: "The executor re-read the exact seed capture before inserting the " +
-        "architecture package.",
-    },
-  ];
-
-  return {
-    id: extensionId,
-    name: `Generic architecture: ${architectureProposal.packageName}`,
-    subjectId: base.subject.id,
-    capturedAt,
-    artifacts: [artifact],
-    consumptions: [
-      consumption,
-      ...(predecessorConsumption ? [predecessorConsumption] : []),
-    ],
-    observations: [],
-    requirements: [],
-    evaluations: [],
-    violations: [],
-    provenance,
-    proposedActions: [],
-    bindingProofs: [
-      {
-        provider: "syson",
-        kind: "package",
-        id: verified.packageId,
-      },
-    ],
-  };
+function verifyAllComponentsPresent(
+  verified: ExistingArchitectureStructure | undefined,
+  proposal: ArchitectureProposal,
+  adopted: readonly AdoptedItem[],
+): void {
+  requireAcceptedArchitectureRatchet(
+    verifyProposedArchitecturePresence({ live: verified, proposal, adopted }),
+  );
 }
 
 // ── Private: lifecycle helpers ────────────────────────────────────────────────

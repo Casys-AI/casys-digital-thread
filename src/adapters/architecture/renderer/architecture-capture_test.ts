@@ -2,6 +2,8 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
   ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+  architectureGraphFromCapture,
+  buildExactArchitectureCapture,
   extractPartDefinitionsFromCapture,
   parseArchitectureCapturePartDefinitions,
   parseExactArchitectureCapture,
@@ -84,7 +86,6 @@ Deno.test("architecture capture parser bi-reads exact historical v2 and current 
     assertEquals(current.sourceAnalyses, [sourceReference()]);
   }
 });
-
 Deno.test("current architecture capture requires non-empty exact source analyses", () => {
   const missing = currentCapture();
   delete missing.sourceAnalyses;
@@ -233,4 +234,68 @@ Deno.test("historical v2 capture cannot be retrofitted with source analyses", ()
       sourceAnalyses: [sourceReference()],
     })
   );
+});
+
+function liveFromBase() {
+  const capture = baseCapture();
+  return {
+    packageId: capture.package.id,
+    packageLabel: capture.package.label,
+    partDefs: capture.partDefinitions.map((part) => ({
+      ...part,
+      attributes: [],
+    })),
+  };
+}
+
+Deno.test("buildExactArchitectureCapture v2 omits sourceAnalyses and round-trips the parser", () => {
+  const built = buildExactArchitectureCapture({
+    trustedRunId: RUN_ID,
+    packageName: PACKAGE_NAME,
+    systemName: "DroneSystem",
+    architecturePackage: baseCapture().package,
+    seed: baseCapture().seed,
+    live: liveFromBase(),
+    insertedAt: AT,
+  });
+  assertEquals(built.schemaVersion, ARCHITECTURE_CAPTURE_SCHEMA_LEGACY);
+  assertEquals("sourceAnalyses" in built, false);
+  assertEquals(parseExactArchitectureCapture(built), built);
+});
+
+Deno.test("buildExactArchitectureCapture v3 preserves source reference order and round-trips", () => {
+  const first = sourceReference();
+  const second = {
+    ...sourceReference(),
+    sourceId: "sysml-source:drone-v4-usage",
+    selector: {
+      kind: "usage" as const,
+      packageName: PACKAGE_NAME,
+      componentName: "Wing",
+      usageName: "wing",
+      parentName: "DroneSystem",
+    },
+    sourceFingerprint: fingerprint("1"),
+    sourceCaptureFingerprint: fingerprint("2"),
+    analysisFingerprint: fingerprint("3"),
+  };
+  const built = buildExactArchitectureCapture({
+    trustedRunId: RUN_ID,
+    packageName: PACKAGE_NAME,
+    systemName: "DroneSystem",
+    architecturePackage: baseCapture().package,
+    seed: baseCapture().seed,
+    live: liveFromBase(),
+    insertedAt: AT,
+    sourceAnalyses: [first, second],
+  });
+  assertEquals(built.schemaVersion, ARCHITECTURE_CAPTURE_SCHEMA);
+  if (built.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
+    assertEquals(built.sourceAnalyses, [first, second]);
+  }
+  assertEquals(parseExactArchitectureCapture(built), built);
+  const graph = architectureGraphFromCapture(built);
+  assertEquals(graph.packageId, "package-drone-v4");
+  assertEquals(graph.partDefs.map((part) => part.label), ["DroneSystem", "Wing"]);
+  assertEquals(graph.partDefs[0]?.usages.map((usage) => usage.label), ["wing"]);
 });

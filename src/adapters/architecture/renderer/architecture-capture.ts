@@ -2,7 +2,10 @@
 
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
-import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../../domain/architecture/renderer/architecture-proposal.ts";
+import {
+  type ExistingArchitectureStructure,
+  MODEL_WRITE_ARCHITECTURE_OPERATION,
+} from "../../../domain/architecture/renderer/architecture-proposal.ts";
 import {
   type SysmlSourceAnalysisReference,
   validateSysmlSourceAnalysisReference,
@@ -64,6 +67,107 @@ export interface ExactArchitectureCaptureV3 extends ExactArchitectureCaptureBase
 export type ExactArchitectureCapture =
   | ExactArchitectureCaptureV2
   | ExactArchitectureCaptureV3;
+
+export interface ExactArchitectureCaptureBuildInput {
+  readonly trustedRunId: string;
+  readonly packageName: string;
+  readonly systemName: string;
+  readonly architecturePackage: { readonly id: string; readonly label: string };
+  readonly seed: ArchitectureCaptureArtifactReference;
+  readonly predecessor?: ArchitectureCaptureArtifactReference;
+  readonly live: ExistingArchitectureStructure;
+  readonly insertedAt: string;
+  readonly sourceAnalyses?: readonly SysmlSourceAnalysisReference[];
+}
+
+/**
+ * Deterministic architecture-capture construction. Source-analysis references
+ * stay adapter-owned and keep caller order. Provider identities are copied,
+ * never reconstructed or sorted.
+ */
+export function buildExactArchitectureCapture(
+  input: ExactArchitectureCaptureBuildInput,
+): ExactArchitectureCapture {
+  const partDefinitions = input.live.partDefs.map((pd) => {
+    const attributes = (pd.attributes ?? []).flatMap((attribute) =>
+      attribute.id
+        ? [{
+          id: attribute.id,
+          kind: "AttributeUsage" as const,
+          label: attribute.label,
+        }]
+        : []
+    );
+    return {
+      id: pd.id,
+      kind: "PartDefinition" as const,
+      label: pd.label,
+      usages: pd.usages.map((usage) => ({
+        id: usage.id as string,
+        kind: "PartUsage" as const,
+        label: usage.label,
+        targetId: usage.targetId as string,
+        targetKind: "PartDefinition" as const,
+        targetLabel: usage.targetLabel,
+      })),
+      ...(attributes.length > 0 ? { attributes } : {}),
+    };
+  });
+  const base = {
+    operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+    trustedRunId: input.trustedRunId,
+    packageName: input.packageName,
+    systemName: input.systemName,
+    package: input.architecturePackage,
+    seed: input.seed,
+    ...(input.predecessor ? { predecessor: input.predecessor } : {}),
+    partDefinitions,
+    insertedAt: input.insertedAt,
+  };
+  if (input.sourceAnalyses && input.sourceAnalyses.length > 0) {
+    return {
+      schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
+      ...base,
+      sourceAnalyses: input.sourceAnalyses,
+    };
+  }
+  return {
+    schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+    ...base,
+  };
+}
+
+/**
+ * Project a parsed capture onto the domain-owned live/predecessor graph.
+ * Source-analysis references stay on the capture and are not part of this
+ * PartDefinition / PartUsage / AttributeUsage projection.
+ */
+export function architectureGraphFromCapture(
+  capture: ExactArchitectureCapture,
+): ExistingArchitectureStructure {
+  return {
+    packageId: capture.package.id,
+    packageLabel: capture.package.label,
+    partDefs: capture.partDefinitions.map((part) => ({
+      id: part.id,
+      kind: part.kind,
+      label: part.label,
+      usages: part.usages.map((usage) => ({
+        id: usage.id,
+        kind: usage.kind,
+        label: usage.label,
+        targetId: usage.targetId,
+        targetKind: usage.targetKind,
+        targetLabel: usage.targetLabel,
+      })),
+      attributes: (part.attributes ?? []).map((attribute) => ({
+        id: attribute.id,
+        kind: attribute.kind,
+        label: attribute.label,
+      })),
+    })),
+  };
+}
 
 /**
  * Parse both immutable historical v2 and current v3 records fail-closed.

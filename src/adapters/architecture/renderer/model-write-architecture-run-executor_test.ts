@@ -1720,19 +1720,38 @@ Deno.test(
 
       // First execution.
       const first = await executor.execute(AGENT, cmd);
-      assertEquals(
-        first.agentRuns.find((r) => r.id === "run:architecture")?.status,
-        "completed",
+      const firstRun = first.agentRuns.find((r) => r.id === "run:architecture");
+      assertEquals(firstRun?.status, "completed");
+      assertExists(firstRun?.resultSnapshot);
+      const firstSnapshot = await fixture.snapshots.get(
+        firstRun.resultSnapshot.snapshotId,
       );
+      assertExists(firstSnapshot);
+      const firstArtifact = firstSnapshot.artifacts.find((artifact) =>
+        artifact.producer.runId === "run:architecture"
+      );
+      assertExists(firstArtifact);
+      const firstCapture = await fixture.archCaptures.read(firstArtifact.fingerprint);
+      assertExists(firstCapture);
+      const firstSysonCalls = syson.calls.length;
+      const firstSnapshotJson = deterministicJson(firstSnapshot);
 
       // Second execution with the same command — must return the already-completed project.
       const second = await executor.execute(AGENT, {
         ...cmd,
         expectedRevision: first.revision,
       });
+      const secondRun = second.agentRuns.find((r) => r.id === "run:architecture");
+      assertEquals(secondRun?.status, "completed");
+      assertEquals(secondRun?.resultSnapshot, firstRun.resultSnapshot);
+      assertEquals(syson.calls.length, firstSysonCalls);
       assertEquals(
-        second.agentRuns.find((r) => r.id === "run:architecture")?.status,
-        "completed",
+        await fixture.archCaptures.read(firstArtifact.fingerprint),
+        firstCapture,
+      );
+      assertEquals(
+        deterministicJson(await fixture.snapshots.get(firstSnapshot.id)),
+        firstSnapshotJson,
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
