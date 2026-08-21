@@ -157,7 +157,7 @@ not a substitute for persisted evidence.
 | --- | ------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
 | 01  | in progress (P03)  | P01 `0488d98`; P02 `d2dcdac`; P03 `7d1c268` | three sibling `declared` questions; P04 parked on G2 | G2 for P04 |
 | 02  | in progress (A03)  | A01–A02 `98b57bf`; A03 this commit | typed/value AttributeUsage probe `unresolved` (type yes, value/unit no); A04 parked | A04 parked; 03/04/05 contracts |
-| 03  | pending            | —               | —                                                                                                                                  | 07 after 04         |
+| 03  | in progress (M01)  | M01 this commit | catalog-absent + project/subject-mismatch vs dl05/CA02 | M02 parked on G2 |
 | 04  | in progress (T02)  | T01 `3624625`; T02 this commit | closed `modelica-thermal-method-sheet/1.0`; no .mo; T08 parked on G4 | T03 or M01 |
 | 05  | pending            | —               | —                                                                                                                                  | 06 after 03 and 04  |
 | 06  | pending            | —               | —                                                                                                                                  | 07                  |
