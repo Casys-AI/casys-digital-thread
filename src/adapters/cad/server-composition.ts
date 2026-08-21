@@ -213,6 +213,7 @@ export function createCadProject(options: CadProjectOptions): CadProject {
       ...GEOMETRY_CAPTURE_DESCRIPTOR,
       directory: options.geometryCaptureDirectory,
     }),
+    admissions: options.admissions,
     lease: options.lease,
     now: () => new Date().toISOString(),
   });

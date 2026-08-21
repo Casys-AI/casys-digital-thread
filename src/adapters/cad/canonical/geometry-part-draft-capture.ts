@@ -93,6 +93,98 @@ export interface GeometryPartDraftCaptureInput {
   readonly admission: GeometryPartDraftAdmission;
 }
 
+/** Reconstruct the sole signable target manifest from a reviewed target draft. */
+export function geometryPartManifestFromDraft(
+  draft: Omit<GeometryPartDraftCapture, "fingerprint">,
+): GeometryPartManifest {
+  const manifest = parseGeometryPartManifest({
+    schemaVersion: "geometry-part-manifest/1.0",
+    architectureBasis: draft.architectureBasis,
+    ...(draft.predecessor === undefined ? {} : { predecessor: draft.predecessor }),
+    target: {
+      partDefinitionElementId: draft.target.partDefinitionElementId,
+      label: draft.target.label,
+      scriptHash: draft.target.scriptHash,
+      files: draft.target.files.map((file) => ({
+        format: file.format,
+        name: file.name,
+        fingerprint: file.fingerprint,
+      })),
+    },
+    unitSystem: "mm",
+    exportFormats: draft.exportFormats,
+  }, { requireCompleted: true });
+  return manifest;
+}
+
+/**
+ * Re-prove the fixed target-export namespace without trusting provider paths.
+ * It is intentionally usable by the canonical sealer after the provider has
+ * gone away, so promotion cannot rerun Build123d.
+ */
+export async function assertGeometryPartDraftPaths(
+  draft: Omit<GeometryPartDraftCapture, "fingerprint">,
+): Promise<void> {
+  const expectedExportName = await targetExportName(
+    draft.producer.runId,
+    draft.target.partDefinitionElementId,
+  );
+  if (draft.exportName !== expectedExportName) {
+    throw new TypeError(
+      "Target geometry exportName is not derived from its exact preview run and PartDefinition.",
+    );
+  }
+  if (
+    deterministicJson(draft.providerCall) !== deterministicJson({
+      ordinal: 0,
+      exportName: expectedExportName,
+      scriptHash: draft.target.scriptHash,
+      formats: draft.exportFormats,
+      timeoutMs: GEOMETRY_PART_DRAFT_TIMEOUT_MS,
+    })
+  ) {
+    throw new TypeError(
+      "Target geometry provider call is not the exact server-owned one-call export record.",
+    );
+  }
+  draft.target.files.forEach((file, index) => {
+    assertFixedExportBasename(
+      file.containerPath,
+      file.format,
+      expectedExportName,
+      `target file ${index}`,
+    );
+  });
+}
+
+/** One exact metadata row per target binary, including the signed byte count. */
+export function geometryPartDraftAssetMetadata(
+  draft: Omit<GeometryPartDraftCapture, "fingerprint">,
+): readonly {
+  readonly name: string;
+  readonly bytes: number;
+  readonly fingerprint: ContentFingerprint;
+}[] {
+  const seen = new Map<string, number>();
+  for (const file of draft.target.files) {
+    if (!Number.isSafeInteger(file.bytes) || file.bytes <= 0) {
+      throw new TypeError("Target geometry binary byte count must be positive.");
+    }
+    const prior = seen.get(file.fingerprint.digest);
+    if (prior !== undefined && prior !== file.bytes) {
+      throw new TypeError(
+        "Target geometry draft repeats a binary digest with conflicting byte counts.",
+      );
+    }
+    seen.set(file.fingerprint.digest, file.bytes);
+  }
+  return draft.target.files.map((file) => ({
+    name: file.name,
+    bytes: file.bytes,
+    fingerprint: file.fingerprint,
+  }));
+}
+
 export interface GeometryPartDraftCaptureOptions {
   readonly build123dService: "mcp-build123d-sandbox";
   readonly sourceAnalysis: GeometrySourceAnalysisCaptureDependencies;

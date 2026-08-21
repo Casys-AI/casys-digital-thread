@@ -122,6 +122,8 @@ export interface GeometryManifest {
 type GeometryPartManifestForLegacySealer = GeometryPartManifest & {
   readonly components: never;
   readonly artifactHashes?: never;
+  /** Keep shared legacy reads type-safe without granting a target any assembly fields. */
+  readonly scriptHash?: never;
 };
 
 /**

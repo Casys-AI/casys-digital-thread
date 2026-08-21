@@ -20,7 +20,7 @@ The detailed grammar and the authority of each path remain in
 | Shape algebra      | Same-kind `+` and `-`; `scale` on a solid; reviewed `fillet`/`chamfer`, including reviewed `solid.edges()` forms; `extrude`, `offset`, `revolve` about `Axis.X`, `Y`, or `Z`; `Compound(children=[...])` over prior solids. |
 | Result             | One module-level `result`, resolving to a solid.                                                                                                                                                                            |
 | Admission          | No unresolved construct; unique server-derived `represents` artifact binding and `parameterizes` bindings; at least one finite named numeric literal must causally reach `result`.                                          |
-| Geometry authority | The singular admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
+| Geometry authority | A system/bundle admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. A target admitted export can seal exactly one PartDefinition through `geometry-part-capture/1.0`; it makes no assembly, component, occurrence or placement claim. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
 
 ## Not covered
 
@@ -50,3 +50,23 @@ CAD JSON/DSL parallel to the source language, caller-selected provider/runtime/t
 envelopes, automatic assembly mapping in V1, and promotion of private isolated output to
 canonical geometry. A new geometry inside this surface is **source text only**: there is
 no new agent, Workbench, or provider command for it.
+
+## Targeted PartDefinition seal
+
+`geometry-part-manifest/1.0` and `geometry-part-draft-capture/1.0` are a separate
+target-only review family. Promotion remains exclusively
+`design.write-geometry@1`: it reopens the human-signed target MRTR and the exact
+capture-backed `compile.seal-admission@1` artifact named by the v2 target-bound stamp,
+re-crossing admitted source bytes/hash plus the unique P1 `represents` PartDefinition,
+passive source analysis and exact reviewed assets. It never reruns Build123d. The resulting
+`geometry-part-capture/1.0` repeats the
+exact PartDefinition element ID, architecture basis, admission/source hash and one
+authoritative STEP hash. It has no `assembly`, `components`, `occurrences`, `placements`
+or `partDefinitions` array.
+
+Each target STEP asset uses the deterministic capture-scoped identity
+`cad-asset-<captureDigest>-target-<fileIndex>-<fileDigest>`. Different PartDefinitions
+may coexist. A successor archives only the exact prior target capture and its target
+files; an active V2 bundle that covers that target is a fail-closed conflict, never a
+partial V2 archive. Product projection therefore does not infer complete assembly
+coverage from this evidence.

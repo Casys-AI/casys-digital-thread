@@ -30,6 +30,38 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(source, "Sealed result · exact recorded bytes");
   assertStringIncludes(source, "Validated proposal · result pending");
   assertStringIncludes(source, "Draft · geometry proposal");
+  const geometryProse = source.replace(/\s+/g, " ");
+  assertStringIncludes(
+    geometryProse,
+    "Canonical PartDefinition STEP ${elementId}; no assembly/occurrence/placement claim.",
+  );
+  assertStringIncludes(
+    geometryProse,
+    "Reviewed target PartDefinition STEP ${elementId}; canonical seal pending; no assembly/occurrence/placement claim.",
+  );
+  assertStringIncludes(
+    geometryProse,
+    "Proposed target PartDefinition STEP ${elementId}; canonical seal pending; no assembly/occurrence/placement claim.",
+  );
+  const targetStatusStart = source.indexOf("function targetPartSealStatus(");
+  const targetStatusEnd = source.indexOf(
+    "function GeometryDecisionDetails(",
+    targetStatusStart,
+  );
+  const targetStatus = source.slice(targetStatusStart, targetStatusEnd);
+  assertEquals(targetStatusStart >= 0, true);
+  assertEquals(targetStatusEnd > targetStatusStart, true);
+  // Only a sealed Thread projection may be called canonical.  Reviewed and
+  // proposed target drafts remain explicitly pending, even though they have
+  // a target PartDefinition and reviewable STEP bytes.
+  assertEquals(
+    targetStatus.match(/Canonical PartDefinition STEP/g)?.length,
+    1,
+  );
+  assertEquals(targetStatus.match(/canonical seal pending/g)?.length, 2);
+  assertStringIncludes(targetStatus, 'if (mode === "sealed")');
+  assertStringIncludes(targetStatus, 'if (mode === "approved")');
+  assertStringIncludes(targetStatus, 'if (mode === "draft")');
   assertEquals(source.includes("0x1a1c1e"), false);
   assertEquals(source.includes("Comment for the agent"), false);
   assertStringIncludes(source, "paired conversation");

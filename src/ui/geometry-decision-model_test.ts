@@ -25,6 +25,10 @@ import {
   type GeometryManifest,
 } from "../domain/cad/canonical/geometry-proposal.ts";
 import {
+  encodeGeometryPartDecisionParameters,
+  type GeometryPartManifest,
+} from "../domain/cad/canonical/geometry-part-manifest.ts";
+import {
   type GeometryDecisionParameter,
   parseGeometryDecisionView,
 } from "./src/cad/geometry-decision-model.ts";
@@ -350,6 +354,47 @@ Deno.test("the browser parser stays in parity with the domain v2 MRTR encoder", 
     "step",
     "gltf",
   ]);
+});
+
+Deno.test("the browser parser presents a target PartDefinition without assembly or placement claims", () => {
+  const fingerprint = (digest: string) => ({
+    algorithm: "sha256" as const,
+    digest,
+  });
+  const manifest: GeometryPartManifest = {
+    schemaVersion: "geometry-part-manifest/1.0",
+    architectureBasis: {
+      snapshotId: "thread:r4",
+      revision: 4,
+      artifactFingerprint: fingerprint(HEX64_A),
+    },
+    unitSystem: "mm",
+    exportFormats: ["step", "gltf"],
+    target: {
+      partDefinitionElementId: "definition-arm",
+      label: "Arm",
+      scriptHash: fingerprint(HEX64_B),
+      files: [{
+        format: "step",
+        name: "arm.step",
+        fingerprint: fingerprint(HEX64_C),
+      }, {
+        format: "gltf",
+        name: "arm.glb",
+        fingerprint: fingerprint(HEX64_A),
+      }],
+    },
+  };
+  const result = parseGeometryDecisionView(
+    encodeGeometryPartDecisionParameters(HEX64_C, manifest),
+  );
+  assertEquals(result.kind, "valid");
+  if (result.kind !== "valid") return;
+  assertEquals(result.schemaVersion, "geometry-part-manifest/1.0");
+  assertEquals(result.targetPart?.partDefinitionElementId, "definition-arm");
+  assertEquals(result.assemblyFiles, []);
+  assertEquals(result.components, []);
+  assertEquals(result.occurrences, []);
 });
 
 Deno.test("the browser parser stays compatible with geometry capture 1.1 manifest parameters", () => {

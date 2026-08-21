@@ -37,6 +37,9 @@ import {
   type EngineeringProjectRevisionStore,
 } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type {
+  TechnicalCompilationAdmissionReader,
+} from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import type {
   EngineeringAgentRun,
   EngineeringApproval,
   EngineeringDecision,
@@ -48,8 +51,26 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
-import { exactRecord } from "../../../domain/kernel/case-validation.ts";
-import { requireCanonicalGeometryDraftAdmission } from "../../../domain/cad/canonical/geometry-draft-admission.ts";
+import {
+  closedRecord,
+  exactRecord,
+} from "../../../domain/kernel/case-validation.ts";
+import {
+  requireCanonicalGeometryDraftAdmission,
+  requireCanonicalGeometryPartDraftAdmission,
+  parseGeometryPartDraftAdmission,
+  requireNamedCadLeverInDraftScript,
+  type GeometryPartDraftAdmission,
+} from "../../../domain/cad/canonical/geometry-draft-admission.ts";
+import {
+  COMPILE_SEAL_ADMISSION_OPERATION,
+} from "../../../domain/compile/admission/technical-compilation-proposal.ts";
+import {
+  fingerprintTechnicalSourceText,
+} from "../../../domain/compile/admission/technical-compilation.ts";
+import {
+  selectUniqueRepresentedPartDefinition,
+} from "../../../domain/compile/admission/technical-compilation-join.ts";
 import {
   type AnyGeometryManifest,
   DESIGN_WRITE_GEOMETRY_OPERATION,
@@ -72,6 +93,13 @@ import {
   GEOMETRY_PREDECESSOR_SUPERSEDES_RATIONALE,
   GeometryBundleError,
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
+import {
+  GEOMETRY_PART_CAPTURE_SCHEMA,
+  GEOMETRY_PART_MANIFEST_SCHEMA,
+  encodeGeometryPartDecisionParameters,
+  type GeometryPartManifest,
+  parseGeometryPartManifest,
+} from "../../../domain/cad/canonical/geometry-part-manifest.ts";
 import type {
   ContentFingerprint,
   ThreadArtifact,
@@ -106,6 +134,13 @@ import {
   requireGeometryBundleCanonicalSources,
   requireGeometryBundleDraftAssetMetadata,
 } from "./geometry-draft-capture.ts";
+import {
+  assertGeometryPartDraftPaths,
+  geometryPartDraftAssetMetadata,
+  geometryPartManifestFromDraft,
+  GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA,
+  type GeometryPartDraftCapture,
+} from "./geometry-part-draft-capture.ts";
 import {
   type GeometrySourceAnalysisReference,
   requireGeometrySourceAnalysis,
@@ -202,6 +237,20 @@ function geometryCaptureSchema(
     : PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA;
 }
 
+function geometryManifestPredecessor(
+  manifest: AnyGeometryManifest,
+): { readonly artifactId: string; readonly fingerprint: ContentFingerprint } | undefined {
+  if (
+    manifest.schemaVersion === "geometry-manifest/2.0" ||
+    manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+  ) {
+    return (manifest as GeometryPartManifest & {
+      readonly predecessor?: { readonly artifactId: string; readonly fingerprint: ContentFingerprint };
+    }).predecessor;
+  }
+  return undefined;
+}
+
 // ── Cliquet error ─────────────────────────────────────────────────────────────
 
 /**
@@ -283,11 +332,25 @@ type LegacyGeometryDraftManifestShape = {
 };
 
 export function assertMrtrManifestMatchesDraft(
-  signed: AnyGeometryManifest,
+  signed: AnyGeometryManifest | GeometryPartManifest,
   draft:
     | LegacyGeometryDraftManifestShape
-    | Omit<GeometryBundleDraftCapture, "fingerprint">,
+    | Omit<GeometryBundleDraftCapture, "fingerprint">
+    | Omit<GeometryPartDraftCapture, "fingerprint">,
 ): void {
+  if (signed.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
+    const reconstructed = geometryPartManifestFromDraft(
+      draft as Omit<GeometryPartDraftCapture, "fingerprint">,
+    );
+    if (deterministicJson(signed) !== deterministicJson(reconstructed)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "geometry_manifest_mismatch: the signed targeted PartDefinition MRTR manifest " +
+          "is not exactly the manifest reconstructed from the reviewed draft.",
+      );
+    }
+    return;
+  }
   if (signed.schemaVersion === "geometry-manifest/2.0") {
     const reconstructed = geometryBundleManifestFromDraft(
       draft as Omit<GeometryBundleDraftCapture, "fingerprint">,
@@ -382,6 +445,11 @@ export interface DesignWriteGeometryRunExecutorDependencies {
   readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   /** Canonical geometry captures sealed by this executor. */
   readonly geometryCaptures: GeometryCaptureStore;
+  /**
+   * P2 target drafts retain only an admission locator. The canonical seal
+   * reopens the actual `compile.seal-admission@1` evidence through this port.
+   */
+  readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates?: LiveThreadUpdateMilestoneJournal;
   readonly canonicalAssetDirectory?: string;
@@ -414,6 +482,7 @@ export class DesignWriteGeometryRunExecutor {
   readonly #geometrySourceCaptures: FileCaptureStore<"geometry-source">;
   readonly #sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
   readonly #geometryCaptures: GeometryCaptureStore;
+  readonly #admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
   readonly #lease: EngineeringProjectRunLease;
   readonly #liveUpdates: LiveThreadUpdateMilestoneJournal | undefined;
   readonly #canonicalAssetDirectory: string;
@@ -430,6 +499,7 @@ export class DesignWriteGeometryRunExecutor {
     this.#geometrySourceCaptures = dependencies.geometrySourceCaptures;
     this.#sourceAnalysisCaptures = dependencies.sourceAnalysisCaptures;
     this.#geometryCaptures = dependencies.geometryCaptures;
+    this.#admissions = dependencies.admissions;
     this.#lease = dependencies.lease;
     this.#liveUpdates = dependencies.liveUpdates;
     this.#canonicalAssetDirectory = dependencies.canonicalAssetDirectory ??
@@ -510,6 +580,9 @@ export class DesignWriteGeometryRunExecutor {
         requireRun(preClaim, command.runId),
       );
 
+      const preClaimRun = requireRun(preClaim, command.runId);
+      const preClaimBasis = requireBasis(preClaimRun);
+
       // Reject malformed or stale persisted drafts before the run claim is
       // recorded. In particular, legacy `format: gltf` records must prove the
       // provider's binary `.glb` path contract before any project, capture,
@@ -520,6 +593,11 @@ export class DesignWriteGeometryRunExecutor {
         this.#geometrySourceCaptures,
         this.#sourceAnalysisCaptures,
         this.#draftAssetDirectory,
+        {
+          projectId: command.projectId,
+          basis: preClaimBasis,
+          admissions: this.#admissions,
+        },
       );
 
       // The reviewed architecture is part of the MRTR input, so validate its
@@ -527,8 +605,6 @@ export class DesignWriteGeometryRunExecutor {
       // bindings before claiming the run. A stale or tampered architecture must
       // leave the durable project lifecycle unchanged and retryable only after
       // a newly reviewed decision.
-      const preClaimRun = requireRun(preClaim, command.runId);
-      const preClaimBasis = requireBasis(preClaimRun);
       assertGeometryArchitectureBasisMatchesRun(
         params.manifest.architectureBasis,
         preClaimBasis,
@@ -550,7 +626,7 @@ export class DesignWriteGeometryRunExecutor {
         this.#architectureCaptures,
         this.#sysmlSourceAnalysis,
       );
-      await requireGeometryBundlePredecessor(
+      await requireGeometryPredecessor(
         preClaimBase,
         params,
         this.#geometryCaptures,
@@ -608,6 +684,7 @@ export class DesignWriteGeometryRunExecutor {
       const {
         bundleAssetBytes,
         bundleSources,
+        partDraft,
         previewProducer,
         sourceAnalyses,
       } = await loadReviewedGeometryDraft(
@@ -616,6 +693,11 @@ export class DesignWriteGeometryRunExecutor {
         this.#geometrySourceCaptures,
         this.#sourceAnalysisCaptures,
         this.#draftAssetDirectory,
+        {
+          projectId: command.projectId,
+          basis,
+          admissions: this.#admissions,
+        },
       );
 
       // Step 10 (D5 part 2): architecture capture load + per-component binding check.
@@ -626,7 +708,7 @@ export class DesignWriteGeometryRunExecutor {
         this.#architectureCaptures,
         this.#sysmlSourceAnalysis,
       );
-      const predecessor = await requireGeometryBundlePredecessor(
+      const predecessor = await requireGeometryPredecessor(
         base,
         params,
         this.#geometryCaptures,
@@ -641,22 +723,31 @@ export class DesignWriteGeometryRunExecutor {
       // decision, the verified draft record, and the verified architecture.
       const { assemblyFiles = [], partMeshes = [] } = params.manifest.artifactHashes ??
         {};
-      const captureRecord = {
-        schemaVersion: geometryCaptureSchema(params.manifest, sourceAnalyses),
-        operation: DESIGN_WRITE_GEOMETRY_OPERATION,
-        trustedRunId: run.id,
-        draftDigest: params.draftDigest,
-        manifest: params.manifest,
-        architectureBasis: {
-          artifactId: architectureArtifact.id,
-          fingerprint: architectureArtifact.fingerprint,
-          producerRunId: architectureArtifact.producer.runId,
-        },
-        previewProducer: previewProducer ?? null,
-        ...(bundleSources ? { sourceScripts: bundleSources } : {}),
-        ...(sourceAnalyses ? { sourceAnalyses } : {}),
-        sealedAt: capturedAt,
-      };
+      const captureRecord = partDraft
+        ? geometryPartCaptureRecord({
+          params,
+          runId: run.id,
+          capturedAt,
+          architectureArtifact,
+          previewProducer,
+          draft: partDraft,
+        })
+        : {
+          schemaVersion: geometryCaptureSchema(params.manifest, sourceAnalyses),
+          operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+          trustedRunId: run.id,
+          draftDigest: params.draftDigest,
+          manifest: params.manifest,
+          architectureBasis: {
+            artifactId: architectureArtifact.id,
+            fingerprint: architectureArtifact.fingerprint,
+            producerRunId: architectureArtifact.producer.runId,
+          },
+          previewProducer: previewProducer ?? null,
+          ...(bundleSources ? { sourceScripts: bundleSources } : {}),
+          ...(sourceAnalyses ? { sourceAnalyses } : {}),
+          sealedAt: capturedAt,
+        };
       const captureFp = await sha256Fingerprint(captureRecord);
       const captureText = deterministicJson(captureRecord);
 
@@ -720,6 +811,29 @@ export class DesignWriteGeometryRunExecutor {
               expectedBytes: bundleAssetBytes?.get(file.fingerprint.digest),
             });
           }
+        }
+      }
+      if (params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
+        for (const [fileIndex, file] of params.manifest.target.files!.entries()) {
+          await promoteAssetNamedByCapture({
+            captureFp,
+            assetFingerprint: file.fingerprint,
+            name:
+              `PartDefinition ${params.manifest.target.partDefinitionElementId} ` +
+              `${file.format}`,
+            identity: {
+              scope: "target-part-definition",
+              elementId: params.manifest.target.partDefinitionElementId,
+              fileIndex,
+              format: file.format,
+              name: file.name,
+            },
+            extension: geometryAssetExtension(file.format),
+            geometryCaptures: this.#geometryCaptures,
+            draftDirectory: this.#draftAssetDirectory,
+            canonicalDirectory: this.#canonicalAssetDirectory,
+            expectedBytes: partDraft?.target.files[fileIndex]?.bytes,
+          });
         }
       }
 
@@ -937,8 +1051,7 @@ export class DesignWriteGeometryRunExecutor {
         `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}` ||
       primary.producer.runId !== run.id ||
       primary.inputArtifactIds.length !==
-        (params.manifest.schemaVersion === "geometry-manifest/2.0" &&
-            params.manifest.predecessor
+        (geometryManifestPredecessor(params.manifest)
           ? 2
           : 1)
     ) {
@@ -1000,30 +1113,45 @@ export class DesignWriteGeometryRunExecutor {
       );
     }
 
-    const { bundleSources, previewProducer, sourceAnalyses } =
+    const { bundleSources, partDraft, previewProducer, sourceAnalyses } =
       await loadReviewedGeometryDraft(
         params,
         this.#geometryDraftCaptures,
         this.#geometrySourceCaptures,
         this.#sourceAnalysisCaptures,
+        undefined,
+        {
+          projectId: command.projectId,
+          basis,
+          admissions: this.#admissions,
+        },
       );
     const capturedAt = requiredStart(run);
-    const expectedCapture = {
-      schemaVersion: geometryCaptureSchema(params.manifest, sourceAnalyses),
-      operation: DESIGN_WRITE_GEOMETRY_OPERATION,
-      trustedRunId: run.id,
-      draftDigest: params.draftDigest,
-      manifest: params.manifest,
-      architectureBasis: {
-        artifactId: architectureArtifact.id,
-        fingerprint: architectureArtifact.fingerprint,
-        producerRunId: architectureArtifact.producer.runId,
-      },
-      previewProducer: previewProducer ?? null,
-      ...(bundleSources ? { sourceScripts: bundleSources } : {}),
-      ...(sourceAnalyses ? { sourceAnalyses } : {}),
-      sealedAt: capturedAt,
-    };
+    const expectedCapture = partDraft
+      ? geometryPartCaptureRecord({
+        params,
+        runId: run.id,
+        capturedAt,
+        architectureArtifact,
+        previewProducer,
+        draft: partDraft,
+      })
+      : {
+        schemaVersion: geometryCaptureSchema(params.manifest, sourceAnalyses),
+        operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+        trustedRunId: run.id,
+        draftDigest: params.draftDigest,
+        manifest: params.manifest,
+        architectureBasis: {
+          artifactId: architectureArtifact.id,
+          fingerprint: architectureArtifact.fingerprint,
+          producerRunId: architectureArtifact.producer.runId,
+        },
+        previewProducer: previewProducer ?? null,
+        ...(bundleSources ? { sourceScripts: bundleSources } : {}),
+        ...(sourceAnalyses ? { sourceAnalyses } : {}),
+        sealedAt: capturedAt,
+      };
     const observedCaptureFingerprint = await sha256Fingerprint(capture);
     if (
       !fingerprintsEqual(observedCaptureFingerprint, primary.fingerprint) ||
@@ -1034,9 +1162,9 @@ export class DesignWriteGeometryRunExecutor {
       );
     }
 
-    let predecessor: GeometryBundlePredecessorContext | undefined;
+    let predecessor: GeometryPredecessorContext | undefined;
     try {
-      predecessor = await requireGeometryBundlePredecessor(
+      predecessor = await requireGeometryPredecessor(
         baseSnapshot,
         params,
         this.#geometryCaptures,
@@ -1137,6 +1265,15 @@ export class DesignWriteGeometryRunExecutor {
         }
       }
     }
+    if (params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
+      for (const file of params.manifest.target.files!) {
+        await assertCanonicalGeometryAssetExact(
+          file.fingerprint,
+          geometryAssetExtension(file.format),
+          this.#canonicalAssetDirectory,
+        );
+      }
+    }
   }
 
   async #reconcileLive(subjectId: string, runId: string): Promise<void> {
@@ -1154,6 +1291,7 @@ export {
   requireArchitectureArtifact,
   requireDraftAssemblyPaths,
   requireDraftPreviewProducer,
+  requireGeometryPredecessor,
   requireGeometryBundlePredecessor,
 };
 
@@ -1350,6 +1488,31 @@ async function assertComponentBindingsMatchArchitecture(
     }
   }
 
+  if (params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
+    const targetManifest = params.manifest as GeometryPartManifest;
+    const matches = definitions.filter((definition) =>
+      definition.id === targetManifest.target.partDefinitionElementId
+    );
+    if (matches.length !== 1) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `D5 violation: target PartDefinition elementId "${
+          targetManifest.target.partDefinitionElementId
+        }" is not uniquely present in the architecture capture.`,
+      );
+    }
+    if (matches[0]!.label !== params.manifest.target.label) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `D5 violation: target PartDefinition elementId "${
+          params.manifest.target.partDefinitionElementId
+        }" has label "${matches[0]!.label}" in the architecture capture, not ` +
+          `"${targetManifest.target.label}" from the signed target draft.`,
+      );
+    }
+    return;
+  }
+
   for (const component of params.manifest.components) {
     const usage = allUsages.get(component.elementId);
     if (usage === undefined) {
@@ -1405,9 +1568,41 @@ interface GeometryBundlePredecessorContext {
   readonly archiveEntries: ReturnType<typeof computeArchiveCascade>;
 }
 
+/** A target chain has the same thread mechanics but never shares a V2 family. */
+interface GeometryPartPredecessorContext {
+  readonly artifact: ThreadArtifact;
+  readonly archiveEntries: ReturnType<typeof computeArchiveCascade>;
+}
+
+type GeometryPredecessorContext =
+  | GeometryBundlePredecessorContext
+  | GeometryPartPredecessorContext;
+
 interface GeometrySourceAnalysisStores {
   readonly geometrySourceCaptures: FileCaptureStore<"geometry-source">;
   readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
+}
+
+/** Dispatch by signed manifest family; historic V1/V2 resolution stays intact. */
+async function requireGeometryPredecessor(
+  base: ThreadSnapshot,
+  params: GeometryDecisionParameters,
+  geometryCaptures: GeometryCaptureStore,
+  sourceAnalysisStores?: GeometrySourceAnalysisStores,
+): Promise<GeometryPredecessorContext | undefined> {
+  return params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+    ? await requireGeometryPartPredecessor(
+      base,
+      params.manifest,
+      geometryCaptures,
+      sourceAnalysisStores,
+    )
+    : await requireGeometryBundlePredecessor(
+      base,
+      params,
+      geometryCaptures,
+      sourceAnalysisStores,
+    );
 }
 
 /**
@@ -1519,6 +1714,469 @@ async function requireGeometryBundlePredecessor(
     family.map((candidate) => ({ kind: "artifact" as const, id: candidate.id })),
   );
   return { artifact, archiveEntries };
+}
+
+/**
+ * Resolve only the active chain for the signed PartDefinition.  Other target
+ * captures are intentionally not predecessors and remain active.  A V2
+ * capture is a complete assembly family, so an active V2 which already covers
+ * the target is a hard conflict rather than something a target seal may
+ * partially retire.
+ */
+async function requireGeometryPartPredecessor(
+  base: ThreadSnapshot,
+  manifest: GeometryPartManifest,
+  geometryCaptures: GeometryCaptureStore,
+  sourceAnalysisStores?: GeometrySourceAnalysisStores,
+): Promise<GeometryPartPredecessorContext | undefined> {
+  const archived = archivedRefKeys(base);
+  const active = base.artifacts.filter((artifact) =>
+    artifact.kind === "cad-model" &&
+    artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
+    !archived.has(`artifact:${artifact.id}`)
+  );
+  const candidates: Array<{
+    readonly artifact: ThreadArtifact;
+    readonly capture: ExactGeometryPartPredecessorCapture;
+  }> = [];
+
+  for (const artifact of active) {
+    assertCanonicalGeometryPrimaryIdentity(artifact);
+    const record = await readExactGeometryCaptureRecord(artifact, geometryCaptures);
+    if (record.schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
+      const capture = await requireExactGeometryPartPredecessorCapture(
+        base,
+        artifact,
+        record,
+        sourceAnalysisStores,
+      );
+      if (
+        capture.manifest.target.partDefinitionElementId ===
+          manifest.target.partDefinitionElementId
+      ) {
+        if (capture.manifest.target.label !== manifest.target.label) {
+          invalidGeometryPredecessor(
+            "an active target capture has the same PartDefinition elementId but a different label",
+          );
+        }
+        candidates.push({ artifact, capture });
+      }
+      continue;
+    }
+    if (isGeometryCaptureSchema(record.schemaVersion)) {
+      const capture = await requireExactGeometryPredecessorCapture(
+        base,
+        artifact,
+        record,
+        sourceAnalysisStores,
+      );
+      if (capture.params.manifest.schemaVersion === "geometry-manifest/2.0") {
+        const covered = capture.params.manifest.partDefinitions.find((definition) =>
+          definition.elementId === manifest.target.partDefinitionElementId
+        );
+        if (covered) {
+          if (covered.label !== manifest.target.label) {
+            invalidGeometryPredecessor(
+              "active V2 geometry covers the target PartDefinition with a different label",
+            );
+          }
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            "geometry_part_v2_bundle_conflict: an active V2 canonical geometry bundle already covers this exact PartDefinition; it cannot be partially archived.",
+          );
+        }
+      }
+      // V1 and a V2 that does not cover this exact target remain historical
+      // context, not target-chain predecessors.
+      continue;
+    }
+    invalidGeometryPredecessor("active canonical geometry capture has an unsupported schema");
+  }
+
+  if (candidates.length > 1) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      "geometry_part_tip_ambiguous: more than one active canonical target capture exists for the exact PartDefinition.",
+    );
+  }
+  const candidate = candidates[0];
+  const declared = manifest.predecessor;
+  if (!candidate) {
+    if (declared) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "geometry_part_predecessor_mismatch: the signed same-target predecessor is not active.",
+      );
+    }
+    return undefined;
+  }
+  if (
+    !declared || declared.artifactId !== candidate.artifact.id ||
+    !fingerprintsEqual(declared.fingerprint, candidate.artifact.fingerprint)
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `geometry_part_predecessor_mismatch: target ${manifest.target.partDefinitionElementId} must name its active canonical predecessor exactly.`,
+    );
+  }
+  const family = requireExactGeometryPartPredecessorFamily(
+    base,
+    candidate.artifact,
+    candidate.capture,
+  );
+  const archiveEntries = computeArchiveCascade(
+    base,
+    family.map((artifact) => ({ kind: "artifact" as const, id: artifact.id })),
+  );
+  return { artifact: candidate.artifact, archiveEntries };
+}
+
+function assertCanonicalGeometryPrimaryIdentity(artifact: ThreadArtifact): void {
+  const digest = artifact.fingerprint.digest;
+  if (
+    artifact.id !== `geometry-${digest}` || artifact.version !== digest ||
+    artifact.uri !== `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${digest}` ||
+    artifact.mediaType !== "application/json" ||
+    artifact.producer.serverId !== "digital-thread" ||
+    artifact.producer.tool !==
+      `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}` ||
+    artifact.producer.runId.trim() === ""
+  ) {
+    invalidGeometryPredecessor("active geometry artifact identity is not canonical");
+  }
+}
+
+async function readExactGeometryCaptureRecord(
+  artifact: ThreadArtifact,
+  geometryCaptures: GeometryCaptureStore,
+): Promise<Record<string, unknown>> {
+  const captureText = await geometryCaptures.read(artifact.fingerprint);
+  if (!captureText) {
+    invalidGeometryPredecessor("active geometry capture is not durably readable");
+  }
+  let record: unknown;
+  try {
+    record = JSON.parse(captureText);
+  } catch {
+    invalidGeometryPredecessor("active geometry capture is invalid JSON");
+  }
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    invalidGeometryPredecessor("active geometry capture is not an object");
+  }
+  const observed = await sha256Fingerprint(record);
+  if (!fingerprintsEqual(observed, artifact.fingerprint)) {
+    invalidGeometryPredecessor("active geometry capture hash is not exact");
+  }
+  return record as Record<string, unknown>;
+}
+
+interface ExactGeometryPartPredecessorCapture {
+  readonly manifest: GeometryPartManifest;
+  readonly previewProducer: ThreadOperationRef;
+  readonly sealedAt: string;
+}
+
+/** Strictly re-prove the target capture before it becomes a same-target input. */
+async function requireExactGeometryPartPredecessorCapture(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  record: Record<string, unknown>,
+  sourceAnalysisStores?: GeometrySourceAnalysisStores,
+): Promise<ExactGeometryPartPredecessorCapture> {
+  exactGeometryPredecessorKeys(
+    record,
+    [
+      "schemaVersion",
+      "operation",
+      "trustedRunId",
+      "draftDigest",
+      "manifest",
+      "architectureBasis",
+      "previewProducer",
+      "sourceScript",
+      "sourceAnalysis",
+      "sealedAt",
+    ],
+    "target capture",
+  );
+  if (record.schemaVersion !== GEOMETRY_PART_CAPTURE_SCHEMA) {
+    invalidGeometryPredecessor("target capture schema is unsupported");
+  }
+  const operation = geometryPredecessorObject(record.operation, "target capture.operation");
+  exactGeometryPredecessorKeys(operation, ["id", "version"], "target capture.operation");
+  if (
+    operation.id !== DESIGN_WRITE_GEOMETRY_OPERATION.id ||
+    operation.version !== DESIGN_WRITE_GEOMETRY_OPERATION.version
+  ) {
+    invalidGeometryPredecessor("target capture operation is not design.write-geometry@1");
+  }
+  if (
+    geometryPredecessorString(record.trustedRunId, "target capture.trustedRunId") !==
+      primary.producer.runId
+  ) {
+    invalidGeometryPredecessor("target capture trusted run does not match the artifact producer");
+  }
+  const draftDigest = geometryPredecessorDigest(record.draftDigest, "target capture.draftDigest");
+  let manifest: GeometryPartManifest;
+  try {
+    manifest = parseGeometryPartManifest(record.manifest, { requireCompleted: true });
+    // Encode is the exact signed grammar and therefore catches a self-consistent
+    // but non-reviewable target manifest as well.
+    encodeGeometryPartDecisionParameters(draftDigest, manifest);
+    if (deterministicJson(manifest) !== deterministicJson(record.manifest)) {
+      invalidGeometryPredecessor("target manifest is not a canonical record");
+    }
+  } catch (error) {
+    if (error instanceof EngineeringProjectCommandError) throw error;
+    invalidGeometryPredecessor(
+      `target manifest is incomplete or invalid: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const architectureBasis = geometryPredecessorObject(
+    record.architectureBasis,
+    "target capture.architectureBasis",
+  );
+  exactGeometryPredecessorKeys(
+    architectureBasis,
+    ["artifactId", "fingerprint", "producerRunId"],
+    "target capture.architectureBasis",
+  );
+  const architectureId = geometryPredecessorString(
+    architectureBasis.artifactId,
+    "target capture.architectureBasis.artifactId",
+  );
+  const architectureFingerprint = geometryPredecessorFingerprint(
+    architectureBasis.fingerprint,
+    "target capture.architectureBasis.fingerprint",
+  );
+  const architectureProducerRunId = geometryPredecessorString(
+    architectureBasis.producerRunId,
+    "target capture.architectureBasis.producerRunId",
+  );
+  const architecture = base.artifacts.filter((artifact) =>
+    artifact.id === architectureId &&
+    fingerprintsEqual(artifact.fingerprint, architectureFingerprint) &&
+    artifact.producer.runId === architectureProducerRunId
+  );
+  if (
+    architecture.length !== 1 ||
+    !fingerprintsEqual(manifest.architectureBasis.artifactFingerprint, architectureFingerprint)
+  ) {
+    invalidGeometryPredecessor("target architecture basis is absent or inexact");
+  }
+  const expectedInputs = [
+    architectureId,
+    ...(manifest.predecessor ? [manifest.predecessor.artifactId] : []),
+  ];
+  if (deterministicJson(primary.inputArtifactIds) !== deterministicJson(expectedInputs)) {
+    invalidGeometryPredecessor("target artifact inputs do not match the sealed manifest");
+  }
+  let ownPredecessor: ThreadArtifact | undefined;
+  if (manifest.predecessor) {
+    const matches = base.artifacts.filter((artifact) =>
+      artifact.id === manifest.predecessor!.artifactId &&
+      fingerprintsEqual(artifact.fingerprint, manifest.predecessor!.fingerprint)
+    );
+    if (
+      matches.length !== 1 ||
+      !archivedRefKeys(base).has(`artifact:${manifest.predecessor.artifactId}`)
+    ) {
+      invalidGeometryPredecessor("target capture own predecessor is absent, active, or inexact");
+    }
+    ownPredecessor = matches[0]!;
+  }
+  const previewProducer = geometryPredecessorPreviewProducer(
+    record.previewProducer,
+    GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
+  );
+  if (!previewProducer) {
+    invalidGeometryPredecessor("target capture has no exact sandbox preview producer");
+  }
+  const sealedAt = geometryPredecessorInstant(record.sealedAt, "target capture.sealedAt");
+  requireExactGeometryPredecessorArchitectureAttestation(
+    base,
+    primary,
+    architecture[0]!,
+    sealedAt,
+  );
+  if (ownPredecessor) {
+    requireExactGeometryPredecessorLineage(base, primary, ownPredecessor, sealedAt);
+  }
+  if (
+    primary.freshness.status !== "fresh" ||
+    primary.freshness.changedAt !== sealedAt ||
+    primary.freshness.invalidatedByChangeIds.length !== 0
+  ) {
+    invalidGeometryPredecessor("target artifact freshness does not match sealedAt");
+  }
+
+  const source = geometryPredecessorObject(record.sourceScript, "target capture.sourceScript");
+  exactGeometryPredecessorKeys(
+    source,
+    [
+      "partDefinitionElementId",
+      "label",
+      "script",
+      "scriptHash",
+      "admission",
+      "authoritativeStep",
+    ],
+    "target capture.sourceScript",
+  );
+  const targetId = geometryPredecessorString(
+    source.partDefinitionElementId,
+    "target capture.sourceScript.partDefinitionElementId",
+  );
+  const targetLabel = geometryPredecessorString(source.label, "target capture.sourceScript.label");
+  const script = geometryPredecessorString(source.script, "target capture.sourceScript.script");
+  const scriptHash = geometryPredecessorFingerprint(
+    source.scriptHash,
+    "target capture.sourceScript.scriptHash",
+  );
+  let admission: GeometryPartDraftAdmission;
+  try {
+    admission = parseGeometryPartDraftAdmission(
+      source.admission,
+      "$geometryPartCapture.sourceScript.admission",
+    );
+    requireNamedCadLeverInDraftScript(script, "$geometryPartCapture.sourceScript.script");
+  } catch (error) {
+    invalidGeometryPredecessor(
+      `target source admission or named lever is invalid: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (
+    targetId !== manifest.target.partDefinitionElementId ||
+    targetLabel !== manifest.target.label ||
+    !fingerprintsEqual(scriptHash, manifest.target.scriptHash!) ||
+    !fingerprintsEqual(admission.sourceFingerprint, scriptHash) ||
+    admission.target.partDefinitionElementId !== targetId ||
+    admission.target.label !== targetLabel ||
+    !fingerprintsEqual(await geometryPredecessorTextFingerprint(script), scriptHash)
+  ) {
+    invalidGeometryPredecessor("target source identity, admission, or script hash is not exact");
+  }
+  const step = geometryPredecessorObject(
+    source.authoritativeStep,
+    "target capture.sourceScript.authoritativeStep",
+  );
+  exactGeometryPredecessorKeys(
+    step,
+    ["fileIndex", "fingerprint", "bytes"],
+    "target capture.sourceScript.authoritativeStep",
+  );
+  if (
+    typeof step.fileIndex !== "number" || !Number.isSafeInteger(step.fileIndex) ||
+    step.fileIndex < 0 || typeof step.bytes !== "number" ||
+    !Number.isSafeInteger(step.bytes) || step.bytes <= 0
+  ) {
+    invalidGeometryPredecessor("target authoritative STEP index or byte count is invalid");
+  }
+  const targetStep = manifest.target.files![step.fileIndex];
+  if (
+    !targetStep || targetStep.format !== "step" ||
+    !fingerprintsEqual(
+      geometryPredecessorFingerprint(
+        step.fingerprint,
+        "target capture.sourceScript.authoritativeStep.fingerprint",
+      ),
+      targetStep.fingerprint,
+    )
+  ) {
+    invalidGeometryPredecessor("target authoritative STEP is not the signed STEP file");
+  }
+  if (!sourceAnalysisStores) {
+    invalidGeometryPredecessor("source-analysis stores are unavailable for target capture");
+  }
+  try {
+    const verified = await requireGeometrySourceAnalysis(record.sourceAnalysis, {
+      sourceCaptures: sourceAnalysisStores.geometrySourceCaptures,
+      analysisCaptures: sourceAnalysisStores.sourceAnalysisCaptures,
+    });
+    if (
+      verified.reference.selector.kind !== "part-definition" ||
+      verified.reference.selector.elementId !== targetId ||
+      !fingerprintsEqual(verified.reference.sourceFingerprint, scriptHash)
+    ) {
+      invalidGeometryPredecessor("target source analysis is not exact");
+    }
+  } catch (error) {
+    if (error instanceof EngineeringProjectCommandError) throw error;
+    invalidGeometryPredecessor(
+      `target source analysis is invalid: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return { manifest, previewProducer, sealedAt };
+}
+
+/** The target family is exactly primary plus its indexed target files. */
+function requireExactGeometryPartPredecessorFamily(
+  base: ThreadSnapshot,
+  primary: ThreadArtifact,
+  capture: ExactGeometryPartPredecessorCapture,
+): readonly ThreadArtifact[] {
+  const digest = primary.fingerprint.digest;
+  const archived = archivedRefKeys(base);
+  const expected = capture.manifest.target.files!.map((file, index) => ({
+    id: `cad-asset-${digest}-target-${index}-${file.fingerprint.digest}`,
+    name: `${file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()}: ${capture.manifest.target.label}`,
+    kind: (file.format === "step"
+      ? "step"
+      : file.format === "stl"
+      ? "mesh"
+      : "cad-model") as ThreadArtifact["kind"],
+    fingerprint: file.fingerprint,
+    uri: `/api/thread/assets/${file.fingerprint.digest}.${geometryAssetExtension(file.format)}`,
+    mediaType: geometryAssetMediaType(file.format),
+  }));
+  const family = base.artifacts.filter((artifact) =>
+    !archived.has(`artifact:${artifact.id}`) &&
+    (artifact.id === primary.id || artifact.id.startsWith(`cad-asset-${digest}-`) ||
+      artifact.id.startsWith(`mesh-${digest}-`))
+  );
+  if (family.length !== expected.length + 1) {
+    invalidGeometryPredecessor("target binary family is incomplete or makes an assembly/extra-asset claim");
+  }
+  const binaryProducer = capture.previewProducer;
+  for (const descriptor of expected) {
+    const artifact = family.find((candidate) => candidate.id === descriptor.id);
+    if (
+      !artifact || artifact.name !== descriptor.name || artifact.kind !== descriptor.kind ||
+      artifact.version !== descriptor.fingerprint.digest ||
+      !fingerprintsEqual(artifact.fingerprint, descriptor.fingerprint) ||
+      artifact.uri !== descriptor.uri || artifact.mediaType !== descriptor.mediaType ||
+      deterministicJson(artifact.producer) !== deterministicJson(binaryProducer) ||
+      deterministicJson(artifact.inputArtifactIds) !== deterministicJson([]) ||
+      artifact.freshness.status !== "fresh" || artifact.freshness.changedAt !== capture.sealedAt ||
+      artifact.freshness.invalidatedByChangeIds.length !== 0
+    ) {
+      invalidGeometryPredecessor(`target binary artifact ${descriptor.id} metadata is not exact`);
+    }
+    const consumptionId = `consume-${primary.id}-by-${artifact.id}`;
+    const trace = base.provenance.find((link) =>
+      link.id === `traces-${artifact.id}-from-${primary.id}` &&
+      link.relation === "traces_to" && link.from.kind === "artifact" &&
+      link.from.id === artifact.id && link.to.kind === "artifact" &&
+      link.to.id === primary.id && link.rationale === GEOMETRY_BINARY_TRACE_RATIONALE
+    );
+    const consumption = base.consumptions.find((item) =>
+      item.id === consumptionId && item.artifactId === primary.id &&
+      deterministicJson(item.consumer) === deterministicJson(primary.producer) &&
+      fingerprintsEqual(item.observedFingerprint, primary.fingerprint) &&
+      item.status === "verified" && item.verifiedAt === capture.sealedAt
+    );
+    const uses = base.provenance.find((link) =>
+      link.id === `uses-${consumptionId}` && link.relation === "uses" &&
+      link.from.kind === "consumption" && link.from.id === consumptionId &&
+      link.to.kind === "artifact" && link.to.id === primary.id &&
+      link.rationale === GEOMETRY_BINARY_CAPTURE_USE_RATIONALE
+    );
+    if (!trace || !consumption || !uses) {
+      invalidGeometryPredecessor(`target binary artifact ${descriptor.id} trace or consumption is not exact`);
+    }
+  }
+  return family;
 }
 
 interface ExactGeometryPredecessorCapture {
@@ -2387,6 +3045,143 @@ function assertArchitectureSourceArtifactExact(
   }
 }
 
+interface TargetPartAdmissionReopenContext {
+  readonly projectId: string;
+  readonly basis: EngineeringThreadSnapshotBasis;
+  readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
+}
+
+/**
+ * A targeted draft's admission stamp is only a transport locator produced by
+ * P2a. Reopen the capture-backed `compile.seal-admission@1` artefact and
+ * re-cross the actual admitted Build123d source and its P1 `represents`
+ * binding before that locator can authorize canonical promotion.
+ *
+ * The concrete reader already validates the Thread artefact, capture CAS,
+ * basis descent, freshness and admission schema. This second, target-specific
+ * join deliberately proves that the bytes and represented PartDefinition are
+ * the same facts the target draft claims.
+ */
+async function requireReopenedTargetPartAdmission(
+  draft: Omit<GeometryPartDraftCapture, "fingerprint">,
+  admission: GeometryPartDraftAdmission,
+  context: TargetPartAdmissionReopenContext,
+): Promise<void> {
+  let reopened: Awaited<ReturnType<TechnicalCompilationAdmissionReader["read"]>>;
+  try {
+    reopened = await context.admissions.read({
+      projectId: context.projectId,
+      basis: context.basis,
+      artifactId: admission.artifactId,
+      artifactFingerprint: admission.fingerprint,
+    });
+  } catch (error) {
+    throw new TypeError(
+      `Target compile.seal-admission@1 artefact could not be reopened: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (!reopened) {
+    throw new TypeError(
+      "Target compile.seal-admission@1 artefact is unavailable for the exact project and Thread basis.",
+    );
+  }
+  if (
+    reopened.schemaVersion !== "technical-compilation-admission-capture/1.0" ||
+    reopened.operation.id !== COMPILE_SEAL_ADMISSION_OPERATION.id ||
+    reopened.operation.version !== COMPILE_SEAL_ADMISSION_OPERATION.version ||
+    reopened.trustedRunId.trim() === ""
+  ) {
+    throw new TypeError(
+      "Reopened target admission is not an exact compile.seal-admission@1 capture.",
+    );
+  }
+
+  const technicalAdmission = reopened.admission;
+  if (
+    technicalAdmission.draft.projectId !== context.projectId ||
+    technicalAdmission.basis.thread.projectId !== context.projectId ||
+    technicalAdmission.basis.thread.subjectId !== context.basis.subjectId ||
+    technicalAdmission.compilation.status !== "ready-for-review"
+  ) {
+    throw new TypeError(
+      "Reopened target admission has a foreign project, subject, or non-ready compilation identity.",
+    );
+  }
+
+  const document = reopened.document;
+  if (
+    document.status !== "ready-for-review" ||
+    document.inputManifest.sources.length !== 1 ||
+    document.projections.length !== 1 ||
+    technicalAdmission.sources.length !== 1
+  ) {
+    throw new TypeError(
+      "Reopened target admission is not a singular ready Build123d compilation.",
+    );
+  }
+  const source = document.inputManifest.sources[0]!;
+  const projection = document.projections[0]!;
+  const projectedSource = projection.sources[0];
+  const admissionSource = technicalAdmission.sources[0]!;
+  if (
+    projection.target !== "build123d-source" ||
+    projection.profile.target !== "build123d-source" ||
+    projection.status !== "ready-for-review" ||
+    projection.diagnostics.length !== 0 ||
+    projection.sources.length !== 1 ||
+    !projectedSource ||
+    source.analysis.source.role !== "cad-script" ||
+    source.analysis.source.language !== "python" ||
+    source.analysis.source.id !== admissionSource.id ||
+    projectedSource.analysis.source.id !== admissionSource.id ||
+    source.sourceText !== projectedSource.sourceText ||
+    deterministicJson(source.analysis) !== deterministicJson(projectedSource.analysis) ||
+    !fingerprintsEqual(source.analysisFingerprint, projectedSource.analysisFingerprint) ||
+    !fingerprintsEqual(source.analysis.source.fingerprint, admissionSource.sourceFingerprint) ||
+    !fingerprintsEqual(source.analysisFingerprint, admissionSource.analysisFingerprint) ||
+    deterministicJson(document.inputManifest.bindings) !==
+      deterministicJson(technicalAdmission.bindings) ||
+    deterministicJson(projectedSource.bindings) !==
+      deterministicJson(technicalAdmission.bindings)
+  ) {
+    throw new TypeError(
+      "Reopened target admission source, analysis, or bindings are not exact.",
+    );
+  }
+
+  const sourceFingerprint = await fingerprintTechnicalSourceText(source.sourceText);
+  if (
+    source.sourceText !== draft.target.script ||
+    !fingerprintsEqual(sourceFingerprint, draft.target.scriptHash) ||
+    !fingerprintsEqual(sourceFingerprint, admission.sourceFingerprint) ||
+    !fingerprintsEqual(sourceFingerprint, admissionSource.sourceFingerprint)
+  ) {
+    throw new TypeError(
+      "Reopened target admission source bytes or fingerprint do not equal the target draft.",
+    );
+  }
+
+  const represented = selectUniqueRepresentedPartDefinition(
+    technicalAdmission.bindings,
+  );
+  const represents = technicalAdmission.bindings.filter((binding) =>
+    binding.relation === "represents" &&
+    binding.sysmlElementKind === "PartDefinition"
+  );
+  if (
+    !represented ||
+    represented.elementId !== draft.target.partDefinitionElementId ||
+    represents.length !== 1 ||
+    represents[0]!.sourceId !== admissionSource.id
+  ) {
+    throw new TypeError(
+      "Reopened target admission does not uniquely represent the target PartDefinition.",
+    );
+  }
+}
+
 /** Load and validate the exact human-reviewed draft without mutating state. */
 async function loadReviewedGeometryDraft(
   params: GeometryDecisionParameters,
@@ -2394,11 +3189,14 @@ async function loadReviewedGeometryDraft(
   geometrySourceCaptures: FileCaptureStore<"geometry-source">,
   sourceAnalysisCaptures: FileCaptureStore<"source-analysis">,
   draftAssetDirectory?: string,
+  targetAdmissionContext?: TargetPartAdmissionReopenContext,
 ): Promise<{
   readonly previewProducer: ThreadOperationRef | undefined;
   readonly bundleSources: GeometryBundleCanonicalSources | undefined;
   readonly bundleAssetBytes: ReadonlyMap<string, number> | undefined;
   readonly sourceAnalyses: SealedGeometrySourceAnalyses | undefined;
+  /** Present only for the deliberately separate one-PartDefinition family. */
+  readonly partDraft: Omit<GeometryPartDraftCapture, "fingerprint"> | undefined;
 }> {
   const draftFp: ContentFingerprint = {
     algorithm: "sha256",
@@ -2419,6 +3217,22 @@ async function loadReviewedGeometryDraft(
       "invalid_transition",
       "Draft capture byte-level fingerprint mismatch: the bytes read from the draft " +
         "store do not hash to the signed draft digest. Operator inspection required.",
+    );
+  }
+  if (params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
+    if (!targetAdmissionContext) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Target PartDefinition sealing requires an exact compile.seal-admission@1 reader.",
+      );
+    }
+    return await loadReviewedGeometryPartDraft(
+      draftRecord,
+      params.manifest,
+      geometrySourceCaptures,
+      sourceAnalysisCaptures,
+      draftAssetDirectory,
+      targetAdmissionContext,
     );
   }
   try {
@@ -2474,7 +3288,246 @@ async function loadReviewedGeometryDraft(
     geometrySourceCaptures,
     sourceAnalysisCaptures,
   );
-  return { previewProducer, bundleSources, bundleAssetBytes, sourceAnalyses };
+  return {
+    previewProducer,
+    bundleSources,
+    bundleAssetBytes,
+    sourceAnalyses,
+    partDraft: undefined,
+  };
+}
+
+/**
+ * Re-open the P2a review-only target draft without ever calling the provider.
+ * The root is deliberately closed here: a part capture is not a small bundle,
+ * and no assembly-shaped field may travel into canonical promotion by accident.
+ */
+async function loadReviewedGeometryPartDraft(
+  draftRecord: Record<string, unknown>,
+  manifest: GeometryPartManifest,
+  geometrySourceCaptures: FileCaptureStore<"geometry-source">,
+  sourceAnalysisCaptures: FileCaptureStore<"source-analysis">,
+  draftAssetDirectory?: string,
+  admissionContext?: TargetPartAdmissionReopenContext,
+): Promise<{
+  readonly previewProducer: ThreadOperationRef;
+  readonly bundleSources: undefined;
+  readonly bundleAssetBytes: undefined;
+  readonly sourceAnalyses: undefined;
+  readonly partDraft: Omit<GeometryPartDraftCapture, "fingerprint">;
+}> {
+  try {
+    const root = closedRecord(
+      draftRecord,
+      [
+        "schemaVersion",
+        "kind",
+        "capturedAt",
+        "architectureBasis",
+        "predecessor",
+        "producer",
+        "exportName",
+        "exportFormats",
+        "target",
+        "sourceAnalysis",
+        "admission",
+        "providerCall",
+      ],
+      [
+        "schemaVersion",
+        "kind",
+        "capturedAt",
+        "architectureBasis",
+        "producer",
+        "exportName",
+        "exportFormats",
+        "target",
+        "sourceAnalysis",
+        "admission",
+        "providerCall",
+      ],
+      "$geometryPartDraft",
+    );
+    if (
+      root.schemaVersion !== GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA ||
+      root.kind !== "geometry-part-draft"
+    ) {
+      throw new TypeError("target draft schema or kind is not exact");
+    }
+    geometryPredecessorInstant(root.capturedAt, "$geometryPartDraft.capturedAt");
+    exactRecord(root.producer, ["serverId", "tool", "runId"], "$geometryPartDraft.producer");
+    const target = exactRecord(
+      root.target,
+      ["partDefinitionElementId", "label", "script", "scriptHash", "files"],
+      "$geometryPartDraft.target",
+    );
+    if (!Array.isArray(target.files)) {
+      throw new TypeError("target files are not an array");
+    }
+    for (const [index, file] of target.files.entries()) {
+      exactRecord(
+        file,
+        ["format", "name", "containerPath", "bytes", "fingerprint"],
+        `$geometryPartDraft.target.files[${index}]`,
+      );
+    }
+    const draft = draftRecord as Omit<GeometryPartDraftCapture, "fingerprint">;
+    const admission = requireCanonicalGeometryPartDraftAdmission(draft);
+    if (
+      !fingerprintsEqual(
+        await geometryPredecessorTextFingerprint(draft.target.script),
+        draft.target.scriptHash,
+      )
+    ) {
+      throw new TypeError(
+        "target source bytes do not match their signed scriptHash",
+      );
+    }
+    const reconstructed = geometryPartManifestFromDraft(draft);
+    if (deterministicJson(reconstructed) !== deterministicJson(manifest)) {
+      throw new TypeError(
+        "the signed target MRTR manifest is not exactly reconstructible from the draft",
+      );
+    }
+    if (
+      admission.target.partDefinitionElementId !==
+        manifest.target.partDefinitionElementId ||
+      admission.target.label !== manifest.target.label
+    ) {
+      throw new TypeError("target admission does not join the signed PartDefinition");
+    }
+    if (!admissionContext) {
+      throw new TypeError(
+        "target draft has no exact compile.seal-admission@1 reopen context",
+      );
+    }
+    await requireReopenedTargetPartAdmission(
+      draft,
+      admission,
+      admissionContext,
+    );
+    await assertGeometryPartDraftPaths(draft);
+    const assets = geometryPartDraftAssetMetadata(draft);
+    if (assets.length !== manifest.target.files!.length) {
+      throw new TypeError("target binary metadata coverage is incomplete");
+    }
+    if (draftAssetDirectory !== undefined) {
+      for (const asset of assets) {
+        await verifyDraftAsset(
+          asset.fingerprint.digest,
+          asset.name,
+          draftAssetDirectory,
+          asset.bytes,
+        );
+      }
+    }
+    const verifiedAnalysis = await requireGeometrySourceAnalysis(
+      draft.sourceAnalysis,
+      {
+        sourceCaptures: geometrySourceCaptures,
+        analysisCaptures: sourceAnalysisCaptures,
+      },
+    );
+    if (
+      verifiedAnalysis.reference.selector.kind !== "part-definition" ||
+      verifiedAnalysis.reference.selector.elementId !==
+        manifest.target.partDefinitionElementId ||
+      !fingerprintsEqual(
+        verifiedAnalysis.reference.sourceFingerprint,
+        manifest.target.scriptHash!,
+      )
+    ) {
+      throw new TypeError(
+        "target source analysis does not name the exact signed PartDefinition source",
+      );
+    }
+    const previewProducer = requireDraftPreviewProducer(draft);
+    if (!previewProducer) {
+      throw new TypeError("target draft has no exact sandbox preview producer");
+    }
+    return {
+      previewProducer,
+      bundleSources: undefined,
+      bundleAssetBytes: undefined,
+      sourceAnalyses: undefined,
+      partDraft: Object.freeze({
+        ...draft,
+        sourceAnalysis: verifiedAnalysis.reference,
+      }),
+    };
+  } catch (error) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Target PartDefinition draft admission/source/asset contract mismatch: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+/**
+ * Canonical target-only capture.  Its closed root intentionally has no
+ * `assembly`, `components`, `occurrences`, `placements`, or
+ * `partDefinitions` field: the capture proves one exact PartDefinition and
+ * nothing about a complete product structure.
+ */
+function geometryPartCaptureRecord(options: {
+  readonly params: GeometryDecisionParameters;
+  readonly runId: string;
+  readonly capturedAt: string;
+  readonly architectureArtifact: ThreadArtifact;
+  readonly previewProducer: ThreadOperationRef | undefined;
+  readonly draft: Omit<GeometryPartDraftCapture, "fingerprint">;
+}) {
+  const { params, runId, capturedAt, architectureArtifact, previewProducer, draft } =
+    options;
+  if (params.manifest.schemaVersion !== GEOMETRY_PART_MANIFEST_SCHEMA) {
+    throw new TypeError("Target capture requires a geometry-part-manifest/1.0 decision.");
+  }
+  if (!previewProducer) {
+    throw new TypeError("Target capture requires the exact Build123d preview producer.");
+  }
+  const target = params.manifest.target;
+  const stepIndex = target.files!.findIndex((file) => file.format === "step");
+  if (stepIndex < 0) {
+    throw new TypeError("Target capture requires one authoritative STEP file.");
+  }
+  const step = target.files![stepIndex]!;
+  const draftStep = draft.target.files[stepIndex];
+  if (
+    !draftStep || draftStep.format !== "step" ||
+    !fingerprintsEqual(draftStep.fingerprint, step.fingerprint) ||
+    !Number.isSafeInteger(draftStep.bytes) || draftStep.bytes <= 0
+  ) {
+    throw new TypeError("Target capture STEP metadata is not exactly re-opened from the draft.");
+  }
+  return {
+    schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+    operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+    trustedRunId: runId,
+    draftDigest: params.draftDigest,
+    manifest: params.manifest,
+    architectureBasis: {
+      artifactId: architectureArtifact.id,
+      fingerprint: architectureArtifact.fingerprint,
+      producerRunId: architectureArtifact.producer.runId,
+    },
+    previewProducer,
+    sourceScript: {
+      partDefinitionElementId: target.partDefinitionElementId,
+      label: target.label,
+      script: draft.target.script,
+      scriptHash: target.scriptHash,
+      admission: draft.admission,
+      authoritativeStep: {
+        fileIndex: stepIndex,
+        fingerprint: step.fingerprint,
+        bytes: draftStep.bytes,
+      },
+    },
+    sourceAnalysis: draft.sourceAnalysis,
+    sealedAt: capturedAt,
+  } as const;
 }
 
 async function requireReviewedGeometrySourceAnalyses(
@@ -2663,7 +3716,8 @@ function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undef
     schemaVersion !== PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
     schemaVersion !== LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
     schemaVersion !== PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA &&
-    schemaVersion !== GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA
+    schemaVersion !== GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA &&
+    schemaVersion !== GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
@@ -2873,6 +3927,13 @@ async function promoteAssetNamedByCapture(options: {
       readonly elementId: string;
       readonly format: "step" | "gltf" | "stl";
       readonly name: string;
+    }
+    | {
+      readonly scope: "target-part-definition";
+      readonly elementId: string;
+      readonly fileIndex: number;
+      readonly format: "step" | "gltf" | "stl";
+      readonly name: string;
     };
   extension: string;
   geometryCaptures: GeometryCaptureStore;
@@ -2925,6 +3986,19 @@ async function promoteAssetNamedByCapture(options: {
       .flatMap((definition) => definition.files ?? [])
       .filter((file) => file.format === identity.format && file.name === identity.name)
       .map((file) => file.fingerprint);
+  } else if (
+    manifest?.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA &&
+    options.identity.scope === "target-part-definition"
+  ) {
+    const identity = options.identity;
+    const targetFiles = manifest.target.files ?? [];
+    const file = targetFiles[identity.fileIndex];
+    if (
+      manifest.target.partDefinitionElementId === identity.elementId &&
+      file?.format === identity.format && file.name === identity.name
+    ) {
+      exactMatches = [file.fingerprint];
+    }
   }
   if (
     exactMatches.length !== 1 ||
@@ -3095,7 +4169,7 @@ function buildExtension(options: {
   captureUri: string;
   params: GeometryDecisionParameters;
   previewProducer: ThreadOperationRef | undefined;
-  predecessor: GeometryBundlePredecessorContext | undefined;
+  predecessor: GeometryPredecessorContext | undefined;
 }) {
   const {
     base,
@@ -3128,11 +4202,13 @@ function buildExtension(options: {
   // Primary geometry artifact: the sealed geometry capture (JSON).
   const primaryArtifact: ThreadArtifact = {
     id: artifactId,
-    name: `Geometry: ${
-      params.manifest.components.length === 0
-        ? "assembly"
-        : params.manifest.components.map((c) => c.usageName).join(", ")
-    }`,
+    name: params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+      ? `Canonical PartDefinition geometry: ${params.manifest.target.label}`
+      : `Geometry: ${
+        params.manifest.components.length === 0
+          ? "assembly"
+          : params.manifest.components.map((c) => c.usageName).join(", ")
+      }`,
     kind: "cad-model",
     version: captureFp.digest,
     fingerprint: captureFp,
@@ -3192,6 +4268,33 @@ function buildExtension(options: {
       )
       : [];
 
+  /** One target-only artifact per signed file; no assembly vocabulary exists. */
+  const targetManifest = params.manifest as GeometryPartManifest;
+  const targetPartArtifacts: ThreadArtifact[] =
+    params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+      ? targetManifest.target.files!.map((file, fileIndex) => ({
+        id:
+          `cad-asset-${captureFp.digest}-target-${fileIndex}-${file.fingerprint.digest}`,
+        name: `${
+          file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()
+        }: ${targetManifest.target.label}`,
+        kind: (file.format === "step"
+          ? "step"
+          : file.format === "stl"
+          ? "mesh"
+          : "cad-model") as ThreadArtifact["kind"],
+        version: file.fingerprint.digest,
+        fingerprint: file.fingerprint,
+        uri: `/api/thread/assets/${file.fingerprint.digest}.${
+          geometryAssetExtension(file.format)
+        }`,
+        mediaType: geometryAssetMediaType(file.format),
+        producer: binaryProducer,
+        inputArtifactIds: previewProducer ? [] : [artifactId],
+        freshness,
+      }))
+      : [];
+
   // Per-assembly-file artifacts: one artifact per exported format (step, gltf, stl).
   const assemblyFileArtifacts: ThreadArtifact[] =
     (params.manifest.artifactHashes?.assemblyFiles ?? []).map((file, index) => ({
@@ -3234,6 +4337,7 @@ function buildExtension(options: {
     ...assemblyFileArtifacts,
     ...partMeshArtifacts,
     ...partDefinitionArtifacts,
+    ...targetPartArtifacts,
   ];
   const binaryConsumptions: ThreadArtifactConsumption[] = binaryArtifacts.map(
     (artifact) => ({
@@ -3258,6 +4362,7 @@ function buildExtension(options: {
       ...assemblyFileArtifacts,
       ...partMeshArtifacts,
       ...partDefinitionArtifacts,
+      ...targetPartArtifacts,
     ],
     consumptions: [
       consumption,
@@ -3330,7 +4435,11 @@ function buildExtension(options: {
       ? {
         archived: predecessor.archiveEntries.map((entry) => ({
           target: entry.ref,
-          summary: `Retired by geometry bundle ${captureFp.digest.slice(0, 16)}; ` +
+          summary: `Retired by ${
+            params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+              ? "canonical PartDefinition geometry"
+              : "geometry bundle"
+          } ${captureFp.digest.slice(0, 16)}; ` +
             `cascade source ${entry.because}.`,
         })),
       }

@@ -48,6 +48,7 @@ const PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
 const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.2" as const;
 const PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.0" as const;
 const GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.1" as const;
+const GEOMETRY_PART_CAPTURE_SCHEMA = "geometry-part-capture/1.0" as const;
 
 export interface GenericGeometryCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
@@ -119,6 +120,12 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
         "The active geometry capture is an assembly-only seal; it contains no independent PartDefinition STEP mapping.",
       );
     }
+    if (result.kind === "targeted") {
+      return withoutCad(
+        architectureCatalog,
+        "A targeted PartDefinition capture has no assembly, occurrence, or placement claim; Product does not infer complete assembly CAD coverage.",
+      );
+    }
     return attachExactCadBindings(architectureCatalog, result.bundle);
   } catch (error) {
     const reason = error instanceof GeometryBundleProjectionError
@@ -149,6 +156,7 @@ async function verifyGeometryCapture(
   captures: GenericGeometryCaptureReader,
 ): Promise<
   | { readonly kind: "legacy" }
+  | { readonly kind: "targeted" }
   | { readonly kind: "bundle"; readonly bundle: VerifiedGeometryBundle }
 > {
   const text = await captures.read(primary.fingerprint);
@@ -177,7 +185,8 @@ async function verifyGeometryCapture(
     schemaVersion !== PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA &&
     schemaVersion !== GEOMETRY_CAPTURE_SCHEMA &&
     schemaVersion !== PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA &&
-    schemaVersion !== GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+    schemaVersion !== GEOMETRY_BUNDLE_CAPTURE_SCHEMA &&
+    schemaVersion !== GEOMETRY_PART_CAPTURE_SCHEMA
   ) {
     fail(
       `The active geometry capture schema ${String(schemaVersion)} is unsupported.`,
@@ -190,6 +199,12 @@ async function verifyGeometryCapture(
   const trustedRunId = nonEmpty(capture.trustedRunId, "trustedRunId");
   const sealedAt = canonicalInstant(capture.sealedAt, "sealedAt");
   assertExactPrimary(primary, trustedRunId, sealedAt);
+
+  // A target capture is deliberately not parsed through the bundle projector:
+  // a single PartDefinition proves no assembly, occurrence, or placement.
+  if (schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
+    return { kind: "targeted" };
+  }
 
   if (
     schemaVersion === PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA ||

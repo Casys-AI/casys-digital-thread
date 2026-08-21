@@ -49,10 +49,21 @@ export interface GeometryDecisionPredecessor {
   readonly digest: string;
 }
 
+/** A deliberately non-assembly target capture. */
+export interface GeometryDecisionTargetPart {
+  readonly partDefinitionElementId: string;
+  readonly label: string;
+  readonly scriptDigest: string;
+  readonly files: readonly GeometryDecisionAssemblyFile[];
+}
+
 /** Successfully parsed geometry decision view — all fields are readable. */
 export interface GeometryDecisionValid {
   readonly kind: "valid";
-  readonly schemaVersion: "geometry-manifest/1.0" | "geometry-manifest/2.0";
+  readonly schemaVersion:
+    | "geometry-manifest/1.0"
+    | "geometry-manifest/2.0"
+    | "geometry-part-manifest/1.0";
   /** Hex-64 SHA-256 of the draft JSON capture in the draft store. */
   readonly draftDigest: string;
   readonly architecture: {
@@ -72,6 +83,8 @@ export interface GeometryDecisionValid {
   readonly occurrences: readonly GeometryDecisionOccurrence[];
   readonly placementConvention?: "right-handed-mm-extrinsic-xyz-degrees";
   readonly partExportFormats: readonly string[];
+  /** Present only for a one-PartDefinition decision; no assembly is implied. */
+  readonly targetPart?: GeometryDecisionTargetPart;
   /**
    * URL path to preview one assembly file binary on the BFF
    * `/api/draft-assets/<digest>` endpoint.
@@ -169,6 +182,16 @@ function parseOrThrow(
     "geometry.manifest.exportFormats",
     schemaVersion === "geometry-manifest/1.0",
   );
+  if (schemaVersion === "geometry-part-manifest/1.0") {
+    return parseTargetPartDecision(map, {
+      draftDigest,
+      snapshotId,
+      revision,
+      artifactDigest,
+      unitSystem,
+      exportFormats,
+    });
+  }
   const scriptDigest = hex64(map, "geometry.manifest.scriptHash");
 
   const assemblyFileCount = nonNegativeInt(
@@ -415,6 +438,91 @@ function parseOrThrow(
   };
 }
 
+/** Strict browser mirror of `encodeGeometryPartDecisionParameters`. */
+function parseTargetPartDecision(
+  map: ReadonlyMap<string, string | number | boolean>,
+  base: {
+    readonly draftDigest: string;
+    readonly snapshotId: string;
+    readonly revision: number;
+    readonly artifactDigest: string;
+    readonly unitSystem: "mm";
+    readonly exportFormats: readonly string[];
+  },
+): GeometryDecisionValid {
+  const expectedKeys = new Set<string>([
+    "geometry.draft.digest",
+    "geometry.manifest.schemaVersion",
+    "geometry.manifest.architectureBasis.snapshotId",
+    "geometry.manifest.architectureBasis.revision",
+    "geometry.manifest.architectureBasis.artifactFingerprint",
+    "geometry.manifest.predecessor.present",
+    "geometry.manifest.unitSystem",
+    "geometry.manifest.exportFormats",
+    "geometry.manifest.target.partDefinitionElementId",
+    "geometry.manifest.target.label",
+    "geometry.manifest.target.scriptHash",
+    "geometry.manifest.target.files.count",
+  ]);
+  let predecessor: GeometryDecisionPredecessor | undefined;
+  if (strictBoolean(map, "geometry.manifest.predecessor.present")) {
+    predecessor = {
+      artifactId: nonEmpty(map, "geometry.manifest.predecessor.artifactId"),
+      digest: hex64(map, "geometry.manifest.predecessor.fingerprint"),
+    };
+    expectedKeys.add("geometry.manifest.predecessor.artifactId");
+    expectedKeys.add("geometry.manifest.predecessor.fingerprint");
+  }
+  const partDefinitionElementId = nonEmpty(
+    map,
+    "geometry.manifest.target.partDefinitionElementId",
+  );
+  const label = nonEmpty(map, "geometry.manifest.target.label");
+  const scriptDigest = hex64(map, "geometry.manifest.target.scriptHash");
+  const fileCount = nonNegativeInt(map, "geometry.manifest.target.files.count");
+  const files: GeometryDecisionAssemblyFile[] = [];
+  for (let index = 0; index < fileCount; index++) {
+    const prefix = `geometry.manifest.target.files.${index}`;
+    files.push({
+      format: oneOfFormat(map, `${prefix}.format`),
+      name: nonEmpty(map, `${prefix}.name`),
+      digest: hex64(map, `${prefix}.fingerprint`),
+    });
+    for (const field of ["format", "name", "fingerprint"]) {
+      expectedKeys.add(`${prefix}.${field}`);
+    }
+  }
+  assertFormatOrder(files, base.exportFormats, "geometry.manifest.target.files");
+  for (const key of map.keys()) {
+    if (!expectedKeys.has(key)) throw new Error(`Unexpected parameter: ${key}`);
+  }
+  const primaryFile = files.find((file) => file.format === "gltf") ?? files[0];
+  return {
+    kind: "valid",
+    schemaVersion: "geometry-part-manifest/1.0",
+    draftDigest: base.draftDigest,
+    architecture: {
+      snapshotId: base.snapshotId,
+      revision: base.revision,
+      artifactDigest: base.artifactDigest,
+    },
+    predecessor,
+    unitSystem: base.unitSystem,
+    exportFormats: base.exportFormats,
+    scriptDigest,
+    assemblyFiles: [],
+    components: [],
+    partDefinitions: [],
+    occurrences: [],
+    partExportFormats: [],
+    targetPart: { partDefinitionElementId, label, scriptDigest, files },
+    primaryAssetPreviewPath: primaryFile
+      ? `/api/draft-assets/${primaryFile.digest}`
+      : undefined,
+    primaryAssetFormat: primaryFile?.format,
+  };
+}
+
 function hex64(
   map: ReadonlyMap<string, string | number | boolean>,
   key: string,
@@ -495,9 +603,12 @@ function oneOfFormat(
 function oneOfSchema(
   map: ReadonlyMap<string, string | number | boolean>,
   key: string,
-): "geometry-manifest/1.0" | "geometry-manifest/2.0" {
+): "geometry-manifest/1.0" | "geometry-manifest/2.0" | "geometry-part-manifest/1.0" {
   const value = nonEmpty(map, key);
-  if (value !== "geometry-manifest/1.0" && value !== "geometry-manifest/2.0") {
+  if (
+    value !== "geometry-manifest/1.0" && value !== "geometry-manifest/2.0" &&
+    value !== "geometry-part-manifest/1.0"
+  ) {
     throw new Error(`${key} is not a supported manifest schema`);
   }
   return value;

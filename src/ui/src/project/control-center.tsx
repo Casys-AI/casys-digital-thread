@@ -577,14 +577,15 @@ function GeometryDraftPreview(
 ): JSX.Element {
   const format = view.primaryAssetFormat;
   const path = assetPath;
+  const targetPart = view.targetPart;
   if (!path || !format) {
     return (
       <div className="divide-y divide-border" data-geometry-review-mode={mode}>
         <p className="rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
           No previewable {mode === "sealed" ? "sealed" : "reviewed"}{" "}
-          assembly is available (
-          {view.assemblyFiles.length} file
-          {view.assemblyFiles.length === 1 ? "" : "s"} present).
+          {targetPart
+            ? `${targetPartSealStatus(mode, targetPart.partDefinitionElementId)} No assembly preview is claimed.`
+            : `assembly is available (${view.assemblyFiles.length} file${view.assemblyFiles.length === 1 ? "" : "s"} present).`}
         </p>
         <GeometryDecisionDetails
           view={view}
@@ -606,6 +607,8 @@ function GeometryDraftPreview(
             ? "Exact sealed STEP bytes are recorded; this format has no in-browser preview."
             : mode === "approved"
             ? "The STEP proposal was validated; its sealed result is still pending."
+            : targetPart
+            ? "STEP format — no in-browser preview. This is a target PartDefinition review, not an assembly preview."
             : "STEP format — no in-browser preview. Review the available assembly preview with the agent before approving."}
         </p>
         <code className="block py-3 font-mono text-xs text-muted-foreground">
@@ -649,8 +652,9 @@ function GeometryDraftPreview(
         : <StlDraftCanvas url={path} />}
       <footer className="flex flex-wrap items-baseline justify-between gap-2 py-3">
         <small className="text-xs text-muted-foreground">
-          Assembly files: {view.assemblyFiles.length} · Components:{" "}
-          {view.components.length} · Unit: {view.unitSystem}
+          {targetPart
+            ? targetPartSealStatus(mode, targetPart.partDefinitionElementId)
+            : `Assembly files: ${view.assemblyFiles.length} · Components: ${view.components.length} · Unit: ${view.unitSystem}`}
         </small>
         <code className="font-mono text-xs text-muted-foreground">
           {view.draftDigest}
@@ -682,6 +686,22 @@ function geometryPreviewLabel(
     return `Validated historical proposal · result not in current graph · ${format.toUpperCase()}`;
   }
   return `Draft · geometry proposal · ${format.toUpperCase()} · NOT CANONICAL`;
+}
+
+function targetPartSealStatus(
+  mode: "draft" | "approved" | "sealed" | "historical" | "superseded",
+  elementId: string,
+): string {
+  if (mode === "sealed") {
+    return `Canonical PartDefinition STEP ${elementId}; no assembly/occurrence/placement claim.`;
+  }
+  if (mode === "approved") {
+    return `Reviewed target PartDefinition STEP ${elementId}; canonical seal pending; no assembly/occurrence/placement claim.`;
+  }
+  if (mode === "draft") {
+    return `Proposed target PartDefinition STEP ${elementId}; canonical seal pending; no assembly/occurrence/placement claim.`;
+  }
+  return `Reviewed target PartDefinition STEP ${elementId}; no assembly/occurrence/placement claim.`;
 }
 
 function GeometryDecisionDetails(
@@ -718,6 +738,29 @@ function GeometryDecisionDetails(
     );
   return (
     <>
+      {view.targetPart && (
+        <section className="divide-y divide-border">
+          <header className="pb-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              Target PartDefinition CAD
+            </p>
+            <strong className="text-sm font-semibold">
+              {targetPartSealStatus(mode, view.targetPart.partDefinitionElementId)}
+            </strong>
+            <small className="mt-0.5 block text-xs text-muted-foreground">
+              {view.targetPart.label}
+            </small>
+          </header>
+          <dl className="grid gap-x-4 gap-y-1 py-3 sm:grid-cols-[auto_1fr]">
+            <dt className="text-xs text-muted-foreground">Target files</dt>
+            <dd className="font-mono text-xs text-muted-foreground">
+              {view.targetPart.files.map((file) =>
+                `${file.format.toUpperCase()} ${file.name} ${shortDigest(file.digest)}`
+              ).join(" · ")}
+            </dd>
+          </dl>
+        </section>
+      )}
       {view.schemaVersion === "geometry-manifest/2.0" && (
         <>
           <section className="divide-y divide-border">
@@ -893,14 +936,20 @@ function GeometryDecisionDetails(
           </dd>
           <dt className="text-xs text-muted-foreground">Requested formats</dt>
           <dd className="text-sm">
-            Assembly {view.exportFormats.join(", ")}
+            {view.targetPart
+              ? `Target PartDefinition ${view.exportFormats.join(", ")}`
+              : `Assembly ${view.exportFormats.join(", ")}`}
             {view.partExportFormats.length > 0
               ? ` · Parts ${view.partExportFormats.join(", ")}`
               : ""}
           </dd>
-          <dt className="text-xs text-muted-foreground">Assembly</dt>
+          <dt className="text-xs text-muted-foreground">
+            {view.targetPart ? "Assembly claim" : "Assembly"}
+          </dt>
           <dd className="font-mono text-xs text-muted-foreground">
-            {view.assemblyFiles.map((file) =>
+            {view.targetPart
+              ? "None — target-only PartDefinition capture"
+              : view.assemblyFiles.map((file) =>
               `${file.format.toUpperCase()} ${file.name} ${
                 shortDigest(file.digest)
               }`

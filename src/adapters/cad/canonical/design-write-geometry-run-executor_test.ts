@@ -61,12 +61,18 @@ import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-br
 import { ExactThreadCompletionEvidenceValidator } from "../../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../project/engineering-project-initial-baseline-evidence-validator.ts";
 import type {
+  ReopenedTechnicalCompilationAdmission,
+  TechnicalCompilationAdmissionReader,
+  TechnicalCompilationAdmissionReadRequest,
+} from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import type {
   ContentFingerprint,
   ThreadArtifact,
   ThreadArtifactConsumption,
   ThreadProvenanceLink,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
+import { archivedRefKeys } from "../../../domain/thread/thread-snapshot.ts";
 import type { EngineeringThreadSnapshotRef } from "../../../domain/project/engineering-project.ts";
 import {
   assertGeometryArchitectureBasisMatchesRun,
@@ -102,7 +108,9 @@ import {
 } from "./geometry-draft-capture.ts";
 import {
   GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+  GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
   type GeometryDraftAdmission,
+  type GeometryPartDraftAdmission,
 } from "../../../domain/cad/canonical/geometry-draft-admission.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../../domain/architecture/renderer/architecture-proposal.ts";
 import {
@@ -121,6 +129,14 @@ import {
   GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
   type GeometryBundleManifest,
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
+import {
+  encodeGeometryPartDecisionParameters,
+  type GeometryPartManifest,
+} from "../../../domain/cad/canonical/geometry-part-manifest.ts";
+import {
+  captureGeometryPartDraft,
+  geometryPartManifestFromDraft,
+} from "./geometry-part-draft-capture.ts";
 import { resolveGenericProductStructureCatalog } from "../../architecture/renderer/product-structure-catalog.ts";
 import { resolveThreadComponentCatalog } from "../../../domain/thread/thread-component-catalog.ts";
 
@@ -194,6 +210,131 @@ async function draftAdmissionFor(script: string): Promise<GeometryDraftAdmission
     fingerprint: { algorithm: "sha256", digest: HEX64_B },
     sourceFingerprint,
   };
+}
+
+async function targetDraftAdmissionFor(
+  script: string,
+  partDefinitionElementId: string,
+  label: string,
+): Promise<GeometryPartDraftAdmission> {
+  const sourceFingerprint = {
+    algorithm: "sha256" as const,
+    digest: await sha256Bytes(new TextEncoder().encode(script)),
+  };
+  return {
+    schemaVersion: GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
+    artifactId: `technical-compilation-admission-${HEX64_B}`,
+    fingerprint: { algorithm: "sha256", digest: HEX64_B },
+    sourceFingerprint,
+    target: { partDefinitionElementId, label },
+  };
+}
+
+/**
+ * The production seam is capture-backed. This focused fixture only supplies
+ * the exact reopened facts the sealer must recross; it never executes a
+ * provider or manufactures an admission from a draft at seal time.
+ */
+class FakeTargetPartAdmissionReader
+  implements Pick<TechnicalCompilationAdmissionReader, "read"> {
+  readonly calls: TechnicalCompilationAdmissionReadRequest[] = [];
+  missing = false;
+  failure: Error | undefined;
+  sourceTextOverride: string | undefined;
+  representedTargetOverride: string | undefined;
+  record:
+    | {
+      readonly artifactId: string;
+      readonly artifactFingerprint: ContentFingerprint;
+      readonly projectId: string;
+      readonly subjectId: string;
+      readonly sourceText: string;
+      readonly sourceFingerprint: ContentFingerprint;
+      readonly partDefinitionElementId: string;
+    }
+    | undefined;
+
+  register(record: NonNullable<FakeTargetPartAdmissionReader["record"]>): void {
+    this.record = structuredClone(record);
+  }
+
+  read(
+    request: TechnicalCompilationAdmissionReadRequest,
+  ): Promise<ReopenedTechnicalCompilationAdmission | undefined> {
+    this.calls.push(structuredClone(request));
+    if (this.failure) return Promise.reject(this.failure);
+    const record = this.record;
+    if (
+      this.missing || !record || request.projectId !== record.projectId ||
+      request.basis.subjectId !== record.subjectId ||
+      request.artifactId !== record.artifactId ||
+      request.artifactFingerprint.algorithm !== record.artifactFingerprint.algorithm ||
+      request.artifactFingerprint.digest !== record.artifactFingerprint.digest
+    ) {
+      return Promise.resolve(undefined);
+    }
+    const sourceText = this.sourceTextOverride ?? record.sourceText;
+    const analysisFingerprint = {
+      algorithm: "sha256" as const,
+      digest: "f".repeat(64),
+    };
+    const source = {
+      sourceText,
+      analysis: {
+        source: {
+          id: "source:target-cad",
+          role: "cad-script",
+          language: "python",
+          fingerprint: record.sourceFingerprint,
+        },
+      },
+      analysisFingerprint,
+    };
+    const bindings = [{
+      id: "binding:target:represents",
+      sourceId: "source:target-cad",
+      sourceSymbolId: "artifact:result",
+      sysmlElementId: this.representedTargetOverride ??
+        record.partDefinitionElementId,
+      sysmlElementKind: "PartDefinition",
+      relation: "represents" as const,
+    }];
+    return Promise.resolve({
+      schemaVersion: "technical-compilation-admission-capture/1.0",
+      operation: { id: "compile.seal-admission", version: "1" },
+      trustedRunId: "run:compile-target-admission",
+      decisionId: "decision:compile-target-admission",
+      sealedAt: "2026-08-08T12:19:00.000Z",
+      draftReference: {},
+      admission: {
+        draft: { projectId: record.projectId },
+        basis: {
+          thread: {
+            projectId: record.projectId,
+            subjectId: record.subjectId,
+          },
+        },
+        sources: [{
+          id: "source:target-cad",
+          sourceFingerprint: record.sourceFingerprint,
+          analysisFingerprint,
+        }],
+        bindings,
+        compilation: { status: "ready-for-review" },
+      },
+      document: {
+        status: "ready-for-review",
+        inputManifest: { sources: [source], bindings },
+        projections: [{
+          target: "build123d-source",
+          profile: { target: "build123d-source" },
+          status: "ready-for-review",
+          diagnostics: [],
+          sources: [{ ...source, bindings }],
+        }],
+      },
+    } as unknown as ReopenedTechnicalCompilationAdmission);
+  }
 }
 
 /** Tests deliberately corrupt cloned snapshots; production snapshots stay readonly. */
@@ -1082,6 +1223,7 @@ interface GeoFixture {
   readonly draftCaptures: FileCaptureStore<"geometry-draft">;
   readonly geoCaptures: FileCaptureStore<"geometry-capture">;
   readonly sourceAnalysis: ReturnType<typeof geometrySourceAnalysisFor>;
+  readonly admissions: FakeTargetPartAdmissionReader;
   readonly sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   readonly baselineRef: EngineeringThreadSnapshotRef;
   readonly draftAssetDirectory: string;
@@ -1124,6 +1266,8 @@ async function buildGeoFixture(
     architectureArtifactDefect?: "producer";
     includeParallelSibling?: boolean;
     bundleV2?: boolean;
+    /** Architecture-only fixture toggle for independent target-chain tests. */
+    multiPartArchitecture?: boolean;
     bundlePartGltf?: boolean;
     bundleCoverageDefect?: "omit-usage" | "omit-definition";
     bundleAssetDefect?: "empty" | "size-mismatch";
@@ -1153,6 +1297,7 @@ async function buildGeoFixture(
     directory: `${directory}/geo-captures`,
   });
   const sourceAnalysis = geometrySourceAnalysisFor(directory);
+  const admissions = new FakeTargetPartAdmissionReader();
   const draftAssetDirectory = `${directory}/draft-assets`;
   const canonicalAssetDirectory = `${directory}/canonical-assets`;
 
@@ -1395,7 +1540,7 @@ async function buildGeoFixture(
               targetKind: "PartDefinition",
               targetLabel: "FrameDefinition",
             },
-            ...(opts.bundleV2
+            ...(opts.bundleV2 || opts.multiPartArchitecture
               ? [{
                 id: "usage:frame-secondary",
                 kind: "PartUsage",
@@ -1415,7 +1560,7 @@ async function buildGeoFixture(
           id: "part-definition:frame",
           kind: "PartDefinition",
           label: "FrameDefinition",
-          usages: opts.bundleV2
+          usages: opts.bundleV2 || opts.multiPartArchitecture
             ? [{
               id: "usage:bolt",
               kind: "PartUsage",
@@ -1426,7 +1571,7 @@ async function buildGeoFixture(
             }]
             : [],
         },
-        ...(opts.bundleV2
+        ...(opts.bundleV2 || opts.multiPartArchitecture
           ? [{
             id: "part-definition:bolt",
             kind: "PartDefinition",
@@ -2074,6 +2219,7 @@ async function buildGeoFixture(
     draftCaptures,
     geoCaptures,
     sourceAnalysis,
+    admissions,
     sysmlSourceAnalysis: acceptingSysmlSourceAnalysisReader,
     baselineRef: geometryBasis,
     draftAssetDirectory,
@@ -2099,6 +2245,7 @@ function makeExecutor(
     geometrySourceCaptures: fixture.sourceAnalysis.sourceCaptures,
     sourceAnalysisCaptures: fixture.sourceAnalysis.analysisCaptures,
     geometryCaptures,
+    admissions: fixture.admissions,
     lease: new FileEngineeringProjectRunLease(`${directory}/geo-leases`),
     draftAssetDirectory: fixture.draftAssetDirectory,
     canonicalAssetDirectory: fixture.canonicalAssetDirectory,
@@ -2549,6 +2696,281 @@ async function queueGeometryBundleUpgrade(
       subjectId: basis.subject.id,
     },
     queued: { revision: project.revision, runId: "run:geometry-bundle-upgrade" },
+  };
+}
+
+/** Queue one P2a-reviewed target draft for the P2b sealer; never reruns it. */
+async function queueGeometryPartSeal(
+  fixture: GeoFixture,
+  completed: Awaited<ReturnType<DesignWriteGeometryRunExecutor["execute"]>>,
+  options: {
+    readonly target: "frame" | "bolt";
+    readonly suffix: string;
+    readonly predecessor?: "auto" | "omit";
+    readonly tamperSource?: boolean;
+  },
+): Promise<{
+  readonly fixture: GeoFixture;
+  readonly providerCalls: { value: number };
+  readonly manifest: GeometryPartManifest;
+  readonly draft: Awaited<ReturnType<typeof captureGeometryPartDraft>>;
+}> {
+  const completedRun = completed.agentRuns.find((run) =>
+    run.id === fixture.queued.runId
+  );
+  assertExists(completedRun?.resultSnapshot);
+  const basis = await fixture.snapshots.get(completedRun.resultSnapshot.snapshotId);
+  assertExists(basis);
+  const architecture = basis.artifacts.find((artifact) =>
+    artifact.kind === "sysml-model" &&
+    artifact.uri?.startsWith(ARCHITECTURE_CAPTURE_URI_PREFIX)
+  );
+  assertExists(architecture);
+
+  const target = options.target === "frame"
+    ? {
+      elementId: "part-definition:frame",
+      label: "FrameDefinition",
+      script: PARAMETERIZED_FRAME,
+    }
+    : {
+      elementId: "part-definition:bolt",
+      label: "BoltDefinition",
+      script: PARAMETERIZED_BOLT,
+    };
+  const archived = archivedRefKeys(basis);
+  let activeTarget: ThreadArtifact | undefined;
+  for (const artifact of basis.artifacts) {
+    if (
+      artifact.kind !== "cad-model" ||
+      !artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) ||
+      archived.has(`artifact:${artifact.id}`)
+    ) continue;
+    const text = await fixture.geoCaptures.read(artifact.fingerprint);
+    if (!text) continue;
+    const parsed = JSON.parse(text) as {
+      schemaVersion?: string;
+      manifest?: { target?: { partDefinitionElementId?: string } };
+    };
+    if (
+      parsed.schemaVersion === "geometry-part-capture/1.0" &&
+      parsed.manifest?.target?.partDefinitionElementId === target.elementId
+    ) {
+      activeTarget = artifact;
+      break;
+    }
+  }
+  const predecessor = options.predecessor === "omit"
+    ? undefined
+    : activeTarget
+    ? { artifactId: activeTarget.id, fingerprint: activeTarget.fingerprint }
+    : undefined;
+  const requestedManifest: GeometryPartManifest = {
+    schemaVersion: "geometry-part-manifest/1.0",
+    architectureBasis: {
+      snapshotId: basis.id,
+      revision: basis.revision,
+      artifactFingerprint: architecture.fingerprint,
+    },
+    ...(predecessor ? { predecessor } : {}),
+    target: {
+      partDefinitionElementId: target.elementId,
+      label: target.label,
+    },
+    unitSystem: "mm",
+    exportFormats: ["step", "gltf"],
+  };
+  const stepBytes = new TextEncoder().encode(
+    `${options.target} target STEP ${options.suffix}\n`,
+  );
+  const glbBytes = new TextEncoder().encode(
+    `${options.target} target GLB ${options.suffix}\n`,
+  );
+  const bytesByFormat = new Map([
+    ["step", stepBytes],
+    ["gltf", glbBytes],
+  ] as const);
+  const digestByFormat = new Map<string, string>();
+  for (const [format, bytes] of bytesByFormat) {
+    digestByFormat.set(format, await sha256Bytes(bytes));
+  }
+  const providerCalls = { value: 0 };
+  const draft = await captureGeometryPartDraft(
+    {
+      callTool: (call) => {
+        providerCalls.value++;
+        const args = call.arguments as Record<string, unknown>;
+        const name = String(args.name);
+        const formats = args.formats as Array<"step" | "gltf">;
+        return Promise.resolve({
+          structuredContent: {
+            schemaVersion: "1.0",
+            kind: "export",
+            metrics: {},
+            files: formats.map((format) => {
+              const bytes = bytesByFormat.get(format)!;
+              const extension = format === "gltf" ? "glb" : format;
+              return {
+                format,
+                path: `/exports/${name}.${extension}`,
+                bytes: bytes.length,
+                sha256: digestByFormat.get(format)!,
+                ...(format === "gltf" ? { viewer: "model-viewer" } : {}),
+              };
+            }),
+          },
+          text: "",
+        });
+      },
+      callToolTextResult: () => Promise.reject(new Error("unexpected")),
+    },
+    {
+      script: target.script,
+      manifest: requestedManifest,
+      admission: await targetDraftAdmissionFor(
+        target.script,
+        target.elementId,
+        target.label,
+      ),
+    },
+    fixture.draftCaptures,
+    {
+      build123dService: "mcp-build123d-sandbox",
+      sourceAnalysis: fixture.sourceAnalysis,
+      previewRunId: `run:geometry-part-preview-${options.suffix}`,
+      materializeAsset: async (digest) => {
+        const format = [...digestByFormat].find(([, value]) => value === digest)?.[0];
+        assertExists(format);
+        if (format !== "step" && format !== "gltf") {
+          throw new Error("unexpected target export format");
+        }
+        await Deno.mkdir(fixture.draftAssetDirectory, { recursive: true });
+        await Deno.writeFile(
+          `${fixture.draftAssetDirectory}/${digest}`,
+          bytesByFormat.get(format)!,
+        );
+      },
+    },
+    () => "2026-08-08T12:20:00.000Z",
+  );
+  fixture.admissions.register({
+    artifactId: draft.admission.artifactId,
+    artifactFingerprint: draft.admission.fingerprint,
+    projectId: PROJECT_ID,
+    subjectId: basis.subject.id,
+    sourceText: target.script,
+    sourceFingerprint: draft.admission.sourceFingerprint,
+    partDefinitionElementId: target.elementId,
+  });
+  let reviewedDraft = draft;
+  if (options.tamperSource) {
+    const { fingerprint: _discarded, ...unsigned } = draft;
+    const altered = {
+      ...unsigned,
+      target: {
+        ...unsigned.target,
+        script: `${unsigned.target.script}# altered after source analysis\n`,
+      },
+    };
+    const alteredFingerprint = await sha256Fingerprint(altered);
+    await fixture.draftCaptures.save(alteredFingerprint, deterministicJson(altered));
+    reviewedDraft = { ...altered, fingerprint: alteredFingerprint };
+  }
+  const manifest = geometryPartManifestFromDraft(reviewedDraft);
+  let project = await fixture.commands.appendChange(AGENT, {
+    commandId: `append-target-geometry-${options.suffix}`,
+    projectId: PROJECT_ID,
+    expectedRevision: completed.revision,
+    issuedAt: "2026-08-08T12:20:10.000Z",
+    baseSnapshot: {
+      snapshotId: basis.id,
+      revision: basis.revision,
+      subjectId: basis.subject.id,
+    },
+    phases: [{
+      id: `target-geometry-${options.suffix}`,
+      name: "Target geometry",
+      description: "Seal one reviewed PartDefinition target.",
+    }],
+    workItems: [{
+      id: `wi:target-geometry-${options.suffix}`,
+      phaseId: `target-geometry-${options.suffix}`,
+      owner: "agent",
+      dependsOnWorkItemIds: ["wi:geometry"],
+      decisionIds: [`decision:target-geometry-${options.suffix}`],
+      operation: {
+        ...DESIGN_WRITE_GEOMETRY_OPERATION,
+        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+      },
+    }],
+    requiredDecisions: [{
+      id: `decision:target-geometry-${options.suffix}`,
+      phaseId: `target-geometry-${options.suffix}`,
+      title: "Target PartDefinition geometry",
+      question: "Seal this exact admitted target PartDefinition draft?",
+    }],
+  });
+  project = await fixture.commands.proposeDecision(AGENT, {
+    commandId: `propose-target-geometry-${options.suffix}`,
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:20:20.000Z",
+    decisionId: `decision:target-geometry-${options.suffix}`,
+    baseSnapshot: {
+      snapshotId: basis.id,
+      revision: basis.revision,
+      subjectId: basis.subject.id,
+    },
+    proposal: {
+      summary: "Seal the exact admitted PartDefinition draft without an assembly claim.",
+      parameters: encodeGeometryPartDecisionParameters(
+        reviewedDraft.fingerprint.digest,
+        manifest,
+      ) as Array<{ key: string; label: string; value: string | number | boolean }>,
+    },
+  });
+  const approval = project.approvals.find((candidate) =>
+    candidate.decisionId === `decision:target-geometry-${options.suffix}`
+  );
+  assertExists(approval?.inputFingerprint);
+  project = await fixture.commands.approveDecision(HUMAN, {
+    commandId: `approve-target-geometry-${options.suffix}`,
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:20:30.000Z",
+    decisionId: `decision:target-geometry-${options.suffix}`,
+    rationale: "The exact target, admitted source, STEP and predecessor were reviewed.",
+    inputFingerprint: approval.inputFingerprint,
+  });
+  const runId = `run:geometry-part-${options.suffix}`;
+  project = await fixture.commands.queueRun(AGENT, {
+    commandId: `queue-target-geometry-${options.suffix}`,
+    projectId: PROJECT_ID,
+    expectedRevision: project.revision,
+    issuedAt: "2026-08-08T12:20:40.000Z",
+    runId,
+    workItemId: `wi:target-geometry-${options.suffix}`,
+    summary: "Seal the reviewed target PartDefinition geometry.",
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: basis.id,
+      revision: basis.revision,
+      subjectId: basis.subject.id,
+    },
+  });
+  return {
+    fixture: {
+      ...fixture,
+      baselineRef: {
+        snapshotId: basis.id,
+        revision: basis.revision,
+        subjectId: basis.subject.id,
+      },
+      queued: { revision: project.revision, runId },
+    },
+    providerCalls,
+    manifest,
+    draft: reviewedDraft,
   };
 }
 
@@ -4898,3 +5320,406 @@ function minimalSnapshotWithArchitecture(
     }],
   };
 }
+
+Deno.test("target PartDefinition seal reopens one admitted draft, promotes deterministic target assets, and replays without Build123d", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-target-seal-" });
+  try {
+    const initial = await buildGeoFixture(tmpDir, {
+      mode: "happy",
+      multiPartArchitecture: true,
+    });
+    const initialCompleted = await makeExecutor(initial, tmpDir).execute(
+      AGENT,
+      executionCommand(initial),
+    );
+    const queued = await queueGeometryPartSeal(initial, initialCompleted, {
+      target: "frame",
+      suffix: "frame-first",
+    });
+    assertEquals(queued.providerCalls.value, 1);
+    const command = {
+      ...executionCommand(queued.fixture),
+      commandId: "exec-target-frame-first",
+      issuedAt: "2026-08-08T12:21:00.000Z",
+    };
+    const executor = makeExecutor(queued.fixture, tmpDir);
+    const completed = await executor.execute(AGENT, command);
+    // Pre-claim, post-claim, then the completed-evidence reread all reopen
+    // the same immutable admission; no provider is involved in any of them.
+    assertEquals(queued.fixture.admissions.calls.length, 3);
+    for (const request of queued.fixture.admissions.calls) {
+      assertEquals(request.projectId, PROJECT_ID);
+      assertEquals(request.artifactId, queued.draft.admission.artifactId);
+      assertEquals(
+        request.artifactFingerprint,
+        queued.draft.admission.fingerprint,
+      );
+      assertEquals(request.basis, {
+        kind: "thread-snapshot",
+        ...queued.fixture.baselineRef,
+      });
+    }
+    const run = completed.agentRuns.find((candidate) =>
+      candidate.id === queued.fixture.queued.runId
+    );
+    assertExists(run?.resultSnapshot);
+    const snapshot = await queued.fixture.snapshots.get(run.resultSnapshot.snapshotId);
+    assertExists(snapshot);
+    validateThreadSnapshot(snapshot);
+    const primary = snapshot.artifacts.find((artifact) =>
+      artifact.kind === "cad-model" && artifact.producer.runId === run.id
+    );
+    assertExists(primary);
+    const captureText = await queued.fixture.geoCaptures.read(primary.fingerprint);
+    assertExists(captureText);
+    const capture = JSON.parse(captureText) as Record<string, unknown>;
+    assertEquals(capture.schemaVersion, "geometry-part-capture/1.0");
+    for (const forbidden of [
+      "assembly",
+      "components",
+      "occurrences",
+      "placements",
+      "partDefinitions",
+    ]) {
+      assertEquals(Object.hasOwn(capture, forbidden), false, forbidden);
+    }
+    const targetArtifacts = snapshot.artifacts.filter((artifact) =>
+      artifact.id.startsWith(`cad-asset-${primary.fingerprint.digest}-target-`)
+    );
+    assertEquals(targetArtifacts.length, queued.manifest.target.files!.length);
+    for (const [index, file] of queued.manifest.target.files!.entries()) {
+      assertEquals(
+        targetArtifacts.some((artifact) =>
+          artifact.id ===
+            `cad-asset-${primary.fingerprint.digest}-target-${index}-${file.fingerprint.digest}`
+        ),
+        true,
+      );
+      await Deno.stat(
+        `${queued.fixture.canonicalAssetDirectory}/${file.fingerprint.digest}.${
+          file.format === "gltf" ? "glb" : file.format
+        }`,
+      );
+    }
+    const targetOnly = {
+      ...snapshot,
+      artifacts: snapshot.artifacts.filter((artifact) =>
+        artifact.kind !== "cad-model" || artifact.id === primary.id
+      ),
+    } as ThreadSnapshot;
+    const catalog = await resolveGenericProductStructureCatalog(
+      targetOnly,
+      queued.fixture.archCaptures,
+      queued.fixture.geoCaptures,
+    );
+    assertExists(catalog);
+    assertEquals(
+      catalog.components.flatMap((component) => component.bindings).filter((binding) =>
+        binding.provider === "digital-thread" && binding.kind === "artifact"
+      ).length,
+      0,
+    );
+    assertStringIncludes(catalog.rationale, "targeted PartDefinition capture");
+    await executor.execute(AGENT, command);
+    assertEquals(queued.providerCalls.value, 1);
+    assertEquals(queued.fixture.admissions.calls.length, 4);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("target seal rejects human MRTR target and source/hash drift from the reviewed draft", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-target-mrtr-" });
+  try {
+    const initial = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const initialCompleted = await makeExecutor(initial, tmpDir).execute(
+      AGENT,
+      executionCommand(initial),
+    );
+    const queued = await queueGeometryPartSeal(initial, initialCompleted, {
+      target: "frame",
+      suffix: "mrtr",
+    });
+    const { fingerprint: _fingerprint, ...draft } = queued.draft;
+    assertMrtrManifestMatchesDraft(queued.manifest, draft);
+    assertThrows(
+      () =>
+        assertMrtrManifestMatchesDraft(queued.manifest, {
+          ...draft,
+          target: { ...draft.target, label: "Tampered Frame" },
+        }),
+      EngineeringProjectCommandError,
+      "geometry_manifest_mismatch",
+    );
+    assertThrows(
+      () =>
+        assertMrtrManifestMatchesDraft(queued.manifest, {
+          ...draft,
+          target: {
+            ...draft.target,
+            scriptHash: { algorithm: "sha256", digest: "f".repeat(64) },
+          },
+        }),
+      EngineeringProjectCommandError,
+      "geometry_manifest_mismatch",
+    );
+    assertThrows(
+      () =>
+        assertMrtrManifestMatchesDraft(queued.manifest, {
+          ...draft,
+          target: {
+            ...draft.target,
+            files: draft.target.files.map((file, index) => index === 0
+              ? { ...file, fingerprint: { algorithm: "sha256", digest: "f".repeat(64) } }
+              : file),
+          },
+        }),
+      EngineeringProjectCommandError,
+      "geometry_manifest_mismatch",
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("target seal rejects a self-hashed draft whose source bytes no longer equal its signed source hash", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-target-source-tamper-" });
+  try {
+    const initial = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const initialCompleted = await makeExecutor(initial, tmpDir).execute(
+      AGENT,
+      executionCommand(initial),
+    );
+    const queued = await queueGeometryPartSeal(initial, initialCompleted, {
+      target: "frame",
+      suffix: "source-tamper",
+      tamperSource: true,
+    });
+    await assertRejects(
+      () => makeExecutor(queued.fixture, tmpDir).execute(
+        AGENT,
+        { ...executionCommand(queued.fixture), commandId: "exec-target-source-tamper" },
+      ),
+      EngineeringProjectCommandError,
+      "target source bytes do not match their signed scriptHash",
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("target seal refuses a missing exact compile admission before claim", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-target-admission-missing-" });
+  try {
+    const initial = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const initialCompleted = await makeExecutor(initial, tmpDir).execute(
+      AGENT,
+      executionCommand(initial),
+    );
+    const queued = await queueGeometryPartSeal(initial, initialCompleted, {
+      target: "frame",
+      suffix: "admission-missing",
+    });
+    queued.fixture.admissions.missing = true;
+    await assertRejects(
+      () => makeExecutor(queued.fixture, tmpDir).execute(
+        AGENT,
+        { ...executionCommand(queued.fixture), commandId: "exec-target-admission-missing" },
+      ),
+      EngineeringProjectCommandError,
+      "artefact is unavailable",
+    );
+    const project = await queued.fixture.projects.get(PROJECT_ID);
+    assertEquals(
+      project?.agentRuns.find((run) => run.id === queued.fixture.queued.runId)
+        ?.status,
+      "queued",
+    );
+    assertEquals(queued.fixture.admissions.calls.length, 1);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("target seal rejects an inexact reopened compile admission source", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-target-admission-source-" });
+  try {
+    const initial = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const initialCompleted = await makeExecutor(initial, tmpDir).execute(
+      AGENT,
+      executionCommand(initial),
+    );
+    const queued = await queueGeometryPartSeal(initial, initialCompleted, {
+      target: "frame",
+      suffix: "admission-source",
+    });
+    queued.fixture.admissions.sourceTextOverride =
+      `${PARAMETERIZED_FRAME}# forged reopened source\n`;
+    await assertRejects(
+      () => makeExecutor(queued.fixture, tmpDir).execute(
+        AGENT,
+        { ...executionCommand(queued.fixture), commandId: "exec-target-admission-source" },
+      ),
+      EngineeringProjectCommandError,
+      "source bytes or fingerprint do not equal the target draft",
+    );
+    const project = await queued.fixture.projects.get(PROJECT_ID);
+    assertEquals(
+      project?.agentRuns.find((run) => run.id === queued.fixture.queued.runId)
+        ?.status,
+      "queued",
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("target seal rejects a forged P1 represents binding for another PartDefinition", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-target-admission-binding-" });
+  try {
+    const initial = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const initialCompleted = await makeExecutor(initial, tmpDir).execute(
+      AGENT,
+      executionCommand(initial),
+    );
+    const queued = await queueGeometryPartSeal(initial, initialCompleted, {
+      target: "frame",
+      suffix: "admission-binding",
+    });
+    queued.fixture.admissions.representedTargetOverride = "part-definition:forged";
+    await assertRejects(
+      () => makeExecutor(queued.fixture, tmpDir).execute(
+        AGENT,
+        { ...executionCommand(queued.fixture), commandId: "exec-target-admission-binding" },
+      ),
+      EngineeringProjectCommandError,
+      "does not uniquely represent the target PartDefinition",
+    );
+    const project = await queued.fixture.projects.get(PROJECT_ID);
+    assertEquals(
+      project?.agentRuns.find((run) => run.id === queued.fixture.queued.runId)
+        ?.status,
+      "queued",
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("same-target target seals supersede only their own files while different targets coexist", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-target-chain-" });
+  try {
+    const initial = await buildGeoFixture(tmpDir, {
+      mode: "happy",
+      multiPartArchitecture: true,
+    });
+    const initialCompleted = await makeExecutor(initial, tmpDir).execute(
+      AGENT,
+      executionCommand(initial),
+    );
+    const frameQueued = await queueGeometryPartSeal(initial, initialCompleted, {
+      target: "frame",
+      suffix: "frame-one",
+    });
+    const frameCompleted = await makeExecutor(frameQueued.fixture, tmpDir).execute(
+      AGENT,
+      { ...executionCommand(frameQueued.fixture), commandId: "exec-target-frame-one" },
+    );
+    const boltQueued = await queueGeometryPartSeal(frameQueued.fixture, frameCompleted, {
+      target: "bolt",
+      suffix: "bolt-one",
+    });
+    const boltCompleted = await makeExecutor(boltQueued.fixture, tmpDir).execute(
+      AGENT,
+      { ...executionCommand(boltQueued.fixture), commandId: "exec-target-bolt-one" },
+    );
+    const boltRun = boltCompleted.agentRuns.find((run) =>
+      run.id === boltQueued.fixture.queued.runId
+    );
+    assertExists(boltRun?.resultSnapshot);
+    const boltSnapshot = await boltQueued.fixture.snapshots.get(boltRun.resultSnapshot.snapshotId);
+    assertExists(boltSnapshot);
+    const firstFrame = boltSnapshot.artifacts.find((artifact) =>
+      artifact.kind === "cad-model" && artifact.producer.runId === "run:geometry-part-frame-one"
+    );
+    const firstBolt = boltSnapshot.artifacts.find((artifact) =>
+      artifact.kind === "cad-model" && artifact.producer.runId === "run:geometry-part-bolt-one"
+    );
+    assertExists(firstFrame);
+    assertExists(firstBolt);
+    assertEquals(
+      archivedRefKeys(boltSnapshot).has(`artifact:${firstFrame.id}`),
+      false,
+    );
+    assertEquals(
+      archivedRefKeys(boltSnapshot).has(`artifact:${firstBolt.id}`),
+      false,
+    );
+
+    const successorQueued = await queueGeometryPartSeal(
+      boltQueued.fixture,
+      boltCompleted,
+      { target: "frame", suffix: "frame-two" },
+    );
+    const successorCompleted = await makeExecutor(
+      successorQueued.fixture,
+      tmpDir,
+    ).execute(
+      AGENT,
+      { ...executionCommand(successorQueued.fixture), commandId: "exec-target-frame-two" },
+    );
+    const successorRun = successorCompleted.agentRuns.find((run) =>
+      run.id === successorQueued.fixture.queued.runId
+    );
+    assertExists(successorRun?.resultSnapshot);
+    const snapshot = await successorQueued.fixture.snapshots.get(
+      successorRun.resultSnapshot.snapshotId,
+    );
+    assertExists(snapshot);
+    const archived = archivedRefKeys(snapshot);
+    assertEquals(archived.has(`artifact:${firstFrame.id}`), true);
+    assertEquals(archived.has(`artifact:${firstBolt.id}`), false);
+    for (const artifact of snapshot.artifacts.filter((artifact) =>
+      artifact.id.startsWith(`cad-asset-${firstFrame.fingerprint.digest}-target-`)
+    )) {
+      assertEquals(archived.has(`artifact:${artifact.id}`), true);
+    }
+    for (const artifact of snapshot.artifacts.filter((artifact) =>
+      artifact.id.startsWith(`cad-asset-${firstBolt.fingerprint.digest}-target-`)
+    )) {
+      assertEquals(archived.has(`artifact:${artifact.id}`), false);
+    }
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("target seal fails closed when an active V2 bundle covers its PartDefinition", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-target-v2-conflict-" });
+  try {
+    const initial = await buildGeoFixture(tmpDir, { mode: "happy", bundleV2: true });
+    const v2Completed = await makeExecutor(initial, tmpDir).execute(
+      AGENT,
+      executionCommand(initial),
+    );
+    const queued = await queueGeometryPartSeal(initial, v2Completed, {
+      target: "frame",
+      suffix: "v2-conflict",
+    });
+    await assertRejects(
+      () => makeExecutor(queued.fixture, tmpDir).execute(
+        AGENT,
+        { ...executionCommand(queued.fixture), commandId: "exec-target-v2-conflict" },
+      ),
+      EngineeringProjectCommandError,
+      "geometry_part_v2_bundle_conflict",
+    );
+    const project = await queued.fixture.projects.get(PROJECT_ID);
+    assertEquals(
+      project?.agentRuns.find((run) => run.id === queued.fixture.queued.runId)?.status,
+      "queued",
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});

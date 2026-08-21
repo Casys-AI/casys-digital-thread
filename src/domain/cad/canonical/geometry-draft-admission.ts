@@ -175,6 +175,56 @@ export function requireCanonicalGeometryDraftAdmission(
   return admission;
 }
 
+/**
+ * Fail-closed promotion predicate for the deliberately separate targeted
+ * PartDefinition draft family.  The surrounding sealer still re-proves the
+ * complete draft/export record; this domain guard owns the admission/source
+ * join so a valid source can never be promoted for another PartDefinition.
+ */
+export function requireCanonicalGeometryPartDraftAdmission(
+  draft: unknown,
+): GeometryPartDraftAdmission {
+  if (draft === null || typeof draft !== "object" || Array.isArray(draft)) {
+    throw new TypeError("Target geometry draft capture must be an object.");
+  }
+  const record = draft as Record<string, unknown>;
+  if (record.schemaVersion !== "geometry-part-draft-capture/1.0") {
+    throw new TypeError(
+      "Target geometry draft capture must use geometry-part-draft-capture/1.0.",
+    );
+  }
+  const target = exactRecord(
+    record.target,
+    ["partDefinitionElementId", "label", "script", "scriptHash", "files"],
+    "$geometryPartDraft.target",
+  );
+  const partDefinitionElementId = safeId(
+    target.partDefinitionElementId,
+    "$geometryPartDraft.target.partDefinitionElementId",
+  );
+  const label = nonEmptyLabel(target.label, "$geometryPartDraft.target.label");
+  const script = nonEmptyScript(target.script, "$geometryPartDraft.target.script");
+  const scriptHash = parseFingerprint(
+    target.scriptHash,
+    "$geometryPartDraft.target.scriptHash",
+  );
+  const admission = parseGeometryPartDraftAdmission(
+    record.admission,
+    "$geometryPartDraft.admission",
+  );
+  if (
+    admission.target.partDefinitionElementId !== partDefinitionElementId ||
+    admission.target.label !== label
+  ) {
+    throw new TypeError(
+      "Target geometry draft admission does not name the exact captured PartDefinition.",
+    );
+  }
+  assertPartDraftJoinsAdmission(scriptHash, admission);
+  requireNamedCadLeverInDraftScript(script, "$geometryPartDraft.target.script");
+  return admission;
+}
+
 function draftScriptIdentities(
   draft: Record<string, unknown>,
 ): readonly {

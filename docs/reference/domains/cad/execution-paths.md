@@ -38,6 +38,24 @@ derives that exact represented definition and produces one `geometry-part-manife
 target draft. That draft has no assembly, component, occurrence, placement, or
 `partDefinitions` array, makes one server-fixed export call, and does not write Thread state.
 
+The same canonical sealer accepts that strict target family. It reopens the exact
+capture-backed `compile.seal-admission@1` artefact named by the
+`geometry-draft-admission/2.0` stamp, then re-crosses its admitted source bytes/hash and
+unique P1 `represents` PartDefinition against the target draft, passive source analysis,
+architecture PartDefinition and signed STEP bytes before it writes a capture or promotes
+any asset. The canonical record is `geometry-part-capture/1.0`, whose root is
+target-only and repeats the PartDefinition ID, architecture basis, admission/source hash
+and authoritative STEP hash. It never calls Build123d during promotion or replay.
+
+Target capture succession is scoped to the exact PartDefinition element ID: different
+targets coexist, while a same-target successor archives only the previous target capture
+and its `cad-asset-<captureDigest>-target-<fileIndex>-<fileDigest>` files. An active V2
+bundle covering the requested target is a fail-closed conflict; the sealer never partially
+archives a V2 assembly family. The product catalog consequently does not project a target
+capture as an assembly. FEA source admission accepts its STEP only when the proof target
+equals that captured PartDefinition and the target artifact's kind, media type, digest and
+byte count are exact; a `cad-model` capture is never proof geometry.
+
 Code:
 [admitted export use case](../../../../src/application/use-cases/cad/canonical/export-admitted-project-geometry.ts),
 [fixed exporter](../../../../src/adapters/cad/canonical/admission-backed-geometry-export-adapter.ts),

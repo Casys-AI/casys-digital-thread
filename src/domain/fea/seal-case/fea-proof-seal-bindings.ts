@@ -16,6 +16,8 @@ export const FEA_PROOF_GEOMETRY_URI_PREFIX = "casys://geometry-capture/" as cons
 
 const CAD_ASSET_STEP_ID =
   /^cad-asset-([a-f0-9]{64})-definition-\d+-\d+-([a-f0-9]{64})$/;
+const CAD_TARGET_ASSET_STEP_ID =
+  /^cad-asset-([a-f0-9]{64})-target-(\d+)-([a-f0-9]{64})$/;
 
 export type FeaProofSealBindingDiagnosticCode =
   | "unknown-proof-case"
@@ -97,6 +99,8 @@ export function resolveFeaProofSealThreadBindings(
   const steps = snapshot.artifacts.filter((artifact) =>
     artifact.kind === FEA_PROOF_STEP_KIND &&
     artifact.mediaType === "model/step" &&
+    artifact.fingerprint.algorithm === "sha256" &&
+    artifact.version === proofCase.expectedCadArtifact.sha256 &&
     artifact.fingerprint.digest === proofCase.expectedCadArtifact.sha256
   );
   if (steps.length === 0) {
@@ -163,8 +167,11 @@ function resolveGeometryForStep(
   | { readonly status: "absent" }
   | { readonly status: "ambiguous" } {
   const parsed = CAD_ASSET_STEP_ID.exec(step.id);
-  if (parsed) {
-    const geometryId = `geometry-${parsed[1]}`;
+  const targetParsed = CAD_TARGET_ASSET_STEP_ID.exec(step.id);
+  const captureDigest = parsed?.[1] ?? targetParsed?.[1];
+  const assetDigest = parsed?.[2] ?? targetParsed?.[3];
+  if (captureDigest && assetDigest === step.fingerprint.digest) {
+    const geometryId = `geometry-${captureDigest}`;
     const matches = snapshot.artifacts.filter((artifact) =>
       artifact.id === geometryId &&
       artifact.kind === FEA_PROOF_GEOMETRY_KIND &&
@@ -173,12 +180,8 @@ function resolveGeometryForStep(
     if (matches.length === 1) return { status: "one", artifact: matches[0]! };
     if (matches.length > 1) return { status: "ambiguous" };
   }
-  const cadModels = snapshot.artifacts.filter((artifact) =>
-    artifact.kind === FEA_PROOF_GEOMETRY_KIND &&
-    artifact.uri?.startsWith(FEA_PROOF_GEOMETRY_URI_PREFIX) &&
-    artifact.freshness.status === "fresh"
-  );
-  if (cadModels.length === 1) return { status: "one", artifact: cadModels[0]! };
-  if (cadModels.length === 0) return { status: "absent" };
-  return { status: "ambiguous" };
+  // A cad-model capture is never itself proof geometry.  The step identity
+  // must name its owning capture deterministically; a one-capture fallback
+  // would let an unrelated or opaque STEP be attached to a proof case.
+  return { status: "absent" };
 }

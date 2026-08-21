@@ -15,6 +15,12 @@ import {
   fingerprintsEqual,
   sha256Hex,
 } from "../../../../domain/kernel/deterministic-json.ts";
+import { exactRecord } from "../../../../domain/kernel/case-validation.ts";
+import {
+  GEOMETRY_PART_CAPTURE_SCHEMA,
+  parseGeometryPartManifest,
+} from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
+import { parseGeometryPartDraftAdmission } from "../../../../domain/cad/canonical/geometry-draft-admission.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type {
   ThreadArtifact,
@@ -25,6 +31,7 @@ import type {
 export const FEA_PROOF_SEAL_GEOMETRY_CAPTURE_SCHEMAS = [
   "geometry-capture/2.0",
   "geometry-capture/2.1",
+  GEOMETRY_PART_CAPTURE_SCHEMA,
 ] as const;
 
 export interface FeaProofSealGeometryCaptureReader {
@@ -91,8 +98,7 @@ export async function admitFeaProofSealSource(input: {
   const stepIdentity = admitStepArtifactIdentity(
     input.snapshot,
     input.decisionParams,
-    inspected.matchingDefIndex,
-    inspected.stepFileIndex,
+    inspected,
   );
   if (stepIdentity.status !== "admitted") return stepIdentity;
 
@@ -217,7 +223,13 @@ function inspectGeometryCapture(
 ):
   | {
     readonly status: "ok";
+    readonly family: "bundle";
     readonly matchingDefIndex: number;
+    readonly stepFileIndex: number;
+  }
+  | {
+    readonly status: "ok";
+    readonly family: "target";
     readonly stepFileIndex: number;
   }
   | {
@@ -249,7 +261,7 @@ function inspectGeometryCapture(
       "unresolved",
       "geometry-capture-invalid",
       geometryArtifactId,
-      `FEA proof seal requires a geometry bundle capture (2.0 or 2.1); ` +
+      `FEA proof seal requires a canonical V2 geometry bundle or target PartDefinition capture; ` +
         `got schemaVersion="${
           (geoCaptureRecord as Record<string, unknown>)?.schemaVersion
         }".`,
@@ -257,6 +269,13 @@ function inspectGeometryCapture(
   }
 
   const geoRecord = geoCaptureRecord as Record<string, unknown>;
+  if (geoRecord.schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
+    return inspectTargetGeometryCapture(
+      geoRecord,
+      decisionParams,
+      geometryArtifactId,
+    );
+  }
   const manifest = geoRecord.manifest as Record<string, unknown> | undefined;
   if (
     !manifest || typeof manifest !== "object" || Array.isArray(manifest) ||
@@ -341,14 +360,146 @@ function inspectGeometryCapture(
         `"${decisionParams.step.digest.slice(0, 16)}…".`,
     );
   }
-  return { status: "ok", matchingDefIndex, stepFileIndex };
+  return { status: "ok", family: "bundle", matchingDefIndex, stepFileIndex };
+}
+
+/**
+ * Target captures are a distinct, closed schema.  Do not treat them as a
+ * degenerate `partDefinitions[]`: exact target identity and the byte-counted
+ * authoritative STEP are what make a part-only proof binding truthful.
+ */
+function inspectTargetGeometryCapture(
+  record: Record<string, unknown>,
+  decisionParams: FeaProofDecisionParameters,
+  geometryArtifactId: string,
+):
+  | { readonly status: "ok"; readonly family: "target"; readonly stepFileIndex: number }
+  | {
+    readonly status: "unavailable" | "unresolved";
+    readonly diagnostic: FeaProofSealBindingDiagnostic;
+  } {
+  try {
+    exactRecord(
+      record,
+      [
+        "schemaVersion",
+        "operation",
+        "trustedRunId",
+        "draftDigest",
+        "manifest",
+        "architectureBasis",
+        "previewProducer",
+        "sourceScript",
+        "sourceAnalysis",
+        "sealedAt",
+      ],
+      "$geometryPartCapture",
+    );
+    const manifest = parseGeometryPartManifest(record.manifest, {
+      requireCompleted: true,
+    });
+    if (
+      manifest.target.partDefinitionElementId !==
+        decisionParams.target.modelElementId
+    ) {
+      return refused(
+        "unresolved",
+        "geometry-capture-invalid",
+        geometryArtifactId,
+        `Target modelElementId "${decisionParams.target.modelElementId}" does not equal ` +
+          `the canonical PartDefinition elementId "${manifest.target.partDefinitionElementId}".`,
+      );
+    }
+    const source = exactRecord(
+      record.sourceScript,
+      [
+        "partDefinitionElementId",
+        "label",
+        "script",
+        "scriptHash",
+        "admission",
+        "authoritativeStep",
+      ],
+      "$geometryPartCapture.sourceScript",
+    );
+    const sourceHash = source.scriptHash as Record<string, unknown>;
+    const admission = parseGeometryPartDraftAdmission(
+      source.admission,
+      "$geometryPartCapture.sourceScript.admission",
+    );
+    if (
+      source.partDefinitionElementId !== manifest.target.partDefinitionElementId ||
+      source.label !== manifest.target.label ||
+      sourceHash?.algorithm !== "sha256" ||
+      sourceHash.digest !== manifest.target.scriptHash!.digest ||
+      !fingerprintsEqual(admission.sourceFingerprint, manifest.target.scriptHash!) ||
+      admission.target.partDefinitionElementId !== manifest.target.partDefinitionElementId ||
+      admission.target.label !== manifest.target.label
+    ) {
+      return refused(
+        "unresolved",
+        "geometry-capture-invalid",
+        geometryArtifactId,
+        "Target capture source/admission identity does not exactly join the signed PartDefinition.",
+      );
+    }
+    const authoritativeStep = exactRecord(
+      source.authoritativeStep,
+      ["fileIndex", "fingerprint", "bytes"],
+      "$geometryPartCapture.sourceScript.authoritativeStep",
+    );
+    if (
+      typeof authoritativeStep.fileIndex !== "number" ||
+      !Number.isSafeInteger(authoritativeStep.fileIndex) ||
+      authoritativeStep.fileIndex < 0 ||
+      typeof authoritativeStep.bytes !== "number" ||
+      !Number.isSafeInteger(authoritativeStep.bytes) ||
+      authoritativeStep.bytes <= 0
+    ) {
+      return refused(
+        "unresolved",
+        "geometry-capture-invalid",
+        geometryArtifactId,
+        "Target capture authoritative STEP index or byte count is invalid.",
+      );
+    }
+    const stepFile = manifest.target.files![authoritativeStep.fileIndex];
+    const stepFingerprint = authoritativeStep.fingerprint as Record<string, unknown>;
+    if (
+      !stepFile || stepFile.format !== "step" ||
+      stepFingerprint?.algorithm !== "sha256" ||
+      stepFingerprint.digest !== stepFile.fingerprint.digest ||
+      stepFile.fingerprint.digest !== decisionParams.step.digest ||
+      authoritativeStep.bytes !== decisionParams.step.bytes
+    ) {
+      return refused(
+        "unresolved",
+        "step-mismatch",
+        geometryArtifactId,
+        "Canonical target STEP identity, digest, or byte count does not match the MRTR-signed proof input.",
+      );
+    }
+    return {
+      status: "ok",
+      family: "target",
+      stepFileIndex: authoritativeStep.fileIndex,
+    };
+  } catch (error) {
+    return refused(
+      "unresolved",
+      "geometry-capture-invalid",
+      geometryArtifactId,
+      `Target geometry capture is not an exact canonical PartDefinition record: ${errorMessage(error)}.`,
+    );
+  }
 }
 
 function admitStepArtifactIdentity(
   snapshot: ThreadSnapshot,
   decisionParams: FeaProofDecisionParameters,
-  matchingDefIndex: number,
-  stepFileIndex: number,
+  inspected:
+    | { readonly status: "ok"; readonly family: "bundle"; readonly matchingDefIndex: number; readonly stepFileIndex: number }
+    | { readonly status: "ok"; readonly family: "target"; readonly stepFileIndex: number },
 ):
   | { readonly status: "admitted"; readonly stepArtifact: ThreadArtifact }
   | {
@@ -356,8 +507,9 @@ function admitStepArtifactIdentity(
     readonly diagnostic: FeaProofSealBindingDiagnostic;
   } {
   const geomDigest = decisionParams.geometryArtifact.fingerprint.digest;
-  const stepArtifactId =
-    `cad-asset-${geomDigest}-definition-${matchingDefIndex}-${stepFileIndex}-${decisionParams.step.digest}`;
+  const stepArtifactId = inspected.family === "target"
+    ? `cad-asset-${geomDigest}-target-${inspected.stepFileIndex}-${decisionParams.step.digest}`
+    : `cad-asset-${geomDigest}-definition-${inspected.matchingDefIndex}-${inspected.stepFileIndex}-${decisionParams.step.digest}`;
   const stepArtifact = snapshot.artifacts.find(
     (artifact) => artifact.id === stepArtifactId,
   );
@@ -372,13 +524,17 @@ function admitStepArtifactIdentity(
   }
   if (
     stepArtifact.kind !== "step" ||
-    stepArtifact.fingerprint.digest !== decisionParams.step.digest
+    stepArtifact.mediaType !== "model/step" ||
+    stepArtifact.version !== decisionParams.step.digest ||
+    stepArtifact.fingerprint.algorithm !== "sha256" ||
+    stepArtifact.fingerprint.digest !== decisionParams.step.digest ||
+    stepArtifact.uri !== `/api/thread/assets/${decisionParams.step.digest}.step`
   ) {
     return refused(
       "unresolved",
       "step-mismatch",
       stepArtifact.id,
-      "STEP artifact kind or fingerprint does not match the expected STEP identity.",
+      "STEP artifact kind, media type, version, URI, or fingerprint does not match the expected canonical STEP identity.",
     );
   }
   return { status: "admitted", stepArtifact };
