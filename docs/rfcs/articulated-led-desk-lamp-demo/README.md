@@ -155,7 +155,7 @@ not a substitute for persisted evidence.
 
 | Lot | Status             | Commit          | Validation and proof pointer                                                                                                       | Next / human gate   |
 | --- | ------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| 01  | in progress (P02)  | P01 `0488d98`; P02 this commit | fixture + `articulated-led-desk-lamp-brief-compilation_test.ts` — pass; structure compiles; scalar criteria stay unresolved | P03 |
+| 01  | in progress (P03)  | P01 `0488d98`; P02 `d2dcdac`; P03 this commit | three sibling `declared` questions; no combined pass; P04 parked on G2 | RFC 02 A01–A02; G2 for P04 |
 | 02  | pending            | —               | —                                                                                                                                  | 03 or 04            |
 | 03  | pending            | —               | —                                                                                                                                  | 07 after 04         |
 | 04  | pending            | —               | —                                                                                                                                  | 07 after 03         |

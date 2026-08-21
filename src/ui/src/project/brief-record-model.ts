@@ -2,9 +2,11 @@ import {
   currentProjectAnswer,
   type EngineeringProjectFraming,
   engineeringProjectFramingStatus,
+  projectBriefIndependentQuestionBranches,
   type ProjectBriefItem,
   type ProjectBriefItemKind,
   projectBriefItems,
+  type ProjectBriefQuestionBranch,
 } from "../../../domain/project/project-brief.ts";
 
 export interface ProjectBriefRecordSection {
@@ -21,6 +23,7 @@ export interface ProjectBriefRecord {
   readonly statusLabel: string;
   readonly statusDetail: string;
   readonly sections: readonly ProjectBriefRecordSection[];
+  readonly questionBranches: readonly ProjectBriefQuestionBranch[];
   readonly openQuestions: readonly string[];
   readonly sourceLabels: readonly string[];
 }
@@ -54,9 +57,7 @@ export function buildProjectBriefRecord(
   });
   const sourceLabels = uniqueSourceLabels(
     [
-      ...brief.items.flatMap((item) =>
-        item.sourceRefs.map((source) => source.kind)
-      ),
+      ...brief.items.flatMap((item) => item.sourceRefs.map((source) => source.kind)),
       framing.intent.source.kind === "document" ? "document" : "intent",
     ],
   );
@@ -69,6 +70,7 @@ export function buildProjectBriefRecord(
     statusLabel: briefStatusLabel(status),
     statusDetail: briefStatusDetail(status),
     sections,
+    questionBranches: projectBriefIndependentQuestionBranches(brief),
     openQuestions,
     sourceLabels,
   };
@@ -84,11 +86,8 @@ const BRIEF_SECTIONS: readonly {
     title: "What we are aiming for",
     kinds: ["objective", "mission-scenario", "primary-user"],
   },
-  {
-    id: "success",
-    title: "What success looks like",
-    kinds: ["success-criterion", "verification-activity"],
-  },
+  // Success-criteria and verification-activities are projected as sibling
+  // questionBranches, never as one combined success list.
   {
     id: "constraints",
     title: "Constraints and commitments",
@@ -109,8 +108,7 @@ const BRIEF_SECTIONS: readonly {
 ];
 
 function uniqueSourceLabels(
-  sourceKinds:
-    readonly ("intent" | "answer" | "tool" | "document" | "expert")[],
+  sourceKinds: readonly ("intent" | "answer" | "tool" | "document" | "expert")[],
 ): readonly string[] {
   const labels = new Set<string>();
   for (const source of sourceKinds) {

@@ -257,3 +257,35 @@ export function projectBriefItems(
 export function projectBriefObjective(brief: ProjectBriefRevision): string {
   return projectBriefItems(brief, "objective")[0]?.statement ?? "";
 }
+
+/**
+ * One Behave question taken from a V2 success-criterion. Sibling branches
+ * never roll up into a combined verdict. Missing evidence stays `declared`.
+ */
+export type ProjectBriefQuestionBranchState = "declared";
+
+export interface ProjectBriefQuestionBranch {
+  readonly successCriterionId: string;
+  readonly statement: string;
+  readonly verificationActivityIds: readonly string[];
+  readonly state: ProjectBriefQuestionBranchState;
+}
+
+/**
+ * Project each success-criterion as its own question. A verification-activity
+ * is attached only when it explicitly depends on that criterion. Absence of a
+ * run, fixture or inventory cannot produce `pass`.
+ */
+export function projectBriefIndependentQuestionBranches(
+  brief: ProjectBriefRevision,
+): readonly ProjectBriefQuestionBranch[] {
+  const verifications = projectBriefItems(brief, "verification-activity");
+  return projectBriefItems(brief, "success-criterion").map((criterion) => ({
+    successCriterionId: criterion.id,
+    statement: criterion.statement,
+    verificationActivityIds: verifications
+      .filter((activity) => activity.dependsOnItemIds?.includes(criterion.id))
+      .map((activity) => activity.id),
+    state: "declared",
+  }));
+}

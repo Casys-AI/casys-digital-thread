@@ -1,13 +1,7 @@
 import type { JSX } from "react";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import { Badge } from "../ui/badge.tsx";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "../ui/card.tsx";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "../ui/card.tsx";
 import { Separator } from "../ui/separator.tsx";
 import { buildProjectBriefRecord } from "./brief-record-model.ts";
 
@@ -91,6 +85,27 @@ export function ProjectBriefRecord({
             </p>
           </section>
 
+          {record.questionBranches.length > 0 && (
+            <section aria-labelledby="project-brief-questions-title">
+              <h4
+                id="project-brief-questions-title"
+                className="text-sm font-semibold"
+              >
+                Independent questions
+              </h4>
+              <ul className="mt-2 list-none space-y-2 text-sm text-muted-foreground">
+                {record.questionBranches.map((branch) => (
+                  <li key={branch.successCriterionId}>
+                    <p>{branch.statement}</p>
+                    <p className="mt-0.5 font-mono text-xs">
+                      {branch.state}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {record.sections.length > 0 && (
             <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
               {record.sections.map((section) => (
@@ -164,8 +179,7 @@ export function ProjectBriefRecord({
             <span>Built from {record.sourceLabels.join(" · ")}</span>
           )}
           <span>
-            Discuss a correction with the agent; this Cockpit follows the saved
-            record.
+            Discuss a correction with the agent; this Cockpit follows the saved record.
           </span>
         </CardFooter>
       </details>

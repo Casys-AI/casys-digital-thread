@@ -2,6 +2,7 @@ import { assertEquals, assertExists, assertMatch } from "@std/assert";
 import { collectEngineeringProjectIssues } from "../domain/project/engineering-project-validation.ts";
 import {
   engineeringProjectFramingStatus,
+  projectBriefIndependentQuestionBranches,
   projectBriefItems,
 } from "../domain/project/project-brief.ts";
 import {
@@ -140,6 +141,48 @@ Deno.test(
         "open-question-cross-domain-impact",
       ],
     );
+  },
+);
+
+Deno.test(
+  "fresh lamp brief projects three independent Behave questions without a combined verdict",
+  () => {
+    const brief = {
+      contractVersion: "2.0" as const,
+      briefId: "fixture",
+      id: "fixture",
+      revision: 1,
+      items: articulatedLedDeskLampBriefItems(),
+      proposedAt: "2026-08-21T12:00:00.000Z",
+      proposedBy: { id: "agent:fixture", origin: "agent" as const },
+    };
+    const branches = projectBriefIndependentQuestionBranches(brief);
+    const gates = ARTICULATED_LED_DESK_LAMP_BEHAVE_GATES;
+    assertEquals(
+      branches.map((branch) => ({
+        id: branch.successCriterionId,
+        verificationActivityIds: branch.verificationActivityIds,
+        state: branch.state,
+      })),
+      [
+        {
+          id: gates.mechanicalSuccess,
+          verificationActivityIds: [gates.mechanicalVerification],
+          state: "declared",
+        },
+        {
+          id: gates.thermalSuccess,
+          verificationActivityIds: [gates.thermalVerification],
+          state: "declared",
+        },
+        {
+          id: gates.electricalSuccess,
+          verificationActivityIds: [gates.electricalVerification],
+          state: "declared",
+        },
+      ],
+    );
+    assertEquals(branches.some((branch) => (branch.state as string) === "pass"), false);
   },
 );
 

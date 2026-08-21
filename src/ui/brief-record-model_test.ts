@@ -21,10 +21,19 @@ Deno.test("project brief record reads the approved canonical brief, not a pendin
   assertEquals(record?.statusLabel, "Newer draft in discussion");
   assertEquals(record?.sections.map((section) => section.id), [
     "intent",
-    "success",
     "constraints",
     "limits",
   ]);
+  assertEquals(
+    record?.questionBranches.map((branch) => ({
+      id: branch.successCriterionId,
+      state: branch.state,
+    })),
+    [{
+      id: "success-criterion-Retain a traceable path from intent to proof.",
+      state: "declared",
+    }],
+  );
   assertEquals(record?.openQuestions, [
     "Which operating envelope should be verified first?",
   ]);
