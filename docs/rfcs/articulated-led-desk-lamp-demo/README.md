@@ -153,18 +153,18 @@ coverage/how-to/reference pages with implemented behavior and explicit exclusion
 Update this small ledger in the same atomic commit as each lot. It is a handoff index,
 not a substitute for persisted evidence.
 
-| Lot | Status             | Commit | Validation and proof pointer | Next / human gate   |
-| --- | ------------------ | ------ | ---------------------------- | ------------------- |
-| 01  | pending            | —      | —                            | 02                  |
-| 02  | pending            | —      | —                            | 03 or 04            |
-| 03  | pending            | —      | —                            | 07 after 04         |
-| 04  | pending            | —      | —                            | 07 after 03         |
-| 05  | pending            | —      | —                            | 06 after 03 and 04  |
-| 06  | pending            | —      | —                            | 07                  |
-| 07  | pending            | —      | —                            | 10                  |
-| 08  | pending / optional | —      | —                            | 09 or explicit park |
-| 09  | pending / optional | —      | —                            | 10 or explicit park |
-| 10  | pending            | —      | —                            | closeout            |
+| Lot | Status             | Commit          | Validation and proof pointer                                                                                                       | Next / human gate   |
+| --- | ------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| 01  | in progress (P01)  | P01 this commit | `src/testing/articulated-led-desk-lamp-brief-fixture_test.ts` — pass; indoor desk-use framing, three independent gates, no values   | P02; G1 structure   |
+| 02  | pending            | —               | —                                                                                                                                  | 03 or 04            |
+| 03  | pending            | —               | —                                                                                                                                  | 07 after 04         |
+| 04  | pending            | —               | —                                                                                                                                  | 07 after 03         |
+| 05  | pending            | —               | —                                                                                                                                  | 06 after 03 and 04  |
+| 06  | pending            | —               | —                                                                                                                                  | 07                  |
+| 07  | pending            | —               | —                                                                                                                                  | 10                  |
+| 08  | pending / optional | —               | —                                                                                                                                  | 09 or explicit park |
+| 09  | pending / optional | —               | —                                                                                                                                  | 10 or explicit park |
+| 10  | pending            | —               | —                                                                                                                                  | closeout            |
 
 ## Required handoff
 
