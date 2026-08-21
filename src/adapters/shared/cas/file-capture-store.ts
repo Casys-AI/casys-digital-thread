@@ -603,6 +603,24 @@ export const THERMAL_METHOD_SHEET_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
 export const THERMAL_METHOD_SHEET_CAPTURE_URI_PREFIX =
   "casys://modelica-thermal-method-sheet-capture/" as const;
 
+/**
+ * Content-addressed store for admitted Modelica observation-evaluation
+ * captures. Documentary L4 evidence only: no OMC, SysON HTTP or Thread path.
+ *
+ * URI: `casys://modelica-admitted-observation-evaluation-capture/sha256/<fp>`.
+ */
+export const ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "modelica-admitted-observation-evaluation"
+> = {
+  kind: "modelica-admitted-observation-evaluation",
+  directory: "state/local/modelica-admitted-observation-evaluation-captures",
+  uriNamespace: "modelica-admitted-observation-evaluation-capture",
+  label: "Admitted Modelica observation evaluation",
+};
+
+export const ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX =
+  "casys://modelica-admitted-observation-evaluation-capture/" as const;
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {
