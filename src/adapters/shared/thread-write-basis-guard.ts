@@ -39,6 +39,7 @@ import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/bu
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
+import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
 import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
@@ -69,6 +70,7 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.id}@${DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.version}`,
   `${SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.id}@${SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION.version}`,
   `${SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id}@${SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version}`,
+  `${VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION.id}@${VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION.version}`,
   `${ARCHIVE_LINEAGE_OPERATION.id}@${ARCHIVE_LINEAGE_OPERATION.version}`,
   `${SYSON_MODEL_SEED_OPERATION.id}@${SYSON_MODEL_SEED_OPERATION.version}`,
   `${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.id}@${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.version}`,
@@ -91,6 +93,7 @@ const NON_RECONCILIABLE_THREAD_WRITE_FAILURE_CODES: ReadonlySet<string> = new Se
   "compile-seal-admission-thread-write-outcome-unknown",
   "model-seal-architecture-sysml-thread-write-outcome-unknown",
   "design-seal-isolated-geometry-thread-write-outcome-unknown",
+  "verify-seal-modelica-thermal-method-sheet-thread-write-outcome-unknown",
   "analyze-seal-sensitivity-study-thread-write-outcome-unknown",
 ]);
 /**
