@@ -93,6 +93,9 @@ import { CaptureBackedThermalMethodSheetCompilationJoin } from "./src/adapters/m
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
 import { PrepareProjectThermalMethodSheetSealReview } from "./src/application/use-cases/modelica/thermal-method-sheet/prepare-project-thermal-method-sheet-seal-review.ts";
+import { LedDriverSourceCaptureService } from "./src/adapters/electrical/led-driver/led-driver-source-capture.ts";
+import { PrepareProjectLedDriverSourceCapture } from "./src/application/use-cases/electrical/led-driver/prepare-project-led-driver-source-capture.ts";
+import { PrepareProjectLedDriverSourceReview } from "./src/application/use-cases/electrical/led-driver/prepare-project-led-driver-source-review.ts";
 import { PrepareProjectAdmittedModelicaEvaluationReview } from "./src/application/use-cases/modelica/evaluation/prepare-project-admitted-modelica-evaluation-review.ts";
 import { FileAdmittedObservationEvidenceReader } from "./src/adapters/modelica/evaluation/file-admitted-observation-evidence-reader.ts";
 import { FileAdmittedObservationEvaluationCaptureStore } from "./src/adapters/modelica/evaluation/file-admitted-observation-evaluation-capture-store.ts";
@@ -815,6 +818,21 @@ async function createProjectControl(
       );
     },
   };
+  const ledDriverSourceCaptures = new FileByteStore({
+    kind: "led-driver-source",
+    directory: `${recordedAnalysisDirectory}/electrical/led-driver-source`,
+    uriNamespace: "led-driver-source",
+    label: "Captured LED-driver human source",
+  });
+  const ledDriverSourceStore = new LedDriverSourceCaptureService({
+    sourceCaptures: ledDriverSourceCaptures,
+  });
+  const ledDriverSourceCapture = new PrepareProjectLedDriverSourceCapture({
+    captures: ledDriverSourceStore,
+  });
+  const ledDriverSourceReview = new PrepareProjectLedDriverSourceReview({
+    captures: ledDriverSourceStore,
+  });
   const architectureSysmlDirectory = `${recordedAnalysisDirectory}/architecture-sysml`;
   const architectureSysmlSourceAnalysis =
     createArchitectureSysmlSourceAnalysisCaptureService({
@@ -1940,6 +1958,8 @@ async function createProjectControl(
       admittedModelicaRunReview,
       admittedModelicaEvaluationReview,
       thermalMethodSheetSealReview,
+      ledDriverSourceCapture,
+      ledDriverSourceReview,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
           DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY,

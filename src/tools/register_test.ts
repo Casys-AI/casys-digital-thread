@@ -583,6 +583,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_fea_isolated_run_review",
     "project_fea_proof_seal_review",
     "project_isolated_geometry_seal_review",
+    "project_led_driver_source_capture",
+    "project_led_driver_source_review",
     "project_plan_publish",
     "project_question_propose",
     "project_review_intent_acknowledge",
@@ -647,6 +649,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_fea_isolated_run_review",
       "project_fea_proof_seal_review",
       "project_isolated_geometry_seal_review",
+      "project_led_driver_source_capture",
+      "project_led_driver_source_review",
       "project_plan_publish",
       "project_question_propose",
       "project_review_intent_acknowledge",
@@ -878,6 +882,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_review_intent_list" ||
           tool.name === "project_isolated_geometry_seal_review" ||
+          tool.name === "project_led_driver_source_review" ||
           tool.name === "project_fea_proof_seal_review" ||
           tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||
@@ -907,6 +912,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_queue" ||
           tool.name === "project_architecture_sysml_preview" ||
           tool.name === "project_architecture_sysml_source_capture" ||
+          tool.name === "project_led_driver_source_capture" ||
           tool.name === "project_technical_compilation_preview" ||
           tool.name === "project_technical_source_capture" ||
           tool.name === "project_work_item_abandon" ||
@@ -914,6 +920,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||
           tool.name === "project_isolated_geometry_seal_review" ||
+          tool.name === "project_led_driver_source_review" ||
           tool.name === "project_fea_proof_seal_review" ||
           tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||

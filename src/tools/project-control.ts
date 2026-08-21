@@ -94,6 +94,10 @@ import {
   registerProjectDemoLoopTools,
 } from "./project-control/demo-loop-tools.ts";
 import {
+  type ProjectLedDriverSourceToolDependencies,
+  registerProjectLedDriverSourceTools,
+} from "./project-control/led-driver-source-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -120,7 +124,8 @@ export interface ProjectControlToolDependencies
     ProjectVectorCorrectionToolDependencies,
     ProjectFeaReviewToolDependencies,
     ProjectSensitivityReviewToolDependencies,
-    ProjectDemoLoopToolDependencies {
+    ProjectDemoLoopToolDependencies,
+    ProjectLedDriverSourceToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional browser-to-agent outbox; it carries no project decision authority. */
@@ -213,6 +218,7 @@ export function registerProjectControlTools(
   registerProjectFeaReviewTools(app, dependencies);
   registerProjectSensitivityReviewTools(app, dependencies);
   registerProjectDemoLoopTools(app, dependencies);
+  registerProjectLedDriverSourceTools(app, dependencies);
 
   if (dependencies.reviewIntents) {
     app.registerTool(projectReviewIntentListTool, async (args) => {

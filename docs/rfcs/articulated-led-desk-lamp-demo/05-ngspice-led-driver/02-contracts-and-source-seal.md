@@ -76,6 +76,8 @@ Créer le contrat de capture de la fiche LED driver et son lecteur CAS, sans sol
   ses inconnues ; ne pas exiger que l'humain fournisse un payload ngspice.
 - Ajouter le résultat de capture à une proposition/revue project-control en lecture :
   elle n'autorise encore ni seal ni run.
+- Exposer `project_led_driver_source_capture(sourceText)` pour créer le locator
+  opaque ; `project_led_driver_source_review` reste `sourceRef` only.
 
 **Acceptation :** capture canonique relue identique ; hash, byte count et provenance
 divergents bloquent ; une lacune est exposée comme `unresolved`. Aucune dépendance

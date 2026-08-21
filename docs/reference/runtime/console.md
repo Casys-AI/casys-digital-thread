@@ -86,6 +86,8 @@ not grant MRTR or provider authority. Full grants:
 | ------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `project_architecture_sysml_source_capture` | Draft CAS      | Exact agent-authored closed-subset SysML + analysis. Not `sysml-source-capture/1.0`                                        |
 | `project_architecture_sysml_preview`        | Diagnostic     | Tokenize/parse/analyse. `decisionParameters` only from a reopened passed capture                                           |
+| `project_led_driver_source_capture`         | Draft CAS      | Exact `led-driver-human-source/1.0` UTF-8. Pass `result.reference` only. Review stays reference-only                       |
+| `project_led_driver_source_review`          | Read           | Reopen one opaque `led-driver-source-capture/1.0` locator. Unknowns stay `unresolved`. Grants none                          |
 | `project_technical_source_capture`          | Draft CAS      | Review: parser vs levers vs opaque reference. Pass `result.reference` only                                                 |
 | `project_technical_compilation_preview`     | Review draft   | `projectId` + `result.reference`. Server tip, profile, unique SysML join                                                   |
 | `project_admitted_geometry_export`          | Geometry draft | Export one sealed Build123d admission through the sandbox. Not isolated execution                                          |

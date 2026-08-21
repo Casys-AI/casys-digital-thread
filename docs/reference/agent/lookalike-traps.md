@@ -98,3 +98,5 @@ CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.
 | `config/*-api/` inventory JSON          | Documentary pinned-language ground truth                                                  | A compiler driver or generated qualification table                |
 | `console_*` on `:3020/mcp`              | Control-plane fleet and indexed-run reads                                                 | The native cockpit (`preview:thread` / `preview:cockpit`)         |
 | `preview:browser` / `ui://casys-digital-thread/console` | Retired Console MCP App. The task refuses                                      | A product page or a registered MCP resource                       |
+| `project_led_driver_source_capture` | Draft CAS write of exact `led-driver-human-source/1.0` UTF-8. Pass `result.reference` only | The review envelope, D1, ngspice, or a Thread write |
+| `project_led_driver_source_review` | Reference-only reopen of one `led-driver-source-capture/1.0` locator | A capture command, `sourceText`, or the capture review object |

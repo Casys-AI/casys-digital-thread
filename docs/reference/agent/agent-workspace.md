@@ -137,6 +137,13 @@ through the same command service. See
 
 How-to: [Author architecture SysML](../../how-to/compile/author-architecture-sysml.md).
 
+### LED-driver human source
+
+| Tool                                 | Writes         | Grant                                                                                                                                      |
+| ------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `project_led_driver_source_capture`  | Draft CAS only | `led-driver-source-capture-review/1.0`. Pass `result.reference` only. No project, Thread, D1, provider, tool, or ngspice                    |
+| `project_led_driver_source_review`   | None           | Reopen one opaque `led-driver-source-capture/1.0` locator. Unknowns stay `unresolved`. Grants none. Never pass `sourceText` or the review envelope |
+
 ### Brief compilation (approved brief → proposal grammar)
 
 | Tool                                | Writes | Grant                                                                                                                                              |
