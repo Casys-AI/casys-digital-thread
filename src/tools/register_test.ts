@@ -593,6 +593,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_start",
     "project_technical_compilation_preview",
     "project_technical_source_capture",
+    "project_thermal_method_sheet_seal_review",
     "project_vector_correction_review",
     "project_work_item_abandon",
     "project_work_item_supersede_unstarted",
@@ -654,6 +655,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_start",
       "project_technical_compilation_preview",
       "project_technical_source_capture",
+      "project_thermal_method_sheet_seal_review",
       "project_vector_correction_review",
       "project_work_item_abandon",
       "project_work_item_supersede_unstarted",
@@ -881,7 +883,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_corrected_admission_review" ||
           tool.name === "project_brief_requirements_review" ||
-          tool.name === "project_brief_architecture_review",
+          tool.name === "project_brief_architecture_review" ||
+          tool.name === "project_thermal_method_sheet_seal_review",
       );
       assertEquals(
         annotations.idempotentHint,
@@ -913,7 +916,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||
-          tool.name === "project_corrected_admission_review",
+          tool.name === "project_corrected_admission_review" ||
+          tool.name === "project_thermal_method_sheet_seal_review",
       );
     }
     const framingTools = tools.filter((tool) =>

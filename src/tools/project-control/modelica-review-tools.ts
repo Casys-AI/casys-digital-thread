@@ -7,13 +7,23 @@ import type {
   ProjectAdmittedModelicaRunReviewRequest,
   ProjectAdmittedModelicaRunReviewUseCase,
 } from "../../application/ports/in/modelica/admitted-run-review.ts";
-import { OBJECT_OUTPUT_SCHEMA, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
+import type {
+  ProjectThermalMethodSheetSealReviewCommand,
+  ProjectThermalMethodSheetSealReviewUseCase,
+} from "../../application/ports/in/modelica/thermal-method-sheet/project-thermal-method-sheet-seal-review.ts";
+import {
+  FINGERPRINT_SCHEMA,
+  OBJECT_OUTPUT_SCHEMA,
+  READ_ONLY_ANNOTATIONS,
+} from "./mcp-tool-schemas.ts";
 
 export interface ProjectModelicaReviewToolDependencies {
   /** Read-only preparation of the one code-owned qualified Modelica kit run. */
   modelicaQualifiedKitRunReview?: ProjectModelicaQualifiedKitRunReviewUseCase;
   /** Provider-free preparation of one admitted Modelica execution review. */
   admittedModelicaRunReview?: ProjectAdmittedModelicaRunReviewUseCase;
+  /** Provider-free preparation of one thermal method-sheet seal review. */
+  thermalMethodSheetSealReview?: ProjectThermalMethodSheetSealReviewUseCase;
 }
 
 /** Register the provider-free Modelica review surfaces. */
@@ -42,6 +52,19 @@ export function registerProjectModelicaReviewTools(
       return {
         content:
           "Admitted Modelica execution review for the unique fresh sealed admission on the current Thread tip was prepared from exact server-reopened facts. The returned admission and decisionParameters are review material only: they contain no source bytes or runtime capability, no code was executed, and no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority was created.",
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+
+  if (dependencies.thermalMethodSheetSealReview) {
+    const review = dependencies.thermalMethodSheetSealReview;
+    app.registerTool(projectThermalMethodSheetSealReviewTool, async (args) => {
+      const command = thermalMethodSheetSealReviewCommand(args);
+      const result = await review.execute(command);
+      return {
+        content:
+          "Thermal method-sheet seal review for the named sheet fingerprint was prepared from exact server-reopened identities. The returned admission and decisionParameters are review material only: they contain no Modelica source bytes, no OMC capability, no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority. This is not an admitted run and not an L4 evaluation.",
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -83,6 +106,23 @@ const projectAdmittedModelicaRunReviewTool: MCPTool = {
   annotations: READ_ONLY_ANNOTATIONS,
 };
 
+const projectThermalMethodSheetSealReviewTool: MCPTool = {
+  name: "project_thermal_method_sheet_seal_review",
+  description:
+    "Prepare the exact human-review identity and canonical MRTR parameters for one later verify.seal-modelica-thermal-method-sheet@1 document seal by reopening a reviewed modelica-thermal-method-sheet/1.0 and recrossing its Modelica source-analysis capture and SysML identities. The caller may name only the exact project and sheet fingerprint. This provider-free read performs no OMC execution, returns no source bytes, mutates no EngineeringProject or Thread state, and grants no MRTR, admission, evaluation, or dispatch authority.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+      sheetFingerprint: FINGERPRINT_SCHEMA,
+    },
+    required: ["projectId", "sheetFingerprint"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
 const projectModelicaQualifiedKitRunReviewTool: MCPTool = {
   name: "project_modelica_qualified_kit_run_review",
   description:
@@ -99,6 +139,24 @@ const projectModelicaQualifiedKitRunReviewTool: MCPTool = {
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: READ_ONLY_ANNOTATIONS,
 };
+
+function thermalMethodSheetSealReviewCommand(
+  value: Record<string, unknown>,
+): ProjectThermalMethodSheetSealReviewCommand {
+  exactKeys(
+    value,
+    ["projectId", "sheetFingerprint"],
+    [],
+    "thermalMethodSheetSealReview",
+  );
+  return {
+    projectId: technicalId(value.projectId, "projectId"),
+    sheetFingerprint: fingerprintInput(
+      value.sheetFingerprint,
+      "sheetFingerprint",
+    ),
+  };
+}
 
 function admittedModelicaRunReviewCommand(
   value: Record<string, unknown>,
@@ -148,6 +206,18 @@ function technicalThreadBasis(
     revision: positiveInteger(basis.revision, `${name}.revision`),
     subjectId: technicalId(basis.subjectId, `${name}.subjectId`),
   };
+}
+
+function fingerprintInput(value: unknown, name: string) {
+  const record = exactRecord(value, name);
+  exactKeys(record, ["algorithm", "digest"], [], name);
+  if (record.algorithm !== "sha256") {
+    throw new TypeError(`${name}.algorithm must be sha256`);
+  }
+  if (typeof record.digest !== "string" || !/^[a-f0-9]{64}$/.test(record.digest)) {
+    throw new TypeError(`${name}.digest must be 64 lowercase hex characters`);
+  }
+  return { algorithm: "sha256" as const, digest: record.digest };
 }
 
 function technicalId(value: unknown, name: string): string {

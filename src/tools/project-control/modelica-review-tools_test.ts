@@ -2,10 +2,19 @@ import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../application/ports/in/modelica/qualified-kit-run-review.ts";
 import type { ProjectAdmittedModelicaRunReviewResult } from "../../application/ports/in/modelica/admitted-run-review.ts";
+import type { ProjectThermalMethodSheetSealReviewResult } from "../../application/ports/in/modelica/thermal-method-sheet/project-thermal-method-sheet-seal-review.ts";
 import { registerProjectModelicaReviewTools } from "./modelica-review-tools.ts";
 
 const ADMITTED_REVIEW_REQUEST = {
   projectId: "project.drip-tray",
+} as const;
+
+const THERMAL_METHOD_SHEET_REVIEW_COMMAND = {
+  projectId: "articulated-led-desk-lamp",
+  sheetFingerprint: {
+    algorithm: "sha256",
+    digest: "c".repeat(64),
+  },
 } as const;
 
 const MODELICA_REVIEW_COMMAND = {
@@ -97,6 +106,102 @@ Deno.test("admitted Modelica review exposes only projectId and rejects caller-se
   );
   assertEquals(calls, [ADMITTED_REVIEW_REQUEST]);
 });
+
+Deno.test(
+  "thermal method-sheet seal review exposes only projectId and sheetFingerprint and rejects extras",
+  async () => {
+    const absent = new CapturingApp();
+    registerProjectModelicaReviewTools(absent as unknown as McpApp, {});
+    assertEquals(
+      absent.hasTool("project_thermal_method_sheet_seal_review"),
+      false,
+    );
+
+    const app = new CapturingApp();
+    const calls: unknown[] = [];
+    const resultIdentity = Object.freeze({
+      admission: Object.freeze({ marker: "use-case-owned-thermal-method-sheet" }),
+      decisionParameters: Object.freeze([
+        Object.freeze({
+          key: "thermal.methodSheet.id",
+          label: "Thermal method sheet id",
+          value: "placeholder-thermal-method-sheet",
+        }),
+      ]),
+    }) as unknown as ProjectThermalMethodSheetSealReviewResult;
+    registerProjectModelicaReviewTools(app as unknown as McpApp, {
+      thermalMethodSheetSealReview: {
+        execute(value) {
+          calls.push(value);
+          return Promise.resolve(resultIdentity);
+        },
+      },
+    });
+
+    const response = await app.handler(
+      "project_thermal_method_sheet_seal_review",
+    )(
+      structuredClone(THERMAL_METHOD_SHEET_REVIEW_COMMAND),
+    ) as Record<string, unknown>;
+    assert(response.structuredContent === resultIdentity);
+    assertEquals(calls, [THERMAL_METHOD_SHEET_REVIEW_COMMAND]);
+    assertStringIncludes(response.content as string, "no Modelica source bytes");
+    assertStringIncludes(response.content as string, "no OMC");
+    assertStringIncludes(response.content as string, "not an L4 evaluation");
+
+    const tool = app.tool("project_thermal_method_sheet_seal_review");
+    assertEquals(tool.annotations, {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    const inputSchema = tool.inputSchema as Record<string, unknown>;
+    assertEquals(
+      Object.keys(inputSchema.properties as Record<string, unknown>).sort(),
+      ["projectId", "sheetFingerprint"],
+    );
+    assertEquals(inputSchema.required, ["projectId", "sheetFingerprint"]);
+    assertClosedObjectSchemas(inputSchema);
+    assertEquals(
+      Object.keys(inputSchema.properties as Record<string, unknown>).some((key) =>
+        [
+          "modelicaText",
+          "sourceText",
+          "runtime",
+          "profile",
+          "provider",
+          "tool",
+          "args",
+          "basis",
+        ].includes(key)
+      ),
+      false,
+    );
+
+    const handler = app.handler("project_thermal_method_sheet_seal_review");
+    await assertRejects(
+      () =>
+        handler({
+          ...structuredClone(THERMAL_METHOD_SHEET_REVIEW_COMMAND),
+          modelicaText: "model CallerSelected end CallerSelected;",
+        }) as Promise<unknown>,
+      TypeError,
+      "unsupported field(s): modelicaText",
+    );
+    await assertRejects(
+      () =>
+        handler({
+          ...structuredClone(THERMAL_METHOD_SHEET_REVIEW_COMMAND),
+          provider: "omc",
+          args: { solver: "dassl" },
+        }) as Promise<unknown>,
+      TypeError,
+      "unsupported field(s): provider, args",
+    );
+    assertEquals(calls, [THERMAL_METHOD_SHEET_REVIEW_COMMAND]);
+  },
+);
 
 Deno.test("qualified Modelica review exposes one closed two-field input and forwards it exactly", async () => {
   const absent = new CapturingApp();

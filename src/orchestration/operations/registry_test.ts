@@ -28,6 +28,7 @@ import {
 } from "../../domain/cad/canonical/geometry-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
+import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
@@ -575,6 +576,63 @@ Deno.test("isolated geometry seal is a provider-free Thread-document seal of one
   );
   assertEquals(stepBinding.code, "invalid_bindings");
 });
+
+Deno.test(
+  "thermal method-sheet seal is a provider-free Thread-document seal with approvedBrief only",
+  () => {
+    const operation = getRegisteredEngineeringOperation(
+      VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
+    )!;
+
+    assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+    assertEquals(operation.workItemKind, "verify");
+    assertEquals(operation.riskClass, "consequential");
+    assertEquals(operation.execution, "trusted");
+    assertEquals(operation.bindings, [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }]);
+
+    const binding = {
+      name: "approvedBrief",
+      source: { kind: "approved-brief" as const },
+    };
+    const queued = validateRegisteredEngineeringOperationInput({
+      operation: {
+        ...VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
+        bindings: [binding],
+      },
+      stage: "queue",
+      basisKind: "thread-snapshot",
+    });
+    assertEquals(queued.bindings, [binding]);
+
+    const extras = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
+            bindings: [{
+              name: "executionCapture",
+              source: {
+                kind: "thread-entity" as const,
+                reference: {
+                  snapshotId: "thread.snapshot.9",
+                  snapshotRevision: 9,
+                  kind: "artifact" as const,
+                  id: "artifact.omc",
+                },
+              },
+            }],
+          },
+          stage: "queue",
+          basisKind: "thread-snapshot",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(extras.code, "invalid_bindings");
+  },
+);
 
 Deno.test(
   "design.apply-vector-correction@1 is a trusted low-risk documentary seal of one evaluation and one study capture",

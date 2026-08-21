@@ -34,6 +34,7 @@ import {
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
+  THERMAL_METHOD_SHEET_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/shared/cas/file-capture-store.ts";
 import { parseExactArchitectureCapture } from "./src/adapters/architecture/renderer/architecture-capture.ts";
 import { FileCataloguedMechanicalProofCaseReader } from "./src/adapters/fea/seal-case/file-catalogued-mechanical-proof-case-reader.ts";
@@ -88,6 +89,13 @@ import { ProjectThreadModelicaQualifiedKitReviewBasisAuthority } from "./src/ada
 import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/compile/admission/preview-project-technical-compilation.ts";
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
+import { PrepareProjectThermalMethodSheetSealReview } from "./src/application/use-cases/modelica/thermal-method-sheet/prepare-project-thermal-method-sheet-seal-review.ts";
+import { FileThermalMethodSheetStore } from "./src/adapters/modelica/thermal-method-sheet/file-thermal-method-sheet-store.ts";
+import { FileThermalMethodSheetSourceCaptureReader } from "./src/adapters/modelica/thermal-method-sheet/file-thermal-method-sheet-source-capture-reader.ts";
+import {
+  VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
+  VerifySealModelicaThermalMethodSheetRunExecutor,
+} from "./src/adapters/modelica/thermal-method-sheet/verify-seal-modelica-thermal-method-sheet-run-executor.ts";
 import { PrepareProjectVectorCorrectionReview } from "./src/application/use-cases/sensitivity/vector-correction/prepare-project-vector-correction-review.ts";
 import { PrepareProjectFeaProofSealReview } from "./src/application/use-cases/fea/seal-case/prepare-project-fea-proof-seal-review.ts";
 import { PrepareProjectFeaIsolatedRunReview } from "./src/application/use-cases/fea/isolated-v3/prepare-project-fea-isolated-run-review.ts";
@@ -762,6 +770,12 @@ async function createProjectControl(
     DEFAULT_RECORDED_ANALYSIS_DIRECTORY;
   const technicalCompilationDirectory =
     `${recordedAnalysisDirectory}/technical-compilation`;
+  const technicalSourceAnalysisCaptures = new FileByteStore({
+    kind: "technical-source-analysis",
+    directory: `${technicalCompilationDirectory}/analyses`,
+    uriNamespace: "technical-source-analysis",
+    label: "Captured technical source analysis",
+  });
   const technicalSourceAnalysis = createInitialTechnicalSourceAnalysisCaptureService({
     sourceCaptures: new FileByteStore({
       kind: "technical-source",
@@ -769,12 +783,7 @@ async function createProjectControl(
       uriNamespace: "technical-source",
       label: "Captured technical source",
     }),
-    analysisCaptures: new FileByteStore({
-      kind: "technical-source-analysis",
-      directory: `${technicalCompilationDirectory}/analyses`,
-      uriNamespace: "technical-source-analysis",
-      label: "Captured technical source analysis",
-    }),
+    analysisCaptures: technicalSourceAnalysisCaptures,
   });
   const technicalCompilationSources = new CaptureBackedTechnicalCompilationSourceReader(
     technicalSourceAnalysis,
@@ -1218,6 +1227,56 @@ async function createProjectControl(
     captures: architectureSysmlSeals,
     lease,
   });
+  const thermalMethodSheets = new FileThermalMethodSheetStore(
+    new FileCaptureStore({
+      ...THERMAL_METHOD_SHEET_CAPTURE_DESCRIPTOR,
+      directory: `${recordedAnalysisDirectory}/modelica/thermal-method-sheet-captures`,
+    }),
+  );
+  const thermalMethodSheetSourceCaptures =
+    new FileThermalMethodSheetSourceCaptureReader(
+      technicalSourceAnalysisCaptures,
+    );
+  const thermalMethodSheetSealReview = new PrepareProjectThermalMethodSheetSealReview({
+    sheets: thermalMethodSheets,
+    sourceCaptures: thermalMethodSheetSourceCaptures,
+    basisResolver: technicalCompilationBasis,
+  });
+  const thermalMethodSheetSealBytes = new FileByteStore({
+    kind: "modelica-thermal-method-sheet-seal-capture",
+    directory: `${recordedAnalysisDirectory}/modelica/thermal-method-sheet-seals`,
+    uriNamespace: "modelica-thermal-method-sheet-seal-capture",
+    label: "Sealed Modelica thermal method sheet",
+  });
+  const thermalMethodSheetSeals = {
+    save: (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+      canonicalText: string,
+    ) =>
+      thermalMethodSheetSealBytes.save(
+        fingerprint,
+        new TextEncoder().encode(canonicalText),
+      ),
+    read: async (
+      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+    ) => {
+      const stored = await thermalMethodSheetSealBytes.read(fingerprint);
+      return stored === undefined
+        ? undefined
+        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
+    },
+  };
+  const verifySealModelicaThermalMethodSheet =
+    new VerifySealModelicaThermalMethodSheetRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      sheets: thermalMethodSheets,
+      sourceCaptures: thermalMethodSheetSourceCaptures,
+      basisResolver: technicalCompilationBasis,
+      captures: thermalMethodSheetSeals,
+      lease,
+    });
   const designExecuteBuild123d = build123dExecution?.execution === undefined
     ? undefined
     : new DesignExecuteBuild123dRunExecutor({
@@ -1804,6 +1863,7 @@ async function createProjectControl(
       correctedAdmissionReview,
       modelicaQualifiedKitRunReview,
       admittedModelicaRunReview,
+      thermalMethodSheetSealReview,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
           DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY,
@@ -1842,6 +1902,10 @@ async function createProjectControl(
           {
             operation: DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
             executor: designSealIsolatedGeometry,
+          },
+          {
+            operation: VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
+            executor: verifySealModelicaThermalMethodSheet,
           },
           {
             operation: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
