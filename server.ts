@@ -21,6 +21,7 @@ import {
 import { FileThreadSnapshotStore } from "./src/adapters/shared/stores/file-thread-snapshot-store.ts";
 import { installGracefulHttpShutdown } from "./src/adapters/shared/graceful-http-shutdown.ts";
 import {
+  ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR,
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
   BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
@@ -91,6 +92,14 @@ import { CaptureBackedThermalMethodSheetCompilationJoin } from "./src/adapters/m
 import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
 import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
 import { PrepareProjectThermalMethodSheetSealReview } from "./src/application/use-cases/modelica/thermal-method-sheet/prepare-project-thermal-method-sheet-seal-review.ts";
+import { PrepareProjectAdmittedModelicaEvaluationReview } from "./src/application/use-cases/modelica/evaluation/prepare-project-admitted-modelica-evaluation-review.ts";
+import { FileAdmittedObservationEvidenceReader } from "./src/adapters/modelica/evaluation/file-admitted-observation-evidence-reader.ts";
+import { FileAdmittedObservationEvaluationCaptureStore } from "./src/adapters/modelica/evaluation/file-admitted-observation-evaluation-capture-store.ts";
+import { FileAdmittedObservationEvaluationAttemptStore } from "./src/adapters/modelica/evaluation/file-admitted-observation-evaluation-attempt-store.ts";
+import {
+  VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
+  VerifyEvaluateAdmittedModelicaObservationsRunExecutor,
+} from "./src/adapters/modelica/evaluation/verify-evaluate-admitted-modelica-observations-run-executor.ts";
 import { FileThermalMethodSheetStore } from "./src/adapters/modelica/thermal-method-sheet/file-thermal-method-sheet-store.ts";
 import { FileThermalMethodSheetSourceCaptureReader } from "./src/adapters/modelica/thermal-method-sheet/file-thermal-method-sheet-source-capture-reader.ts";
 import {
@@ -1285,6 +1294,44 @@ async function createProjectControl(
       captures: thermalMethodSheetSeals,
       lease,
     });
+  const admittedObservationEvidence = new FileAdmittedObservationEvidenceReader(
+    new FileByteStore({
+      kind: "isolated-output",
+      directory: `${recordedAnalysisDirectory}/modelica/admitted/outputs`,
+      uriNamespace: "isolated-output",
+      label: "Admitted Modelica isolated output",
+    }),
+  );
+  const admittedObservationEvaluationCaptures =
+    new FileAdmittedObservationEvaluationCaptureStore(
+      new FileCaptureStore({
+        ...ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR,
+        directory:
+          `${recordedAnalysisDirectory}/modelica/admitted-observation-evaluation-captures`,
+      }),
+    );
+  const admittedModelicaEvaluationReview =
+    new PrepareProjectAdmittedModelicaEvaluationReview({
+      projects: runtime.projects,
+      snapshots: activeThreadSnapshots,
+      methodSheets: thermalMethodSheetCompilationJoin,
+      evidence: admittedObservationEvidence,
+    });
+  const verifyEvaluateAdmittedModelicaObservations = sysonMcpUrl
+    ? new VerifyEvaluateAdmittedModelicaObservationsRunExecutor({
+      projects: runtime.projects,
+      commands: runtime.commands,
+      snapshots: activeThreadSnapshots,
+      sheets: thermalMethodSheets,
+      evidence: admittedObservationEvidence,
+      captures: admittedObservationEvaluationCaptures,
+      attempts: new FileAdmittedObservationEvaluationAttemptStore(
+        `${recordedAnalysisDirectory}/modelica/admitted-observation-evaluation-attempts`,
+      ),
+      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      lease,
+    })
+    : undefined;
   const designExecuteBuild123d = build123dExecution?.execution === undefined
     ? undefined
     : new DesignExecuteBuild123dRunExecutor({
@@ -1871,6 +1918,7 @@ async function createProjectControl(
       correctedAdmissionReview,
       modelicaQualifiedKitRunReview,
       admittedModelicaRunReview,
+      admittedModelicaEvaluationReview,
       thermalMethodSheetSealReview,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
@@ -1914,6 +1962,12 @@ async function createProjectControl(
           {
             operation: VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
             executor: verifySealModelicaThermalMethodSheet,
+          },
+          {
+            operation: VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
+            executor: verifyEvaluateAdmittedModelicaObservations,
+            unavailableMessage:
+              "The server has no trusted verify.evaluate-admitted-modelica-observations@1 executor configured for this run (SysON provider is required).",
           },
           {
             operation: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,

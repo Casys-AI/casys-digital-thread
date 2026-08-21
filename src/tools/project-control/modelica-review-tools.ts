@@ -11,6 +11,10 @@ import type {
   ProjectThermalMethodSheetSealReviewCommand,
   ProjectThermalMethodSheetSealReviewUseCase,
 } from "../../application/ports/in/modelica/thermal-method-sheet/project-thermal-method-sheet-seal-review.ts";
+import type {
+  ProjectAdmittedModelicaEvaluationReviewRequest,
+  ProjectAdmittedModelicaEvaluationReviewUseCase,
+} from "../../application/ports/in/modelica/evaluation/project-admitted-modelica-evaluation-review.ts";
 import {
   FINGERPRINT_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
@@ -24,6 +28,8 @@ export interface ProjectModelicaReviewToolDependencies {
   admittedModelicaRunReview?: ProjectAdmittedModelicaRunReviewUseCase;
   /** Provider-free preparation of one thermal method-sheet seal review. */
   thermalMethodSheetSealReview?: ProjectThermalMethodSheetSealReviewUseCase;
+  /** Provider-free preparation of one admitted observation evaluation review. */
+  admittedModelicaEvaluationReview?: ProjectAdmittedModelicaEvaluationReviewUseCase;
 }
 
 /** Register the provider-free Modelica review surfaces. */
@@ -52,6 +58,19 @@ export function registerProjectModelicaReviewTools(
       return {
         content:
           "Admitted Modelica execution review for the unique fresh sealed admission on the current Thread tip was prepared from exact server-reopened facts. The returned admission and decisionParameters are review material only: they contain no source bytes or runtime capability, no code was executed, and no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority was created.",
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+
+  if (dependencies.admittedModelicaEvaluationReview) {
+    const review = dependencies.admittedModelicaEvaluationReview;
+    app.registerTool(projectAdmittedModelicaEvaluationReviewTool, async (args) => {
+      const command = admittedModelicaEvaluationReviewCommand(args);
+      const result = await review.execute(command);
+      return {
+        content:
+          "Admitted Modelica observation evaluation review was prepared from the unique Thread tip, sealed method sheet and admitted evidence. The returned admission and decisionParameters are review material only: they contain no Modelica source bytes, no OMC capability, no SysON envelope, no EngineeringProject or Thread state, and no L4 verdict. Construct a later verify.evaluate-admitted-modelica-observations@1 proposal only from decisionParameters.",
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -89,6 +108,22 @@ const TECHNICAL_THREAD_BASIS_SCHEMA = {
   required: ["kind", "snapshotId", "revision", "subjectId"],
   additionalProperties: false,
 } as const;
+
+const projectAdmittedModelicaEvaluationReviewTool: MCPTool = {
+  name: "project_admitted_modelica_evaluation_review",
+  description:
+    "Prepare the exact human-review identity and canonical MRTR parameters for one later verify.evaluate-admitted-modelica-observations@1 evaluation. The caller names only projectId. The server reopens the unique current Thread tip, unique sealed thermal method sheet, and unique admitted Modelica evidence. This provider-free read performs no OMC or SysON call, returns no source bytes or observation values as caller authority, mutates no EngineeringProject or Thread state, and grants no MRTR or L4 verdict. Values, units, feature, limit, provider, tool and args remain server-owned.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+    },
+    required: ["projectId"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
 
 const projectAdmittedModelicaRunReviewTool: MCPTool = {
   name: "project_admitted_modelica_run_review",
@@ -139,6 +174,20 @@ const projectModelicaQualifiedKitRunReviewTool: MCPTool = {
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: READ_ONLY_ANNOTATIONS,
 };
+
+function admittedModelicaEvaluationReviewCommand(
+  value: Record<string, unknown>,
+): ProjectAdmittedModelicaEvaluationReviewRequest {
+  exactKeys(
+    value,
+    ["projectId"],
+    [],
+    "admittedModelicaEvaluationReview",
+  );
+  return {
+    projectId: technicalId(value.projectId, "projectId"),
+  };
+}
 
 function thermalMethodSheetSealReviewCommand(
   value: Record<string, unknown>,

@@ -3,6 +3,7 @@ import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../application/ports/in/modelica/qualified-kit-run-review.ts";
 import type { ProjectAdmittedModelicaRunReviewResult } from "../../application/ports/in/modelica/admitted-run-review.ts";
 import type { ProjectThermalMethodSheetSealReviewResult } from "../../application/ports/in/modelica/thermal-method-sheet/project-thermal-method-sheet-seal-review.ts";
+import type { ProjectAdmittedModelicaEvaluationReviewResult } from "../../application/ports/in/modelica/evaluation/project-admitted-modelica-evaluation-review.ts";
 import { registerProjectModelicaReviewTools } from "./modelica-review-tools.ts";
 
 const ADMITTED_REVIEW_REQUEST = {
@@ -106,6 +107,71 @@ Deno.test("admitted Modelica review exposes only projectId and rejects caller-se
   );
   assertEquals(calls, [ADMITTED_REVIEW_REQUEST]);
 });
+
+Deno.test(
+  "admitted observation evaluation review exposes only projectId and rejects SysON/OMC extras",
+  async () => {
+    const absent = new CapturingApp();
+    registerProjectModelicaReviewTools(absent as unknown as McpApp, {});
+    assertEquals(
+      absent.hasTool("project_admitted_modelica_evaluation_review"),
+      false,
+    );
+
+    const app = new CapturingApp();
+    const calls: unknown[] = [];
+    const resultIdentity = Object.freeze({
+      admission: Object.freeze({ marker: "use-case-owned-evaluation" }),
+      method: Object.freeze({ marker: "method" }),
+      decisionParameters: Object.freeze([
+        Object.freeze({
+          key: "thermal.evaluation.project.id",
+          label: "Project",
+          value: "articulated-led-desk-lamp",
+        }),
+      ]),
+    }) as unknown as ProjectAdmittedModelicaEvaluationReviewResult;
+    registerProjectModelicaReviewTools(app as unknown as McpApp, {
+      admittedModelicaEvaluationReview: {
+        execute(value) {
+          calls.push(value);
+          return Promise.resolve(resultIdentity);
+        },
+      },
+    });
+
+    const response = await app.handler(
+      "project_admitted_modelica_evaluation_review",
+    )({ projectId: "articulated-led-desk-lamp" }) as Record<string, unknown>;
+    assert(response.structuredContent === resultIdentity);
+    assertEquals(calls, [{ projectId: "articulated-led-desk-lamp" }]);
+    assertStringIncludes(response.content as string, "no OMC");
+    assertStringIncludes(response.content as string, "no SysON envelope");
+
+    const tool = app.tool("project_admitted_modelica_evaluation_review");
+    const inputSchema = tool.inputSchema as Record<string, unknown>;
+    assertEquals(
+      Object.keys(inputSchema.properties as Record<string, unknown>).sort(),
+      ["projectId"],
+    );
+    assertClosedObjectSchemas(inputSchema);
+
+    const handler = app.handler("project_admitted_modelica_evaluation_review");
+    await assertRejects(
+      () =>
+        handler({
+          projectId: "articulated-led-desk-lamp",
+          provider: "syson",
+          tool: "syson_constraint_evaluate",
+          args: { constraints: [] },
+          modelicaText: "model X end X;",
+        }) as Promise<unknown>,
+      TypeError,
+      "unsupported field(s)",
+    );
+    assertEquals(calls, [{ projectId: "articulated-led-desk-lamp" }]);
+  },
+);
 
 Deno.test(
   "thermal method-sheet seal review exposes only projectId and sheetFingerprint and rejects extras",

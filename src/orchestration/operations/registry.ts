@@ -19,6 +19,7 @@ import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivi
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
+import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "./fea-isolated-static-proof.ts";
@@ -411,6 +412,29 @@ const OPERATIONS = [
       "fingerprints, and publish the content-addressed method document. Callers never " +
       "supply Modelica text, provider tools, or solver arguments. This is not an " +
       "admitted run and not an evaluation.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Trusted SysON evaluation of admitted Modelica observations. The MRTR names
+   * identities and fingerprints only. No OMC, caller values, or SysON envelope.
+   */
+  {
+    id: VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.id,
+    version: VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Evaluate admitted Modelica observations",
+    description:
+      "Reopen one sealed thermal method sheet and one admitted Modelica evidence " +
+      "capture, recross identities, and ask SysON to evaluate the exact " +
+      "requirement/observation pairs. Callers never supply values, units, " +
+      "provider tools, or OMC arguments. A unit-identity mismatch stays unresolved.",
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",

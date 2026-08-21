@@ -29,6 +29,7 @@ import {
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
+import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
@@ -621,6 +622,48 @@ Deno.test(
                   snapshotRevision: 9,
                   kind: "artifact" as const,
                   id: "artifact.omc",
+                },
+              },
+            }],
+          },
+          stage: "queue",
+          basisKind: "thread-snapshot",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(extras.code, "invalid_bindings");
+  },
+);
+
+Deno.test(
+  "admitted observation evaluation is a trusted SysON join with approvedBrief only",
+  () => {
+    const operation = getRegisteredEngineeringOperation(
+      VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
+    )!;
+    assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+    assertEquals(operation.workItemKind, "verify");
+    assertEquals(operation.riskClass, "consequential");
+    assertEquals(operation.execution, "trusted");
+    assertEquals(operation.bindings, [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }]);
+
+    const extras = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
+            bindings: [{
+              name: "sysonEnvelope",
+              source: {
+                kind: "thread-entity" as const,
+                reference: {
+                  snapshotId: "thread.snapshot.9",
+                  snapshotRevision: 9,
+                  kind: "artifact" as const,
+                  id: "artifact.syson",
                 },
               },
             }],
