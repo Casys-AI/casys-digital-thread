@@ -70,6 +70,46 @@ Deno.test("parseArchitectureProposalParameters: a system-only proposal is the un
   assertEquals([...sysml.matchAll(/part def /g)].length, 1);
 });
 
+Deno.test(
+  "parseArchitectureProposalParameters: five occurrences and bare attributes stay inside the current grammar",
+  () => {
+    const proposal = parseArchitectureProposalParameters([
+      { key: "architecture.package", label: "Package", value: "DemoPackage" },
+      { key: "system.name", label: "System", value: "DemoSystem" },
+      { key: "component.a.name", label: "A name", value: "PartA" },
+      { key: "component.a.usage", label: "A usage", value: "partA" },
+      { key: "component.a.parent", label: "A parent", value: "DemoSystem" },
+      { key: "component.b.name", label: "B name", value: "PartB" },
+      { key: "component.b.usage", label: "B usage", value: "partB" },
+      { key: "component.b.parent", label: "B parent", value: "DemoSystem" },
+      { key: "component.c.name", label: "C name", value: "PartC" },
+      { key: "component.c.usage", label: "C usage", value: "partC" },
+      { key: "component.c.parent", label: "C parent", value: "DemoSystem" },
+      { key: "component.d.name", label: "D name", value: "PartD" },
+      { key: "component.d.usage", label: "D usage", value: "partD" },
+      { key: "component.d.parent", label: "D parent", value: "DemoSystem" },
+      { key: "component.e.name", label: "E name", value: "PartE" },
+      { key: "component.e.usage", label: "E usage", value: "partE" },
+      { key: "component.e.parent", label: "E parent", value: "DemoSystem" },
+      { key: "attribute.handle.name", label: "Handle", value: "handle" },
+      {
+        key: "attribute.handle.parent",
+        label: "Handle parent",
+        value: "PartB",
+      },
+    ]);
+    assertEquals(proposal.components.length, 5);
+    assertEquals(proposal.attributes, [{
+      name: "handle",
+      parentName: "PartB",
+    }]);
+    const sysml = renderArchitectureSysml(proposal);
+    assertEquals([...sysml.matchAll(/part def /g)].length, 6);
+    assertEquals(sysml.includes("    attribute handle;"), true);
+    assertEquals(sysml.includes("attribute handle ="), false);
+  },
+);
+
 Deno.test("parseArchitectureProposalParameters: unknown key is rejected", () => {
   const error = assertThrows(
     () =>

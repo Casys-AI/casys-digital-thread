@@ -339,6 +339,40 @@ export const ARTICULATED_LED_DESK_LAMP_STRUCTURE = {
   ],
 } as const;
 
+/** Bare AttributeUsage handles. No magnitude, unit, type or equation. */
+export const ARTICULATED_LED_DESK_LAMP_HANDLES = [
+  {
+    slug: "armLever",
+    name: "armLever",
+    parent: "ArticulatedArm",
+    sourceItemId: "constraint-handle-arm-lever",
+  },
+  {
+    slug: "armMaterial",
+    name: "armMaterial",
+    parent: "ArticulatedArm",
+    sourceItemId: "constraint-handle-arm-material",
+  },
+  {
+    slug: "lampHeadThermalState",
+    name: "lampHeadThermalState",
+    parent: "LampHead",
+    sourceItemId: "constraint-handle-lamp-head-thermal",
+  },
+  {
+    slug: "ledDriverElectrical",
+    name: "ledDriverElectrical",
+    parent: "LedDriver",
+    sourceItemId: "constraint-handle-led-driver-electrical",
+  },
+  {
+    slug: "electricalPower",
+    name: "electricalPower",
+    parent: "LedDriver",
+    sourceItemId: "constraint-handle-electrical-power",
+  },
+] as const;
+
 export function articulatedLedDeskLampStructureBriefItems(): readonly ProjectBriefItem[] {
   const framing = articulatedLedDeskLampBriefItems().filter((item) =>
     item.id !== "open-question-structure"
@@ -384,6 +418,41 @@ export function articulatedLedDeskLampStructureBriefItems(): readonly ProjectBri
       kind: "constraint",
       statement:
         "PowerSupply is the reviewed electrical source boundary. It is structural only: no connector or electrical-source semantics are implied.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-handle-arm-lever",
+      kind: "constraint",
+      statement:
+        "ArticulatedArm owns a named geometric lever handle. No magnitude, unit or source value is declared.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-handle-arm-material",
+      kind: "constraint",
+      statement:
+        "ArticulatedArm owns a named material and density handle. No material identity, density or unit is declared.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-handle-lamp-head-thermal",
+      kind: "constraint",
+      statement:
+        "LampHead owns a named thermal initial-state handle. No temperature, coefficient, equation or unit is declared.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-handle-led-driver-electrical",
+      kind: "constraint",
+      statement:
+        "LedDriver owns a named electrical source-parameter handle. No topology, component or unit is declared.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-handle-electrical-power",
+      kind: "constraint",
+      statement:
+        "LedDriver owns the unique reviewed electrical-power handle consumed by electrical and thermal branches. No wattage or unit is declared.",
       sourceRefs: [RFC_CONTRACT, RFC_GATES],
     },
   ];

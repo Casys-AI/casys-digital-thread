@@ -64,6 +64,26 @@ file or catalog yet.
 **Accept:** every downstream spec refers to the same semantic handle; no physical value
 is present. **Stop:** ambiguous ownership or two meanings sharing one handle.
 
+Frozen names (product-contract RFC 01 + this lot). Usage identifiers are camelCase
+occurrences; definition names are PascalCase PartDefinitions. `Arm` in G1 is the
+`ArticulatedArm` definition / `arm` usage.
+
+| Kind   | Definition               | Usage         | Owner                            | Meaning                                              | Consumers                                |
+| ------ | ------------------------ | ------------- | -------------------------------- | ---------------------------------------------------- | ---------------------------------------- |
+| system | `ArticulatedLedDeskLamp` | —             | package `ArticulatedLedDeskLamp` | product container                                    | architecture                             |
+| part   | `Base`                   | `base`        | `ArticulatedLedDeskLamp`         | grounds the story                                    | none in this demo                        |
+| part   | `ArticulatedArm`         | `arm`         | `ArticulatedLedDeskLamp`         | sole canonical CAD and static-proof subject          | CAD, mechanical, sensitivity             |
+| part   | `LampHead`               | `lampHead`    | `ArticulatedLedDeskLamp`         | LED/light and thermal boundary                       | thermal                                  |
+| part   | `LedDriver`              | `ledDriver`   | `ArticulatedLedDeskLamp`         | electrical behaviour boundary                        | electrical                               |
+| part   | `PowerSupply`            | `powerSupply` | `ArticulatedLedDeskLamp`         | electrical source boundary, structural only          | none in this demo                        |
+| handle | `armLever`               | —             | `ArticulatedArm`                 | geometric lever                                      | CAD, mechanical, sensitivity             |
+| handle | `armMaterial`            | —             | `ArticulatedArm`                 | material/density reference                           | mechanical; modal only if later approved |
+| handle | `lampHeadThermalState`   | —             | `LampHead`                       | thermal initial state and coefficients               | admitted Modelica                        |
+| handle | `ledDriverElectrical`    | —             | `LedDriver`                      | electrical source/component parameters               | circuit                                  |
+| handle | `electricalPower`        | —             | `LedDriver`                      | reviewed electrical power; one handle, two consumers | electrical and thermal                   |
+
+No magnitude, unit, type, equation, port or connection is part of this table.
+
 ### A02 — prove the existing structural renderer path
 
 Using focused domain/application tests, prove that the current proposal grammar can

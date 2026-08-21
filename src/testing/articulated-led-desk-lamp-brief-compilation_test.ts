@@ -7,6 +7,7 @@ import { PrepareProjectBriefRequirementsReview } from "../application/use-cases/
 import {
   ARTICULATED_LED_DESK_LAMP_BEHAVE_GATES,
   ARTICULATED_LED_DESK_LAMP_FIXTURE_PROJECT_ID,
+  ARTICULATED_LED_DESK_LAMP_HANDLES,
   ARTICULATED_LED_DESK_LAMP_STRUCTURE,
   articulatedLedDeskLampStructureBriefItems,
   seedApprovedArticulatedLedDeskLampBrief,
@@ -43,6 +44,39 @@ Deno.test(
       ["Base", "ArticulatedArm", "LampHead", "LedDriver", "PowerSupply"],
     );
     assertEquals(parsed.attributes ?? [], []);
+  },
+);
+
+Deno.test(
+  "fresh lamp architecture review compiles bare parameter handles without values, ports or flows",
+  async () => {
+    const { store } = await seedApprovedArticulatedLedDeskLampStructureBrief();
+    const result = await new PrepareProjectBriefArchitectureReview({
+      projects: store,
+    }).execute({
+      projectId: ARTICULATED_LED_DESK_LAMP_FIXTURE_PROJECT_ID,
+      ...ARTICULATED_LED_DESK_LAMP_STRUCTURE,
+      attributes: [...ARTICULATED_LED_DESK_LAMP_HANDLES],
+    });
+    assertEquals(result.status, "resolved");
+    assertExists(result.decisionParameters);
+    const parsed = parseArchitectureProposalParameters(result.decisionParameters);
+    assertEquals(
+      parsed.attributes?.map((attribute) => attribute.name),
+      [
+        "armLever",
+        "armMaterial",
+        "lampHeadThermalState",
+        "ledDriverElectrical",
+        "electricalPower",
+      ],
+    );
+    assertEquals(
+      parsed.attributes?.every((attribute) =>
+        Object.keys(attribute).every((key) => key === "name" || key === "parentName")
+      ),
+      true,
+    );
     const traced = new Set(result.provenance.map((entry) => entry.parameterKey));
     for (const parameter of result.decisionParameters) {
       assertEquals(traced.has(parameter.key), true, parameter.key);
