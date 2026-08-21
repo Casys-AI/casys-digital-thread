@@ -21,151 +21,53 @@ import {
 import { FileThreadSnapshotStore } from "./src/adapters/shared/stores/file-thread-snapshot-store.ts";
 import { installGracefulHttpShutdown } from "./src/adapters/shared/graceful-http-shutdown.ts";
 import {
-  ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR,
-  ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
-  ARCHITECTURE_CAPTURE_DESCRIPTOR,
   BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
+  DFM_CASE_CAPTURE_DESCRIPTOR,
+  DFM_CHECK_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-  GEOMETRY_CAPTURE_DESCRIPTOR,
-  GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
-  GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
   INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
-  PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+  PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
+  PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
+  PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
+  PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
-  SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-  THERMAL_METHOD_SHEET_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/shared/cas/file-capture-store.ts";
-import { parseExactArchitectureCapture } from "./src/adapters/architecture/renderer/architecture-capture.ts";
-import { FileCataloguedMechanicalProofCaseReader } from "./src/adapters/fea/seal-case/file-catalogued-mechanical-proof-case-reader.ts";
-import { FileCataloguedSensitivityStudyCaseReader } from "./src/adapters/sensitivity/study/file-catalogued-sensitivity-study-case-reader.ts";
-import { CaptureBackedFeaProofSealRequirementsReviewer } from "./src/adapters/fea/seal-case/capture-backed-fea-proof-seal-requirements-reviewer.ts";
-import { PythonCadSourceAnalyzer } from "./src/adapters/cad/source/python-cad-source-analyzer.ts";
 import {
   PROJECT_BRIEF_SOURCE_ANALYZER_ID,
   PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
   ProjectBriefSourceAnalyzer,
 } from "./src/adapters/compile/source/project-brief-source-analyzer.ts";
 import { BriefSourceAnalysisCaptureService } from "./src/adapters/compile/captures/brief-source-analysis-capture.ts";
-import { CaptureBackedTechnicalCompilationBasisResolver } from "./src/adapters/compile/captures/technical-compilation-basis-resolver.ts";
-import { CaptureBackedTechnicalCompilationSourceReader } from "./src/adapters/compile/admission/capture-backed-technical-compilation-source-reader.ts";
-import { CaptureBackedTechnicalCompilationAdmissionReader } from "./src/adapters/compile/admission/capture-backed-technical-compilation-admission-reader.ts";
-import {
-  FileBuild123dExecutionCaptureStore,
-  FileBuild123dExecutionDraftStore,
-} from "./src/adapters/cad/isolated/build123d-execution-evidence.ts";
-import { FileTechnicalCompilationDraftStore } from "./src/adapters/compile/admission/file-technical-compilation-draft-store.ts";
-import { FixedTechnicalCompilationProfileCatalogProvider } from "./src/adapters/compile/admission/fixed-technical-compilation-profile-catalog-provider.ts";
-import { createInitialTechnicalSourceAnalysisCaptureService } from "./src/adapters/compile/captures/initial-technical-source-analysis-composition.ts";
-import { createArchitectureSysmlSourceAnalysisCaptureService } from "./src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
-import { QualifiedArchitectureSysmlAnalyzer } from "./src/adapters/architecture/agent-seal/qualified-architecture-sysml-analyzer.ts";
-import { PreviewProjectArchitectureSysml } from "./src/application/use-cases/architecture/agent-seal/preview-project-architecture-sysml.ts";
-import { PrepareProjectBriefArchitectureReview } from "./src/application/use-cases/architecture/renderer/prepare-project-brief-architecture-review.ts";
-import { PrepareProjectBriefRequirementsReview } from "./src/application/use-cases/architecture/requirements/prepare-project-brief-requirements-review.ts";
-import type { ProjectArchitectureSysmlSourceCaptureUseCase } from "./src/application/ports/in/architecture/agent-seal/project-architecture-sysml-source-capture.ts";
-import {
-  MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
-  ModelSealArchitectureSysmlRunExecutor,
-} from "./src/adapters/architecture/agent-seal/model-seal-architecture-sysml-run-executor.ts";
+import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "./src/adapters/architecture/agent-seal/model-seal-architecture-sysml-run-executor.ts";
 import type { Build123dExecutionServerOptions } from "./src/adapters/cad/isolated/build123d-execution-composition.ts";
 import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
-import { createAdmittedModelicaExecutionComposition } from "./src/adapters/modelica/admitted/execution-composition.ts";
-import { PrepareProjectAdmittedModelicaRunReview } from "./src/application/use-cases/modelica/admitted/prepare-run-review.ts";
-import { ResolveProjectAdmittedModelicaRunReview } from "./src/application/use-cases/modelica/admitted/resolve-run-review.ts";
-import {
-  DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
-  DesignSealIsolatedGeometryRunExecutor,
-} from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
+import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
-import { CodeOwnedModelicaQualifiedKitBundleFactory } from "./src/adapters/modelica/qualified-kit/bundle-factory.ts";
-import {
-  FileModelicaMicrosandboxQualificationStore,
-  PublicationBackedModelicaMicrosandboxQualificationAuthority,
-} from "./src/adapters/modelica/qualified-kit/microsandbox-qualification.ts";
-import { FileIsolatedOutputCas } from "./src/adapters/shared/cas/file-isolated-output-cas.ts";
-import { FileModelicaIsolatedExecutionCaptureStore } from "./src/adapters/modelica/qualified-kit/isolated-execution-evidence.ts";
-import { ProjectThreadModelicaQualifiedKitReviewBasisAuthority } from "./src/adapters/modelica/qualified-kit/review-basis-authority.ts";
-import { PreviewProjectTechnicalCompilation } from "./src/application/use-cases/compile/admission/preview-project-technical-compilation.ts";
-import { CaptureBackedThermalMethodSheetCompilationJoin } from "./src/adapters/modelica/thermal-method-sheet/capture-backed-thermal-method-sheet-compilation-join.ts";
-import { PrepareProjectBuild123dExecutionReview } from "./src/application/use-cases/cad/isolated/prepare-project-build123d-execution-review.ts";
-import { PrepareProjectIsolatedGeometrySealReview } from "./src/application/use-cases/cad/sealed-isolated/prepare-project-isolated-geometry-seal-review.ts";
-import { PrepareProjectThermalMethodSheetSealReview } from "./src/application/use-cases/modelica/thermal-method-sheet/prepare-project-thermal-method-sheet-seal-review.ts";
-import { LedDriverSourceCaptureService } from "./src/adapters/electrical/led-driver/led-driver-source-capture.ts";
-import { PrepareProjectLedDriverSourceCapture } from "./src/application/use-cases/electrical/led-driver/prepare-project-led-driver-source-capture.ts";
-import { PrepareProjectLedDriverSourceReview } from "./src/application/use-cases/electrical/led-driver/prepare-project-led-driver-source-review.ts";
-import { PrepareProjectAdmittedModelicaEvaluationReview } from "./src/application/use-cases/modelica/evaluation/prepare-project-admitted-modelica-evaluation-review.ts";
-import { FileAdmittedObservationEvidenceReader } from "./src/adapters/modelica/evaluation/file-admitted-observation-evidence-reader.ts";
-import { FileAdmittedObservationEvaluationCaptureStore } from "./src/adapters/modelica/evaluation/file-admitted-observation-evaluation-capture-store.ts";
-import { FileAdmittedObservationEvaluationAttemptStore } from "./src/adapters/modelica/evaluation/file-admitted-observation-evaluation-attempt-store.ts";
-import {
-  VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
-  VerifyEvaluateAdmittedModelicaObservationsRunExecutor,
-} from "./src/adapters/modelica/evaluation/verify-evaluate-admitted-modelica-observations-run-executor.ts";
+import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "./src/adapters/modelica/evaluation/verify-evaluate-admitted-modelica-observations-run-executor.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
-  DecideAdmittedModelicaEvaluationRunExecutor,
 } from "./src/adapters/modelica/evaluation/decide-admitted-modelica-evaluation-run-executor.ts";
-import { FileThermalMethodSheetStore } from "./src/adapters/modelica/thermal-method-sheet/file-thermal-method-sheet-store.ts";
-import { FileThermalMethodSheetSourceCaptureReader } from "./src/adapters/modelica/thermal-method-sheet/file-thermal-method-sheet-source-capture-reader.ts";
-import {
-  VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
-  VerifySealModelicaThermalMethodSheetRunExecutor,
-} from "./src/adapters/modelica/thermal-method-sheet/verify-seal-modelica-thermal-method-sheet-run-executor.ts";
-import { PrepareProjectVectorCorrectionReview } from "./src/application/use-cases/sensitivity/vector-correction/prepare-project-vector-correction-review.ts";
-import { PrepareProjectFeaProofSealReview } from "./src/application/use-cases/fea/seal-case/prepare-project-fea-proof-seal-review.ts";
-import { PrepareProjectFeaIsolatedRunReview } from "./src/application/use-cases/fea/isolated-v3/prepare-project-fea-isolated-run-review.ts";
-import { PrepareProjectSensitivityBaseEvaluationReview } from "./src/application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts";
-import { PrepareProjectSensitivityStudySealReview } from "./src/application/use-cases/sensitivity/study/prepare-project-sensitivity-study-seal-review.ts";
-import { PrepareProjectCorrectedAdmissionReview } from "./src/application/use-cases/sensitivity/correction-source/prepare-project-corrected-admission-review.ts";
-import {
-  DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
-  DesignApplyVectorCorrectionRunExecutor,
-} from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
-import {
-  COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
-  CompileCaptureCorrectedSourceRunExecutor,
-} from "./src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts";
-import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "./src/adapters/cad/source/qualified-build123d-source-analyzer.ts";
-import { PrepareProjectModelicaQualifiedKitRunReview } from "./src/application/use-cases/modelica/qualified-kit/prepare-run-review.ts";
-import { ExecuteIsolatedModelicaRun } from "./src/application/use-cases/modelica/qualified-kit/execute-isolated-run.ts";
-import type { ProjectTechnicalSourceCaptureUseCase } from "./src/application/ports/in/compile/admission/project-technical-source-capture.ts";
-import { assembleTechnicalSourceCaptureReview } from "./src/domain/compile/admission/technical-source-capture-review.ts";
+import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "./src/adapters/modelica/thermal-method-sheet/verify-seal-modelica-thermal-method-sheet-run-executor.ts";
+import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
+import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "./src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts";
 import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/compile/source/source-analysis-frontend-registry.ts";
-import { RenderedArchitectureSysmlAnalyzer } from "./src/adapters/architecture/renderer/rendered-architecture-sysml-analyzer.ts";
-import { SysmlSourceAnalysisCaptureService } from "./src/adapters/architecture/renderer/sysml-source-analysis-capture.ts";
-import { FileSysonModelSeedAttemptStore } from "./src/adapters/architecture/seed/file-syson-model-seed-attempt-store.ts";
 import { FileInspectionDroneV4ArchitectureAttemptStore } from "./src/adapters/inspection-drone/author/file-inspection-drone-v4-architecture-attempt-store.ts";
-import { FileArchitectureAttemptStore } from "./src/adapters/architecture/renderer/file-architecture-attempt-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/project/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/project/approved-brief-baseline-run-executor.ts";
-import { SysonModelSeedRunExecutor } from "./src/adapters/architecture/seed/syson-model-seed-run-executor.ts";
 import { InspectionDroneV4ArchitectureRunExecutor } from "./src/adapters/inspection-drone/author/inspection-drone-v4-architecture-run-executor.ts";
 import { InspectionDroneV4PartDefinitionsRunExecutor } from "./src/adapters/inspection-drone/part-definitions/inspection-drone-v4-part-definitions-run-executor.ts";
 import { FileInspectionDroneV4PartDefinitionsPublicationStore } from "./src/adapters/inspection-drone/part-definitions/file-inspection-drone-v4-part-definitions-publication-store.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "./src/domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
 import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "./src/domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
-import {
-  MODEL_WRITE_ARCHITECTURE_OPERATION,
-  ModelWriteArchitectureRunExecutor,
-} from "./src/adapters/architecture/renderer/model-write-architecture-run-executor.ts";
+import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "./src/adapters/architecture/renderer/model-write-architecture-run-executor.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "./src/domain/architecture/part-definitions/part-definitions-capture.ts";
-import { ModelCapturePartDefinitionsRunExecutor } from "./src/adapters/architecture/part-definitions/model-capture-part-definitions-run-executor.ts";
-import { FilePartDefinitionsPublicationStore } from "./src/adapters/architecture/part-definitions/file-part-definitions-publication-store.ts";
-import {
-  DESIGN_WRITE_GEOMETRY_OPERATION,
-  DesignWriteGeometryRunExecutor,
-} from "./src/adapters/cad/canonical/design-write-geometry-run-executor.ts";
-import { AdmissionBackedGeometryExportAdapter } from "./src/adapters/cad/canonical/admission-backed-geometry-export-adapter.ts";
-import type { GeometrySourceAnalysisCaptureDependencies } from "./src/adapters/cad/source/geometry-source-analysis-capture.ts";
-import { ExportAdmittedProjectGeometry } from "./src/application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
-import {
-  MODEL_WRITE_REQUIREMENTS_OPERATION,
-  ModelWriteRequirementsRunExecutor,
-} from "./src/adapters/architecture/requirements/model-write-requirements-run-executor.ts";
+import { DESIGN_WRITE_GEOMETRY_OPERATION } from "./src/adapters/cad/canonical/design-write-geometry-run-executor.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "./src/adapters/architecture/requirements/model-write-requirements-run-executor.ts";
 import {
   ARCHIVE_LINEAGE_OPERATION,
   ArchiveLineageRunExecutor,
@@ -174,49 +76,17 @@ import {
   RECONCILE_UNCERTAIN_WRITER_OPERATION,
   ReconcileUncertainWriterRunExecutor,
 } from "./src/adapters/record/reconcile-uncertain-writer-run-executor.ts";
-import {
-  VERIFY_SEAL_PROOF_CASE_OPERATION,
-  VerifySealProofCaseRunExecutor,
-} from "./src/adapters/fea/seal-case/verify-seal-proof-case-run-executor.ts";
+import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "./src/adapters/fea/seal-case/verify-seal-proof-case-run-executor.ts";
 import { FileCanonicalAssetReader } from "./src/adapters/assets/canonical-asset-reader.ts";
-import {
-  COMPILE_SEAL_ADMISSION_OPERATION,
-  CompileSealAdmissionRunExecutor,
-} from "./src/adapters/compile/executors/compile-seal-admission-run-executor.ts";
-import {
-  DESIGN_EXECUTE_BUILD123D_OPERATION,
-  DesignExecuteBuild123dRunExecutor,
-} from "./src/adapters/cad/isolated/design-execute-build123d-run-executor.ts";
-import {
-  SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
-  SimulateRunQualifiedModelicaKitRunExecutor,
-} from "./src/adapters/modelica/qualified-kit/run-executor.ts";
-import {
-  SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
-  SimulateRunAdmittedModelicaRunExecutor,
-} from "./src/adapters/modelica/admitted/run-executor.ts";
-import { VerifyRunFeaStaticProofV3RunExecutor } from "./src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts";
-import { DockerVolumeAssetStager } from "./src/adapters/assets/container-asset-stager.ts";
-import { McpCalculixSensitivitySolver } from "./src/adapters/sensitivity/live-fea/mcp-calculix-sensitivity-solver.ts";
-import { IsolatedStepSolverStager } from "./src/adapters/assets/isolated-step-solver-stager.ts";
+import { COMPILE_SEAL_ADMISSION_OPERATION } from "./src/adapters/compile/executors/compile-seal-admission-run-executor.ts";
+import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "./src/adapters/cad/isolated/design-execute-build123d-run-executor.ts";
+import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "./src/adapters/modelica/qualified-kit/run-executor.ts";
+import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "./src/adapters/modelica/admitted/run-executor.ts";
 import { ExportVolumeGeometryStager } from "./src/adapters/make/printability/export-volume-geometry-stager.ts";
-import {
-  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
-  AnalyzeSealSensitivityStudyRunExecutor,
-} from "./src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts";
-import {
-  ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
-  AnalyzeRunFeaSensitivityRunExecutor,
-} from "./src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts";
-import {
-  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
-  ModelWriteSensitivityEdgesRunExecutor,
-} from "./src/adapters/sensitivity/edges/model-write-sensitivity-edges-run-executor.ts";
-import {
-  VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
-  VerifyEvaluateSensitivityBaseRunExecutor,
-} from "./src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts";
-import { FileFeaSensitivityAttemptStore } from "./src/adapters/sensitivity/live-fea/file-fea-sensitivity-attempt-store.ts";
+import { ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION } from "./src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts";
+import { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION } from "./src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts";
+import { MODEL_WRITE_SENSITIVITY_EDGES_OPERATION } from "./src/adapters/sensitivity/edges/model-write-sensitivity-edges-run-executor.ts";
+import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "./src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts";
 import {
   INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
   IndustrializeSealPrintabilityCaseRunExecutor,
@@ -244,38 +114,6 @@ import {
   IndustrializeRunDfmChecksRunExecutor,
 } from "./src/adapters/make/dfm/industrialize-run-dfm-checks-run-executor.ts";
 import { FileDfmCheckAttemptStore } from "./src/adapters/make/dfm/file-dfm-check-attempt-store.ts";
-import { FileSensitivityEdgesAttemptStore } from "./src/adapters/sensitivity/edges/file-sensitivity-edges-attempt-store.ts";
-import { parseSysonModelSeedCapture } from "./src/domain/architecture/seed/syson-model-seed.ts";
-import { findArchitectureArtifact } from "./src/adapters/architecture/renderer/model-write-architecture-run-executor.ts";
-import { FileByteStore } from "./src/adapters/shared/cas/file-byte-store.ts";
-import { RecordedAnalysisCasReader } from "./src/adapters/shared/cas/recorded-analysis-cas-reader.ts";
-import {
-  CaptureBackedRunPlanSealer,
-  RESOLVED_OPERATION_PLAN_STORE_DESCRIPTOR,
-} from "./src/adapters/compile/plans/capture-backed-run-plan-sealer.ts";
-import { ResolvedOperationPlanResolver } from "./src/adapters/compile/plans/resolved-operation-plan-resolver.ts";
-import {
-  CORRECTED_SOURCE_CAPTURE_DESCRIPTOR,
-  CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
-  DFM_CASE_CAPTURE_DESCRIPTOR,
-  DFM_CHECK_CAPTURE_DESCRIPTOR,
-  FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
-  PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
-  PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
-  PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
-  PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR,
-  SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
-  SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
-  SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
-  SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
-  SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
-} from "./src/adapters/shared/cas/file-capture-store.ts";
-import { FileRequirementsAttemptStore } from "./src/adapters/architecture/requirements/file-requirements-attempt-store.ts";
-import { FileBuild123dExecutionAttemptStore } from "./src/adapters/cad/isolated/file-build123d-execution-attempt-store.ts";
-import { FileAdmittedModelicaExecutionAttemptStore } from "./src/adapters/modelica/admitted/file-execution-attempt-store.ts";
-import { FileModelicaIsolatedExecutionAttemptStore } from "./src/adapters/modelica/qualified-kit/attempt-store.ts";
-import { FileCalculixIsolatedProductAttemptStore } from "./src/adapters/fea/isolated-v3/file-calculix-isolated-product-attempt-store.ts";
-import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "./src/adapters/shared/cas/file-capture-store.ts";
 import { RegisteredProjectRunExecutor } from "./src/application/use-cases/registered-project-run-executor.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/shared/stores/file-engineering-project-run-lease.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
@@ -318,6 +156,34 @@ import {
 } from "./src/tools/cockpit-focus.ts";
 import { registerProjectReviewIntentSubscription } from "./src/tools/project-review-intent-subscription.ts";
 import { sha256Fingerprint } from "./src/domain/kernel/deterministic-json.ts";
+import {
+  createArchitectureFoundation,
+  createArchitectureProject,
+} from "./src/adapters/architecture/server-composition.ts";
+import {
+  composePrivateBuild123dGeometrySurfaces,
+  createBuild123dCapability,
+  createCadProject,
+} from "./src/adapters/cad/server-composition.ts";
+import {
+  createTechnicalCompilationFoundation,
+  createTechnicalCompilationPreview,
+  createTechnicalCompilationProject,
+} from "./src/adapters/compile/server-composition.ts";
+import { createRecordedOperationPlanComposition } from "./src/adapters/compile/plans/server-composition.ts";
+import { createLedDriverSourceComposition } from "./src/adapters/electrical/led-driver/server-composition.ts";
+import {
+  createCalculixCapability,
+  createFeaFoundation,
+  createFeaProject,
+} from "./src/adapters/fea/server-composition.ts";
+import {
+  createAdmittedModelicaCapability,
+  createModelicaProject,
+  createModelicaThermalMethodSheetJoin,
+  createQualifiedModelicaCapability,
+} from "./src/adapters/modelica/server-composition.ts";
+import { createSensitivityComposition } from "./src/adapters/sensitivity/server-composition.ts";
 
 const DEFAULT_PORT = 3020;
 const DEFAULT_HOSTNAME = "127.0.0.1";
@@ -753,20 +619,6 @@ async function createProjectControl(
       version: PROJECT_BRIEF_SOURCE_ANALYZER_VERSION,
     },
   });
-  const sysmlSourceAnalysis = new SysmlSourceAnalysisCaptureService({
-    sourceCaptures: new FileCaptureStore({
-      ...SYSML_SOURCE_CAPTURE_DESCRIPTOR,
-      directory: options.sysmlSourceCaptureDirectory ??
-        SYSML_SOURCE_CAPTURE_DESCRIPTOR.directory,
-    }),
-    analysisCaptures: sourceAnalysisCaptures,
-    frontend: new RenderedArchitectureSysmlAnalyzer(),
-  });
-  const sysonModelSeedCaptures = new FileCaptureStore({
-    ...SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-    directory: options.sysonModelSeedCaptureDirectory ??
-      DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY,
-  });
   const liveUpdates = new FileLiveThreadUpdateStore(
     options.liveThreadUpdateDirectory ?? DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY,
   );
@@ -780,333 +632,58 @@ async function createProjectControl(
   // until each executor has admitted its exact queued run and source bytes.
   const recordedAnalysisDirectory = options.recordedAnalysisDirectory ??
     DEFAULT_RECORDED_ANALYSIS_DIRECTORY;
-  const technicalCompilationDirectory =
-    `${recordedAnalysisDirectory}/technical-compilation`;
-  const technicalSourceAnalysisCaptures = new FileByteStore({
-    kind: "technical-source-analysis",
-    directory: `${technicalCompilationDirectory}/analyses`,
-    uriNamespace: "technical-source-analysis",
-    label: "Captured technical source analysis",
-  });
-  const technicalSourceAnalysis = createInitialTechnicalSourceAnalysisCaptureService({
-    sourceCaptures: new FileByteStore({
-      kind: "technical-source",
-      directory: `${technicalCompilationDirectory}/sources`,
-      uriNamespace: "technical-source",
-      label: "Captured technical source",
-    }),
-    analysisCaptures: technicalSourceAnalysisCaptures,
-  });
-  const technicalCompilationSources = new CaptureBackedTechnicalCompilationSourceReader(
-    technicalSourceAnalysis,
-  );
-  const technicalSourceCapture: ProjectTechnicalSourceCaptureUseCase = {
-    capture: async (command) => {
-      const reference = await technicalSourceAnalysis.capture(command);
-      const reopened = await technicalSourceAnalysis.reopen(reference);
-      return assembleTechnicalSourceCaptureReview(
-        reference,
-        reopened.sourceText,
-        reopened.analysis,
-      );
-    },
-  };
-  const ledDriverSourceCaptures = new FileByteStore({
-    kind: "led-driver-source",
-    directory: `${recordedAnalysisDirectory}/electrical/led-driver-source`,
-    uriNamespace: "led-driver-source",
-    label: "Captured LED-driver human source",
-  });
-  const ledDriverSourceStore = new LedDriverSourceCaptureService({
-    sourceCaptures: ledDriverSourceCaptures,
-  });
-  const ledDriverSourceCapture = new PrepareProjectLedDriverSourceCapture({
-    captures: ledDriverSourceStore,
-  });
-  const ledDriverSourceReview = new PrepareProjectLedDriverSourceReview({
-    captures: ledDriverSourceStore,
-  });
-  const architectureSysmlDirectory = `${recordedAnalysisDirectory}/architecture-sysml`;
-  const architectureSysmlSourceAnalysis =
-    createArchitectureSysmlSourceAnalysisCaptureService({
-      sourceCaptures: new FileByteStore({
-        kind: "architecture-sysml-source",
-        directory: `${architectureSysmlDirectory}/sources`,
-        uriNamespace: "architecture-sysml-source",
-        label: "Captured architecture SysML source",
-      }),
-      analysisCaptures: new FileByteStore({
-        kind: "architecture-sysml-source-analysis",
-        directory: `${architectureSysmlDirectory}/analyses`,
-        uriNamespace: "architecture-sysml-source-analysis",
-        label: "Captured architecture SysML analysis",
-      }),
-    });
-  const architectureSysmlSourceCapture: ProjectArchitectureSysmlSourceCaptureUseCase = {
-    capture: async (command) =>
-      structuredClone(
-        await architectureSysmlSourceAnalysis.capture(command),
-      ) as unknown as Readonly<Record<string, unknown>>,
-  };
-  const architectureSysmlPreview = new PreviewProjectArchitectureSysml({
-    frontend: new QualifiedArchitectureSysmlAnalyzer(),
-    captures: architectureSysmlSourceAnalysis,
-  });
-  const architectureSysmlSealBytes = new FileByteStore({
-    kind: "architecture-sysml-seal-capture",
-    directory: `${architectureSysmlDirectory}/seals`,
-    uriNamespace: "architecture-sysml-seal-capture",
-    label: "Sealed architecture SysML analysis",
-  });
-  const architectureSysmlSeals = {
-    save: (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-      canonicalText: string,
-    ) =>
-      architectureSysmlSealBytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      ),
-    read: async (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-    ) => {
-      const stored = await architectureSysmlSealBytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
-  };
-  const technicalCompilationDrafts = new FileTechnicalCompilationDraftStore(
-    new FileByteStore({
-      kind: "technical-compilation-draft",
-      directory: `${technicalCompilationDirectory}/drafts`,
-      uriNamespace: "technical-compilation-draft",
-      label: "Technical compilation review draft",
-    }),
-  );
-  const technicalCompilationProfiles =
-    new FixedTechnicalCompilationProfileCatalogProvider();
-  const technicalCompilationSealBytes = new FileByteStore({
-    kind: "technical-compilation-admission-capture",
-    directory: `${technicalCompilationDirectory}/seals`,
-    uriNamespace: "technical-compilation-admission-capture",
-    label: "Sealed technical compilation admission",
-  });
-  const technicalCompilationSeals = {
-    save: (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-      canonicalText: string,
-    ) =>
-      technicalCompilationSealBytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      ),
-    read: async (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-    ) => {
-      const stored = await technicalCompilationSealBytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
-  };
-  const technicalCompilationAdmissions =
-    new CaptureBackedTechnicalCompilationAdmissionReader({
-      // Review may need to traverse into the immutable configured baseline;
-      // the ordered reader has that complete lineage while remaining read-only.
-      snapshots: build123dThreadSnapshots,
-      captures: technicalCompilationSeals,
-    });
-  const build123dExecution = options.build123dExecution === undefined
-    ? undefined
-    : await (await import(
-      "./src/adapters/cad/isolated/build123d-execution-composition.ts"
-    )).createBuild123dExecutionComposition(options.build123dExecution, {
-      outputCasDirectory: `${recordedAnalysisDirectory}/build123d/outputs`,
-    });
-  const build123dExecutionReview = build123dExecution === undefined
-    ? undefined
-    : new PrepareProjectBuild123dExecutionReview({
-      admissions: technicalCompilationAdmissions,
-      profiles: build123dExecution.profiles,
-    });
-  const build123dExecutionCaptures = new FileBuild123dExecutionCaptureStore(
-    `${recordedAnalysisDirectory}/build123d/captures`,
-  );
-  const isolatedOutputPublications = build123dExecution?.execution?.publications ??
-    new FileIsolatedOutputCas(`${recordedAnalysisDirectory}/build123d/outputs`);
-  const isolatedGeometrySealBytes = new FileByteStore({
-    kind: "isolated-geometry-seal-capture",
-    directory: `${recordedAnalysisDirectory}/isolated-geometry-seals`,
-    uriNamespace: "isolated-geometry-seal-capture",
-    label: "Sealed isolated geometry document",
-  });
-  const isolatedGeometrySeals = {
-    save: (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-      canonicalText: string,
-    ) =>
-      isolatedGeometrySealBytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      ),
-    read: async (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-    ) => {
-      const stored = await isolatedGeometrySealBytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
-  };
-  const isolatedGeometrySealReview = new PrepareProjectIsolatedGeometrySealReview({
-    snapshots: build123dThreadSnapshots,
-    captures: build123dExecutionCaptures,
-  });
-  const modelicaIsolatedExecution = options.modelicaIsolatedExecution === undefined
-    ? undefined
-    : await (await import(
-      "./src/adapters/modelica/qualified-kit/execution-composition.ts"
-    )).createModelicaIsolatedExecutionComposition(
-      options.modelicaIsolatedExecution,
-      {
-        outputCasDirectory:
-          `${recordedAnalysisDirectory}/modelica/isolated-execution/outputs`,
-      },
-    );
-  const admittedModelicaExecution = options.admittedModelicaExecution === undefined
-    ? undefined
-    : await createAdmittedModelicaExecutionComposition(
-      options.admittedModelicaExecution,
-      {
-        outputCasDirectory: `${recordedAnalysisDirectory}/modelica/admitted/outputs`,
-      },
-    );
-  const admittedModelicaCaptureBytes = new FileByteStore({
-    kind: "modelica-admitted-execution-capture",
-    directory: `${recordedAnalysisDirectory}/modelica/admitted/captures`,
-    uriNamespace: "modelica-admitted-execution-capture",
-    label: "Admitted Modelica execution capture",
-  });
-  const admittedModelicaCaptures = {
-    save: async (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-      canonicalText: string,
-    ) => {
-      const stored = await admittedModelicaCaptureBytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      );
-      return { uri: stored.uri, fingerprint: stored.fingerprint };
-    },
-    read: async (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-    ) => {
-      const stored = await admittedModelicaCaptureBytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
-    uriFor: (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-    ) => admittedModelicaCaptureBytes.uriFor(fingerprint),
-  };
-  const modelicaQualificationAuthority = modelicaIsolatedExecution === undefined
-    ? undefined
-    : new PublicationBackedModelicaMicrosandboxQualificationAuthority({
-      store: new FileModelicaMicrosandboxQualificationStore(
-        `${LOCAL_MODELICA_QUALIFICATION_ROOT}/captures`,
-      ),
-      publications: new FileIsolatedOutputCas(
-        `${LOCAL_MODELICA_QUALIFICATION_ROOT}/outputs`,
-      ),
-      pinnedCaptureFingerprint: LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT,
-    });
-  const modelicaExecutionCaptures = modelicaIsolatedExecution === undefined
-    ? undefined
-    : new FileModelicaIsolatedExecutionCaptureStore(
-      `${recordedAnalysisDirectory}/modelica/isolated-execution/captures`,
-    );
-  const calculixIsolatedExecution = options.calculixIsolatedExecution === undefined
-    ? undefined
-    : await (await import(
-      "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts"
-    )).createCalculixIsolatedExecutionComposition(
-      options.calculixIsolatedExecution,
-      {
-        outputCasDirectory:
-          `${recordedAnalysisDirectory}/calculix/isolated-execution/outputs`,
-        attemptDirectory:
-          `${recordedAnalysisDirectory}/calculix/isolated-execution/attempts`,
-        evidenceDirectory:
-          `${recordedAnalysisDirectory}/calculix/isolated-execution/evidence`,
-        leaseDirectory:
-          `${recordedAnalysisDirectory}/calculix/isolated-execution/leases`,
-        durabilitySyncBoundary: recordedAnalysisDirectory,
-      },
-    );
-  const calculixLocalProfile = calculixIsolatedExecution === undefined
-    ? undefined
-    : await calculixIsolatedExecution.profiles.initial();
-  // One historical proof CAS instance is deliberately shared by the seal,
-  // isolated @3 run and ROP2 reader. Its descriptor owns the pre-existing
-  // on-disk location; moving it beneath the recorded-analysis root would make
-  // already sealed proof artifacts invisible to the isolated executor.
-  const feaProofCaptures = new FileCaptureStore(
-    FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
-  );
-  // The ROP authority audit reopens this optional sidecar from the same
-  // immutable store used by the proof-seal executor. The namespace remains a
-  // closed, code-owned member of RecordedAnalysisCasReader.
-  const sensitivityCatalogOfferCaptures = new FileCaptureStore(
-    SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
-  );
-  // Requirements are likewise a historical shared CAS. Model authoring, the
-  // proof-case seal, the isolated @3 run and the ROP2 reader must resolve the
-  // same immutable bytes, including when a deployment overrides only their
-  // storage directory.
-  const requirementsCaptures = new FileCaptureStore({
-    ...REQUIREMENTS_CAPTURE_DESCRIPTOR,
-    directory: options.requirementsCaptureDirectory ??
+
+  const architectureFoundation = createArchitectureFoundation({
+    recordedAnalysisDirectory,
+    sourceAnalysisCaptures,
+    sysmlSourceCaptureDirectory: options.sysmlSourceCaptureDirectory ??
+      SYSML_SOURCE_CAPTURE_DESCRIPTOR.directory,
+    sysonModelSeedCaptureDirectory: options.sysonModelSeedCaptureDirectory ??
+      DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY,
+    architectureCaptureDirectory: options.architectureCaptureDirectory ??
+      DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
+    requirementsCaptureDirectory: options.requirementsCaptureDirectory ??
       DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
   });
-  const recordedAnalysisCas = new RecordedAnalysisCasReader({
-    stores: [
-      {
-        namespace: "fea-proof-case-capture",
-        storage: "text",
-        store: feaProofCaptures,
-      },
-      {
-        namespace: "sensitivity-catalog-offer-capture",
-        storage: "text",
-        store: sensitivityCatalogOfferCaptures,
-      },
-      {
-        namespace: "requirements-capture",
-        storage: "text",
-        store: requirementsCaptures,
-      },
-    ],
+  const compilationFoundation = createTechnicalCompilationFoundation({
+    recordedAnalysisDirectory,
+    snapshots: build123dThreadSnapshots,
   });
-  const recordedPlanResolver = new ResolvedOperationPlanResolver({
+
+  const build123dCapability = await createBuild123dCapability({
+    build123dExecution: options.build123dExecution,
+    recordedAnalysisDirectory,
+    admissions: compilationFoundation.technicalCompilationAdmissions,
+    snapshots: build123dThreadSnapshots,
+  });
+  const qualifiedModelica = await createQualifiedModelicaCapability({
+    modelicaIsolatedExecution: options.modelicaIsolatedExecution,
+    recordedAnalysisDirectory,
+    qualificationRoot: LOCAL_MODELICA_QUALIFICATION_ROOT,
+    qualificationCaptureFingerprint: LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT,
+  });
+  const admittedModelica = await createAdmittedModelicaCapability({
+    admittedModelicaExecution: options.admittedModelicaExecution,
+    recordedAnalysisDirectory,
+  });
+  const calculixCapability = await createCalculixCapability({
+    calculixIsolatedExecution: options.calculixIsolatedExecution,
+    recordedAnalysisDirectory,
+  });
+
+  const feaFoundation = createFeaFoundation();
+  const recordedPlans = createRecordedOperationPlanComposition({
     snapshots: threadSnapshots,
-    artifacts: recordedAnalysisCas,
-    admissions: technicalCompilationAdmissions,
-    stepAssets: new FileCanonicalAssetReader({
-      directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
-    }),
-    ...(calculixLocalProfile === undefined
-      ? {}
-      : { calculix: { localProfile: calculixLocalProfile } }),
+    feaProofCaptures: feaFoundation.feaProofCaptures,
+    sensitivityCatalogOfferCaptures:
+      feaFoundation.sensitivityCatalogOfferCaptures,
+    requirementsCaptures: architectureFoundation.requirementsCaptures,
+    admissions: compilationFoundation.technicalCompilationAdmissions,
+    calculixLocalProfile: calculixCapability.localProfile,
+    recordedAnalysisDirectory,
+    canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
   });
-  const recordedRunPlans = new CaptureBackedRunPlanSealer({
-    store: new FileByteStore({
-      ...RESOLVED_OPERATION_PLAN_STORE_DESCRIPTOR,
-      directory: `${recordedAnalysisDirectory}/resolved-operation-plans`,
-    }),
-    resolver: recordedPlanResolver,
-  });
+
   const activeProjectDirectory = options.activeProjectDirectory ??
     DEFAULT_ACTIVE_PROJECT_DIRECTORY;
   const runtime = await createEngineeringProjectCommandRuntime({
@@ -1116,7 +693,7 @@ async function createProjectControl(
     evidenceSnapshots: threadSnapshots,
     planning: {
       operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY,
-      runPlanSealer: recordedRunPlans,
+      runPlanSealer: recordedPlans.recordedRunPlans,
     },
     initialEvidenceValidator: new ExactInitialBaselineEvidenceValidator(
       activeThreadSnapshots,
@@ -1128,12 +705,118 @@ async function createProjectControl(
       },
     ),
   });
-  const briefRequirementsReview = new PrepareProjectBriefRequirementsReview({
+
+  const architectureProject = createArchitectureProject({
     projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    lease,
+    liveUpdates,
+    sysonMcpUrl,
+    foundation: architectureFoundation,
+    sysonModelSeedAttemptDirectory: options.sysonModelSeedAttemptDirectory ??
+      DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY,
+    architectureAttemptDirectory: options.architectureAttemptDirectory ??
+      DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY,
+    partDefinitionsCaptureDirectory: options.partDefinitionsCaptureDirectory ??
+      DEFAULT_PART_DEFINITIONS_CAPTURE_DIRECTORY,
+    partDefinitionsPublicationDirectory:
+      options.partDefinitionsPublicationDirectory ??
+        DEFAULT_PART_DEFINITIONS_PUBLICATION_DIRECTORY,
+    requirementsAttemptDirectory: options.requirementsAttemptDirectory ??
+      DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY,
   });
-  const briefArchitectureReview = new PrepareProjectBriefArchitectureReview({
+  const compilationProject = createTechnicalCompilationProject({
     projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    lease,
+    foundation: compilationFoundation,
+    architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+    seedCaptures: architectureFoundation.sysonModelSeedCaptures,
+    requirementsCaptures: architectureFoundation.requirementsCaptures,
   });
+  const thermalJoin = createModelicaThermalMethodSheetJoin({
+    recordedAnalysisDirectory,
+    snapshots: activeThreadSnapshots,
+  });
+  const technicalCompilationPreview = createTechnicalCompilationPreview({
+    foundation: compilationFoundation,
+    basisResolver: compilationProject.technicalCompilationBasis,
+    projects: runtime.projects,
+    methodSheets: thermalJoin.thermalMethodSheetCompilationJoin,
+  });
+
+  const cadProject = createCadProject({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    executionSnapshots: build123dThreadSnapshots,
+    writeSnapshots: activeThreadSnapshots,
+    lease,
+    capability: build123dCapability,
+    admissions: compilationFoundation.technicalCompilationAdmissions,
+    recordedAnalysisDirectory,
+    sourceAnalysisCaptures,
+    architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+    sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
+    geometryDraftCaptureDirectory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+    geometryCaptureDirectory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
+  });
+  const modelicaProject = createModelicaProject({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    executionSnapshots: build123dThreadSnapshots,
+    planSnapshots: threadSnapshots,
+    lease,
+    recordedAnalysisDirectory,
+    sysonMcpUrl,
+    admissions: compilationFoundation.technicalCompilationAdmissions,
+    basisResolver: compilationProject.technicalCompilationBasis,
+    technicalSourceAnalysisCaptures:
+      compilationFoundation.technicalSourceAnalysisCaptures,
+    thermal: thermalJoin,
+    qualified: qualifiedModelica,
+    admitted: admittedModelica,
+  });
+  const feaProject = createFeaProject({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    lease,
+    foundation: feaFoundation,
+    requirementsCaptures: architectureFoundation.requirementsCaptures,
+    seedCaptures: architectureFoundation.sysonModelSeedCaptures,
+    admissions: compilationFoundation.technicalCompilationAdmissions,
+    recordedPlanResolver: recordedPlans.recordedPlanResolver,
+    recordedRunPlans: recordedPlans.recordedRunPlans,
+    recordedAnalysisCas: recordedPlans.recordedAnalysisCas,
+    calculix: calculixCapability,
+    sysonMcpUrl,
+    recordedAnalysisDirectory,
+    canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+  });
+  const sensitivity = createSensitivityComposition({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    lease,
+    admissions: compilationFoundation.technicalCompilationAdmissions,
+    technicalCompilationPreview,
+    technicalSourceCapture: compilationFoundation.technicalSourceCapture,
+    feaProofCaptures: feaFoundation.feaProofCaptures,
+    sensitivityCatalogOfferCaptures:
+      feaFoundation.sensitivityCatalogOfferCaptures,
+    sysonModelSeedCaptures: architectureFoundation.sysonModelSeedCaptures,
+    build123dExecution: build123dCapability.build123dExecution,
+    calculixMcpUrl,
+    sysonMcpUrl,
+    sensitivityStepCacheDirectory: DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY,
+  });
+  const electrical = createLedDriverSourceComposition({
+    recordedAnalysisDirectory,
+  });
+
   const baseline = new ApprovedBriefBaselineRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1146,356 +829,12 @@ async function createProjectControl(
     lease,
     liveUpdates,
   });
-  const sysonModelSeed = sysonMcpUrl
-    ? new SysonModelSeedRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      captures: sysonModelSeedCaptures,
-      attempts: new FileSysonModelSeedAttemptStore(
-        options.sysonModelSeedAttemptDirectory ??
-          DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY,
-      ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-      liveUpdates,
-    })
-    : undefined;
-  const genericArchitectureCaptures = new FileCaptureStore({
-    ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
-    directory: options.architectureCaptureDirectory ??
-      DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
-  });
-  const technicalCompilationBasis = new CaptureBackedTechnicalCompilationBasisResolver({
-    projects: runtime.projects,
-    snapshots: activeThreadSnapshots,
-    architectureCaptures: genericArchitectureCaptures,
-    seedCaptures: sysonModelSeedCaptures,
-    requirementsCaptures,
-  });
-  const thermalMethodSheets = new FileThermalMethodSheetStore(
-    new FileCaptureStore({
-      ...THERMAL_METHOD_SHEET_CAPTURE_DESCRIPTOR,
-      directory: `${recordedAnalysisDirectory}/modelica/thermal-method-sheet-captures`,
-    }),
-  );
-  const thermalMethodSheetSealBytes = new FileByteStore({
-    kind: "modelica-thermal-method-sheet-seal-capture",
-    directory: `${recordedAnalysisDirectory}/modelica/thermal-method-sheet-seals`,
-    uriNamespace: "modelica-thermal-method-sheet-seal-capture",
-    label: "Sealed Modelica thermal method sheet",
-  });
-  const thermalMethodSheetSeals = {
-    save: (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-      canonicalText: string,
-    ) =>
-      thermalMethodSheetSealBytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      ),
-    read: async (
-      fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
-    ) => {
-      const stored = await thermalMethodSheetSealBytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
-  };
-  const thermalMethodSheetCompilationJoin =
-    new CaptureBackedThermalMethodSheetCompilationJoin({
-      snapshots: activeThreadSnapshots,
-      captures: thermalMethodSheetSeals,
-      sheets: thermalMethodSheets,
-    });
-  const technicalCompilationPreview = new PreviewProjectTechnicalCompilation({
-    basisResolver: technicalCompilationBasis,
-    sourceReader: technicalCompilationSources,
-    profileCatalog: technicalCompilationProfiles,
-    draftStore: technicalCompilationDrafts,
-    projects: runtime.projects,
-    methodSheets: thermalMethodSheetCompilationJoin,
-  });
-  const compileSealAdmission = new CompileSealAdmissionRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    basisResolver: technicalCompilationBasis,
-    drafts: technicalCompilationDrafts,
-    sources: technicalCompilationSources,
-    profiles: technicalCompilationProfiles,
-    captures: technicalCompilationSeals,
-    lease,
-  });
-  const modelSealArchitectureSysml = new ModelSealArchitectureSysmlRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    sources: architectureSysmlSourceAnalysis,
-    captures: architectureSysmlSeals,
-    lease,
-  });
-  const thermalMethodSheetSourceCaptures =
-    new FileThermalMethodSheetSourceCaptureReader(
-      technicalSourceAnalysisCaptures,
-    );
-  const thermalMethodSheetSealReview = new PrepareProjectThermalMethodSheetSealReview({
-    sheets: thermalMethodSheets,
-    sourceCaptures: thermalMethodSheetSourceCaptures,
-    basisResolver: technicalCompilationBasis,
-  });
-  const verifySealModelicaThermalMethodSheet =
-    new VerifySealModelicaThermalMethodSheetRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      sheets: thermalMethodSheets,
-      sourceCaptures: thermalMethodSheetSourceCaptures,
-      basisResolver: technicalCompilationBasis,
-      captures: thermalMethodSheetSeals,
-      lease,
-    });
-  const admittedObservationEvidence = new FileAdmittedObservationEvidenceReader(
-    new FileByteStore({
-      kind: "isolated-output",
-      directory: `${recordedAnalysisDirectory}/modelica/admitted/outputs`,
-      uriNamespace: "isolated-output",
-      label: "Admitted Modelica isolated output",
-    }),
-  );
-  const admittedObservationEvaluationCaptures =
-    new FileAdmittedObservationEvaluationCaptureStore(
-      new FileCaptureStore({
-        ...ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR,
-        directory:
-          `${recordedAnalysisDirectory}/modelica/admitted-observation-evaluation-captures`,
-      }),
-    );
-  const admittedModelicaEvaluationReview =
-    new PrepareProjectAdmittedModelicaEvaluationReview({
-      projects: runtime.projects,
-      snapshots: activeThreadSnapshots,
-      methodSheets: thermalMethodSheetCompilationJoin,
-      evidence: admittedObservationEvidence,
-    });
-  const verifyEvaluateAdmittedModelicaObservations = sysonMcpUrl
-    ? new VerifyEvaluateAdmittedModelicaObservationsRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      sheets: thermalMethodSheets,
-      evidence: admittedObservationEvidence,
-      captures: admittedObservationEvaluationCaptures,
-      sheetCaptures: thermalMethodSheetSeals,
-      attempts: new FileAdmittedObservationEvaluationAttemptStore(
-        `${recordedAnalysisDirectory}/modelica/admitted-observation-evaluation-attempts`,
-      ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-    })
-    : undefined;
-  const decideAdmittedModelicaEvaluation =
-    new DecideAdmittedModelicaEvaluationRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      sheets: thermalMethodSheets,
-      evaluationCaptures: admittedObservationEvaluationCaptures,
-      closeoutCaptures: new FileCaptureStore({
-        ...ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-        directory:
-          `${recordedAnalysisDirectory}/modelica/admitted-observation-evaluation-closeout-captures`,
-      }),
-      lease,
-    });
-  const designExecuteBuild123d = build123dExecution?.execution === undefined
-    ? undefined
-    : new DesignExecuteBuild123dRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: build123dThreadSnapshots,
-      admissions: technicalCompilationAdmissions,
-      profiles: build123dExecution.profiles,
-      runner: build123dExecution.execution.runner,
-      recovery: build123dExecution.execution.recovery,
-      publications: build123dExecution.execution.publications,
-      attempts: new FileBuild123dExecutionAttemptStore(
-        `${recordedAnalysisDirectory}/build123d/attempts`,
-      ),
-      drafts: new FileBuild123dExecutionDraftStore(
-        `${recordedAnalysisDirectory}/build123d/drafts`,
-      ),
-      captures: build123dExecutionCaptures,
-      lease,
-    });
-  const designSealIsolatedGeometry = new DesignSealIsolatedGeometryRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: build123dThreadSnapshots,
-    executionCaptures: build123dExecutionCaptures,
-    publications: isolatedOutputPublications,
-    captures: isolatedGeometrySeals,
-    lease,
-  });
-  const modelicaQualifiedKitRunReview = modelicaIsolatedExecution === undefined ||
-      modelicaQualificationAuthority === undefined
-    ? undefined
-    : new PrepareProjectModelicaQualifiedKitRunReview({
-      basisAuthority: new ProjectThreadModelicaQualifiedKitReviewBasisAuthority({
-        projects: runtime.projects,
-        snapshots: threadSnapshots,
-      }),
-      profiles: modelicaIsolatedExecution.profiles,
-      qualifications: modelicaQualificationAuthority,
-      bundleFactory: new CodeOwnedModelicaQualifiedKitBundleFactory(),
-    });
-  const simulateRunQualifiedModelicaKit =
-    modelicaIsolatedExecution?.execution === undefined ||
-      modelicaQualificationAuthority === undefined ||
-      modelicaExecutionCaptures === undefined ||
-      modelicaQualifiedKitRunReview === undefined
-      ? undefined
-      : new SimulateRunQualifiedModelicaKitRunExecutor({
-        projects: runtime.projects,
-        commands: runtime.commands,
-        snapshots: build123dThreadSnapshots,
-        review: modelicaQualifiedKitRunReview,
-        execution: new ExecuteIsolatedModelicaRun({
-          profiles: modelicaIsolatedExecution.profiles,
-          qualifications: modelicaQualificationAuthority,
-          lease,
-          runner: modelicaIsolatedExecution.execution.runner,
-          recovery: modelicaIsolatedExecution.execution.recovery,
-          publications: modelicaIsolatedExecution.execution.publications,
-          attempts: new FileModelicaIsolatedExecutionAttemptStore(
-            `${recordedAnalysisDirectory}/modelica/isolated-execution/attempts`,
-          ),
-          captures: modelicaExecutionCaptures,
-        }),
-        captures: modelicaExecutionCaptures,
-        lease,
-      });
-  const exactAdmittedModelicaRunReview = admittedModelicaExecution === undefined
-    ? undefined
-    : new PrepareProjectAdmittedModelicaRunReview({
-      admissions: technicalCompilationAdmissions,
-      profiles: admittedModelicaExecution.profiles,
-    });
-  const admittedModelicaRunReview = exactAdmittedModelicaRunReview === undefined
-    ? undefined
-    : new ResolveProjectAdmittedModelicaRunReview({
-      projects: runtime.projects,
-      snapshots: build123dThreadSnapshots,
-      exactReview: exactAdmittedModelicaRunReview,
-    });
-  const simulateRunAdmittedModelica =
-    admittedModelicaExecution?.execution === undefined ||
-      admittedModelicaRunReview === undefined
-      ? undefined
-      : new SimulateRunAdmittedModelicaRunExecutor({
-        projects: runtime.projects,
-        commands: runtime.commands,
-        snapshots: build123dThreadSnapshots,
-        admissions: technicalCompilationAdmissions,
-        profiles: admittedModelicaExecution.profiles,
-        runner: admittedModelicaExecution.execution.runner,
-        recovery: admittedModelicaExecution.execution.recovery,
-        publications: admittedModelicaExecution.execution.publications,
-        attempts: new FileAdmittedModelicaExecutionAttemptStore(
-          `${recordedAnalysisDirectory}/modelica/admitted/attempts`,
-        ),
-        captures: admittedModelicaCaptures,
-        lease,
-      });
-  const genericModelWriteArchitecture = sysonMcpUrl
-    ? new ModelWriteArchitectureRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      seedCaptures: sysonModelSeedCaptures,
-      captures: genericArchitectureCaptures,
-      sysmlSourceAnalysis,
-      attempts: new FileArchitectureAttemptStore(
-        options.architectureAttemptDirectory ?? DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY,
-      ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-      liveUpdates,
-    })
-    : undefined;
-  const genericModelCapturePartDefinitions = sysonMcpUrl
-    ? new ModelCapturePartDefinitionsRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      architectureCaptures: genericArchitectureCaptures,
-      seedCaptures: sysonModelSeedCaptures,
-      captures: new FileCaptureStore({
-        ...PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
-        directory: options.partDefinitionsCaptureDirectory ??
-          DEFAULT_PART_DEFINITIONS_CAPTURE_DIRECTORY,
-      }),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-      publications: new FilePartDefinitionsPublicationStore(
-        options.partDefinitionsPublicationDirectory ??
-          DEFAULT_PART_DEFINITIONS_PUBLICATION_DIRECTORY,
-      ),
-    })
-    : undefined;
-  /**
-   * The write-geometry executor promotes exact bytes from a human-signed draft
-   * into the evidence thread.  It makes no provider calls — the draft and its
-   * binary assets must already be present in the draft stores before the run.
-   */
-  const geometrySourceAnalysis = {
-    sourceCaptures: new FileCaptureStore(GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR),
-    analysisCaptures: sourceAnalysisCaptures,
-    frontend: new PythonCadSourceAnalyzer(),
-  } as const;
-  const genericDesignWriteGeometry = new DesignWriteGeometryRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    architectureCaptures: genericArchitectureCaptures,
-    sysmlSourceAnalysis,
-    geometryDraftCaptures: new FileCaptureStore({
-      ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
-      directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
-    }),
-    geometrySourceCaptures: geometrySourceAnalysis.sourceCaptures,
-    sourceAnalysisCaptures: geometrySourceAnalysis.analysisCaptures,
-    geometryCaptures: new FileCaptureStore({
-      ...GEOMETRY_CAPTURE_DESCRIPTOR,
-      directory: DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
-    }),
-    lease,
-    now: () => new Date().toISOString(),
-  });
-  const genericModelWriteRequirements = sysonMcpUrl
-    ? new ModelWriteRequirementsRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      seedCaptures: sysonModelSeedCaptures,
-      architectureCaptures: genericArchitectureCaptures,
-      sysmlSourceAnalysis,
-      captures: requirementsCaptures,
-      attempts: new FileRequirementsAttemptStore(
-        options.requirementsAttemptDirectory ?? DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY,
-      ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-      liveUpdates,
-    })
-    : undefined;
   const inspectionDroneV4Architecture = sysonMcpUrl
     ? new InspectionDroneV4ArchitectureRunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
       snapshots: activeThreadSnapshots,
-      seedCaptures: sysonModelSeedCaptures,
+      seedCaptures: architectureFoundation.sysonModelSeedCaptures,
       captures: new FileCaptureStore({
         ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
         directory: options.inspectionDroneV4ArchitectureCaptureDirectory ??
@@ -1545,144 +884,6 @@ async function createProjectControl(
     projects: runtime.projects,
     commands: runtime.commands,
   });
-  // FEA proof-case seal calls no provider — always available.
-  const geometryCaptures = new FileCaptureStore(GEOMETRY_CAPTURE_DESCRIPTOR);
-  const proofCaseCatalogReader = new FileCataloguedMechanicalProofCaseReader();
-  const sensitivityStudyCaseCatalogReader =
-    new FileCataloguedSensitivityStudyCaseReader();
-  const proofSealRequirementsReviewer =
-    new CaptureBackedFeaProofSealRequirementsReviewer({
-      requirementsCaptures,
-      seedCaptures: sysonModelSeedCaptures,
-    });
-  const feaProofStepAssets = new FileCanonicalAssetReader({
-    directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
-  });
-  const feaProofSealReview = new PrepareProjectFeaProofSealReview({
-    snapshots: activeThreadSnapshots,
-    projects: runtime.projects,
-    catalogReader: proofCaseCatalogReader,
-    requirementsReviewer: proofSealRequirementsReviewer,
-    geometryCaptures,
-    stepAssets: feaProofStepAssets,
-    admissions: technicalCompilationAdmissions,
-  });
-  const feaIsolatedRunReview = new PrepareProjectFeaIsolatedRunReview({
-    snapshots: activeThreadSnapshots,
-    admissionReviewer: recordedPlanResolver,
-    projects: runtime.projects,
-  });
-  const genericVerifySealProofCase = new VerifySealProofCaseRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    proofCaseCaptures: feaProofCaptures,
-    sensitivityCatalogOffers: sensitivityCatalogOfferCaptures,
-    admissions: technicalCompilationAdmissions,
-    geometryCaptures,
-    requirementsCaptures,
-    seedCaptures: sysonModelSeedCaptures,
-    canonicalAssetReader: feaProofStepAssets,
-    catalog: proofCaseCatalogReader,
-    lease,
-  });
-  const sensitivityCaseCaptures = new FileCaptureStore(
-    SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
-  );
-  const sensitivityStudyCaptures = new FileCaptureStore(
-    SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
-  );
-  const sensitivityEdgesCaptures = new FileCaptureStore(
-    SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
-  );
-  const sensitivityBaseEvaluationCaptures = new FileCaptureStore(
-    SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
-  );
-  const vectorCorrectionCaptures = new FileCaptureStore(
-    CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
-  );
-  const correctedSourceCaptures = new FileCaptureStore(
-    CORRECTED_SOURCE_CAPTURE_DESCRIPTOR,
-  );
-  const vectorCorrectionReview = new PrepareProjectVectorCorrectionReview({
-    snapshots: activeThreadSnapshots,
-    studyCaptures: sensitivityStudyCaptures,
-  });
-  const sensitivityBaseEvaluationReview =
-    new PrepareProjectSensitivityBaseEvaluationReview({
-      snapshots: activeThreadSnapshots,
-      studyCaptures: sensitivityStudyCaptures,
-    });
-  const sensitivityStudySealReview = new PrepareProjectSensitivityStudySealReview({
-    snapshots: activeThreadSnapshots,
-    projects: runtime.projects,
-    catalogReader: sensitivityStudyCaseCatalogReader,
-    admissions: technicalCompilationAdmissions,
-    catalogOffers: sensitivityCatalogOfferCaptures,
-    proofCaptures: feaProofCaptures,
-  });
-  const correctedAdmissionReview = new PrepareProjectCorrectedAdmissionReview({
-    snapshots: activeThreadSnapshots,
-    captures: correctedSourceCaptures,
-    admissions: technicalCompilationAdmissions,
-    preview: technicalCompilationPreview,
-  });
-  const designApplyVectorCorrection = new DesignApplyVectorCorrectionRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    studyCaptures: sensitivityStudyCaptures,
-    captures: vectorCorrectionCaptures,
-    lease,
-  });
-  const compileCaptureCorrectedSource = new CompileCaptureCorrectedSourceRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    corrections: vectorCorrectionCaptures,
-    studyCaptures: sensitivityStudyCaptures,
-    admissions: technicalCompilationAdmissions,
-    sourceCaptures: technicalSourceCapture,
-    captures: correctedSourceCaptures,
-    lease,
-    profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-  });
-  const analyzeSealSensitivityStudy = new AnalyzeSealSensitivityStudyRunExecutor({
-    projects: runtime.projects,
-    commands: runtime.commands,
-    snapshots: activeThreadSnapshots,
-    admissions: technicalCompilationAdmissions,
-    captures: sensitivityCaseCaptures,
-    catalogOffers: sensitivityCatalogOfferCaptures,
-    proofCaptures: feaProofCaptures,
-    catalog: sensitivityStudyCaseCatalogReader,
-    lease,
-  });
-  const analyzeRunFeaSensitivity =
-    build123dExecution?.execution !== undefined && calculixMcpUrl
-      ? new AnalyzeRunFeaSensitivityRunExecutor({
-        projects: runtime.projects,
-        commands: runtime.commands,
-        snapshots: activeThreadSnapshots,
-        caseCaptures: sensitivityCaseCaptures,
-        studyCaptures: sensitivityStudyCaptures,
-        admissions: technicalCompilationAdmissions,
-        profiles: build123dExecution.profiles,
-        runner: build123dExecution.execution.runner,
-        stager: new IsolatedStepSolverStager(
-          DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY,
-          new DockerVolumeAssetStager({
-            service: "mcp-calculix",
-            containerDirectory: "/inputs",
-          }),
-        ),
-        solver: new McpCalculixSensitivitySolver(
-          new HttpMcpToolClient({ mcpUrl: calculixMcpUrl, timeoutMs: 180_000 }),
-        ),
-        attempts: new FileFeaSensitivityAttemptStore(),
-        lease,
-      })
-      : undefined;
   const printabilityCaseCaptures = new FileCaptureStore({
     ...PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
     directory: options.printabilityCaseCaptureDirectory ??
@@ -1793,79 +994,6 @@ async function createProjectControl(
       lease,
     })
     : undefined;
-  const verifyEvaluateSensitivityBase = sysonMcpUrl
-    ? new VerifyEvaluateSensitivityBaseRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      studyCaptures: sensitivityStudyCaptures,
-      captures: sensitivityBaseEvaluationCaptures,
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-    })
-    : undefined;
-  const modelWriteSensitivityEdges = sysonMcpUrl
-    ? new ModelWriteSensitivityEdgesRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      studyCaptures: sensitivityStudyCaptures,
-      edgeCaptures: sensitivityEdgesCaptures,
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      resolveSysonContext: async (snapshot) => {
-        if (!findArchitectureArtifact(snapshot)) {
-          throw new Error("No architecture artifact is present on the Thread basis.");
-        }
-        const seed = snapshot.artifacts.find((artifact) =>
-          artifact.kind === "sysml-model" &&
-          artifact.uri?.startsWith("casys://syson-model-seed-capture/sha256/") &&
-          artifact.producer.tool === "syson_model_create"
-        );
-        if (!seed) {
-          throw new Error("No SysON seed artifact is present on the Thread basis.");
-        }
-        const text = await sysonModelSeedCaptures.read(seed.fingerprint);
-        if (!text) {
-          throw new Error("The SysON seed capture is not readable.");
-        }
-        const parsed = parseSysonModelSeedCapture(JSON.parse(text));
-        return {
-          editingContextId: parsed.normalizedResults.project.editingContextId,
-          parentElementId: parsed.normalizedResults.rootPackage.id,
-        };
-      },
-      attempts: new FileSensitivityEdgesAttemptStore(),
-      lease,
-    })
-    : undefined;
-  const isolatedCalculixRun = sysonMcpUrl && calculixIsolatedExecution?.execution
-    ? new VerifyRunFeaStaticProofV3RunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      plans: recordedRunPlans,
-      artifacts: recordedAnalysisCas,
-      canonicalAssets: new FileCanonicalAssetReader({
-        directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
-      }),
-      profiles: calculixIsolatedExecution.profiles,
-      executeIsolated: calculixIsolatedExecution.execution.execute,
-      executionEvidence: calculixIsolatedExecution.execution.evidence,
-      sysonEvaluationCaptureStore: new FileByteStore({
-        kind: "calculix-isolated-syson-evaluation",
-        directory:
-          `${recordedAnalysisDirectory}/calculix/isolated-execution/syson-evaluations`,
-        uriNamespace: "calculix-isolated-syson-evaluation",
-        label: "Isolated CalculiX SysON evaluation",
-      }),
-      attempts: new FileCalculixIsolatedProductAttemptStore(
-        `${recordedAnalysisDirectory}/calculix/isolated-execution/product-attempts`,
-        recordedAnalysisDirectory,
-      ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-    })
-    : undefined;
   return {
     brief: {
       projects: runtime.projects,
@@ -1878,93 +1006,91 @@ async function createProjectControl(
       // The same CAS-backed object seals at queue time and reads through the
       // agent-visible plan inspection tool. No alternate plan authority is
       // composed for execution or control-plane reads.
-      runPlanReader: recordedRunPlans,
-      technicalSourceCapture,
+      runPlanReader: recordedPlans.recordedRunPlans,
+      technicalSourceCapture: compilationFoundation.technicalSourceCapture,
       technicalCompilationPreview,
-      architectureSysmlSourceCapture,
-      architectureSysmlPreview,
-      briefArchitectureReview,
-      briefRequirementsReview,
-      feaProofSealReview,
-      feaIsolatedRunReview,
-      sensitivityStudySealReview,
-      build123dExecutionReview,
-      isolatedGeometrySealReview,
-      vectorCorrectionReview,
-      sensitivityBaseEvaluationReview,
-      correctedAdmissionReview,
-      modelicaQualifiedKitRunReview,
-      admittedModelicaRunReview,
-      admittedModelicaEvaluationReview,
-      thermalMethodSheetSealReview,
-      ledDriverSourceCapture,
-      ledDriverSourceReview,
+      architectureSysmlSourceCapture:
+        architectureFoundation.architectureSysmlSourceCapture,
+      architectureSysmlPreview: architectureFoundation.architectureSysmlPreview,
+      briefArchitectureReview: architectureProject.briefArchitectureReview,
+      briefRequirementsReview: architectureProject.briefRequirementsReview,
+      feaProofSealReview: feaProject.feaProofSealReview,
+      feaIsolatedRunReview: feaProject.feaIsolatedRunReview,
+      sensitivityStudySealReview: sensitivity.sensitivityStudySealReview,
+      build123dExecutionReview: build123dCapability.build123dExecutionReview,
+      isolatedGeometrySealReview: build123dCapability.isolatedGeometrySealReview,
+      vectorCorrectionReview: sensitivity.vectorCorrectionReview,
+      sensitivityBaseEvaluationReview: sensitivity.sensitivityBaseEvaluationReview,
+      correctedAdmissionReview: sensitivity.correctedAdmissionReview,
+      modelicaQualifiedKitRunReview: modelicaProject.modelicaQualifiedKitRunReview,
+      admittedModelicaRunReview: modelicaProject.admittedModelicaRunReview,
+      admittedModelicaEvaluationReview:
+        modelicaProject.admittedModelicaEvaluationReview,
+      thermalMethodSheetSealReview: modelicaProject.thermalMethodSheetSealReview,
+      ledDriverSourceCapture: electrical.ledDriverSourceCapture,
+      ledDriverSourceReview: electrical.ledDriverSourceReview,
       reviewIntents: new FileProjectReviewIntentStore(
         options.projectReviewIntentDirectory ??
           DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY,
       ),
-      // WHY THE SANDBOX INSTANCE AND NOT THE TRUSTED ONE — admitted export
-      // reopens sealed CAD bytes. A fingerprint proves identity after sealing,
-      // never causal provenance. The sandbox owns a private export volume, so
-      // those bytes never touch evidence. No sandbox entry ⇒ no admitted-export
-      // tool. It is not gated on --local-execution.
       ...composePrivateBuild123dGeometrySurfaces(
         build123dSandboxMcpUrl,
-        geometrySourceAnalysis,
-        technicalCompilationAdmissions,
+        cadProject.geometrySourceAnalysis,
+        compilationFoundation.technicalCompilationAdmissions,
         threadSnapshots,
-        genericArchitectureCaptures,
+        architectureFoundation.genericArchitectureCaptures,
+        DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
       ),
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,
         baseline,
-        sysonModelSeed,
+        sysonModelSeed: architectureProject.sysonModelSeed,
         additional: [
           {
             operation: COMPILE_SEAL_ADMISSION_OPERATION,
-            executor: compileSealAdmission,
+            executor: compilationProject.compileSealAdmission,
           },
           {
             operation: MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
-            executor: modelSealArchitectureSysml,
+            executor: architectureProject.modelSealArchitectureSysml,
           },
           {
             operation: DESIGN_EXECUTE_BUILD123D_OPERATION,
-            executor: designExecuteBuild123d,
+            executor: cadProject.designExecuteBuild123d,
             unavailableMessage:
               "The server has no complete qualified Build123d isolated runtime configured for this run.",
           },
           {
             operation: DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION,
-            executor: designSealIsolatedGeometry,
+            executor: cadProject.designSealIsolatedGeometry,
           },
           {
             operation: VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
-            executor: verifySealModelicaThermalMethodSheet,
+            executor: modelicaProject.verifySealModelicaThermalMethodSheet,
           },
           {
             operation: VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
-            executor: verifyEvaluateAdmittedModelicaObservations,
+            executor: modelicaProject.verifyEvaluateAdmittedModelicaObservations,
             unavailableMessage:
               "The server has no trusted verify.evaluate-admitted-modelica-observations@1 executor configured for this run (SysON provider is required).",
           },
           {
             operation: DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
-            executor: decideAdmittedModelicaEvaluation,
+            executor: modelicaProject.decideAdmittedModelicaEvaluation,
           },
           {
             operation: DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
-            executor: decideAdmittedModelicaEvaluation,
+            executor: modelicaProject.decideAdmittedModelicaEvaluation,
           },
           {
             operation: SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
-            executor: simulateRunQualifiedModelicaKit,
+            executor: modelicaProject.simulateRunQualifiedModelicaKit,
             unavailableMessage:
               "The server has no complete qualified local Modelica runtime and pinned qualification configured for this run.",
           },
           {
             operation: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
-            executor: simulateRunAdmittedModelica,
+            executor: modelicaProject.simulateRunAdmittedModelica,
             unavailableMessage:
               "The server has no admitted Modelica closed-subset isolated runtime configured for this run.",
           },
@@ -1982,25 +1108,25 @@ async function createProjectControl(
           },
           {
             operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
-            executor: genericModelWriteArchitecture,
+            executor: architectureProject.genericModelWriteArchitecture,
             unavailableMessage:
               "The server has no trusted generic model.write-architecture@1 executor " +
               "configured for this run (SysON provider is required).",
           },
           {
             operation: MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
-            executor: genericModelCapturePartDefinitions,
+            executor: architectureProject.genericModelCapturePartDefinitions,
             unavailableMessage:
               "The server has no trusted generic model.capture-part-definitions@1 executor " +
               "configured for this run (SysON provider is required).",
           },
           {
             operation: DESIGN_WRITE_GEOMETRY_OPERATION,
-            executor: genericDesignWriteGeometry,
+            executor: cadProject.genericDesignWriteGeometry,
           },
           {
             operation: MODEL_WRITE_REQUIREMENTS_OPERATION,
-            executor: genericModelWriteRequirements,
+            executor: architectureProject.genericModelWriteRequirements,
             unavailableMessage:
               "The server has no trusted generic model.write-requirements@1 executor " +
               "configured for this run (SysON provider is required).",
@@ -2015,35 +1141,35 @@ async function createProjectControl(
           },
           {
             operation: VERIFY_SEAL_PROOF_CASE_OPERATION,
-            executor: genericVerifySealProofCase,
+            executor: feaProject.genericVerifySealProofCase,
           },
           {
             operation: VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
-            executor: isolatedCalculixRun,
+            executor: feaProject.isolatedCalculixRun,
             unavailableMessage:
               "The server has no complete qualified local CalculiX runtime and SysON oracle configured for this run.",
           },
           {
             operation: ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
-            executor: analyzeSealSensitivityStudy,
+            executor: sensitivity.analyzeSealSensitivityStudy,
           },
           {
             operation: ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
-            executor: analyzeRunFeaSensitivity,
+            executor: sensitivity.analyzeRunFeaSensitivity,
             unavailableMessage:
               "The server has no trusted analyze.run-fea-sensitivity@1 executor " +
               "configured for this run (isolated Build123d and CalculiX are required).",
           },
           {
             operation: MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
-            executor: modelWriteSensitivityEdges,
+            executor: sensitivity.modelWriteSensitivityEdges,
             unavailableMessage:
               "The server has no trusted model.write-sensitivity-edges@1 executor " +
               "configured for this run (SysON provider is required).",
           },
           {
             operation: VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
-            executor: verifyEvaluateSensitivityBase,
+            executor: sensitivity.verifyEvaluateSensitivityBase,
             unavailableMessage:
               "The server has no trusted verify.evaluate-sensitivity-base@1 executor " +
               "configured for this run (SysON provider is required).",
@@ -2083,11 +1209,11 @@ async function createProjectControl(
           },
           {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
-            executor: designApplyVectorCorrection,
+            executor: sensitivity.designApplyVectorCorrection,
           },
           {
             operation: COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
-            executor: compileCaptureCorrectedSource,
+            executor: sensitivity.compileCaptureCorrectedSource,
           },
         ],
       }),
@@ -2105,66 +1231,6 @@ function createCockpitFocus(
     projects: new FileEngineeringProjectRevisionStore(
       options.activeProjectDirectory ?? DEFAULT_ACTIVE_PROJECT_DIRECTORY,
     ),
-  };
-}
-
-function composePrivateBuild123dGeometrySurfaces(
-  build123dSandboxMcpUrl: string | undefined,
-  geometrySourceAnalysis: GeometrySourceAnalysisCaptureDependencies,
-  admissions: CaptureBackedTechnicalCompilationAdmissionReader,
-  snapshots: Pick<FileThreadSnapshotStore, "get">,
-  architectureCaptures: FileCaptureStore<"architecture-capture">,
-): Pick<ProjectControlToolDependencies, "admittedGeometryExport"> {
-  if (!build123dSandboxMcpUrl) {
-    return { admittedGeometryExport: undefined };
-  }
-  const client = new HttpMcpToolClient({
-    mcpUrl: build123dSandboxMcpUrl,
-    timeoutMs: 120_000,
-  });
-  const draftCaptures = new FileCaptureStore({
-    ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
-    directory: DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
-  });
-  return {
-    admittedGeometryExport: new ExportAdmittedProjectGeometry({
-      admissions,
-      snapshots,
-      architecture: {
-        async read(fingerprint) {
-          const text = await architectureCaptures.read(fingerprint);
-          if (!text) return undefined;
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(text);
-          } catch {
-            return undefined;
-          }
-          try {
-            const capture = parseExactArchitectureCapture(parsed);
-            return {
-              partDefinitions: capture.partDefinitions.map((definition) => ({
-                id: definition.id,
-                label: definition.label,
-                usages: definition.usages.map((usage) => ({
-                  id: usage.id,
-                  label: usage.label,
-                  targetId: usage.targetId,
-                })),
-              })),
-            };
-          } catch {
-            return undefined;
-          }
-        },
-      },
-      exporter: new AdmissionBackedGeometryExportAdapter({
-        client,
-        draftCaptures,
-        sourceAnalysis: geometrySourceAnalysis,
-        build123dService: "mcp-build123d-sandbox",
-      }),
-    }),
   };
 }
 

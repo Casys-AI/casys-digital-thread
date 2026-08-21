@@ -217,31 +217,15 @@ Deno.test("local execution tasks are explicit, frozen, and capability-bounded", 
   assertEquals(yolo.endsWith("server.ts --yolo --local-execution"), true);
 });
 
-Deno.test("server composes one historical proof and requirements CAS for @1 and ROP2", async () => {
+Deno.test("server orchestrates one historical proof and requirements CAS into ROP2", async () => {
   const source = await Deno.readTextFile("server.ts");
+  assertStringIncludes(source, "createFeaFoundation(");
+  assertStringIncludes(source, "createRecordedOperationPlanComposition(");
+  assertStringIncludes(source, "feaProofCaptures: feaFoundation.feaProofCaptures,");
   assertStringIncludes(
     source,
-    "const feaProofCaptures = new FileCaptureStore(\n    FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,\n  );",
+    "requirementsCaptures: architectureFoundation.requirementsCaptures,",
   );
-  assertStringIncludes(source, "store: feaProofCaptures,");
-  assertStringIncludes(source, "proofCaseCaptures: feaProofCaptures,");
-  assertStringIncludes(source, "proofCaptures: feaProofCaptures,");
-  assertStringIncludes(
-    source,
-    "const requirementsCaptures = new FileCaptureStore({\n    ...REQUIREMENTS_CAPTURE_DESCRIPTOR,\n    directory: options.requirementsCaptureDirectory ??\n      DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,\n  });",
-  );
-  assertStringIncludes(source, 'namespace: "requirements-capture",');
-  assertStringIncludes(source, "store: requirementsCaptures,");
-  assertStringIncludes(source, "captures: requirementsCaptures,");
-  assertStringIncludes(
-    source,
-    "new CaptureBackedFeaProofSealRequirementsReviewer({\n      requirementsCaptures,",
-  );
-  assertStringIncludes(
-    source,
-    "geometryCaptures,\n    stepAssets: feaProofStepAssets,",
-  );
-  assertEquals(source.match(/requirementsCaptures,/g)?.length, 5);
   assertEquals(
     source.includes("${recordedAnalysisDirectory}/calculix/proof-cases"),
     false,
@@ -420,14 +404,8 @@ Deno.test("server seals the local CalculiX profile into ROP2 but composes @3 onl
     );
 
     const source = await Deno.readTextFile("server.ts");
-    assertStringIncludes(
-      source,
-      "...(calculixLocalProfile === undefined\n      ? {}\n      : { calculix: { localProfile: calculixLocalProfile } }),",
-    );
-    assertStringIncludes(
-      source,
-      "const isolatedCalculixRun = sysonMcpUrl && calculixIsolatedExecution?.execution",
-    );
+    assertStringIncludes(source, "calculixLocalProfile: calculixCapability.localProfile,");
+    assertStringIncludes(source, "executor: feaProject.isolatedCalculixRun,");
     assertStringIncludes(
       source,
       "operation: VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,",
