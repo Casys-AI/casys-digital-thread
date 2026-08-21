@@ -69,6 +69,24 @@ export interface AdmittedObservationPublishedMetric {
   readonly unit: string;
 }
 
+export type AdmittedUnitNormalization =
+  | { readonly status: "matched"; readonly unit: string }
+  | { readonly status: "unresolved"; readonly reason: "unit-identity-mismatch" };
+
+/**
+ * Identity unit policy: exact declared string only. No conversion, no
+ * invented magnitude. A mismatch stays unresolved.
+ */
+export function normalizeAdmittedObservationUnit(
+  declaredUnit: string,
+  observedUnit: string,
+): AdmittedUnitNormalization {
+  if (Object.is(declaredUnit, observedUnit)) {
+    return { status: "matched", unit: declaredUnit };
+  }
+  return { status: "unresolved", reason: "unit-identity-mismatch" };
+}
+
 const ROOT_KEYS = [
   "schemaVersion",
   "profile",

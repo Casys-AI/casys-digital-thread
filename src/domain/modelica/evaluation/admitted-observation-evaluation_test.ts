@@ -4,6 +4,7 @@ import { validThermalMethodSheetPlaceholder } from "../../../testing/modelica-th
 import {
   admittedModelicaUnitIdentityPolicy,
   deriveAdmittedObservationEvaluationMethod,
+  normalizeAdmittedObservationUnit,
   selectAdmittedObservationEvaluations,
   validateAdmittedObservationEvaluationMethod,
 } from "./admitted-observation-evaluation.ts";
@@ -147,6 +148,17 @@ Deno.test("admitted observation selection rejects an absent published role", () 
       ),
     TypeError,
     "absent from published evidence",
+  );
+});
+
+Deno.test("identity unit policy matches only Object.is-equal unit strings", () => {
+  assertEquals(
+    normalizeAdmittedObservationUnit("unit-pending-source", "unit-pending-source"),
+    { status: "matched", unit: "unit-pending-source" },
+  );
+  assertEquals(
+    normalizeAdmittedObservationUnit("unit-pending-source", "K"),
+    { status: "unresolved", reason: "unit-identity-mismatch" },
   );
 });
 
