@@ -469,7 +469,7 @@ adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
 
 | Context         | Domain root                      | Do not merge                                                                                         |
 | --------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `modelica`      | `src/domain/modelica/`           | `admitted/` ≠ `qualified-kit/` ≠ retired recorded island (observer left for R03)                     |
+| `modelica`      | `src/domain/modelica/`           | `admitted/` ≠ `qualified-kit/`; recorded island and sidecar observer are retired                     |
 | `cad`           | `src/domain/cad/`                | `source/` ≠ `isolated/` ≠ `canonical/` ≠ `sealed-isolated/`                                          |
 | `fea`           | `src/domain/fea/`                | `seal-case/` ≠ `isolated-v3/`                                                                        |
 | `compile`       | `src/domain/compile/`            | Isolation ≠ admission ≠ source ≠ ROP ≠ brief; CAD **and** Modelica                                   |
