@@ -29,10 +29,11 @@ computed physics        mcp-calculix      Gmsh mesh + CalculiX FEA — stress, d
 verified verdict        constraint-solver units-aware evaluation, z3 satisfiability
 ```
 
-The system-simulation branch is complementary: `mcp-modelica` runs approved Modelica
-scenarios to produce time, temperature and energy evidence; SysON and the constraint
-solver evaluate that evidence against reviewed requirements. It does not replace the CAD
-→ FEA branch.
+The system-simulation branch is complementary: admitted Modelica and the qualified kit
+run in a server-owned local microVM (`casys/modelica-microsandbox-worker`). The
+historical port 3016 `mcp-modelica` sidecar is retired. SysON and the constraint solver
+evaluate that evidence against reviewed requirements. It does not replace the CAD → FEA
+branch.
 
 The target product should answer after each meaningful change the question that today
 often takes weeks between requirement freeze and design review: **does this design hold
@@ -112,10 +113,10 @@ CalculiX, but a shared path is not provenance. The native thread contract requir
 consumed. Generic, content-addressed FEA inputs are staged instead in CalculiX's
 provider-private `/inputs` volume: it is neither an exchange nor evidence. CalculiX has
 a separately pinned release and retains its bounded run ledger in
-`casys-digital-thread-calculix-runs`; that ledger is not the CAD exchange. The separate
-`casys-digital-thread-modelica-runs` volume retains bounded, hashed OpenModelica
-records. Both provider run volumes survive a normal Compose restart and are read through
-their identity-bound MCP tools, never directly by the cockpit.
+`casys-digital-thread-calculix-runs`; that ledger is not the CAD exchange. The CalculiX
+run volume survives a normal Compose restart and is read through its identity-bound MCP
+tools, never directly by the cockpit. Product Modelica evidence is local-microVM CAS,
+not a Compose `modelica-runs` volume.
 
 ## Console and native Workbench
 
@@ -259,12 +260,12 @@ briefs or studies, not the product contract.
 | [`@casys/mcp-syson`](https://jsr.io/@casys/mcp-syson)                                  | JSR      | SysML v2 models, constraints, part structure                |
 | [`@casys/mcp-build123d`](https://jsr.io/@casys/mcp-build123d)                          | JSR      | parametric CAD as code                                      |
 | [`@casys/mcp-calculix`](https://jsr.io/@casys/mcp-calculix)                            | JSR      | FEA — mesh + linear static solve                            |
-| [`@casys/mcp-modelica`](https://jsr.io/@casys/mcp-modelica)                            | JSR      | approved OpenModelica simulation kits and evidence          |
+| [`@casys/mcp-modelica`](https://jsr.io/@casys/mcp-modelica)                            | JSR      | image-owned kit normalizer used by the local Modelica microVM |
 | [`@casys/constraint-solver`](https://jsr.io/@casys/constraint-solver)                  | JSR      | units-aware evaluation + z3 solving                         |
 | [`@casys/mcp-server`](https://jsr.io/@casys/mcp-server)                                | JSR      | the MCP framework all servers build on                      |
 | [`@casys/mcp-view`](https://jsr.io/@casys/mcp-view)                                    | JSR      | Optional result-viewer for provider MCP Apps — not this cockpit |
 | [`engineering-toolchain`](https://github.com/Casys-AI/engineering-toolchain)           | GHCR     | one image bundling the chain + system backends              |
-| [`mcp-modelica`](https://github.com/Casys-AI/mcp-modelica/pkgs/container/mcp-modelica) | GHCR     | pinned OpenModelica + MSL simulation sidecar                |
+| `mcp-modelica` GHCR sidecar                                                            | retired  | Historical port 3016 Compose sidecar. Product Modelica is local microVM |
 | [`@casys/mcp-erpnext`](https://jsr.io/@casys/mcp-erpnext)                              | JSR      | costing side: part structure → ERPNext BOM with real prices |
 
 ## License

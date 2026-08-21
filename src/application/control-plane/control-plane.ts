@@ -9,12 +9,7 @@ import type {
   ObservedServer,
 } from "./read-model/fleet-observation.ts";
 import type { Availability } from "./read-model/status.ts";
-import type {
-  ContainerObserver,
-  McpProbe,
-  McpProbeResult,
-  ObservedRunCatalog,
-} from "./ports.ts";
+import type { ContainerObserver, McpProbe, McpProbeResult } from "./ports.ts";
 
 export interface ControlPlaneSnapshotOptions {
   /** Ignore the short-lived in-memory snapshot cache. */
@@ -29,7 +24,6 @@ export interface ControlPlaneOptions {
   monotonicNow?: () => number;
   cacheTtlMs?: number;
   runs: readonly RunDetail[];
-  observedRuns?: ObservedRunCatalog;
 }
 
 export class ControlPlaneNotFoundError extends Error {
@@ -52,7 +46,6 @@ export class ControlPlane {
   readonly #monotonicNow: () => number;
   readonly #cacheTtlMs: number;
   readonly #runs: readonly RunDetail[];
-  readonly #observedRuns?: ObservedRunCatalog;
   #cache?: { expiresAt: number; value: ConsoleSnapshot };
   #inFlight?: Promise<ConsoleSnapshot>;
 
@@ -64,7 +57,6 @@ export class ControlPlane {
     this.#monotonicNow = options.monotonicNow ?? (() => performance.now());
     this.#cacheTtlMs = options.cacheTtlMs ?? 5_000;
     this.#runs = options.runs;
-    this.#observedRuns = options.observedRuns;
   }
 
   async snapshot(
@@ -103,23 +95,15 @@ export class ControlPlane {
   }
 
   async runList(): Promise<RunSummary[]> {
-    const observed = this.#observedRuns ? await this.#safeObservedRunList() : [];
-    // The modelica owner keeps its catalog deterministic by run id. The
-    // console is an operator surface, so present evidence by its actual
-    // completion/start time instead; legacy records without timing stay last.
-    return [...observed, ...this.#runs.map(toRunSummary)]
+    return this.#runs.map(toRunSummary)
       .sort(compareRunsByEvidenceTime)
       .map((run) => structuredClone(run));
   }
 
   async runDetail(id: string): Promise<RunDetail> {
     const run = this.#runs.find((entry) => entry.id === id);
-    if (run) return structuredClone(run);
-    const observed = this.#observedRuns
-      ? await this.#observedRuns.detail(id)
-      : undefined;
-    if (!observed) throw new ControlPlaneNotFoundError("run", id);
-    return structuredClone(observed);
+    if (!run) throw new ControlPlaneNotFoundError("run", id);
+    return structuredClone(run);
   }
 
   async #buildSnapshot(): Promise<ConsoleSnapshot> {
@@ -190,17 +174,6 @@ export class ControlPlane {
           unavailableContainer(`Docker observation failed: ${message}`),
         ]),
       );
-    }
-  }
-
-  async #safeObservedRunList(): Promise<readonly RunSummary[]> {
-    try {
-      return await this.#observedRuns!.list();
-    } catch {
-      // Fleet observation reports the owner service's reachability. A failed
-      // supplementary run index must not replace honest checked-in evidence
-      // with a guessed or synthetic record.
-      return [];
     }
   }
 }

@@ -6,8 +6,10 @@
 #   mcp-syson              MCP over HTTP on http://localhost:3009
 #   mcp-build123d          MCP over HTTP on http://localhost:3014
 #   mcp-calculix           MCP over HTTP on http://localhost:3015
-#   mcp-modelica           MCP over HTTP on http://localhost:3016
 #   mcp-erpnext            MCP over HTTP on http://localhost:3012
+#
+# The historical mcp-modelica sidecar on port 3016 is retired. Product
+# Modelica runs in the server-owned local microVM.
 #
 # The MCP servers bind 0.0.0.0 INSIDE their containers (required to be
 # reachable through the port mapping); the mapping itself is loopback-only,
@@ -158,23 +160,6 @@ services:
       retries: 6
     networks: [chain]
 
-  # This image is intentionally independent from engineering-toolchain: OMC
-  # and MSL have a separate release, verification path, and evidence volume.
-  mcp-modelica:
-    # MCP_MODELICA_IMAGE lets a locally verified sidecar be tested without
-    # spending a GitHub Actions image build. The committed default stays pinned.
-    image: "${MCP_MODELICA_IMAGE:-ghcr.io/casys-ai/mcp-modelica@sha256:7df4328181db78911bd9a3c4b1d7204f0f7ee01709262a5bc5c111d7c5e45961}"
-    ports:
-      - "127.0.0.1:3016:3016"
-    volumes:
-      - modelica-runs:/runs
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3016/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-    networks: [chain]
-
   # Until the mcp-server 0.24 base is reviewed and released by mcp-erpnext, the
   # local tag combines base 17ca098 with viewer/UOM fix 1d99467. Build only from
   # that exact clean commit (MCP_ERPNEXT_CONTEXT can select another worktree).
@@ -314,9 +299,3 @@ volumes:
   # instead of deleting the default evidence history.
   calculix-runs:
     name: "${CALCULIX_RUNS_VOLUME:-casys-digital-thread-calculix-runs}"
-  # An explicit Docker name preserves immutable Modelica run records across
-  # Compose restarts for modelica_run_get. An opt-in local integration run may
-  # set MODELICA_RUNS_VOLUME to a fresh name instead of deleting retained
-  # evidence from the default volume.
-  modelica-runs:
-    name: "${MODELICA_RUNS_VOLUME:-casys-digital-thread-modelica-runs}"

@@ -79,7 +79,7 @@ execution or evidence shortcut; no environment variable enables it implicitly.
 | `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | Historical recipe CAD execution and shared exports                                                                                                                                 |
 | `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Legacy agent-proposed geometry preview, private export volume                                                                                                                      |
 | `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Static, modal, buckling, creep and coupled-thermal FEA; identity-bound recorded static runs                                                                                        |
-| `http://127.0.0.1:3016/mcp`  | `mcp-modelica`              | Approved simulations, recorded ledgers and resumable qualified requests                                                                                                            |
+| `http://127.0.0.1:3016/mcp`  | retired                     | Historical `mcp-modelica` Compose sidecar. Product Modelica is the local microVM (admitted + kit). Do not start or probe this port.                                                |
 | `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | Measured DFM checks on produced STEP (`dfm_check_envelope`, `dfm_check_min_thickness`, `dfm_check_overhangs`); SHA-256 attestation required. Live tools take `step_path`, not STL. |
 | `http://127.0.0.1:3019/mcp`  | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                                                                                                                                                    |
 | `http://127.0.0.1:3022/mcp`  | `mcp-prusaslicer`           | Print time and material from real G-code                                                                                                                                           |
@@ -103,7 +103,7 @@ informative, not stylistic:
 | Rule                  | When it applies                                                                                                     | Examples                                                                 |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | **Exact engine name** | The input contract is specific to that engine — its scripts, profiles or flags would not transfer to a competitor   | `mcp-calculix`, `mcp-build123d`, `mcp-prusaslicer`                       |
-| **Standard language** | The input is a format several engines speak; the wrapped implementation is an internal detail the caller never sees | `mcp-modelica` (OpenModelica), `mcp-spice` (ngspice)                     |
+| **Standard language** | The input is a format several engines speak; the wrapped implementation is an internal detail the caller never sees | `mcp-spice` (ngspice). Historical `mcp-modelica` (OpenModelica) was the retired port 3016 sidecar |
 | **Domain**            | No single dominant library exists — the engine is normative formulas or in-house computation                        | `mcp-dfm` (gmsh + in-house checks), `mcp-tolerance` (ISO 286-1 formulas) |
 
 Corollaries: tool names are prefixed with the server name (`prusaslicer_estimate_fff`,
@@ -263,7 +263,7 @@ manufacturing, certification, cost, or un-attested quantity.
 | CAD exports                  | `exports` volume                  | Hash-attested build123d to CalculiX read-only exchange                                                |
 | Generic FEA staging          | CalculiX `calculix-inputs` volume | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence |
 | CalculiX recorded runs       | `calculix-runs` volume            | Identity-bound `calculix_run_get` plus exact `resources/read`; separate from CAD exchange             |
-| Modelica runs                | `modelica-runs` volume            | Resumable request/run readback plus exact `resources/read`                                            |
+| Modelica execution           | Local Modelica microVM            | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired |
 | ERP data                     | External ERPNext database         | Provider-native MCP from backend only                                                                 |
 | Native `ThreadSnapshot`      | Immutable local file store        | Read-only projection in the native Workbench                                                          |
 | `EngineeringProjectSnapshot` | Immutable active file store       | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions              |

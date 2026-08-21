@@ -42,6 +42,7 @@ Domain contracts: [language](../domains/modelica/language.md) and
 | This                                    | Is                                                                             | Is not                                                                        |
 | --------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | `simulate.seal-simulation-case@1` / `@2` and `simulate.run-modelica-scenario@1` / `@2` | Retired recorded-provider route. Not registered | Admitted `@1`, the pinned kit, L4, or L5 |
+| Port 3016 `mcp-modelica` sidecar / `ModelicaRunObserver` | Retired fleet/Compose observed-run surface. Not required. | Local admitted/kit microVM Modelica |
 | `simulate.run-qualified-modelica-kit@1` | Separate code-owned LinearThermalRamp qualified-kit V1 smoke in the local microVM | Admitted `.mo` execution or recorded `@2`                                  |
 | `simulate.run-admitted-modelica@1`      | Reopen `compile.seal-admission@1` Modelica bytes and run them in isolation     | The pinned kit, `@2`, or caller `modelicaText`                                |
 

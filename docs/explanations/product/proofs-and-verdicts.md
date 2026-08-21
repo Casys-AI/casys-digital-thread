@@ -16,7 +16,7 @@ flowchart LR
   G["Parametric CAD\nmcp-build123d"] --> P["Geometry proof\nmetrics + STEP export"]
   P --> F["Static FEA\nmcp-calculix"]
   F --> E["Mechanical evidence"]
-  M["Dynamic physical simulation\nmcp-modelica"] --> S["Time-series evidence\nmetrics + artifact hashes"]
+  M["Dynamic physical simulation\nlocal Modelica microVM"] --> S["Time-series evidence\nmetrics + artifact hashes"]
   E --> V
   S --> V
   V --> C["Read-only native Workbench\nshows proof and verdict separately"]
@@ -28,7 +28,7 @@ flowchart LR
 | ---------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | What shape, volume, mass, or export was produced?                                        | `mcp-build123d`                      | A parametric geometry execution and its exact geometry/export evidence.                    | Local stress, transient behaviour, or requirement compliance.                              |
 | Does this geometry withstand a stated static load model?                                 | `mcp-calculix`                       | A mesh/solver result for that geometry, load case, material assumptions, and solver setup. | That the CAD is the only valid design or that an unrelated requirement passed.             |
-| What happens over time in coupled thermal, hydraulic, electrical, and control behaviour? | `mcp-modelica`                       | A versioned model/scenario run, observations, and hashed artifacts.                        | A SysML requirement verdict; its `succeeded` run intentionally has no `pass`/`fail` field. |
+| What happens over time in coupled thermal, hydraulic, electrical, and control behaviour? | Local Modelica microVM               | A versioned admitted or kit run, observations, and hashed artifacts.                       | A SysML requirement verdict; its `succeeded` run intentionally has no `pass`/`fail` field. The port 3016 `mcp-modelica` sidecar is retired. |
 | Is a named, unit-bearing condition satisfied by supplied evidence?                       | `mcp-syson` and the constraint layer | A comparison with the condition, values, units, and margin visible.                        | That the input evidence is broader, newer, or more applicable than its provenance says.    |
 
 This separation prevents a common but dangerous shortcut: treating a green solver exit

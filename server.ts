@@ -293,7 +293,6 @@ import {
   FileExactThreadSnapshotDirectory,
   OrderedExactThreadSnapshotReader,
 } from "./src/adapters/shared/stores/engineering-thread-snapshot-resolver.ts";
-import { ModelicaRunObserver } from "./src/adapters/modelica/recorded/v1/run-observer.ts";
 import { loadRunFixtures } from "./src/adapters/control-plane/run-fixtures.ts";
 import { ControlPlane } from "./src/application/control-plane/control-plane.ts";
 import { EngineeringProjectCommandError } from "./src/application/use-cases/project/engineering-project-command-service.ts";
@@ -304,7 +303,6 @@ import {
 } from "./src/orchestration/operations/fea-isolated-static-proof.ts";
 import type { RunDetail } from "./src/application/control-plane/read-model/engineering-run.ts";
 import type { FleetManifest } from "./src/application/control-plane/read-model/fleet-manifest.ts";
-import type { ObservedRunCatalog } from "./src/application/control-plane/ports.ts";
 import { registerControlPlaneTools } from "./src/tools/control-plane.ts";
 import {
   type ProjectControlToolDependencies,
@@ -491,7 +489,6 @@ export interface CreateConsoleServerOptions {
   runFixturePaths?: string[];
   probe?: McpProbe;
   docker?: DockerObserver;
-  observedRuns?: ObservedRunCatalog;
   now?: () => Date;
   monotonicNow?: () => number;
   cacheTtlMs?: number;
@@ -595,7 +592,6 @@ export async function createConsoleServer(
       options.runFixturePaths ??
         [env("MCP_RUN_FIXTURE") ?? DEFAULT_RUN_FIXTURE_PATH],
     );
-  const modelica = manifest.servers.find((server) => server.id === "modelica");
   const syson = manifest.servers.find((server) => server.id === "syson");
   const build123dSandbox = manifest.servers.find((server) =>
     server.id === "build123d-sandbox"
@@ -603,12 +599,9 @@ export async function createConsoleServer(
   const calculix = manifest.servers.find((server) => server.id === "calculix");
   const dfm = manifest.servers.find((server) => server.id === "dfm");
   const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
-  const observedRuns = options.observedRuns ??
-    createObservedRunCatalog(modelica?.mcpUrl);
   const controlPlane = new ControlPlane({
     manifest,
     runs,
-    observedRuns,
     probe: options.probe ?? new HttpMcpProbe(),
     docker: options.docker ?? new DockerComposeObserver(),
     now: options.now,
@@ -2173,13 +2166,6 @@ function composePrivateBuild123dGeometrySurfaces(
       }),
     }),
   };
-}
-
-function createObservedRunCatalog(
-  modelicaMcpUrl?: string,
-): ObservedRunCatalog | undefined {
-  if (!modelicaMcpUrl) return undefined;
-  return new ModelicaRunObserver({ mcpUrl: modelicaMcpUrl });
 }
 
 if (import.meta.main) {

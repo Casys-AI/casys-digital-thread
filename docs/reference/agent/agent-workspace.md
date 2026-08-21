@@ -27,8 +27,9 @@ This repo is the atelier: Console MCP, project-control MCP, native Workbench, re
 operations, CAS, WAL, and immutable project/thread state.
 
 Engineering providers live in other repos and run from published images. Do not clone
-`mcp-syson`, `mcp-build123d`, `mcp-calculix`, or `mcp-modelica` here to “fix” an
-operation. Change a provider only in its own repo.
+`mcp-syson`, `mcp-build123d`, or `mcp-calculix` here to “fix” an operation. The retired
+port 3016 `mcp-modelica` sidecar is not a product path. Change a provider only in its
+own repo.
 
 ![Authority split: human confirms, agent proposes registered operations, server owns sequences, Workbench is read-only.](../../assets/authority-and-surfaces.svg)
 

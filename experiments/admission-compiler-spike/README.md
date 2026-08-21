@@ -103,7 +103,7 @@ task_tmp="${TMPDIR%/}"
 task_tmp_real="$(cd "$task_tmp" && pwd -P)"
 docker_bin="$(command -v docker)"
 deno run \
-  --allow-net=127.0.0.1:3009,127.0.0.1:3015,127.0.0.1:3016,127.0.0.1:3024 \
+  --allow-net=127.0.0.1:3009,127.0.0.1:3015,127.0.0.1:3024 \
   --allow-run="$docker_bin" \
   --allow-read="$PWD,$task_tmp,$task_tmp_real" \
   --allow-write="$task_tmp,$task_tmp_real" \

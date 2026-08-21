@@ -16,7 +16,6 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "build123d",
     "build123d-sandbox",
     "calculix",
-    "modelica",
     "erpnext",
     "dfm",
     "tolerance",
@@ -58,21 +57,6 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
     "casys-digital-thread-calculix-inputs:/inputs",
     "casys-digital-thread-calculix-runs:/var/lib/mcp-calculix-runs",
   ]);
-
-  const modelica = manifest.servers.find((server) => server.id === "modelica");
-  assertEquals(modelica?.expectedTools, [
-    "modelica_kit_list",
-    "modelica_simulate",
-    "modelica_run_list",
-    "modelica_run_get",
-    "modelica_kit_list_recorded",
-    "modelica_simulate_recorded",
-    "modelica_run_list_recorded",
-    "modelica_run_get_recorded",
-    "modelica_simulation_manifest_get",
-    "modelica_simulation_submit",
-    "modelica_simulation_request_get",
-  ]);
 });
 
 Deno.test("toolchain Compose defaults remain in parity with fleet desired images", async () => {
@@ -88,7 +72,6 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
       ["syson", "MCP_SYSON_IMAGE"],
       ["build123d", "TOOLCHAIN_IMAGE"],
       ["calculix", "MCP_CALCULIX_IMAGE"],
-      ["modelica", "MCP_MODELICA_IMAGE"],
     ] as const
   ) {
     const server = manifest.servers.find((candidate) => candidate.id === serverId);

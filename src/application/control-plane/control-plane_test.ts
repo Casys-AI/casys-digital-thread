@@ -1,13 +1,8 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { loadRunFixtures } from "../../adapters/control-plane/run-fixtures.ts";
 import { ControlPlane } from "./control-plane.ts";
-import type {
-  ContainerObserver,
-  McpProbe,
-  McpProbeResult,
-  ObservedRunCatalog,
-} from "./ports.ts";
-import type { RunDetail, RunSummary } from "./read-model/engineering-run.ts";
+import type { ContainerObserver, McpProbe, McpProbeResult } from "./ports.ts";
+import type { RunDetail } from "./read-model/engineering-run.ts";
 import type { DesiredServer, FleetManifest } from "./read-model/fleet-manifest.ts";
 import type { ObservedContainer } from "./read-model/fleet-observation.ts";
 
@@ -57,66 +52,41 @@ Deno.test("ControlPlane caches probes but refresh bypasses the cache", async () 
   assertEquals(probe.calls, 2);
 });
 
-Deno.test("ControlPlane merges observed simulation evidence without inferring a requirement pass", async () => {
-  const demoRuns = await loadRunFixtures([
-    "state/fixtures/runs/bracket-demo.json",
-  ]);
-  const controlPlane = new ControlPlane({
-    manifest: manifestFixture(),
-    runs: demoRuns,
-    observedRuns: observedRuns(),
-    probe: unavailableProbe(),
-    docker: unavailableDocker(),
-  });
-
-  const snapshot = await controlPlane.snapshot();
-  assertEquals(snapshot.mode, "mixed");
-  assertEquals(snapshot.runs.items.map((run) => run.id), [
-    "modelica:run_coffee",
-    "bracket-demo-2026-07-30",
-  ]);
-  assertEquals(snapshot.runs.items[0].status, "succeeded");
-  assertEquals(snapshot.runs.items[0].verdictStatus, "not_evaluated");
-  assertEquals((await controlPlane.runDetail("modelica:run_coffee")).measurements, [{
-    id: "water_temperature_max",
-    label: "Maximum water temperature",
-    value: { value: 94, unit: "degC", display: "94 degC" },
-  }]);
-});
-
 Deno.test("ControlPlane presents timestamped evidence newest first", async () => {
-  const summary = (id: string, completedAt?: string): RunSummary => ({
+  const run = (id: string, completedAt?: string): RunDetail => ({
     id,
     name: id,
-    subject: "Modelica 1.0.0",
+    subject: "Indexed fixture",
     status: "succeeded",
     verdictStatus: "not_evaluated",
-    source: "observed",
+    source: "demo",
     completedAt,
     passedRequirements: 0,
     failedRequirements: 0,
     unresolvedRequirements: 0,
+    description: id,
+    stages: [],
+    measurements: [],
+    provenance: [],
+    warnings: [],
+    requirements: [],
+    evidence: [],
   });
   const controlPlane = new ControlPlane({
     manifest: manifestFixture(),
-    runs: [],
-    observedRuns: {
-      list: () =>
-        Promise.resolve([
-          summary("modelica:legacy"),
-          summary("modelica:older", "2026-07-30T12:00:00.000Z"),
-          summary("modelica:newer", "2026-07-30T13:00:00.000Z"),
-        ]),
-      detail: () => Promise.resolve(undefined),
-    },
+    runs: [
+      run("fixture:legacy"),
+      run("fixture:older", "2026-07-30T12:00:00.000Z"),
+      run("fixture:newer", "2026-07-30T13:00:00.000Z"),
+    ],
     probe: unavailableProbe(),
     docker: unavailableDocker(),
   });
 
-  assertEquals((await controlPlane.runList()).map((run) => run.id), [
-    "modelica:newer",
-    "modelica:older",
-    "modelica:legacy",
+  assertEquals((await controlPlane.runList()).map((entry) => entry.id), [
+    "fixture:newer",
+    "fixture:older",
+    "fixture:legacy",
   ]);
 });
 
@@ -209,40 +179,6 @@ function manifestFixture(): FleetManifest {
       required: true,
       expectedTools: ["test_read"],
     }],
-  };
-}
-
-function observedRuns(): ObservedRunCatalog {
-  const summary: RunSummary = {
-    id: "modelica:run_coffee",
-    name: "coffee-machine-v1 / heat-up-nominal",
-    subject: "Modelica 1.0.0",
-    status: "succeeded",
-    verdictStatus: "not_evaluated",
-    source: "observed",
-    startedAt: "2026-07-30T12:00:00.000Z",
-    completedAt: "2026-07-30T12:00:04.000Z",
-    passedRequirements: 0,
-    failedRequirements: 0,
-    unresolvedRequirements: 0,
-  };
-  const detail: RunDetail = {
-    ...summary,
-    description: "Observed simulation evidence.",
-    stages: [],
-    measurements: [{
-      id: "water_temperature_max",
-      label: "Maximum water temperature",
-      value: { value: 94, unit: "degC", display: "94 degC" },
-    }],
-    provenance: [],
-    warnings: [],
-    requirements: [],
-    evidence: [],
-  };
-  return {
-    list: () => Promise.resolve([summary]),
-    detail: (id) => Promise.resolve(id === summary.id ? detail : undefined),
   };
 }
 

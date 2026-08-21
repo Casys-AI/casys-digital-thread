@@ -11,7 +11,7 @@ Audience: both · Diátaxis: reference · Kind: contract
 | `mcp-syson`            | SysML model, requirements, constraints and explicit verdicts                     | Physical calculations                                                  |
 | `mcp-build123d`        | CAD programs, geometry metrics and content-addressed exports                     | FEA results or product verdicts                                        |
 | `mcp-calculix`         | Recorded static runs and identity-bound solver resources                         | CAD authoring, material authority or human verdict                     |
-| `mcp-modelica`         | Qualified-kit resumable simulations and immutable resources/runs                 | SysML requirements or arbitrary agent source                           |
+| Local Modelica microVM | Admitted closed-subset and qualified-kit isolated execution                      | The retired port 3016 `mcp-modelica` sidecar or `modelica-runs` volume |
 | `mcp-erpnext`          | Provider-native manufacturing, inventory, operations and costing data            | SysML, CAD, simulation or the product shell                            |
 | `constraint-solver`    | Units-aware evaluation and satisfiability                                        | Requirement ownership                                                  |
 | `casys-digital-thread` | Project control, ROP2 sealing, linked `ThreadSnapshot`, projection and Workbench | Provider implementations, raw provider calls or invented design limits |
@@ -27,7 +27,7 @@ Audience: both · Diátaxis: reference · Kind: contract
 | Workflow compiler/executor   | [`experiments/thread-workflow/`](../../../experiments/thread-workflow) (frozen prototype)                                                                                                                  |
 | Workbench projection         | [`src/adapters/thread/thread-workbench-projector.ts`](../../../src/adapters/thread/thread-workbench-projector.ts)                                                                                   |
 | Native Workbench UI          | [`src/ui/src/thread/`](../../../src/ui/src/thread)                                                                                                                                                         |
-| Modelica evidence            | `casys-digital-thread-modelica-runs` Docker volume, read through its MCP                                                                                                                                 |
+| Modelica evidence            | Recorded-analysis CAS/WAL under `state/local/recorded-analysis/` from the local Modelica microVM. The historical `casys-digital-thread-modelica-runs` volume and port 3016 sidecar are retired           |
 | Recorded-analysis ROP2 state | `state/local/recorded-analysis/`: fixed directories for plans, admitted/kit Modelica, CalculiX run/evaluation capture and WAL; fixed CAS namespaces where applicable; not a provider volume |
 | CAD/FEA exchange             | `exports` Docker volume, with producer and consumer SHA-256 attestation                                                                                                                                  |
 | ERP manufacturing truth      | ERPNext database, reached only through `mcp-erpnext`                                                                                                                                                     |

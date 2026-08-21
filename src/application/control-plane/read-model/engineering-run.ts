@@ -99,14 +99,6 @@ export interface VerificationContext {
   planSha256?: string;
 }
 
-/** Identities required to match Modelica evidence to a versioned contract. */
-export interface ModelicaEvidenceIdentity {
-  runId: string;
-  fingerprint: string;
-  model: { id: string; version: string; sha256: string };
-  scenario: { id: string; sha256: string };
-}
-
 export interface RunSummary {
   id: string;
   name: string;
@@ -132,7 +124,6 @@ export interface RunDetail extends RunSummary {
   requirements: RequirementVerdict[];
   evidence: EvidenceArtifact[];
   verification?: VerificationContext;
-  modelicaEvidence?: ModelicaEvidenceIdentity;
 }
 
 export interface RunsSnapshot {

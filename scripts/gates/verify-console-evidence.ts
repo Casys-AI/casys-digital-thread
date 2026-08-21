@@ -125,7 +125,6 @@ const expectedServerIds = [
   "build123d",
   "build123d-sandbox",
   "calculix",
-  "modelica",
   "erpnext",
   "dfm",
   "tolerance",
@@ -178,13 +177,6 @@ expectedEngineeringViewers(
   "calculix",
   ["ui://mcp-calculix/results-viewer"],
 );
-expectedEngineeringViewers(
-  "modelica",
-  [
-    "ui://mcp-modelica/results-viewer",
-    "ui://mcp-modelica/run-list-viewer",
-  ],
-);
 
 const erpnextViews = manifest.servers.find((server) => server.id === "erpnext")
   ?.expectedViews;
@@ -200,11 +192,11 @@ if (snapshot.schemaVersion !== "2.0" || snapshot.mode !== "demo") {
     "console snapshot must be explicitly labelled schemaVersion 2.0 and demo mode",
   );
 }
-// The checked-in console snapshot is a historical 5-server demo fixture. Its
+// The checked-in console snapshot is a historical 4-server demo fixture. Its
 // server count is intentionally not compared against the current manifest
 // (which grows as new providers are added). The snapshot is a labelled demo;
 // the manifest is the authoritative desired-state. Each is validated separately.
-const DEMO_SNAPSHOT_SERVER_COUNT = 5;
+const DEMO_SNAPSHOT_SERVER_COUNT = 4;
 if (snapshot.fleet.counts.total !== DEMO_SNAPSHOT_SERVER_COUNT) {
   fail(
     `console demo snapshot fleet count must remain ${DEMO_SNAPSHOT_SERVER_COUNT} (historical fixture)`,

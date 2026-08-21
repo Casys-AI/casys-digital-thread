@@ -5,8 +5,8 @@
   "fleet": {
     "status": "healthy",
     "counts": {
-      "total": 5,
-      "healthy": 5,
+      "total": 4,
+      "healthy": 4,
       "degraded": 0,
       "unavailable": 0,
       "unknown": 0,
@@ -478,130 +478,6 @@
               ],
               "observed": [
                 "ui://mcp-calculix/results-viewer"
-              ],
-              "message": "1 viewer resources match desired state."
-            }
-          ]
-        },
-        "demo": true
-      },
-      {
-        "id": "modelica",
-        "desired": {
-          "id": "modelica",
-          "displayName": "OpenModelica",
-          "role": "Dynamic multi-physics system simulation and time-series evidence",
-          "serviceName": "mcp-modelica",
-          "transport": "streamable-http",
-          "mcpUrl": "http://127.0.0.1:3016/mcp",
-          "healthUrl": "http://127.0.0.1:3016/health",
-          "image": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
-          "required": true,
-          "expectedTools": [
-            "modelica_kit_list",
-            "modelica_simulate",
-            "modelica_run_list",
-            "modelica_run_get"
-          ],
-          "expectedViews": [
-            "ui://mcp-modelica/results-viewer"
-          ],
-          "network": {
-            "exposure": "loopback-only",
-            "composeNetwork": "chain",
-            "sharedVolumes": [
-              "casys-digital-thread-modelica-runs:/runs"
-            ],
-            "upstreams": []
-          },
-          "trust": {
-            "level": "first-party-local",
-            "executesArbitraryCode": false,
-            "notes": [
-              "Only approved, versioned Modelica kits and scenarios can run; callers cannot submit source, scripts or paths.",
-              "The bounded run volume retains hashed simulation evidence; a successful simulation is not a requirement verdict."
-            ]
-          }
-        },
-        "observed": {
-          "checkedAt": "2026-07-30T12:11:15.000Z",
-          "status": "healthy",
-          "latencyMs": 22,
-          "httpStatus": 200,
-          "mcp": {
-            "reachable": true,
-            "serverName": "mcp-modelica",
-            "tools": [
-              {
-                "name": "modelica_kit_list"
-              },
-              {
-                "name": "modelica_simulate",
-                "resourceUri": "ui://mcp-modelica/results-viewer"
-              },
-              {
-                "name": "modelica_run_list",
-                "resourceUri": "ui://mcp-modelica/results-viewer"
-              },
-              {
-                "name": "modelica_run_get",
-                "resourceUri": "ui://mcp-modelica/results-viewer"
-              }
-            ],
-            "resourceUris": [
-              "ui://mcp-modelica/results-viewer"
-            ],
-            "viewerUris": [
-              "ui://mcp-modelica/results-viewer"
-            ]
-          },
-          "container": {
-            "runtimeAvailable": true,
-            "present": true,
-            "name": "casys-digital-thread-mcp-modelica-1",
-            "state": "running",
-            "image": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3"
-          }
-        },
-        "drift": {
-          "status": "in_sync",
-          "fields": [
-            {
-              "field": "endpoint",
-              "status": "in_sync",
-              "desired": "http://127.0.0.1:3016/mcp",
-              "observed": "http://127.0.0.1:3016/mcp",
-              "message": "MCP endpoint matches the manifest."
-            },
-            {
-              "field": "health",
-              "status": "in_sync",
-              "desired": "healthy",
-              "observed": "healthy",
-              "message": "Health probe succeeded."
-            },
-            {
-              "field": "image",
-              "status": "in_sync",
-              "desired": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
-              "observed": "ghcr.io/casys-ai/mcp-modelica@sha256:a044998655a7299466ce1c32fd6f17994096c2cdaaf980f29a6fc4f0102d38d3",
-              "message": "Observed image matches desired state."
-            },
-            {
-              "field": "tools",
-              "status": "in_sync",
-              "desired": 3,
-              "observed": 3,
-              "message": "All expected tools are present."
-            },
-            {
-              "field": "resources",
-              "status": "in_sync",
-              "desired": [
-                "ui://mcp-modelica/results-viewer"
-              ],
-              "observed": [
-                "ui://mcp-modelica/results-viewer"
               ],
               "message": "1 viewer resources match desired state."
             }

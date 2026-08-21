@@ -69,8 +69,8 @@ vocabulary:
    and manifest.
 4. `src/adapters/sensitivity/live-fea/` owns fixed MCP tools and envelopes. Executors
    cannot construct arbitrary provider arguments. The historical
-   `src/adapters/modelica/recorded/` island is retired except the V1 run observer left
-   for R03.
+   `src/adapters/modelica/recorded/` island, `ModelicaRunObserver`, and port 3016
+   `mcp-modelica` sidecar are retired. Do not restore them.
 5. Generic WAL helpers live in `src/adapters/shared/wal/`. Typed WAL and executors live
    next to the authority (`src/adapters/modelica/`, `src/adapters/fea/`, …). Modelica WAL
    and executors live under `src/adapters/modelica/`.
