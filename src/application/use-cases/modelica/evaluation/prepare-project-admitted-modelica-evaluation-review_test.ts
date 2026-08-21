@@ -100,6 +100,7 @@ Deno.test(
         outputName: "placeholder-output",
         statistic: "final",
         unit: "K",
+        value: 0,
       }],
     };
     await assertRejects(
@@ -255,6 +256,7 @@ async function harness(options: { includeEvidence?: boolean } = {}) {
       outputName: "placeholder-output",
       statistic: "final",
       unit: "unit-pending-source",
+      value: 0,
     }],
   });
   const service = new PrepareProjectAdmittedModelicaEvaluationReview({

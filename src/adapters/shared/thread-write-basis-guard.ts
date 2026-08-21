@@ -50,6 +50,7 @@ import {
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
+import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/sensitivity/correction-source/apply-correction-source.ts";
 
 const THREAD_WRITE_OPERATIONS = new Set([
@@ -81,6 +82,7 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${MODEL_WRITE_SENSITIVITY_EDGES_OPERATION.id}@${MODEL_WRITE_SENSITIVITY_EDGES_OPERATION.version}`,
   `${DESIGN_APPLY_VECTOR_CORRECTION_OPERATION.id}@${DESIGN_APPLY_VECTOR_CORRECTION_OPERATION.version}`,
   `${VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION.id}@${VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION.version}`,
+  `${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.id}@${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.version}`,
   `${COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.id}@${COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.version}`,
 ]);
 
@@ -94,6 +96,7 @@ const NON_RECONCILIABLE_THREAD_WRITE_FAILURE_CODES: ReadonlySet<string> = new Se
   "model-seal-architecture-sysml-thread-write-outcome-unknown",
   "design-seal-isolated-geometry-thread-write-outcome-unknown",
   "verify-seal-modelica-thermal-method-sheet-thread-write-outcome-unknown",
+  "verify-evaluate-admitted-modelica-observations-thread-write-outcome-unknown",
   "analyze-seal-sensitivity-study-thread-write-outcome-unknown",
 ]);
 /**

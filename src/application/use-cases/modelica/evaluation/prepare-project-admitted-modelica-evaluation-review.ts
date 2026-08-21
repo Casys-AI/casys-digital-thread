@@ -201,7 +201,11 @@ export class PrepareProjectAdmittedModelicaEvaluationReview
       selectAdmittedObservationEvaluations(
         method,
         evidence.outputs,
-        evidence.metrics,
+        evidence.metrics.map((metric) => ({
+          outputName: metric.outputName,
+          statistic: metric.statistic,
+          unit: metric.unit,
+        })),
       );
       const sheetFingerprint = await fingerprintModelicaThermalMethodSheet(sheet);
       const methodFingerprint = await fingerprintAdmittedObservationEvaluationMethod(
