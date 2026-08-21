@@ -585,6 +585,24 @@ export const SIMULATION_CASE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
 export const SIMULATION_CASE_CAPTURE_URI_PREFIX =
   "casys://simulation-case-capture/" as const;
 
+/**
+ * Content-addressed store for `modelica-thermal-method-sheet/1.0`.
+ * The sheet is a reviewed method document, not admission or OMC authority.
+ *
+ * URI: `casys://modelica-thermal-method-sheet-capture/sha256/<captureFp>`.
+ */
+export const THERMAL_METHOD_SHEET_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "modelica-thermal-method-sheet"
+> = {
+  kind: "modelica-thermal-method-sheet",
+  directory: "state/local/modelica-thermal-method-sheet-captures",
+  uriNamespace: "modelica-thermal-method-sheet-capture",
+  label: "Modelica thermal method sheet",
+};
+
+export const THERMAL_METHOD_SHEET_CAPTURE_URI_PREFIX =
+  "casys://modelica-thermal-method-sheet-capture/" as const;
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {
