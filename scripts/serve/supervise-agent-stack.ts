@@ -25,7 +25,6 @@ export interface AgentStackConfig {
   cockpitPort: number;
   uiPort: number;
   cockpitHealthPath: string;
-  cockpitReviewIntentDirectory: string;
   workspaceId: string;
   dev: boolean;
   ui: boolean;
@@ -126,7 +125,6 @@ const SCALAR_FLAGS = new Set([
   "--cockpit-port",
   "--ui-port",
   "--cockpit-health-path",
-  "--review-intent-dir",
   "--workspace-id",
   "--readiness-timeout-ms",
   "--readiness-poll-ms",
@@ -165,7 +163,6 @@ export function defaultAgentStackConfig(): AgentStackConfig {
     cockpitPort: 5175,
     uiPort: 5173,
     cockpitHealthPath: "/healthz",
-    cockpitReviewIntentDirectory: "state/local/project-review-intents",
     workspaceId: "primary",
     dev: false,
     ui: false,
@@ -297,9 +294,6 @@ export function parseAgentStackArgs(
       case "--cockpit-health-path":
         config.cockpitHealthPath = healthPath(required, flag);
         break;
-      case "--review-intent-dir":
-        config.cockpitReviewIntentDirectory = required;
-        break;
       case "--workspace-id":
         config.workspaceId = required;
         break;
@@ -327,27 +321,10 @@ export function buildAgentStackCommands(
     ...mcpPermissions.net,
     networkTarget(config.mcpHostname, config.mcpPort),
   ]);
-  mcpPermissions.read = unique([
-    ...mcpPermissions.read,
-    config.cockpitReviewIntentDirectory,
-  ]);
-  mcpPermissions.write = unique([
-    ...mcpPermissions.write,
-    config.cockpitReviewIntentDirectory,
-  ]);
   const cockpitPermissions = clonePermissions(config.cockpitPermissions);
   cockpitPermissions.net = unique([
     ...cockpitPermissions.net,
     networkTarget(config.cockpitHostname, config.cockpitPort),
-    networkTarget(config.mcpHostname, config.mcpPort),
-  ]);
-  cockpitPermissions.read = unique([
-    ...cockpitPermissions.read,
-    config.cockpitReviewIntentDirectory,
-  ]);
-  cockpitPermissions.write = unique([
-    ...cockpitPermissions.write,
-    config.cockpitReviewIntentDirectory,
   ]);
   const watchArgs = config.dev ? ["--watch", "--no-clear-screen"] : [];
 
@@ -378,10 +355,6 @@ export function buildAgentStackCommands(
         `--host=${config.cockpitHostname}`,
         `--port=${config.cockpitPort}`,
         "--no-seed",
-        `--review-intent-dir=${config.cockpitReviewIntentDirectory}`,
-        `--review-intent-mcp-url=${
-          httpUrl(config.mcpHostname, config.mcpPort, "/mcp")
-        }`,
         `--workspace-id=${config.workspaceId}`,
         ...config.cockpitExtraArgs,
       ],
@@ -397,7 +370,6 @@ export function buildAgentStackCommands(
         config.mcpEntryPoint,
         `--hostname=${config.mcpHostname}`,
         `--port=${config.mcpPort}`,
-        `--review-intent-dir=${config.cockpitReviewIntentDirectory}`,
         ...config.mcpExtraArgs,
       ],
     },
@@ -650,7 +622,6 @@ Commands:
   --cockpit-entry PATH        Cockpit BFF entry point
   --ui-root PATH              npm prefix (default: src/ui)
   --ui-script NAME            npm Vite script (default: dev:thread)
-  --review-intent-dir PATH    Cockpit's only writable outbox directory
   --readiness-timeout-ms MS   BFF readiness deadline (default: 10000)
   --readiness-poll-ms MS      BFF readiness polling period (default: 100)
   --shutdown-grace-ms MS      Grace before SIGKILL (default: 5000)
@@ -864,7 +835,6 @@ function validateConfig(config: AgentStackConfig): void {
       config.cockpitEntryPoint,
       config.uiRoot,
       config.uiScript,
-      config.cockpitReviewIntentDirectory,
       config.workspaceId,
     ]
   ) {
@@ -936,14 +906,12 @@ function healthPath(value: string, flag: string): string {
 
 function rejectReservedExtraArgument(flag: string, argument: string): void {
   const reserved = flag === "--mcp-arg"
-    ? ["--hostname", "--port", "--review-intent-dir"]
+    ? ["--hostname", "--port"]
     : flag === "--cockpit-arg"
     ? [
       "--host",
       "--port",
       "--workspace-id",
-      "--review-intent-dir",
-      "--review-intent-mcp-url",
       "--no-seed",
       "--seed",
     ]

@@ -69,8 +69,6 @@ projection.
 | `project_agent_run_plan_get`            | Read                     | Reopen the sealed `resolved-operation-plan/2.0` on one run; never executes                 |
 | `project_agent_run_cancel`              | Human elicitation        | Cancel one exact unclaimed queued run after signed paired-chat confirmation                |
 | `project_agent_run_execute`             | Bounded server execution | Dispatch that exact queued registered run; no arbitrary execution payload                  |
-| `project_review_intent_list`            | Read                     | Exact pending Workbench review intents                                                     |
-| `project_review_intent_acknowledge`     | Agent receipt            | Record receipt of one intent; never an approval                                            |
 
 Closing a leftover ready work item behind a completed successor is operator recovery,
 not a Console tool: `deno task recover:work-item-successor`. Default is inspect.

@@ -7,20 +7,8 @@ import {
   collectEngineeringProjectThreadReferenceIssues,
   validateEngineeringProjectSnapshot,
 } from "../../src/domain/project/engineering-project-validation.ts";
-import { fingerprintsEqual } from "../../src/domain/kernel/deterministic-json.ts";
-import {
-  type ProjectReviewIntent,
-  type ProjectReviewIntentRecord,
-  validateProjectReviewIntent,
-} from "../../src/domain/project/project-review-intent.ts";
-import { HttpMcpToolClient } from "../../src/adapters/shared/mcp/http-mcp-tool-client.ts";
 import { FileThreadSnapshotStore } from "../../src/adapters/shared/stores/file-thread-snapshot-store.ts";
-import {
-  FileProjectReviewIntentStore,
-  ProjectReviewIntentConflictError,
-} from "../../src/adapters/shared/stores/file-project-review-intent-store.ts";
 import { FileCockpitFocusStore } from "../../src/adapters/project/file-cockpit-focus-store.ts";
-import type { ProjectReviewIntentStore } from "../../src/application/ports/out/project-review-intent-store.ts";
 import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
@@ -185,17 +173,6 @@ export interface NativeWorkbenchHandlerOptions {
   assetReader?: (filename: string) => Promise<Uint8Array | undefined>;
   /** Testable boundary for content-addressed, non-canonical geometry previews. */
   draftAssetReader?: (digest: string) => Promise<Uint8Array | undefined>;
-  /** Durable reviewer-to-agent outbox. It has no project mutation method. */
-  reviewIntents?: ProjectReviewIntentStore;
-  /**
-   * Best-effort MCP wake-up emitted only after the durable outbox append has
-   * completed. The outbox remains authoritative when no host is subscribed.
-   */
-  reviewIntentSignal?: {
-    notify(record: ProjectReviewIntentRecord): Promise<void>;
-  };
-  /** Testable/loggable failure seam; signalling never rolls back the outbox. */
-  onReviewIntentSignalError?: (error: unknown) => void;
   /** Polling only observes persisted snapshots; it never executes a tool. */
   pollIntervalMs?: number;
   /**
@@ -361,15 +338,6 @@ export function createNativeWorkbenchHandler(
       if (request.method !== "GET") return methodNotAllowed();
       return await snapshotEventStream(request, options);
     }
-    if (url.pathname === "/api/review-intents") {
-      if (request.method === "GET") {
-        return await listProjectReviewIntents(options);
-      }
-      if (request.method === "POST") {
-        return await appendProjectReviewIntent(request, url, options);
-      }
-      return methodNotAllowed("GET, POST");
-    }
     if (url.pathname === "/api/thread/workbench") {
       if (request.method !== "GET") return methodNotAllowed();
       let context: ActiveTargetResolution;
@@ -429,203 +397,6 @@ export function createNativeWorkbenchHandler(
     }
     return new Response("Not found", { status: 404 });
   };
-}
-
-const REVIEW_INTENT_MAX_BODY_BYTES = 16_384;
-
-async function listProjectReviewIntents(
-  options: NativeWorkbenchHandlerOptions,
-): Promise<Response> {
-  if (!options.reviewIntents) return reviewIntentOutboxUnavailable();
-  let context: ActiveTargetResolution;
-  try {
-    context = await resolveActiveProject(options);
-  } catch (error) {
-    if (error instanceof NativeWorkbenchProjectNotFoundError) {
-      return projectNotFound(error.projectId);
-    }
-    throw error;
-  }
-  return json({
-    projectId: context.projectId,
-    projectRevision: context.project.revision,
-    intents: await options.reviewIntents.list(context.projectId),
-  }, 200);
-}
-
-async function appendProjectReviewIntent(
-  request: Request,
-  url: URL,
-  options: NativeWorkbenchHandlerOptions,
-): Promise<Response> {
-  if (!options.reviewIntents) return reviewIntentOutboxUnavailable();
-  if (!requestIsSameOrigin(request, url)) {
-    return json({ error: "cross_origin_review_intent_forbidden" }, 403);
-  }
-  if (!requestHasJsonContentType(request)) {
-    return json({ error: "review_intent_requires_application_json" }, 415);
-  }
-  let raw: unknown;
-  try {
-    raw = await readBoundedJson(request, REVIEW_INTENT_MAX_BODY_BYTES);
-  } catch (error) {
-    if (error instanceof ReviewIntentBodyTooLargeError) {
-      return json({ error: "review_intent_body_too_large" }, 413);
-    }
-    return json({ error: "invalid_review_intent_json" }, 400);
-  }
-
-  let intent: ProjectReviewIntent;
-  try {
-    intent = validateProjectReviewIntent(raw);
-  } catch (error) {
-    return json({
-      error: "invalid_review_intent",
-      message: error instanceof Error ? error.message : "Invalid review intent.",
-    }, 400);
-  }
-
-  let context: ActiveTargetResolution;
-  try {
-    context = await resolveActiveProject(options);
-  } catch (error) {
-    if (error instanceof NativeWorkbenchProjectNotFoundError) {
-      return projectNotFound(error.projectId);
-    }
-    throw error;
-  }
-  if (
-    intent.projectId !== context.projectId ||
-    intent.projectId !== context.project.project.id
-  ) {
-    return reviewIntentConflict(
-      "review_intent_project_mismatch",
-      context,
-    );
-  }
-  if (intent.expectedRevision !== context.project.revision) {
-    return reviewIntentConflict("review_intent_stale_revision", context);
-  }
-  const decision = context.project.decisions.find((candidate) =>
-    candidate.id === intent.decisionId
-  );
-  if (!decision || decision.status !== "proposed") {
-    return reviewIntentConflict(
-      "review_intent_decision_not_proposed",
-      context,
-    );
-  }
-  if (
-    !decision.inputFingerprint ||
-    !fingerprintsEqual(intent.inputFingerprint, decision.inputFingerprint)
-  ) {
-    return reviewIntentConflict(
-      "review_intent_fingerprint_mismatch",
-      context,
-    );
-  }
-  const approval = [...decision.approvalIds].reverse().map((approvalId) =>
-    context.project.approvals.find((candidate) => candidate.id === approvalId)
-  ).find((candidate) => candidate?.status === "pending");
-  if (
-    !approval || approval.id !== intent.approvalId ||
-    approval.decisionId !== decision.id || !approval.inputFingerprint ||
-    !fingerprintsEqual(approval.inputFingerprint, intent.inputFingerprint)
-  ) {
-    return reviewIntentConflict(
-      "review_intent_approval_mismatch",
-      context,
-    );
-  }
-
-  try {
-    const record = await options.reviewIntents.append(intent);
-    let signal: "not-configured" | "sent" | "deferred" = "not-configured";
-    if (options.reviewIntentSignal) {
-      try {
-        await options.reviewIntentSignal.notify(record);
-        signal = "sent";
-      } catch (error) {
-        signal = "deferred";
-        options.onReviewIntentSignalError?.(error);
-      }
-    }
-    return json({
-      status: "accepted",
-      projectId: context.projectId,
-      projectRevision: context.project.revision,
-      signal,
-      record,
-    }, 202);
-  } catch (error) {
-    if (error instanceof ProjectReviewIntentConflictError) {
-      return reviewIntentConflict("review_intent_conflict", context);
-    }
-    throw error;
-  }
-}
-
-function requestIsSameOrigin(request: Request, url: URL): boolean {
-  const origin = request.headers.get("Origin");
-  if (!origin) return false;
-  try {
-    return new URL(origin).origin === url.origin;
-  } catch {
-    return false;
-  }
-}
-
-function requestHasJsonContentType(request: Request): boolean {
-  return request.headers.get("Content-Type")?.split(";", 1)[0].trim()
-    .toLowerCase() === "application/json";
-}
-
-class ReviewIntentBodyTooLargeError extends Error {}
-
-async function readBoundedJson(request: Request, limit: number): Promise<unknown> {
-  const declaredLength = request.headers.get("Content-Length");
-  if (
-    declaredLength !== null &&
-    (!/^\d+$/.test(declaredLength) || Number(declaredLength) > limit)
-  ) {
-    throw new ReviewIntentBodyTooLargeError();
-  }
-  if (!request.body) throw new SyntaxError("missing JSON body");
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  while (true) {
-    const result = await reader.read();
-    if (result.done) break;
-    length += result.value.byteLength;
-    if (length > limit) {
-      await reader.cancel();
-      throw new ReviewIntentBodyTooLargeError();
-    }
-    chunks.push(result.value);
-  }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-}
-
-function reviewIntentConflict(
-  error: string,
-  context: ActiveTargetResolution,
-): Response {
-  return json({
-    error,
-    projectId: context.projectId,
-    currentRevision: context.project.revision,
-  }, 409);
-}
-
-function reviewIntentOutboxUnavailable(): Response {
-  return json({ error: "review_intent_outbox_unavailable" }, 503);
 }
 
 async function snapshotEventStream(
@@ -1189,10 +960,6 @@ if (import.meta.main) {
   const assetDirectory = cliArgs["asset-dir"] ?? "state/local/thread-assets";
   const liveUpdateDirectory = cliArgs["live-update-dir"] ??
     "state/local/live-thread-updates";
-  const reviewIntentDirectory = cliArgs["review-intent-dir"] ??
-    "state/local/project-review-intents";
-  const reviewIntentMcpUrl = cliArgs["review-intent-mcp-url"] ??
-    "http://127.0.0.1:3020/mcp";
   const focusDirectory = cliArgs["focus-dir"] ?? "state/local/cockpit-focus";
   const inspectionDroneV4PartDefinitionsCaptureDirectory =
     cliArgs["inspection-drone-v4-part-definitions-capture-dir"] ??
@@ -1309,13 +1076,6 @@ if (import.meta.main) {
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
   ]);
   const liveUpdates = new FileLiveThreadUpdateStore(liveUpdateDirectory);
-  const reviewIntents = new FileProjectReviewIntentStore(reviewIntentDirectory);
-  const reviewIntentMcp = new HttpMcpToolClient({
-    mcpUrl: reviewIntentMcpUrl,
-    // The durable append already succeeded; keep this best-effort wake-up
-    // short so a stopped MCP host cannot hold the Workbench in "Sending".
-    timeoutMs: 1_000,
-  });
   const handler = createNativeWorkbenchHandler({
     store,
     projectStore,
@@ -1349,25 +1109,6 @@ if (import.meta.main) {
     technicalCompilationAdmissions,
     verificationCaseCaptures,
     liveUpdates,
-    reviewIntents,
-    reviewIntentSignal: {
-      notify: async (record) => {
-        await reviewIntentMcp.callTool({
-          name: "project_review_intent_signal",
-          arguments: {
-            projectId: record.intent.projectId,
-            intentId: record.intent.intentId,
-          },
-        });
-      },
-    },
-    onReviewIntentSignalError: (error) => {
-      console.error(
-        `Workbench review intent remains durable, but its MCP resource signal was deferred: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    },
     assetReader: (filename) => assetReader.read(filename),
     cockpitFleet: () =>
       readDeclaredCockpitFleet(
@@ -1408,8 +1149,6 @@ if (import.meta.main) {
           : `Component identities: ${componentCatalogPath}`,
       );
       console.log(`Live activity journal: ${liveUpdateDirectory}`);
-      console.log(`Reviewer intent outbox: ${reviewIntentDirectory}`);
-      console.log(`Reviewer intent MCP signal: ${reviewIntentMcpUrl}`);
       if (workspaceId) {
         console.log(`Agent-selected cockpit workspace: ${workspaceId}`);
       }
@@ -1417,7 +1156,7 @@ if (import.meta.main) {
         "Project state: read-only active revisions (no fallback seeding)",
       );
       console.log(
-        "Workbench review intents are durable but non-authoritative: project commands and signed human decisions remain in the paired MCP flow.",
+        "Workbench transport is GET + SSE only. Commands and signed decisions remain in the paired MCP conversation.",
       );
     },
   }, workspaceHandler);

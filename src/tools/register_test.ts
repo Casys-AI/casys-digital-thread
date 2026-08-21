@@ -7,7 +7,6 @@ import {
 } from "@std/assert";
 import type { DockerObserver } from "../adapters/shared/docker-observer.ts";
 import type { McpProbe } from "../adapters/shared/mcp/http-mcp-probe.ts";
-import { FileProjectReviewIntentStore } from "../adapters/shared/stores/file-project-review-intent-store.ts";
 import {
   DESIGN_EXECUTE_BUILD123D_OPERATION,
 } from "../domain/cad/isolated/build123d-execution-proposal.ts";
@@ -18,7 +17,6 @@ import type { RunDetail } from "../application/control-plane/read-model/engineer
 import type { FleetManifest } from "../application/control-plane/read-model/fleet-manifest.ts";
 import type { ObservedContainer } from "../application/control-plane/read-model/fleet-observation.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
-import type { ProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import {
   approvalModeForBinding,
   createConsoleServer,
@@ -32,33 +30,30 @@ import {
   localExecutionForBinding,
   parseConsoleCli,
 } from "../../server.ts";
-import { PROJECT_REVIEW_INTENTS_RESOURCE_URI } from "./project-review-intent-subscription.ts";
 import { CONSOLE_RESOURCE_URI } from "./control-plane.ts";
 
 const NEUTRAL_PROJECT_ID = "neutral-system-ns01";
 
-Deno.test("console CLI binds its durable review outbox independently of MCP port syntax", () => {
+Deno.test("console CLI parses loopback bind options without a review-intent outbox", () => {
   assertEquals(
     parseConsoleCli([
       "--hostname=localhost",
       "--port",
       "6202",
-      "--review-intent-dir=/var/tmp/casys-review-outbox",
       "--yolo",
       "--local-execution",
     ]),
     {
       hostname: "localhost",
       port: 6202,
-      projectReviewIntentDirectory: "/var/tmp/casys-review-outbox",
       yolo: true,
       localExecution: true,
     },
   );
   assertThrows(
-    () => parseConsoleCli(["--review-intent-dir"]),
+    () => parseConsoleCli(["--review-intent-dir=/var/tmp/casys-review-outbox"]),
     TypeError,
-    "requires a value",
+    "Unknown console argument",
   );
 });
 
@@ -501,7 +496,6 @@ Deno.test(
         docker: unavailableDocker(),
         logger: () => {},
         activeProjectDirectory: `${temporaryDirectory}/projects`,
-        projectReviewIntentDirectory: `${temporaryDirectory}/review-intents`,
       });
       const names = app.getToolNames();
       assertEquals(names.includes("project_admitted_geometry_export"), true);
@@ -531,7 +525,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     projectId: NEUTRAL_PROJECT_ID,
     projectPath,
     activeProjectDirectory,
-    projectReviewIntentDirectory: `${temporaryDirectory}/review-intents`,
   });
   assertEquals(app.getToolNames().sort(), [
     "cockpit_focus_set",
@@ -565,9 +558,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_led_driver_source_review",
     "project_plan_publish",
     "project_question_propose",
-    "project_review_intent_acknowledge",
-    "project_review_intent_list",
-    "project_review_intent_signal",
     "project_sensitivity_base_evaluation_review",
     "project_sensitivity_study_seal_review",
     "project_snapshot",
@@ -630,8 +620,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_led_driver_source_review",
       "project_plan_publish",
       "project_question_propose",
-      "project_review_intent_acknowledge",
-      "project_review_intent_list",
       "project_sensitivity_base_evaluation_review",
       "project_sensitivity_study_seal_review",
       "project_snapshot",
@@ -754,20 +742,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       projectId,
     );
     assertEquals(project.revision, 1);
-    assertStringIncludes(
-      (projectSnapshot.content as Array<Record<string, unknown>>)[0].text as string,
-      "0 actionable intents",
+    assertEquals(
+      (projectSnapshot.content as Array<Record<string, unknown>>)[0].text,
+      "Project Neutral engineering system is at revision 1.",
     );
-    const reviewIntents = await client.call("tools/call", {
-      name: "project_review_intent_list",
-      arguments: { projectId },
-    });
-    assertEquals(reviewIntents.structuredContent, {
-      projectId,
-      projectRevision: 1,
-      count: 0,
-      records: [],
-    });
 
     const proposalArguments = {
       commandId: "mcp-proposal-material-1",
@@ -855,7 +833,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
         annotations.readOnlyHint,
         tool.name === "project_snapshot" ||
           tool.name === "project_agent_run_plan_get" ||
-          tool.name === "project_review_intent_list" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_fea_proof_seal_review" ||
@@ -874,8 +851,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
         tool.name === "project_snapshot" ||
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review" ||
-          tool.name === "project_review_intent_list" ||
-          tool.name === "project_review_intent_acknowledge" ||
           tool.name === "project_start" ||
           tool.name === "project_question_propose" ||
           tool.name === "project_answer_record" ||
@@ -936,102 +911,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
         tool.name === "cockpit_focus_snapshot",
       );
     }
-
-    const reviewIntent: ProjectReviewIntent = {
-      intentId: "review-intent-mcp-sse-1",
-      projectId,
-      expectedRevision: 2,
-      decisionId: "review-neutral-material-card",
-      approvalId: "approval:review-neutral-material-card:mcp-sse-1",
-      inputFingerprint: {
-        algorithm: "sha256",
-        digest: "b".repeat(64),
-      },
-      action: "validate",
-      submittedAt: "2026-08-09T12:00:00.000Z",
-    };
-    const reviewIntentStore = new FileProjectReviewIntentStore(
-      `${temporaryDirectory}/review-intents`,
-    );
-    await reviewIntentStore.append(reviewIntent);
-
-    const beforeSignal = await client.call("tools/call", {
-      name: "project_snapshot",
-      arguments: { projectId: reviewIntent.projectId },
-    });
-    const firstSubscription = await client.listen([
-      PROJECT_REVIEW_INTENTS_RESOURCE_URI,
-    ]);
-    assertEquals(await firstSubscription.next(), {
-      jsonrpc: "2.0",
-      method: "notifications/subscriptions/acknowledged",
-      params: {
-        _meta: {
-          "io.modelcontextprotocol/subscriptionId": firstSubscription.subscriptionId,
-        },
-        notifications: {
-          resourceSubscriptions: [PROJECT_REVIEW_INTENTS_RESOURCE_URI],
-        },
-      },
-    });
-
-    const signal = await client.call("tools/call", {
-      name: "project_review_intent_signal",
-      arguments: {
-        projectId: reviewIntent.projectId,
-        intentId: reviewIntent.intentId,
-      },
-    });
-    assertEquals(signal.structuredContent, {
-      projectId: reviewIntent.projectId,
-      intentId: reviewIntent.intentId,
-      resourceUri: PROJECT_REVIEW_INTENTS_RESOURCE_URI,
-      signalled: true,
-    });
-    assertEquals(await firstSubscription.next(), {
-      jsonrpc: "2.0",
-      method: "notifications/resources/updated",
-      params: {
-        uri: PROJECT_REVIEW_INTENTS_RESOURCE_URI,
-        _meta: {
-          "io.modelcontextprotocol/subscriptionId": firstSubscription.subscriptionId,
-        },
-      },
-    });
-    await firstSubscription.cancel();
-
-    const reconnected = await client.listen([
-      PROJECT_REVIEW_INTENTS_RESOURCE_URI,
-    ]);
-    const reconnectAcknowledgement = await reconnected.next();
-    assertEquals(
-      reconnectAcknowledgement.method,
-      "notifications/subscriptions/acknowledged",
-    );
-    assertEquals(
-      ((reconnectAcknowledgement.params as Record<string, unknown>)._meta as Record<
-        string,
-        unknown
-      >)["io.modelcontextprotocol/subscriptionId"],
-      reconnected.subscriptionId,
-    );
-    const recovered = await client.call("resources/read", {
-      uri: PROJECT_REVIEW_INTENTS_RESOURCE_URI,
-    });
-    const resourceContent = (recovered.contents as Array<Record<string, unknown>>)[0];
-    assertEquals(resourceContent.uri, PROJECT_REVIEW_INTENTS_RESOURCE_URI);
-    assertEquals(resourceContent.mimeType, "application/json");
-    assertEquals(JSON.parse(resourceContent.text as string), {
-      schemaVersion: "project-review-intents-resource/1.0",
-      records: [{ intent: reviewIntent }],
-    });
-    await reconnected.cancel();
-
-    const afterSignal = await client.call("tools/call", {
-      name: "project_snapshot",
-      arguments: { projectId: reviewIntent.projectId },
-    });
-    assertEquals(afterSignal.structuredContent, beforeSignal.structuredContent);
   } finally {
     await http.shutdown();
     await Deno.remove(temporaryDirectory, { recursive: true });

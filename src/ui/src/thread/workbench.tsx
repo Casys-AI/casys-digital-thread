@@ -15,29 +15,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu.tsx";
-import type {
-  ProjectReviewIntent,
-  ProjectReviewIntentAction,
-} from "../../../domain/project/project-review-intent.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
-import {
-  buildActivityReviewRecords,
-  type ProjectReviewRecord,
-} from "../project/review-decision-model.ts";
-import {
-  type ProjectReviewIntentClient,
-  ReviewIntentConflictError,
-  ReviewIntentStaleError,
-} from "../project/review-intent-client.ts";
-import {
-  buildReviewIntent,
-  indexReviewIntentRecords,
-  reattachReviewIntent,
-  reviewIntentScopeKey,
-  reviewIntentStateFromRecord,
-  type ReviewIntentTransmissionState,
-  shouldPollReviewIntentReceipts,
-} from "../project/review-intent-model.ts";
+import { buildActivityReviewRecords } from "../project/review-decision-model.ts";
 import {
   type AgentNowPresentation,
   agentRunSummary,
@@ -192,14 +171,12 @@ const TONE_BADGE_VARIANT: Record<
 
 export interface ThreadWorkbenchProps {
   client: ThreadWorkbenchClient;
-  reviewIntentClient?: ProjectReviewIntentClient;
   /** Declared fleet topology; absent when the BFF has no manifest. */
   fleetClient?: CockpitFleetClient;
 }
 
 export function ThreadWorkbench({
   client,
-  reviewIntentClient,
   fleetClient,
 }: ThreadWorkbenchProps): JSX.Element {
   const [workbench, setWorkbench] = useState<EngineeringWorkbenchSnapshot>();
@@ -236,9 +213,6 @@ export function ThreadWorkbench({
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [error, setError] = useState<string>();
-  const [reviewIntentStates, setReviewIntentStates] = useState<
-    ReadonlyMap<string, ReviewIntentTransmissionState>
-  >(new Map());
   // Evidence is one Graphology + dagre + Sigma canvas. The SVG Map layout
   // is not a second organisation of the same dossier.
   // Profondeur du voisinage en vue locale (façon Obsidian). Décision
@@ -436,73 +410,12 @@ export function ThreadWorkbench({
     };
   }, [client]);
 
-  const reviewIntentProjectId = workbench?.project.project.id;
-  const reviewIntentProjectRevision = workbench?.project.revision;
   const activityReviewRecords = workbench
     ? buildActivityReviewRecords(
       workbench.project,
       workbench.surface === "evidence" ? workbench.thread : undefined,
     )
     : [];
-
-  // Restore delivery receipts independently from canonical decision state.
-  // Exact project+decision+fingerprint+approval matching prevents a Sent badge
-  // from crossing either a changed proposal or a project focus switch.
-  useEffect(() => {
-    if (!reviewIntentClient || !reviewIntentProjectId) return;
-    const controller = new AbortController();
-    reviewIntentClient.list(controller.signal).then((response) => {
-      if (
-        controller.signal.aborted ||
-        response.projectId !== reviewIntentProjectId
-      ) return;
-      const restored = indexReviewIntentRecords(response.intents);
-      setReviewIntentStates((current) =>
-        mergeReviewIntentTransmission(current, restored)
-      );
-    }).catch(() => {
-      // The project and its canonical statuses remain usable if the intent
-      // outbox cannot be read. A later explicit send reports its own error.
-    });
-    return () => controller.abort();
-  }, [
-    reviewIntentClient,
-    reviewIntentProjectId,
-    reviewIntentProjectRevision,
-  ]);
-
-  const hasQueuedReviewIntent = shouldPollReviewIntentReceipts(
-    reviewIntentStates,
-    reviewIntentProjectId,
-    activityReviewRecords,
-  );
-  useEffect(() => {
-    if (
-      !reviewIntentClient || !reviewIntentProjectId ||
-      !hasQueuedReviewIntent
-    ) return;
-    const controller = new AbortController();
-    const refreshReceipts = () => {
-      reviewIntentClient.list(controller.signal).then((response) => {
-        if (
-          controller.signal.aborted ||
-          response.projectId !== reviewIntentProjectId
-        ) return;
-        setReviewIntentStates((current) =>
-          mergeReviewIntentTransmission(
-            current,
-            indexReviewIntentRecords(response.intents),
-          )
-        );
-      }).catch(() => undefined);
-    };
-    const interval = globalThis.setInterval(refreshReceipts, 2_000);
-    refreshReceipts();
-    return () => {
-      controller.abort();
-      globalThis.clearInterval(interval);
-    };
-  }, [reviewIntentClient, reviewIntentProjectId, hasQueuedReviewIntent]);
 
   // Keep one versioned object graph for the Evidence renderers and their
   // selection state. The Evidence-only removal of closed actions happens
@@ -974,167 +887,6 @@ export function ThreadWorkbench({
 
   const snapshot = workbench.thread;
   const project = workbench.project;
-
-  const setReviewIntentState = (
-    scope: string,
-    state: ReviewIntentTransmissionState,
-  ) => {
-    setReviewIntentStates((current) => {
-      const next = new Map(current);
-      next.set(scope, state);
-      return next;
-    });
-  };
-
-  const reconcileReviewIntentConflict = async (
-    scope: string,
-    intent: ProjectReviewIntent,
-    conflict: ReviewIntentConflictError,
-  ): Promise<void> => {
-    if (!reviewIntentClient) return;
-    try {
-      const response = await reviewIntentClient.list();
-      if (response.projectId === intent.projectId) {
-        const exact = reattachReviewIntent(
-          response.intents,
-          intent.projectId,
-          intent.decisionId,
-          intent.inputFingerprint,
-          intent.approvalId,
-        );
-        if (exact.kind !== "idle") {
-          setReviewIntentState(scope, exact);
-          return;
-        }
-      }
-    } catch {
-      // The conflict below remains truthful even when reconciliation cannot
-      // read the outbox. Never convert this failure into a project verdict.
-    }
-    setReviewIntentState(scope, {
-      kind: "error",
-      message: conflict.code === "review_intent_stale_revision"
-        ? "Project context advanced without changing this proposal. Refresh the exact preview before sending again."
-        : "The outbox could not reconcile this send. Refresh the exact preview before trying again.",
-    });
-  };
-
-  const transmitReviewIntent = async (
-    scope: string,
-    intent: ProjectReviewIntent,
-  ): Promise<void> => {
-    if (!reviewIntentClient) return;
-    setReviewIntentState(scope, { kind: "sending", intent });
-    try {
-      const record = await reviewIntentClient.submit(intent);
-      setReviewIntentState(scope, reviewIntentStateFromRecord(record));
-    } catch (reason) {
-      if (reason instanceof ReviewIntentStaleError) {
-        setReviewIntentState(scope, {
-          kind: "stale",
-          message: reason.message,
-          currentRevision: reason.currentRevision,
-        });
-        return;
-      }
-      if (reason instanceof ReviewIntentConflictError) {
-        await reconcileReviewIntentConflict(scope, intent, reason);
-        return;
-      }
-      setReviewIntentState(scope, {
-        kind: "error",
-        message: reason instanceof Error
-          ? reason.message
-          : "The review intent could not be sent.",
-        retryIntent: intent,
-      });
-    }
-  };
-
-  const submitReviewIntent = async (
-    record: ProjectReviewRecord,
-    action: ProjectReviewIntentAction,
-    comment?: string,
-  ): Promise<void> => {
-    const decision = record.decision;
-    const approval = record.approvalId
-      ? project.approvals.find((candidate) =>
-        candidate.id === record.approvalId &&
-        candidate.decisionId === decision?.id
-      )
-      : undefined;
-    if (
-      !reviewIntentClient || decision?.status !== "proposed" ||
-      !decision.inputFingerprint || !record.approvalId ||
-      decision.approvalIds.at(-1) !== record.approvalId ||
-      approval?.status !== "pending"
-    ) return;
-    const intent = buildReviewIntent({
-      intentId: `review-${globalThis.crypto.randomUUID()}`,
-      projectId: project.project.id,
-      expectedRevision: project.revision,
-      decisionId: decision.id,
-      approvalId: record.approvalId,
-      inputFingerprint: decision.inputFingerprint,
-      action,
-      comment,
-      submittedAt: new Date().toISOString(),
-    });
-    await transmitReviewIntent(
-      reviewIntentScopeKey(
-        project.project.id,
-        decision.id,
-        decision.inputFingerprint,
-        record.approvalId,
-      ),
-      intent,
-    );
-  };
-
-  const retryReviewIntent = async (
-    record: ProjectReviewRecord,
-  ): Promise<void> => {
-    const decision = record.decision;
-    if (!decision?.inputFingerprint || !record.approvalId) return;
-    const scope = reviewIntentScopeKey(
-      project.project.id,
-      decision.id,
-      decision.inputFingerprint,
-      record.approvalId,
-    );
-    const state = reviewIntentStates.get(scope);
-    if (state?.kind !== "error" || !state.retryIntent) return;
-    // Retry is byte-for-byte idempotent: same intentId, timestamp, revision,
-    // fingerprint, action and comment.
-    await transmitReviewIntent(scope, state.retryIntent);
-  };
-
-  const refreshReviewIntentContext = async (): Promise<void> => {
-    try {
-      const next = await client.load();
-      snapshotRef.current = next;
-      setWorkbench(next);
-      if (!reviewIntentClient) return;
-      const response = await reviewIntentClient.list();
-      if (response.projectId === next.project.project.id) {
-        setReviewIntentStates(indexReviewIntentRecords(response.intents));
-      }
-    } catch {
-      setReviewIntentStates((current) =>
-        new Map([...current].map(([key, state]) => [
-          key,
-          state.kind === "stale" ||
-            (state.kind === "error" && !state.retryIntent)
-            ? {
-              ...state,
-              message:
-                "Refresh failed. The current project record is still shown; try again.",
-            }
-            : state,
-        ]))
-      );
-    }
-  };
   const agentNow = buildAgentNowPresentation(project);
   const agentHeader = compactAgentHeader(agentNow, project);
   // versionedProvenance and evidenceCanvas are memoized above (guarded
@@ -1644,17 +1396,6 @@ export function ThreadWorkbench({
                       components={snapshot.components}
                       familyGraph={snapshot.evidenceFamilyGraph}
                       reviewRecords={activityReviewRecords}
-                      reviewIntentProjectId={project.project.id}
-                      reviewIntentStates={reviewIntentStates}
-                      onSubmitReviewIntent={reviewIntentClient
-                        ? submitReviewIntent
-                        : undefined}
-                      onRetryReviewIntent={reviewIntentClient
-                        ? retryReviewIntent
-                        : undefined}
-                      onRefreshReviewIntents={reviewIntentClient
-                        ? refreshReviewIntentContext
-                        : undefined}
                       onFilterChange={(id) => {
                         setFeedFilterComponentId(id);
                         // Only catalog components can be selected by the
@@ -2856,20 +2597,6 @@ function streamStatusLabel(
   if (status === "connecting") return "Connecting activity stream";
   if (status === "reconnecting") return "Reconnecting activity stream";
   return "Persisted snapshot";
-}
-
-function mergeReviewIntentTransmission(
-  current: ReadonlyMap<string, ReviewIntentTransmissionState>,
-  restored: ReadonlyMap<string, ReviewIntentTransmissionState>,
-): ReadonlyMap<string, ReviewIntentTransmissionState> {
-  const next = new Map(restored);
-  for (const [key, state] of current) {
-    // Preserve an in-flight or locally reported state until the outbox can
-    // observe it. When GET contains the exact scope, its queued/ack receipt is
-    // authoritative and replaces the local transport state.
-    if (!next.has(key) && state.kind !== "idle") next.set(key, state);
-  }
-  return next;
 }
 
 function compactAgentHeader(

@@ -1,19 +1,13 @@
 import type { JSX } from "react";
 import { useMemo } from "react";
-import type { ProjectReviewIntentAction } from "../../../domain/project/project-review-intent.ts";
 import { cn } from "../lib/utils.ts";
 import { ActivityReviewFeedCard } from "../project/control-center.tsx";
 import {
   activityReviewStatus,
+  activityReviewStatusLabel,
+  type ActivityReviewStatus,
   type ProjectReviewRecord,
 } from "../project/review-decision-model.ts";
-import {
-  type ActivityReviewDisplayStatus,
-  activityReviewDisplayStatusLabel,
-  effectiveActivityReviewStatus,
-  reviewIntentScopeKey,
-  type ReviewIntentTransmissionState,
-} from "../project/review-intent-model.ts";
 import { Badge } from "../ui/badge.tsx";
 import { Select } from "../ui/select.tsx";
 import { Button } from "../ui/button.tsx";
@@ -98,19 +92,6 @@ export interface ThreadFeedProps {
   familyGraph?: ThreadEvidenceFamilyGraph;
   /** Durable human reviews merged into the same chronological Activity rail. */
   reviewRecords?: readonly ProjectReviewRecord[];
-  /** Current project identity used to isolate transport state across focus changes. */
-  reviewIntentProjectId?: string;
-  /** Delivery state keyed by project, decision, fingerprint, and approval attempt. */
-  reviewIntentStates?: ReadonlyMap<string, ReviewIntentTransmissionState>;
-  onSubmitReviewIntent?: (
-    record: ProjectReviewRecord,
-    action: ProjectReviewIntentAction,
-    comment?: string,
-  ) => void | Promise<void>;
-  onRetryReviewIntent?: (
-    record: ProjectReviewRecord,
-  ) => void | Promise<void>;
-  onRefreshReviewIntents?: () => void | Promise<void>;
   /** Fires when the user changes the component filter in the feed toolbar. */
   onFilterChange?: (componentId: FeedScope | undefined) => void;
   onFollowLiveChange: (follow: boolean) => void;
@@ -147,11 +128,6 @@ export function ThreadFeed({
   components,
   familyGraph,
   reviewRecords = [],
-  reviewIntentProjectId,
-  reviewIntentStates,
-  onSubmitReviewIntent,
-  onRetryReviewIntent,
-  onRefreshReviewIntents,
   onFilterChange,
   onFollowLiveChange,
   onSelectNode,
@@ -160,25 +136,6 @@ export function ThreadFeed({
   onOpenEvidenceAnchored,
   onOpenReviewEvidence,
 }: ThreadFeedProps): JSX.Element {
-  const transmissionFor = (
-    record: ProjectReviewRecord,
-  ): ReviewIntentTransmissionState => {
-    const decision = record.decision;
-    if (
-      !reviewIntentProjectId || !decision?.inputFingerprint ||
-      !record.approvalId
-    ) {
-      return { kind: "idle" };
-    }
-    return reviewIntentStates?.get(
-      reviewIntentScopeKey(
-        reviewIntentProjectId,
-        decision.id,
-        decision.inputFingerprint,
-        record.approvalId,
-      ),
-    ) ?? { kind: "idle" };
-  };
   const allFeedNodes = activityFeedNodes(nodes, edges);
 
   // Counts per component target across ALL feed events (before filtering).
@@ -336,17 +293,12 @@ export function ThreadFeed({
             const { entry, index } = row;
             if (entry.kind === "review") {
               const status = activityReviewStatus(entry.review);
-              const transmissionState = transmissionFor(entry.review);
-              const displayStatus = effectiveActivityReviewStatus(
-                status,
-                transmissionState,
-              );
               return (
                 <li
                   id={entry.review.anchorId}
                   key={entry.key}
                   className="thread-feed-entry"
-                  data-review-status={displayStatus}
+                  data-review-status={status}
                   data-canonical-review-status={status}
                   style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
                 >
@@ -355,15 +307,6 @@ export function ThreadFeed({
                     <ActivityReviewFeedCard
                       record={entry.review}
                       onOpenEvidence={onOpenReviewEvidence}
-                      transmissionState={transmissionState}
-                      onSubmitIntent={onSubmitReviewIntent
-                        ? (action, comment) =>
-                          onSubmitReviewIntent(entry.review, action, comment)
-                        : undefined}
-                      onRetryIntent={onRetryReviewIntent
-                        ? () => onRetryReviewIntent(entry.review)
-                        : undefined}
-                      onRefreshIntent={onRefreshReviewIntents}
                     />
                   </div>
                 </li>
@@ -374,13 +317,6 @@ export function ThreadFeed({
             const reviewStatus = attachedReview
               ? activityReviewStatus(attachedReview)
               : undefined;
-            const transmissionState = attachedReview
-              ? transmissionFor(attachedReview)
-              : { kind: "idle" as const };
-            const reviewDisplayStatus = effectiveActivityReviewStatus(
-              reviewStatus,
-              transmissionState,
-            );
             const active = isActivityEntryExpanded(focus, node);
             const lineage = active
               ? traceThreadLineage(nodes, edges, focus)
@@ -401,8 +337,8 @@ export function ThreadFeed({
             const currency = activityCurrency(node, familyGraph);
             // 7a: a pending decision reads as ONE warning-bordered card —
             // the fact button and its review composer share the outline.
-            const needsReviewBorder = reviewDisplayStatus === "to-review" ||
-              reviewDisplayStatus === "revision-requested";
+            const needsReviewBorder = reviewStatus === "to-review" ||
+              reviewStatus === "revision-requested";
 
             return (
               <li
@@ -418,7 +354,7 @@ export function ThreadFeed({
                   : undefined}
                 data-currency={currency}
                 data-freshness={currency}
-                data-review-status={reviewDisplayStatus}
+                data-review-status={reviewStatus}
                 data-canonical-review-status={reviewStatus}
                 style={{ animationDelay: `${Math.min(index * 35, 280)}ms` }}
               >
@@ -462,16 +398,12 @@ export function ThreadFeed({
                       </span>
                     </span>
                     <span className="grid justify-items-end gap-1 text-xs">
-                      {reviewDisplayStatus && (
+                      {reviewStatus && (
                         <Badge
-                          variant={reviewDisplayBadgeVariant(
-                            reviewDisplayStatus,
-                          )}
-                          data-review-status={reviewDisplayStatus}
+                          variant={reviewDisplayBadgeVariant(reviewStatus)}
+                          data-review-status={reviewStatus}
                         >
-                          {activityReviewDisplayStatusLabel(
-                            reviewDisplayStatus,
-                          )}
+                          {activityReviewStatusLabel(reviewStatus)}
                         </Badge>
                       )}
                       <span
@@ -514,15 +446,6 @@ export function ThreadFeed({
                     <ActivityReviewFeedCard
                       record={attachedReview}
                       onOpenEvidence={onOpenReviewEvidence}
-                      transmissionState={transmissionState}
-                      onSubmitIntent={onSubmitReviewIntent
-                        ? (action, comment) =>
-                          onSubmitReviewIntent(attachedReview, action, comment)
-                        : undefined}
-                      onRetryIntent={onRetryReviewIntent
-                        ? () => onRetryReviewIntent(attachedReview)
-                        : undefined}
-                      onRefreshIntent={onRefreshReviewIntents}
                     />
                   )}
 
@@ -767,17 +690,12 @@ function livePulseClass(
 }
 
 function reviewDisplayBadgeVariant(
-  status: ActivityReviewDisplayStatus,
-): "warning" | "success" | "info" | "secondary" {
+  status: ActivityReviewStatus,
+): "warning" | "success" | "secondary" {
   if (status === "to-review" || status === "revision-requested") {
     return "warning";
   }
   if (status === "validated") return "success";
-  if (
-    status === "sending" || status === "sent" || status === "received"
-  ) {
-    return "info";
-  }
   return "secondary";
 }
 

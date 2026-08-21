@@ -89,7 +89,6 @@ execution or evidence shortcut; no environment variable enables it implicitly.
 | `http://127.0.0.1:5175/`     | `deno task preview:cockpit` | Read-only BFF (API/SSE) and built cockpit HTML + hashed JS/CSS                                                                                                                     |
 | `http://127.0.0.1:5173/`     | `deno task preview:thread`  | Vite HMR cockpit; proxies `/api` to the BFF on :5175                                                                                                                               |
 | `/api/draft-assets/<sha256>` | BFF (native Workbench)      | Read-only geometry draft bytes; 404 if absent or hash-mismatched; Cache-Control: no-store                                                                                          |
-| `/api/review-intents`        | BFF (native Workbench)      | Loopback POST/list of review intents only; never a project decision command                                                                                                        |
 
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.
@@ -148,29 +147,16 @@ deployment.
 cockpit focus. Pass `--project-id=` only to pin a vehicle; that disables focus follow.
 Without a focus and without a pin, it reports awaiting project context. It never seeds
 or falls back to retired evidence. Browser project GET and SSE requests remain passive.
-The separate `/api/review-intents` POST records a reviewer's exact action and comment in
-an append-only outbox; it cannot change a decision status, approval, project revision,
-thread snapshot, or provider. The cockpit therefore still exposes no project mutation or
-provider-call surface.
+The Workbench has no POST or command surface. Every command and signed decision stays in
+the paired MCP conversation, so the cockpit exposes no project mutation or provider-call
+surface.
 
 `deno task start` exposes the MCP project surface used by the paired agent. Agents can
 inspect the same active project, propose an input, elicit an exact human decision in the
 conversation, queue a ready registered work item, and execute only that server-derived
-run. The same durable outbox is exposed as `casys://engineering/review-intents`. A
-connected MCP host may keep `subscriptions/listen` open and receive
-`notifications/resources/updated` after the BFF has durably appended an intent. The
-notification is only a best-effort wake-up: after a disconnect or restart, the host must
-reread the resource or the project-scoped list tool. `project_snapshot` reports the
-actionable Workbench review-intent count; `project_review_intent_list` returns the exact
-pending intents and `project_review_intent_acknowledge` records only agent receipt after
-rechecking the current revision, proposed decision, fingerprint, and action. An
-acknowledged intent remains actionable after an interruption and unrelated
-project-revision drift; it leaves the queue only when that exact proposal is no longer
-`proposed` with the same input fingerprint. The agent must then pass the exact reviewer
-comment to the existing `project_decision_approve` or `project_decision_reject` MRTR
-flow. An acknowledgement never means validated or revision requested. Agents cannot
-confirm their own proposal or choose arbitrary provider calls. New V3 projects are
-created from first intent and the server-owned baseline executor creates the immutable,
+run. Agents cannot confirm their own proposal or choose arbitrary provider calls. New V3
+projects are created from first intent and the server-owned baseline executor creates
+the immutable,
 pre-technical approved-brief r1. The provider-backed `architecture.seed-syson-model@2`
 executor accepts only that exact r1 and its brief-bound project-change lineage, then
 uses fixed SysON calls to create a blank project, document, and root package; it reads

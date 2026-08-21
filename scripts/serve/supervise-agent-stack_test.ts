@@ -34,39 +34,22 @@ Deno.test("the normal stack starts only MCP and the focused cockpit", () => {
   assertEquals(cockpit.command, "/bin/deno");
   assertEquals(cockpit.exitPolicy, "keep-stack");
   assertEquals(cockpit.readiness?.url, "http://127.0.0.1:5175/healthz");
-  assert(cockpit.args.includes("--allow-net=127.0.0.1:5175,127.0.0.1:3020"));
-  assert(cockpit.args.includes("--allow-write=state/local/project-review-intents"));
-  assert(!cockpit.args.includes("--allow-write=state/local"));
+  assert(cockpit.args.includes("--allow-net=127.0.0.1:5175"));
+  assert(!cockpit.args.some((argument) => argument.startsWith("--allow-write")));
   assert(!cockpit.args.some((argument) => argument.startsWith("--allow-env")));
   assert(!cockpit.args.some((argument) => argument.startsWith("--allow-run")));
   assert(cockpit.args.includes("--workspace-id=primary"));
   assert(cockpit.args.includes("--no-seed"));
   assert(
-    cockpit.args.includes(
-      "--review-intent-dir=state/local/project-review-intents",
-    ),
-  );
-  assert(
-    cockpit.args.includes(
-      "--review-intent-mcp-url=http://127.0.0.1:3020/mcp",
-    ),
+    !cockpit.args.some((argument) => argument.includes("review-intent")),
   );
   assert(
     mcp.args.includes(
-      "--allow-read=config,state,src/ui,mcp-server.yaml," +
-        "state/local/project-review-intents",
+      "--allow-read=config,state,src/ui,mcp-server.yaml",
     ),
   );
-  assert(
-    mcp.args.includes(
-      "--allow-write=state/local,state/local/project-review-intents",
-    ),
-  );
-  assert(
-    mcp.args.includes(
-      "--review-intent-dir=state/local/project-review-intents",
-    ),
-  );
+  assert(mcp.args.includes("--allow-write=state/local"));
+  assert(!mcp.args.some((argument) => argument.includes("review-intent")));
   assert(mcp.args.includes("--allow-net=127.0.0.1,localhost,127.0.0.1:3020"));
   assert(
     mcp.args.includes(
@@ -105,15 +88,9 @@ Deno.test("dev UI is an explicit third service with configurable ports", () => {
     ),
   );
   assert(commands[0].args.includes("--port=6200"));
+  assert(commands[0].args.includes("--allow-net=127.0.0.1:6200"));
   assert(
-    commands[0].args.includes(
-      "--allow-net=127.0.0.1:6200,localhost:6202",
-    ),
-  );
-  assert(
-    commands[0].args.includes(
-      "--review-intent-mcp-url=http://localhost:6202/mcp",
-    ),
+    !commands[0].args.some((argument) => argument.includes("review-intent")),
   );
   assert(commands[0].args.includes("--project-id=drone"));
   assertEquals(commands[2].env, {
@@ -131,34 +108,11 @@ Deno.test("watch is a dev-mode alias for task integration", () => {
   assert(commands.every((command) => command.args.includes("--watch")));
 });
 
-Deno.test("a custom review outbox receives matching read and write capability", () => {
-  const { config } = parseAgentStackArgs([
-    "--review-intent-dir=/var/tmp/casys-review-outbox",
-  ]);
-  const [cockpit, mcp] = buildAgentStackCommands(config);
-
-  assert(
-    cockpit.args.includes(
-      "--allow-read=state/local,src/ui/dist/thread,config/projects," +
-        "config/thread-subjects,/var/tmp/casys-review-outbox",
-    ),
-  );
-  assert(cockpit.args.includes("--allow-write=/var/tmp/casys-review-outbox"));
-  assert(
-    mcp.args.includes(
-      "--allow-read=config,state,src/ui,mcp-server.yaml," +
-        "/var/tmp/casys-review-outbox",
-    ),
-  );
-  assert(
-    mcp.args.includes(
-      "--allow-write=state/local,/var/tmp/casys-review-outbox",
-    ),
-  );
-  assert(
-    mcp.args.includes(
-      "--review-intent-dir=/var/tmp/casys-review-outbox",
-    ),
+Deno.test("the retired review-intent outbox flag is unknown", () => {
+  assertThrows(
+    () => parseAgentStackArgs(["--review-intent-dir=/var/tmp/casys-review-outbox"]),
+    TypeError,
+    "Unknown argument",
   );
 });
 
@@ -178,22 +132,6 @@ Deno.test("passthrough arguments cannot override supervised ports or focus", () 
   );
   assertThrows(
     () => parseAgentStackArgs(["--cockpit-arg=--workspace-id=other"]),
-    TypeError,
-    "cannot override supervised argument",
-  );
-  assertThrows(
-    () =>
-      parseAgentStackArgs([
-        "--cockpit-arg=--review-intent-mcp-url=http://other:3020/mcp",
-      ]),
-    TypeError,
-    "cannot override supervised argument",
-  );
-  assertThrows(
-    () =>
-      parseAgentStackArgs([
-        "--mcp-arg=--review-intent-dir=/var/tmp/other-outbox",
-      ]),
     TypeError,
     "cannot override supervised argument",
   );

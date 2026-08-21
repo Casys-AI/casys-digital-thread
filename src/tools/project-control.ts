@@ -19,12 +19,6 @@ import {
   type ResolvedOperationPlanV2,
   sameResolvedOperationPlanRef,
 } from "../domain/compile/rop/resolved-operation-plan-v2.ts";
-import type { ProjectReviewIntentStore } from "../application/ports/out/project-review-intent-store.ts";
-import type {
-  ProjectReviewIntent,
-  ProjectReviewIntentRecord,
-} from "../domain/project/project-review-intent.ts";
-import { isApprovalBoundProjectReviewIntent } from "../domain/project/project-review-intent.ts";
 import type {
   EngineeringBasisRef,
   EngineeringGateClaim,
@@ -57,7 +51,6 @@ import {
   PROJECT_ID,
   PROJECT_MUTATION_ANNOTATIONS,
   READ_ONLY_ANNOTATIONS,
-  REVIEW_INTENT_ACKNOWLEDGEMENT_ANNOTATIONS,
   THREAD_ENTITY_KINDS,
   THREAD_SNAPSHOT_REF_SCHEMA,
 } from "./project-control/mcp-tool-schemas.ts";
@@ -104,9 +97,6 @@ import {
   type ProjectApprovalMode,
 } from "./project-approval-mode.ts";
 
-const REVIEW_INTENT_NO_COMMENT_RATIONALE =
-  "Workbench review requested validation without an additional reviewer comment.";
-
 export interface EngineeringProjectSnapshotReader {
   get(projectId: string): Promise<EngineeringProjectSnapshot | undefined>;
   getRevision(
@@ -128,8 +118,6 @@ export interface ProjectControlToolDependencies
     ProjectLedDriverSourceToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
-  /** Optional browser-to-agent outbox; it carries no project decision authority. */
-  reviewIntents?: ProjectReviewIntentStore;
   /** Optional so focused read-only tests need not construct a trusted executor. */
   runExecutor?: ProjectRunExecutor;
   /** Reads only server-stamped resolved operation plans from the local CAS. */
@@ -152,25 +140,8 @@ export function registerProjectControlTools(
   app.registerTool(projectSnapshotTool, async (args) => {
     const projectId = requiredString(args.projectId, "projectId");
     const snapshot = await requiredProject(dependencies.projects, projectId);
-    const actionableReviewIntents = dependencies.reviewIntents
-      ? await actionableProjectReviewIntents(
-        dependencies.reviewIntents,
-        snapshot,
-      )
-      : undefined;
     return await projectResult(
-      `Project ${snapshot.project.name} is at revision ${snapshot.revision}.` +
-        (actionableReviewIntents === undefined
-          ? ""
-          : ` The Workbench review outbox has ${actionableReviewIntents.length} actionable intent${
-            actionableReviewIntents.length === 1 ? "" : "s"
-          } (${
-            actionableReviewIntents.filter((record) => record.state === "pending")
-              .length
-          } pending agent receipt, ${
-            actionableReviewIntents.filter((record) => record.state === "acknowledged")
-              .length
-          } acknowledged but awaiting a canonical decision); call project_review_intent_list to read the exact action, comment, and receipt before continuing.`),
+      `Project ${snapshot.project.name} is at revision ${snapshot.revision}.`,
       snapshot,
       dependencies.threadSnapshots,
     );
@@ -219,32 +190,6 @@ export function registerProjectControlTools(
   registerProjectSensitivityReviewTools(app, dependencies);
   registerProjectDemoLoopTools(app, dependencies);
   registerProjectLedDriverSourceTools(app, dependencies);
-
-  if (dependencies.reviewIntents) {
-    app.registerTool(projectReviewIntentListTool, async (args) => {
-      const projectId = requiredString(args.projectId, "projectId");
-      const snapshot = await requiredProject(dependencies.projects, projectId);
-      const records = await actionableProjectReviewIntents(
-        dependencies.reviewIntents!,
-        snapshot,
-      );
-      return {
-        content: `The Workbench review outbox has ${records.length} actionable intent${
-          records.length === 1 ? "" : "s"
-        } for project ${projectId} at revision ${snapshot.revision}. An acknowledged record remains actionable until project_decision_approve or project_decision_reject completes through signed MRTR and changes canonical project truth. Each returned intent and acknowledgement is exact; do not paraphrase its comment.`,
-        structuredContent: {
-          projectId,
-          projectRevision: snapshot.revision,
-          count: records.length,
-          records,
-        },
-      };
-    });
-
-    app.registerTool(projectReviewIntentAcknowledgeTool, async (args, context) => {
-      return await handleReviewIntentAcknowledgement(args, context, dependencies);
-    });
-  }
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);
@@ -442,7 +387,7 @@ export function registerProjectControlTools(
 const projectSnapshotTool: MCPTool = {
   name: "project_snapshot",
   description:
-    "Read the durable EngineeringProject application state: work, decisions, approvals, agent runs, blockers, exact thread references, and command receipts. When the durable Workbench review outbox is configured, the text also reports its exact actionable count (including acknowledged intents still awaiting canonical decision) and directs the agent to project_review_intent_list. Connected hosts may subscribe to casys://engineering/review-intents for a best-effort resource-update signal, but reconnecting hosts must reread the durable resource or list tool; structuredContent remains the unmodified EngineeringProjectSnapshot. This does not probe or execute engineering tools.",
+    "Read the durable EngineeringProject application state: work, decisions, approvals, agent runs, blockers, exact thread references, and command receipts. structuredContent remains the unmodified EngineeringProjectSnapshot. This does not probe or execute engineering tools. Human decisions stay in the paired conversation through the existing signed MRTR tools.",
   inputSchema: {
     type: "object",
     properties: { projectId: PROJECT_ID },
@@ -451,58 +396,6 @@ const projectSnapshotTool: MCPTool = {
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: READ_ONLY_ANNOTATIONS,
-};
-
-const projectReviewIntentListTool: MCPTool = {
-  name: "project_review_intent_list",
-  description:
-    `Read the exact actionable review intents submitted from the Workbench for one engineering project. This durable outbox is the recovery truth behind the best-effort casys://engineering/review-intents subscription signal; it is not project truth or decision authority. An acknowledged intent remains listed only while its exact approvalId is the pending approval attempt for the same proposed decision and input fingerprint, so disconnects, unrelated project-revision drift, and agent interruption do not lose it while rejection and reproposal cannot replay it. For each pending intent, first acknowledge receipt with project_review_intent_acknowledge; for pending or acknowledged intents, use project_decision_approve for action=validate or project_decision_reject for action=request-revision, using the list result's current projectRevision as expectedRevision. Pass intent.comment verbatim as rationale. A validate intent without comment uses exactly this deterministic rationale: "${REVIEW_INTENT_NO_COMMENT_RATIONALE}". The existing signed MRTR elicitation retry remains mandatory.`,
-  inputSchema: {
-    type: "object",
-    properties: { projectId: PROJECT_ID },
-    required: ["projectId"],
-    additionalProperties: false,
-  },
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: READ_ONLY_ANNOTATIONS,
-};
-
-const projectReviewIntentAcknowledgeTool: MCPTool = {
-  name: "project_review_intent_acknowledge",
-  description:
-    `Acknowledge agent receipt of one exact Workbench review intent after verifying that its approvalId is still the exact pending approval attempt for the same proposed decision, input fingerprint, and requested action. The expectedRevision argument copies the click-time intent exactly; unrelated current-revision drift is allowed. This changes only the durable outbox receipt, never EngineeringProjectSnapshot, and the acknowledged intent remains actionable for interruption-safe replay until canonical truth changes. The result returns machine-readable projectRevision, rationale, and nextTool: pass projectRevision as expectedRevision and rationale verbatim to nextTool. A validate intent without comment uses exactly this deterministic rationale: "${REVIEW_INTENT_NO_COMMENT_RATIONALE}". Only that existing signed MRTR elicitation flow can record the human decision.`,
-  inputSchema: {
-    type: "object",
-    properties: {
-      projectId: PROJECT_ID,
-      expectedRevision: {
-        type: "integer",
-        minimum: 1,
-        description:
-          "Exact project revision observed and stored in the Workbench intent; copy it verbatim. The current head may be newer if the same proposed decision and input fingerprint remain active.",
-      },
-      intentId: { type: "string", minLength: 1, maxLength: 256 },
-      decisionId: { type: "string", minLength: 1 },
-      approvalId: { type: "string", minLength: 1, maxLength: 256 },
-      inputFingerprint: FINGERPRINT_SCHEMA,
-      action: {
-        type: "string",
-        enum: ["validate", "request-revision"],
-      },
-    },
-    required: [
-      "projectId",
-      "expectedRevision",
-      "intentId",
-      "decisionId",
-      "approvalId",
-      "inputFingerprint",
-      "action",
-    ],
-    additionalProperties: false,
-  },
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: REVIEW_INTENT_ACKNOWLEDGEMENT_ANNOTATIONS,
 };
 
 const projectPlanPublishTool: MCPTool = {
@@ -903,171 +796,6 @@ async function handleDecisionElicitation(
     snapshot,
     dependencies.threadSnapshots,
   );
-}
-
-async function handleReviewIntentAcknowledgement(
-  args: Record<string, unknown>,
-  context: ToolHandlerContext | undefined,
-  dependencies: ProjectControlToolDependencies,
-) {
-  const journal = dependencies.reviewIntents;
-  if (!journal) {
-    throw new TypeError("The Workbench review-intent outbox is not configured.");
-  }
-  const projectId = requiredString(args.projectId, "projectId");
-  const expectedRevision = positiveInteger(
-    args.expectedRevision,
-    "expectedRevision",
-  );
-  const intentId = requiredString(args.intentId, "intentId");
-  const decisionId = requiredString(args.decisionId, "decisionId");
-  const approvalId = requiredString(args.approvalId, "approvalId");
-  const inputFingerprint = fingerprintInput(
-    args.inputFingerprint,
-    "inputFingerprint",
-  );
-  const action = oneOf(
-    args.action,
-    ["validate", "request-revision"] as const,
-    "action",
-  );
-  const record = (await journal.list(projectId)).find((candidate) =>
-    candidate.intent.intentId === intentId
-  );
-  if (!record) {
-    throw new TypeError(
-      `Workbench review intent not found: ${projectId}/${intentId}.`,
-    );
-  }
-  if (!isApprovalBoundProjectReviewIntent(record.intent)) {
-    throw new TypeError(
-      `Workbench review intent ${intentId} is legacy and has no exact approval binding; it cannot be acknowledged. Submit a new approval-bound intent from the current Workbench preview.`,
-    );
-  }
-  assertExactReviewIntent(
-    record.intent,
-    {
-      projectId,
-      expectedRevision,
-      decisionId,
-      approvalId,
-      inputFingerprint,
-      action,
-    },
-  );
-
-  const current = await requiredProject(dependencies.projects, projectId);
-  if (!reviewIntentMatchesPendingApproval(current, record.intent)) {
-    throw new TypeError(
-      `Workbench review intent ${intentId} is stale: approval ${approvalId} is not the exact pending approval attempt for proposed decision ${decisionId} with the same input fingerprint at current project revision ${current.revision}.`,
-    );
-  }
-
-  const origin = agentOrigin(context);
-  const alreadyAcknowledged = record.acknowledgement !== undefined;
-  const acknowledged = alreadyAcknowledged ? record : await journal.acknowledge({
-    intentId,
-    projectId,
-    acknowledgedAt: new Date().toISOString(),
-    acknowledgedBy: origin.actorId,
-  });
-  const rationale = record.intent.comment ?? REVIEW_INTENT_NO_COMMENT_RATIONALE;
-  const nextTool = action === "validate"
-    ? "project_decision_approve" as const
-    : "project_decision_reject" as const;
-  return {
-    content:
-      (alreadyAcknowledged
-        ? `Workbench review intent ${intentId} was already acknowledged by ${
-          acknowledged.acknowledgement!.acknowledgedBy
-        } at ${
-          acknowledged.acknowledgement!.acknowledgedAt
-        }; no new receipt was written. `
-        : `Agent ${origin.actorId} acknowledged Workbench review intent ${intentId}. `) +
-      `No EngineeringProjectSnapshot state changed. Continue with ${nextTool} at current revision ${current.revision}; signed MRTR remains required.`,
-    structuredContent: {
-      projectId,
-      projectRevision: current.revision,
-      state: "acknowledged",
-      record: acknowledged,
-      rationale,
-      nextTool,
-    },
-  };
-}
-
-type ActionableProjectReviewIntentRecord = ProjectReviewIntentRecord & {
-  readonly state: "pending" | "acknowledged";
-};
-
-async function actionableProjectReviewIntents(
-  journal: ProjectReviewIntentStore,
-  snapshot: EngineeringProjectSnapshot,
-): Promise<ActionableProjectReviewIntentRecord[]> {
-  return (await journal.list(snapshot.project.id)).flatMap((record) => {
-    if (
-      !isApprovalBoundProjectReviewIntent(record.intent) ||
-      !reviewIntentMatchesPendingApproval(snapshot, record.intent)
-    ) return [];
-    return [{
-      ...record,
-      state: record.acknowledgement ? "acknowledged" as const : "pending" as const,
-    }];
-  });
-}
-
-function assertExactReviewIntent(
-  intent: ProjectReviewIntent,
-  expected: Pick<
-    ProjectReviewIntent,
-    | "projectId"
-    | "expectedRevision"
-    | "decisionId"
-    | "approvalId"
-    | "inputFingerprint"
-    | "action"
-  >,
-): void {
-  if (
-    intent.projectId !== expected.projectId ||
-    intent.expectedRevision !== expected.expectedRevision ||
-    intent.decisionId !== expected.decisionId ||
-    intent.approvalId !== expected.approvalId ||
-    intent.action !== expected.action ||
-    !sameFingerprint(intent.inputFingerprint, expected.inputFingerprint)
-  ) {
-    throw new TypeError(
-      `Workbench review intent ${intent.intentId} does not match the exact project revision, decision, approval, fingerprint, and action supplied by the agent. Re-list the outbox and copy its fields verbatim.`,
-    );
-  }
-}
-
-function reviewIntentMatchesPendingApproval(
-  snapshot: EngineeringProjectSnapshot,
-  intent: ProjectReviewIntent,
-): boolean {
-  const decision = snapshot.decisions.find((candidate) =>
-    candidate.id === intent.decisionId
-  );
-  if (
-    !decision || decision.status !== "proposed" || !decision.proposal ||
-    !decision.inputFingerprint ||
-    !sameFingerprint(decision.inputFingerprint, intent.inputFingerprint)
-  ) return false;
-  const approval = [...decision.approvalIds].reverse().map((approvalId) =>
-    snapshot.approvals.find((candidate) => candidate.id === approvalId)
-  ).find((candidate) => candidate?.status === "pending");
-  return approval?.id === intent.approvalId &&
-    approval.decisionId === decision.id &&
-    approval.inputFingerprint !== undefined &&
-    sameFingerprint(approval.inputFingerprint, intent.inputFingerprint);
-}
-
-function sameFingerprint(
-  left: ContentFingerprint,
-  right: ContentFingerprint,
-): boolean {
-  return left.algorithm === right.algorithm && left.digest === right.digest;
 }
 
 async function handleQueuedRunCancellation(

@@ -35,14 +35,6 @@ export const PROJECT_HUMAN_CONFIRMATION_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
-/** Agent receipt changes only the review-intent outbox, never project truth. */
-export const REVIEW_INTENT_ACKNOWLEDGEMENT_ANNOTATIONS = {
-  readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const;
-
 export const OBJECT_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: true,

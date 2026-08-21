@@ -1,16 +1,7 @@
 import { assertEquals, assertStringIncludes, assertThrows } from "@std/assert";
 import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
-import {
-  FileProjectReviewIntentStore,
-} from "../../src/adapters/shared/stores/file-project-review-intent-store.ts";
-import type { ProjectReviewIntentStore } from "../../src/application/ports/out/project-review-intent-store.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../../src/application/ports/out/engineering-project-revision-store.ts";
-import type {
-  ProjectReviewIntent,
-  ProjectReviewIntentAcknowledgement,
-  ProjectReviewIntentRecord,
-} from "../../src/domain/project/project-review-intent.ts";
 import type { CockpitFocusSnapshot } from "../../src/domain/project/cockpit-focus.ts";
 import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/project/cockpit-focus.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/architecture/renderer/architecture-proposal.ts";
@@ -625,293 +616,68 @@ Deno.test("native Workbench degrades when declared fleet is unavailable", async 
   );
 });
 
-Deno.test("native Workbench durably accepts an exact review intent without mutating the project", async () => {
-  const project = proposedDecisionProject();
-  const projects = new ProjectStore([project]);
-  const reviewIntents = new MemoryReviewIntentStore();
-  const before = structuredClone(project);
-  const handler = createNativeWorkbenchHandler({
-    store: new EmptyThreadStore(),
-    projectStore: projects,
-    projectId: project.project.id,
-    subjectId: project.project.subjectId,
-    html: "unused",
-    reviewIntents,
-  });
-  const intent = reviewIntent(project);
-
-  const response = await handler(reviewIntentRequest(intent));
-  const body = await response.json();
-
-  assertEquals(response.status, 202);
-  assertEquals(body.status, "accepted");
-  assertEquals(body.record.intent, intent);
-  assertEquals(await reviewIntents.list(project.project.id), [{ intent }]);
-  assertEquals(await projects.get(project.project.id), before);
-
-  const listed = await handler(
-    new Request("http://localhost/api/review-intents"),
-  );
-  assertEquals(listed.status, 200);
-  assertEquals((await listed.json()).intents, [{ intent }]);
-});
-
-Deno.test("native Workbench signals MCP only after the exact review intent is durable", async () => {
-  const project = proposedDecisionProject();
-  const projects = new ProjectStore([project]);
-  const reviewIntents = new MemoryReviewIntentStore();
-  const observed: string[] = [];
-  const handler = createNativeWorkbenchHandler({
-    store: new EmptyThreadStore(),
-    projectStore: projects,
-    projectId: project.project.id,
-    subjectId: project.project.subjectId,
-    html: "unused",
-    reviewIntents,
-    reviewIntentSignal: {
-      notify: async (record) => {
-        observed.push(record.intent.intentId);
-        assertEquals(
-          await reviewIntents.list(project.project.id),
-          [record],
-        );
-      },
-    },
-  });
-  const intent = reviewIntent(project);
-
-  const response = await handler(reviewIntentRequest(intent));
-  const body = await response.json();
-
-  assertEquals(response.status, 202);
-  assertEquals(body.signal, "sent");
-  assertEquals(observed, [intent.intentId]);
-  assertEquals(await projects.get(project.project.id), project);
-});
-
-Deno.test("native Workbench keeps a review intent durable when the MCP signal is unavailable", async () => {
-  const project = proposedDecisionProject();
-  const reviewIntents = new MemoryReviewIntentStore();
-  const failures: unknown[] = [];
+Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET", async () => {
+  const digest = "a".repeat(64);
+  const project = projectFixture("project-one", "subject-one");
   const handler = createNativeWorkbenchHandler({
     store: new EmptyThreadStore(),
     projectStore: new ProjectStore([project]),
     projectId: project.project.id,
     subjectId: project.project.subjectId,
-    html: "unused",
-    reviewIntents,
-    reviewIntentSignal: {
-      notify: () => Promise.reject(new Error("subscriber disconnected")),
-    },
-    onReviewIntentSignalError: (error) => failures.push(error),
+    html: "<html><body>Workbench</body></html>",
+    assetReader: () => Promise.resolve(undefined),
+    draftAssetReader: () => Promise.resolve(undefined),
+    cockpitFleet: async () => ({
+      servers: [{
+        id: "syson",
+        displayName: "SysON",
+        role: "System model",
+        required: true,
+      }],
+    }),
+    pollIntervalMs: 50,
   });
-  const intent = reviewIntent(project);
 
-  const response = await handler(reviewIntentRequest(intent));
-  const body = await response.json();
-
-  assertEquals(response.status, 202);
-  assertEquals(body.signal, "deferred");
-  assertEquals(await reviewIntents.list(project.project.id), [{ intent }]);
-  assertEquals(failures.length, 1);
-  assertEquals((failures[0] as Error).message, "subscriber disconnected");
-});
-
-Deno.test("native Workbench accepts only one active intent for an exact proposed decision", async () => {
-  const directory = await Deno.makeTempDir();
-  try {
-    const project = proposedDecisionProject();
-    const projects = new ProjectStore([project]);
-    const before = structuredClone(project);
-    const reviewIntents = new FileProjectReviewIntentStore(directory);
-    const handler = createNativeWorkbenchHandler({
-      store: new EmptyThreadStore(),
-      projectStore: projects,
-      projectId: project.project.id,
-      subjectId: project.project.subjectId,
-      html: "unused",
-      reviewIntents,
-    });
-    const first = reviewIntent(project);
-    const competing: ProjectReviewIntent = {
-      ...first,
-      intentId: "intent:geometry-v2:reviewer-2",
-      action: "request-revision",
-      comment: "Increase the shade clearance.",
-    };
-
-    assertEquals((await handler(reviewIntentRequest(first))).status, 202);
-    const rejected = await handler(reviewIntentRequest(competing));
-
-    assertEquals(rejected.status, 409);
-    assertEquals((await rejected.json()).error, "review_intent_conflict");
-    assertEquals((await reviewIntents.list(project.project.id)).length, 1);
-    assertEquals(await projects.get(project.project.id), before);
-  } finally {
-    await Deno.remove(directory, { recursive: true });
+  const routes = [
+    "/healthz",
+    "/api/thread/workbench",
+    "/api/thread/workbench/events",
+    "/api/fleet",
+    `/api/thread/assets/${digest}.glb`,
+    `/api/draft-assets/${digest}`,
+    "/",
+    "/native-workbench.html",
+  ];
+  for (const path of routes) {
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"] as const) {
+      const rejected = await handler(
+        new Request(`http://localhost${path}`, { method }),
+      );
+      assertEquals(rejected.status, 405, `${method} ${path}`);
+      assertEquals(rejected.headers.get("Allow"), "GET");
+    }
   }
-});
 
-Deno.test("native Workbench review-intent POST rejects cross-origin and non-JSON requests", async () => {
-  const project = proposedDecisionProject();
-  const reviewIntents = new MemoryReviewIntentStore();
-  const handler = reviewIntentHandler(project, reviewIntents);
-  const intent = reviewIntent(project);
-
-  const crossOrigin = await handler(
-    reviewIntentRequest(intent, { origin: "http://attacker.invalid" }),
+  const sse = await handler(
+    new Request("http://localhost/api/thread/workbench/events"),
   );
-  assertEquals(crossOrigin.status, 403);
-  const wrongType = await handler(
-    reviewIntentRequest(intent, { contentType: "text/plain" }),
-  );
-  assertEquals(wrongType.status, 415);
-  assertEquals(await reviewIntents.list(project.project.id), []);
-});
-
-Deno.test("native Workbench review-intent POST rejects stale revisions and fingerprint substitution", async () => {
-  const project = proposedDecisionProject();
-  const reviewIntents = new MemoryReviewIntentStore();
-  const handler = reviewIntentHandler(project, reviewIntents);
-
-  const stale = await handler(
-    reviewIntentRequest({
-      ...reviewIntent(project),
-      expectedRevision: project.revision + 1,
-    }),
-  );
-  assertEquals(stale.status, 409);
-  assertEquals((await stale.json()).error, "review_intent_stale_revision");
-
-  const substituted = await handler(
-    reviewIntentRequest({
-      ...reviewIntent(project),
-      inputFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
-    }),
-  );
-  assertEquals(substituted.status, 409);
+  assertEquals(sse.status, 200);
   assertEquals(
-    (await substituted.json()).error,
-    "review_intent_fingerprint_mismatch",
+    sse.headers.get("Content-Type"),
+    "text/event-stream; charset=utf-8",
   );
-  assertEquals(await reviewIntents.list(project.project.id), []);
-});
+  await sse.body?.cancel();
 
-Deno.test("native Workbench binds a same-fingerprint reproposal to its new pending approval attempt", async () => {
-  const directory = await Deno.makeTempDir();
-  try {
-    const original = proposedDecisionProject();
-    const reviewIntents = new FileProjectReviewIntentStore(directory);
-    await reviewIntents.append(reviewIntent(original));
-    const successorApprovalId = "approval:decision:geometry-v2:proposal-3";
-    const current = {
-      ...original,
-      id: `${original.project.id}:r${original.revision + 1}`,
-      revision: original.revision + 1,
-      decisions: original.decisions.map((decision) => ({
-        ...decision,
-        approvalIds: [...decision.approvalIds, successorApprovalId],
-      })),
-      approvals: [
-        ...original.approvals.map((approval) => ({
-          ...approval,
-          status: "rejected" as const,
-          decidedAt: "2026-08-09T10:46:00.000Z",
-          decidedBy: "human:reviewer",
-          decidedByOrigin: "human" as const,
-          rationale: "Revise and propose again.",
-        })),
-        {
-          ...original.approvals[0],
-          id: successorApprovalId,
-          status: "pending" as const,
-          requestedAt: "2026-08-09T10:47:00.000Z",
-        },
-      ],
-    } satisfies EngineeringProjectSnapshot;
-    const handler = reviewIntentHandler(current, reviewIntents);
-    const successor = {
-      ...reviewIntent(current),
-      intentId: "intent:geometry-v2:reviewer-successor",
-    };
-
-    const oldAttempt = await handler(reviewIntentRequest({
-      ...successor,
-      intentId: "intent:geometry-v2:stale-approval",
-      approvalId: REVIEW_APPROVAL_ID,
-    }));
-    assertEquals(oldAttempt.status, 409);
-    assertEquals(
-      (await oldAttempt.json()).error,
-      "review_intent_approval_mismatch",
-    );
-
-    const accepted = await handler(reviewIntentRequest(successor));
-    assertEquals(accepted.status, 202);
-    assertEquals(
-      (await reviewIntents.list(current.project.id)).map((record) =>
-        record.intent.approvalId
-      ),
-      [REVIEW_APPROVAL_ID, successorApprovalId],
-    );
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
-});
-
-Deno.test("native Workbench review-intent POST requires an exact bounded revision comment", async () => {
-  const project = proposedDecisionProject();
-  const reviewIntents = new MemoryReviewIntentStore();
-  const handler = reviewIntentHandler(project, reviewIntents);
-  const base = reviewIntent(project);
-
-  const absent = await handler(
-    reviewIntentRequest({ ...base, action: "request-revision" }),
-  );
-  assertEquals(absent.status, 400);
-  assertEquals((await absent.json()).error, "invalid_review_intent");
-
-  const oversized = await handler(
-    reviewIntentRequest({
-      ...base,
-      action: "request-revision",
-      comment: "x".repeat(2_001),
-    }),
-  );
-  assertEquals(oversized.status, 400);
-
-  const exactComment = "  Increase the shade clearance by 2 mm.  ";
-  const accepted = await handler(
-    reviewIntentRequest({
-      ...base,
-      action: "request-revision",
-      comment: exactComment,
-    }),
-  );
-  assertEquals(accepted.status, 202);
   assertEquals(
-    (await reviewIntents.list(project.project.id))[0].intent.comment,
-    exactComment,
+    (await handler(
+      new Request("http://localhost/api/review-intents", { method: "POST" }),
+    )).status,
+    404,
   );
-});
-
-Deno.test("native Workbench review-intent POST bounds the JSON body before parsing", async () => {
-  const project = proposedDecisionProject();
-  const reviewIntents = new MemoryReviewIntentStore();
-  const handler = reviewIntentHandler(project, reviewIntents);
-  const response = await handler(
-    new Request("http://localhost/api/review-intents", {
-      method: "POST",
-      headers: {
-        Origin: "http://localhost",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ padding: "x".repeat(17_000) }),
-    }),
+  assertEquals(
+    (await handler(new Request("http://localhost/api/review-intents"))).status,
+    404,
   );
-
-  assertEquals(response.status, 413);
-  assertEquals(await reviewIntents.list(project.project.id), []);
 });
 
 Deno.test("native Workbench refuses mutated canonical content-addressed bytes", async () => {
@@ -1006,88 +772,6 @@ Deno.test("native Workbench reports an unknown selected project without substitu
   assertEquals(response.status, 404);
   assertEquals((await response.json()).error, "engineering_project_not_found");
 });
-
-const REVIEW_DECISION_DIGEST = "a".repeat(64);
-const REVIEW_APPROVAL_ID = "approval:decision:geometry-v2:proposal-2";
-
-function proposedDecisionProject(): EngineeringProjectSnapshot {
-  const project = projectFixture("desk-lamp-dl01", "desk-lamp-dl01-thread");
-  return {
-    ...project,
-    decisions: [{
-      id: "decision:geometry-v2",
-      phaseId: "geometry",
-      title: "Approve exact geometry",
-      question: "Should this exact geometry replace the prior proposal?",
-      status: "proposed",
-      requestedAt: "2026-08-09T10:30:00.000Z",
-      inputFingerprint: {
-        algorithm: "sha256",
-        digest: REVIEW_DECISION_DIGEST,
-      },
-      inputEvidenceRefs: [],
-      approvalIds: [REVIEW_APPROVAL_ID],
-    }],
-    approvals: [{
-      id: REVIEW_APPROVAL_ID,
-      decisionId: "decision:geometry-v2",
-      status: "pending",
-      requestedAt: "2026-08-09T10:30:00.000Z",
-      inputFingerprint: {
-        algorithm: "sha256",
-        digest: REVIEW_DECISION_DIGEST,
-      },
-      inputEvidenceRefs: [],
-    }],
-  };
-}
-
-function reviewIntent(project: EngineeringProjectSnapshot): ProjectReviewIntent {
-  return {
-    intentId: "intent:geometry-v2:reviewer-1",
-    projectId: project.project.id,
-    expectedRevision: project.revision,
-    decisionId: "decision:geometry-v2",
-    approvalId:
-      [...project.approvals].reverse().find((approval) =>
-        approval.decisionId === "decision:geometry-v2" && approval.status === "pending"
-      )!.id,
-    inputFingerprint: {
-      algorithm: "sha256",
-      digest: REVIEW_DECISION_DIGEST,
-    },
-    action: "validate",
-    submittedAt: "2026-08-09T10:45:00.000Z",
-  };
-}
-
-function reviewIntentRequest(
-  body: ProjectReviewIntent,
-  options: { readonly origin?: string; readonly contentType?: string } = {},
-): Request {
-  return new Request("http://localhost/api/review-intents", {
-    method: "POST",
-    headers: {
-      Origin: options.origin ?? "http://localhost",
-      "Content-Type": options.contentType ?? "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-}
-
-function reviewIntentHandler(
-  project: EngineeringProjectSnapshot,
-  reviewIntents: ProjectReviewIntentStore,
-): (request: Request) => Promise<Response> {
-  return createNativeWorkbenchHandler({
-    store: new EmptyThreadStore(),
-    projectStore: new ProjectStore([project]),
-    projectId: project.project.id,
-    subjectId: project.project.subjectId,
-    html: "unused",
-    reviewIntents,
-  });
-}
 
 function projectFixture(
   projectId: string,
@@ -1547,46 +1231,6 @@ class ProjectStore implements EngineeringProjectRevisionStore {
 
   commit(snapshot: EngineeringProjectSnapshot): Promise<EngineeringProjectSnapshot> {
     return Promise.resolve(snapshot);
-  }
-}
-
-class MemoryReviewIntentStore implements ProjectReviewIntentStore {
-  readonly #records: ProjectReviewIntentRecord[] = [];
-
-  append(intent: ProjectReviewIntent): Promise<ProjectReviewIntentRecord> {
-    const existing = this.#records.find((record) =>
-      record.intent.intentId === intent.intentId
-    );
-    if (existing) return Promise.resolve(structuredClone(existing));
-    const record = { intent: structuredClone(intent) };
-    this.#records.push(record);
-    return Promise.resolve(structuredClone(record));
-  }
-
-  list(projectId: string): Promise<ProjectReviewIntentRecord[]> {
-    return Promise.resolve(structuredClone(
-      this.#records.filter((record) => record.intent.projectId === projectId),
-    ));
-  }
-
-  listAll(): Promise<ProjectReviewIntentRecord[]> {
-    return Promise.resolve(structuredClone(this.#records));
-  }
-
-  acknowledge(
-    acknowledgement: ProjectReviewIntentAcknowledgement,
-  ): Promise<ProjectReviewIntentRecord> {
-    const index = this.#records.findIndex((record) =>
-      record.intent.intentId === acknowledgement.intentId &&
-      record.intent.projectId === acknowledgement.projectId
-    );
-    if (index < 0) throw new Error("intent not found");
-    const record = {
-      intent: this.#records[index].intent,
-      acknowledgement: structuredClone(acknowledgement),
-    };
-    this.#records[index] = record;
-    return Promise.resolve(structuredClone(record));
   }
 }
 

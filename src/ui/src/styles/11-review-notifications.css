@@ -6,26 +6,11 @@ sur les deux surfaces. */
    A review request is a handoff,
 not another control room. The Overview only
    needs to make that handoff visible; Activity holds the compact evidence
-   context and the one bounded authorization action. */
+   context. Decisions stay in the paired conversation. */
 
 .thread-workbench .thread-feed-entry[data-review-status="to-review"] .thread-feed-rail i {
   border-color: var(--thread-warning);
   background: var(--thread-warning);
-  box-shadow: none;
-}
-.thread-workbench .thread-feed-entry[data-review-status="sending"] .thread-feed-rail i {
-  border-color: #eef3f8;
-  background: #566f8c;
-  box-shadow: none;
-}
-.thread-workbench .thread-feed-entry[data-review-status="sent"] .thread-feed-rail i {
-  border-color: #eaf3f6;
-  background: #315f72;
-  box-shadow: none;
-}
-.thread-workbench .thread-feed-entry[data-review-status="received"] .thread-feed-rail i {
-  border-color: #f0eff8;
-  background: #5c568f;
   box-shadow: none;
 }
 .thread-workbench .thread-feed-entry[data-review-status="validated"] .thread-feed-rail i {

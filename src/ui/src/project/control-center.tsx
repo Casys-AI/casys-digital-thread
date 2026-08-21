@@ -7,7 +7,6 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
 } from "../../../domain/project/engineering-project.ts";
-import type { ProjectReviewIntentAction } from "../../../domain/project/project-review-intent.ts";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { type GeometryDecisionValid } from "../cad/geometry-decision-model.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
@@ -19,20 +18,14 @@ import { Button } from "../ui/button.tsx";
 import { Card, CardContent, CardHeader } from "../ui/card.tsx";
 import {
   activityReviewStatus,
+  activityReviewStatusLabel,
+  type ActivityReviewStatus,
   buildProjectReviewRecords,
   currentProjectReview,
   type ProjectReviewKind,
   type ProjectReviewRecord,
 } from "./review-decision-model.ts";
 import { buildArchitectureBindingRows } from "./review-architecture-model.ts";
-import {
-  type ActivityReviewDisplayStatus,
-  activityReviewDisplayStatusLabel,
-  effectiveActivityReviewStatus,
-  normalizeReviewIntentComment,
-  REVIEW_INTENT_COMMENT_MAX_LENGTH,
-  type ReviewIntentTransmissionState,
-} from "./review-intent-model.ts";
 
 export interface ProjectReviewProps {
   readonly project: EngineeringProjectSnapshot;
@@ -51,8 +44,8 @@ export function DecisionCenter(props: ProjectReviewProps): JSX.Element {
 }
 
 /**
- * The overview remains a compact handoff. Exact previews and the bounded
- * reviewer-intent composer live in the chronological Activity feed.
+ * The overview remains a compact handoff. Exact previews live in the
+ * chronological Activity feed. Decisions stay in the paired conversation.
  */
 export function ReviewNotifications({
   project,
@@ -92,7 +85,7 @@ export function ReviewNotifications({
           </h3>
           <p className="text-sm text-muted-foreground">
             {nextReview
-              ? "Inspect and respond in Activity."
+              ? "Inspect the exact preview in Activity."
               : "Past reviews remain in Activity."}
           </p>
         </div>
@@ -189,7 +182,8 @@ function ReviewInboxHandoff({
       tone: "proposed",
       marker: "Review in activity",
       title: nextReview.title,
-      detail: "Inspect the exact preview, then validate or request a revision.",
+      detail:
+        "Inspect the exact preview. Sign the decision in the paired conversation.",
       action: "Inspect exact preview",
       icon: "!",
       iconTone: "bg-warning/15 text-warning",
@@ -264,21 +258,10 @@ function ReviewInboxHandoff({
 export function ActivityReviewFeedCard({
   record,
   onOpenEvidence,
-  transmissionState = { kind: "idle" },
-  onSubmitIntent,
-  onRetryIntent,
-  onRefreshIntent,
   initiallyOpen = false,
 }: {
   record: ProjectReviewRecord;
   onOpenEvidence?: (reference: EngineeringThreadEntityRef) => void;
-  transmissionState?: ReviewIntentTransmissionState;
-  onSubmitIntent?: (
-    action: ProjectReviewIntentAction,
-    comment?: string,
-  ) => void | Promise<void>;
-  onRetryIntent?: () => void | Promise<void>;
-  onRefreshIntent?: () => void | Promise<void>;
   initiallyOpen?: boolean;
 }): JSX.Element | null {
   const status = activityReviewStatus(record);
@@ -286,62 +269,11 @@ export function ActivityReviewFeedCard({
     initiallyOpen || status === "to-review" ||
       status === "revision-requested",
   );
-  const [comment, setComment] = useState("");
-  const [commentError, setCommentError] = useState<string>();
-  const [composerMode, setComposerMode] = useState<"choice" | "revision">(
-    "choice",
-  );
-  const decisionId = record.decision?.id;
-  const digest = record.decision?.inputFingerprint?.digest;
-  const approvalId = record.approvalId;
-  useEffect(() => {
-    setComment("");
-    setCommentError(undefined);
-    setComposerMode("choice");
-  }, [decisionId, digest, approvalId]);
   if (!status) return null;
-  const displayStatus = effectiveActivityReviewStatus(
-    status,
-    transmissionState,
-  )!;
-  const commentId = `${record.anchorId}-review-comment`;
-  const commentHelpId = `${commentId}-help`;
-  const commentErrorId = `${commentId}-error`;
-  const canCompose = status === "to-review" && decisionId !== undefined &&
-    digest !== undefined && approvalId !== undefined &&
-    onSubmitIntent !== undefined;
-  const isSending = transmissionState.kind === "sending";
-  const commentLength = [...comment].length;
-  const canSendRevision = comment.trim().length > 0 &&
-    commentLength <= REVIEW_INTENT_COMMENT_MAX_LENGTH;
-  const send = (
-    action: ProjectReviewIntentAction,
-    submittedComment?: string,
-  ) => {
-    let exactComment: string | undefined;
-    try {
-      exactComment = normalizeReviewIntentComment(action, submittedComment);
-    } catch (error) {
-      setCommentError(
-        error instanceof Error ? error.message : "Check the review comment.",
-      );
-      return;
-    }
-    setCommentError(undefined);
-    void Promise.resolve(onSubmitIntent?.(action, exactComment)).catch(
-      (error: unknown) => {
-        setCommentError(
-          error instanceof Error
-            ? error.message
-            : "The review intent could not be sent.",
-        );
-      },
-    );
-  };
   return (
     <details
       className={cn("shadow-sm", CARD_SURFACE)}
-      data-review-status={displayStatus}
+      data-review-status={status}
       data-canonical-review-status={status}
       data-representation={record.representation}
       data-superseded={record.supersededBy ? "true" : "false"}
@@ -352,8 +284,8 @@ export function ActivityReviewFeedCard({
       <summary className="flex cursor-pointer list-none items-start gap-3 p-4 [&::-webkit-details-marker]:hidden">
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-2">
-            <Badge variant={activityReviewBadgeVariant(displayStatus)}>
-              {activityReviewDisplayStatusLabel(displayStatus)}
+            <Badge variant={activityReviewBadgeVariant(status)}>
+              {activityReviewStatusLabel(status)}
               {record.supersededBy ? " · Superseded" : ""}
             </Badge>
             <span className="text-xs font-medium text-muted-foreground">
@@ -395,179 +327,6 @@ export function ActivityReviewFeedCard({
         )}
         <p className="text-sm text-muted-foreground">{record.summary}</p>
         <ReviewBusinessPreview record={record} />
-        {canCompose && (
-          <section
-            className="flex flex-col gap-3 rounded-lg bg-muted/50 p-4"
-            aria-labelledby={`${commentId}-title`}
-            aria-busy={isSending}
-          >
-            <header className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">
-                  Review this exact proposal
-                </p>
-                <strong
-                  id={`${commentId}-title`}
-                  className="text-sm font-semibold"
-                >
-                  Send your intent to the paired agent
-                </strong>
-              </div>
-              <ReviewIntentTransmissionBadge state={transmissionState} />
-            </header>
-            {transmissionState.kind === "idle" ||
-                (transmissionState.kind === "error" &&
-                  transmissionState.retryIntent !== undefined)
-              ? (
-                <div
-                  className="flex flex-col gap-3"
-                  data-composer-mode={composerMode}
-                >
-                  {transmissionState.kind === "error" && (
-                    <div
-                      className={reviewTransmissionNoticeClass("error")}
-                      data-transmission-state="error"
-                      role="alert"
-                    >
-                      <strong>Send failed</strong>
-                      <span>{transmissionState.message}</span>
-                      {transmissionState.retryIntent && onRetryIntent && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void onRetryIntent()}
-                        >
-                          Retry exact send
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                  {commentError && (
-                    <p
-                      id={commentErrorId}
-                      className={reviewTransmissionNoticeClass("error")}
-                      role="alert"
-                    >
-                      {commentError}
-                    </p>
-                  )}
-                  {composerMode === "choice"
-                    ? (
-                      <>
-                        <p className="text-sm text-muted-foreground">
-                          Validate this exact proposal, or describe what must
-                          change.
-                        </p>
-                        <div
-                          className="flex flex-wrap gap-2"
-                          role="group"
-                          aria-label="Review response"
-                        >
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={isSending}
-                            onClick={() => send("validate", undefined)}
-                          >
-                            Validate
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={isSending}
-                            onClick={() => {
-                              setCommentError(undefined);
-                              setComposerMode("revision");
-                            }}
-                          >
-                            Request revision
-                          </Button>
-                        </div>
-                      </>
-                    )
-                    : (
-                      <>
-                        <label
-                          htmlFor={commentId}
-                          className="text-sm font-medium"
-                        >
-                          What should change?{" "}
-                          <span className="text-xs text-destructive">
-                            Required
-                          </span>
-                        </label>
-                        <textarea
-                          id={commentId}
-                          className={cn(
-                            "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
-                            "placeholder:text-muted-foreground",
-                            "focus-visible:outline-none focus-visible:ring-1",
-                            "focus-visible:ring-ring",
-                            commentError && "border-destructive",
-                          )}
-                          value={comment}
-                          rows={3}
-                          required
-                          aria-required="true"
-                          placeholder="Describe the exact revision needed."
-                          aria-describedby={`${commentHelpId}${
-                            commentError ? ` ${commentErrorId}` : ""
-                          }`}
-                          aria-invalid={commentError ? "true" : undefined}
-                          onInput={(event) => {
-                            setComment(event.currentTarget.value);
-                            if (commentError) setCommentError(undefined);
-                          }}
-                        />
-                        <div className="flex justify-between gap-3 text-xs text-muted-foreground">
-                          <small id={commentHelpId}>
-                            This text is sent exactly as written.
-                          </small>
-                          <small>
-                            {commentLength} / {REVIEW_INTENT_COMMENT_MAX_LENGTH}
-                          </small>
-                        </div>
-                        <div
-                          className="flex flex-wrap gap-2"
-                          role="group"
-                          aria-label="Revision request"
-                        >
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={isSending || !canSendRevision}
-                            onClick={() => send("request-revision", comment)}
-                          >
-                            Send revision request
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={isSending}
-                            onClick={() => {
-                              setComment("");
-                              setCommentError(undefined);
-                              setComposerMode("choice");
-                            }}
-                          >
-                            Back
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                </div>
-              )
-              : (
-                <ReviewIntentTransmissionNotice
-                  state={transmissionState}
-                  onRefresh={onRefreshIntent}
-                />
-              )}
-          </section>
-        )}
         {record.outcome && (
           <dl
             className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5"
@@ -598,7 +357,7 @@ export function ActivityReviewFeedCard({
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
           <dt className="text-xs text-muted-foreground">Review</dt>
           <dd className="text-sm">
-            {activityReviewDisplayStatusLabel(displayStatus)}
+            {activityReviewStatusLabel(status)}
           </dd>
           <dt className="text-xs text-muted-foreground">Scope</dt>
           <dd className="text-sm">
@@ -624,10 +383,8 @@ export function ActivityReviewFeedCard({
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          {status === "to-review" && canCompose
-            ? "A sent intent is not a validation. This card changes only when the canonical project records the signed decision."
-            : status === "to-review" || status === "revision-requested"
-            ? "This record has no browser decision action for its scope; continue in the paired conversation."
+          {status === "to-review" || status === "revision-requested"
+            ? "This record has no browser decision action; continue in the paired conversation."
             : record.supersededBy
             ? "Validated historical review. The signed successor above is the current geometry result."
             : record.resultEvidence
@@ -636,128 +393,6 @@ export function ActivityReviewFeedCard({
         </p>
       </div>
     </details>
-  );
-}
-
-function ReviewIntentTransmissionBadge(
-  { state }: { state: ReviewIntentTransmissionState },
-): JSX.Element | null {
-  if (state.kind === "idle") return null;
-  const label = state.kind === "sending"
-    ? "Sending"
-    : state.kind === "queued"
-    ? "Sent"
-    : state.kind === "acknowledged"
-    ? "Received"
-    : state.kind === "stale"
-    ? "Stale"
-    : "Send failed";
-  const variant = state.kind === "error" || state.kind === "stale"
-    ? "warning"
-    : "info";
-  return (
-    <Badge
-      variant={variant}
-      data-transmission-state={state.kind}
-      aria-label={state.kind === "queued"
-        ? "Sent to review queue · agent receipt pending"
-        : state.kind === "acknowledged"
-        ? "Received by agent · signed decision pending"
-        : label}
-    >
-      {label}
-    </Badge>
-  );
-}
-
-function ReviewIntentTransmissionNotice({
-  state,
-  onRefresh,
-}: {
-  state: ReviewIntentTransmissionState;
-  onRefresh?: () => void | Promise<void>;
-}): JSX.Element | null {
-  if (state.kind === "idle") return null;
-  if (state.kind === "sending") {
-    return (
-      <p
-        className={reviewTransmissionNoticeClass()}
-        role="status"
-        aria-live="polite"
-      >
-        Sending review intent…
-      </p>
-    );
-  }
-  if (state.kind === "queued" || state.kind === "acknowledged") {
-    return (
-      <div
-        className={reviewTransmissionNoticeClass()}
-        data-transmission-state={state.kind}
-        role="status"
-        aria-live="polite"
-      >
-        <strong>{state.kind === "queued" ? "Sent" : "Received"}</strong>
-        <span>
-          {state.kind === "queued"
-            ? "Waiting for agent receipt."
-            : "Waiting for signed decision."}
-        </span>
-      </div>
-    );
-  }
-  if (state.kind === "error") {
-    return (
-      <div
-        className={reviewTransmissionNoticeClass("error")}
-        data-transmission-state="error"
-        role="alert"
-      >
-        <strong>Refresh required</strong>
-        <span>{state.message}</span>
-        {onRefresh && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void onRefresh()}
-          >
-            Refresh preview
-          </Button>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div
-      className={reviewTransmissionNoticeClass("error")}
-      data-transmission-state="stale"
-      role="alert"
-    >
-      <strong>Proposal changed</strong>
-      <span>{state.message}</span>
-      {onRefresh && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void onRefresh()}
-        >
-          Refresh preview
-        </Button>
-      )}
-    </div>
-  );
-}
-
-function reviewTransmissionNoticeClass(
-  tone: "quiet" | "error" = "quiet",
-): string {
-  return cn(
-    "flex flex-wrap items-center gap-2 rounded-md px-3 py-2 text-xs",
-    tone === "error"
-      ? "bg-destructive/10 text-destructive"
-      : "bg-muted/50 text-muted-foreground",
   );
 }
 
@@ -906,15 +541,12 @@ function reviewKindLabel(kind: ProjectReviewKind): string {
 }
 
 function activityReviewBadgeVariant(
-  status: ActivityReviewDisplayStatus,
-): "warning" | "success" | "info" | "secondary" {
+  status: ActivityReviewStatus,
+): "warning" | "success" | "secondary" {
   if (status === "to-review" || status === "revision-requested") {
     return "warning";
   }
   if (status === "validated") return "success";
-  if (status === "sending" || status === "sent" || status === "received") {
-    return "info";
-  }
   return "secondary";
 }
 

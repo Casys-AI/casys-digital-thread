@@ -119,10 +119,6 @@ import { FileEngineeringProjectRunLease } from "./src/adapters/shared/stores/fil
 import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/shared/stores/engineering-project-store.ts";
 import {
-  FileProjectReviewIntentStore,
-  ProjectReviewIntentConflictError,
-} from "./src/adapters/shared/stores/file-project-review-intent-store.ts";
-import {
   CockpitFocusConflictError,
   FileCockpitFocusStore,
 } from "./src/adapters/project/file-cockpit-focus-store.ts";
@@ -154,7 +150,6 @@ import {
   type CockpitFocusToolDependencies,
   registerCockpitFocusTools,
 } from "./src/tools/cockpit-focus.ts";
-import { registerProjectReviewIntentSubscription } from "./src/tools/project-review-intent-subscription.ts";
 import { sha256Fingerprint } from "./src/domain/kernel/deterministic-json.ts";
 import {
   createArchitectureFoundation,
@@ -190,7 +185,6 @@ const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_MANIFEST_PATH = "config/mcp-fleet.json";
 const DEFAULT_RUN_FIXTURE_PATH = "state/fixtures/runs/bracket-demo.json";
 const DEFAULT_ACTIVE_PROJECT_DIRECTORY = "state/local/engineering-projects";
-const DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY = "state/local/project-review-intents";
 const DEFAULT_COCKPIT_FOCUS_DIRECTORY = "state/local/cockpit-focus";
 const DEFAULT_THREAD_SNAPSHOT_DIRECTORY = "state/local/thread-snapshots";
 const DEFAULT_LIVE_THREAD_UPDATE_DIRECTORY = "state/local/live-thread-updates";
@@ -381,8 +375,6 @@ export interface CreateConsoleServerOptions {
   projectId?: string;
   projectPath?: string;
   activeProjectDirectory?: string;
-  /** Browser-to-agent review outbox; never an EngineeringProject command store. */
-  projectReviewIntentDirectory?: string;
   cockpitFocusDirectory?: string;
   threadSnapshotDirectory?: string;
   liveThreadUpdateDirectory?: string;
@@ -524,7 +516,6 @@ export async function createConsoleServer(
         (error.name === "ControlPlaneNotFoundError" ||
           error instanceof EngineeringProjectCommandError ||
           error instanceof CockpitFocusConflictError ||
-          error instanceof ProjectReviewIntentConflictError ||
           error instanceof TypeError)
         ? error.message
         : null,
@@ -545,9 +536,6 @@ export async function createConsoleServer(
   registerControlPlaneTools(app, controlPlane);
   if (projectControl) {
     registerProjectControlTools(app, { ...projectControl, approvalMode });
-    if (projectControl.reviewIntents) {
-      registerProjectReviewIntentSubscription(app, projectControl.reviewIntents);
-    }
   }
   if (projectBrief) {
     registerProjectBriefTools(app, { ...projectBrief, approvalMode });
@@ -1029,10 +1017,6 @@ async function createProjectControl(
       thermalMethodSheetSealReview: modelicaProject.thermalMethodSheetSealReview,
       ledDriverSourceCapture: electrical.ledDriverSourceCapture,
       ledDriverSourceReview: electrical.ledDriverSourceReview,
-      reviewIntents: new FileProjectReviewIntentStore(
-        options.projectReviewIntentDirectory ??
-          DEFAULT_PROJECT_REVIEW_INTENT_DIRECTORY,
-      ),
       ...composePrivateBuild123dGeometrySurfaces(
         build123dSandboxMcpUrl,
         cadProject.geometrySourceAnalysis,
@@ -1246,7 +1230,6 @@ if (import.meta.main) {
   );
   const { app } = await createConsoleServer({
     projectControl: projectToolsEnabled ? undefined : false,
-    projectReviewIntentDirectory: cli.projectReviewIntentDirectory,
     approvalMode,
     build123dExecution: localExecution
       ? await createLocalBuild123dExecutionServerOptions()
@@ -1301,7 +1284,6 @@ if (import.meta.main) {
 export interface ConsoleCliOptions {
   port?: number;
   hostname?: string;
-  projectReviewIntentDirectory?: string;
   yolo?: true;
   localExecution?: true;
 }
@@ -1328,28 +1310,12 @@ export function parseConsoleCli(args: string[]): ConsoleCliOptions {
         throw new TypeError("--hostname requires a value");
       }
       result.hostname = hostname;
-    } else if (argument.startsWith("--review-intent-dir=")) {
-      result.projectReviewIntentDirectory = argument.slice(
-        "--review-intent-dir=".length,
-      );
-    } else if (argument === "--review-intent-dir") {
-      const directory = args[++index];
-      if (directory === undefined) {
-        throw new TypeError("--review-intent-dir requires a value");
-      }
-      result.projectReviewIntentDirectory = directory;
     } else {
       throw new TypeError(`Unknown console argument: ${argument}`);
     }
   }
   if (result.hostname !== undefined && result.hostname.trim() === "") {
     throw new TypeError("--hostname must not be empty");
-  }
-  if (
-    result.projectReviewIntentDirectory !== undefined &&
-    result.projectReviewIntentDirectory.trim() === ""
-  ) {
-    throw new TypeError("--review-intent-dir must not be empty");
   }
   return result;
 }
