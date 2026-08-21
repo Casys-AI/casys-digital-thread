@@ -8,7 +8,10 @@ import type {
 import { CALCULIX_ISOLATED_OUTPUT_MANIFEST } from "../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
 import type { IsolatedCodeExecutionReceiptRecord } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
-import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import { FixedCalculixIsolatedExecutionProfileCatalog } from "./fixed-calculix-isolated-execution-profile.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
@@ -59,7 +62,28 @@ Deno.test("isolated CalculiX @3 publishes nine local outputs and two evidence ar
       ISOLATED_CALCULIX_FIXTURE_AGENT,
       runtime.fixture.command,
     );
+    const completedRun = completed.agentRuns.find((run) =>
+      run.id === runtime.fixture.runId
+    )!;
+    const replayedRun = replayed.agentRuns.find((run) =>
+      run.id === runtime.fixture.runId
+    )!;
+    const replayedSnapshot = await runtime.fixture.snapshots.get(
+      replayed.threadSnapshots.at(-1)!.snapshotId,
+    );
     assertEquals(replayed.revision, completed.revision);
+    assertEquals(
+      deterministicJson(replayedSnapshot),
+      deterministicJson(snapshot),
+    );
+    assertEquals(
+      deterministicJson(replayedRun.resultSnapshot),
+      deterministicJson(completedRun.resultSnapshot),
+    );
+    assertEquals(
+      deterministicJson(replayedRun.evidenceRefs),
+      deterministicJson(completedRun.evidenceRefs),
+    );
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 1);
   });

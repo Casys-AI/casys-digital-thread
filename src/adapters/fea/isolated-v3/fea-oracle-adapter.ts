@@ -34,8 +34,6 @@
 
 import type {
   RequirementEvaluation,
-  RequirementEvaluationStatus,
-  ThreadFreshness,
   ThreadOperationRef,
 } from "../../../domain/thread/thread-snapshot.ts";
 import {
@@ -43,6 +41,11 @@ import {
   type OracleRequirement,
 } from "../../../domain/kernel/proof-case.ts";
 import type { MechanicalRequirement } from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
+import {
+  buildStaticProofOracleValues,
+  evaluationsFromStaticProofOracle,
+  projectStaticProofRequirement,
+} from "../../../domain/fea/isolated-v3/static-proof-oracle-input.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import {
   type ParsedOracleResult,
@@ -107,13 +110,7 @@ export const FEA_METRIC_TO_CALCULIX: ReadonlyMap<
 export function projectProofRequirementToOracle(
   req: MechanicalRequirement,
 ): OracleRequirement {
-  return {
-    id: req.id,
-    name: req.name,
-    metric: req.feature,
-    operator: req.operator,
-    limit: req.limit,
-  };
+  return projectStaticProofRequirement(req);
 }
 
 // ---------------------------------------------------------------------------
@@ -156,18 +153,18 @@ export function buildOracleValues(
   parsed: FeaSolverMetrics,
   requirements: readonly MechanicalRequirement[],
 ): Record<string, { readonly value: number; readonly unit: string }> {
-  const values: Record<string, { readonly value: number; readonly unit: string }> = {};
   for (const req of requirements) {
-    const mapping = FEA_METRIC_TO_CALCULIX.get(req.metric);
-    if (mapping === undefined) {
+    if (!FEA_METRIC_TO_CALCULIX.has(req.metric)) {
       throw new Error(
         `fea-oracle-adapter: unsupported metric "${req.metric}" — ` +
           `only ${[...FEA_METRIC_TO_CALCULIX.keys()].join(", ")} are supported.`,
       );
     }
-    values[req.feature] = { value: parsed[mapping.field].value, unit: mapping.unit };
   }
-  return values;
+  return buildStaticProofOracleValues({
+    maximumDisplacement: parsed.maxDisplacement,
+    maximumVonMises: parsed.maxVonMises,
+  }, requirements);
 }
 
 // ---------------------------------------------------------------------------
@@ -215,13 +212,14 @@ export function prepareFeaConstraintOracleCall(
   requirements: readonly MechanicalRequirement[],
   values: Record<string, { readonly value: number; readonly unit: string }>,
 ): CapturedFeaConstraintOracleCall["request"] {
-  const oracleRequirements: OracleRequirement[] = requirements.map(
-    projectProofRequirementToOracle,
-  );
-  const constraints = oracleRequirements.map(buildConstraintAst);
   return {
     name: "syson_constraint_evaluate",
-    arguments: { constraints, values },
+    arguments: {
+      constraints: requirements.map((requirement) =>
+        buildConstraintAst(projectStaticProofRequirement(requirement))
+      ),
+      values,
+    },
   };
 }
 
@@ -318,101 +316,17 @@ export function feaEvaluationsFromOracle(
   requirements: readonly MechanicalRequirement[],
   context: FeaEvaluationContext,
 ): RequirementEvaluation[] {
-  const {
-    verdictCaptureFp,
-    evaluatedAt,
-    evidenceArtifactId,
-    observationIds,
-    threadRequirementIds,
-    evaluator: exactEvaluator,
-  } = context;
-
-  if (!/^[a-f0-9]{64}$/.test(verdictCaptureFp)) {
-    throw new Error(
-      "fea-oracle-adapter: verdictCaptureFp must be a 64-character lowercase hex digest." +
-        ` Got "${verdictCaptureFp.slice(0, 12)}…" (length ${verdictCaptureFp.length}).`,
-    );
-  }
-
-  const freshness: ThreadFreshness = {
-    status: "fresh",
-    changedAt: evaluatedAt,
-    invalidatedByChangeIds: [],
-  };
-
-  // Recorded callers supply the exact orchestration run. The fallback retains
-  // the established @1 identity without changing historical materialization.
-  const evaluator: ThreadOperationRef = exactEvaluator ?? {
+  const evaluator: ThreadOperationRef = context.evaluator ?? {
     serverId: "syson",
     tool: "syson_constraint_evaluate",
-    runId: evidenceArtifactId,
+    runId: context.evidenceArtifactId,
   };
-
-  return requirements.map((req, index) => {
-    const id = `${req.id}-evaluation-${verdictCaptureFp}`;
-    const observationId = observationIds[index];
-    if (observationId === undefined) {
-      throw new Error(
-        `fea-oracle-adapter: observationIds[${index}] is missing` +
-          ` for requirement "${req.id}".`,
-      );
-    }
-    const oracleResult = outcomes.get(req.id);
-    if (oracleResult === undefined) {
-      throw new Error(
-        `fea-oracle-adapter: oracle outcome missing for requirement id "${req.id}".`,
-      );
-    }
-
-    const threadRequirementId = threadRequirementIds.get(req.id);
-    if (threadRequirementId === undefined) {
-      throw new Error(
-        `fea-oracle-adapter: no thread requirement resolved for proof-case` +
-          ` requirement id "${req.id}".`,
-      );
-    }
-
-    const status = oracleResult.status as RequirementEvaluationStatus;
-    const base: RequirementEvaluation = {
-      id,
-      name: `${req.name} evaluation`,
-      requirementId: threadRequirementId,
-      observationIds: [observationId],
-      status,
-      evaluatedAt,
-      evaluator,
-      evidenceArtifactIds: [evidenceArtifactId],
-      message: evaluationMessage(oracleResult),
-      freshness,
-    };
-
-    if (oracleResult.status === "pass" || oracleResult.status === "fail") {
-      return {
-        ...base,
-        comparison: {
-          observationId,
-          actual: { value: oracleResult.computedValue, unit: oracleResult.unit },
-          operator: req.operator,
-          limit: { value: oracleResult.threshold, unit: oracleResult.unit },
-          normalizedUnit: oracleResult.unit,
-          margin: { value: oracleResult.margin, unit: oracleResult.unit },
-        },
-      };
-    }
-    // error / unresolved: comparison intentionally absent — see module doc.
-    return base;
+  return evaluationsFromStaticProofOracle(outcomes, requirements, {
+    verdictCaptureFp: context.verdictCaptureFp,
+    evaluatedAt: context.evaluatedAt,
+    evidenceArtifactId: context.evidenceArtifactId,
+    observationIds: context.observationIds,
+    threadRequirementIds: context.threadRequirementIds,
+    evaluator,
   });
-}
-
-function evaluationMessage(result: ParsedOracleResult): string {
-  switch (result.status) {
-    case "pass":
-      return "The observed value is within the reviewed concept limit.";
-    case "fail":
-      return "The observed value exceeds the reviewed concept limit.";
-    case "error":
-      return "The oracle returned an error evaluating this limit.";
-    case "unresolved":
-      return "The oracle could not resolve this limit evaluation.";
-  }
 }
