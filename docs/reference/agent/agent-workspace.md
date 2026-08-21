@@ -27,9 +27,10 @@ This repo is the atelier: Console MCP, project-control MCP, native Workbench, re
 operations, CAS, WAL, and immutable project/thread state.
 
 Engineering providers live in other repos and run from published images. Do not clone
-`mcp-syson`, `mcp-build123d`, or `mcp-calculix` here to “fix” an operation. The retired
-port 3016 `mcp-modelica` sidecar is not a product path. Change a provider only in its
-own repo.
+`mcp-syson`, `mcp-build123d`, or `mcp-calculix` here to “fix” an operation. Fleet
+`mcp-calculix` is a sensitivity capability, not the provenance of product static `@3`
+(local microVM). The retired port 3016 `mcp-modelica` sidecar is not a product path.
+Change a provider only in its own repo.
 
 ![Authority split: human confirms, agent proposes registered operations, server owns sequences, Workbench is read-only.](../../assets/authority-and-surfaces.svg)
 
@@ -190,7 +191,7 @@ The caller names `projectId`, with optional `caseId`, `basis`, and false-by-defa
 `sensitivityCatalogOptIn` on the proof-seal review. Omitted `caseId` / `proofArtifactId`
 / `basis` are resolved server-side (unique catalog case, unique sealed document, unique
 current Thread tip). That tip is not `latest`. There is no `fea.run.*` grammar: numbers
-stay in the sealed proof; the recorded run admits thread-entity bindings. A true
+stay in the sealed proof; the isolated `@3` run admits thread-entity bindings. A true
 sensitivity opt-in is accepted only when the exact admission source matches the proof
 CAD definition and its unique causal lever and `result` bindings join the proof target.
 The same MRTR signs the offer digest and admission artifact. The executor reopens both
@@ -203,13 +204,13 @@ Only an exact current project head also receives `next.append.arguments` /
 historical basis, conflicting project identity, unreadable geometry/STEP source, or
 requested sensitivity offer without an exact causal join returns `unavailable` or
 `unresolved` with an exact diagnostic and no `next`. Never relabel that as `resolved`.
-The recorded-run proposal restates the compiled identities so the agent does not invent
+The isolated-run proposal restates the compiled identities so the agent does not invent
 solver numbers.
 
 An unknown catalog id, a project or subject mismatch, an absent or ambiguous STEP, or a
 cad-model offered as `geometry` yields `unresolved` with diagnostics and **no**
 parameters or bindings. `rejectedLookalikes` names the assembly cad-model (and any
-sibling cad-models in one diagnostic) so they are not copied into a later `@2` proposal.
+sibling cad-models in one diagnostic) so they are not copied into a later `@3` proposal.
 
 How-to: [Compile FEA parameters](../../how-to/compile/compile-fea-parameters.md).
 
@@ -311,8 +312,8 @@ Unknown ids/versions are indistinguishable from absent.
 | `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | Separate fixed LinearThermalRamp qualified-kit V1 smoke                                                                | Admitted closed-subset `.mo`                                         |
 | `simulate.run-admitted-modelica@1`                  | trusted                   | local microVM                | Documentary run of sealed `compile.seal-admission@1` Modelica bytes                                                     | The pinned kit or caller `modelicaText`                              |
 | `analyze.seal-sensitivity-study@1`                  | trusted                   | none                         | Sealed 2.0 study-case document                                                                                          | A solve or a verdict                                                 |
-| `analyze.run-fea-sensitivity@1`                     | trusted                   | isolated CAD + CalculiX MCP  | Dimensioned observations + study capture                                                                                | A verdict or `@2` ROP plan                                           |
-| `verify.evaluate-sensitivity-base@1`                | trusted                   | SysON                        | Evaluations that cite `sensitivity-base-<metric>-<digest>`                                                              | A solve, a proof `@2`, or a metric alias                             |
+| `analyze.run-fea-sensitivity@1`                     | trusted                   | isolated CAD + fleet `mcp-calculix` | Dimensioned observations + study capture                                                                          | A verdict or product static `@3`                                     |
+| `verify.evaluate-sensitivity-base@1`                | trusted                   | SysON                        | Evaluations that cite `sensitivity-base-<metric>-<digest>`                                                              | A solve, a proof `@3`, or a metric alias                             |
 | `model.write-sensitivity-edges@1`                   | trusted                   | SysON                        | Server-rendered derivative PartDef                                                                                      | Architecture write or agent SysML                                    |
 | `industrialize.seal-printability-case@1`            | trusted                   | none                         | Sealed printability-check-case/1.0 document                                                                             | A DFM dispatch or verdict                                            |
 | `industrialize.observe-printability@1`              | trusted                   | mcp-dfm                      | Unit-carrying FDM observations                                                                                          | A verdict or evaluation                                              |
@@ -361,7 +362,7 @@ Observed on the real agent path. Contract facts, not style.
 | Requirement thresholds are integers                              | `requirement.<slug>.threshold` is a safe integer. SysON 0.5.1 cannot round-trip a decimal literal through `syson_constraint_extract` (`LiteralRational`).                                                                                      | Grammar rejects at `project_decision_propose`. Message: threshold must be a safe integer because SysON 0.5.1 cannot round-trip decimal literals through `syson_constraint_extract`.                                                                                                                                                                                                           |
 | Seed MRTR is closed                                              | Allowed keys: `seed.schemaVersion`, `seed.scope`, `seed.operation`, `model.name`. `model.name` is pinned to the server-owned role `system model`. `fingerprintSysonModelSeedProposal` is the envelope digest, not the MRTR `inputFingerprint`. | Grammar rejects a free-form key or any other `model.name` at `project_decision_propose`.                                                                                                                                                                                                                                                                                                      |
 | Study metric ids must Object.is-equal Thread requirement metrics | `analyze.run-fea-sensitivity@1` publishes `sensitivity-base-<metric>-<digest>`. `verify.evaluate-sensitivity-base@1` joins only when `metric` is the Thread requirement metric.                                                                | Historical dl05 r16: study `assembly_max_*` vs requirements `maxDisplacement` / `maxVonMises` → `UNLINKED`. A later isolated reseal on that atelier joined. Do not invent a mapping. Do not replay r16. New project: [run the behave loop from zero](../../how-to/behave/run-the-behave-loop-from-zero.md).                                                                                             |
-| Proof-run evaluations do not authorize a correction              | `design.apply-vector-correction@1` accepts only a fail that cites `sensitivity-base-<metric>-<digest>`.                                                                                                                                        | A `@2` `pass` on `calculix-observation-*` is a different authority. A joined study-base `pass` also does not apply a correction.                                                                                                                                                                                                                                                              |
+| Proof-run evaluations do not authorize a correction              | `design.apply-vector-correction@1` accepts only a fail that cites `sensitivity-base-<metric>-<digest>`.                                                                                                                                        | A proof-run `@3` `pass` on `calculix-observation-*` is a different authority. A joined study-base `pass` also does not apply a correction.                                                                                                                                                                                                                                                    |
 
 Limit of the seed grammar: `assertProposalMatchesOperationGrammar` is project-agnostic.
 It cannot pin `model.name` to `projectId` or `project.project.name`. The executor does
@@ -435,7 +436,7 @@ invent a fourth join.
 
 | Branch                                           | Played on dl05?    | Independent verdict               | Shared cause                                          |
 | ------------------------------------------------ | ------------------ | --------------------------------- | ----------------------------------------------------- |
-| Behave (CalculiX / Modelica / study-base)        | Yes                | A `@2` `pass` is not a DFM `pass` | Same STEP; a later CAD write retires the old proof    |
+| Behave (CalculiX / Modelica / study-base)        | Yes                | A `@3` `pass` is not a DFM `pass` | Same STEP; a later CAD write retires the old proof    |
 | Make (measured DFM; printability is documentary) | No                 | A DFM `fail` is not a `z*` grant  | Same STEP only. Isolated geometry is not a DFM target |
 | Buy (BOM / ERP / cost)                           | No registered seal | —                                 | Same part identities when a binding exists            |
 
@@ -492,8 +493,10 @@ Context-specific WAL stays next to its executor.
 `deno task check` globs `src/adapters/**/*.ts`. Named `check:*` tasks still need their
 path lists updated when a cited file moves.
 
-UI change under `src/ui/src/` → rebuild the product bundle (`build:thread`) and commit
-`src/ui/dist/thread/**`. There is no Console MCP App bundle; `preview:browser` refuses.
+UI change under `src/ui/src/` → rebuild the product bundle locally
+(`npm --prefix src/ui run build:thread`). `src/ui/dist/thread` is generated and
+gitignored; do not commit it. Surfaces that serve it build first. There is no Console
+MCP App bundle; `preview:browser` refuses.
 
 ## 9. Persistence roots that matter
 
@@ -501,7 +504,7 @@ UI change under `src/ui/src/` → rebuild the product bundle (`build:thread`) an
 | --------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `state/local/engineering-projects/`                                         | Immutable project revisions                                |
 | `state/local/thread-snapshots/`                                             | Canonical Thread revisions                                 |
-| `state/local/recorded-analysis/`                                            | Compilation, isolated CAD/Modelica, recorded CalculiX, ROP |
+| `state/local/recorded-analysis/`                                            | Compilation, isolated CAD/Modelica, isolated CalculiX, ROP |
 | `state/local/recorded-analysis/architecture-sysml/{sources,analyses,seals}` | Agent-authored SysML CAS                                   |
 | `state/local/sysml-source-captures/`                                        | Renderer `sysml-source-capture/1.0`                        |
 | `state/local/architecture-captures/`                                        | `architecture-capture/3.0` (SysON write)                   |

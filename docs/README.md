@@ -75,7 +75,6 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 
 ### How-to — `extend/`
 
-- [Add a recorded analysis engine](how-to/extend/add-a-recorded-analysis-engine.md)
 - [Extend the FEA product surface](how-to/extend/fea-surface.md)
 - [Extend admitted Modelica coverage](how-to/extend/modelica-surface.md)
 - [Extend the CAD closed subset](how-to/extend/cad-surface.md)

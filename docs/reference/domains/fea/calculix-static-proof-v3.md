@@ -15,6 +15,10 @@ operations `@1` and `@2` are not registered product substitutes.
 Source contracts:
 
 - [`calculix-isolated-execution.ts`](../../../../src/domain/fea/isolated-v3/calculix-isolated-execution.ts)
+- [`sealed-static-proof-capture.ts`](../../../../src/domain/fea/isolated-v3/sealed-static-proof-capture.ts)
+- [`static-proof-identity.ts`](../../../../src/domain/fea/isolated-v3/static-proof-identity.ts)
+- [`static-proof-oracle-input.ts`](../../../../src/domain/fea/isolated-v3/static-proof-oracle-input.ts)
+- [`static-proof-thread-evidence.ts`](../../../../src/domain/fea/isolated-v3/static-proof-thread-evidence.ts)
 - [`calculix-static-proof-v1/run.ts`](../../../../src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts)
 - [`verify-run-fea-static-proof-v3-run-executor.ts`](../../../../src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts)
 - [`fea-oracle-adapter.ts`](../../../../src/adapters/fea/isolated-v3/fea-oracle-adapter.ts)
@@ -86,8 +90,10 @@ result to `Pa` limit conversion for von Mises stress.
 
 Each outcome remains literal: `pass`, `fail`, `unresolved` or `error`. Only `pass`
 proves that one named condition on this exact basis is within its limit. A `fail` is
-publishable and creates an open violation plus a proposed human-review action.
-`unresolved` and `error` carry no synthetic comparison and never become `pass`.
+publishable: the named violation is `caused_by` the failing evaluation; the violation
+`evidences` both the local execution evidence artifact and the immutable SysON
+evaluation-capture artifact; the proposed review action `addresses` that violation.
+`error` and `unresolved` get no comparison and no violation; they never become `pass`.
 
 ## Isolation and replay
 

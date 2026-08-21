@@ -14,7 +14,7 @@ named, unit-bearing evidence.
 flowchart LR
   R["SysML requirements and constraints\nmcp-syson"] --> V["Units-aware evaluation\nverdict + margin"]
   G["Parametric CAD\nmcp-build123d"] --> P["Geometry proof\nmetrics + STEP export"]
-  P --> F["Static FEA\nmcp-calculix"]
+  P --> F["Static FEA\nisolated CalculiX @3 microVM"]
   F --> E["Mechanical evidence"]
   M["Dynamic physical simulation\nlocal Modelica microVM"] --> S["Time-series evidence\nmetrics + artifact hashes"]
   E --> V
@@ -27,7 +27,7 @@ flowchart LR
 | Question                                                                                 | Owner                                | A successful response proves                                                               | It does not prove                                                                          |
 | ---------------------------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
 | What shape, volume, mass, or export was produced?                                        | `mcp-build123d`                      | A parametric geometry execution and its exact geometry/export evidence.                    | Local stress, transient behaviour, or requirement compliance.                              |
-| Does this geometry withstand a stated static load model?                                 | `mcp-calculix`                       | A mesh/solver result for that geometry, load case, material assumptions, and solver setup. | That the CAD is the only valid design or that an unrelated requirement passed.             |
+| Does this geometry withstand a stated static load model?                                 | Isolated CalculiX `@3` local microVM | A mesh/solver result for that geometry, load case, material assumptions, and solver setup. | That the CAD is the only valid design or that an unrelated requirement passed.             |
 | What happens over time in coupled thermal, hydraulic, electrical, and control behaviour? | Local Modelica microVM               | A versioned admitted or kit run, observations, and hashed artifacts.                       | A SysML requirement verdict; its `succeeded` run intentionally has no `pass`/`fail` field. The port 3016 `mcp-modelica` sidecar is retired. |
 | Is a named, unit-bearing condition satisfied by supplied evidence?                       | `mcp-syson` and the constraint layer | A comparison with the condition, values, units, and margin visible.                        | That the input evidence is broader, newer, or more applicable than its provenance says.    |
 

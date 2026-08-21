@@ -3,7 +3,7 @@
 Audience: both · Diátaxis: how-to · Kind: how-to
 
 Start a **new** project and walk the **behave** branch only: intent → brief → SysON →
-canonical CAD → CalculiX `@2` → optional joined sensitivity. Stop on `pass`. Do not open
+canonical CAD → isolated CalculiX `@3` → optional joined sensitivity. Stop on `pass`. Do not open
 make (DFM / printability) or buy (BOM). Do not "repair" `desk-lamp-dl05`. Optional
 product Modelica is a separate capture → admission → admitted microVM walk
 ([run admitted Modelica](../run/run-admitted-modelica.md)), never the pinned kit.
@@ -28,7 +28,7 @@ below is a **typed refusal** or a lookalike. Surface it. Do not work around it.
 | Seed in `project_plan_publish`            | Seed only via `project_change_append` ([sequence the seed](sequence-seed-work-item.md))                |
 | Agent-authored SysML on the renderer path | `model.write-architecture@1` / `model.write-requirements@1`                                            |
 | Isolated seal as FEA geometry             | `design.seal-isolated-geometry@1` is a Thread **document**. Proof binds `design.write-geometry@1` STEP |
-| `@1` / `@2` / `@3` swapped                | Distinct authorities. Current recorded path is `@2`                                                    |
+| `@1` / `@2` / `@3` swapped                | Distinct authorities. Product FEA is isolated `@3`. Historical MCP `@1`/`@2` are rejected identities, not routes or prerequisites |
 | Study metrics aliased to requirement ids  | `UNLINKED`. Reseal from a template whose metric ids Object.is-equal. Never map                         |
 | `z*` after a `pass`                       | `design.apply-vector-correction@1` accepts only a study-base **fail**                                  |
 | Printability or DFM to complete the loop  | Other judgement branch. Stop.                                                                          |

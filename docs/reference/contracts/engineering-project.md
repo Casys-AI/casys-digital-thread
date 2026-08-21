@@ -14,9 +14,9 @@ records but never owns, rewrites, or manufactures their evidence.
 
 Its trace is a control substrate, not merely an audit log: the paired agent can use
 proven impact to observe, evaluate, propose a bounded correction, and request a
-recomputation. The human reviews and authorizes consequential changes. The recorded
-Modelica and CalculiX `@2` executors are the current generic, bounded implementation of
-that route; they do not imply a generic workflow language or a live-run success.
+recomputation. The human reviews and authorizes consequential changes. Isolated CalculiX `@3` and admitted Modelica `@1` are the current generic, bounded
+implementations of that route; they do not imply a generic workflow language or a
+live-run success. Historical MCP FEA `@1`/`@2` are not registered.
 
 The current creation format is schema `3.0`: the project exists from the first intent
 and its living brief evolves inside that same immutable revision stream. Older snapshots
@@ -28,14 +28,14 @@ missing decision or engineering input.
 | ---- | ---- |
 | Three truth boundaries | Project vs Thread vs activity |
 | Agent-published plan and reviewed operations | Registered ops including admitted Modelica |
-| Recorded-analysis `@2` authority | Provider MCP recorded path |
+| Isolated FEA `@3` and Modelica microVMs | Product static proof and admitted/kit Modelica |
 | Command and authority surfaces | Who may write what |
 
 Contents: [Three truth boundaries](#three-truth-boundaries) ·
 [Root fields](#root-fields) ·
 [Living brief in schema 3.0](#living-brief-in-schema-30) ·
 [Agent-published plan](#agent-published-plan-and-reviewed-operations) ·
-[Recorded-analysis `@2`](#recorded-analysis-2-authority) ·
+[Current analysis execution](#current-analysis-execution) ·
 [V3 execution bases](#v3-execution-bases-documentary-baseline-and-syson-seed) ·
 [Exact thread references](#exact-thread-references) ·
 [Ordered phases](#ordered-phases-and-derived-status) ·
@@ -162,35 +162,43 @@ blocker, concrete decision proposal, or completed/cancelled work exists. After t
 point it may append a bounded change, but cannot use either command to erase execution
 or review history.
 
-The ten foundational `@1` operations have their existing trusted executors. The three
-recorded-analysis `@2` successors are additive: their planless Modelica seal qualifies
-and captures a provider kit; their Modelica and CalculiX runs require a server-sealed
-`resolved-operation-plan/2.0`. No `@1` capture, queue record or recovery route is
-reinterpreted by this addition.
+The registered operations have trusted executors. Isolated CalculiX `@3` and admitted
+Modelica `@1` require a server-sealed `resolved-operation-plan/2.0` where that contract
+applies. Historical MCP FEA `@1`/`@2` and recorded Modelica `@1`/`@2` are not
+registered. No earlier capture, queue record or recovery route is reinterpreted as those
+identities.
 
-## Recorded-analysis `@2` authority
+## Current analysis execution
 
-When an agent queues either recorded run, the server reopens the exact basis and direct
-approved MRTR decision, derives one one-action plan, stores it in local CAS and attaches
-its exact reference to that run. The plan carries no provider endpoint, tool, raw
-arguments, path or agent-authored recovery graph. `project_agent_run_plan_get` is an
+When an agent queues isolated CalculiX `@3`, the server reopens the exact basis and
+direct approved MRTR decision, derives one one-action plan, stores it in local CAS and
+attaches its exact reference to that run. The plan carries no provider endpoint, tool,
+raw arguments, path or agent-authored recovery graph. `project_agent_run_plan_get` is an
 inspection read; it does not execute a plan.
 
 Historical `simulate.seal-simulation-case@1`/`@2` and
 `simulate.run-modelica-scenario@1`/`@2` are not registered. They are not a fallback for
 `simulate.run-admitted-modelica@1` or `simulate.run-qualified-modelica-kit@1`.
 
-`verify.run-fea-static-proof@3` rereads the sealed proof and exact STEP, runs
-gmsh+CCX in the digest-pinned microVM, and then journals a separate SysON constraint
-evaluation. Historical MCP FEA `@1`/`@2` are not registered. The
-evaluation capture binds proof, requirements and result inputs; its Digital Thread
-artifact is evidence for the SysON outcome. Unlike Modelica, this qualified proof may
-publish evaluations, violations and proposed actions. Neither route accepts arbitrary
-agent-authored Modelica source or native CalculiX decks.
+Sealed FEA → isolated `@3`: `verify.seal-proof-case@1` writes the mandate;
+`verify.run-fea-static-proof@3` rereads that sealed proof and the exact canonical part
+STEP, runs Gmsh and CalculiX in the digest-pinned local microVM, then journals a
+separate SysON constraint evaluation. Historical MCP FEA `@1`/`@2` are rejection
+identities. Domain contract:
+[isolated CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 
-The composition root is the reference for these `@2` routes. An approved MRTR, a queued
-run or provider availability is not documented as execution success; only captured and
-reread runtime evidence establishes it.
+Admitted Modelica `@1` reopens sealed `compile.seal-admission@1` bytes into the local
+microVM. It is not the pinned kit. Pattern:
+[admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md).
+How-to: [run admitted Modelica](../../how-to/run/run-admitted-modelica.md).
+
+`simulate.run-qualified-modelica-kit@1` is a separate one-kit smoke. It does not accept
+project `.mo` source.
+
+An approved MRTR, a queued run or provider availability is not execution success; only
+captured and reread runtime evidence establishes it. Neither route accepts arbitrary
+agent-authored Modelica source or native CalculiX decks. Fleet `mcp-calculix` remains a
+sensitivity capability, not the provenance of product static `@3`.
 
 `baseline.from-approved-brief@1` has no provider call: after the agent queues the ready
 registered work item, the backend records the exact approved brief and reviewed plan as
@@ -289,32 +297,9 @@ requirement against the corresponding oracle requirement. The resulting
 `fea-proof-case-capture/1.0` record is stored by content address; the thread extension
 receives one `document` artifact (version = `proofDigest`, the monotony-ratchet key) and
 three full `consumption + derived_from + uses` triplets for geometry, requirements, and
-STEP. No `verify.run-fea-static-proof@1` run may proceed without this sealed mandate.
-
-`verify.run-fea-static-proof@1` consumes the sealed proof-case artifact and the sealed
-geometry artifact, both bound as exact thread entities and propagated into the
-approval's `inputEvidenceRefs` through `decisionEvidenceScope`. The executor re-reads
-the `fea-proof-case-capture/1.0` by content address, re-checks the requirements tip for
-drift since the seal, re-locates and hash-verifies the STEP bytes via the canonical
-asset reader, and asserts oracle fidelity through `extractAndVerifyOracleRequirements`
-before any provider dispatch. The STEP is staged content-addressed (`fea-<digest>.step`)
-into the CalculiX container; a `FeaExecutionPolicy` caps proof dimensions and STEP byte
-count. The `planDigest` commits the exact solver request to the WAL in `dispatched`
-state before `calculix_solve_static`. The three-state WAL
-(`dispatched → solver-recorded → completed`) embeds the canonical solver-capture text at
-`solver-recorded` so a crash after the provider ACK resumes at the oracle step without
-re-dispatch; a divergent CAS readback is a terminal integrity violation. The SysON
-oracle (`syson_constraint_evaluate`) evaluates each proof requirement at native units;
-evaluation IDs carry the full 64-hex `verdictCaptureFp`. A `fail` verdict is
-publishable: each failing evaluation produces a named violation and a paired proposed
-action. The thread extension adds a `solver-result` artifact (producer `calculix`), a
-`document` verdict artifact, two `ThreadObservation` records in mm and MPa, evaluations,
-any violations with proposed actions, and STEP consumption attestation with the
-CalculiX-returned hash.
-
-None of these four operations has yet been executed against a real project. Every first
-seal and first run remains gated by a reviewed MRTR proposal and explicit operator
-consent in the paired conversation.
+STEP. Isolated `@3` consumes this sealed mandate; historical MCP `@1`/`@2` are not
+registered. Execution contract:
+[isolated CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 
 ## V3 execution bases, documentary baseline, and SysON seed
 
@@ -615,12 +600,9 @@ case by id through the versioned `config/mechanical-proof-cases/catalog.json` ma
 cross-checks the MRTR-signed digest and every parameter against the canonical bytes,
 verifies geometry and requirements-tip links in the basis, and publishes the
 content-addressed mandate with no provider call.
-`verify.run-fea-static-proof@1` stages the STEP content-addressed, dispatches
-`calculix_solve_static` from sealed proof parameters only, evaluates through the SysON
-oracle, and publishes a fail-closed verdict with named violations and proposed actions;
-the WAL embeds the canonical solver capture so recovery never re-dispatches after the
-solver ACKs. None of these four has yet been executed against a real project; every
-first seal and run is gated by MRTR proposal and operator consent.
+`verify.run-fea-static-proof@3` is the registered isolated CalculiX run after that seal.
+Historical MCP FEA `@1`/`@2` are not registered. Domain contract:
+[isolated CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 `architecture.author-inspection-drone@3` is restricted to the exact
 `inspection-drone-v4` r2 basis and has published r3: five typed usages and four
 qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,

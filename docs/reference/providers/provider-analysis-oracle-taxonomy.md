@@ -41,19 +41,25 @@ engineering meaning.
 This lets a new engine add a provider adapter and an explicit method contract, rather
 than a new taxonomy branch for every vendor.
 
-## Recorded CalculiX vertical
+## Isolated CalculiX V3
 
 `resolved-operation-plan/2.0` binds the exact MRTR approval, method, thread basis and
-input artefacts before a recorded CalculiX `@2` or isolated `@3` run. Historical
-recorded Modelica `@1`/`@2` are not registered and are not a second ROP arm.
+input artefacts before `verify.run-fea-static-proof@3`. Historical MCP identities
+`verify.run-fea-static-proof@1` and `@2` are rejection identities: they are not
+registered, not routes, and not prerequisites. Historical recorded Modelica `@1`/`@2`
+are not registered and are not a second ROP arm.
 
-CalculiX is an FEA engine. The `@2` run rereads the proof and exact STEP, stages only
-the private input, then captures exactly nine recorded resources: STEP, request JSON,
-Gmsh input/log, mesh, CalculiX deck/log/data and result JSON. Digital Thread rereads the
-exact proof, requirements and result bytes and derives the bounded constraints/values
-request. SysON receives that request and remains the evaluator; its immutable
-request/structured-response capture is a Digital Thread artefact. This is a qualified
-static proof, not support for arbitrary agent-authored `.inp` decks.
+CalculiX is an FEA engine. Isolated V3 rereads the sealed proof and exact canonical
+part STEP, runs Gmsh and CalculiX in a digest-pinned local microVM, then publishes
+exactly nine closed outputs: STEP, request JSON, Gmsh input/log, mesh, CalculiX
+deck/log/data and result JSON. Digital Thread rereads the exact proof, requirements and
+result bytes and derives the bounded constraints/values request. SysON receives that
+request and remains the evaluator; its immutable request/structured-response capture is
+a Digital Thread artefact. This is a qualified static proof, not support for arbitrary
+agent-authored `.inp` decks.
+
+Live-FEA sensitivity (`analyze.run-fea-sensitivity@1`) uses fleet `mcp-calculix`. That
+capability is not the provenance of product static `@3`.
 
 ## Ports and folders
 

@@ -323,9 +323,11 @@ reviewed declaration
 ```
 
 A `mechanical-proof-case/1.0` remains a reviewed declaration, not a generic native-source
-AST. The recorded CalculiX vertical crosses an exact, identity-bound MCP
-`resources/read` boundary and saves then rereads every acquired byte through local CAS.
-Historical `simulation-case/1.0`/`2.0` seals are retired and not registered.
+AST. Isolated CalculiX V3 reopens sealed ROP2, the exact proof and STEP, runs a
+digest-pinned local microVM, and publishes the closed nine outputs plus an immutable
+SysON evaluation capture. Historical MCP FEA `@1`/`@2` are rejection identities.
+Live-FEA sensitivity uses fleet `mcp-calculix`; that is not product static `@3`
+provenance. Historical `simulation-case/1.0`/`2.0` seals are retired and not registered.
 
 For a mechanical proof, this vertical deliberately has two non-substitutable admissions.
 The declaration's `authorization` is a **seal authorization**: it names the reviewed

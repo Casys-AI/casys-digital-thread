@@ -80,7 +80,7 @@ label, never a softened `resolved`.
 | `geometry-capture-invalid` / `step-mismatch`                           | `unresolved`  | Capture/STEP inconsistent with the case    |
 | `step-absent` / `geometry-absent` / `requirements-absent`              | `unresolved`  | Seal too early                             |
 | `proof-absent` / `proof-not-document`                                  | `unresolved`  | Run before a seal, or cad-model as proof   |
-| `geometry-is-cad-model`                                                | `unresolved`  | `@2` `geometry` must be STEP               |
+| `geometry-is-cad-model`                                                | `unresolved`  | `@3` `geometry` must be canonical STEP     |
 | `sensitivity-catalog-unavailable`                                      | `unresolved`  | Requested opt-in has no exact causal offer |
 
 An unresolved or unavailable review returns no parameters, bindings, or `next`. Reopen

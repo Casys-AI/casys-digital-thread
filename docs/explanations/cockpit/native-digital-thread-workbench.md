@@ -3,7 +3,7 @@
 Audience: both · Diátaxis: explanation · Kind: how-to
 
 **Status: accepted target — native schema-3.0 project cockpit, generic documentary/
-SysON bootstrap, focus-only project selection, and recorded analysis**
+SysON bootstrap, focus-only project selection, and isolated proof `@3`**
 
 The first Workbench proved that five independent MCP Apps can be discovered,
 capability-bounded, mounted, and synchronized. It also exposed the product limit of that
@@ -143,7 +143,7 @@ identity: it is not a system architecture, requirements, CAD, simulation, measur
 or a verdict.
 
 The generic route continues beyond r2 only through separately registered operations for
-reviewed architecture, requirements, geometry, proof sealing and recorded analysis. Each
+reviewed architecture, requirements, geometry, proof sealing and isolated CalculiX `@3`. Each
 operation must publish and reread its own exact descendant `ThreadSnapshot`; no earlier
 project or superficially similar artifact can satisfy completion.
 

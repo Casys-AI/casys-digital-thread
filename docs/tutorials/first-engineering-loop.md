@@ -46,8 +46,9 @@ Connect the agent to `http://127.0.0.1:3020/mcp`. Open `http://127.0.0.1:5173/`.
 cockpit focus the page waits; it does not invent a project.
 
 A focused generic vehicle already on disk is `desk-lamp-dl04`. It is useful to learn the
-five spaces. A CalculiX `@2` receipt is only a captured, reread Thread revision (local
-`state/local/`, gitignored), never an `@1` relabel.
+five spaces. Historical MCP FEA `@1`/`@2` are rejected identities, not registered
+routes. Absence of that reread is `unavailable`. A local gitignored Thread revision is
+never current isolated `@3` L3/L4/L5 evidence.
 
 A **new** live project on the behave branch only:
 [Run the behave loop from zero](../how-to/behave/run-the-behave-loop-from-zero.md).
@@ -127,7 +128,7 @@ each study metric Object.is-equals one Thread requirement. Historical
 agent may invent. A later isolated reseal on that atelier joined. A new
 project starts at
 [Run the behave loop from zero](../how-to/behave/run-the-behave-loop-from-zero.md).
-Proof-run `@2` evaluations stay a different authority.
+Isolated proof `@3` evaluations stay a different authority.
 
 `verify.evaluate-sensitivity-base@1` then asks SysON to evaluate the
 `sensitivity-base-<metric>-<digest>` observations. Only a **fail** of those
