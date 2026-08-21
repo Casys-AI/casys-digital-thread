@@ -156,7 +156,7 @@ not a substitute for persisted evidence.
 | Lot | Status             | Commit          | Validation and proof pointer                                                                                                       | Next / human gate   |
 | --- | ------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
 | 01  | in progress (P03)  | P01 `0488d98`; P02 `d2dcdac`; P03 `7d1c268` | three sibling `declared` questions; P04 parked on G2 | G2 for P04 |
-| 02  | in progress (A02)  | A01–A02 this commit | grammar holds 5 parts + bare handles; no values; A03 needs SysON probe | A03 SysON typed AttributeUsage |
+| 02  | in progress (A03)  | A01–A02 `98b57bf`; A03 this commit | typed/value AttributeUsage probe `unresolved` (type yes, value/unit no); A04 parked | A04 parked; 03/04/05 contracts |
 | 03  | pending            | —               | —                                                                                                                                  | 07 after 04         |
 | 04  | pending            | —               | —                                                                                                                                  | 07 after 03         |
 | 05  | pending            | —               | —                                                                                                                                  | 06 after 03 and 04  |

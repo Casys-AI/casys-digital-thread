@@ -75,7 +75,10 @@ validators, WAL/recovery and the complete configured subset are maintained in th
   interactions, views, diagrams, stereotypes and arbitrary annotations.
 - Typed or valued architecture attributes, literals, dimensions, quantities,
   expressions, equations or value-flow semantics. The bare architecture `AttributeUsage`
-  is a structural handle only.
+  is a structural handle only. Probe 2026-08-21
+  (`scripts/probes/probe-architecture-attribute-value.ts`) inserted
+  `attribute probeHandle : LengthValue = 1 [mm];`: type reread `LengthValue`; value
+  reread `OperatorExpression` without a scalar or unit (`unresolved`).
 - Arbitrary requirement grammar or decimal thresholds; the current requirements writer
   is a separate, bounded integer scalar path.
 - Delete, move, rename, retype or merge of an existing generic architecture construct;

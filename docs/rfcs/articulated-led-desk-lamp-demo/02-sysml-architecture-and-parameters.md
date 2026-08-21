@@ -113,6 +113,13 @@ proof that architecture attributes round-trip the same way as requirements.
 **Commit:** probe and documentary capture only. **Stop:** missing or ambiguous readback;
 do not proceed to A04 on a negative probe.
 
+Result 2026-08-21 (`deno task probe:architecture-attribute-value`, SysON
+`127.0.0.1:3009`, sandbox deleted): the candidate
+`attribute probeHandle : LengthValue = 1 [mm];` inserted and reread as an
+`AttributeUsage` named `probeHandle`. FeatureTyping type reread `LengthValue`.
+FeatureValue reread label `OperatorExpression` with no scalar and no unit. Status
+`unresolved`. A04 is parked. Requirements unit inventory is not a substitute.
+
 ### A04 — define a closed value contract
 
 Only after A03 is green, add a pure domain contract under

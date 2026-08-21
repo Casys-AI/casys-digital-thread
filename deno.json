@@ -45,6 +45,7 @@
     "probe:archive-cascade": "deno run --allow-read=state/local scripts/probes/probe-archive-cascade.ts",
     "mcp:call": "deno run --allow-net=127.0.0.1,localhost scripts/probes/mcp-call.ts",
     "probe:requirement-units": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-requirement-units.ts",
+    "probe:architecture-attribute-value": "deno run --allow-net=127.0.0.1,localhost scripts/probes/probe-architecture-attribute-value.ts",
     "recover:work-item-successor": "deno run --allow-read=state/local,config/projects --allow-write=state/local scripts/runners/reconcile-work-item-successor.ts",
     "test": "deno test --no-prompt --frozen --node-modules-dir=auto --allow-ffi=node_modules --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env src scripts/**/*_test.ts experiments/thread-workflow/*_test.ts",
     "check:ui": "npm --prefix src/ui run check",
