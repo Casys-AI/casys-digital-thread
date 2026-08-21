@@ -16,6 +16,7 @@ import {
 } from "../../../domain/modelica/thermal-method-sheet.ts";
 import {
   deterministicJson,
+  fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
@@ -37,6 +38,7 @@ import {
 } from "./decide-admitted-modelica-evaluation-run-executor.ts";
 
 const AT = "2026-08-21T12:00:00.000Z";
+const RETRY_AT = "2026-08-21T13:00:00.000Z";
 const PROJECT_ID = "articulated-led-desk-lamp";
 const SUBJECT_ID = "articulated-led-desk-lamp";
 const RUN_ID = "run.closeout-evaluation";
@@ -46,6 +48,9 @@ const APPROVAL_ID = "approval.closeout-evaluation";
 const COMMAND_ID = "command.closeout-evaluation";
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 const HUMAN = { kind: "human" as const, actorId: "human:test" };
+const OTHER_HUMAN = { kind: "human" as const, actorId: "human:other" };
+const CLAIM_SUMMARY =
+  "Started the human accept closeout of the admitted Modelica evaluation.";
 
 Deno.test(
   "accept closeout binds the exact L4 capture and sheet without calling an engine",
@@ -74,6 +79,12 @@ Deno.test(
     assertEquals(fixture.evaluationCaptures.saves, 0);
     assertEquals(fixture.evaluationCaptures.reads > 0, true);
     assertEquals(fixture.closeoutCaptures.saves, 1);
+    assertEquals(
+      (project.commandReceipts ?? []).every((receipt) =>
+        receipt.actor.origin === "human"
+      ),
+      true,
+    );
   },
 );
 
@@ -137,10 +148,214 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "admitted Modelica evaluation closeout refuses stale or foreign approval and basis",
+  async () => {
+    const cases: Array<{
+      readonly name: string;
+      readonly mutate: (project: MutableProject) => void;
+      readonly message: string;
+    }> = [
+      {
+        name: "foreign approval subject",
+        mutate: (project) => {
+          const approval = project.approvals[0] as {
+            baseSnapshot: { subjectId: string };
+          };
+          approval.baseSnapshot = {
+            ...approval.baseSnapshot,
+            subjectId: "foreign-subject",
+          };
+        },
+        message: "No exact human-approved",
+      },
+      {
+        name: "stale approval revision with same snapshotId",
+        mutate: (project) => {
+          const approval = project.approvals[0] as {
+            baseSnapshot: { revision: number };
+          };
+          approval.baseSnapshot = {
+            ...approval.baseSnapshot,
+            revision: 99,
+          };
+        },
+        message: "No exact human-approved",
+      },
+      {
+        name: "stale decision revision",
+        mutate: (project) => {
+          const decision = project.decisions[0] as {
+            baseSnapshot: { revision: number };
+          };
+          decision.baseSnapshot = {
+            ...decision.baseSnapshot,
+            revision: 99,
+          };
+        },
+        message: "No exact human-approved",
+      },
+      {
+        name: "agent self-approval",
+        mutate: (project) => {
+          const approval = project.approvals[0] as {
+            decidedByOrigin: string;
+          };
+          approval.decidedByOrigin = "agent";
+        },
+        message: "No exact human-approved",
+      },
+      {
+        name: "foreign approval evidence",
+        mutate: (project) => {
+          const approval = project.approvals[0] as unknown as {
+            inputEvidenceRefs: Array<{
+              snapshotId: string;
+              snapshotRevision: number;
+              kind: "artifact";
+              id: string;
+            }>;
+          };
+          approval.inputEvidenceRefs = [{
+            snapshotId: "placeholder-thread-snapshot",
+            snapshotRevision: 1,
+            kind: "artifact",
+            id: "foreign-evidence",
+          }];
+        },
+        message: "No exact human-approved",
+      },
+      {
+        name: "tampered decision fingerprint",
+        mutate: (project) => {
+          const decision = project.decisions[0] as {
+            inputFingerprint: { algorithm: "sha256"; digest: string };
+          };
+          decision.inputFingerprint = {
+            algorithm: "sha256",
+            digest: "f".repeat(64),
+          };
+          const approval = project.approvals[0] as {
+            inputFingerprint: { algorithm: "sha256"; digest: string };
+          };
+          approval.inputFingerprint = decision.inputFingerprint;
+        },
+        message: "decision fingerprint no longer seals",
+      },
+      {
+        name: "tampered run input fingerprint",
+        mutate: (project) => {
+          const run = project.agentRuns[0] as {
+            inputFingerprint: { algorithm: "sha256"; digest: string };
+          };
+          run.inputFingerprint = {
+            algorithm: "sha256",
+            digest: "e".repeat(64),
+          };
+        },
+        message: "run fingerprint no longer seals",
+      },
+    ];
+    for (const testCase of cases) {
+      const fixture = await executeFixture({ consequence: "accept" });
+      testCase.mutate(fixture.project);
+      await assertRejects(
+        () => fixture.executor.execute(HUMAN, fixture.command),
+        EngineeringProjectCommandError,
+        testCase.message,
+      );
+      assertEquals(fixture.closeoutCaptures.saves, 0, testCase.name);
+      assertEquals(fixture.project.agentRuns[0]?.status, "queued", testCase.name);
+    }
+  },
+);
+
+Deno.test(
+  "admitted Modelica evaluation closeout recovers the same human running or publishing state without a second publish",
+  async () => {
+    const running = await executeFixture({
+      consequence: "accept",
+      runStatus: "running",
+    });
+    await assertRejects(
+      () =>
+        running.executor.execute(
+          OTHER_HUMAN,
+          retryCommand(running.project.revision),
+        ),
+      EngineeringProjectCommandError,
+      "exact admitted Modelica evaluation closeout it claimed",
+    );
+    const recovered = await running.executor.execute(
+      HUMAN,
+      retryCommand(running.project.revision),
+    );
+    assertEquals(recovered.agentRuns[0]?.status, "completed");
+    assertEquals(
+      (recovered.commandReceipts ?? []).filter((item) =>
+        item.type === "agent-run.claim"
+      ).length,
+      1,
+    );
+    assertEquals(
+      (recovered.commandReceipts ?? []).every((item) =>
+        item.actor.origin === "human" && item.actor.id === HUMAN.actorId
+      ),
+      true,
+    );
+    assertEquals(running.closeoutCaptures.saves, 1);
+    assertEquals(running.evaluationCaptures.saves, 0);
+
+    const publishing = await executeFixture({
+      consequence: "accept",
+      losePublishAck: true,
+    });
+    await assertRejects(
+      () => publishing.executor.execute(HUMAN, publishing.command),
+      Error,
+      "publish acknowledgement lost",
+    );
+    assertEquals(publishing.project.agentRuns[0]?.status, "publishing");
+    const publishCount = publishing.project.commandReceipts.filter((item) =>
+      item.type === "agent-run.publish"
+    ).length;
+    assertEquals(publishCount, 1);
+    const saveCalls = publishing.snapshots.saveCalls;
+    const closeoutSaves = publishing.closeoutCaptures.saves;
+    const completed = await publishing.executor.execute(
+      HUMAN,
+      retryCommand(publishing.project.revision),
+    );
+    assertEquals(completed.agentRuns[0]?.status, "completed");
+    assertEquals(
+      publishing.project.commandReceipts.filter((item) =>
+        item.type === "agent-run.publish"
+      ).length,
+      publishCount,
+    );
+    assertEquals(publishing.snapshots.saveCalls, saveCalls);
+    assertEquals(publishing.closeoutCaptures.saves, closeoutSaves);
+    assertEquals(
+      (completed.commandReceipts ?? []).filter((item) =>
+        item.type === "agent-run.claim"
+      ).length,
+      1,
+    );
+    assertEquals(
+      (completed.commandReceipts ?? []).every((item) =>
+        item.actor.origin === "human"
+      ),
+      true,
+    );
+  },
+);
+
 async function executeFixture(options: {
   readonly consequence: "accept" | "reject";
   readonly includeL4Artifact?: boolean;
   readonly l4Body?: unknown;
+  readonly runStatus?: "queued" | "running";
+  readonly losePublishAck?: boolean;
 }) {
   const sheet = validateModelicaThermalMethodSheet(
     validThermalMethodSheetPlaceholder(),
@@ -456,10 +671,23 @@ async function executeFixture(options: {
   evaluationCaptures.seed(storedFingerprint, l4Text);
   const closeoutCaptures = new CountingCaptures();
   const sheets = new MemorySheetStore(sheet, sheetFingerprint);
-  const commands = new ExecuteCommands(project);
+  const commands = new ExecuteCommands(project, {
+    losePublishAck: options.losePublishAck === true,
+  });
+  if (options.runStatus === "running") {
+    await commands.claimRun(HUMAN, {
+      commandId: `${COMMAND_ID}:${operation.id}:claim`,
+      projectId: PROJECT_ID,
+      expectedRevision: 1,
+      issuedAt: AT,
+      runId: RUN_ID,
+      summary: CLAIM_SUMMARY,
+    });
+  }
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project),
-    getRevision: () => Promise.resolve(project),
+    getRevision: (_projectId, revision) =>
+      Promise.resolve(commands.reopenRevision(revision)),
     createInitial: () => Promise.reject(new Error("unused")),
     commit: () => Promise.reject(new Error("unused")),
   };
@@ -471,7 +699,7 @@ async function executeFixture(options: {
       sheets,
       evaluationCaptures,
       closeoutCaptures,
-      lease: { withLease: (_projectId, _scope, operation) => operation() },
+      lease: { withLease: (_projectId, _scope, operationFn) => operationFn() },
     }),
     command: {
       commandId: COMMAND_ID,
@@ -480,14 +708,19 @@ async function executeFixture(options: {
       issuedAt: AT,
       runId: RUN_ID,
     },
+    project,
     snapshots,
     evaluationCaptures,
     closeoutCaptures,
   };
 }
 
+type CommandOrigin = typeof AGENT | typeof HUMAN | typeof OTHER_HUMAN;
+
 type MutableProject = EngineeringProjectSnapshot & {
+  id: string;
   revision: number;
+  generatedAt: string;
   threadSnapshots: Array<EngineeringProjectSnapshot["threadSnapshots"][number]>;
   phases: Array<EngineeringProjectSnapshot["phases"][number]>;
   workItems: Array<EngineeringProjectSnapshot["workItems"][number]>;
@@ -497,6 +730,7 @@ type MutableProject = EngineeringProjectSnapshot & {
 
 class ExecuteMemorySnapshots {
   readonly #items = new Map<string, ThreadSnapshot>();
+  saveCalls = 0;
   constructor(basis: ThreadSnapshot) {
     this.#items.set(basis.id, structuredClone(basis));
   }
@@ -516,6 +750,7 @@ class ExecuteMemorySnapshots {
     return Promise.resolve(result && structuredClone(result));
   }
   save(snapshot: ThreadSnapshot): Promise<void> {
+    this.saveCalls += 1;
     const attempted = structuredClone(snapshot);
     const existing = this.#items.get(snapshot.id);
     if (existing && deterministicJson(existing) !== deterministicJson(attempted)) {
@@ -563,81 +798,162 @@ class MemorySheetStore implements ThermalMethodSheetStore {
 }
 
 class ExecuteCommands {
-  #claimIdentity?: string;
-  constructor(readonly project: MutableProject) {}
-  claimRun(
-    origin: typeof AGENT | typeof HUMAN,
-    command: RunCommand,
+  #losePublishAck: boolean;
+  readonly #revisions = new Map<number, MutableProject>();
+
+  constructor(
+    readonly project: MutableProject,
+    options: { readonly losePublishAck?: boolean } = {},
   ) {
-    const identity = deterministicJson({ origin, command });
+    this.#losePublishAck = options.losePublishAck === true;
+    this.#revisions.set(project.revision, structuredClone(project));
+  }
+
+  reopenRevision(revision: number): EngineeringProjectSnapshot | undefined {
+    const snapshot = this.#revisions.get(revision);
+    return snapshot && structuredClone(snapshot);
+  }
+
+  claimRun(origin: CommandOrigin, command: RunCommand) {
+    return this.#transition(
+      "agent-run.claim",
+      origin,
+      command,
+      ["queued"],
+      "running",
+      (run) => {
+        run.startedAt = AT;
+        run.claimedAt = AT;
+        run.claimedBy = { id: origin.actorId, origin: origin.kind };
+      },
+    );
+  }
+
+  async publishRun(origin: CommandOrigin, command: RunCommand) {
+    const project = await this.#transition(
+      "agent-run.publish",
+      origin,
+      command,
+      ["running"],
+      "publishing",
+    );
+    if (this.#losePublishAck) {
+      this.#losePublishAck = false;
+      throw new Error("publish acknowledgement lost after commit");
+    }
+    return project;
+  }
+
+  completeRun(origin: CommandOrigin, command: CompleteRunCommand) {
+    return this.#transition(
+      "agent-run.complete",
+      origin,
+      command,
+      ["publishing"],
+      "completed",
+      (run) => {
+        run.completedAt = AT;
+        run.resultSnapshot = command.resultSnapshot;
+        run.evidenceRefs = [...command.evidenceRefs];
+        const work = this.project.workItems[0] as MutableWork;
+        work.status = "completed";
+        work.evidenceRefs = [...command.evidenceRefs];
+        if (
+          !this.project.threadSnapshots.some((item) =>
+            item.snapshotId === command.resultSnapshot.snapshotId
+          )
+        ) {
+          this.project.threadSnapshots.push(command.resultSnapshot);
+        }
+      },
+    );
+  }
+
+  failRun(_origin: CommandOrigin, command: FailRunCommand) {
     const run = this.project.agentRuns[0] as MutableRun;
-    if (run.status === "queued") {
-      this.#claimIdentity = identity;
-      run.status = "running";
-      run.startedAt = AT;
-      run.claimedAt = AT;
-      run.claimedBy = { id: origin.actorId, origin: origin.kind };
-      this.project.revision += 1;
-      return Promise.resolve(this.project);
-    }
-    if (identity !== this.#claimIdentity) {
-      return Promise.reject(
-        new EngineeringProjectCommandError(
-          "command_id_conflict",
-          "claim command differs",
-        ),
-      );
-    }
-    return Promise.resolve(this.project);
-  }
-  publishRun() {
-    (this.project.agentRuns[0] as MutableRun).status = "publishing";
+    run.status = "failed";
+    run.failure = { code: command.code, message: command.message };
     this.project.revision += 1;
+    this.project.id = `${PROJECT_ID}:r${this.project.revision}`;
+    this.project.generatedAt = AT;
+    this.#revisions.set(this.project.revision, structuredClone(this.project));
     return Promise.resolve(this.project);
   }
-  async completeRun(
-    origin: typeof AGENT | typeof HUMAN,
-    command: CompleteRunCommand,
+
+  async #transition(
+    type: "agent-run.claim" | "agent-run.publish" | "agent-run.complete",
+    origin: CommandOrigin,
+    command: RunCommand | CompleteRunCommand,
+    allowed: readonly string[],
+    status: "running" | "publishing" | "completed",
+    update?: (run: MutableRun) => void,
   ) {
     const requestFingerprint = await sha256Fingerprint({
-      type: "agent-run.complete",
+      type,
       origin,
       command,
     });
+    const existing = this.project.commandReceipts.find((receipt) =>
+      receipt.commandId === command.commandId
+    );
+    if (existing) {
+      if (!fingerprintsEqual(existing.requestFingerprint, requestFingerprint)) {
+        throw new EngineeringProjectCommandError(
+          "command_id_conflict",
+          `Command id ${command.commandId} was already used for a different request.`,
+        );
+      }
+      const historical = this.#revisions.get(existing.resultingSnapshot.revision);
+      if (
+        !historical || historical.id !== existing.resultingSnapshot.snapshotId
+      ) {
+        throw new EngineeringProjectCommandError(
+          "command_id_conflict",
+          `Command id ${command.commandId} has an invalid immutable result receipt.`,
+        );
+      }
+      return structuredClone(historical);
+    }
+    if (this.project.revision !== command.expectedRevision) {
+      throw new EngineeringProjectCommandError(
+        "stale_revision",
+        `Engineering project ${command.projectId} expected revision ${command.expectedRevision} but is at ${this.project.revision}.`,
+      );
+    }
     const run = this.project.agentRuns[0] as MutableRun;
-    run.status = "completed";
-    run.completedAt = AT;
-    run.resultSnapshot = command.resultSnapshot;
-    run.evidenceRefs = [...command.evidenceRefs];
-    const work = this.project.workItems[0] as MutableWork;
-    work.status = "completed";
-    work.evidenceRefs = [...command.evidenceRefs];
-    if (
-      !this.project.threadSnapshots.some((item) =>
-        item.snapshotId === command.resultSnapshot.snapshotId
-      )
-    ) this.project.threadSnapshots.push(command.resultSnapshot);
+    if (!allowed.includes(run.status)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Agent run ${run.id} cannot transition from ${run.status} to ${status}.`,
+      );
+    }
+    update?.(run);
+    run.status = status;
+    run.summary = command.summary;
+    run.statusHistory = [...(run.statusHistory ?? []), {
+      commandId: command.commandId,
+      status,
+      at: AT,
+      actor: { id: origin.actorId, origin: origin.kind },
+      summary: command.summary,
+    }];
     this.project.revision += 1;
+    this.project.id = `${PROJECT_ID}:r${this.project.revision}`;
+    this.project.generatedAt = AT;
     this.project.commandReceipts.push({
       commandId: command.commandId,
-      type: "agent-run.complete",
+      type,
       actor: { id: origin.actorId, origin: origin.kind },
       issuedAt: command.issuedAt,
       appliedAt: AT,
       requestFingerprint,
       resultingSnapshot: {
-        snapshotId: `project.receipt.r${this.project.revision}`,
+        snapshotId: this.project.id,
         revision: this.project.revision,
       },
     });
+    this.#revisions.set(this.project.revision, structuredClone(this.project));
     return this.project;
-  }
-  failRun(_origin: typeof AGENT | typeof HUMAN, command: FailRunCommand) {
-    const run = this.project.agentRuns[0] as MutableRun;
-    run.status = "failed";
-    run.failure = { code: command.code, message: command.message };
-    this.project.revision += 1;
-    return Promise.resolve(this.project);
   }
 }
 
@@ -652,4 +968,14 @@ type MutableWork = {
 
 function fresh(at: string) {
   return { status: "fresh" as const, changedAt: at, invalidatedByChangeIds: [] };
+}
+
+function retryCommand(expectedRevision: number) {
+  return {
+    commandId: COMMAND_ID,
+    projectId: PROJECT_ID,
+    expectedRevision,
+    issuedAt: RETRY_AT,
+    runId: RUN_ID,
+  };
 }

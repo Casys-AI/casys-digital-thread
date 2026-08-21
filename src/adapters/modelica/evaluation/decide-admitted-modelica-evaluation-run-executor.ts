@@ -4,6 +4,14 @@
  * It reopens the exact L4 capture and thermal method sheet, recrosses the
  * signed Thread basis, and writes a documentary closeout. It never calls
  * SysON or OMC. An L4 `pass` is never implicit L5.
+ *
+ * Authority follows the hardened L4 / FEA pattern: exact Thread basis
+ * including revision and subject, one human approval bound by evidence and
+ * fingerprint equality, decision reseal, and run-input fingerprint
+ * verification. A provider-free first pass accepts `queued` only. Hard-crash
+ * recovery accepts only the same human's `running` / `publishing` state,
+ * replays the exact persisted claim/publish receipts, reopens the
+ * deterministic closeout capture, and completes without a second publish.
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
@@ -14,6 +22,7 @@ import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
+  type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   type AdmittedObservationEvaluationCloseoutAdmission,
@@ -24,6 +33,7 @@ import {
 } from "../../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import { fingerprintModelicaThermalMethodSheet } from "../../../domain/modelica/thermal-method-sheet.ts";
 import {
+  deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
@@ -32,7 +42,9 @@ import type {
   EngineeringAgentRun,
   EngineeringApproval,
   EngineeringDecision,
+  EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
+  EngineeringThreadEntityRef,
 } from "../../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
@@ -127,7 +139,7 @@ export class DecideAdmittedModelicaEvaluationRunExecutor {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
     const operation = requireShape(project, run);
-    const approval = requireMrtrApproval(project, run);
+    const approval = await requireMrtrApproval(project, run);
     const admission = parseAdmission(approval.proposal.parameters, operation);
     return await this.dependencies.lease.withLease(
       command.projectId,
@@ -143,10 +155,12 @@ export class DecideAdmittedModelicaEvaluationRunExecutor {
     admission: AdmittedObservationEvaluationCloseoutAdmission,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
+    let publicationStarted = false;
     try {
       let project = await this.#requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
       const operation = requireShape(project, run);
+      publicationStarted = run.status === "publishing";
       await assertThreadWriteBasisAvailable(project, run);
       const basis = requireBasis(run);
       const basisSnapshot = await exactBasisSnapshot(
@@ -166,108 +180,449 @@ export class DecideAdmittedModelicaEvaluationRunExecutor {
         this.dependencies.evaluationCaptures,
       );
 
-      if (run.status === "queued") {
-        await this.dependencies.commands.claimRun(origin, {
-          ...command,
-          commandId: commandStep(command.commandId, operation, "claim"),
-          summary: closeoutSummary(admission.consequence, "started"),
-        });
+      const firstClaim = run.status === "queued";
+      if (firstClaim) {
+        await this.dependencies.commands.claimRun(
+          origin,
+          claimCommand(command, operation, admission.consequence),
+        );
         claimed = true;
+      } else if (run.status === "running" || run.status === "publishing") {
+        requireClaimedShape(project, run, origin);
+        await this.#replayClaim(origin, command, operation, admission);
       } else {
-        throw unexpectedStatus(run, "queued");
+        throw unexpectedStatus(
+          run,
+          "queued or this human's running/publishing",
+        );
       }
 
       project = await this.#requiredProject(command.projectId);
       run = requireRun(project, command.runId);
-      const sealedAt = requiredStart(run);
-      const capture = validateAdmittedObservationEvaluationCloseoutCapture({
-        schemaVersion: admission.schemaVersion,
-        kind: "modelica-admitted-observation-evaluation-closeout",
+      requireClaimedShape(project, run, origin);
+      if (run.status === "completed") {
+        return project;
+      }
+      if (run.status !== "running" && run.status !== "publishing") {
+        throw unexpectedStatus(run, "running or publishing");
+      }
+      const currentApproval = await requireMrtrApproval(project, run);
+      if (currentApproval.decision.id !== approvedDecision.id) {
+        throw invalidTransition(
+          "The human-approved admitted Modelica evaluation closeout decision changed after the run was claimed.",
+        );
+      }
+      const currentAdmission = parseAdmission(
+        currentApproval.proposal.parameters,
         operation,
-        trustedRunId: run.id,
-        decisionId: approvedDecision.id,
-        sealedAt,
-        admission,
-        evaluationCapture: {
-          id: admission.capture.id,
-          fingerprint: admission.capture.fingerprint,
-          uri:
-            `${ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX}sha256/${admission.capture.fingerprint.digest}`,
-        },
-        sheet: admission.sheet,
-        limits: ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_LIMITS,
-      });
-      const captureText = canonicalAdmittedObservationEvaluationCloseoutCaptureText(
-        capture,
       );
-      const captureFingerprint = await sha256Fingerprint(capture);
-      await this.dependencies.closeoutCaptures.save(
-        captureFingerprint,
-        captureText,
+      if (deterministicJson(currentAdmission) !== deterministicJson(admission)) {
+        throw invalidTransition(
+          "The human-reviewed admitted Modelica evaluation closeout parameters changed after the run was claimed.",
+        );
+      }
+      const currentBasis = requireBasis(run);
+      const currentBasisSnapshot = await exactBasisSnapshot(
+        this.dependencies.snapshots,
+        currentBasis,
       );
-      const readback = await this.dependencies.closeoutCaptures.read(
-        captureFingerprint,
+      await assertThreadSnapshotLineageIntact(
+        currentBasisSnapshot,
+        this.dependencies.snapshots,
       );
-      if (readback === undefined || readback !== captureText) {
-        throw new Error(
-          "Admitted observation evaluation closeout capture was not durably readable after save.",
+      await recrossAdmission(
+        command,
+        currentAdmission,
+        currentBasis,
+        currentBasisSnapshot,
+        this.dependencies.sheets,
+        this.dependencies.evaluationCaptures,
+      );
+      if (run.status === "publishing") {
+        return await this.#resumePublishing(
+          origin,
+          command,
+          operation,
+          currentApproval.decision,
+          currentAdmission,
+          currentBasisSnapshot,
+          run,
         );
       }
 
-      const successor = buildSuccessor({
-        basisSnapshot,
-        basis,
+      const persisted = await this.#persistCloseoutCapture(
         run,
         operation,
-        capture,
-        captureFingerprint,
+        currentApproval.decision.id,
+        currentAdmission,
+      );
+      const successor = buildSuccessor({
+        basisSnapshot: currentBasisSnapshot,
+        basis: currentBasis,
+        run,
+        operation,
+        capture: persisted.capture,
+        captureFingerprint: persisted.captureFingerprint,
       });
       await this.dependencies.snapshots.save(successor.snapshot);
+      publicationStarted = true;
 
       project = await this.#requiredProject(command.projectId);
-      await this.dependencies.commands.publishRun(origin, {
-        ...command,
-        commandId: commandStep(command.commandId, operation, "publish"),
-        expectedRevision: project.revision,
-        summary: closeoutSummary(admission.consequence, "publishing"),
-      });
-      project = await this.#requiredProject(command.projectId);
-      await this.dependencies.commands.completeRun(
+      await this.#publishExact(
         origin,
-        completionCommand(
-          command,
-          operation,
-          project.revision,
-          successor.snapshot,
-          successor.artifact,
-          admission.consequence,
-        ),
+        project,
+        command,
+        operation,
+        currentAdmission,
+      );
+      project = await this.#requiredProject(command.projectId);
+      await this.#completeExact(
+        origin,
+        project,
+        command,
+        operation,
+        currentAdmission,
+        successor,
       );
       return await this.#requiredProject(command.projectId);
     } catch (error) {
-      if (claimed) {
+      if (claimed && !publicationStarted) {
         try {
           const failed = await this.#requiredProject(command.projectId);
           const failedRun = requireRun(failed, command.runId);
-          const failedWork = failed.workItems.find((item) =>
-            item.id === failedRun.workItemId
-          );
-          const operation = closeoutOperationOf(failedWork?.operation) ??
-            DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION;
-          await this.dependencies.commands.failRun(origin, {
-            ...command,
-            commandId: commandStep(command.commandId, operation, "fail"),
-            expectedRevision: failed.revision,
-            summary:
-              "Admitted Modelica evaluation closeout stopped before Thread publication.",
-            code: `${operation.id.replaceAll(".", "-")}-not-published`,
-            message: error instanceof Error ? error.message : String(error),
-          });
+          if (failedRun.status === "running") {
+            const failedWork = failed.workItems.find((item) =>
+              item.id === failedRun.workItemId
+            );
+            const failedOperation = closeoutOperationOf(failedWork?.operation) ??
+              DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION;
+            await this.dependencies.commands.failRun(origin, {
+              ...command,
+              commandId: commandStep(command.commandId, failedOperation, "fail"),
+              expectedRevision: failed.revision,
+              summary:
+                "Admitted Modelica evaluation closeout stopped before Thread publication.",
+              code: `${failedOperation.id.replaceAll(".", "-")}-not-published`,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
         } catch {
           // Preserve the original failure.
         }
       }
       throw error;
+    }
+  }
+
+  async #resumePublishing(
+    origin: EngineeringProjectCommandOrigin,
+    command: DecideAdmittedModelicaEvaluationRunExecutorCommand,
+    operation: AdmittedObservationEvaluationCloseoutOperation,
+    approvedDecision: EngineeringDecision,
+    admission: AdmittedObservationEvaluationCloseoutAdmission,
+    basisSnapshot: ThreadSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<EngineeringProjectSnapshot> {
+    const persisted = await this.#reopenCloseoutCapture(
+      run,
+      operation,
+      approvedDecision.id,
+      admission,
+    );
+    const successor = buildSuccessor({
+      basisSnapshot,
+      basis: requireBasis(run),
+      run,
+      operation,
+      capture: persisted.capture,
+      captureFingerprint: persisted.captureFingerprint,
+    });
+    await this.#assertSavedSuccessor(successor.snapshot);
+    let project = await this.#requiredProject(command.projectId);
+    await this.#publishExact(origin, project, command, operation, admission);
+    project = await this.#requiredProject(command.projectId);
+    await this.#completeExact(
+      origin,
+      project,
+      command,
+      operation,
+      admission,
+      successor,
+    );
+    return await this.#requiredProject(command.projectId);
+  }
+
+  async #replayClaim(
+    origin: EngineeringProjectCommandOrigin,
+    command: DecideAdmittedModelicaEvaluationRunExecutorCommand,
+    operation: AdmittedObservationEvaluationCloseoutOperation,
+    admission: AdmittedObservationEvaluationCloseoutAdmission,
+  ): Promise<void> {
+    const project = await this.#requiredProject(command.projectId);
+    const receipt = exactCommandReceipt(
+      project,
+      commandStep(command.commandId, operation, "claim"),
+      "agent-run.claim",
+      origin,
+    );
+    const exactClaim = claimCommand(
+      command,
+      operation,
+      admission.consequence,
+      receipt.resultingSnapshot.revision - 1,
+      receipt.issuedAt,
+    );
+    const claimedRun = requireRun(project, command.runId);
+    if (
+      claimedRun.claimedAt !== receipt.appliedAt ||
+      claimedRun.startedAt !== receipt.appliedAt ||
+      (claimedRun.status === "running" && claimedRun.summary !== exactClaim.summary)
+    ) {
+      throw invalidTransition(
+        "The admitted Modelica evaluation closeout claim receipt does not seal the run's exact claimed/start timeline.",
+      );
+    }
+    await this.#assertReceiptSnapshotExact(project, receipt);
+    await assertCommandReceiptExact(
+      claimedRun,
+      receipt,
+      "agent-run.claim",
+      origin,
+      exactClaim,
+      "running",
+    );
+    await this.dependencies.commands.claimRun(origin, exactClaim);
+  }
+
+  async #publishExact(
+    origin: EngineeringProjectCommandOrigin,
+    project: EngineeringProjectSnapshot,
+    command: DecideAdmittedModelicaEvaluationRunExecutorCommand,
+    operation: AdmittedObservationEvaluationCloseoutOperation,
+    admission: AdmittedObservationEvaluationCloseoutAdmission,
+  ): Promise<void> {
+    const run = requireRun(project, command.runId);
+    let expectedRevision = project.revision;
+    let issuedAt = command.issuedAt;
+    if (run.status === "publishing" || run.status === "completed") {
+      const receipt = exactCommandReceipt(
+        project,
+        commandStep(command.commandId, operation, "publish"),
+        "agent-run.publish",
+        origin,
+      );
+      expectedRevision = receipt.resultingSnapshot.revision - 1;
+      issuedAt = receipt.issuedAt;
+      const exactPublish = publishCommand(
+        command,
+        operation,
+        admission.consequence,
+        expectedRevision,
+        issuedAt,
+      );
+      if (run.status === "publishing" && run.summary !== exactPublish.summary) {
+        throw invalidTransition(
+          "The publishing admitted Modelica evaluation closeout summary differs from its exact publish transition.",
+        );
+      }
+      await this.#assertReceiptSnapshotExact(project, receipt);
+      await assertCommandReceiptExact(
+        run,
+        receipt,
+        "agent-run.publish",
+        origin,
+        exactPublish,
+        "publishing",
+      );
+    } else if (run.status !== "running") {
+      throw unexpectedStatus(run, "running, publishing, or completed");
+    }
+    await this.dependencies.commands.publishRun(
+      origin,
+      publishCommand(
+        command,
+        operation,
+        admission.consequence,
+        expectedRevision,
+        issuedAt,
+      ),
+    );
+  }
+
+  async #completeExact(
+    origin: EngineeringProjectCommandOrigin,
+    project: EngineeringProjectSnapshot,
+    command: DecideAdmittedModelicaEvaluationRunExecutorCommand,
+    operation: AdmittedObservationEvaluationCloseoutOperation,
+    admission: AdmittedObservationEvaluationCloseoutAdmission,
+    successor: { readonly snapshot: ThreadSnapshot; readonly artifact: ThreadArtifact },
+  ): Promise<void> {
+    const run = requireRun(project, command.runId);
+    let expectedRevision = project.revision;
+    let issuedAt = command.issuedAt;
+    if (run.status === "completed") {
+      const receipt = exactCommandReceipt(
+        project,
+        commandStep(command.commandId, operation, "complete"),
+        "agent-run.complete",
+        origin,
+      );
+      expectedRevision = receipt.resultingSnapshot.revision - 1;
+      issuedAt = receipt.issuedAt;
+      const exactCompletion = completionCommand(
+        command,
+        operation,
+        expectedRevision,
+        successor.snapshot,
+        successor.artifact,
+        admission.consequence,
+        issuedAt,
+      );
+      if (run.summary !== exactCompletion.summary) {
+        throw invalidTransition(
+          "The completed admitted Modelica evaluation closeout summary differs from its exact completion transition.",
+        );
+      }
+      await this.#assertReceiptSnapshotExact(project, receipt);
+      await assertCommandReceiptExact(
+        run,
+        receipt,
+        "agent-run.complete",
+        origin,
+        exactCompletion,
+        "completed",
+      );
+    } else if (run.status !== "publishing") {
+      throw unexpectedStatus(run, "publishing or completed");
+    }
+    await this.dependencies.commands.completeRun(
+      origin,
+      completionCommand(
+        command,
+        operation,
+        expectedRevision,
+        successor.snapshot,
+        successor.artifact,
+        admission.consequence,
+        issuedAt,
+      ),
+    );
+  }
+
+  async #persistCloseoutCapture(
+    run: EngineeringAgentRun,
+    operation: AdmittedObservationEvaluationCloseoutOperation,
+    decisionId: string,
+    admission: AdmittedObservationEvaluationCloseoutAdmission,
+  ): Promise<{
+    readonly capture: AdmittedObservationEvaluationCloseoutCapture;
+    readonly captureFingerprint: ContentFingerprint;
+  }> {
+    const capture = closeoutCapture(run, operation, decisionId, admission);
+    const captureText = canonicalAdmittedObservationEvaluationCloseoutCaptureText(
+      capture,
+    );
+    const captureFingerprint = await sha256Fingerprint(capture);
+    await this.dependencies.closeoutCaptures.save(captureFingerprint, captureText);
+    const readback = await this.dependencies.closeoutCaptures.read(
+      captureFingerprint,
+    );
+    if (readback === undefined || readback !== captureText) {
+      throw new Error(
+        "Admitted observation evaluation closeout capture was not durably readable after save.",
+      );
+    }
+    return {
+      capture: validateAdmittedObservationEvaluationCloseoutCapture(
+        JSON.parse(readback),
+      ),
+      captureFingerprint,
+    };
+  }
+
+  async #reopenCloseoutCapture(
+    run: EngineeringAgentRun,
+    operation: AdmittedObservationEvaluationCloseoutOperation,
+    decisionId: string,
+    admission: AdmittedObservationEvaluationCloseoutAdmission,
+  ): Promise<{
+    readonly capture: AdmittedObservationEvaluationCloseoutCapture;
+    readonly captureFingerprint: ContentFingerprint;
+  }> {
+    const capture = closeoutCapture(run, operation, decisionId, admission);
+    const captureText = canonicalAdmittedObservationEvaluationCloseoutCaptureText(
+      capture,
+    );
+    const captureFingerprint = await sha256Fingerprint(capture);
+    const stored = await this.dependencies.closeoutCaptures.read(
+      captureFingerprint,
+    );
+    if (stored === undefined) {
+      throw invalidTransition(
+        "The publishing admitted Modelica evaluation closeout capture is unavailable for successor reconstruction.",
+      );
+    }
+    let reopened: AdmittedObservationEvaluationCloseoutCapture;
+    try {
+      reopened = validateAdmittedObservationEvaluationCloseoutCapture(
+        JSON.parse(stored),
+      );
+    } catch {
+      throw invalidTransition(
+        "The publishing admitted Modelica evaluation closeout capture is not a valid L5 closeout.",
+      );
+    }
+    if (
+      stored !== captureText ||
+      canonicalAdmittedObservationEvaluationCloseoutCaptureText(reopened) !==
+        captureText
+    ) {
+      throw invalidTransition(
+        "The publishing admitted Modelica evaluation closeout capture does not match its deterministic reconstruction.",
+      );
+    }
+    return { capture: reopened, captureFingerprint };
+  }
+
+  async #assertSavedSuccessor(expected: ThreadSnapshot): Promise<void> {
+    const saved = await this.dependencies.snapshots.getFresh(expected.id);
+    if (
+      !saved ||
+      deterministicJson(validateThreadSnapshot(saved)) !==
+        deterministicJson(expected)
+    ) {
+      throw invalidTransition(
+        "The publishing admitted Modelica evaluation closeout has no exact saved Thread successor.",
+      );
+    }
+  }
+
+  async #assertReceiptSnapshotExact(
+    project: EngineeringProjectSnapshot,
+    receipt: EngineeringProjectCommandReceipt,
+  ): Promise<void> {
+    const reference = receipt.resultingSnapshot;
+    const reopened = await this.dependencies.projects.getRevision(
+      project.project.id,
+      reference.revision,
+    );
+    const historicalReceipts =
+      reopened?.commandReceipts?.filter((candidate) =>
+        candidate.commandId === receipt.commandId && candidate.type === receipt.type
+      ) ?? [];
+    if (
+      !reopened || reopened.id !== reference.snapshotId ||
+      reopened.revision !== reference.revision ||
+      reopened.generatedAt !== receipt.appliedAt ||
+      reopened.project.id !== project.project.id ||
+      historicalReceipts.length !== 1 ||
+      deterministicJson(historicalReceipts[0]) !== deterministicJson(receipt) ||
+      deterministicJson((reopened.commandReceipts ?? []).at(-1)) !==
+        deterministicJson(receipt)
+    ) {
+      throw invalidTransition(
+        `The admitted Modelica evaluation closeout ${receipt.type} receipt does not reopen its exact immutable project revision.`,
+      );
     }
   }
 
@@ -361,6 +716,31 @@ async function recrossAdmission(
       "The named Thread artifact is not the exact L4 admitted observation evaluation.",
     );
   }
+}
+
+function closeoutCapture(
+  run: EngineeringAgentRun,
+  operation: AdmittedObservationEvaluationCloseoutOperation,
+  decisionId: string,
+  admission: AdmittedObservationEvaluationCloseoutAdmission,
+): AdmittedObservationEvaluationCloseoutCapture {
+  return validateAdmittedObservationEvaluationCloseoutCapture({
+    schemaVersion: admission.schemaVersion,
+    kind: "modelica-admitted-observation-evaluation-closeout",
+    operation,
+    trustedRunId: run.id,
+    decisionId,
+    sealedAt: requiredStart(run),
+    admission,
+    evaluationCapture: {
+      id: admission.capture.id,
+      fingerprint: admission.capture.fingerprint,
+      uri:
+        `${ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX}sha256/${admission.capture.fingerprint.digest}`,
+    },
+    sheet: admission.sheet,
+    limits: ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_LIMITS,
+  });
 }
 
 function buildSuccessor(input: {
@@ -460,6 +840,21 @@ function extensionName(
     : "Reject admitted Modelica evaluation";
 }
 
+function requireClaimedShape(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+  origin: EngineeringProjectCommandOrigin,
+): void {
+  requireShape(project, run);
+  if (
+    run.claimedBy?.origin !== origin.kind || run.claimedBy.id !== origin.actorId
+  ) {
+    throw invalidTransition(
+      "This executor may continue only the exact admitted Modelica evaluation closeout it claimed.",
+    );
+  }
+}
+
 function requireShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
@@ -500,13 +895,13 @@ function closeoutOperationOf(
   return undefined;
 }
 
-function requireMrtrApproval(
+async function requireMrtrApproval(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): {
+): Promise<{
   readonly decision: EngineeringDecision;
   readonly proposal: NonNullable<EngineeringDecision["proposal"]>;
-} {
+}> {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   if (!workItem) throw invalidTransition(`Work item for run ${run.id} is absent.`);
   const basis = requireBasis(run);
@@ -520,23 +915,103 @@ function requireMrtrApproval(
     );
     if (!decision?.proposal || !decision.inputFingerprint) continue;
     const approvals = project.approvals.filter((approval: EngineeringApproval) =>
-      approval.decisionId === decision.id && approval.status === "approved" &&
+      approval.decisionId === decision.id &&
+      approval.status === "approved" &&
       decision.approvalIds.includes(approval.id) &&
-      approval.decidedByOrigin === "human"
+      approval.decidedByOrigin === "human" &&
+      typeof approval.decidedBy === "string" &&
+      approval.decidedBy.trim().length > 0 &&
+      typeof approval.decidedAt === "string" &&
+      !Number.isNaN(Date.parse(approval.decidedAt)) &&
+      sameSnapshotBasis(approval.baseSnapshot, basis) &&
+      sameEvidenceRefs(approval.inputEvidenceRefs, decision.inputEvidenceRefs) &&
+      fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
     );
-    if (
-      approvals.length === 1 &&
-      decision.baseSnapshot?.snapshotId === basis.snapshotId
-    ) {
+    if (approvals.length === 1 && sameSnapshotBasis(decision.baseSnapshot, basis)) {
       candidates.push({ decision, proposal: decision.proposal });
     }
   }
   if (candidates.length !== 1) {
     throw invalidTransition(
-      "No exact human-approved admitted Modelica evaluation closeout is bound to this run.",
+      candidates.length === 0
+        ? "No exact human-approved admitted Modelica evaluation closeout is bound to this run basis."
+        : "Ambiguous admitted Modelica evaluation closeout MRTR: exactly one human-approved decision is required.",
     );
   }
-  return candidates[0]!;
+  const selected = candidates[0]!;
+  const expectedDecisionFingerprint = await sha256Fingerprint({
+    baseSnapshot: selected.decision.baseSnapshot,
+    inputEvidenceRefs: selected.decision.inputEvidenceRefs,
+    proposal: {
+      summary: selected.proposal.summary,
+      parameters: selected.proposal.parameters,
+    },
+  });
+  if (
+    !fingerprintsEqual(
+      expectedDecisionFingerprint,
+      selected.decision.inputFingerprint,
+    )
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The admitted Modelica evaluation closeout decision fingerprint no longer seals its exact basis, evidence, summary, and parameters.",
+    );
+  }
+  const approvedDecisions = workItem.decisionIds.map((id) => {
+    const decision = project.decisions.find((item) => item.id === id);
+    if (!decision?.inputFingerprint) {
+      throw invalidTransition(`Work-item decision ${id} is not exactly approved.`);
+    }
+    return { id, inputFingerprint: decision.inputFingerprint };
+  });
+  const expectedRunFingerprint = await sha256Fingerprint({
+    workItemId: workItem.id,
+    basis,
+    operation: {
+      id: workItem.operation?.id,
+      version: workItem.operation?.version,
+      bindings: workItem.operation?.bindings,
+    },
+    approvedDecisions,
+  });
+  if (!fingerprintsEqual(run.inputFingerprint, expectedRunFingerprint)) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The admitted Modelica evaluation closeout run fingerprint no longer seals its exact MRTR decision, operation, and basis.",
+    );
+  }
+  return selected;
+}
+
+function sameSnapshotBasis(
+  value:
+    | EngineeringDecision["baseSnapshot"]
+    | EngineeringApproval["baseSnapshot"]
+    | EngineeringAgentRun["basis"],
+  basis: ReturnType<typeof requireBasis>,
+): boolean {
+  return !!value && "snapshotId" in value &&
+    value.snapshotId === basis.snapshotId &&
+    value.revision === basis.revision &&
+    value.subjectId === basis.subjectId;
+}
+
+function sameEvidenceRefs(
+  left: readonly EngineeringThreadEntityRef[],
+  right: readonly EngineeringThreadEntityRef[],
+): boolean {
+  const key = (reference: EngineeringThreadEntityRef) =>
+    deterministicJson({
+      snapshotId: reference.snapshotId,
+      snapshotRevision: reference.snapshotRevision,
+      kind: reference.kind,
+      id: reference.id,
+    });
+  const leftKeys = [...left.map(key)].sort();
+  const rightKeys = [...right.map(key)].sort();
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every((value, index) => value === rightKeys[index]);
 }
 
 function parseAdmission(
@@ -575,6 +1050,38 @@ async function exactBasisSnapshot(
   return validateThreadSnapshot(snapshot);
 }
 
+function claimCommand(
+  command: DecideAdmittedModelicaEvaluationRunExecutorCommand,
+  operation: AdmittedObservationEvaluationCloseoutOperation,
+  consequence: AdmittedObservationEvaluationCloseoutAdmission["consequence"],
+  expectedRevision = command.expectedRevision,
+  issuedAt = command.issuedAt,
+): RunCommand {
+  return {
+    ...command,
+    commandId: commandStep(command.commandId, operation, "claim"),
+    expectedRevision,
+    issuedAt,
+    summary: closeoutSummary(consequence, "started"),
+  };
+}
+
+function publishCommand(
+  command: DecideAdmittedModelicaEvaluationRunExecutorCommand,
+  operation: AdmittedObservationEvaluationCloseoutOperation,
+  consequence: AdmittedObservationEvaluationCloseoutAdmission["consequence"],
+  expectedRevision: number,
+  issuedAt = command.issuedAt,
+): RunCommand {
+  return {
+    ...command,
+    commandId: commandStep(command.commandId, operation, "publish"),
+    expectedRevision,
+    issuedAt,
+    summary: closeoutSummary(consequence, "publishing"),
+  };
+}
+
 function completionCommand(
   command: DecideAdmittedModelicaEvaluationRunExecutorCommand,
   operation: AdmittedObservationEvaluationCloseoutOperation,
@@ -582,11 +1089,13 @@ function completionCommand(
   snapshot: ThreadSnapshot,
   artifact: ThreadArtifact,
   consequence: AdmittedObservationEvaluationCloseoutAdmission["consequence"],
+  issuedAt = command.issuedAt,
 ): CompleteRunCommand {
   return {
     ...command,
     commandId: commandStep(command.commandId, operation, "complete"),
     expectedRevision,
+    issuedAt,
     summary: closeoutSummary(consequence, "completed"),
     resultSnapshot: snapshotRef(snapshot),
     evidenceRefs: [{
@@ -596,6 +1105,58 @@ function completionCommand(
       id: artifact.id,
     }],
   };
+}
+
+function exactCommandReceipt(
+  project: EngineeringProjectSnapshot,
+  commandId: string,
+  type: "agent-run.claim" | "agent-run.publish" | "agent-run.complete",
+  origin: EngineeringProjectCommandOrigin,
+): EngineeringProjectCommandReceipt {
+  const matches =
+    project.commandReceipts?.filter((receipt) => receipt.commandId === commandId) ??
+      [];
+  const receipt = matches[0];
+  if (
+    matches.length !== 1 || !receipt || receipt.type !== type ||
+    receipt.actor.origin !== origin.kind || receipt.actor.id !== origin.actorId
+  ) {
+    throw invalidTransition(
+      `The admitted Modelica evaluation closeout run has no unique exact ${type} receipt.`,
+    );
+  }
+  return receipt;
+}
+
+async function assertCommandReceiptExact(
+  run: EngineeringAgentRun,
+  receipt: EngineeringProjectCommandReceipt,
+  type: "agent-run.claim" | "agent-run.publish" | "agent-run.complete",
+  origin: EngineeringProjectCommandOrigin,
+  command: RunCommand | CompleteRunCommand,
+  status: "running" | "publishing" | "completed",
+): Promise<void> {
+  const expectedFingerprint = await sha256Fingerprint({ type, origin, command });
+  const transitions =
+    run.statusHistory?.filter((transition) =>
+      transition.commandId === receipt.commandId &&
+      transition.status === status &&
+      transition.at === receipt.appliedAt &&
+      transition.actor.origin === origin.kind &&
+      transition.actor.id === origin.actorId &&
+      transition.summary === command.summary
+    ) ?? [];
+  if (
+    command.commandId !== receipt.commandId ||
+    command.issuedAt !== receipt.issuedAt ||
+    receipt.resultingSnapshot.revision !== command.expectedRevision + 1 ||
+    !fingerprintsEqual(receipt.requestFingerprint, expectedFingerprint) ||
+    transitions.length !== 1
+  ) {
+    throw invalidTransition(
+      `The admitted Modelica evaluation closeout ${type} receipt does not seal its exact command, revision, issuance, and status transition.`,
+    );
+  }
 }
 
 function closeoutSummary(

@@ -158,7 +158,7 @@ not a substitute for persisted evidence.
 | 01  | in progress (P03)  | P01 `0488d98`; P02 `d2dcdac`; P03 `7d1c268` | three sibling `declared` questions; P04 parked on G2 | G2 for P04 |
 | 02  | in progress (A03)  | A01–A02 `98b57bf`; A03 this commit | typed/value AttributeUsage probe `unresolved` (type yes, value/unit no); A04 parked | A04 parked; 03/04/05 contracts |
 | 03  | in progress (M01)  | M01 this commit | catalog-absent + project/subject-mismatch vs dl05/CA02 | M02 parked on G2 |
-| 04  | in progress (T04)  | T03 `c861972`; T04 this commit | `verify.seal-modelica-thermal-method-sheet@1` MRTR identities only; YOLO may auto-confirm | T05 |
+| 04  | in progress (T17)  | T05–T17 code; this commit hardens L5 | T05–T17 code exists; L4/L5 authority and human closeout recovery hardened; T08–T10 real product proof absent | G4 |
 | 05  | in progress (E01)  | E01 this commit | closed `led-driver-source-capture/1.0`; `project_led_driver_source_capture` draft CAS; review stays reference-only; hash-before-parse; unknowns `unresolved`; no ngspice/Thread | D1/G5 next |
 | 06  | pending            | —               | —                                                                                                                                  | 07                  |
 | 07  | pending            | —               | —                                                                                                                                  | 10                  |
