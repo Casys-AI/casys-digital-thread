@@ -10,7 +10,7 @@
 import type { CalculixIsolatedExecutionProfile } from "../../../application/ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts";
 import { FileCanonicalAssetReader } from "../../assets/canonical-asset-reader.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
-import { RecordedAnalysisCasReader } from "../../shared/cas/recorded-analysis-cas-reader.ts";
+import { RecordedAnalysisCasReader } from "./recorded-analysis-cas-reader.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import type { CaptureBackedTechnicalCompilationAdmissionReader } from "../admission/capture-backed-technical-compilation-admission-reader.ts";
 import type { ExactThreadSnapshotReader } from "../../shared/stores/engineering-thread-snapshot-resolver.ts";

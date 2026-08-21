@@ -11,10 +11,10 @@ import { PreviewProjectTechnicalCompilation } from "../../application/use-cases/
 import type { ProjectTechnicalSourceCaptureUseCase } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import type { ThermalMethodSheetCompilationJoin } from "../../application/ports/out/compile/admission/thermal-method-sheet-compilation-join.ts";
 import { assembleTechnicalSourceCaptureReview } from "../../domain/compile/admission/technical-source-capture-review.ts";
-import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { FileByteStore } from "../shared/cas/file-byte-store.ts";
+import { fileTextCaptureStore } from "../shared/cas/file-text-capture-store.ts";
 import type { FileCaptureStore } from "../shared/cas/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import { CaptureBackedTechnicalCompilationAdmissionReader } from "./admission/capture-backed-technical-compilation-admission-reader.ts";
@@ -131,7 +131,7 @@ export function createTechnicalCompilationFoundation(
     uriNamespace: "technical-compilation-admission-capture",
     label: "Sealed technical compilation admission",
   });
-  const technicalCompilationSeals = textCaptureStore(
+  const technicalCompilationSeals = fileTextCaptureStore(
     technicalCompilationSealBytes,
   );
   const technicalCompilationAdmissions =
@@ -187,26 +187,4 @@ export function createTechnicalCompilationPreview(
     projects: options.projects,
     methodSheets: options.methodSheets,
   });
-}
-
-function textCaptureStore(
-  bytes: FileByteStore<"technical-compilation-admission-capture">,
-): TechnicalCompilationAdmissionCaptureStore {
-  return {
-    save(
-      fingerprint: ContentFingerprint,
-      canonicalText: string,
-    ) {
-      return bytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      );
-    },
-    async read(fingerprint: ContentFingerprint) {
-      const stored = await bytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
-  };
 }

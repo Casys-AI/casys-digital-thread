@@ -485,44 +485,6 @@ export const CORRECTED_SOURCE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
 };
 
 /**
- * Content-addressed store for `fea-solver-result-capture/1.0` envelopes
- * produced by `verify.run-fea-static-proof@1` after a successful CalculiX
- * dispatch.
- *
- * URI: `casys://fea-solver-result-capture/sha256/<solverCaptureFp>`.
- */
-export const FEA_SOLVER_RESULT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
-  "fea-solver-result"
-> = {
-  kind: "fea-solver-result",
-  directory: "state/local/fea-solver-result-captures",
-  uriNamespace: "fea-solver-result-capture",
-  label: "FEA solver result",
-};
-
-/**
- * Content-addressed store for `fea-verdict-capture/1.0` envelopes produced
- * by `verify.run-fea-static-proof@1` after the oracle evaluates the
- * CalculiX metrics against the proof requirements.
- *
- * URI: `casys://fea-verdict-capture/sha256/<verdictCaptureFp>`.
- * Thread artifact URIs encode the proofDigest for ratchet detection:
- *   `casys://fea-verdict-capture/proof/<proofDigest>/sha256/<verdictCaptureFp>`.
- */
-export const FEA_VERDICT_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
-  "fea-verdict"
-> = {
-  kind: "fea-verdict",
-  directory: "state/local/fea-verdict-captures",
-  uriNamespace: "fea-verdict-capture",
-  label: "FEA verdict",
-};
-
-/** Shared URI prefix for FEA verdict artifacts; proofDigest segment discriminates proof. */
-export const FEA_VERDICT_ARTIFACT_URI_ROOT =
-  "casys://fea-verdict-capture/proof/" as const;
-
-/**
  * Content-addressed store for `modelica-thermal-method-sheet/1.0`.
  * The sheet is a reviewed method document, not admission or OMC authority.
  *

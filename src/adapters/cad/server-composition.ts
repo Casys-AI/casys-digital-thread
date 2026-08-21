@@ -12,13 +12,13 @@ import { PrepareProjectIsolatedGeometrySealReview } from "../../application/use-
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { IsolatedOutputPublicationReader } from "../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
-import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { parseExactArchitectureCapture } from "../architecture/renderer/architecture-capture.ts";
 import type { SysmlSourceAnalysisCaptureService } from "../architecture/renderer/sysml-source-analysis-capture.ts";
 import type { CaptureBackedTechnicalCompilationAdmissionReader } from "../compile/admission/capture-backed-technical-compilation-admission-reader.ts";
 import { FileByteStore } from "../shared/cas/file-byte-store.ts";
+import { fileTextCaptureStore } from "../shared/cas/file-text-capture-store.ts";
 import {
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
@@ -143,7 +143,7 @@ export async function createBuild123dCapability(
     uriNamespace: "isolated-geometry-seal-capture",
     label: "Sealed isolated geometry document",
   });
-  const isolatedGeometrySeals = textCaptureStore(isolatedGeometrySealBytes);
+  const isolatedGeometrySeals = fileTextCaptureStore(isolatedGeometrySealBytes);
   const isolatedGeometrySealReview =
     new PrepareProjectIsolatedGeometrySealReview({
       snapshots: options.snapshots,
@@ -289,27 +289,5 @@ export function composePrivateBuild123dGeometrySurfaces(
         build123dService: "mcp-build123d-sandbox",
       }),
     }),
-  };
-}
-
-function textCaptureStore(
-  bytes: FileByteStore<"isolated-geometry-seal-capture">,
-): IsolatedGeometrySealCaptureStore {
-  return {
-    save(
-      fingerprint: ContentFingerprint,
-      canonicalText: string,
-    ) {
-      return bytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      );
-    },
-    async read(fingerprint: ContentFingerprint) {
-      const stored = await bytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
   };
 }

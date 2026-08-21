@@ -20,6 +20,7 @@ import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-st
 import type { CaptureBackedTechnicalCompilationAdmissionReader } from "../compile/admission/capture-backed-technical-compilation-admission-reader.ts";
 import type { CaptureBackedTechnicalCompilationBasisResolver } from "../compile/captures/technical-compilation-basis-resolver.ts";
 import { FileByteStore } from "../shared/cas/file-byte-store.ts";
+import { fileTextCaptureStore } from "../shared/cas/file-text-capture-store.ts";
 import {
   ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR,
   ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
@@ -257,7 +258,7 @@ export function createModelicaThermalMethodSheetJoin(
     uriNamespace: "modelica-thermal-method-sheet-seal-capture",
     label: "Sealed Modelica thermal method sheet",
   });
-  const thermalMethodSheetSeals = textCaptureStore(sealBytes);
+  const thermalMethodSheetSeals = fileTextCaptureStore(sealBytes);
   const thermalMethodSheetCompilationJoin =
     new CaptureBackedThermalMethodSheetCompilationJoin({
       snapshots: options.snapshots,
@@ -435,27 +436,5 @@ export function createModelicaProject(
     simulateRunQualifiedModelicaKit,
     admittedModelicaRunReview,
     simulateRunAdmittedModelica,
-  };
-}
-
-function textCaptureStore(
-  bytes: FileByteStore<"modelica-thermal-method-sheet-seal-capture">,
-): ThermalMethodSheetSealCaptureStore {
-  return {
-    save(
-      fingerprint: ContentFingerprint,
-      canonicalText: string,
-    ) {
-      return bytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      );
-    },
-    async read(fingerprint: ContentFingerprint) {
-      const stored = await bytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
   };
 }

@@ -24,7 +24,7 @@ import {
   GEOMETRY_CAPTURE_DESCRIPTOR,
   SENSITIVITY_CATALOG_OFFER_CAPTURE_DESCRIPTOR,
 } from "../shared/cas/file-capture-store.ts";
-import type { RecordedAnalysisCasReader } from "../shared/cas/recorded-analysis-cas-reader.ts";
+import type { RecordedAnalysisCasReader } from "../compile/plans/recorded-analysis-cas-reader.ts";
 import { HttpMcpToolClient } from "../shared/mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./isolated-v3/calculix-isolated-execution-composition.ts";

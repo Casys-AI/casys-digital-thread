@@ -14,7 +14,7 @@ import {
 } from "../../../domain/compile/source/provider-resource-reader.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { ThreadArtifact } from "../../../domain/thread/thread-snapshot.ts";
-import { FileCaptureStore } from "./file-capture-store.ts";
+import { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 
 const PROBE_FINGERPRINT: ContentFingerprint = {
   algorithm: "sha256",

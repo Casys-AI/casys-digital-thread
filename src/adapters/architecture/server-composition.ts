@@ -15,10 +15,10 @@ import { PreviewProjectArchitectureSysml } from "../../application/use-cases/arc
 import { PrepareProjectBriefArchitectureReview } from "../../application/use-cases/architecture/renderer/prepare-project-brief-architecture-review.ts";
 import { PrepareProjectBriefRequirementsReview } from "../../application/use-cases/architecture/requirements/prepare-project-brief-requirements-review.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
-import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { FileByteStore } from "../shared/cas/file-byte-store.ts";
+import { fileTextCaptureStore } from "../shared/cas/file-text-capture-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
@@ -188,7 +188,7 @@ export function createArchitectureFoundation(
     architectureSysmlSourceAnalysis,
     architectureSysmlSourceCapture,
     architectureSysmlPreview,
-    architectureSysmlSeals: textCaptureStore(architectureSysmlSealBytes),
+    architectureSysmlSeals: fileTextCaptureStore(architectureSysmlSealBytes),
   };
 }
 
@@ -283,27 +283,5 @@ export function createArchitectureProject(
     genericModelWriteArchitecture,
     genericModelCapturePartDefinitions,
     genericModelWriteRequirements,
-  };
-}
-
-function textCaptureStore(
-  bytes: FileByteStore<"architecture-sysml-seal-capture">,
-): ArchitectureSysmlSealCaptureStore {
-  return {
-    save(
-      fingerprint: ContentFingerprint,
-      canonicalText: string,
-    ) {
-      return bytes.save(
-        fingerprint,
-        new TextEncoder().encode(canonicalText),
-      );
-    },
-    async read(fingerprint: ContentFingerprint) {
-      const stored = await bytes.read(fingerprint);
-      return stored === undefined
-        ? undefined
-        : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
-    },
   };
 }
