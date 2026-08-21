@@ -368,6 +368,84 @@ Deno.test("static proof successor keeps pass/fail/error/unresolved oracle semant
   assertEquals(failOnly[0]?.comparison !== undefined, true);
 });
 
+Deno.test("static proof fail successor publishes closed caused_by, evidences and addresses provenance", async () => {
+  const requirements = await catalogRequirements();
+  const [disp, stress] = requirements;
+  const basis = basisSnapshot(requirements.map((requirement) =>
+    traced(`thread-${requirement.id}`, requirement.feature, "req-a")
+  ));
+  const snapshot = buildStaticProofSuccessor(successorInput(
+    basis,
+    requirements,
+    new Map([
+      [disp!.id, {
+        status: "fail",
+        computedValue: 2,
+        threshold: 1,
+        margin: -1,
+        unit: "mm",
+      }],
+      [stress!.id, {
+        status: "pass",
+        computedValue: 0.1,
+        threshold: 1,
+        margin: 0.9,
+        unit: "Pa",
+      }],
+    ]),
+  ));
+  const validated = validateThreadSnapshot(snapshot);
+  assertEquals(validated.violations.length, 1);
+  const violation = validated.violations[0]!;
+  const evaluationId = `${disp!.id}-evaluation-${"e".repeat(64)}`;
+  const evidenceId = `calculix-isolated-evidence-${"d".repeat(64)}`;
+  const captureId = `calculix-isolated-syson-evaluation-${"e".repeat(64)}`;
+  const actionId = `${violation.id}-review`;
+  assertEquals(violation.id, `${evaluationId}-violation`);
+  assertEquals(violation.evaluationId, evaluationId);
+  assertEquals(violation.evidenceArtifactIds, [evidenceId, captureId]);
+  assertEquals(validated.proposedActions.map((item) => item.id), [actionId]);
+  const failLinks = validated.provenance.filter((link) =>
+    link.relation === "caused_by" ||
+    link.relation === "addresses" ||
+    (link.relation === "evidences" && link.from.kind === "violation")
+  );
+  assertEquals(failLinks, [
+    {
+      id: `caused-by-${violation.id}`,
+      relation: "caused_by",
+      from: { kind: "violation", id: violation.id },
+      to: { kind: "evaluation", id: evaluationId },
+      rationale:
+        "The named violation is caused by the failing local CalculiX evaluation.",
+    },
+    {
+      id: `evidences-${violation.id}-${evidenceId}`,
+      relation: "evidences",
+      from: { kind: "violation", id: violation.id },
+      to: { kind: "artifact", id: evidenceId },
+      rationale:
+        "The named violation is evidenced by the exact local CalculiX evidence artifact.",
+    },
+    {
+      id: `evidences-${violation.id}-${captureId}`,
+      relation: "evidences",
+      from: { kind: "violation", id: violation.id },
+      to: { kind: "artifact", id: captureId },
+      rationale:
+        "The named violation is evidenced by the exact local CalculiX evidence artifact.",
+    },
+    {
+      id: `addresses-${actionId}`,
+      relation: "addresses",
+      from: { kind: "action", id: actionId },
+      to: { kind: "violation", id: violation.id },
+      rationale:
+        "The proposed review addresses the named local CalculiX violation.",
+    },
+  ]);
+});
+
 Deno.test("static proof successor replay is byte-identical including evidence refs", async () => {
   const requirements = await catalogRequirements();
   const basis = basisSnapshot(requirements.map((requirement) =>

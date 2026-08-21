@@ -307,6 +307,34 @@ export function buildStaticProofSuccessor(input: {
       to: { kind: "artifact" as const, id: evaluationArtifact.id },
       rationale: "The immutable SysON envelope is the evaluation evidence.",
     })),
+    ...violations.flatMap((item) => [
+      {
+        id: `caused-by-${item.id}`,
+        relation: "caused_by" as const,
+        from: { kind: "violation" as const, id: item.id },
+        to: { kind: "evaluation" as const, id: item.evaluationId },
+        rationale:
+          "The named violation is caused by the failing local CalculiX evaluation.",
+      },
+      ...item.evidenceArtifactIds.map((artifactId) => ({
+        id: `evidences-${item.id}-${artifactId}`,
+        relation: "evidences" as const,
+        from: { kind: "violation" as const, id: item.id },
+        to: { kind: "artifact" as const, id: artifactId },
+        rationale:
+          "The named violation is evidenced by the exact local CalculiX evidence artifact.",
+      })),
+    ]),
+    ...actions.flatMap((item) =>
+      item.addressesViolationIds.map((violationId) => ({
+        id: `addresses-${item.id}`,
+        relation: "addresses" as const,
+        from: { kind: "action" as const, id: item.id },
+        to: { kind: "violation" as const, id: violationId },
+        rationale:
+          "The proposed review addresses the named local CalculiX violation.",
+      }))
+    ),
   ];
   const extension: ThreadSnapshotExtension = {
     id: `calculix-isolated-${localOperation.runId}`,
