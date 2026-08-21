@@ -1349,6 +1349,7 @@ async function createProjectControl(
       sheets: thermalMethodSheets,
       evidence: admittedObservationEvidence,
       captures: admittedObservationEvaluationCaptures,
+      sheetCaptures: thermalMethodSheetSeals,
       attempts: new FileAdmittedObservationEvaluationAttemptStore(
         `${recordedAnalysisDirectory}/modelica/admitted-observation-evaluation-attempts`,
       ),
