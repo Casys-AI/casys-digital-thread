@@ -155,7 +155,7 @@ not a substitute for persisted evidence.
 
 | Lot | Status             | Commit          | Validation and proof pointer                                                                                                       | Next / human gate   |
 | --- | ------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| 01  | in progress (P01)  | P01 this commit | `src/testing/articulated-led-desk-lamp-brief-fixture_test.ts` — pass; indoor desk-use framing, three independent gates, no values   | P02; G1 structure   |
+| 01  | in progress (P02)  | P01 `0488d98`; P02 this commit | fixture + `articulated-led-desk-lamp-brief-compilation_test.ts` — pass; structure compiles; scalar criteria stay unresolved | P03 |
 | 02  | pending            | —               | —                                                                                                                                  | 03 or 04            |
 | 03  | pending            | —               | —                                                                                                                                  | 07 after 04         |
 | 04  | pending            | —               | —                                                                                                                                  | 07 after 03         |

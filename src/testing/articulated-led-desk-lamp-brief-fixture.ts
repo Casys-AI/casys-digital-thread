@@ -19,6 +19,8 @@ export const ARTICULATED_LED_DESK_LAMP_FIXTURE_PROJECT_ID = "articulated-led-des
 
 export const ARTICULATED_LED_DESK_LAMP_FIXTURE_CLOCK = "2026-08-21T12:00:00.000Z";
 
+export const ARTICULATED_LED_DESK_LAMP_STRUCTURE_CLOCK = "2026-08-21T12:01:00.000Z";
+
 export const ARTICULATED_LED_DESK_LAMP_FIXTURE_AGENT: EngineeringProjectCommandOrigin =
   {
     kind: "agent",
@@ -289,6 +291,105 @@ export function articulatedLedDeskLampBriefItems(): readonly ProjectBriefItem[] 
   ];
 }
 
+/**
+ * G1 structure as sourced constraints. Names follow the product-contract RFC.
+ * No AttributeUsage, port, flow, value, unit or threshold is declared.
+ */
+export const ARTICULATED_LED_DESK_LAMP_STRUCTURE = {
+  packageName: "ArticulatedLedDeskLamp",
+  packageSourceItemId: "objective",
+  systemName: "ArticulatedLedDeskLamp",
+  systemSourceItemId: "constraint-system",
+  components: [
+    {
+      slug: "base",
+      name: "Base",
+      usage: "base",
+      parent: "ArticulatedLedDeskLamp",
+      sourceItemId: "constraint-base",
+    },
+    {
+      slug: "arm",
+      name: "ArticulatedArm",
+      usage: "arm",
+      parent: "ArticulatedLedDeskLamp",
+      sourceItemId: "constraint-arm",
+    },
+    {
+      slug: "lampHead",
+      name: "LampHead",
+      usage: "lampHead",
+      parent: "ArticulatedLedDeskLamp",
+      sourceItemId: "constraint-lamp-head",
+    },
+    {
+      slug: "ledDriver",
+      name: "LedDriver",
+      usage: "ledDriver",
+      parent: "ArticulatedLedDeskLamp",
+      sourceItemId: "constraint-led-driver",
+    },
+    {
+      slug: "powerSupply",
+      name: "PowerSupply",
+      usage: "powerSupply",
+      parent: "ArticulatedLedDeskLamp",
+      sourceItemId: "constraint-power-supply",
+    },
+  ],
+} as const;
+
+export function articulatedLedDeskLampStructureBriefItems(): readonly ProjectBriefItem[] {
+  const framing = articulatedLedDeskLampBriefItems().filter((item) =>
+    item.id !== "open-question-structure"
+  );
+  const structure: readonly ProjectBriefItem[] = [
+    {
+      id: "constraint-system",
+      kind: "constraint",
+      statement:
+        "The product system is ArticulatedLedDeskLamp. It is a renderer-backed package and root only.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-base",
+      kind: "constraint",
+      statement:
+        "Base is a retained structural component that grounds the product story. No stability, ballast or mounting proof is implied.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-arm",
+      kind: "constraint",
+      statement:
+        "ArticulatedArm is the sole canonical CAD and mechanical-proof subject. It is a single isolated part, never an assembly mapping.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-lamp-head",
+      kind: "constraint",
+      statement:
+        "LampHead carries the LED and light story. No mechanical, optical or thermal CAD authority is implied.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-led-driver",
+      kind: "constraint",
+      statement:
+        "LedDriver is the electrical behaviour boundary. No circuit topology or component model is implied.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+    {
+      id: "constraint-power-supply",
+      kind: "constraint",
+      statement:
+        "PowerSupply is the reviewed electrical source boundary. It is structural only: no connector or electrical-source semantics are implied.",
+      sourceRefs: [RFC_CONTRACT, RFC_GATES],
+    },
+  ];
+  return [...framing, ...structure];
+}
+
 export interface ArticulatedLedDeskLampBriefSeed {
   readonly store: EngineeringProjectRevisionStore;
   readonly service: ProjectBriefCommandService;
@@ -375,6 +476,47 @@ export async function seedApprovedArticulatedLedDeskLampBrief(): Promise<
     },
   );
   return { ...seeded, project };
+}
+
+/**
+ * Successor brief that commits renderer-supported structure only. Scalar
+ * criteria, ports, flows and value-bearing attributes stay unresolved.
+ */
+export async function seedApprovedArticulatedLedDeskLampStructureBrief(): Promise<
+  ArticulatedLedDeskLampBriefSeed
+> {
+  const seeded = await seedApprovedArticulatedLedDeskLampBrief();
+  const service = new ProjectBriefCommandService(
+    seeded.store,
+    () => ARTICULATED_LED_DESK_LAMP_STRUCTURE_CLOCK,
+  );
+  let project = await service.proposeBrief(
+    ARTICULATED_LED_DESK_LAMP_FIXTURE_AGENT,
+    {
+      commandId: "fixture:propose-structure-brief",
+      projectId: ARTICULATED_LED_DESK_LAMP_FIXTURE_PROJECT_ID,
+      expectedRevision: seeded.project.revision,
+      issuedAt: ARTICULATED_LED_DESK_LAMP_STRUCTURE_CLOCK,
+      items: articulatedLedDeskLampStructureBriefItems(),
+    },
+  );
+  const proposal = project.framing!.proposedBrief!;
+  const proposalReview = project.framing!.proposalReview!;
+  project = await service.approveBrief(
+    ARTICULATED_LED_DESK_LAMP_FIXTURE_HUMAN,
+    {
+      commandId: "fixture:approve-structure-brief",
+      projectId: ARTICULATED_LED_DESK_LAMP_FIXTURE_PROJECT_ID,
+      expectedRevision: project.revision,
+      issuedAt: ARTICULATED_LED_DESK_LAMP_STRUCTURE_CLOCK,
+      briefSnapshotId: proposal.id,
+      briefRevision: proposal.revision,
+      rationale:
+        "Fixture reviewer accepts the sourced structural names. No threshold, unit, port, flow or value-bearing attribute is approved.",
+      inputFingerprint: proposalReview.inputFingerprint,
+    },
+  );
+  return { store: seeded.store, service, project };
 }
 
 class MemoryProjectStore implements EngineeringProjectRevisionStore {
