@@ -8,7 +8,10 @@
  */
 
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
-import type { GeometryDraftAdmission } from "../../../../../domain/cad/canonical/geometry-draft-admission.ts";
+import type {
+  GeometryDraftAdmission,
+  GeometryPartDraftAdmission,
+} from "../../../../../domain/cad/canonical/geometry-draft-admission.ts";
 import type { GeometryExportFormat } from "../../../../../domain/cad/canonical/geometry-proposal.ts";
 
 /** Exact admitted source plus the current Thread architecture identity. */
@@ -74,9 +77,65 @@ export interface AdmittedGeometryExportDraft {
   };
 }
 
+/**
+ * Server-derived request for one exact PartDefinition in a multi-part
+ * architecture. It intentionally carries no assembly, occurrence, provider,
+ * path, tool, format, or timeout field.
+ */
+export interface AdmittedGeometryTargetedPartExportRequest {
+  readonly script: string;
+  readonly architectureBasis: {
+    readonly snapshotId: string;
+    readonly revision: number;
+    readonly artifactFingerprint: ContentFingerprint;
+  };
+  readonly admission: GeometryPartDraftAdmission;
+  readonly target: {
+    readonly partDefinitionElementId: string;
+    readonly label: string;
+  };
+  /** Unique active canonical capture for this exact target only. */
+  readonly predecessor?: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+  };
+}
+
+export interface AdmittedGeometryTargetedPartExportedFile {
+  readonly format: GeometryExportFormat;
+  readonly name: string;
+  readonly bytes: number;
+  readonly digest: string;
+}
+
+/** A draft fact for one target PartDefinition, not an assembly projection. */
+export interface AdmittedGeometryTargetedPartExportDraft {
+  readonly draftDigest: string;
+  readonly target: {
+    readonly partDefinitionElementId: string;
+    readonly label: string;
+    readonly scriptHash: ContentFingerprint;
+    readonly files: readonly AdmittedGeometryTargetedPartExportedFile[];
+  };
+  readonly predecessor?: {
+    readonly artifactId: string;
+    readonly fingerprint: ContentFingerprint;
+  };
+  readonly sourceAnalysis: {
+    readonly sourceId: string;
+    readonly selector: unknown;
+    readonly sourceDigest: string;
+    readonly sourceCaptureDigest: string;
+    readonly analysisDigest: string;
+  };
+}
+
 /** Sends exact admitted bytes through the server-owned geometry export path. */
 export interface AdmittedGeometryExporter {
   export(
     request: AdmittedGeometryExportRequest,
   ): Promise<AdmittedGeometryExportDraft>;
+  exportTargetedPart(
+    request: AdmittedGeometryTargetedPartExportRequest,
+  ): Promise<AdmittedGeometryTargetedPartExportDraft>;
 }

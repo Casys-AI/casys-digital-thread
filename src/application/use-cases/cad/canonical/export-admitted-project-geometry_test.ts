@@ -4,6 +4,8 @@ import type {
   AdmittedGeometryExportDraft,
   AdmittedGeometryExporter,
   AdmittedGeometryExportRequest,
+  AdmittedGeometryTargetedPartExportDraft,
+  AdmittedGeometryTargetedPartExportRequest,
 } from "../../../ports/out/cad/canonical/admitted-geometry-exporter.ts";
 import type {
   ReopenedTechnicalCompilationAdmission,
@@ -31,7 +33,10 @@ import {
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
 } from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
-import { GEOMETRY_DRAFT_ADMISSION_SCHEMA } from "../../../../domain/cad/canonical/geometry-draft-admission.ts";
+import {
+  GEOMETRY_DRAFT_ADMISSION_SCHEMA,
+  GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
+} from "../../../../domain/cad/canonical/geometry-draft-admission.ts";
 import {
   parseGeometryDecisionParameters,
 } from "../../../../domain/cad/canonical/geometry-proposal.ts";
@@ -45,7 +50,15 @@ import {
   ProjectAdmittedGeometryExportError,
 } from "./export-admitted-project-geometry.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
-import { GEOMETRY_BUNDLE_MANIFEST_SCHEMA } from "../../../../domain/cad/canonical/geometry-bundle.ts";
+import {
+  GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+  GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+} from "../../../../domain/cad/canonical/geometry-bundle.ts";
+import {
+  GEOMETRY_PART_CAPTURE_SCHEMA,
+  GEOMETRY_PART_MANIFEST_SCHEMA,
+  parseGeometryPartDecisionParameters,
+} from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
 
 interface Harness {
   readonly service: ExportAdmittedProjectGeometry;
@@ -56,6 +69,7 @@ interface Harness {
   readonly exporter: FakeExporter;
   readonly architecture: FakeArchitectureReader;
   readonly snapshots: FakeSnapshots;
+  readonly geometryCaptures: FakeGeometryCaptureReader;
 }
 
 class FakeAdmissionReader implements TechnicalCompilationAdmissionReader {
@@ -109,8 +123,19 @@ class FakeSnapshots {
   }
 }
 
+class FakeGeometryCaptureReader {
+  readonly captures = new Map<string, string>();
+  readonly calls: string[] = [];
+
+  read(fingerprint: { readonly digest: string }): Promise<string | undefined> {
+    this.calls.push(fingerprint.digest);
+    return Promise.resolve(this.captures.get(fingerprint.digest));
+  }
+}
+
 class FakeExporter implements AdmittedGeometryExporter {
   readonly calls: AdmittedGeometryExportRequest[] = [];
+  readonly targetedCalls: AdmittedGeometryTargetedPartExportRequest[] = [];
   failure?: Error;
   draft: AdmittedGeometryExportDraft = {
     draftDigest: "d".repeat(64),
@@ -167,6 +192,43 @@ class FakeExporter implements AdmittedGeometryExporter {
       ...(request.predecessor ? { predecessor: request.predecessor } : {}),
     });
   }
+
+  exportTargetedPart(
+    request: AdmittedGeometryTargetedPartExportRequest,
+  ): Promise<AdmittedGeometryTargetedPartExportDraft> {
+    this.targetedCalls.push(structuredClone(request));
+    if (this.failure) return Promise.reject(this.failure);
+    return Promise.resolve({
+      draftDigest: "d".repeat(64),
+      target: {
+        partDefinitionElementId: request.target.partDefinitionElementId,
+        label: request.target.label,
+        scriptHash: { algorithm: "sha256", digest: "e".repeat(64) },
+        files: [{
+          format: "step",
+          name: "geometry-part-preview",
+          bytes: 2048,
+          digest: "a".repeat(64),
+        }, {
+          format: "gltf",
+          name: "geometry-part-preview",
+          bytes: 1024,
+          digest: "f".repeat(64),
+        }],
+      },
+      ...(request.predecessor ? { predecessor: request.predecessor } : {}),
+      sourceAnalysis: {
+        sourceId: `geometry-source:part-definition:${request.target.partDefinitionElementId}`,
+        selector: {
+          kind: "part-definition",
+          elementId: request.target.partDefinitionElementId,
+        },
+        sourceDigest: "e".repeat(64),
+        sourceCaptureDigest: "c".repeat(64),
+        analysisDigest: "b".repeat(64),
+      },
+    });
+  }
 }
 
 Deno.test("admitted geometry export reopens one sealed source and never accepts caller Python", async () => {
@@ -191,7 +253,12 @@ Deno.test("admitted geometry export reopens one sealed source and never accepts 
     revision: fixture.command.basis.revision,
     artifactFingerprint: fixture.reopened.admission.basis.sysml.artifactFingerprint,
   });
-  assertEquals(replay.manifest.components, []);
+  assertEquals(
+    replay.manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA
+      ? replay.manifest.components
+      : undefined,
+    [],
+  );
   assertEquals(replay.manifest.exportFormats, ["step", "gltf"]);
   assertEquals(
     replay.manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA
@@ -361,20 +428,113 @@ Deno.test("reader and exporter failures are normalized without leaking causes or
   assertEquals(exportError.message.includes("credential"), false);
 });
 
-Deno.test("a multi-part architecture cannot enter singular admitted export", async () => {
+Deno.test("a multi-part architecture exports exactly its admitted represented PartDefinition", async () => {
   const fixture = await harness();
   fixture.architecture.graph = {
     partDefinitions: [{
       id: "sysml.part.box",
       label: "Box",
-      usages: [{ id: "usage.arm", label: "arm", targetId: "sysml.part.box" }],
+      usages: [],
+    }, {
+      id: "sysml.part.lid",
+      label: "Lid",
+      usages: [],
+    }],
+  };
+  const result = await fixture.service.execute(fixture.command);
+  const replay = parseGeometryPartDecisionParameters(
+    new Map(result.decisionParameters.map((parameter) => [
+      parameter.key,
+      parameter.value,
+    ])),
+  );
+  assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 1);
+  assertEquals(fixture.exporter.targetedCalls[0]?.target, {
+    partDefinitionElementId: "sysml.part.box",
+    label: "Box",
+  });
+  assertEquals(fixture.exporter.targetedCalls[0]?.admission, {
+    schemaVersion: GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
+    artifactId: fixture.command.artifactId,
+    fingerprint: fixture.command.artifactFingerprint,
+    sourceFingerprint: fixture.reopened.admission.sources[0]!.sourceFingerprint,
+    target: { partDefinitionElementId: "sysml.part.box", label: "Box" },
+  });
+  assertEquals(result.assemblyFiles, []);
+  assertEquals(result.target?.partDefinitionElementId, "sysml.part.box");
+  assertEquals(replay.manifest.schemaVersion, GEOMETRY_PART_MANIFEST_SCHEMA);
+  assertEquals(replay.manifest.target.partDefinitionElementId, "sysml.part.box");
+  assertEquals(Object.hasOwn(replay.manifest, "components"), false);
+  assertEquals(Object.hasOwn(replay.manifest, "partDefinitions"), false);
+});
+
+Deno.test("an unrepresented multi-part target fails before the provider", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = {
+    partDefinitions: [{
+      id: "sysml.part.lid",
+      label: "Lid",
+      usages: [],
     }],
   };
   await assertExportError(
     () => fixture.service.execute(fixture.command),
-    "architecture_not_system_only",
+    "admission_not_represented",
   );
   assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 0);
+});
+
+Deno.test("an active attested V2 bundle covering the target blocks part preview before the provider", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  await addV2Capture(fixture, { inputArtifactIds: ["artifact.sysml"] });
+
+  await assertExportError(
+    () => fixture.service.execute(fixture.command),
+    "geometry_part_v2_bundle_conflict",
+  );
+  assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 0);
+});
+
+Deno.test("a V2 capture with inexact lineage cannot block target preview", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  await addV2Capture(fixture, {
+    inputArtifactIds: ["artifact.sysml", "unexpected-input"],
+  });
+
+  await assertExportError(
+    () => fixture.service.execute(fixture.command),
+    "geometry_part_predecessor_unavailable",
+  );
+  assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 0);
+});
+
+Deno.test("an attested exact same-target capture becomes the targeted predecessor", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  const predecessor = await addPartCapture(fixture, "one");
+
+  await fixture.service.execute(fixture.command);
+
+  assertEquals(fixture.exporter.targetedCalls[0]?.predecessor, predecessor);
+});
+
+Deno.test("ambiguous active exact same-target captures fail before the provider", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  await addPartCapture(fixture, "one");
+  await addPartCapture(fixture, "two");
+
+  await assertExportError(
+    () => fixture.service.execute(fixture.command),
+    "geometry_part_tip_ambiguous",
+  );
+  assertEquals(fixture.exporter.targetedCalls.length, 0);
 });
 
 Deno.test("missing architecture stops before provider export", async () => {
@@ -658,12 +818,14 @@ async function harness(): Promise<Harness> {
   const exporter = new FakeExporter();
   const architecture = new FakeArchitectureReader();
   const snapshots = new FakeSnapshots();
+  const geometryCaptures = new FakeGeometryCaptureReader();
   return {
     service: new ExportAdmittedProjectGeometry({
       admissions: reader,
       exporter,
       architecture,
       snapshots,
+      geometryCaptures,
     }),
     command,
     reopened,
@@ -672,6 +834,248 @@ async function harness(): Promise<Harness> {
     exporter,
     architecture,
     snapshots,
+    geometryCaptures,
+  };
+}
+
+function multiPartArchitecture(): ArchitecturePartGraph {
+  return {
+    partDefinitions: [{
+      id: "sysml.part.box",
+      label: "Box",
+      usages: [],
+    }, {
+      id: "sysml.part.lid",
+      label: "Lid",
+      usages: [],
+    }],
+  };
+}
+
+async function addV2Capture(
+  fixture: Harness,
+  options: { readonly inputArtifactIds: readonly string[] },
+): Promise<void> {
+  const sealedAt = "2026-08-13T08:00:00.000Z";
+  const architectureFingerprint =
+    fixture.reopened.admission.basis.sysml.artifactFingerprint;
+  const manifest = {
+    schemaVersion: GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+    architectureBasis: {
+      snapshotId: fixture.command.basis.snapshotId,
+      revision: fixture.command.basis.revision,
+      artifactFingerprint: architectureFingerprint,
+    },
+    components: [],
+    unitSystem: "mm" as const,
+    placementConvention: GEOMETRY_BUNDLE_PLACEMENT_CONVENTION,
+    exportFormats: ["step", "gltf"],
+    partExportFormats: ["step", "gltf"],
+    partDefinitions: [{
+      elementId: "sysml.part.box",
+      label: "Box",
+      scriptHash: { algorithm: "sha256" as const, digest: "e".repeat(64) },
+      files: [{
+        format: "step" as const,
+        name: "geometry-preview",
+        fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+      }, {
+        format: "gltf" as const,
+        name: "geometry-preview",
+        fingerprint: { algorithm: "sha256" as const, digest: "f".repeat(64) },
+      }],
+    }],
+    occurrences: [],
+    scriptHash: { algorithm: "sha256" as const, digest: "e".repeat(64) },
+    artifactHashes: {
+      assemblyFiles: [{
+        format: "step" as const,
+        name: "geometry-preview",
+        fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+      }, {
+        format: "gltf" as const,
+        name: "geometry-preview",
+        fingerprint: { algorithm: "sha256" as const, digest: "f".repeat(64) },
+      }],
+      partMeshes: [] as const,
+    },
+  };
+  const capture = {
+    schemaVersion: "geometry-capture/2.0",
+    operation: { id: "design.write-geometry", version: "1" },
+    trustedRunId: "run.geometry.v2",
+    draftDigest: "d".repeat(64),
+    manifest,
+    architectureBasis: {
+      artifactId: "artifact.sysml",
+      fingerprint: architectureFingerprint,
+      producerRunId: "run.architecture",
+    },
+    previewProducer: {
+      serverId: "build123d-sandbox",
+      tool: "build123d_export",
+      runId: "preview.geometry.v2",
+    },
+    sourceScripts: {},
+    sealedAt,
+  };
+  const fingerprint = await sha256Fingerprint(capture);
+  fixture.geometryCaptures.captures.set(
+    fingerprint.digest,
+    deterministicJson(capture),
+  );
+  fixture.snapshots.snapshot = {
+    ...fixture.snapshots.snapshot,
+    artifacts: [{
+      id: "artifact.sysml",
+      name: "Architecture",
+      kind: "sysml-model",
+      version: architectureFingerprint.digest,
+      fingerprint: architectureFingerprint,
+      producer: {
+        serverId: "digital-thread",
+        tool: "model.write-architecture@1",
+        runId: "run.architecture",
+      },
+      inputArtifactIds: [],
+      freshness: {
+        status: "fresh",
+        changedAt: sealedAt,
+        invalidatedByChangeIds: [],
+      },
+    }, {
+      id: `geometry-${fingerprint.digest}`,
+      name: "Geometry: Box",
+      kind: "cad-model",
+      version: fingerprint.digest,
+      fingerprint,
+      uri: `casys://geometry-capture/sha256/${fingerprint.digest}`,
+      mediaType: "application/json",
+      producer: {
+        serverId: "digital-thread",
+        tool: "design.write-geometry@1",
+        runId: "run.geometry.v2",
+      },
+      inputArtifactIds: [...options.inputArtifactIds],
+      freshness: {
+        status: "fresh",
+        changedAt: sealedAt,
+        invalidatedByChangeIds: [],
+      },
+    }],
+  } as unknown as ThreadSnapshot;
+}
+
+async function addPartCapture(
+  fixture: Harness,
+  suffix: string,
+): Promise<{
+  readonly artifactId: string;
+  readonly fingerprint: { readonly algorithm: "sha256"; readonly digest: string };
+}> {
+  const sealedAt = "2026-08-13T08:00:00.000Z";
+  const architectureFingerprint =
+    fixture.reopened.admission.basis.sysml.artifactFingerprint;
+  const manifest = {
+    schemaVersion: GEOMETRY_PART_MANIFEST_SCHEMA,
+    architectureBasis: {
+      snapshotId: fixture.command.basis.snapshotId,
+      revision: fixture.command.basis.revision,
+      artifactFingerprint: architectureFingerprint,
+    },
+    target: {
+      partDefinitionElementId: "sysml.part.box",
+      label: "Box",
+      scriptHash: { algorithm: "sha256" as const, digest: "e".repeat(64) },
+      files: [{
+        format: "step" as const,
+        name: "geometry-part-preview",
+        fingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
+      }, {
+        format: "gltf" as const,
+        name: "geometry-part-preview",
+        fingerprint: { algorithm: "sha256" as const, digest: "f".repeat(64) },
+      }],
+    },
+    unitSystem: "mm" as const,
+    exportFormats: ["step", "gltf"],
+  };
+  const runId = `run.geometry.part.${suffix}`;
+  const capture = {
+    schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+    operation: { id: "design.write-geometry", version: "1" },
+    trustedRunId: runId,
+    draftDigest: "d".repeat(64),
+    manifest,
+    architectureBasis: {
+      artifactId: "artifact.sysml",
+      fingerprint: architectureFingerprint,
+      producerRunId: "run.architecture",
+    },
+    previewProducer: {
+      serverId: "build123d-sandbox",
+      tool: "build123d_export",
+      runId: `preview.geometry.part.${suffix}`,
+    },
+    sourceScript: {},
+    sourceAnalysis: {},
+    sealedAt,
+  };
+  const fingerprint = await sha256Fingerprint(capture);
+  fixture.geometryCaptures.captures.set(
+    fingerprint.digest,
+    deterministicJson(capture),
+  );
+  const prior = fixture.snapshots.snapshot.artifacts as unknown as readonly {
+    readonly id: string;
+  }[];
+  const hasArchitecture = prior.some((artifact) => artifact.id === "artifact.sysml");
+  fixture.snapshots.snapshot = {
+    ...fixture.snapshots.snapshot,
+    artifacts: [
+      ...(hasArchitecture ? prior : [{
+        id: "artifact.sysml",
+        name: "Architecture",
+        kind: "sysml-model",
+        version: architectureFingerprint.digest,
+        fingerprint: architectureFingerprint,
+        producer: {
+          serverId: "digital-thread",
+          tool: "model.write-architecture@1",
+          runId: "run.architecture",
+        },
+        inputArtifactIds: [],
+        freshness: {
+          status: "fresh",
+          changedAt: sealedAt,
+          invalidatedByChangeIds: [],
+        },
+      }]),
+      {
+        id: `geometry-${fingerprint.digest}`,
+        name: "Geometry: Box",
+        kind: "cad-model",
+        version: fingerprint.digest,
+        fingerprint,
+        uri: `casys://geometry-capture/sha256/${fingerprint.digest}`,
+        mediaType: "application/json",
+        producer: {
+          serverId: "digital-thread",
+          tool: "design.write-geometry@1",
+          runId,
+        },
+        inputArtifactIds: ["artifact.sysml"],
+        freshness: {
+          status: "fresh",
+          changedAt: sealedAt,
+          invalidatedByChangeIds: [],
+        },
+      },
+    ],
+  } as unknown as ThreadSnapshot;
+  return {
+    artifactId: `geometry-${fingerprint.digest}`,
+    fingerprint,
   };
 }
 

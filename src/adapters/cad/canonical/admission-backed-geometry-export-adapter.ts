@@ -11,10 +11,13 @@ import type {
   AdmittedGeometryExportDraft,
   AdmittedGeometryExporter,
   AdmittedGeometryExportRequest,
+  AdmittedGeometryTargetedPartExportDraft,
+  AdmittedGeometryTargetedPartExportRequest,
 } from "../../../application/ports/out/cad/canonical/admitted-geometry-exporter.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import {
   parseGeometryDraftAdmission,
+  parseGeometryPartDraftAdmission,
 } from "../../../domain/cad/canonical/geometry-draft-admission.ts";
 import type { GeometryExportFormat } from "../../../domain/cad/canonical/geometry-proposal.ts";
 import {
@@ -24,6 +27,10 @@ import {
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
 import { closedRecord, exactRecord } from "../../../domain/kernel/case-validation.ts";
 import { captureGeometryBundleDraft } from "./geometry-draft-capture.ts";
+import {
+  captureGeometryPartDraft,
+  GEOMETRY_PART_DRAFT_EXPORT_FORMATS,
+} from "./geometry-part-draft-capture.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import type { GeometrySourceAnalysisCaptureDependencies } from "../source/geometry-source-analysis-capture.ts";
 
@@ -34,6 +41,9 @@ export const ADMITTED_GEOMETRY_EXPORT_FORMATS: readonly GeometryExportFormat[] =
 ];
 export const ADMITTED_GEOMETRY_PART_EXPORT_FORMATS: readonly GeometryExportFormat[] =
   ADMITTED_GEOMETRY_EXPORT_FORMATS;
+/** Dedicated P2a target export profile; server-owned and STEP-authoritative. */
+export const ADMITTED_TARGETED_PART_EXPORT_FORMATS:
+  readonly GeometryExportFormat[] = GEOMETRY_PART_DRAFT_EXPORT_FORMATS;
 
 export interface AdmissionBackedGeometryExportDependencies {
   readonly client: McpToolClient;
@@ -114,6 +124,52 @@ export class AdmissionBackedGeometryExportAdapter implements AdmittedGeometryExp
         sourceDigest: assemblyAnalysis.sourceFingerprint.digest,
         sourceCaptureDigest: assemblyAnalysis.sourceCaptureFingerprint.digest,
         analysisDigest: assemblyAnalysis.analysisFingerprint.digest,
+      }),
+    });
+  }
+
+  async exportTargetedPart(
+    value: AdmittedGeometryTargetedPartExportRequest,
+  ): Promise<AdmittedGeometryTargetedPartExportDraft> {
+    const request = parseTargetedPartRequest(value);
+    if (this.dependencies.build123dService !== "mcp-build123d-sandbox") {
+      throw new TypeError(
+        "Target geometry assets must be materialized from mcp-build123d-sandbox.",
+      );
+    }
+    const manifest = admittedPartManifest(request);
+    const draft = await captureGeometryPartDraft(
+      this.dependencies.client,
+      {
+        script: request.script,
+        manifest,
+        admission: request.admission,
+      },
+      this.dependencies.draftCaptures,
+      this.options(),
+    );
+    return Object.freeze({
+      draftDigest: draft.fingerprint.digest,
+      target: Object.freeze({
+        partDefinitionElementId: draft.target.partDefinitionElementId,
+        label: draft.target.label,
+        scriptHash: draft.target.scriptHash,
+        files: draft.target.files.map((file) =>
+          Object.freeze({
+            format: file.format,
+            name: file.name,
+            bytes: file.bytes,
+            digest: file.fingerprint.digest,
+          })
+        ),
+      }),
+      ...(draft.predecessor ? { predecessor: draft.predecessor } : {}),
+      sourceAnalysis: Object.freeze({
+        sourceId: draft.sourceAnalysis.sourceId,
+        selector: draft.sourceAnalysis.selector,
+        sourceDigest: draft.sourceAnalysis.sourceFingerprint.digest,
+        sourceCaptureDigest: draft.sourceAnalysis.sourceCaptureFingerprint.digest,
+        analysisDigest: draft.sourceAnalysis.analysisFingerprint.digest,
       }),
     });
   }
@@ -227,6 +283,49 @@ function parseRequest(value: unknown): AdmittedGeometryExportRequest {
   };
 }
 
+function parseArchitectureBasis(value: unknown, path: string) {
+  const architectureBasis = exactRecord(
+    value,
+    ["snapshotId", "revision", "artifactFingerprint"],
+    path,
+  );
+  const fingerprint = exactRecord(
+    architectureBasis.artifactFingerprint,
+    ["algorithm", "digest"],
+    `${path}.artifactFingerprint`,
+  );
+  if (fingerprint.algorithm !== "sha256") {
+    throw new TypeError(`${path}.artifactFingerprint.algorithm must be sha256.`);
+  }
+  if (
+    typeof fingerprint.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fingerprint.digest)
+  ) {
+    throw new TypeError(`${path}.artifactFingerprint.digest must be SHA-256 hex.`);
+  }
+  if (
+    typeof architectureBasis.snapshotId !== "string" ||
+    architectureBasis.snapshotId.trim() === ""
+  ) {
+    throw new TypeError(`${path}.snapshotId must be a non-empty id.`);
+  }
+  if (
+    typeof architectureBasis.revision !== "number" ||
+    !Number.isSafeInteger(architectureBasis.revision) ||
+    architectureBasis.revision < 1
+  ) {
+    throw new TypeError(`${path}.revision must be a positive integer.`);
+  }
+  return {
+    snapshotId: architectureBasis.snapshotId,
+    revision: architectureBasis.revision,
+    artifactFingerprint: {
+      algorithm: "sha256" as const,
+      digest: fingerprint.digest,
+    },
+  };
+}
+
 function parsePredecessor(value: unknown): NonNullable<
   AdmittedGeometryExportRequest["predecessor"]
 > {
@@ -267,6 +366,60 @@ function parsePredecessor(value: unknown): NonNullable<
   };
 }
 
+function parseTargetedPartRequest(
+  value: unknown,
+): AdmittedGeometryTargetedPartExportRequest {
+  const request = closedRecord(
+    value,
+    ["script", "architectureBasis", "admission", "target", "predecessor"],
+    ["script", "architectureBasis", "admission", "target"],
+    "$admittedGeometryTargetedPartExportRequest",
+  );
+  if (typeof request.script !== "string" || request.script.length === 0) {
+    throw new TypeError(
+      "$admittedGeometryTargetedPartExportRequest.script must be non-empty admitted source.",
+    );
+  }
+  const architectureBasis = parseArchitectureBasis(
+    request.architectureBasis,
+    "$admittedGeometryTargetedPartExportRequest.architectureBasis",
+  );
+  const target = exactRecord(
+    request.target,
+    ["partDefinitionElementId", "label"],
+    "$admittedGeometryTargetedPartExportRequest.target",
+  );
+  if (
+    typeof target.partDefinitionElementId !== "string" ||
+    target.partDefinitionElementId.trim() === ""
+  ) {
+    throw new TypeError(
+      "$admittedGeometryTargetedPartExportRequest.target.partDefinitionElementId must be a non-empty id.",
+    );
+  }
+  if (typeof target.label !== "string" || target.label.trim() === "") {
+    throw new TypeError(
+      "$admittedGeometryTargetedPartExportRequest.target.label must be a non-empty label.",
+    );
+  }
+  const predecessor = request.predecessor === undefined
+    ? undefined
+    : parsePredecessor(request.predecessor);
+  return {
+    script: request.script,
+    architectureBasis,
+    admission: parseGeometryPartDraftAdmission(
+      request.admission,
+      "$admittedGeometryTargetedPartExportRequest.admission",
+    ),
+    target: {
+      partDefinitionElementId: target.partDefinitionElementId,
+      label: target.label,
+    },
+    ...(predecessor ? { predecessor } : {}),
+  };
+}
+
 function admittedBundleManifest(
   request: AdmittedGeometryExportRequest,
 ): GeometryBundleManifest {
@@ -284,5 +437,21 @@ function admittedBundleManifest(
       label: request.representedPart.label,
     }],
     occurrences: [],
+  };
+}
+
+function admittedPartManifest(
+  request: AdmittedGeometryTargetedPartExportRequest,
+) {
+  return {
+    schemaVersion: "geometry-part-manifest/1.0" as const,
+    architectureBasis: request.architectureBasis,
+    ...(request.predecessor ? { predecessor: request.predecessor } : {}),
+    target: {
+      partDefinitionElementId: request.target.partDefinitionElementId,
+      label: request.target.label,
+    },
+    unitSystem: "mm" as const,
+    exportFormats: [...ADMITTED_TARGETED_PART_EXPORT_FORMATS],
   };
 }

@@ -1024,6 +1024,7 @@ async function createProjectControl(
         threadSnapshots,
         architectureFoundation.genericArchitectureCaptures,
         DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY,
+        DEFAULT_GEOMETRY_CAPTURE_DIRECTORY,
       ),
       runExecutor: new RegisteredProjectRunExecutor({
         projects: runtime.projects,

@@ -38,6 +38,15 @@ export interface ProjectAdmittedGeometryExportSourceAnalysis {
 
 export interface ProjectAdmittedGeometryExportResult {
   readonly draftDigest: string;
+  /**
+   * Present only for a multi-part targeted export. The legacy arrays remain
+   * empty in that mode for transport compatibility; they are not a manifest.
+   */
+  readonly target?: {
+    readonly partDefinitionElementId: string;
+    readonly label: string;
+    readonly files: readonly ProjectAdmittedGeometryExportFile[];
+  };
   readonly assemblyFiles: readonly ProjectAdmittedGeometryExportFile[];
   readonly partMeshes: readonly {
     readonly usageName: string;

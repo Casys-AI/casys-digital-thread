@@ -25,6 +25,12 @@ import {
   type GeometryBundleManifest,
   parseGeometryBundleDecisionParameters,
 } from "./geometry-bundle.ts";
+import {
+  encodeGeometryPartDecisionParameters,
+  GEOMETRY_PART_MANIFEST_SCHEMA,
+  type GeometryPartManifest,
+  parseGeometryPartDecisionParameters,
+} from "./geometry-part-manifest.ts";
 
 /**
  * Reviewed operation identities live in the domain so the registry can import
@@ -105,8 +111,28 @@ export interface GeometryManifest {
   readonly artifactHashes?: GeometryArtifactHashes;
 }
 
-/** Additive read/write union. Existing geometry-manifest/1.0 remains unchanged. */
-export type AnyGeometryManifest = GeometryManifest | GeometryBundleManifest;
+/**
+ * The existing write-geometry executor predates the part-only family and
+ * accesses legacy assembly fields before its schema discriminants. This
+ * type-only compatibility surface keeps that executor compiling unchanged;
+ * `geometry-part-manifest.ts` remains the runtime authority and rejects these
+ * fields from every actual target manifest. P2a never invokes the sealer for
+ * this family.
+ */
+type GeometryPartManifestForLegacySealer = GeometryPartManifest & {
+  readonly components: never;
+  readonly artifactHashes?: never;
+};
+
+/**
+ * Additive read/write union. Existing geometry-manifest/1.0 and /2.0 remain
+ * unchanged; a targeted PartDefinition draft deliberately has its own schema
+ * family rather than pretending to be a partial assembly bundle.
+ */
+export type AnyGeometryManifest =
+  | GeometryManifest
+  | GeometryBundleManifest
+  | GeometryPartManifestForLegacySealer;
 
 /**
  * Flat parameter encoding carried in an `EngineeringDecisionProposal`.
@@ -176,6 +202,14 @@ export function parseGeometryDecisionParameters(
       GEOMETRY_BUNDLE_MANIFEST_SCHEMA
   ) {
     return parseGeometryBundleDecisionParameters(params);
+  }
+  if (
+    String(params.get("geometry.manifest.schemaVersion")) ===
+      GEOMETRY_PART_MANIFEST_SCHEMA
+  ) {
+    // The cast is type-only: the strict target parser returns an object with
+    // no legacy fields, and the P2a use case never hands it to the old sealer.
+    return parseGeometryPartDecisionParameters(params) as GeometryDecisionParameters;
   }
   const draftDigest = requireStringParam(
     params,
@@ -414,10 +448,13 @@ export function geometryDecisionParametersToMap(
  */
 export function encodeGeometryDecisionParameters(
   draftDigest: string,
-  manifest: AnyGeometryManifest,
+  manifest: AnyGeometryManifest | GeometryPartManifest,
 ): ReadonlyArray<{ key: string; label: string; value: string | number | boolean }> {
   if (manifest.schemaVersion === GEOMETRY_BUNDLE_MANIFEST_SCHEMA) {
     return encodeGeometryBundleDecisionParameters(draftDigest, manifest);
+  }
+  if (manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA) {
+    return encodeGeometryPartDecisionParameters(draftDigest, manifest);
   }
   if (!manifest.scriptHash || !manifest.artifactHashes) {
     throw new GeometryProposalError(

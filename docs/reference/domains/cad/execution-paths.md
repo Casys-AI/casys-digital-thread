@@ -31,9 +31,12 @@ It rereads the signed draft and exact assets, requires the admission stamp, and 
 the canonical geometry into the Thread. This canonical STEP is the geometry accepted by
 the product proof and measured-DFM paths.
 
-The singular admitted export also requires one uniquely represented PartDefinition and a
-system-only architecture with no PartUsage occurrences. A multi-part architecture cannot
-enter this V1 export by inventing an assembly mapping.
+The system-only admitted export requires one uniquely represented PartDefinition and no
+PartUsage occurrences. It retains the `geometry-manifest/2.0` bundle draft and the
+canonical-write review path. In a multi-part architecture, the same public command instead
+derives that exact represented definition and produces one `geometry-part-manifest/1.0`
+target draft. That draft has no assembly, component, occurrence, placement, or
+`partDefinitions` array, makes one server-fixed export call, and does not write Thread state.
 
 Code:
 [admitted export use case](../../../../src/application/use-cases/cad/canonical/export-admitted-project-geometry.ts),

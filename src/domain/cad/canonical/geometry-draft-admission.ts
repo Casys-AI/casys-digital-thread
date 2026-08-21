@@ -12,12 +12,36 @@ import { fingerprintsEqual } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 
 export const GEOMETRY_DRAFT_ADMISSION_SCHEMA = "geometry-draft-admission/1.0" as const;
+/**
+ * Target-bound admission stamp for a PartDefinition-only canonical draft.
+ *
+ * V1 predates targeted exports and intentionally remains readable for the
+ * existing system-only bundle path. V2 adds the exact PartDefinition identity
+ * so a later sealer cannot mistake a valid admitted source for authority to
+ * seal it as a different part.
+ */
+export const GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA =
+  "geometry-draft-admission/2.0" as const;
 
 export interface GeometryDraftAdmission {
   readonly schemaVersion: typeof GEOMETRY_DRAFT_ADMISSION_SCHEMA;
   readonly artifactId: string;
   readonly fingerprint: ContentFingerprint;
   readonly sourceFingerprint: ContentFingerprint;
+}
+
+export interface GeometryPartDraftAdmission {
+  readonly schemaVersion: typeof GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA;
+  /** Exact `compile.seal-admission@1` artifact identity. */
+  readonly artifactId: string;
+  readonly fingerprint: ContentFingerprint;
+  /** SHA-256 of the exact sealed Build123d source bytes. */
+  readonly sourceFingerprint: ContentFingerprint;
+  /** Server-derived PartDefinition identity; labels are re-crossed later. */
+  readonly target: {
+    readonly partDefinitionElementId: string;
+    readonly label: string;
+  };
 }
 
 export function parseGeometryDraftAdmission(
@@ -52,6 +76,46 @@ export function parseGeometryDraftAdmission(
   };
 }
 
+/** Strict parser for the target-bound v2 draft stamp. */
+export function parseGeometryPartDraftAdmission(
+  value: unknown,
+  path = "$geometryPartDraft.admission",
+): GeometryPartDraftAdmission {
+  const record = exactRecord(
+    value,
+    ["schemaVersion", "artifactId", "fingerprint", "sourceFingerprint", "target"],
+    path,
+  );
+  literalValue(
+    record.schemaVersion,
+    GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
+    `${path}.schemaVersion`,
+  );
+  const fingerprint = parseFingerprint(record.fingerprint, `${path}.fingerprint`);
+  const artifactId = safeId(record.artifactId, `${path}.artifactId`);
+  if (artifactId !== `technical-compilation-admission-${fingerprint.digest}`) {
+    throw new TypeError(
+      `${path}.artifactId must derive from the admission fingerprint.`,
+    );
+  }
+  const target = exactRecord(record.target, ["partDefinitionElementId", "label"], `${path}.target`);
+  const partDefinitionElementId = safeId(
+    target.partDefinitionElementId,
+    `${path}.target.partDefinitionElementId`,
+  );
+  const label = nonEmptyLabel(target.label, `${path}.target.label`);
+  return {
+    schemaVersion: GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA,
+    artifactId,
+    fingerprint,
+    sourceFingerprint: parseFingerprint(
+      record.sourceFingerprint,
+      `${path}.sourceFingerprint`,
+    ),
+    target: { partDefinitionElementId, label },
+  };
+}
+
 export function assertDraftJoinsAdmission(
   scriptHash: ContentFingerprint,
   admission: GeometryDraftAdmission,
@@ -59,6 +123,17 @@ export function assertDraftJoinsAdmission(
   if (!fingerprintsEqual(scriptHash, admission.sourceFingerprint)) {
     throw new TypeError(
       "The geometry draft script hash does not equal the stamped admission source.",
+    );
+  }
+}
+
+export function assertPartDraftJoinsAdmission(
+  scriptHash: ContentFingerprint,
+  admission: GeometryPartDraftAdmission,
+): void {
+  if (!fingerprintsEqual(scriptHash, admission.sourceFingerprint)) {
+    throw new TypeError(
+      "The target geometry draft script hash does not equal the stamped admission source.",
     );
   }
 }
@@ -163,6 +238,13 @@ function parseFingerprint(value: unknown, path: string): ContentFingerprint {
 function nonEmptyScript(value: unknown, path: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${path} must be non-empty CAD source.`);
+  }
+  return value;
+}
+
+function nonEmptyLabel(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new TypeError(`${path} must be a non-empty label.`);
   }
   return value;
 }

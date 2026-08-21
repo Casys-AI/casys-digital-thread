@@ -281,11 +281,14 @@ A source is reviewable only when a reachable named literal is bound through
 readable for historical replay; this does not let a new profile-2 admission use the old
 predicate. `project_admitted_geometry_export → design.write-geometry@1` is the only
 canonical STEP path. A draft without the admission stamp, or without a named numeric
-lever, is `admission_required`. Admitted export authors `geometry-manifest/2.0` with
-authoritative STEP when the sealed admission has a unique `represents` PartDefinition
-and the architecture is system-only (zero PartUsages). Empty components and occurrences
-are valid in that case; the system PartDefinition is the FEA target. A multi-part
-architecture cannot enter this singular admitted export.
+lever, is `admission_required`. A system-only admitted export authors
+`geometry-manifest/2.0` with authoritative STEP when the sealed admission has a unique
+`represents` PartDefinition and the architecture has zero PartUsages. Empty components and
+occurrences are valid in that case; the system PartDefinition is the FEA target. For a
+multi-part architecture, the server instead derives the exact represented definition and
+authors one `geometry-part-manifest/1.0` target draft. It contains no assembly, components,
+occurrences, placements, or `partDefinitions` array, and remains a draft rather than a Thread
+write.
 
 ## 5. Registered operations
 

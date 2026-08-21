@@ -238,6 +238,7 @@ export function composePrivateBuild123dGeometrySurfaces(
   snapshots: Pick<ThreadSnapshotStore, "get">,
   architectureCaptures: FileCaptureStore<"architecture-capture">,
   geometryDraftCaptureDirectory: string,
+  geometryCaptureDirectory: string,
 ): PrivateBuild123dGeometrySurfaces {
   if (!build123dSandboxMcpUrl) {
     return { admittedGeometryExport: undefined };
@@ -250,10 +251,15 @@ export function composePrivateBuild123dGeometrySurfaces(
     ...GEOMETRY_DRAFT_CAPTURE_DESCRIPTOR,
     directory: geometryDraftCaptureDirectory,
   });
+  const geometryCaptures = new FileCaptureStore({
+    ...GEOMETRY_CAPTURE_DESCRIPTOR,
+    directory: geometryCaptureDirectory,
+  });
   return {
     admittedGeometryExport: new ExportAdmittedProjectGeometry({
       admissions,
       snapshots,
+      geometryCaptures,
       architecture: {
         async read(fingerprint) {
           const text = await architectureCaptures.read(fingerprint);
