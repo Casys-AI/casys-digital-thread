@@ -350,11 +350,11 @@ is accepted or parsed. Historical MCP FEA `@1`/`@2` are not registered.
 
 The canonical analysis graph is now active, but it is deliberately a fact and
 traceability layer, not an execution gate. Its producers include the approved-brief
-baseline, the Modelica simulation-case seal, the CalculiX proof-case seal and retained
-legacy observations. Modelica and CalculiX declaration nodes and scopes use the stable
-case/proof digest; each seal assertion keeps its run-scoped capture fingerprint only as
-evidence, so repeated seals can merge as parallel assertion occurrences without changing
-semantic identity. The live producer is `analyze.run-fea-sensitivity@1` after
+baseline, the CalculiX proof-case seal and retained legacy observations. CalculiX
+declaration nodes and scopes use the stable proof digest; each seal assertion keeps its
+run-scoped capture fingerprint only as evidence, so repeated seals can merge as parallel
+assertion occurrences without changing semantic identity. The live producer is
+`analyze.run-fea-sensitivity@1` after
 `analyze.seal-sensitivity-study@1`. Seal parameters come from the read-only
 `project_sensitivity_study_seal_review` compiler (catalog template, or unique signed
 catalog-offer + its signed `compile.seal-admission@1` admission when the catalog does

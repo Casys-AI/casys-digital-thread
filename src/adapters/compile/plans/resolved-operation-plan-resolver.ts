@@ -497,8 +497,17 @@ export class ResolvedOperationPlanResolver implements FeaIsolatedRunAdmissionRev
 
 type PlanCommon = Omit<
   ResolvedOperationPlanV2,
-  "sources" | "action" | "expectedProviderResources" | "recovery"
->;
+  | "authorization"
+  | "sources"
+  | "action"
+  | "expectedProviderResources"
+  | "recovery"
+> & {
+  readonly authorization: Omit<
+    ResolvedOperationPlanV2["authorization"],
+    "methodQualification"
+  >;
+};
 interface ProofCapture {
   readonly case: MechanicalProofCase;
   readonly trustedRunId: string;
@@ -1081,7 +1090,6 @@ async function authorizationFor(input: RegisteredRunPlanSealInput) {
       "Recorded plan MRTR approval does not attest the exact decision evidence.",
     );
   }
-  const method = { id: "qualified-static-structural-proof-case", version: "1.0" };
   return {
     kind: "human-mrtr-and-qualified-method" as const,
     mrtr: {
@@ -1089,10 +1097,6 @@ async function authorizationFor(input: RegisteredRunPlanSealInput) {
       decisionInputFingerprint: decision.inputFingerprint,
       approvalId: approval.id,
       approvalFingerprint: await sha256Fingerprint(approval),
-    },
-    methodQualification: {
-      ...method,
-      fingerprint: await sha256Fingerprint(method),
     },
   };
 }

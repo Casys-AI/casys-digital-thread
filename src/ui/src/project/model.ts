@@ -1055,24 +1055,21 @@ function successorPhaseIdForCancelledWork(
   if (reconciliation?.kind !== "superseded-by-successor") return undefined;
   const operationKey = registeredOperationKey(item);
   if (!operationKey) return undefined;
-  const successorWork = "successorWorkItemId" in reconciliation
-    ? snapshot.workItems.find((candidate) =>
-      candidate.id === reconciliation.successorWorkItemId
-    )
-    : successorWorkFromRun(snapshot, reconciliation.successorRunId);
+  const successorWork = successorWorkFromRun(
+    snapshot,
+    reconciliation.successorRunId,
+  );
   if (
     !successorWork || registeredOperationKey(successorWork) !== operationKey
   ) {
     return undefined;
   }
-  if (!("successorWorkItemId" in reconciliation)) {
-    const owned = phaseOwnsEvidenceRefs(
-      snapshot,
-      successorWork.phaseId,
-      reconciliation.successorEvidenceRefs,
-    );
-    if (!owned) return undefined;
-  }
+  const owned = phaseOwnsEvidenceRefs(
+    snapshot,
+    successorWork.phaseId,
+    reconciliation.successorEvidenceRefs,
+  );
+  if (!owned) return undefined;
   return successorWork.phaseId;
 }
 
