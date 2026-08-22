@@ -18,10 +18,11 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
-import type {
-  ContentFingerprint,
-  ThreadArtifact,
-  ThreadSnapshot,
+import {
+  archivedRefKeys,
+  type ContentFingerprint,
+  type ThreadArtifact,
+  type ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../../../domain/thread/thread-snapshot-extension.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
@@ -239,7 +240,13 @@ export class ModelCapturePartDefinitionsRunExecutor {
               summary:
                 "Recorded the exact generic PartDefinitions product-structure capture.",
               resultSnapshot: snapshotRef(snapshot),
-              evidenceRefs: [artifactRef(snapshot)],
+              evidenceRefs: [
+                currentPartDefinitionsEvidenceRef(
+                  snapshot,
+                  artifact,
+                  input.tip.id,
+                ),
+              ],
             });
           }
           return complete(await this.project(command.projectId), command);
@@ -750,19 +757,74 @@ function materialize(
   return applied.snapshot;
 }
 
-function artifactRef(snapshot: ThreadSnapshot): EngineeringThreadEntityRef {
-  const artifact = snapshot.artifacts.find((candidate) =>
-    candidate.id.startsWith("part-definitions-")
-  );
-  if (!artifact) {
-    throw new Error("PartDefinitions snapshot is missing its bundle artifact.");
+function currentPartDefinitionsEvidenceRef(
+  snapshot: ThreadSnapshot,
+  expected: ThreadArtifact,
+  architectureTipId: string,
+): EngineeringThreadEntityRef {
+  if (!isExactCurrentPartDefinitionsEvidence(expected, expected, architectureTipId)) {
+    throw denied(
+      "The server-built PartDefinitions artifact is not exact current-run evidence.",
+    );
+  }
+  if (archivedRefKeys(snapshot).has(`artifact:${expected.id}`)) {
+    throw denied(
+      "The expected PartDefinitions evidence is archived and cannot be attached.",
+    );
+  }
+  let found: ThreadArtifact | undefined;
+  for (const candidate of snapshot.artifacts) {
+    if (candidate.id !== expected.id) continue;
+    if (found) {
+      throw denied(
+        "The successor snapshot contains more than one occurrence of the expected PartDefinitions artifact identity.",
+      );
+    }
+    found = candidate;
+  }
+  if (!found) {
+    throw denied(
+      "The successor snapshot does not contain the expected PartDefinitions artifact identity.",
+    );
+  }
+  if (!isExactCurrentPartDefinitionsEvidence(found, expected, architectureTipId)) {
+    throw denied(
+      "The successor snapshot PartDefinitions artifact is not the exact artifact built for this run.",
+    );
   }
   return {
     snapshotId: snapshot.id,
     snapshotRevision: snapshot.revision,
     kind: "artifact",
-    id: artifact.id,
+    id: found.id,
   };
+}
+
+function isExactCurrentPartDefinitionsEvidence(
+  candidate: ThreadArtifact,
+  expected: ThreadArtifact,
+  architectureTipId: string,
+): boolean {
+  const digest = expected.fingerprint.digest;
+  if (
+    expected.id !== `part-definitions-${digest}` ||
+    expected.name !== "PartDefinition product structure" ||
+    expected.version !== digest ||
+    deterministicJson(expected.fingerprint) !==
+      deterministicJson({ algorithm: "sha256", digest }) ||
+    expected.uri !== `${PART_DEFINITIONS_CAPTURE_URI_PREFIX}sha256/${digest}` ||
+    expected.kind !== "sysml-model" ||
+    expected.mediaType !== "application/json" ||
+    expected.producer.serverId !== "syson" ||
+    expected.producer.tool !== "syson_element_children" ||
+    expected.inputArtifactIds.length !== 1 ||
+    expected.inputArtifactIds[0] !== architectureTipId ||
+    expected.freshness.status !== "fresh" ||
+    expected.freshness.invalidatedByChangeIds.length !== 0
+  ) {
+    return false;
+  }
+  return deterministicJson(candidate) === deterministicJson(expected);
 }
 
 function one<T>(values: readonly T[], name: string): T {

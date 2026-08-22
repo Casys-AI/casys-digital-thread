@@ -46,6 +46,7 @@ const USAGE_ID = "part-usage-arm";
 const PART_USAGE_KIND = "siriusComponents://semantic?domain=sysml&entity=PartUsage";
 const AGENT = { kind: "agent" as const, actorId: "agent-1" };
 const HUMAN = { kind: "human" as const, actorId: "operator-1" };
+const HISTORICAL_PART_DEFINITIONS_ID = `part-definitions-${"d".repeat(64)}`;
 
 type DeepMutable<T> = T extends (...args: never[]) => unknown ? T
   : T extends readonly (infer Item)[] ? DeepMutable<Item>[]
@@ -338,6 +339,24 @@ Deno.test(
 );
 
 Deno.test(
+  "a historical PartDefinitions artifact on the basis does not become the current evidenceRef",
+  async () => {
+    const fixture = await productFixture({ historicalPartDefinitions: true });
+    const completed = await fixture.executor().execute(AGENT, fixture.command());
+    await assertCurrentPartDefinitionsEvidence(fixture, completed);
+    const firstCalls = fixture.syson.calls.length;
+    fixture.syson.failIfCalled = true;
+    const replayed = await fixture.executor().execute(AGENT, fixture.command());
+    assertEquals(replayed.agentRuns[0]!.status, "completed");
+    assertEquals(
+      deterministicJson(replayed.agentRuns[0]!.evidenceRefs),
+      deterministicJson(completed.agentRuns[0]!.evidenceRefs),
+    );
+    assertEquals(fixture.syson.calls.length, firstCalls);
+  },
+);
+
+Deno.test(
   "a crash after snapshot save and before completeRun attaches the exact WAL snapshot",
   async () => {
     const fixture = await productFixture({ failPublishOnce: true });
@@ -371,6 +390,7 @@ type FixtureOptions = {
   missingUsage?: boolean;
   failSnapshotOnce?: boolean;
   failPublishOnce?: boolean;
+  historicalPartDefinitions?: boolean;
 };
 
 async function productFixture(options: FixtureOptions = {}) {
@@ -463,6 +483,10 @@ async function productFixture(options: FixtureOptions = {}) {
       },
     ];
   }
+  const historicalCapture = historicalPartDefinitionsArtifact(seed.id);
+  if (options.historicalPartDefinitions) {
+    r3Artifacts = [historicalCapture, ...r3Artifacts];
+  }
   const r3 = snapshot(
     3,
     options.droneArchitecture || options.missingArchitecture
@@ -488,6 +512,16 @@ async function productFixture(options: FixtureOptions = {}) {
             status: "verified" as const,
           }]
           : []),
+        ...(options.historicalPartDefinitions
+          ? [{
+            id: "consume-seed-by-historical-part-definitions",
+            artifactId: seed.id,
+            consumer: historicalCapture.producer,
+            observedFingerprint: seed.fingerprint,
+            verifiedAt: TIME,
+            status: "verified" as const,
+          }]
+          : []),
       ],
       provenance: [
         ...architectureLinks.provenance,
@@ -507,6 +541,25 @@ async function productFixture(options: FixtureOptions = {}) {
             },
             to: { kind: "artifact" as const, id: architecture.id },
             rationale: "The prior capture used the architecture artifact.",
+          }]
+          : []),
+        ...(options.historicalPartDefinitions
+          ? [{
+            id: "historical-part-definitions-derived-from-seed",
+            relation: "derived_from" as const,
+            from: { kind: "artifact" as const, id: historicalCapture.id },
+            to: { kind: "artifact" as const, id: seed.id },
+            rationale:
+              "An older PartDefinitions bundle consumed the seed, not this tip.",
+          }, {
+            id: "historical-part-definitions-uses-seed",
+            relation: "uses" as const,
+            from: {
+              kind: "consumption" as const,
+              id: "consume-seed-by-historical-part-definitions",
+            },
+            to: { kind: "artifact" as const, id: seed.id },
+            rationale: "The older capture used the seed artifact.",
           }]
           : []),
         ...(options.tip === "retired"
@@ -753,6 +806,80 @@ function alreadyCapturedArtifact(architectureId: string): ThreadArtifact {
     inputArtifactIds: [architectureId],
     freshness: fresh(),
   };
+}
+
+function historicalPartDefinitionsArtifact(seedId: string): ThreadArtifact {
+  return {
+    id: HISTORICAL_PART_DEFINITIONS_ID,
+    name: "PartDefinition product structure",
+    kind: "sysml-model",
+    version: "d".repeat(64),
+    fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+    uri: `casys://part-definitions-capture/sha256/${"d".repeat(64)}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "syson",
+      tool: "syson_element_children",
+      runId: "run:historical-part-definitions",
+    },
+    inputArtifactIds: [seedId],
+    freshness: fresh(),
+  };
+}
+
+async function assertCurrentPartDefinitionsEvidence(
+  fixture: Awaited<ReturnType<typeof productFixture>>,
+  completed: EngineeringProjectSnapshot,
+): Promise<void> {
+  const run = completed.agentRuns[0]!;
+  assertEquals(run.status, "completed");
+  const snapshot = await fixture.snapshots.get(run.resultSnapshot!.snapshotId);
+  assert(snapshot);
+  const durable = await fixture.publications.read(PROJECT_ID, RUN_ID);
+  assert(durable);
+  const digest = durable.fingerprint.digest;
+  const expectedId = `part-definitions-${digest}`;
+  assertEquals(run.evidenceRefs.length, 1);
+  const evidence = run.evidenceRefs[0]!;
+  assertEquals(evidence, {
+    snapshotId: snapshot.id,
+    snapshotRevision: snapshot.revision,
+    kind: "artifact",
+    id: expectedId,
+  });
+  assert(
+    snapshot.artifacts.some((item) => item.id === HISTORICAL_PART_DEFINITIONS_ID),
+    `expected historical distractor ${HISTORICAL_PART_DEFINITIONS_ID} to remain on the successor`,
+  );
+  assert(
+    evidence.id !== HISTORICAL_PART_DEFINITIONS_ID,
+    "current evidenceRef must not name a historical artifact",
+  );
+  const current = snapshot.artifacts.find((item) => item.id === expectedId);
+  assert(current);
+  assertEquals(
+    deterministicJson(current),
+    deterministicJson({
+      id: expectedId,
+      name: "PartDefinition product structure",
+      kind: "sysml-model",
+      version: digest,
+      fingerprint: durable.fingerprint,
+      uri: `casys://part-definitions-capture/sha256/${digest}`,
+      mediaType: "application/json",
+      producer: {
+        serverId: "syson",
+        tool: "syson_element_children",
+        runId: RUN_ID,
+      },
+      inputArtifactIds: [fixture.architecture.id],
+      freshness: {
+        status: "fresh",
+        changedAt: TIME,
+        invalidatedByChangeIds: [],
+      },
+    }),
+  );
 }
 
 function snapshot(
