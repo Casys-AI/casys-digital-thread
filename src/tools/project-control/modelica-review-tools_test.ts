@@ -4,6 +4,7 @@ import type { ProjectModelicaQualifiedKitRunReviewResult } from "../../applicati
 import type { ProjectAdmittedModelicaRunReviewResult } from "../../application/ports/in/modelica/admitted-run-review.ts";
 import type { ProjectThermalMethodSheetSealReviewResult } from "../../application/ports/in/modelica/thermal-method-sheet/project-thermal-method-sheet-seal-review.ts";
 import type { ProjectAdmittedModelicaEvaluationReviewResult } from "../../application/ports/in/modelica/evaluation/project-admitted-modelica-evaluation-review.ts";
+import type { ProjectAdmittedModelicaEvaluationCloseoutReviewResult } from "../../application/ports/in/modelica/evaluation/project-admitted-modelica-evaluation-closeout-review.ts";
 import { registerProjectModelicaReviewTools } from "./modelica-review-tools.ts";
 
 const ADMITTED_REVIEW_REQUEST = {
@@ -170,6 +171,75 @@ Deno.test(
       "unsupported field(s)",
     );
     assertEquals(calls, [{ projectId: "articulated-led-desk-lamp" }]);
+  },
+);
+
+Deno.test(
+  "admitted Modelica evaluation closeout review exposes only projectId and rejects values, units, source, provider, args and consequence",
+  async () => {
+    const absent = new CapturingApp();
+    registerProjectModelicaReviewTools(absent as unknown as McpApp, {});
+    assertEquals(
+      absent.hasTool("project_admitted_modelica_evaluation_closeout_review"),
+      false,
+    );
+
+    const app = new CapturingApp();
+    const calls: unknown[] = [];
+    const resultIdentity = Object.freeze({
+      status: "resolved",
+      selected: Object.freeze({ marker: "use-case-owned-closeout" }),
+    }) as unknown as ProjectAdmittedModelicaEvaluationCloseoutReviewResult;
+    registerProjectModelicaReviewTools(app as unknown as McpApp, {
+      admittedModelicaEvaluationCloseoutReview: {
+        execute(value) {
+          calls.push(value);
+          return Promise.resolve(resultIdentity);
+        },
+      },
+    });
+
+    const response = await app.handler(
+      "project_admitted_modelica_evaluation_closeout_review",
+    )({ projectId: "project.closeout-review" }) as Record<string, unknown>;
+    assert(response.structuredContent === resultIdentity);
+    assertEquals(calls, [{ projectId: "project.closeout-review" }]);
+    assertStringIncludes(response.content as string, "An L4 pass is never implicit L5");
+    assertStringIncludes(response.content as string, "no OMC");
+
+    const tool = app.tool("project_admitted_modelica_evaluation_closeout_review");
+    assertEquals(tool.annotations, {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+    const inputSchema = tool.inputSchema as Record<string, unknown>;
+    assertEquals(
+      Object.keys(inputSchema.properties as Record<string, unknown>).sort(),
+      ["projectId"],
+    );
+    assertEquals(inputSchema.required, ["projectId"]);
+    assertClosedObjectSchemas(inputSchema);
+
+    const handler = app.handler(
+      "project_admitted_modelica_evaluation_closeout_review",
+    );
+    await assertRejects(
+      () =>
+        handler({
+          projectId: "project.closeout-review",
+          value: 80,
+          unit: "K",
+          source: "caller.mo",
+          provider: "syson",
+          args: { solver: "dassl" },
+          consequence: "accept",
+        }) as Promise<unknown>,
+      TypeError,
+      "unsupported field(s)",
+    );
+    assertEquals(calls, [{ projectId: "project.closeout-review" }]);
   },
 );
 

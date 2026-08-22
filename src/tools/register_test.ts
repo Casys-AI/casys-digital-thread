@@ -537,6 +537,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_run_list",
     "console_server_detail",
     "console_snapshot",
+    "project_admitted_modelica_evaluation_closeout_review",
     "project_admitted_modelica_evaluation_review",
     "project_agent_run_cancel",
     "project_agent_run_execute",
@@ -602,6 +603,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_run_list",
       "console_server_detail",
       "console_snapshot",
+      "project_admitted_modelica_evaluation_closeout_review",
       "project_admitted_modelica_evaluation_review",
       "project_agent_run_cancel",
       "project_agent_run_execute",
@@ -856,6 +858,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
+          tool.name === "project_admitted_modelica_evaluation_closeout_review" ||
           tool.name === "project_admitted_modelica_evaluation_review",
       );
       assertEquals(
@@ -892,6 +895,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_cross_domain_impact_decision_review" ||
           tool.name === "project_cross_domain_impact_manifest_seal_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
+          tool.name === "project_admitted_modelica_evaluation_closeout_review" ||
           tool.name === "project_admitted_modelica_evaluation_review",
       );
     }

@@ -15,6 +15,9 @@ import type {
   ProjectAdmittedModelicaEvaluationReviewRequest,
   ProjectAdmittedModelicaEvaluationReviewUseCase,
 } from "../../application/ports/in/modelica/evaluation/project-admitted-modelica-evaluation-review.ts";
+import type {
+  ProjectAdmittedModelicaEvaluationCloseoutReviewUseCase,
+} from "../../application/ports/in/modelica/evaluation/project-admitted-modelica-evaluation-closeout-review.ts";
 import {
   FINGERPRINT_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
@@ -30,6 +33,9 @@ export interface ProjectModelicaReviewToolDependencies {
   thermalMethodSheetSealReview?: ProjectThermalMethodSheetSealReviewUseCase;
   /** Provider-free preparation of one admitted observation evaluation review. */
   admittedModelicaEvaluationReview?: ProjectAdmittedModelicaEvaluationReviewUseCase;
+  /** Provider-free preparation of one human L5 closeout review. */
+  admittedModelicaEvaluationCloseoutReview?:
+    ProjectAdmittedModelicaEvaluationCloseoutReviewUseCase;
 }
 
 /** Register the provider-free Modelica review surfaces. */
@@ -76,6 +82,26 @@ export function registerProjectModelicaReviewTools(
     });
   }
 
+  if (dependencies.admittedModelicaEvaluationCloseoutReview) {
+    const review = dependencies.admittedModelicaEvaluationCloseoutReview;
+    app.registerTool(
+      projectAdmittedModelicaEvaluationCloseoutReviewTool,
+      async (args) => {
+        const command = admittedModelicaEvaluationCloseoutReviewCommand(args);
+        const result = await review.execute(command);
+        const content = result.status === "resolved"
+          ? "Admitted Modelica evaluation closeout review was prepared from the unique current L4 document. Both accept and reject decisionParameters name the same exact project, subject, Thread basis, sheet and capture; they differ only in the declared human consequence. An L4 pass is never implicit L5. This provider-free read performed no OMC or SysON call and mutated no EngineeringProject or Thread state."
+          : result.status === "unavailable"
+          ? "Unavailable: the unique current L4 admitted Modelica evaluation cannot be reopened. No human closeout parameters were generated."
+          : "Unresolved: current L4 closeout evidence is ambiguous, noncanonical, or has divergent provenance. No human closeout parameters were generated.";
+        return {
+          content,
+          structuredContent: result as unknown as Record<string, unknown>,
+        };
+      },
+    );
+  }
+
   if (dependencies.thermalMethodSheetSealReview) {
     const review = dependencies.thermalMethodSheetSealReview;
     app.registerTool(projectThermalMethodSheetSealReviewTool, async (args) => {
@@ -108,6 +134,22 @@ const TECHNICAL_THREAD_BASIS_SCHEMA = {
   required: ["kind", "snapshotId", "revision", "subjectId"],
   additionalProperties: false,
 } as const;
+
+const projectAdmittedModelicaEvaluationCloseoutReviewTool: MCPTool = {
+  name: "project_admitted_modelica_evaluation_closeout_review",
+  description:
+    "Prepare the exact human-review identities and canonical MRTR parameters for one later decide.accept-admitted-modelica-evaluation@1 or decide.reject-admitted-modelica-evaluation@1 closeout. The caller names only projectId. The server reopens the unique current Thread tip and the unique fresh non-archived L4 document produced by verify.evaluate-admitted-modelica-observations@1. Both accept and reject parameters are always derived from those exact identities; L4 pass/fail/unresolved/error stay literal and never imply a closeout. This provider-free read performs no OMC or SysON call, mutates no EngineeringProject or Thread state, and grants no CAD, correction, rerun or provider action.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+    },
+    required: ["projectId"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
 
 const projectAdmittedModelicaEvaluationReviewTool: MCPTool = {
   name: "project_admitted_modelica_evaluation_review",
@@ -174,6 +216,20 @@ const projectModelicaQualifiedKitRunReviewTool: MCPTool = {
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: READ_ONLY_ANNOTATIONS,
 };
+
+function admittedModelicaEvaluationCloseoutReviewCommand(
+  value: Record<string, unknown>,
+): { readonly projectId: string } {
+  exactKeys(
+    value,
+    ["projectId"],
+    [],
+    "admittedModelicaEvaluationCloseoutReview",
+  );
+  return {
+    projectId: technicalId(value.projectId, "projectId"),
+  };
+}
 
 function admittedModelicaEvaluationReviewCommand(
   value: Record<string, unknown>,

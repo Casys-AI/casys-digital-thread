@@ -1,6 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
-import type { ThermalMethodSheetStore } from "../../../application/ports/out/modelica/thermal-method-sheet-store.ts";
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
@@ -10,10 +9,6 @@ import {
 import {
   encodeAdmittedObservationEvaluationCloseoutAdmission,
 } from "../../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
-import {
-  fingerprintModelicaThermalMethodSheet,
-  validateModelicaThermalMethodSheet,
-} from "../../../domain/modelica/thermal-method-sheet.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -25,22 +20,23 @@ import type {
   EngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
-import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
-import { validThermalMethodSheetPlaceholder } from "../../../testing/modelica-thermal-method-sheet-fixtures.ts";
 import {
-  canonicalAdmittedObservationEvaluationCaptureText,
-  validateAdmittedObservationEvaluationCapture,
-} from "./admitted-observation-evaluation-capture.ts";
+  CLOSEOUT_REVIEW_AT as AT,
+  CLOSEOUT_REVIEW_PROJECT_ID as PROJECT_ID,
+  CLOSEOUT_REVIEW_SUBJECT_ID as SUBJECT_ID,
+  createAdmittedModelicaCloseoutEvidenceFixture,
+} from "../../../testing/admitted-modelica-evaluation-closeout-fixture.ts";
+import {
+  admittedModelicaEvaluationCloseoutAdmission,
+  resolveAdmittedModelicaEvaluationCloseoutEvidence,
+} from "./admitted-observation-evaluation-closeout-evidence-resolver.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   DecideAdmittedModelicaEvaluationRunExecutor,
 } from "./decide-admitted-modelica-evaluation-run-executor.ts";
 
-const AT = "2026-08-21T12:00:00.000Z";
 const RETRY_AT = "2026-08-21T13:00:00.000Z";
-const PROJECT_ID = "articulated-led-desk-lamp";
-const SUBJECT_ID = "articulated-led-desk-lamp";
 const RUN_ID = "run.closeout-evaluation";
 const WORK_ID = "work.closeout-evaluation";
 const DECISION_ID = "decision.closeout-evaluation";
@@ -105,6 +101,31 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "admitted Modelica evaluation closeout recrosses the same shared L4 evidence as the review resolver",
+  async () => {
+    const fixture = await executeFixture({ consequence: "accept" });
+    const snapshot = await fixture.snapshots.getFresh(fixture.basis.snapshotId);
+    const resolved = await resolveAdmittedModelicaEvaluationCloseoutEvidence(
+      fixture.dependencies,
+      {
+        project: fixture.project,
+        basis: fixture.basis,
+        snapshot: snapshot!,
+      },
+    );
+    assertEquals(
+      fixture.project.decisions[0]!.proposal!.parameters,
+      encodeAdmittedObservationEvaluationCloseoutAdmission(
+        admittedModelicaEvaluationCloseoutAdmission(resolved, "accept"),
+      ),
+    );
+    const project = await fixture.executor.execute(HUMAN, fixture.command);
+    assertEquals(project.agentRuns[0]?.status, "completed");
+    assertEquals(fixture.evaluationCaptures.saves, 0);
+  },
+);
+
 Deno.test("admitted Modelica evaluation closeout refuses a non-human origin", async () => {
   const fixture = await executeFixture({ consequence: "accept" });
   await assertRejects(
@@ -126,7 +147,7 @@ Deno.test(
     await assertRejects(
       () => fixture.executor.execute(HUMAN, fixture.command),
       EngineeringProjectCommandError,
-      "stale",
+      "cannot be recrossed",
     );
     assertEquals(fixture.closeoutCaptures.saves, 0);
   },
@@ -357,187 +378,13 @@ async function executeFixture(options: {
   readonly runStatus?: "queued" | "running";
   readonly losePublishAck?: boolean;
 }) {
-  const sheet = validateModelicaThermalMethodSheet(
-    validThermalMethodSheetPlaceholder(),
-  );
-  const sheetFingerprint = await fingerprintModelicaThermalMethodSheet(sheet);
-  const l4Capture = validateAdmittedObservationEvaluationCapture({
-    schemaVersion: "modelica-admitted-observation-evaluation-capture/1.0",
-    kind: "modelica-admitted-observation-evaluation",
-    operation: {
-      id: "verify.evaluate-admitted-modelica-observations",
-      version: "1",
-    },
-    request: {
-      name: "syson_constraint_evaluate",
-      arguments: { constraints: [], values: {} },
-    },
-    response: { structuredContent: { results: [] } },
-    unresolved: [{
-      requirementElementId: "placeholder-requirement",
-      reason: "unit-identity-mismatch",
-    }],
+  const evidence = await createAdmittedModelicaCloseoutEvidenceFixture({
+    projectId: PROJECT_ID,
+    subjectId: SUBJECT_ID,
+    includeL4Artifact: options.includeL4Artifact,
+    l4Body: options.l4Body,
   });
-  const l4Fingerprint = await sha256Fingerprint(l4Capture);
-  const l4Id = `modelica-admitted-observation-evaluation-${l4Fingerprint.digest}`;
-  const l4Text = options.l4Body === undefined
-    ? canonicalAdmittedObservationEvaluationCaptureText(l4Capture)
-    : deterministicJson(options.l4Body);
-  const storedFingerprint = options.l4Body === undefined
-    ? l4Fingerprint
-    : await sha256Fingerprint(options.l4Body);
-  const captureId = options.l4Body === undefined
-    ? l4Id
-    : `modelica-admitted-observation-evaluation-${storedFingerprint.digest}`;
-  const includeL4Artifact = options.includeL4Artifact !== false;
-  const artifacts: Array<ThreadSnapshot["artifacts"][number]> = [{
-    id: "artifact.brief",
-    name: "Brief",
-    kind: "document",
-    version: "1",
-    fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-    producer: {
-      serverId: "digital-thread",
-      tool: "baseline.from-approved-brief@1",
-      runId: "run.brief",
-    },
-    inputArtifactIds: [],
-    freshness: fresh(AT),
-  }];
-  const provenance: Array<ThreadSnapshot["provenance"][number]> = [{
-    id: "provenance.change.brief",
-    relation: "changes",
-    from: { kind: "change", id: "change.brief" },
-    to: { kind: "artifact", id: "artifact.brief" },
-    rationale: "The applied change introduced the brief document.",
-  }, {
-    id: "trace-requirement-to-brief",
-    relation: "traces_to",
-    from: { kind: "requirement", id: "placeholder-requirement" },
-    to: { kind: "artifact", id: "artifact.brief" },
-    rationale: "The placeholder requirement constrains the brief artifact.",
-  }];
-  const evaluations: Array<ThreadSnapshot["evaluations"][number]> = [];
-  if (includeL4Artifact) {
-    artifacts.push({
-      id: captureId,
-      name: "Admitted Modelica observation evaluation",
-      kind: "document",
-      version: storedFingerprint.digest,
-      fingerprint: storedFingerprint,
-      uri:
-        `casys://modelica-admitted-observation-evaluation-capture/sha256/${storedFingerprint.digest}`,
-      mediaType: "application/json",
-      producer: {
-        serverId: "digital-thread",
-        tool: "verify.evaluate-admitted-modelica-observations@1",
-        runId: "run.evaluate-observations",
-      },
-      inputArtifactIds: [],
-      freshness: fresh(AT),
-    });
-    evaluations.push({
-      id: "placeholder-requirement-evaluation",
-      name: "placeholder evaluation",
-      requirementId: "placeholder-requirement",
-      observationIds: [],
-      status: "unresolved",
-      evaluatedAt: AT,
-      evaluator: {
-        serverId: "syson",
-        tool: "syson_constraint_evaluate",
-        runId: "run.evaluate-observations",
-      },
-      evidenceArtifactIds: [captureId],
-      message:
-        "Identity unit policy left this observation unresolved. It is not a fail.",
-      freshness: fresh(AT),
-    });
-    provenance.push({
-      id: "change-l4-evaluation",
-      relation: "changes",
-      from: { kind: "change", id: "change.l4" },
-      to: { kind: "artifact", id: captureId },
-      rationale: "The L4 evaluation capture was published.",
-    }, {
-      id: "evaluates-placeholder",
-      relation: "evaluates",
-      from: { kind: "evaluation", id: "placeholder-requirement-evaluation" },
-      to: { kind: "requirement", id: "placeholder-requirement" },
-      rationale:
-        "The admitted observation evaluation evaluates the named Thread requirement.",
-    }, {
-      id: "evidences-placeholder",
-      relation: "evidences",
-      from: { kind: "evaluation", id: "placeholder-requirement-evaluation" },
-      to: { kind: "artifact", id: captureId },
-      rationale: "The evaluation is evidenced by the reread SysON capture.",
-    });
-  }
-  const basisSnapshot = validateThreadSnapshot({
-    schemaVersion: "1.0",
-    id: "placeholder-thread-snapshot",
-    revision: 1,
-    generatedAt: AT,
-    subject: {
-      id: SUBJECT_ID,
-      name: "Closeout fixture",
-      kind: "system",
-      version: "r1",
-      modelArtifactId: "artifact.brief",
-    },
-    freshness: fresh(AT),
-    changeSet: {
-      id: "change-set.brief",
-      name: "Brief",
-      status: "applied",
-      createdAt: AT,
-      appliedAt: AT,
-      changes: [
-        {
-          id: "change.brief",
-          kind: "created",
-          target: { kind: "artifact", id: "artifact.brief" },
-          summary: "Recorded the documentary brief.",
-          afterFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-        },
-        ...(includeL4Artifact
-          ? [{
-            id: "change.l4",
-            kind: "created" as const,
-            target: { kind: "artifact" as const, id: captureId },
-            summary: "Published the L4 evaluation capture.",
-            afterFingerprint: storedFingerprint,
-          }]
-          : []),
-      ],
-    },
-    artifacts,
-    consumptions: [],
-    observations: [],
-    requirements: [{
-      id: "placeholder-requirement",
-      name: "placeholder",
-      statement: "Placeholder requirement. Not a thermal verdict.",
-      version: "1",
-      criterion: {
-        metric: "placeholder-output",
-        operator: "<=",
-        limit: { value: 1, unit: "unit-pending-source" },
-      },
-      trace: {
-        sourceArtifactId: "artifact.brief",
-        elementId: "placeholder-requirement",
-        targetArtifactIds: ["artifact.brief"],
-      },
-      freshness: fresh(AT),
-    }],
-    evaluations,
-    violations: [],
-    provenance,
-    proposedActions: [],
-  });
-  const basisFingerprint = await sha256Fingerprint(basisSnapshot);
+  const basisSnapshot = evidence.snapshot;
   const operation = options.consequence === "accept"
     ? {
       ...DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -553,22 +400,39 @@ async function executeFixture(options: {
         source: { kind: "approved-brief" as const },
       }],
     };
-  const admission = encodeAdmittedObservationEvaluationCloseoutAdmission({
-    schemaVersion: "modelica-admitted-observation-evaluation-closeout/1.0",
-    consequence: options.consequence,
-    projectId: PROJECT_ID,
-    subjectId: SUBJECT_ID,
-    basis: {
-      snapshotId: basisSnapshot.id,
-      revision: basisSnapshot.revision,
-      fingerprint: basisFingerprint,
-    },
-    sheet: { id: sheet.id, fingerprint: sheetFingerprint },
-    capture: {
-      id: captureId,
-      fingerprint: storedFingerprint,
-    },
-  });
+  let admission;
+  try {
+    const resolved = await resolveAdmittedModelicaEvaluationCloseoutEvidence(
+      evidence.dependencies,
+      {
+        project: evidence.project,
+        basis: evidence.basis,
+        snapshot: basisSnapshot,
+      },
+    );
+    admission = encodeAdmittedObservationEvaluationCloseoutAdmission(
+      admittedModelicaEvaluationCloseoutAdmission(resolved, options.consequence),
+    );
+  } catch {
+    const basisFingerprint = await sha256Fingerprint(basisSnapshot);
+    admission = encodeAdmittedObservationEvaluationCloseoutAdmission({
+      schemaVersion: "modelica-admitted-observation-evaluation-closeout/1.0",
+      consequence: options.consequence,
+      projectId: PROJECT_ID,
+      subjectId: SUBJECT_ID,
+      basis: {
+        snapshotId: basisSnapshot.id,
+        revision: basisSnapshot.revision,
+        fingerprint: basisFingerprint,
+      },
+      sheet: { id: evidence.sheet.id, fingerprint: evidence.sheetFingerprint },
+      capture: {
+        id:
+          `modelica-admitted-observation-evaluation-${evidence.l4Fingerprint.digest}`,
+        fingerprint: evidence.l4Fingerprint,
+      },
+    });
+  }
   const reviewBasis = {
     snapshotId: basisSnapshot.id,
     revision: basisSnapshot.revision,
@@ -588,26 +452,22 @@ async function executeFixture(options: {
     approvedDecisions: [{ id: DECISION_ID, inputFingerprint: decisionFingerprint }],
   });
   const project = {
-    schemaVersion: "3.0",
-    id: `${PROJECT_ID}:r1`,
-    revision: 1,
-    generatedAt: AT,
-    project: {
-      id: PROJECT_ID,
-      name: "Lamp",
-      subjectId: SUBJECT_ID,
-      objective: { title: "Closeout", statement: summary },
-    },
-    threadSnapshots: [reviewBasis],
-    phases: [{
-      id: "phase.review",
-      name: "Review",
-      order: 1,
-      description: "Human L5 closeout.",
-      workItemIds: [WORK_ID],
-      requiredDecisionIds: [DECISION_ID],
-      evidenceRefs: [],
-    }],
+    ...evidence.project,
+    phases: [
+      {
+        id: "phase.review",
+        name: "Review",
+        order: 1,
+        description: "Human L5 closeout.",
+        workItemIds: [WORK_ID],
+        requiredDecisionIds: [DECISION_ID],
+        evidenceRefs: [],
+      },
+      ...evidence.project.phases.map((phase) => ({
+        ...phase,
+        order: phase.order + 1,
+      })),
+    ],
     workItems: [{
       id: WORK_ID,
       phaseId: "phase.review",
@@ -621,7 +481,7 @@ async function executeFixture(options: {
       evidenceRefs: [],
       decisionIds: [DECISION_ID],
       blockerIds: [],
-    }],
+    }, ...evidence.project.workItems],
     agentRuns: [{
       id: RUN_ID,
       workItemId: WORK_ID,
@@ -631,7 +491,7 @@ async function executeFixture(options: {
       basis: runBasis,
       inputFingerprint: runFingerprint,
       evidenceRefs: [],
-    }],
+    }, ...evidence.project.agentRuns],
     decisions: [{
       id: DECISION_ID,
       phaseId: "phase.review",
@@ -650,6 +510,7 @@ async function executeFixture(options: {
         proposedBy: { id: AGENT.actorId, origin: "agent" },
       },
     }],
+    commandReceipts: [],
     approvals: [{
       id: APPROVAL_ID,
       decisionId: DECISION_ID,
@@ -663,14 +524,12 @@ async function executeFixture(options: {
       inputFingerprint: decisionFingerprint,
       inputEvidenceRefs: [],
     }],
-    blockers: [],
-    commandReceipts: [],
   } as unknown as MutableProject;
-  const snapshots = new ExecuteMemorySnapshots(basisSnapshot);
-  const evaluationCaptures = new CountingCaptures();
-  evaluationCaptures.seed(storedFingerprint, l4Text);
+  const snapshots = new ExecuteMemorySnapshots(
+    basisSnapshot,
+    evidence.previousSnapshot,
+  );
   const closeoutCaptures = new CountingCaptures();
-  const sheets = new MemorySheetStore(sheet, sheetFingerprint);
   const commands = new ExecuteCommands(project, {
     losePublishAck: options.losePublishAck === true,
   });
@@ -678,12 +537,14 @@ async function executeFixture(options: {
     await commands.claimRun(HUMAN, {
       commandId: `${COMMAND_ID}:${operation.id}:claim`,
       projectId: PROJECT_ID,
-      expectedRevision: 1,
+      expectedRevision: project.revision,
       issuedAt: AT,
       runId: RUN_ID,
       summary: CLAIM_SUMMARY,
     });
   }
+  evidence.evaluationCaptures.reads = 0;
+  evidence.sheetCaptures.saves = 0;
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project),
     getRevision: (_projectId, revision) =>
@@ -696,22 +557,25 @@ async function executeFixture(options: {
       projects,
       commands,
       snapshots,
-      sheets,
-      evaluationCaptures,
+      sheets: evidence.sheets,
+      evaluationCaptures: evidence.evaluationCaptures,
+      sheetCaptures: evidence.sheetCaptures,
       closeoutCaptures,
       lease: { withLease: (_projectId, _scope, operationFn) => operationFn() },
     }),
     command: {
       commandId: COMMAND_ID,
       projectId: PROJECT_ID,
-      expectedRevision: 1,
+      expectedRevision: project.revision,
       issuedAt: AT,
       runId: RUN_ID,
     },
     project,
     snapshots,
-    evaluationCaptures,
+    evaluationCaptures: evidence.evaluationCaptures,
     closeoutCaptures,
+    dependencies: evidence.dependencies,
+    basis: evidence.basis,
   };
 }
 
@@ -731,8 +595,9 @@ type MutableProject = EngineeringProjectSnapshot & {
 class ExecuteMemorySnapshots {
   readonly #items = new Map<string, ThreadSnapshot>();
   saveCalls = 0;
-  constructor(basis: ThreadSnapshot) {
+  constructor(basis: ThreadSnapshot, previous?: ThreadSnapshot) {
     this.#items.set(basis.id, structuredClone(basis));
+    if (previous) this.#items.set(previous.id, structuredClone(previous));
   }
   get(id: string): Promise<ThreadSnapshot | undefined> {
     const value = this.#items.get(id);
@@ -778,22 +643,6 @@ class CountingCaptures {
   read(fingerprint: ContentFingerprint) {
     this.reads += 1;
     return Promise.resolve(this.#items.get(fingerprint.digest));
-  }
-}
-
-class MemorySheetStore implements ThermalMethodSheetStore {
-  constructor(
-    readonly sheet: ReturnType<typeof validateModelicaThermalMethodSheet>,
-    readonly fingerprint: ContentFingerprint,
-  ) {}
-  save() {
-    return Promise.reject(new Error("unused"));
-  }
-  read(fingerprint: ContentFingerprint) {
-    if (fingerprint.digest !== this.fingerprint.digest) {
-      return Promise.resolve(undefined);
-    }
-    return Promise.resolve(this.sheet);
   }
 }
 
@@ -965,10 +814,6 @@ type MutableWork = {
   -readonly [Key in keyof EngineeringProjectSnapshot["workItems"][number]]:
     EngineeringProjectSnapshot["workItems"][number][Key];
 };
-
-function fresh(at: string) {
-  return { status: "fresh" as const, changedAt: at, invalidatedByChangeIds: [] };
-}
 
 function retryCommand(expectedRevision: number) {
   return {

@@ -94,6 +94,54 @@ const ORACLE_STATUS_VALUES = new Set<string>([
 ]);
 
 /**
+ * Parse only the identity/status rows of a `syson_constraint_evaluate`
+ * structuredContent. Numeric fields may be present and are ignored here.
+ * L5 closeout recrosses them separately through `parseOracleOutcome`.
+ *
+ * Fail-closed on a missing results array, a non-object row, a missing or
+ * duplicate constraintId, or a status outside pass|fail|error|unresolved.
+ */
+export function parseOracleStatusIdentities(
+  content: Readonly<Record<string, unknown>>,
+): ReadonlyMap<string, RequirementEvaluationStatus> {
+  if (!Array.isArray(content.results)) {
+    throw new Error(
+      "syson_constraint_evaluate: structuredContent.results must be an array.",
+    );
+  }
+  const map = new Map<string, RequirementEvaluationStatus>();
+  for (let i = 0; i < content.results.length; i++) {
+    const row = content.results[i];
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      throw new Error(`syson_constraint_evaluate: results[${i}] must be an object.`);
+    }
+    const item = row as Record<string, unknown>;
+    const constraintId = item.constraintId;
+    if (
+      typeof constraintId !== "string" || constraintId.trim() !== constraintId ||
+      constraintId.length === 0
+    ) {
+      throw new Error(
+        `syson_constraint_evaluate: results[${i}].constraintId is unknown or missing.`,
+      );
+    }
+    if (map.has(constraintId)) {
+      throw new Error(
+        `syson_constraint_evaluate: duplicate constraintId "${constraintId}" in results.`,
+      );
+    }
+    const rawStatus = item.status;
+    if (typeof rawStatus !== "string" || !ORACLE_STATUS_VALUES.has(rawStatus)) {
+      throw new Error(
+        `syson_constraint_evaluate: results[${i}].status must be pass|fail|error|unresolved.`,
+      );
+    }
+    map.set(constraintId, rawStatus as RequirementEvaluationStatus);
+  }
+  return map;
+}
+
+/**
  * Parse and validate the structuredContent returned by
  * syson_constraint_evaluate.
  *

@@ -78,6 +78,46 @@ not the caller, supplies the scenario. The published branch remains `documentary
 contains no requirement evaluation, violation or verdict. Replay must reopen durable
 evidence without dispatching OMC again.
 
+## 5. L4 observation evaluation (generic capability)
+
+This section is generic capability and runbook only. It is not evidence for the desk
+lamp. It still requires a human G4 method sheet and a real admitted `.mo` plus its
+published observations.
+
+Call `project_admitted_modelica_evaluation_review` with `projectId` only. Do not pass
+values, units, output names, feature, limit, provider, SysON tool or args. The server
+reopens the unique current Thread tip, the unique sealed thermal method sheet, and the
+unique admitted Modelica evidence.
+
+Obtain a new human MRTR, queue, then execute
+`verify.evaluate-admitted-modelica-observations@1`. SysON remains the comparator. A
+unit-identity mismatch stays `unresolved`. Published statuses stay literal
+`pass`, `fail`, `unresolved` or `error`. An L4 `pass` is not a product verdict.
+
+## 6. L5 human closeout (generic capability)
+
+This section is generic capability and runbook only. It is not evidence for the desk
+lamp. It still requires human G4 and a real `.mo` / L4 capture.
+
+Call `project_admitted_modelica_evaluation_closeout_review` with `projectId` only. Do
+not pass a snapshot, sheet, capture, status, value, unit, Modelica text, provider,
+tool, args, SysON envelope, consequence or approval. The server selects the unique
+current Thread tip with `selectCurrentThreadTip` and the unique fresh, non-archived L4
+document produced by `verify.evaluate-admitted-modelica-observations@1` on that exact
+tip. Zero, multiple, stale, archived, foreign, malformed or inexact captures fail
+closed as `unavailable` or `unresolved`.
+
+The review returns a bounded read of the exact L4 identities and statuses plus **both**
+accept and reject `decisionParameters`. They bind the same project, subject, basis,
+sheet and capture and differ only in consequence. L4 `pass`/`fail`/`unresolved`/`error`
+are preserved literally. The human decides on the exact L4 and its scope; L4 pass is
+never implicit L5. There is no mechanical all-pass acceptance rule.
+
+Obtain human G4 MRTR, queue, then execute exactly one of
+`decide.accept-admitted-modelica-evaluation@1` or
+`decide.reject-admitted-modelica-evaluation@1`. The executor recrosses the same shared
+L4 evidence at execution time. Neither operation calls OMC or SysON.
+
 ## Refusals
 
 | Unharnessed move                         | Harness                                                               |
@@ -91,3 +131,5 @@ evidence without dispatching OMC again.
 | Two fresh admissions on the current tip  | Ambiguous; server refuses to choose                                    |
 | Caller solver, scenario or image         | Sealed source plus server-owned OMC/DASSL worker and digest             |
 | Modelica success used as the FEA verdict | Documentary observations and static FEA evaluations stay distinct       |
+| L4 `pass` treated as L5                  | Human closeout of the exact L4; review always offers accept and reject  |
+| Caller consequence, capture or sheet     | Closeout review accepts `projectId` only; server recrosses the unique L4 |

@@ -45,6 +45,8 @@ Domain contracts: [language](../domains/modelica/language.md) and
 | Port 3016 `mcp-modelica` sidecar / `ModelicaRunObserver` | Retired fleet/Compose observed-run surface. Not required. | Local admitted/kit microVM Modelica |
 | `simulate.run-qualified-modelica-kit@1` | Separate code-owned LinearThermalRamp qualified-kit V1 smoke in the local microVM | Admitted `.mo` execution or recorded `@2`                                  |
 | `simulate.run-admitted-modelica@1`      | Reopen `compile.seal-admission@1` Modelica bytes and run them in isolation     | The pinned kit, `@2`, or caller `modelicaText`                                |
+| `project_admitted_modelica_evaluation_review` | Provider-free L4 MRTR prep from unique sheet + admitted evidence | L5 closeout, an L4 verdict, or OMC/SysON |
+| `project_admitted_modelica_evaluation_closeout_review` | Provider-free L5 accept/reject of the unique current L4 | L4 evaluation, implicit L5 from an L4 `pass`, or a provider grant |
 
 Product Modelica: capture (`modelica-closed-subset-v2`) → compilation preview →
 `compile.seal-admission@1` → `project_admitted_modelica_run_review` →

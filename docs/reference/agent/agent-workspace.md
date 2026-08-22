@@ -255,6 +255,8 @@ seal / run tools stay.
 | `project_evaluation_closeout_review`         | None               | `projectId` only. Server reopens one current static FEA `@3` branch and derives closed human L5 accept/reject parameters; no solver/SysON/CAD/correction grant |
 | `project_modelica_qualified_kit_run_review`  | None               | Parameters for the one local Modelica kit                                                                                        |
 | `project_admitted_modelica_run_review`       | None               | `projectId` only. Server selects current tip + unique fresh sealed Modelica admission. No `modelicaText`                         |
+| `project_admitted_modelica_evaluation_review` | None              | `projectId` only. Unique current tip + unique sealed thermal method sheet + unique admitted evidence for L4. No L4 verdict      |
+| `project_admitted_modelica_evaluation_closeout_review` | None       | `projectId` only. Unique current L4 from `verify.evaluate-admitted-modelica-observations@1`. Both accept and reject; L4 pass is never implicit L5. No OMC/SysON/CAD/correction/rerun grant |
 | `project_geometry_preview`                   | None               | Not registered. Not a product entry                                                                                              |
 
 `project_technical_compilation_preview` takes `projectId` and `result.reference` only.

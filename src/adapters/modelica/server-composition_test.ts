@@ -145,6 +145,10 @@ Deno.test("Modelica kit and admitted stay distinct; L4 evaluation requires SysON
       withoutSyson.verifyEvaluateAdmittedModelicaObservations,
       undefined,
     );
+    assertEquals(
+      withoutSyson.admittedModelicaEvaluationCloseoutReview !== undefined,
+      true,
+    );
     assertEquals(withoutSyson.simulateRunQualifiedModelicaKit, undefined);
     assertEquals(withoutSyson.simulateRunAdmittedModelica, undefined);
     const withSyson = createModelicaProject({

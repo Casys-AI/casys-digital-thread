@@ -1,9 +1,9 @@
 /**
  * Human-only executor for L5 closeout of one L4 admitted Modelica evaluation.
  *
- * It reopens the exact L4 capture and thermal method sheet, recrosses the
- * signed Thread basis, and writes a documentary closeout. It never calls
- * SysON or OMC. An L4 `pass` is never implicit L5.
+ * It recrosses the same shared L4 evidence resolver as the closeout review,
+ * then writes a documentary closeout. It never calls SysON or OMC. An L4
+ * `pass` is never implicit L5. The review result is not authority.
  *
  * Authority follows the hardened L4 / FEA pattern: exact Thread basis
  * including revision and subject, one human approval bound by evidence and
@@ -16,8 +16,6 @@
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
-import type { AdmittedObservationEvaluationCaptureStore } from "../../../application/ports/out/modelica/evaluation/admitted-observation-evaluation-capture-store.ts";
-import type { ThermalMethodSheetStore } from "../../../application/ports/out/modelica/thermal-method-sheet-store.ts";
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
@@ -31,7 +29,12 @@ import {
   DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   parseAdmittedObservationEvaluationCloseoutParameters,
 } from "../../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
-import { fingerprintModelicaThermalMethodSheet } from "../../../domain/modelica/thermal-method-sheet.ts";
+import {
+  type AdmittedModelicaEvaluationCloseoutEvidenceResolverDependencies,
+  admittedModelicaEvaluationCloseoutAdmission,
+  AdmittedModelicaEvaluationCloseoutResolutionError,
+  resolveAdmittedModelicaEvaluationCloseoutEvidence,
+} from "./admitted-observation-evaluation-closeout-evidence-resolver.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -69,10 +72,7 @@ import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
-import {
-  ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX,
-  validateAdmittedObservationEvaluationCapture,
-} from "./admitted-observation-evaluation-capture.ts";
+import { ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX } from "./admitted-observation-evaluation-capture.ts";
 import {
   ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX,
   ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_LIMITS,
@@ -106,15 +106,14 @@ export interface DecideAdmittedModelicaEvaluationRunExecutorCommand {
   readonly runId: string;
 }
 
-export interface DecideAdmittedModelicaEvaluationRunExecutorDependencies {
+export interface DecideAdmittedModelicaEvaluationRunExecutorDependencies
+  extends AdmittedModelicaEvaluationCloseoutEvidenceResolverDependencies {
   readonly projects: EngineeringProjectRevisionStore;
   readonly commands: Pick<
     EngineeringProjectCommandService,
     "claimRun" | "publishRun" | "completeRun" | "failRun"
   >;
   readonly snapshots: CloseoutThreadSnapshotStore;
-  readonly sheets: ThermalMethodSheetStore;
-  readonly evaluationCaptures: AdmittedObservationEvaluationCaptureStore;
   readonly closeoutCaptures: AdmittedObservationEvaluationCloseoutCaptureStore;
   readonly lease: EngineeringProjectRunLease;
 }
@@ -173,11 +172,11 @@ export class DecideAdmittedModelicaEvaluationRunExecutor {
       );
       await recrossAdmission(
         command,
+        project,
         admission,
         basis,
         basisSnapshot,
-        this.dependencies.sheets,
-        this.dependencies.evaluationCaptures,
+        this.dependencies,
       );
 
       const firstClaim = run.status === "queued";
@@ -232,11 +231,11 @@ export class DecideAdmittedModelicaEvaluationRunExecutor {
       );
       await recrossAdmission(
         command,
+        project,
         currentAdmission,
         currentBasis,
         currentBasisSnapshot,
-        this.dependencies.sheets,
-        this.dependencies.evaluationCaptures,
+        this.dependencies,
       );
       if (run.status === "publishing") {
         return await this.#resumePublishing(
@@ -640,11 +639,11 @@ export class DecideAdmittedModelicaEvaluationRunExecutor {
 
 async function recrossAdmission(
   command: DecideAdmittedModelicaEvaluationRunExecutorCommand,
+  project: EngineeringProjectSnapshot,
   admission: AdmittedObservationEvaluationCloseoutAdmission,
   basis: ReturnType<typeof requireBasis>,
   basisSnapshot: ThreadSnapshot,
-  sheets: ThermalMethodSheetStore,
-  evaluationCaptures: AdmittedObservationEvaluationCaptureStore,
+  dependencies: AdmittedModelicaEvaluationCloseoutEvidenceResolverDependencies,
 ): Promise<void> {
   if (admission.projectId !== command.projectId) {
     throw invalidTransition(
@@ -660,60 +659,29 @@ async function recrossAdmission(
       "The closeout Thread basis does not match the signed admission.",
     );
   }
-  const basisFingerprint = await sha256Fingerprint(basisSnapshot);
-  if (!fingerprintsEqual(basisFingerprint, admission.basis.fingerprint)) {
-    throw invalidTransition(
-      "The closeout Thread basis is stale relative to the signed admission.",
-    );
-  }
-  const sheet = await sheets.read(admission.sheet.fingerprint);
-  if (!sheet) {
-    throw invalidTransition("The exact thermal method sheet is unavailable.");
-  }
-  const sheetFingerprint = await fingerprintModelicaThermalMethodSheet(sheet);
-  if (
-    sheet.id !== admission.sheet.id ||
-    !fingerprintsEqual(sheetFingerprint, admission.sheet.fingerprint)
-  ) {
-    throw invalidTransition(
-      "The reopened thermal method sheet does not match the signed admission.",
-    );
-  }
-  const stored = await evaluationCaptures.read(admission.capture.fingerprint);
-  if (stored === undefined) {
-    throw invalidTransition(
-      "The exact L4 admitted observation evaluation capture is unavailable.",
-    );
-  }
-  let l4Capture;
   try {
-    l4Capture = validateAdmittedObservationEvaluationCapture(JSON.parse(stored));
-  } catch {
-    throw invalidTransition(
-      "The named capture is not an L4 admitted observation evaluation capture.",
+    const resolved = await resolveAdmittedModelicaEvaluationCloseoutEvidence(
+      dependencies,
+      { project, basis, snapshot: basisSnapshot },
     );
-  }
-  const l4Fingerprint = await sha256Fingerprint(l4Capture);
-  if (!fingerprintsEqual(l4Fingerprint, admission.capture.fingerprint)) {
-    throw invalidTransition(
-      "The reopened L4 evaluation capture fingerprint does not match the signed admission.",
+    const expected = admittedModelicaEvaluationCloseoutAdmission(
+      resolved,
+      admission.consequence,
     );
-  }
-  const artifact = basisSnapshot.artifacts.find((item) =>
-    item.id === admission.capture.id
-  );
-  if (!artifact) {
+    if (deterministicJson(expected) !== deterministicJson(admission)) {
+      throw invalidTransition(
+        "The signed admitted Modelica evaluation closeout no longer matches the exact L4 capture, sheet, and Thread basis.",
+      );
+    }
+  } catch (error) {
+    if (error instanceof EngineeringProjectCommandError) throw error;
+    if (error instanceof AdmittedModelicaEvaluationCloseoutResolutionError) {
+      throw invalidTransition(
+        `The signed admitted Modelica evaluation closeout cannot be recrossed: ${error.message}`,
+      );
+    }
     throw invalidTransition(
-      "The named L4 evaluation capture is stale: it is absent from the exact Thread basis.",
-    );
-  }
-  if (
-    !fingerprintsEqual(artifact.fingerprint, admission.capture.fingerprint) ||
-    artifact.producer.tool !==
-      "verify.evaluate-admitted-modelica-observations@1"
-  ) {
-    throw invalidTransition(
-      "The named Thread artifact is not the exact L4 admitted observation evaluation.",
+      error instanceof Error ? error.message : String(error),
     );
   }
 }

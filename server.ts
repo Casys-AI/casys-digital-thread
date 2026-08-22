@@ -1032,6 +1032,8 @@ async function createProjectControl(
       admittedModelicaRunReview: modelicaProject.admittedModelicaRunReview,
       admittedModelicaEvaluationReview:
         modelicaProject.admittedModelicaEvaluationReview,
+      admittedModelicaEvaluationCloseoutReview:
+        modelicaProject.admittedModelicaEvaluationCloseoutReview,
       thermalMethodSheetSealReview: modelicaProject.thermalMethodSheetSealReview,
       crossDomainImpactManifestSealReview:
         impactProject.crossDomainImpactManifestSealReview,

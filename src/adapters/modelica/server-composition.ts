@@ -11,6 +11,7 @@ import type { EngineeringProjectCommandService } from "../../application/use-cas
 import { PrepareProjectAdmittedModelicaRunReview } from "../../application/use-cases/modelica/admitted/prepare-run-review.ts";
 import { ResolveProjectAdmittedModelicaRunReview } from "../../application/use-cases/modelica/admitted/resolve-run-review.ts";
 import { PrepareProjectAdmittedModelicaEvaluationReview } from "../../application/use-cases/modelica/evaluation/prepare-project-admitted-modelica-evaluation-review.ts";
+import { PrepareProjectAdmittedModelicaEvaluationCloseoutReview } from "./evaluation/prepare-project-admitted-modelica-evaluation-closeout-review.ts";
 import { PrepareProjectModelicaQualifiedKitRunReview } from "../../application/use-cases/modelica/qualified-kit/prepare-run-review.ts";
 import { ExecuteIsolatedModelicaRun } from "../../application/use-cases/modelica/qualified-kit/execute-isolated-run.ts";
 import { PrepareProjectThermalMethodSheetSealReview } from "../../application/use-cases/modelica/thermal-method-sheet/prepare-project-thermal-method-sheet-seal-review.ts";
@@ -151,6 +152,8 @@ export interface ModelicaProject {
     VerifySealModelicaThermalMethodSheetRunExecutor;
   readonly admittedModelicaEvaluationReview:
     PrepareProjectAdmittedModelicaEvaluationReview;
+  readonly admittedModelicaEvaluationCloseoutReview:
+    PrepareProjectAdmittedModelicaEvaluationCloseoutReview;
   readonly verifyEvaluateAdmittedModelicaObservations:
     | VerifyEvaluateAdmittedModelicaObservationsRunExecutor
     | undefined;
@@ -319,6 +322,14 @@ export function createModelicaProject(
       methodSheets: options.thermal.thermalMethodSheetCompilationJoin,
       evidence: admittedObservationEvidence,
     });
+  const admittedModelicaEvaluationCloseoutReview =
+    new PrepareProjectAdmittedModelicaEvaluationCloseoutReview({
+      projects: options.projects,
+      snapshots: options.snapshots,
+      sheets: options.thermal.thermalMethodSheets,
+      evaluationCaptures: admittedObservationEvaluationCaptures,
+      sheetCaptures: options.thermal.thermalMethodSheetSeals,
+    });
   const verifyEvaluateAdmittedModelicaObservations = options.sysonMcpUrl
     ? new VerifyEvaluateAdmittedModelicaObservationsRunExecutor({
       projects: options.projects,
@@ -345,6 +356,7 @@ export function createModelicaProject(
       snapshots: options.snapshots,
       sheets: options.thermal.thermalMethodSheets,
       evaluationCaptures: admittedObservationEvaluationCaptures,
+      sheetCaptures: options.thermal.thermalMethodSheetSeals,
       closeoutCaptures: new FileCaptureStore({
         ...ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
         directory:
@@ -430,6 +442,7 @@ export function createModelicaProject(
     thermalMethodSheetSealReview,
     verifySealModelicaThermalMethodSheet,
     admittedModelicaEvaluationReview,
+    admittedModelicaEvaluationCloseoutReview,
     verifyEvaluateAdmittedModelicaObservations,
     decideAdmittedModelicaEvaluation,
     modelicaQualifiedKitRunReview,
