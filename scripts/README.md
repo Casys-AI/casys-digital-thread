@@ -50,6 +50,8 @@ exercise that complete local microVM path end to end.
 | `probes/capture-syson-model-inventory.ts`   | `thread:capture-syson-inventory` | write |
 | `probes/mcp-call.ts`                        | `mcp:call`                       | write |
 | `probes/probe-constraint-solver.ts`         | `probe:constraint-solver`        | read  |
+| `probes/probe-spice-contract.ts`            | `probe:spice-contract`           | read  |
+| `probes/probe-architecture-attribute-value.ts` | `probe:architecture-attribute-value` | write |
 | `probes/probe-archive-cascade.ts`           | `probe:archive-cascade`          | read  |
 | `probes/probe-requirement-units.ts`         | `probe:requirement-units`        | write |
 

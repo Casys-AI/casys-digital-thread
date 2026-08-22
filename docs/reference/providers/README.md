@@ -14,6 +14,8 @@ Start with:
   why an engine, an observation and a verdict are different authorities.
 - [SysON](syson/README.md) — the SysON capability actually composed by registered
   Digital Thread operations.
+- [mcp-spice](spice/README.md) — pinned provider surface, D2 preflight and literal
+  electrical gaps; not an executable product adapter.
 - [Oracle units](oracle-units.md) — probed unit round trips and explicit gaps.
 
 The desired provider inventory in `config/mcp-fleet.json` is a deployment and drift
