@@ -20,7 +20,7 @@ Sibling contracts: [closed subset v1](build123d-closed-subset-v1.md),
 | ------- | ----- | --------- | ------ | ------------- |
 | Technical capture / execution-profile source | 262144 UTF-8 bytes | `INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES` in [`initial-technical-source-analysis-composition.ts`](../../../../src/adapters/compile/captures/initial-technical-source-analysis-composition.ts); profile `maximumSourceBytes` must equal it | Enforced | None |
 | D4 reachability | 65536 bytes (`64 * 1024`) | `MAX_SCRIPT_BYTES` in [`geometry-script-validation.ts`](../../../../src/domain/cad/source/geometry-script-validation.ts) | Enforced; tighter than capture | None |
-| D4 tokens | Intended 8000 (`MAX_TOKENS = 8_000`); check is `tokens.length > MAX_TOKENS` before the next push, so a finished script may contain **8001** tokens | Same D4 module | Enforced as 8001 today | A later 8000-exact guard is a fail-closed fix, not a new product number |
+| D4 tokens | 8000 tokenizer entries (`MAX_TOKENS = 8_000`); a finished script is admitted only with at most 8000 entries, and the 8001st is rejected | Same D4 module | Enforced | None |
 | Qualified AST nodes | Lezer walk in [`qualified-build123d-source-analyzer.ts`](../../../../src/adapters/cad/source/qualified-build123d-source-analyzer.ts) has no node-count check | Analyzer 1.6.0 | **Physical-only** (64 KiB and the token guard) | An explicit node cap would be a product decision; it is not implied by the runtime profile |
 
 D4 is a reachability guard. Capture 262144 does not widen D4.

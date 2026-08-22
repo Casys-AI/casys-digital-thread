@@ -1148,3 +1148,56 @@ Deno.test("validateGeometryScript rejects a script that exceeds 64 KiB", () => {
   })();
   assertEquals(err?.code, "script_too_large");
 });
+
+// ── Token ceiling (MAX_TOKENS = 8000) ─────────────────────────────────────────
+//
+// D4 counts tokenizer entries, including whitespace, comments, and newlines.
+// The public contract admits at most 8000 entries and rejects the 8001st.
+// Padding is built from `#\n` (2 entries) and a blank line (1 entry) so the
+// count is fixed by construction, without exporting the tokenizer.
+
+const TOKEN_CEILING = 8_000;
+const TOKEN_CEILING_MAX_BYTES = 64 * 1024;
+
+function validScriptWithTokenCount(tokenCount: number): string {
+  const prefix = "from build123d import Box\n";
+  const suffix = "result = Box(1, 1, 1)\n";
+  // prefix: NAME WS NAME WS NAME WS NAME NEWLINE
+  const prefixTokens = 8;
+  // suffix: NAME WS OP WS NAME OP NUMBER OP WS NUMBER OP WS NUMBER OP NEWLINE
+  const suffixTokens = 15;
+  const remaining = tokenCount - prefixTokens - suffixTokens;
+  if (remaining < 0) {
+    throw new Error(`tokenCount ${tokenCount} is below the scaffold`);
+  }
+  const blankLines = remaining % 2;
+  const commentLines = (remaining - blankLines) / 2;
+  const script = prefix + "\n".repeat(blankLines) + "#\n".repeat(commentLines) +
+    suffix;
+  const bytes = new TextEncoder().encode(script).byteLength;
+  if (bytes > TOKEN_CEILING_MAX_BYTES) {
+    throw new Error(`generated script is ${bytes} bytes`);
+  }
+  return script;
+}
+
+Deno.test(
+  "validateGeometryScript accepts a semantically valid script with exactly 8000 tokenizer entries",
+  () => {
+    validateGeometryScript(validScriptWithTokenCount(TOKEN_CEILING));
+  },
+);
+
+Deno.test(
+  "validateGeometryScript rejects the corresponding 8001-entry script as too_many_nodes",
+  () => {
+    const error = (() => {
+      try {
+        validateGeometryScript(validScriptWithTokenCount(TOKEN_CEILING + 1));
+      } catch (cause) {
+        return cause as GeometryScriptValidationError;
+      }
+    })();
+    assertEquals(error?.code, "too_many_nodes");
+  },
+);

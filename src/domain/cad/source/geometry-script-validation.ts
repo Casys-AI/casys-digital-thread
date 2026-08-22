@@ -516,7 +516,7 @@ function tokenize(source: string): Token[] {
   }
 
   while (pos < source.length) {
-    if (tokens.length > MAX_TOKENS) {
+    if (tokens.length >= MAX_TOKENS) {
       throw new GeometryScriptValidationError(
         "too_many_nodes",
         `Script exceeds maximum token count (${MAX_TOKENS}).`,

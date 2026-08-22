@@ -31,11 +31,10 @@ known I/O and serialization attributes, raw/bytes/f-strings, the walrus operator
 non-finite literals, and unrecognized tokens. `result` must be assigned exactly once at
 module level.
 
-The effective hard ceilings are **64 KiB** and an intended **8,000 tokens**. The current
-D4 check is `tokens.length > 8000` before the next push, so a finished script may
-contain **8001** tokens. The outer source-capture ceiling of 262,144 bytes does not
-widen D4. D4 is a reachability guard, not semantic qualification and not the sandbox
-boundary. Inventory: [CAD boundedness](boundedness.md).
+The effective hard ceilings are **64 KiB** and **8,000 tokenizer entries**. D4 admits at
+most 8000 tokenizer entries and rejects the 8001st. The outer source-capture ceiling of
+262,144 bytes does not widen D4. D4 is a reachability guard, not semantic qualification
+and not the sandbox boundary. Inventory: [CAD boundedness](boundedness.md).
 
 ### Analyzer 1.6.0: what is understood today
 
