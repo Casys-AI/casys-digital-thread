@@ -2,8 +2,8 @@
 
 Audience: both · Diátaxis: how-to · Kind: how-to
 
-Walk an **already captured** closed `cross-domain-impact-manifest/1.0` through seal,
-X07/X08 recross, human X09, and X11 mechanical preservation. The Workbench is
+Walk a closed `cross-domain-impact-manifest/1.0` from public draft capture through
+seal, X07/X08 recross, human X09, and X11 mechanical preservation. The Workbench is
 read-only. The person never types a provider tool. The agent queues only registered
 operations.
 
@@ -15,20 +15,23 @@ Truth: [impact coverage](../../reference/domains/impact/coverage.md),
 
 | Missing surface | What that means |
 | --------------- | --------------- |
-| Public manifest authoring/capture | No project-control tool accepts manifest bytes. The server-owned CAS reader reopens an opaque fingerprint already stored. Do not invent a capture command, JSON envelope, or manual CAS write. |
 | Generic X10 rerun planner | X07/X08 fix `rerunProposals` to `none`. There is no registered thermal/electrical redispatch from impact. Independent Modelica or LED-fiche paths are not X10. ngspice is not a product run. |
 
-Start only when a closed manifest for this `projectId` is already reopenable by
-fingerprint. If `project_cross_domain_impact_manifest_seal_review` returns
-`unavailable` / `manifest_unavailable`, stop.
+Draft capture is public: `project_cross_domain_impact_manifest_capture` with `sourceText`
+only. Pass `result.reference` as `manifestRef`. If
+`project_cross_domain_impact_manifest_seal_review` returns `unavailable` /
+`manifest_unavailable`, stop.
 
 ## 0. Surfaces
 
-Connect the agent to `http://127.0.0.1:3020/mcp`. Public reads that exist:
+Connect the agent to `http://127.0.0.1:3020/mcp`. Public surfaces that exist:
 
 ```bash
+deno task mcp:call --name=project_cross_domain_impact_manifest_capture \
+  --args='{"sourceText":"<cross-domain-impact-manifest/1.0 JSON body without fingerprint>"}'
+
 deno task mcp:call --name=project_cross_domain_impact_manifest_seal_review \
-  --args='{"projectId":"<project-id>","manifestRef":{"fingerprint":{"algorithm":"sha256","digest":"<64-hex>"}}}'
+  --args='{"projectId":"<project-id>","manifestRef":{"fingerprint":{"algorithm":"sha256","digest":"<opaque-capture-digest>"}}}'
 
 deno task mcp:call --name=project_cross_domain_impact_decision_review \
   --args='{"projectId":"<project-id>"}'
@@ -37,10 +40,23 @@ deno task mcp:call --name=project_cross_domain_impact_decision_review \
 There is no public X07 or X11 review compiler. Queue the registered operation; the
 server selects the unique current Thread tip and unique prerequisite capture.
 
-## 1. Seal the closed manifest (X06)
+## 1. Capture the closed manifest body
 
-Call `project_cross_domain_impact_manifest_seal_review`. Stop on `unavailable` or
-`unresolved`.
+Call `project_cross_domain_impact_manifest_capture` with one `sourceText` JSON object:
+exact `cross-domain-impact-manifest/1.0` body keys, no `fingerprint` field. The server
+canonicalizes, computes the embedded body fingerprint and the outer CAS fingerprint, and
+returns `status: captured`, opaque `reference.fingerprint`, a summary of exact
+ids/revision/basis/`changeKinds`, and `grants: none`. Do not echo or persist a path or
+URI. Same `sourceText` is deterministic.
+
+Pass only `result.reference` as later `manifestRef`. A human-shaped assertion in that
+JSON is not proof.
+
+## 2. Seal the closed manifest (X06)
+
+Call `project_cross_domain_impact_manifest_seal_review` with `projectId` and that opaque
+reference. The server recrosses project/subject/current Thread, Brief V2 gates, and
+declared evidence. Stop on `unavailable` or `unresolved`.
 
 On `resolved`, append `verify.seal-cross-domain-impact-manifest@1` with the sole
 `approvedBrief` binding and the returned `decisionParameters`:
@@ -53,7 +69,7 @@ project_change_append → project_decision_propose → project_decision_approve
 The seal is documentary. It does not evaluate a branch, change a gate claim, or call a
 solver.
 
-## 2. Recross without mutating claims (X07 / X08)
+## 3. Recross without mutating claims (X07 / X08)
 
 After that unique seal work item is complete, append
 `analyze.evaluate-cross-domain-impact@1` (`requiresAdditiveChange`,
@@ -64,7 +80,7 @@ Queue and execute. The run is X07 pure analysis plus X08 documentary capture. It
 proposes `current`, `impact-unresolved`, `invalidated`, or `carried-forward`. It does
 not apply those statuses, invent work items, or queue reruns.
 
-## 3. Human applies the proposed claims (X09)
+## 4. Human applies the proposed claims (X09)
 
 Call `project_cross_domain_impact_decision_review` with `projectId` only. Stop on
 `unavailable` or `unresolved`.
@@ -76,7 +92,7 @@ X09 `accept` applies the **already-proposed** statuses onto existing work-item c
 It is not a product `pass`. There is no `decide.reject-cross-domain-impact@1`. Limits
 stay `reruns: none` and `newWorkItems: none`.
 
-## 4. Mechanical preservation (X11)
+## 5. Mechanical preservation (X11)
 
 After the unique X09 decision is complete, append
 `analyze.evaluate-mechanical-preservation@1` (`dependsOn` that decision work item,
@@ -93,7 +109,8 @@ X11 rereads that accepted closeout; it does not create it.
 
 ## What this walk does not do
 
-- Author or capture a manifest.
+- Treat draft capture as a Thread artifact, approval, L4/L5 result, or dispatch grant.
+- Let the caller select fingerprints, CAS paths, provider, tool, args, or runtime.
 - X10 reruns of invalidated electrical or thermal branches.
 - Treat electrical `impact-unresolved` as an ngspice implementation gap to paper over.
 - Conflate mechanical all-pass L5 eligibility with Modelica both-choice L5.

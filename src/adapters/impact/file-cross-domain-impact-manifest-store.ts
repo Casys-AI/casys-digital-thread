@@ -1,25 +1,27 @@
 /** File-backed closed manifest CAS; no provider or workbench dependency. */
 
 import type {
-  CrossDomainImpactManifestReader,
   CrossDomainImpactManifestReference,
   ReopenedCrossDomainImpactManifest,
 } from "../../application/ports/out/impact/cross-domain-impact-manifest-reader.ts";
+import type {
+  CrossDomainImpactManifestStore,
+  CrossDomainImpactManifestStoreReceipt,
+} from "../../application/ports/out/impact/cross-domain-impact-manifest-store.ts";
 import {
   crossDomainImpactManifestUri,
 } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import {
-  validateCrossDomainImpactManifest,
   type CrossDomainImpactManifest,
+  validateCrossDomainImpactManifest,
 } from "../../domain/impact/cross-domain-impact-manifest.ts";
-import { deterministicJson, fingerprintsEqual, sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import { FileCaptureStore } from "../shared/cas/file-capture-store.ts";
-
-export interface CrossDomainImpactManifestStoreReceipt {
-  readonly reference: CrossDomainImpactManifestReference;
-  readonly uri: string;
-}
 
 /**
  * Stores full canonical manifest documents under their own content address.
@@ -28,7 +30,7 @@ export interface CrossDomainImpactManifestStoreReceipt {
  * that body digest.
  */
 export class FileCrossDomainImpactManifestStore
-  implements CrossDomainImpactManifestReader {
+  implements CrossDomainImpactManifestStore {
   readonly #captures: FileCaptureStore<"cross-domain-impact-manifest">;
 
   constructor(captures: FileCaptureStore<"cross-domain-impact-manifest">) {
@@ -42,10 +44,19 @@ export class FileCrossDomainImpactManifestStore
     const reference = await sha256Fingerprint(manifest);
     const stored = await this.#captures.save(reference, deterministicJson(manifest));
     const reopened = await this.read({ fingerprint: reference });
-    if (!reopened || deterministicJson(reopened.manifest) !== deterministicJson(manifest)) {
-      throw new Error("Cross-domain impact manifest was not exactly readable after capture save.");
+    if (
+      !reopened || deterministicJson(reopened.manifest) !== deterministicJson(manifest)
+    ) {
+      throw new Error(
+        "Cross-domain impact manifest was not exactly readable after capture save.",
+      );
     }
-    return { reference: { fingerprint: reference }, uri: stored.uri };
+    if (stored.uri !== reopened.uri) {
+      throw new Error(
+        "Cross-domain impact manifest store returned an unexpected CAS URI.",
+      );
+    }
+    return { reference: { fingerprint: reference } };
   }
 
   async read(
@@ -56,11 +67,15 @@ export class FileCrossDomainImpactManifestStore
     const manifest = await validateCrossDomainImpactManifest(JSON.parse(text));
     const actual = await sha256Fingerprint(manifest);
     if (!fingerprintsEqual(actual, reference.fingerprint)) {
-      throw new TypeError("Reopened cross-domain impact manifest does not match its requested content address.");
+      throw new TypeError(
+        "Reopened cross-domain impact manifest does not match its requested content address.",
+      );
     }
     const uri = this.#captures.uriFor(actual);
     if (uri !== crossDomainImpactManifestUri(actual)) {
-      throw new TypeError("Cross-domain impact manifest store uses an unexpected CAS URI namespace.");
+      throw new TypeError(
+        "Cross-domain impact manifest store uses an unexpected CAS URI namespace.",
+      );
     }
     return {
       reference: { fingerprint: actual },

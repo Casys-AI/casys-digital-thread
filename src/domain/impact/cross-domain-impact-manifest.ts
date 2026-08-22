@@ -19,10 +19,7 @@ import {
   rejectDuplicates,
   safeId,
 } from "../kernel/case-validation.ts";
-import {
-  fingerprintsEqual,
-  sha256Fingerprint,
-} from "../kernel/deterministic-json.ts";
+import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { EngineeringGateClaimRole } from "../project/engineering-project.ts";
 import type { ThreadChangeKind } from "../thread/thread-snapshot.ts";
@@ -63,8 +60,7 @@ export const CROSS_DOMAIN_IMPACT_BRANCH_IDS = [
   "mechanical",
 ] as const;
 
-export type CrossDomainImpactBranchId =
-  (typeof CROSS_DOMAIN_IMPACT_BRANCH_IDS)[number];
+export type CrossDomainImpactBranchId = (typeof CROSS_DOMAIN_IMPACT_BRANCH_IDS)[number];
 
 export interface CrossDomainImpactReference {
   readonly id: string;
@@ -199,7 +195,7 @@ export interface CrossDomainImpactManifest extends CrossDomainImpactManifestBody
   readonly fingerprint: ContentFingerprint;
 }
 
-const BODY_KEYS = [
+export const CROSS_DOMAIN_IMPACT_MANIFEST_BODY_KEYS = [
   "schemaVersion",
   "id",
   "revision",
@@ -214,7 +210,7 @@ const BODY_KEYS = [
   "gateMap",
   "limitations",
 ] as const;
-const ROOT_KEYS = [...BODY_KEYS, "fingerprint"] as const;
+const ROOT_KEYS = [...CROSS_DOMAIN_IMPACT_MANIFEST_BODY_KEYS, "fingerprint"] as const;
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const ANCHOR_SOURCE_KINDS = ["artifact", "requirement", "sysml-element"] as const;
@@ -228,7 +224,7 @@ const GATE_ROLES = ["contributes-to", "satisfies"] as const;
 export function canonicalizeCrossDomainImpactManifestBody(
   value: unknown,
 ): CrossDomainImpactManifestBody {
-  const root = exactRecord(value, BODY_KEYS, "$manifest");
+  const root = exactRecord(value, CROSS_DOMAIN_IMPACT_MANIFEST_BODY_KEYS, "$manifest");
   return parseBody(root);
 }
 
@@ -306,14 +302,18 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
   for (const anchor of sourceAnchors) {
     if (!orderedChangeKinds.includes(anchor.changeKind)) {
       throw new TypeError(
-        `$manifest.sourceAnchors ${JSON.stringify(anchor.id)} uses a semantic changeKind absent from $manifest.changeKinds.`,
+        `$manifest.sourceAnchors ${
+          JSON.stringify(anchor.id)
+        } uses a semantic changeKind absent from $manifest.changeKinds.`,
       );
     }
   }
   for (const changeKind of orderedChangeKinds) {
     if (!sourceAnchors.some((anchor) => anchor.changeKind === changeKind)) {
       throw new TypeError(
-        `$manifest.changeKinds includes ${JSON.stringify(changeKind)} without an exact sourceAnchor.`,
+        `$manifest.changeKinds includes ${
+          JSON.stringify(changeKind)
+        } without an exact sourceAnchor.`,
       );
     }
   }
@@ -331,25 +331,33 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
   );
   rejectDuplicates(causalEdges.map((item) => item.id), "$manifest.causalEdges ids");
   rejectDuplicates(
-    causalEdges.map((item) => `${item.fromAnchorId}:${item.to.branchId}:${item.to.inputId}`),
+    causalEdges.map((item) =>
+      `${item.fromAnchorId}:${item.to.branchId}:${item.to.inputId}`
+    ),
     "$manifest.causalEdges targets",
   );
   for (const edge of causalEdges) {
     if (!anchorsById.has(edge.fromAnchorId)) {
       throw new TypeError(
-        `$manifest.causalEdges ${JSON.stringify(edge.id)} names an unknown sourceAnchor.`,
+        `$manifest.causalEdges ${
+          JSON.stringify(edge.id)
+        } names an unknown sourceAnchor.`,
       );
     }
     const branch = branchesById.get(edge.to.branchId);
     const input = branch?.inputs.find((item) => item.id === edge.to.inputId);
     if (!input || !fingerprintsEqual(input.fingerprint, edge.to.inputFingerprint)) {
       throw new TypeError(
-        `$manifest.causalEdges ${JSON.stringify(edge.id)} must target an exact declared branch input fingerprint.`,
+        `$manifest.causalEdges ${
+          JSON.stringify(edge.id)
+        } must target an exact declared branch input fingerprint.`,
       );
     }
     if (!edge.evidence.some((item) => sameReference(item, edge.assertion.source))) {
       throw new TypeError(
-        `$manifest.causalEdges ${JSON.stringify(edge.id)} assertion source must be one of its exact evidence references.`,
+        `$manifest.causalEdges ${
+          JSON.stringify(edge.id)
+        } assertion source must be one of its exact evidence references.`,
       );
     }
   }
@@ -367,7 +375,9 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
   for (const assertion of independenceAssertions) {
     if (!branchesById.has(assertion.branchId)) {
       throw new TypeError(
-        `$manifest.independenceAssertions ${JSON.stringify(assertion.id)} names an unknown branch.`,
+        `$manifest.independenceAssertions ${
+          JSON.stringify(assertion.id)
+        } names an unknown branch.`,
       );
     }
     for (const inspected of assertion.inspectedSourceAnchors) {
@@ -381,7 +391,9 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
         !fingerprintsEqual(inspected.sourceFingerprint, anchor.source.fingerprint)
       ) {
         throw new TypeError(
-          `$manifest.independenceAssertions ${JSON.stringify(assertion.id)} must inspect exact sourceAnchor fingerprints.`,
+          `$manifest.independenceAssertions ${
+            JSON.stringify(assertion.id)
+          } must inspect exact sourceAnchor fingerprints.`,
         );
       }
     }
@@ -390,7 +402,10 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
   const gateMap = nonEmptyArray(root.gateMap, "$manifest.gateMap").map(
     (item, index) => parseGateMap(item, `$manifest.gateMap[${index}]`),
   );
-  rejectDuplicates(gateMap.map((item) => item.gateItemId), "$manifest.gateMap gateItemIds");
+  rejectDuplicates(
+    gateMap.map((item) => item.gateItemId),
+    "$manifest.gateMap gateItemIds",
+  );
   for (const gate of gateMap) {
     if (!branchesById.has(gate.branchId)) {
       throw new TypeError(
@@ -401,7 +416,9 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
   for (const branch of branches) {
     if (!gateMap.some((item) => item.branchId === branch.id)) {
       throw new TypeError(
-        `$manifest.branches ${JSON.stringify(branch.id)} must have at least one canonical gateMap entry.`,
+        `$manifest.branches ${
+          JSON.stringify(branch.id)
+        } must have at least one canonical gateMap entry.`,
       );
     }
   }
@@ -419,9 +436,13 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
     subject,
     basis,
     changeKinds: orderedChangeKinds,
-    sourceAnchors: [...sourceAnchors].sort((left, right) => left.id.localeCompare(right.id)),
+    sourceAnchors: [...sourceAnchors].sort((left, right) =>
+      left.id.localeCompare(right.id)
+    ),
     branches: [...branches].sort((left, right) => branchOrder(left.id, right.id)),
-    causalEdges: [...causalEdges].sort((left, right) => left.id.localeCompare(right.id)),
+    causalEdges: [...causalEdges].sort((left, right) =>
+      left.id.localeCompare(right.id)
+    ),
     independenceAssertions: [...independenceAssertions].sort((left, right) =>
       left.id.localeCompare(right.id)
     ),
@@ -463,7 +484,10 @@ function parseBasis(value: unknown, path: string): CrossDomainImpactThreadBasis 
   };
 }
 
-function parseSourceAnchor(value: unknown, path: string): CrossDomainImpactSourceAnchor {
+function parseSourceAnchor(
+  value: unknown,
+  path: string,
+): CrossDomainImpactSourceAnchor {
   const input = exactRecord(
     value,
     ["id", "changeKind", "role", "threadChange", "source"],
@@ -495,7 +519,9 @@ function parseSourceAnchor(value: unknown, path: string): CrossDomainImpactSourc
   );
   const sourceKind = nonEmptyText(source.kind, `${path}.source.kind`);
   if (!ANCHOR_SOURCE_KINDS.includes(sourceKind as CrossDomainImpactAnchorSourceKind)) {
-    throw new TypeError(`${path}.source.kind must be artifact, requirement or sysml-element.`);
+    throw new TypeError(
+      `${path}.source.kind must be artifact, requirement or sysml-element.`,
+    );
   }
   return {
     id: safeId(input.id, `${path}.id`),
@@ -518,7 +544,11 @@ function parseSourceAnchor(value: unknown, path: string): CrossDomainImpactSourc
 }
 
 function parseBranch(value: unknown, path: string): CrossDomainImpactBranch {
-  const input = exactRecord(value, ["id", "version", "inputs", "method", "joins"], path);
+  const input = exactRecord(
+    value,
+    ["id", "version", "inputs", "method", "joins"],
+    path,
+  );
   const id = parseBranchId(input.id, `${path}.id`);
   literalValue(input.version, "1.0", `${path}.version`);
   const inputs = nonEmptyArray(input.inputs, `${path}.inputs`).map((item, index) =>
@@ -534,7 +564,9 @@ function parseBranch(value: unknown, path: string): CrossDomainImpactBranch {
     version: "1.0",
     inputs: [...inputs].sort((left, right) => left.id.localeCompare(right.id)),
     method: parseReference(input.method, `${path}.method`),
-    joins: [...joins].sort((left, right) => referenceKey(left).localeCompare(referenceKey(right))),
+    joins: [...joins].sort((left, right) =>
+      referenceKey(left).localeCompare(referenceKey(right))
+    ),
   };
 }
 
@@ -555,9 +587,10 @@ function parseCausalEdge(value: unknown, path: string): CrossDomainImpactCausalE
     ["source", "justification"],
     `${path}.assertion`,
   );
-  const evidence = nonEmptyArray(input.evidence, `${path}.evidence`).map((item, index) =>
-    parseReference(item, `${path}.evidence[${index}]`)
-  );
+  const evidence = nonEmptyArray(input.evidence, `${path}.evidence`).map((
+    item,
+    index,
+  ) => parseReference(item, `${path}.evidence[${index}]`));
   rejectDuplicates(evidence.map(referenceKey), `${path}.evidence`);
   return {
     id: safeId(input.id, `${path}.id`),
@@ -573,7 +606,10 @@ function parseCausalEdge(value: unknown, path: string): CrossDomainImpactCausalE
     relation: "positive-input",
     assertion: {
       source: parseReference(assertion.source, `${path}.assertion.source`),
-      justification: nonEmptyText(assertion.justification, `${path}.assertion.justification`),
+      justification: nonEmptyText(
+        assertion.justification,
+        `${path}.assertion.justification`,
+      ),
     },
     scope: nonEmptyText(input.scope, `${path}.scope`),
     evidence: [...evidence].sort((left, right) =>
@@ -608,7 +644,9 @@ function parseIndependenceAssertion(
   const inspectedSourceAnchors = nonEmptyArray(
     input.inspectedSourceAnchors,
     `${path}.inspectedSourceAnchors`,
-  ).map((item, index) => parseInspectedSourceAnchor(item, `${path}.inspectedSourceAnchors[${index}]`));
+  ).map((item, index) =>
+    parseInspectedSourceAnchor(item, `${path}.inspectedSourceAnchors[${index}]`)
+  );
   rejectDuplicates(
     inspectedSourceAnchors.map((item) => item.sourceAnchorId),
     `${path}.inspectedSourceAnchors ids`,
@@ -616,7 +654,9 @@ function parseIndependenceAssertion(
   const inspectedConsumptions = nonEmptyArray(
     input.inspectedConsumptions,
     `${path}.inspectedConsumptions`,
-  ).map((item, index) => parseInspectedConsumption(item, `${path}.inspectedConsumptions[${index}]`));
+  ).map((item, index) =>
+    parseInspectedConsumption(item, `${path}.inspectedConsumptions[${index}]`)
+  );
   rejectDuplicates(
     inspectedConsumptions.map((item) => item.id),
     `${path}.inspectedConsumptions ids`,
@@ -662,7 +702,10 @@ function parseInspectedSourceAnchor(
       input.threadChangeFingerprint,
       `${path}.threadChangeFingerprint`,
     ),
-    sourceFingerprint: parseFingerprint(input.sourceFingerprint, `${path}.sourceFingerprint`),
+    sourceFingerprint: parseFingerprint(
+      input.sourceFingerprint,
+      `${path}.sourceFingerprint`,
+    ),
   };
 }
 
@@ -779,7 +822,10 @@ function changeKindOrder(
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-function branchOrder(left: CrossDomainImpactBranchId, right: CrossDomainImpactBranchId): number {
+function branchOrder(
+  left: CrossDomainImpactBranchId,
+  right: CrossDomainImpactBranchId,
+): number {
   return CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(left) -
     CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(right);
 }

@@ -187,7 +187,8 @@ They must not be the same view.
   scenario.
 - Cross-domain impact. After a closed manifest already exists:
   [Walk cross-domain impact judgement](walk-cross-domain-impact-judgement.md).
-  There is no public manifest capture and no generic X10 rerun planner.
+  Public capture is `project_cross_domain_impact_manifest_capture`; there is no generic
+  X10 rerun planner.
 
 When two operations look similar, read
 [agent workspace](../../reference/agent/agent-workspace.md) before calling either.

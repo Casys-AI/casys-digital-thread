@@ -44,9 +44,12 @@ Deno.test("impact manifest and seal capture readers reopen only their closed con
     const manifests = new FileCrossDomainImpactManifestStore(manifestsRaw);
     const manifest = await validCrossDomainImpactManifest();
     const saved = await manifests.save(manifest);
+    assertEquals(Object.keys(saved).sort(), ["reference"]);
+    assertEquals(Object.keys(saved.reference), ["fingerprint"]);
     const reopened = await manifests.read(saved.reference);
     assertEquals(reopened?.reference, saved.reference);
     assertEquals(reopened?.manifest.fingerprint, manifest.fingerprint);
+    assertEquals("uri" in saved, false);
 
     const captureRaw = new FileCaptureStore({
       kind: "cross-domain-impact-manifest-seal-capture" as const,

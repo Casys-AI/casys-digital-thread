@@ -17,7 +17,8 @@ vocabularies are not interchangeable.
   surfaces that grant no provider, solver, or Workbench write.
 - Operator closeout of one static FEA `@3` branch:
   [Review static-mechanical closeout](../../../how-to/behave/review-static-mechanical-closeout.md).
-- Operator walk after a closed manifest is already captured:
+- Operator walk from public draft capture through seal, recross, human decision, and
+  mechanical preservation:
   [Walk cross-domain impact judgement](../../../how-to/behave/walk-cross-domain-impact-judgement.md).
 
 Lookalikes: [lookalike traps § Cross-domain impact](../../agent/lookalike-traps.md#cross-domain-impact).

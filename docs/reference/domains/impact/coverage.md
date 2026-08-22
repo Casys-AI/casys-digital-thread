@@ -19,9 +19,9 @@ fixture, or a successful solver call is not a product capability by itself.
 
 | Slice | Status | Current product boundary |
 | ----- | ------ | ------------------------ |
-| X04 | Supported | Outbound ports under `src/application/ports/out/impact/`: manifest reader, Thread lineage, Brief V2 gates, capture stores, L5 closeout reader. No MCP provider client, no Workbench write. |
-| X05 | Supported | Server recross use cases under `src/application/use-cases/impact/` plus CAS/Thread adapters under `src/adapters/impact/`. Mismatch stays `unavailable` or `unresolved`. |
-| X06 | Supported | Read-only `project_cross_domain_impact_manifest_seal_review` (`projectId` + opaque manifest fingerprint) then registered `verify.seal-cross-domain-impact-manifest@1`. Seal publishes identities; it does not evaluate a branch. |
+| X04 | Supported | Outbound ports under `src/application/ports/out/impact/`: manifest store (save + opaque read), Thread lineage, Brief V2 gates, capture stores, L5 closeout reader. No MCP provider client, no Workbench write. |
+| X05 | Supported | Draft-capture and recross use cases under `src/application/use-cases/impact/` plus CAS/Thread adapters under `src/adapters/impact/`. Invalid capture fails closed. Recross mismatch stays `unavailable` or `unresolved`. |
+| X06 | Supported | Public `project_cross_domain_impact_manifest_capture` writes draft CAS only (`sourceText` → opaque `{ fingerprint }`). Read-only `project_cross_domain_impact_manifest_seal_review` (`projectId` + that reference) then registered `verify.seal-cross-domain-impact-manifest@1`. Seal publishes identities; it does not evaluate a branch. Capture is not a registered operation. |
 | X07 | Supported | Pure analysis: registered `analyze.evaluate-cross-domain-impact@1`. Internal command is not an agent JSON envelope. Proposes branch and gate-claim statuses. Mutates none. |
 | X08 | Supported | Documentary Thread capture of that X07 recross (`cross-domain-impact-evaluation-capture/1.0`). `workItemInvalidations` and `rerunProposals` are literal `none`. |
 | X09 | Bounded | Read-only `project_cross_domain_impact_decision_review` (`projectId` only) then human-origin `decide.accept-cross-domain-impact@1`. Applies the already-proposed statuses onto existing work-item claims. No `decide.reject-cross-domain-impact@1`. |
@@ -44,9 +44,10 @@ readiness, not an implemented electrical/ngspice run.
 
 ## Public and registered surfaces
 
-Read-only project-control tools that exist:
+Project-control tools that exist:
 
-- `project_cross_domain_impact_manifest_seal_review`
+- `project_cross_domain_impact_manifest_capture` (draft CAS write; `sourceText` only)
+- `project_cross_domain_impact_manifest_seal_review` (read-only; `projectId` + opaque capture reference)
 - `project_cross_domain_impact_decision_review`
 
 Registered operations that exist:
@@ -56,11 +57,14 @@ Registered operations that exist:
 - `decide.accept-cross-domain-impact@1` (X09, `mustOrigin: human`)
 - `analyze.evaluate-mechanical-preservation@1` (X11)
 
-There is no public manifest authoring or capture tool. Composition records that no MCP
-tool accepts manifest bytes; the seal review reopens an already stored opaque
-fingerprint. There is no `project_cross_domain_impact_evaluation_review` and no X11
-review compiler: the agent queues the registered operation; the server selects the
-unique current Thread tip and unique prerequisite capture.
+Draft capture writes immutable CAS only. Pass `result.reference` as `manifestRef` to
+the seal review; never pass `sourceText`, the review envelope, a path, or a
+caller-selected fingerprint. The server recrosses project/subject/current Thread/Brief
+gates/evidence at seal review time. A human-shaped assertion in draft JSON is not
+proof until signed MRTR for `verify.seal-cross-domain-impact-manifest@1`. There is no
+`project_cross_domain_impact_evaluation_review` and no X11 review compiler: the agent
+queues the registered operation; the server selects the unique current Thread tip and
+unique prerequisite capture.
 
 Static-mechanical L5 is a sibling FEA surface, not an impact slice:
 `project_evaluation_closeout_review` then `decide.accept-evaluation-closeout@1` /
@@ -74,5 +78,5 @@ Static-mechanical L5 is a sibling FEA surface, not an impact slice:
 - Treating X09 `accept` as a product `pass`, or treating X07 proposals as applied claims.
 - Inferring mechanical preservation from omitted edges or from thermal/electrical evidence.
 - Isolated, preview, or draft STEP as canonical geometry for X11.
-- A public capture of `cross-domain-impact-manifest/1.0` bytes.
+- Treating draft capture as a Thread artifact, MRTR, L4/L5 result, or dispatch grant.
 - Generic X10 reruns of invalidated electrical or thermal branches.

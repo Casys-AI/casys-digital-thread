@@ -1,7 +1,10 @@
-/** Provider-free composition for the X05–X09 recross and X11 preservation. */
+/** Provider-free composition for draft capture and the X05–X09 recross and X11 preservation. */
 
+import type { ProjectCrossDomainImpactManifestCaptureUseCase } from "../../application/ports/in/impact/project-cross-domain-impact-manifest-capture.ts";
+import type { CrossDomainImpactManifestStore } from "../../application/ports/out/impact/cross-domain-impact-manifest-store.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import { PrepareProjectCrossDomainImpactManifestCapture } from "../../application/use-cases/impact/prepare-project-cross-domain-impact-manifest-capture.ts";
 import { PrepareProjectCrossDomainImpactManifestSealReview } from "../../application/use-cases/impact/prepare-project-cross-domain-impact-manifest-seal-review.ts";
 import { PrepareCrossDomainImpactDecision } from "../../application/use-cases/impact/prepare-cross-domain-impact-decision.ts";
 import { PrepareCrossDomainImpactEvaluation } from "../../application/use-cases/impact/prepare-cross-domain-impact-evaluation.ts";
@@ -37,8 +40,10 @@ export interface CrossDomainImpactProjectOptions {
 }
 
 export interface CrossDomainImpactProject {
-  /** Server-owned reader/seed seam; no MCP tool accepts manifest bytes. */
-  readonly manifests: FileCrossDomainImpactManifestStore;
+  /** Opaque draft-CAS reader/store; application code depends on this port. */
+  readonly manifests: CrossDomainImpactManifestStore;
+  readonly crossDomainImpactManifestCapture:
+    ProjectCrossDomainImpactManifestCaptureUseCase;
   readonly crossDomainImpactManifestSealReview:
     PrepareProjectCrossDomainImpactManifestSealReview;
   readonly verifySealCrossDomainImpactManifest:
@@ -93,6 +98,9 @@ export function createCrossDomainImpactProject(
     snapshots: options.snapshots,
   });
   const briefGates = new ProjectCrossDomainImpactBriefGateReader(options.projects);
+  const capture = new PrepareProjectCrossDomainImpactManifestCapture({
+    manifests,
+  });
   const review = new PrepareProjectCrossDomainImpactManifestSealReview({
     manifests,
     lineage,
@@ -139,6 +147,7 @@ export function createCrossDomainImpactProject(
   });
   return {
     manifests,
+    crossDomainImpactManifestCapture: capture,
     crossDomainImpactManifestSealReview: review,
     verifySealCrossDomainImpactManifest:
       new VerifySealCrossDomainImpactManifestRunExecutor({

@@ -652,8 +652,7 @@ async function createProjectControl(
   const recordedPlans = createRecordedOperationPlanComposition({
     snapshots: threadSnapshots,
     feaProofCaptures: feaFoundation.feaProofCaptures,
-    sensitivityCatalogOfferCaptures:
-      feaFoundation.sensitivityCatalogOfferCaptures,
+    sensitivityCatalogOfferCaptures: feaFoundation.sensitivityCatalogOfferCaptures,
     requirementsCaptures: architectureFoundation.requirementsCaptures,
     admissions: compilationFoundation.technicalCompilationAdmissions,
     calculixLocalProfile: calculixCapability.localProfile,
@@ -697,9 +696,8 @@ async function createProjectControl(
       DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY,
     partDefinitionsCaptureDirectory: options.partDefinitionsCaptureDirectory ??
       DEFAULT_PART_DEFINITIONS_CAPTURE_DIRECTORY,
-    partDefinitionsPublicationDirectory:
-      options.partDefinitionsPublicationDirectory ??
-        DEFAULT_PART_DEFINITIONS_PUBLICATION_DIRECTORY,
+    partDefinitionsPublicationDirectory: options.partDefinitionsPublicationDirectory ??
+      DEFAULT_PART_DEFINITIONS_PUBLICATION_DIRECTORY,
     requirementsAttemptDirectory: options.requirementsAttemptDirectory ??
       DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY,
   });
@@ -789,8 +787,7 @@ async function createProjectControl(
     technicalCompilationPreview,
     technicalSourceCapture: compilationFoundation.technicalSourceCapture,
     feaProofCaptures: feaFoundation.feaProofCaptures,
-    sensitivityCatalogOfferCaptures:
-      feaFoundation.sensitivityCatalogOfferCaptures,
+    sensitivityCatalogOfferCaptures: feaFoundation.sensitivityCatalogOfferCaptures,
     sysonModelSeedCaptures: architectureFoundation.sysonModelSeedCaptures,
     build123dExecution: build123dCapability.build123dExecution,
     calculixMcpUrl,
@@ -958,8 +955,7 @@ async function createProjectControl(
       briefRequirementsReview: architectureProject.briefRequirementsReview,
       feaProofSealReview: feaProject.feaProofSealReview,
       feaIsolatedRunReview: feaProject.feaIsolatedRunReview,
-      evaluationCloseoutReview:
-        feaProject.staticMechanicalEvaluationCloseoutReview,
+      evaluationCloseoutReview: feaProject.staticMechanicalEvaluationCloseoutReview,
       sensitivityStudySealReview: sensitivity.sensitivityStudySealReview,
       build123dExecutionReview: build123dCapability.build123dExecutionReview,
       isolatedGeometrySealReview: build123dCapability.isolatedGeometrySealReview,
@@ -973,10 +969,10 @@ async function createProjectControl(
       admittedModelicaEvaluationCloseoutReview:
         modelicaProject.admittedModelicaEvaluationCloseoutReview,
       thermalMethodSheetSealReview: modelicaProject.thermalMethodSheetSealReview,
+      crossDomainImpactManifestCapture: impactProject.crossDomainImpactManifestCapture,
       crossDomainImpactManifestSealReview:
         impactProject.crossDomainImpactManifestSealReview,
-      crossDomainImpactDecisionReview:
-        impactProject.crossDomainImpactDecisionReview,
+      crossDomainImpactDecisionReview: impactProject.crossDomainImpactDecisionReview,
       ledDriverSourceCapture: electrical.ledDriverSourceCapture,
       ledDriverSourceReview: electrical.ledDriverSourceReview,
       ...composePrivateBuild123dGeometrySurfaces(

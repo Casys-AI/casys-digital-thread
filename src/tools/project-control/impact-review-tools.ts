@@ -1,6 +1,11 @@
-/** Read-only project-control surface for closed cross-domain impact manifest review. */
+/** Project-control surface for draft impact-manifest capture and closed review. */
 
 import type { McpApp, MCPTool } from "@casys/mcp-server";
+import {
+  CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS,
+  type ProjectCrossDomainImpactManifestCaptureCommand,
+  type ProjectCrossDomainImpactManifestCaptureUseCase,
+} from "../../application/ports/in/impact/project-cross-domain-impact-manifest-capture.ts";
 import type {
   ProjectCrossDomainImpactManifestSealReviewCommand,
   ProjectCrossDomainImpactManifestSealReviewUseCase,
@@ -8,6 +13,7 @@ import type {
 import type {
   ProjectCrossDomainImpactDecisionReviewUseCase,
 } from "../../application/ports/in/impact/project-cross-domain-impact-decision-review.ts";
+import { captureReviewContent } from "../../domain/impact/cross-domain-impact-manifest-capture-review.ts";
 import { validateContentFingerprint } from "../../domain/compile/isolation/isolated-code-execution.ts";
 import { exactRecord, safeId } from "../../domain/kernel/case-validation.ts";
 import {
@@ -17,6 +23,8 @@ import {
 } from "./mcp-tool-schemas.ts";
 
 export interface ProjectCrossDomainImpactReviewToolDependencies {
+  readonly crossDomainImpactManifestCapture?:
+    ProjectCrossDomainImpactManifestCaptureUseCase;
   readonly crossDomainImpactManifestSealReview?:
     ProjectCrossDomainImpactManifestSealReviewUseCase;
   readonly crossDomainImpactDecisionReview?:
@@ -24,14 +32,24 @@ export interface ProjectCrossDomainImpactReviewToolDependencies {
 }
 
 /**
- * Register the read-only impact review surfaces. They have no command,
- * approval, branch, edge, artifact, solver, provider, tool, argument, or
- * Workbench authority.
+ * Register the draft capture and read-only impact review surfaces. They have
+ * no command, approval, branch, edge, artifact, solver, provider, tool,
+ * argument, runtime, or Workbench authority.
  */
 export function registerProjectCrossDomainImpactReviewTools(
   app: McpApp,
   dependencies: ProjectCrossDomainImpactReviewToolDependencies,
 ): void {
+  const capture = dependencies.crossDomainImpactManifestCapture;
+  if (capture) {
+    app.registerTool(projectCrossDomainImpactManifestCaptureTool, async (args) => {
+      const review = await capture.capture(captureCommand(args));
+      return {
+        content: captureReviewContent(review),
+        structuredContent: review as unknown as Record<string, unknown>,
+      };
+    });
+  }
   const review = dependencies.crossDomainImpactManifestSealReview;
   if (review) {
     app.registerTool(projectCrossDomainImpactManifestSealReviewTool, async (args) => {
@@ -64,10 +82,90 @@ const PROJECT_ID_SCHEMA = {
   pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
 } as const;
 
+const SAFE_ID_SCHEMA = {
+  type: "string",
+  minLength: 1,
+  maxLength: 256,
+  pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+} as const;
+
+const DRAFT_CAS_WRITE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+const CAPTURE_REFERENCE_SCHEMA = {
+  type: "object",
+  properties: { fingerprint: FINGERPRINT_SCHEMA },
+  required: ["fingerprint"],
+  additionalProperties: false,
+} as const;
+
+const IMPACT_MANIFEST_CAPTURE_REVIEW_SCHEMA = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: "cross-domain-impact-manifest-capture-review/1.0" },
+    status: { const: "captured" },
+    reference: CAPTURE_REFERENCE_SCHEMA,
+    summary: {
+      type: "object",
+      properties: {
+        id: SAFE_ID_SCHEMA,
+        revision: { type: "integer", minimum: 1 },
+        basis: {
+          type: "object",
+          properties: {
+            projectId: SAFE_ID_SCHEMA,
+            subjectId: SAFE_ID_SCHEMA,
+            snapshotId: SAFE_ID_SCHEMA,
+            revision: { type: "integer", minimum: 1 },
+          },
+          required: ["projectId", "subjectId", "snapshotId", "revision"],
+          additionalProperties: false,
+        },
+        changeKinds: {
+          type: "array",
+          minItems: 1,
+          items: SAFE_ID_SCHEMA,
+        },
+      },
+      required: ["id", "revision", "basis", "changeKinds"],
+      additionalProperties: false,
+    },
+    grants: { const: "none" },
+  },
+  required: ["schemaVersion", "status", "reference", "summary", "grants"],
+  additionalProperties: false,
+} as const;
+
+const projectCrossDomainImpactManifestCaptureTool: MCPTool = {
+  name: "project_cross_domain_impact_manifest_capture",
+  description:
+    "Capture exact agent-authored cross-domain-impact-manifest/1.0 JSON in immutable draft CAS. The caller supplies only sourceText: the JSON body without its computed fingerprint field. The server validates the closed object, canonicalizes it, and computes the embedded body fingerprint and outer CAS fingerprint. Pass result.reference as manifestRef to project_cross_domain_impact_manifest_seal_review; never pass this whole review, sourceText, a path, a URI, or a caller-selected fingerprint. A human-shaped assertion in draft JSON is not proof. The caller does not choose provider, tool, args, or runtime. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no evaluation, gate-claim transition, or technical execution.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      sourceText: {
+        type: "string",
+        minLength: 1,
+        maxLength: CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS,
+        description:
+          "JSON object body of cross-domain-impact-manifest/1.0 without fingerprint. Extra keys are refused.",
+      },
+    },
+    required: ["sourceText"],
+    additionalProperties: false,
+  },
+  outputSchema: IMPACT_MANIFEST_CAPTURE_REVIEW_SCHEMA,
+  annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
+};
+
 const projectCrossDomainImpactManifestSealReviewTool: MCPTool = {
   name: "project_cross_domain_impact_manifest_seal_review",
   description:
-    "Prepare literal unavailable/unresolved or exact human-review facts and canonical MRTR parameters for one later verify.seal-cross-domain-impact-manifest@1 document seal. The caller names only projectId and an opaque manifest content fingerprint. The server alone reopens the closed manifest, its named project/subject/Thread basis, approved Brief V2 gate identities and dependencies, and declared mechanical evidence references. This read-only operation accepts no branch, causal edge, artifact identity, provider envelope, solver/tool/argument, source bytes, approval, gate transition, evaluation result, or Workbench command; it mutates no EngineeringProject or Thread state.",
+    "Prepare literal unavailable/unresolved or exact human-review facts and canonical MRTR parameters for one later verify.seal-cross-domain-impact-manifest@1 document seal. The caller names only projectId and the opaque manifestRef returned by project_cross_domain_impact_manifest_capture. The server alone reopens the closed manifest, its named project/subject/Thread basis, approved Brief V2 gate identities and dependencies, and declared mechanical evidence references. This read-only operation accepts no branch, causal edge, artifact identity, provider envelope, solver/tool/argument, source bytes, approval, gate transition, evaluation result, or Workbench command; it mutates no EngineeringProject or Thread state.",
   inputSchema: {
     type: "object",
     properties: {
@@ -101,6 +199,30 @@ const projectCrossDomainImpactDecisionReviewTool: MCPTool = {
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: READ_ONLY_ANNOTATIONS,
 };
+
+function captureCommand(
+  value: Record<string, unknown>,
+): ProjectCrossDomainImpactManifestCaptureCommand {
+  const root = exactRecord(
+    value,
+    ["sourceText"],
+    "$projectCrossDomainImpactManifestCapture",
+  );
+  if (typeof root.sourceText !== "string" || root.sourceText.length === 0) {
+    throw new TypeError(
+      "$projectCrossDomainImpactManifestCapture.sourceText must be a non-empty string.",
+    );
+  }
+  if (
+    root.sourceText.length >
+      CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS
+  ) {
+    throw new TypeError(
+      "$projectCrossDomainImpactManifestCapture.sourceText must not exceed 262144 characters.",
+    );
+  }
+  return { sourceText: root.sourceText };
+}
 
 function command(
   value: Record<string, unknown>,
