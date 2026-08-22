@@ -17,6 +17,23 @@ import type { EngineeringProjectRevisionStore } from "../../../application/ports
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import type { ExecuteIsolatedCalculixStaticProof } from "../../../application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts";
 import {
+  assertCompletedIsolatedStaticProofProjectBinding,
+  assertCompletedIsolatedStaticProofProjectReference,
+  assertCompletedIsolatedStaticProofSnapshot,
+  assertIsolatedCanonicalStepBytes,
+  assertIsolatedStaticProofAttemptMatches,
+  assertIsolatedStaticProofCrossAttests,
+  assertIsolatedStaticProofEvidenceMatches,
+  assertIsolatedStaticProofProfileBinding,
+  exactIsolatedStaticProofEvidenceRefs,
+  isolatedStaticProofLocalOperation,
+  isolatedStaticProofPreparedIdentity,
+  requireCompletedIsolatedStaticProofRunWal,
+  requireCompletedIsolatedStaticProofWal,
+  requireIsolatedStaticStructuralAction,
+  type StaticProofPreparedEvidenceIdentity,
+} from "../../../application/use-cases/fea/isolated-v3/completed-replay-verification.ts";
+import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
@@ -34,19 +51,7 @@ import {
   parseSealedStaticProofCapture,
   type SealedStaticProofCapture,
 } from "../../../domain/fea/isolated-v3/sealed-static-proof-capture.ts";
-import {
-  assertCanonicalStepBytes,
-  assertStaticProofAttemptMatches,
-  assertStaticProofCrossAttests,
-  assertStaticProofEvidenceMatches,
-  assertStaticProofProfileBinding,
-} from "../../../domain/fea/isolated-v3/static-proof-identity.ts";
-import {
-  assertExactCompletedStaticProofProjectBinding,
-  assertExactStaticProofLocalArtifacts,
-  buildStaticProofSuccessor,
-  exactStaticProofEvidenceRefs,
-} from "../../../domain/fea/isolated-v3/static-proof-thread-evidence.ts";
+import { buildStaticProofSuccessor } from "../../../domain/fea/isolated-v3/static-proof-thread-evidence.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
@@ -60,7 +65,6 @@ import type {
 import type { ResolvedRunPlanReader } from "../../../domain/project/resolved-run-plan-sealer.ts";
 import type {
   ThreadArtifact,
-  ThreadOperationRef,
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
@@ -154,6 +158,7 @@ interface Prepared {
   readonly bundle: CalculixIsolatedInputBundle;
   readonly planFingerprint: ContentFingerprint;
   readonly executionRunId: string;
+  readonly identity: StaticProofPreparedEvidenceIdentity;
 }
 
 interface DurableEvaluation {
@@ -180,175 +185,6 @@ export async function deriveCalculixIsolatedExecutionRunId(input: {
     agentRunId: input.agentRunId,
   });
   return `calculix-isolated-${fingerprint.digest}`;
-}
-
-function localOperation(runId: string): ThreadOperationRef {
-  return {
-    serverId: "digital-thread",
-    tool: "verify.run-fea-static-proof@3",
-    runId,
-  };
-}
-
-function assertEvidenceMatchesPrepared(
-  evidence: CalculixIsolatedExecutionEvidence,
-  prepared: Prepared,
-): void {
-  try {
-    assertStaticProofEvidenceMatches({
-      projectId: evidence.projectId,
-      agentRunId: evidence.agentRunId,
-      executionRunId: evidence.executionRunId,
-      bundleFingerprint: evidence.bundleFingerprint,
-      proofFingerprint: evidence.proofFingerprint,
-      executionProfileFingerprint: evidence.executionProfileFingerprint,
-      planFingerprint: evidence.authority.resolvedOperationPlanFingerprint,
-      requestId: evidence.result.requestId,
-      receiptRunId: evidence.receipt.runId,
-      receiptSourceSha256: evidence.receipt.sourceSha256,
-      resultInputByteCount: evidence.result.inputArtifact.byteCount,
-      resultInputSha256: evidence.result.inputArtifact.sha256,
-    }, {
-      projectId: prepared.authorization.plan.run.projectId,
-      agentRunId: prepared.authorization.run.id,
-      executionRunId: prepared.executionRunId,
-      bundleFingerprint: prepared.bundle.fingerprint,
-      proofFingerprint: prepared.bundle.manifest.proofFingerprint,
-      executionProfileFingerprint: prepared.profile.profileFingerprint,
-      planFingerprint: prepared.planFingerprint,
-      requestId: prepared.action.requestId,
-      stepByteCount: prepared.stepBytes.byteLength,
-      stepSha256: prepared.geometryArtifact.fingerprint.digest,
-    });
-  } catch (cause) {
-    throwDomain(cause);
-  }
-}
-
-function assertAttemptMatchesPrepared(
-  attempt: CalculixIsolatedProductAttempt,
-  prepared: Prepared,
-): void {
-  try {
-    assertStaticProofAttemptMatches({
-      projectId: attempt.projectId,
-      runId: attempt.runId,
-      planSha256: attempt.planSha256,
-      executionRunId: attempt.executionRunId,
-      bundleSha256: attempt.bundleSha256,
-      profileSha256: attempt.profileSha256,
-      hasEvidenceSha256: "evidenceSha256" in attempt,
-    }, {
-      projectId: prepared.authorization.plan.run.projectId,
-      agentRunId: prepared.authorization.run.id,
-      executionRunId: prepared.executionRunId,
-      bundleFingerprint: prepared.bundle.fingerprint,
-      proofFingerprint: prepared.bundle.manifest.proofFingerprint,
-      executionProfileFingerprint: prepared.profile.profileFingerprint,
-      planFingerprint: prepared.planFingerprint,
-      requestId: prepared.action.requestId,
-      stepByteCount: prepared.stepBytes.byteLength,
-      stepSha256: prepared.geometryArtifact.fingerprint.digest,
-    });
-  } catch (cause) {
-    throwDomain(cause);
-  }
-}
-
-function assertExactLocalArtifacts(
-  snapshot: ThreadSnapshot,
-  runId: string,
-): readonly ThreadArtifact[] {
-  try {
-    return assertExactStaticProofLocalArtifacts(snapshot, localOperation(runId));
-  } catch (cause) {
-    throwDomain(cause);
-  }
-}
-
-function exactLocalEvidenceRefs(
-  snapshot: ThreadSnapshot,
-  runId: string,
-): ReturnType<typeof exactStaticProofEvidenceRefs> {
-  try {
-    return exactStaticProofEvidenceRefs(snapshot, localOperation(runId));
-  } catch (cause) {
-    throwDomain(cause);
-  }
-}
-
-function assertExactCompletedProjectBinding(
-  project: EngineeringProjectSnapshot,
-  runId: string,
-  snapshot: ThreadSnapshot,
-): void {
-  const run = requireRun(project, runId);
-  const workItem = project.workItems.find((item) => item.id === run.workItemId);
-  try {
-    assertExactCompletedStaticProofProjectBinding({
-      runStatus: run.status,
-      resultSnapshot: run.resultSnapshot,
-      evidenceRefs: run.evidenceRefs,
-      workItemStatus: workItem?.status,
-      workItemEvidenceRefs: workItem?.evidenceRefs,
-      expectedSnapshot: snapshotRef(snapshot),
-      expectedEvidenceRefs: exactLocalEvidenceRefs(snapshot, runId),
-    });
-  } catch (cause) {
-    throwDomain(cause);
-  }
-}
-
-function assertProofMatchesAuthorization(
-  authorization: ResolvedRunPlanExecutionAuthorization,
-  action: ResolvedCalculixIsolatedStaticStructuralAction,
-  proof: SealedStaticProofCapture,
-  proofArtifact: ThreadArtifact,
-  step: ThreadArtifact,
-  geometry: ThreadArtifact,
-  requirements: ThreadArtifact,
-): void {
-  try {
-    assertStaticProofCrossAttests({
-      projectId: authorization.plan.run.projectId,
-      subjectId: authorization.basis.subject.id,
-      actionProofCaseId: action.input.proofCase.id,
-      actionProofCaseFingerprint: action.input.proofCase.fingerprint,
-      expectedProofProducerServerId: "digital-thread",
-      expectedProofProducerTool: "verify.seal-proof-case@1",
-    }, {
-      projectId: proof.case.project.id,
-      subjectId: proof.case.project.subjectId,
-      proofCaseId: proof.case.id,
-      trustedRunId: proof.trustedRunId,
-      expectedCadSha256: proof.case.expectedCadArtifact.sha256,
-      expectedCadBytes: proof.case.expectedCadArtifact.bytes,
-      geometry: proof.geometry,
-      requirements: proof.requirements,
-      step: proof.step,
-    }, {
-      id: proofArtifact.id,
-      fingerprint: proofArtifact.fingerprint,
-      producerRunId: proofArtifact.producer.runId,
-      producerServerId: proofArtifact.producer.serverId,
-      producerTool: proofArtifact.producer.tool,
-      inputArtifactIds: proofArtifact.inputArtifactIds,
-    }, {
-      id: step.id,
-      fingerprint: step.fingerprint,
-      producerRunId: step.producer.runId,
-    }, {
-      id: geometry.id,
-      fingerprint: geometry.fingerprint,
-      producerRunId: geometry.producer.runId,
-    }, {
-      id: requirements.id,
-      fingerprint: requirements.fingerprint,
-      producerRunId: requirements.producer.runId,
-    });
-  } catch (cause) {
-    throwDomain(cause);
-  }
 }
 
 function requiredBoundArtifact(
@@ -601,32 +437,11 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       snapshots: this.d.snapshots,
       plans: this.d.plans,
     });
-    if (authorization.plan.action.kind !== "isolated-static-structural-analysis") {
-      throw commandError(
-        "invalid_transition",
-        "The resolved plan action is not the isolated local CalculiX action.",
-      );
-    }
-    const action = authorization.plan.action;
+    const action = requireIsolatedStaticStructuralAction(
+      authorization.plan.action,
+    );
     const profile = await this.d.profiles.initial();
-    try {
-      assertStaticProofProfileBinding({
-        actionProfileFingerprint: action.executor.profileFingerprint,
-        activeProfileFingerprint: profile.profileFingerprint,
-        executorId: action.executor.id,
-        expectedExecutorId: "casys-local-microsandbox",
-        contractId: action.executor.contract.id,
-        expectedContractId: "calculix-static-proof-v1",
-        contractVersion: action.executor.contract.version,
-        expectedContractVersion: "1.0.0",
-        loweringId: action.lowering.id,
-        expectedLoweringId: profile.lowering.id,
-        loweringVersion: action.lowering.version,
-        expectedLoweringVersion: profile.lowering.version,
-      });
-    } catch (cause) {
-      throwDomain(cause);
-    }
+    assertIsolatedStaticProofProfileBinding(action, profile);
 
     const proofArtifact = requiredBoundArtifact(
       authorization,
@@ -649,15 +464,16 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       authorization.basis,
       proof.geometry.id,
     );
-    assertProofMatchesAuthorization(
-      authorization,
+    assertIsolatedStaticProofCrossAttests({
+      projectId: authorization.plan.run.projectId,
+      subjectId: authorization.basis.subject.id,
       action,
       proof,
       proofArtifact,
-      geometryArtifact,
-      proofGeometryArtifact,
-      requirementsArtifact,
-    );
+      step: geometryArtifact,
+      geometry: proofGeometryArtifact,
+      requirements: requirementsArtifact,
+    });
     await this.#readExactArtifact(
       requirementsArtifact,
       undefined,
@@ -690,17 +506,13 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       authorization,
       action.input.geometrySourceBinding,
     );
-    try {
-      assertCanonicalStepBytes({
-        stepByteLength: stepBytes.byteLength,
-        sourceByteCount: stepSource.artifact.byteCount,
-        proofStepBytes: proof.step.bytes,
-        stepSha256: await fingerprintResourceBytes(stepBytes),
-        geometryDigest: geometryArtifact.fingerprint.digest,
-      });
-    } catch (cause) {
-      throwDomain(cause);
-    }
+    assertIsolatedCanonicalStepBytes({
+      stepByteLength: stepBytes.byteLength,
+      sourceByteCount: stepSource.artifact.byteCount,
+      proofStepBytes: proof.step.bytes,
+      stepSha256: await fingerprintResourceBytes(stepBytes),
+      geometryDigest: geometryArtifact.fingerprint.digest,
+    });
     const bundle = await createCalculixIsolatedInputBundle({
       requestId: action.requestId,
       proof: proof.case,
@@ -727,6 +539,17 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       bundle,
       planFingerprint,
       executionRunId,
+      identity: isolatedStaticProofPreparedIdentity({
+        projectId: authorization.plan.run.projectId,
+        agentRunId: authorization.run.id,
+        executionRunId,
+        bundle,
+        profileFingerprint: profile.profileFingerprint,
+        planFingerprint,
+        requestId: action.requestId,
+        stepByteCount: stepBytes.byteLength,
+        stepSha256: geometryArtifact.fingerprint.digest,
+      }),
     };
   }
 
@@ -739,26 +562,16 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       prepared.authorization.basis,
       this.d.snapshots,
     );
-    const attempt = await this.d.attempts.read(command.projectId, command.runId);
-    if (!attempt || attempt.status !== "completed") {
-      throw commandError(
-        "invalid_transition",
-        "The completed isolated CalculiX run has no exact completed product WAL.",
-      );
-    }
-    const reopened = await this.#reopenAttemptSnapshot(prepared, attempt);
-    const projectReference = project.threadSnapshots.filter((reference) =>
-      reference.snapshotId === reopened.id &&
-      reference.revision === reopened.revision &&
-      reference.subjectId === reopened.subject.id
+    const attempt = requireCompletedIsolatedStaticProofRunWal(
+      await this.d.attempts.read(command.projectId, command.runId),
     );
-    if (projectReference.length !== 1) {
-      throw commandError(
-        "invalid_transition",
-        "The completed project does not retain the exact isolated CalculiX snapshot reference.",
-      );
-    }
-    assertExactCompletedProjectBinding(project, command.runId, reopened);
+    const reopened = await this.#reopenAttemptSnapshot(prepared, attempt);
+    assertCompletedIsolatedStaticProofProjectReference(project, reopened);
+    assertCompletedIsolatedStaticProofProjectBinding(
+      project,
+      command.runId,
+      reopened,
+    );
     return project;
   }
 
@@ -766,35 +579,22 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     prepared: Prepared,
     attempt: CalculixIsolatedProductAttempt,
   ): Promise<ThreadSnapshot> {
-    if (attempt.status !== "completed") {
-      throw commandError(
-        "invalid_transition",
-        "The isolated CalculiX product WAL is not complete.",
-      );
-    }
-    assertAttemptMatchesPrepared(attempt, prepared);
-    const evidence = await this.#readEvidence(prepared, attempt);
-    const evaluation = await this.#ensureEvaluation(prepared, evidence, attempt);
+    const completed = requireCompletedIsolatedStaticProofWal(attempt);
+    assertIsolatedStaticProofAttemptMatches(completed, prepared.identity);
+    const evidence = await this.#readEvidence(prepared, completed);
+    const evaluation = await this.#ensureEvaluation(prepared, evidence, completed);
     const expectedSnapshot = this.#materializeSnapshot(
       prepared,
       evidence,
       evaluation,
     );
-    const reopened = await this.d.snapshots.get(attempt.snapshot.snapshotId);
-    if (
-      !reopened ||
-      attempt.snapshot.snapshotId !== expectedSnapshot.id ||
-      attempt.snapshot.revision !== expectedSnapshot.revision ||
-      attempt.snapshot.subjectId !== expectedSnapshot.subject.id ||
-      deterministicJson(reopened) !== deterministicJson(expectedSnapshot)
-    ) {
-      throw commandError(
-        "invalid_transition",
-        "The completed isolated CalculiX ThreadSnapshot is absent or divergent.",
-      );
-    }
+    const reopened = assertCompletedIsolatedStaticProofSnapshot({
+      persisted: await this.d.snapshots.get(completed.snapshot.snapshotId),
+      rematerialized: expectedSnapshot,
+      attemptSnapshot: completed.snapshot,
+      runId: prepared.authorization.run.id,
+    });
     await assertThreadSnapshotLineageIntact(reopened, this.d.snapshots);
-    assertExactLocalArtifacts(reopened, prepared.authorization.run.id);
     return reopened;
   }
 
@@ -820,7 +620,7 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       },
       bundle: prepared.bundle,
     });
-    assertEvidenceMatchesPrepared(result.evidence, prepared);
+    assertIsolatedStaticProofEvidenceMatches(result.evidence, prepared.identity);
     const reopened = await this.d.executionEvidence.read(
       result.evidence.fingerprint,
     );
@@ -856,7 +656,7 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
         "The local CalculiX evidence named by the product WAL is absent.",
       );
     }
-    assertEvidenceMatchesPrepared(evidence, prepared);
+    assertIsolatedStaticProofEvidenceMatches(evidence, prepared.identity);
     return evidence;
   }
 
@@ -1021,7 +821,9 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       return buildStaticProofSuccessor({
         basis: prepared.authorization.basis,
         capturedAt: evaluation.evaluationDispatchedAt,
-        localOperation: localOperation(prepared.authorization.run.id),
+        localOperation: isolatedStaticProofLocalOperation(
+          prepared.authorization.run.id,
+        ),
         oracleOperation: {
           serverId: "syson",
           tool: "syson_constraint_evaluate",
@@ -1122,7 +924,10 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       );
     }
     const exactSnapshot = validateThreadSnapshot(snapshot);
-    const evidenceRefs = exactLocalEvidenceRefs(exactSnapshot, command.runId);
+    const evidenceRefs = exactIsolatedStaticProofEvidenceRefs(
+      exactSnapshot,
+      command.runId,
+    );
     await this.d.commands.completeRun(origin, {
       ...command,
       commandId: `${command.commandId}:complete`,
