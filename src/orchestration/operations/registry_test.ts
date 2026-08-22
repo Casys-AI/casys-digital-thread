@@ -28,6 +28,7 @@ import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domai
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
 import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-decision-proposal.ts";
+import { ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION } from "../../domain/impact/cross-domain-impact-mechanical-preservation-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -179,6 +180,26 @@ Deno.test("cross-domain impact decision is human-only, additive after evaluation
     EngineeringOperationRegistryError,
   );
   assertEquals(extras.code, "invalid_bindings");
+});
+
+Deno.test("mechanical preservation follows the impact decision without MRTR, CalculiX, or caller-selected artifacts", () => {
+  const operation = getRegisteredEngineeringOperation(
+    ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION,
+  )!;
+  assertEquals(operation.workItemKind, "review");
+  assertEquals(operation.riskClass, "low");
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.requiresAdditiveChange, true);
+  assertEquals(
+    operation.requiresDependsOnOperation,
+    DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
+  );
+  assertEquals(operation.decisionEvidenceScope, undefined);
+  assertEquals(operation.bindings, [{
+    name: "approvedBrief",
+    allowedSourceKinds: ["approved-brief"],
+  }]);
+  assertEquals(operation.description.includes("CalculiX"), true);
 });
 
 Deno.test("historical MCP FEA and recorded Modelica versions are neither lookupable nor queueable", () => {

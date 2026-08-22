@@ -206,6 +206,24 @@ already-proposed gate-claim statuses onto existing work-item claims. X07/X08 rec
 invalidate, or queue work items. It writes one documentary Thread successor and mutates
 project gate claims atomically. It queues no rerun and calls no provider.
 
+`analyze.evaluate-mechanical-preservation@1` is the later provider-free X11 control. The
+caller queues only the registered operation (approvedBrief binding). The server reopens
+the unique current Thread tip, unique X09 decision capture, exact X08 evaluation,
+approved Brief V2, and the reviewed independence assertion. It then selects the unique
+accepted L5 closeout whose `inputArtifactIds` name the exact mechanical execution
+evidence from that assertion/X08 recross. Unrelated accepted closeouts for other FEA
+executions do not block; zero or multiple closeouts for the same asserted evidence stay
+`impact-unresolved`. That closeout's named identities (`canonicalStep`, `sealedProof`,
+`executionEvidence`, `evaluationCapture`) select the FEA artifacts; a sibling evidence
+from the same FEA run is not an L4 substitute. Canonical STEP is recrossed only as
+`design.write-geometry@1`; an isolated or arbitrary STEP producer stays
+`impact-unresolved`. Thread consumptions are recrossed from the snapshot
+(`consume-<input>-by-<closeout>`), never invented from the closeout JSON. Producer runs
+are recrossed against the project ledger. `carried-forward` is legal only when there is
+no mechanical causal edge and the assertion still covers those exact FEA inputs;
+otherwise the capture keeps literal `impact-unresolved`. Absence of an edge is never
+proof. X11 does not call CalculiX, mutate claims, or create X10 work items or reruns.
+
 Lookalike traps for agents: [lookalike traps](../agent/lookalike-traps.md).
 
 The legacy generic geometry boundary separates preview from seal, and it separates two

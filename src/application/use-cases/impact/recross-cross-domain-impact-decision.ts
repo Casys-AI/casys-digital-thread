@@ -333,7 +333,7 @@ function isExactEvaluationCompletion(
     evidence.kind === "artifact" && evidence.id === artifact.id;
 }
 
-function expectedX08EvaluationArtifact(
+export function expectedX08EvaluationArtifact(
   capture: CrossDomainImpactEvaluationCapture,
   captureFingerprint: ContentFingerprint,
 ) {
@@ -360,7 +360,7 @@ function expectedX08EvaluationArtifact(
   };
 }
 
-function x08EvaluationArtifactIdentity(artifact: ThreadArtifact) {
+export function x08EvaluationArtifactIdentity(artifact: ThreadArtifact) {
   return {
     id: artifact.id,
     name: artifact.name,

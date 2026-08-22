@@ -3,6 +3,7 @@
 import type { CrossDomainImpactDecisionCapture } from "../../../../domain/impact/cross-domain-impact-decision-capture.ts";
 import type { CrossDomainImpactManifestSealCapture } from "../../../../domain/impact/cross-domain-impact-manifest-seal-capture.ts";
 import type { CrossDomainImpactEvaluationCapture } from "../../../../domain/impact/cross-domain-impact-evaluation-capture.ts";
+import type { MechanicalPreservationCapture } from "../../../../domain/impact/cross-domain-impact-mechanical-preservation-capture.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 
 export interface CrossDomainImpactManifestSealCaptureReceipt {
@@ -46,4 +47,18 @@ export interface CrossDomainImpactDecisionCaptureStore {
   read(
     fingerprint: ContentFingerprint,
   ): Promise<CrossDomainImpactDecisionCapture | undefined>;
+}
+
+export interface MechanicalPreservationCaptureReceipt {
+  readonly fingerprint: ContentFingerprint;
+  readonly uri: string;
+}
+
+export interface MechanicalPreservationCaptureStore {
+  save(
+    capture: MechanicalPreservationCapture,
+  ): Promise<MechanicalPreservationCaptureReceipt>;
+  read(
+    fingerprint: ContentFingerprint,
+  ): Promise<MechanicalPreservationCapture | undefined>;
 }

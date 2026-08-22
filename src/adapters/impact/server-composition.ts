@@ -1,22 +1,29 @@
-/** Provider-free composition for the X05 manifest seal and X07/X08 recross. */
+/** Provider-free composition for the X05–X09 recross and X11 preservation. */
 
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PrepareProjectCrossDomainImpactManifestSealReview } from "../../application/use-cases/impact/prepare-project-cross-domain-impact-manifest-seal-review.ts";
 import { PrepareCrossDomainImpactDecision } from "../../application/use-cases/impact/prepare-cross-domain-impact-decision.ts";
 import { PrepareCrossDomainImpactEvaluation } from "../../application/use-cases/impact/prepare-cross-domain-impact-evaluation.ts";
+import { PrepareMechanicalPreservation } from "../../application/use-cases/impact/prepare-mechanical-preservation.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
-import { FileCaptureStore } from "../shared/cas/file-capture-store.ts";
+import {
+  EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+  FileCaptureStore,
+} from "../shared/cas/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import { FileCrossDomainImpactManifestSealCaptureStore } from "./file-cross-domain-impact-manifest-seal-capture-store.ts";
 import { FileCrossDomainImpactEvaluationCaptureStore } from "./file-cross-domain-impact-evaluation-capture-store.ts";
 import { FileCrossDomainImpactDecisionCaptureStore } from "./file-cross-domain-impact-decision-capture-store.ts";
+import { FileMechanicalPreservationCaptureStore } from "./file-cross-domain-impact-mechanical-preservation-capture-store.ts";
+import { FileMechanicalPreservationCloseoutReader } from "./file-mechanical-preservation-closeout-reader.ts";
 import { FileCrossDomainImpactManifestStore } from "./file-cross-domain-impact-manifest-store.ts";
 import { ProjectCrossDomainImpactBriefGateReader } from "./project-cross-domain-impact-brief-gate-reader.ts";
 import { ProjectCrossDomainImpactThreadLineageReader } from "./project-cross-domain-impact-thread-lineage-reader.ts";
 import { VerifySealCrossDomainImpactManifestRunExecutor } from "./verify-seal-cross-domain-impact-manifest-run-executor.ts";
 import { AnalyzeEvaluateCrossDomainImpactRunExecutor } from "./analyze-evaluate-cross-domain-impact-run-executor.ts";
+import { AnalyzeEvaluateMechanicalPreservationRunExecutor } from "./analyze-evaluate-mechanical-preservation-run-executor.ts";
 import { DecideAcceptCrossDomainImpactRunExecutor } from "./decide-accept-cross-domain-impact-run-executor.ts";
 
 export interface CrossDomainImpactProjectOptions {
@@ -41,6 +48,9 @@ export interface CrossDomainImpactProject {
     AnalyzeEvaluateCrossDomainImpactRunExecutor;
   readonly crossDomainImpactDecisionReview: PrepareCrossDomainImpactDecision;
   readonly decideAcceptCrossDomainImpact: DecideAcceptCrossDomainImpactRunExecutor;
+  /** X11: provider-free FEA preservation recross after the X09 decision. */
+  readonly analyzeEvaluateMechanicalPreservation:
+    AnalyzeEvaluateMechanicalPreservationRunExecutor;
 }
 
 export function createCrossDomainImpactProject(
@@ -102,6 +112,31 @@ export function createCrossDomainImpactProject(
     briefGates,
     captures: evaluationCaptures,
   });
+  const preservationCaptures = new FileMechanicalPreservationCaptureStore(
+    new FileCaptureStore({
+      kind: "cross-domain-impact-mechanical-preservation-capture",
+      directory: `${options.recordedAnalysisDirectory}/impact/mechanical-preservations`,
+      uriNamespace: "cross-domain-impact-mechanical-preservation-capture",
+      label: "Mechanical preservation",
+    }),
+  );
+  const closeouts = new FileMechanicalPreservationCloseoutReader(
+    new FileCaptureStore({
+      ...EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
+      directory:
+        `${options.recordedAnalysisDirectory}/calculix/evaluation-closeout-captures`,
+      syncBoundary: options.recordedAnalysisDirectory,
+    }),
+  );
+  const preservation = new PrepareMechanicalPreservation({
+    projects: options.projects,
+    snapshots: options.snapshots,
+    manifests,
+    evaluationCaptures,
+    decisionCaptures,
+    briefGates,
+    closeouts,
+  });
   return {
     manifests,
     crossDomainImpactManifestSealReview: review,
@@ -132,5 +167,14 @@ export function createCrossDomainImpactProject(
       decisionCaptures,
       lease: options.lease,
     }),
+    analyzeEvaluateMechanicalPreservation:
+      new AnalyzeEvaluateMechanicalPreservationRunExecutor({
+        projects: options.projects,
+        commands: options.commands,
+        snapshots: options.snapshots,
+        evaluation: preservation,
+        captures: preservationCaptures,
+        lease: options.lease,
+      }),
   };
 }

@@ -60,6 +60,7 @@ import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "./src/adapt
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "./src/domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "./src/domain/impact/cross-domain-impact-evaluation-proposal.ts";
 import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "./src/domain/impact/cross-domain-impact-decision-proposal.ts";
+import { ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION } from "./src/domain/impact/cross-domain-impact-mechanical-preservation-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
 import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "./src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts";
 import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/compile/source/source-analysis-frontend-registry.ts";
@@ -1085,6 +1086,10 @@ async function createProjectControl(
           {
             operation: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
             executor: impactProject.decideAcceptCrossDomainImpact,
+          },
+          {
+            operation: ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION,
+            executor: impactProject.analyzeEvaluateMechanicalPreservation,
           },
           {
             operation: VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,

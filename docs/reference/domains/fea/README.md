@@ -21,4 +21,6 @@ shared-schema and lowering change, not catalog data.
 
 The shared product sequence is `project_fea_proof_seal_review` →
 `verify.seal-proof-case@1` → `project_fea_isolated_run_review` →
-`verify.run-fea-static-proof@3`.
+`verify.run-fea-static-proof@3`, then human L5 closeout. Cross-domain
+`analyze.evaluate-mechanical-preservation@1` rereads that exact proof/closeout
+after an impact decision; it does not run CalculiX.

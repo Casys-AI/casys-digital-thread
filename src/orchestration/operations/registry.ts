@@ -22,6 +22,7 @@ import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domai
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
 import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-decision-proposal.ts";
+import { ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION } from "../../domain/impact/cross-domain-impact-mechanical-preservation-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -514,6 +515,40 @@ const OPERATIONS = [
     requiresDependsOnOperation: {
       id: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id,
       version: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version,
+    },
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Provider-free mechanical preservation control after the human X09
+   * decision. It rereads the exact FEA proof/closeout identities, consumptions
+   * and independence assertion. Absence of a mechanical edge is never proof.
+   * It never calls CalculiX and never invents a work item or rerun.
+   */
+  {
+    id: ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION.id,
+    version: ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Capture mechanical preservation after the impact decision",
+    description:
+      "Reopen the unique current Thread tip and unique X09 impact-decision capture, " +
+      "recross the exact X08 evaluation, approved Brief V2, reviewed independence assertion, " +
+      "and current FEA proof/closeout identities and consumptions, then publish a " +
+      "provider-free documentary preservation result. Carried-forward requires an exact " +
+      "current assertion covering the inspected FEA inputs; otherwise the literal " +
+      "impact-unresolved state is preserved. Callers never supply a branch, assertion, " +
+      "artifact list, provider, solver argument, or verdict. No CalculiX call, claim " +
+      "mutation, work item, or rerun is created.",
+    workItemKind: "review",
+    riskClass: "low",
+    execution: "trusted",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id,
+      version: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version,
     },
     bindings: [{
       name: "approvedBrief",
