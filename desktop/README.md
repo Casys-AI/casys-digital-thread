@@ -24,9 +24,13 @@ presentation-only.
   identity or starts one helper and waits for its bounded readiness handshake.
 - A foreign, stale, mismatched, or ambiguous listener is never adopted, replaced, or
   killed. Shutdown closes only the child handle retained by the Desktop process; stdin
-  EOF is the crash lifeline. On `SIGINT` or `SIGTERM`, Desktop waits for that
-  owned-child stop and the renderer server drain before explicitly exiting the native
-  process.
+  EOF is the crash lifeline. On `SIGINT` or `SIGTERM`, Desktop drains the renderer and
+  requests bounded owned-child cleanup through EOF, `SIGTERM`, then `SIGKILL` before
+  explicitly exiting the native process. The moved-bundle E2E proves marker removal,
+  port closure, and no owned orphan for the real packaged helper, including repeated
+  signals. This is not a universal no-orphan guarantee: if child status remains
+  unresolved after the final `SIGKILL` timeout, the host returns without proving the
+  terminal child state.
 - Control-plane readiness, engineering-provider health, and persisted evidence remain
   separate states. Providers may be `unavailable` without counts. Indexed or `demo` run
   records remain `candidate-unverified`; they are not promoted to verified Thread
@@ -60,6 +64,12 @@ ports. Environment, subprocess, FFI, system, and remote-import permissions are d
 It has no Docker permission and never searches a checkout or Compose root. The helper
 uses the existing server composition and server-owned sequencing; Desktop does not gain
 provider/tool/argument authority.
+
+These closed allowlists describe the packaged runtime binaries. The development
+`deno task test` and `deno task sidecar:test` harnesses currently use unscoped
+`--allow-read --allow-write` to exercise filesystem fixtures and generated artifacts.
+Those test permissions are not embedded in the Desktop host or helper; narrowing them
+remains test-harness hardening debt.
 
 Windows and Linux application-support layouts remain validated by unit tests, but Lot 2
 packages and launches the signed helper only on macOS. Their finite roots are reserved
