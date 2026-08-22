@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
+import { CrossDomainImpactThreadLineageReadError } from "../../application/ports/out/impact/cross-domain-impact-thread-lineage-reader.ts";
 import { createCrossDomainImpactManifest } from "../../domain/impact/cross-domain-impact-manifest.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
@@ -20,10 +21,15 @@ Deno.test("impact Thread lineage rereads exact source and mechanical producer/co
     snapshots: { get: () => Promise.resolve(fixture.snapshot) },
   });
   const reread = await reader.read({ projectId: PROJECT, manifest: fixture.manifest });
-  assertEquals(reread?.mechanicalEvidence[0]?.consumptions[0]?.consumerEvidence.id, "artifact.evidence");
+  assertEquals(
+    reread?.mechanicalEvidence[0]?.consumptions[0]?.consumerEvidence.id,
+    "artifact.evidence",
+  );
 
   const producerMismatch = structuredClone(fixture.snapshot) as unknown as {
-    consumptions: Array<{ consumer: { serverId: string; tool: string; runId: string } }>;
+    consumptions: Array<
+      { consumer: { serverId: string; tool: string; runId: string } }
+    >;
   };
   producerMismatch.consumptions[0]!.consumer = {
     ...producerMismatch.consumptions[0]!.consumer,
@@ -31,13 +37,32 @@ Deno.test("impact Thread lineage rereads exact source and mechanical producer/co
   };
   const mismatchedReader = new ProjectCrossDomainImpactThreadLineageReader({
     projects: fixture.projects,
-    snapshots: { get: () => Promise.resolve(producerMismatch as unknown as ThreadSnapshot) },
+    snapshots: {
+      get: () => Promise.resolve(producerMismatch as unknown as ThreadSnapshot),
+    },
   });
   await assertRejects(
     () => mismatchedReader.read({ projectId: PROJECT, manifest: fixture.manifest }),
     Error,
   );
 });
+
+Deno.test(
+  "X07 Thread lineage stays unresolved when an extra verified consumption by the evidence producer is omitted from the assertion",
+  async () => {
+    const fixture = await lineageFixture();
+    const extra = extraProducerConsumption(fixture.snapshot);
+    const reader = new ProjectCrossDomainImpactThreadLineageReader({
+      projects: fixture.projects,
+      snapshots: { get: () => Promise.resolve(extra) },
+    });
+    const error = await assertRejects(
+      () => reader.read({ projectId: PROJECT, manifest: fixture.manifest }),
+      CrossDomainImpactThreadLineageReadError,
+    );
+    assertEquals(error.status, "unresolved");
+  },
+);
 
 async function lineageFixture() {
   const sourceFingerprint = fingerprint("a");
@@ -87,7 +112,13 @@ async function lineageFixture() {
         tool: "design.write-geometry@1",
         runId: "run.geometry",
       }),
-      artifact("artifact.evidence", "Mechanical evidence", evidenceFingerprint, evidenceProducer, ["artifact.input"]),
+      artifact(
+        "artifact.evidence",
+        "Mechanical evidence",
+        evidenceFingerprint,
+        evidenceProducer,
+        ["artifact.input"],
+      ),
     ],
     consumptions: [{
       id: "consume.input.by.evidence",
@@ -155,7 +186,11 @@ async function lineageFixture() {
         kind: change.kind,
         fingerprint: await sha256Fingerprint(change),
       },
-      source: { kind: "artifact" as const, id: "artifact.source", fingerprint: sourceFingerprint },
+      source: {
+        kind: "artifact" as const,
+        id: "artifact.source",
+        fingerprint: sourceFingerprint,
+      },
     }],
     causalEdges: [],
     independenceAssertions: [{
@@ -184,16 +219,51 @@ async function lineageFixture() {
   };
   const manifest = await createCrossDomainImpactManifest(body);
   const projects: Pick<EngineeringProjectRevisionStore, "get"> = {
-    get: () => Promise.resolve({ project: projectIdentity } as EngineeringProjectSnapshot),
+    get: () =>
+      Promise.resolve({ project: projectIdentity } as EngineeringProjectSnapshot),
   };
   return { manifest, projects, snapshot };
+}
+
+function extraProducerConsumption(snapshot: ThreadSnapshot): ThreadSnapshot {
+  const evidence = snapshot.artifacts.find((item) => item.id === "artifact.evidence")!;
+  const source = snapshot.artifacts.find((item) => item.id === "artifact.source")!;
+  const extraId = "consume.source.by.evidence.omitted";
+  return validateThreadSnapshot({
+    ...snapshot,
+    consumptions: [
+      ...snapshot.consumptions,
+      {
+        id: extraId,
+        artifactId: source.id,
+        consumer: evidence.producer,
+        observedFingerprint: source.fingerprint,
+        verifiedAt: AT,
+        status: "verified",
+      },
+    ],
+    provenance: [
+      ...snapshot.provenance,
+      {
+        id: `${extraId}.uses`,
+        relation: "uses",
+        from: { kind: "consumption", id: extraId },
+        to: { kind: "artifact", id: source.id },
+        rationale: "Omitted extra consumption by the exact evidence producer.",
+      },
+    ],
+  });
 }
 
 function artifact(
   id: string,
   name: string,
   fingerprint: ContentFingerprint,
-  producer: { readonly serverId: string; readonly tool: string; readonly runId: string },
+  producer: {
+    readonly serverId: string;
+    readonly tool: string;
+    readonly runId: string;
+  },
   inputArtifactIds: readonly string[] = [],
 ) {
   return {

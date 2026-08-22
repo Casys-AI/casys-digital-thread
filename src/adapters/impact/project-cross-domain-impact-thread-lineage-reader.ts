@@ -9,17 +9,20 @@
 
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import {
-  CrossDomainImpactThreadLineageReadError,
   type CrossDomainImpactThreadLineage,
   type CrossDomainImpactThreadLineageReader,
+  CrossDomainImpactThreadLineageReadError,
 } from "../../application/ports/out/impact/cross-domain-impact-thread-lineage-reader.ts";
+import { recrossExactMechanicalProducerConsumptions } from "../../domain/impact/cross-domain-impact-mechanical-evidence-consumptions.ts";
 import type { CrossDomainImpactManifest } from "../../domain/impact/cross-domain-impact-manifest.ts";
 import {
-  deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
-import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import {
+  archivedRefKeys,
+  type ThreadSnapshot,
+} from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 
@@ -59,12 +62,12 @@ export class ProjectCrossDomainImpactThreadLineageReader
     const subjectFingerprint = await sha256Fingerprint(snapshot.subject);
     const basisFingerprint = await sha256Fingerprint(snapshot);
     const sourceAnchors = await Promise.all(
-      input.manifest.sourceAnchors.map((anchor) => recrossSourceAnchor(snapshot, anchor)),
-    );
-    const mechanicalEvidence = await Promise.all(
-      input.manifest.independenceAssertions.map((assertion) =>
-        recrossMechanicalEvidence(snapshot, assertion)
+      input.manifest.sourceAnchors.map((anchor) =>
+        recrossSourceAnchor(snapshot, anchor)
       ),
+    );
+    const mechanicalEvidence = input.manifest.independenceAssertions.map(
+      (assertion) => recrossMechanicalEvidence(snapshot, assertion),
     );
     return {
       project: { id: project.project.id, fingerprint: projectFingerprint },
@@ -86,8 +89,12 @@ async function recrossSourceAnchor(
   snapshot: ThreadSnapshot,
   expected: CrossDomainImpactManifest["sourceAnchors"][number],
 ): Promise<CrossDomainImpactManifest["sourceAnchors"][number]> {
-  const changes = snapshot.changeSet.changes.filter((change) => change.id === expected.threadChange.id);
-  if (changes.length !== 1) throw unresolved("A declared Thread source change is unavailable or ambiguous.");
+  const changes = snapshot.changeSet.changes.filter((change) =>
+    change.id === expected.threadChange.id
+  );
+  if (changes.length !== 1) {
+    throw unresolved("A declared Thread source change is unavailable or ambiguous.");
+  }
   const change = changes[0]!;
   const changeFingerprint = await sha256Fingerprint(change);
   if (
@@ -95,10 +102,14 @@ async function recrossSourceAnchor(
     !fingerprintsEqual(changeFingerprint, expected.threadChange.fingerprint) ||
     change.target.id !== expected.source.id
   ) {
-    throw unresolved("A declared Thread source change is not the exact manifest change.");
+    throw unresolved(
+      "A declared Thread source change is not the exact manifest change.",
+    );
   }
   if (expected.source.kind === "sysml-element") {
-    throw unresolved("A declared SysML element source has no generic exact Thread reader.");
+    throw unresolved(
+      "A declared SysML element source has no generic exact Thread reader.",
+    );
   }
   if (change.target.kind !== expected.source.kind) {
     throw unresolved("A declared source kind is not the exact Thread change target.");
@@ -110,46 +121,42 @@ async function recrossSourceAnchor(
     !fingerprintsEqual(sourceFingerprint, expected.source.fingerprint) ||
     !fingerprintsEqual(change.afterFingerprint, expected.source.fingerprint)
   ) {
-    throw unresolved("A declared source fingerprint is not the exact current Thread identity.");
+    throw unresolved(
+      "A declared source fingerprint is not the exact current Thread identity.",
+    );
   }
   return expected;
 }
 
-async function recrossMechanicalEvidence(
+function recrossMechanicalEvidence(
   snapshot: ThreadSnapshot,
   assertion: CrossDomainImpactManifest["independenceAssertions"][number],
-): Promise<CrossDomainImpactThreadLineage["mechanicalEvidence"][number]> {
-  const evidence = snapshot.artifacts.filter((artifact) => artifact.id === assertion.evidence.id);
-  if (evidence.length !== 1) throw unresolved("Declared mechanical evidence is unavailable or ambiguous.");
+): CrossDomainImpactThreadLineage["mechanicalEvidence"][number] {
+  const evidence = snapshot.artifacts.filter((artifact) =>
+    artifact.id === assertion.evidence.id
+  );
+  if (evidence.length !== 1) {
+    throw unresolved("Declared mechanical evidence is unavailable or ambiguous.");
+  }
   const artifact = evidence[0]!;
   if (!fingerprintsEqual(artifact.fingerprint, assertion.evidence.fingerprint)) {
-    throw unresolved("Declared mechanical evidence fingerprint does not match the manifest.");
+    throw unresolved(
+      "Declared mechanical evidence fingerprint does not match the manifest.",
+    );
   }
-  const consumptions = await Promise.all(assertion.inspectedConsumptions.map(async (inspected) => {
-    const matches = snapshot.consumptions.filter((consumption) => consumption.id === inspected.id);
-    if (matches.length !== 1) throw unresolved("Declared mechanical evidence consumption is unavailable or ambiguous.");
-    const consumption = matches[0]!;
-    if (
-      consumption.status !== "verified" ||
-      deterministicJson(consumption.consumer) !== deterministicJson(artifact.producer) ||
-      !fingerprintsEqual(consumption.observedFingerprint, inspected.input.fingerprint)
-    ) {
-      throw unresolved("Declared mechanical evidence consumption is not an exact verified reread.");
-    }
-    const input = snapshot.artifacts.filter((candidate) => candidate.id === consumption.artifactId);
-    if (
-      input.length !== 1 ||
-      input[0]!.id !== inspected.input.id ||
-      !fingerprintsEqual(input[0]!.fingerprint, inspected.input.fingerprint)
-    ) {
-      throw unresolved("Declared mechanical consumption input is not the exact current artifact.");
-    }
-    return {
-      id: consumption.id,
-      consumerEvidence: { id: artifact.id, fingerprint: artifact.fingerprint },
-      input: { id: input[0]!.id, fingerprint: input[0]!.fingerprint },
-    };
-  }));
+  const consumptions = recrossExactMechanicalProducerConsumptions({
+    producer: artifact.producer,
+    evidence: { id: artifact.id, fingerprint: artifact.fingerprint },
+    inspected: assertion.inspectedConsumptions,
+    consumptions: snapshot.consumptions,
+    artifacts: snapshot.artifacts,
+    archived: archivedRefKeys(snapshot),
+  });
+  if (!consumptions) {
+    throw unresolved(
+      "Declared mechanical evidence consumption star is omitted, ambiguous, or not an exact verified reread.",
+    );
+  }
   return {
     assertionId: assertion.id,
     evidence: { id: artifact.id, fingerprint: artifact.fingerprint },
@@ -160,13 +167,17 @@ async function recrossMechanicalEvidence(
 
 async function recrossArtifact(snapshot: ThreadSnapshot, id: string) {
   const items = snapshot.artifacts.filter((artifact) => artifact.id === id);
-  if (items.length !== 1) throw unresolved("A declared source artifact is unavailable or ambiguous.");
+  if (items.length !== 1) {
+    throw unresolved("A declared source artifact is unavailable or ambiguous.");
+  }
   return items[0]!.fingerprint;
 }
 
 async function recrossRequirement(snapshot: ThreadSnapshot, id: string) {
   const items = snapshot.requirements.filter((requirement) => requirement.id === id);
-  if (items.length !== 1) throw unresolved("A declared source requirement is unavailable or ambiguous.");
+  if (items.length !== 1) {
+    throw unresolved("A declared source requirement is unavailable or ambiguous.");
+  }
   return await sha256Fingerprint(items[0]);
 }
 

@@ -15,6 +15,7 @@ import {
   crossDomainImpactDecisionCaptureUri,
 } from "../../../domain/impact/cross-domain-impact-decision-capture.ts";
 import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../../domain/impact/cross-domain-impact-decision-proposal.ts";
+import { recrossExactMechanicalProducerConsumptions } from "../../../domain/impact/cross-domain-impact-mechanical-evidence-consumptions.ts";
 import {
   MECHANICAL_PRESERVATION_CLOSEOUT_ACCEPT_TOOL,
   MECHANICAL_PRESERVATION_FEA_PROOF_TOOL,
@@ -473,7 +474,7 @@ export function recrossFeaFromCloseout(
   ) {
     return undefined;
   }
-  const consumptions = recrossInspectedFeaConsumptions(
+  const consumptions = recrossFeaProducerConsumptions(
     snapshot,
     manifest,
     capture,
@@ -546,7 +547,7 @@ function selectAssertedMechanicalIndependence(
   return { assertion, evidence: assertion.evidence };
 }
 
-function recrossInspectedFeaConsumptions(
+function recrossFeaProducerConsumptions(
   snapshot: ThreadSnapshot,
   manifest: CrossDomainImpactManifest,
   capture: CrossDomainImpactEvaluationCapture,
@@ -561,36 +562,18 @@ function recrossInspectedFeaConsumptions(
   ) {
     return undefined;
   }
-  const archived = archivedRefKeys(snapshot);
-  const recrossed: MechanicalPreservationConsumption[] = [];
-  for (const inspected of assertion.inspectedConsumptions) {
-    const matches = snapshot.consumptions.filter((item) => item.id === inspected.id);
-    if (matches.length !== 1) return undefined;
-    const consumption = matches[0]!;
-    if (
-      consumption.status !== "verified" ||
-      deterministicJson(consumption.consumer) !==
-        deterministicJson(execution.producer) ||
-      consumption.artifactId !== inspected.input.id ||
-      !fingerprintsEqual(consumption.observedFingerprint, inspected.input.fingerprint)
-    ) {
-      return undefined;
-    }
-    const input = uniqueArtifact(snapshot, consumption.artifactId);
-    if (
-      !input ||
-      !fingerprintsEqual(input.fingerprint, inspected.input.fingerprint) ||
-      archived.has(`artifact:${input.id}`)
-    ) {
-      return undefined;
-    }
-    recrossed.push({
-      id: consumption.id,
-      consumerEvidence: { id: execution.id, fingerprint: execution.fingerprint },
-      input: { id: input.id, fingerprint: input.fingerprint },
-      status: "verified",
-    });
-  }
+  const recrossedCore = recrossExactMechanicalProducerConsumptions({
+    producer: execution.producer,
+    evidence: { id: execution.id, fingerprint: execution.fingerprint },
+    inspected: assertion.inspectedConsumptions,
+    consumptions: snapshot.consumptions,
+    artifacts: snapshot.artifacts,
+    archived: archivedRefKeys(snapshot),
+  });
+  if (!recrossedCore) return undefined;
+  const recrossed: MechanicalPreservationConsumption[] = recrossedCore.map(
+    (item) => ({ ...item, status: "verified" as const }),
+  );
   if (
     recrossed.length === 0 ||
     recrossed.length !== assertion.inspectedConsumptions.length ||

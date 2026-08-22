@@ -34,7 +34,10 @@ export interface CrossDomainImpactMechanicalEvidenceRecross {
   readonly assertionId: string;
   readonly evidence: CrossDomainImpactReference;
   readonly evidenceFreshness: ThreadFreshnessStatus;
-  /** Exact current consumption facts; this is not an X07 evaluation input. */
+  /**
+   * Exhaustive current consumption star of the evidence producer, recrossed
+   * against the assertion. This is not an X07 evaluation input.
+   */
   readonly consumptions: readonly CrossDomainImpactEvidenceRecrossConsumption[];
 }
 

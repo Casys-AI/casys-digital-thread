@@ -41,6 +41,14 @@ export function validFeaEvidence(
   evaluation: CrossDomainImpactEvaluation,
 ): MechanicalPreservationFeaEvidence {
   const mechanical = evaluation.mechanicalEvidence!;
+  const step = mechanical.consumptions.find((item) =>
+    item.id === "mechanical-consumption-step"
+  );
+  if (!step) {
+    throw new TypeError(
+      "Mechanical FEA evidence is missing mechanical-consumption-step.",
+    );
+  }
   return {
     execution: {
       id: mechanical.evidence.id,
@@ -59,8 +67,8 @@ export function validFeaEvidence(
       producerTool: MECHANICAL_PRESERVATION_PROOF_SEAL_TOOL,
     },
     canonicalStep: {
-      id: mechanical.consumptions[0]!.input.id,
-      fingerprint: mechanical.consumptions[0]!.input.fingerprint,
+      id: step.input.id,
+      fingerprint: step.input.fingerprint,
       kind: "step",
       mediaType: "model/step",
     },

@@ -214,6 +214,15 @@ Deno.test("X11 stays impact-unresolved when closeout JSON is valid but Thread co
   await assertNeverCarriedForward(await preserve(extra));
 });
 
+Deno.test(
+  "X11 stays impact-unresolved when an extra verified FEA producer consumption is omitted from the assertion",
+  async () => {
+    const world = await worldFixture();
+    addExtraFeaProducerConsumption(world);
+    await assertNeverCarriedForward(await preserve(world));
+  },
+);
+
 Deno.test("X11 still carries forward when an unrelated accepted closeout names other execution evidence", async () => {
   const world = await worldFixture();
   addUnrelatedAcceptCloseout(world);
@@ -431,6 +440,41 @@ function rewriteCloseoutConsumptionIds(
         ? { ...link, from: { ...link.from, id: rewrite(link.from.id) } }
         : link
     ),
+  };
+  replaceHead(world, next);
+}
+
+function addExtraFeaProducerConsumption(
+  world: Awaited<ReturnType<typeof worldFixture>>,
+) {
+  const raw = JSON.parse(JSON.stringify(world.head)) as ThreadSnapshot;
+  const evidence = raw.artifacts.find((item) => item.id === "mechanical-fea-evidence")!;
+  const extraId = "consume-manifest-seal-document-by-mechanical-fea-evidence-omitted";
+  const next: ThreadSnapshot = {
+    ...raw,
+    consumptions: [
+      ...raw.consumptions,
+      {
+        id: extraId,
+        artifactId: "manifest-seal-document",
+        consumer: evidence.producer,
+        observedFingerprint:
+          raw.artifacts.find((item) => item.id === "manifest-seal-document")!
+            .fingerprint,
+        verifiedAt: AT,
+        status: "verified",
+      },
+    ],
+    provenance: [
+      ...raw.provenance,
+      {
+        id: `${extraId}-uses`,
+        relation: "uses",
+        from: { kind: "consumption", id: extraId },
+        to: { kind: "artifact", id: "manifest-seal-document" },
+        rationale: "Omitted extra consumption by the exact FEA evidence producer.",
+      },
+    ],
   };
   replaceHead(world, next);
 }
@@ -769,17 +813,32 @@ function tamperArtifact(
 
 async function preservationEvaluationInput() {
   const body = validCrossDomainImpactManifestBody();
+  const evidence = body.independenceAssertions[0]!.evidence;
+  const step = body.independenceAssertions[0]!.inspectedConsumptions[0]!;
+  const sealedProofId = "mechanical-sealed-proof";
+  const l4Id = "mechanical-l4-evaluation";
   body.independenceAssertions = body.independenceAssertions.map((assertion) => ({
     ...assertion,
-    inspectedConsumptions: assertion.inspectedConsumptions.map((item) => ({
-      ...item,
-      input: {
-        ...item.input,
-        id: canonicalStepArtifactId(item.input.fingerprint.digest),
+    inspectedConsumptions: [
+      {
+        ...step,
+        input: {
+          ...step.input,
+          id: canonicalStepArtifactId(step.input.fingerprint.digest),
+        },
       },
-    })),
+      {
+        id: `consume-${sealedProofId}-by-${evidence.id}`,
+        input: { id: sealedProofId, fingerprint: impactFingerprint("1") },
+      },
+      {
+        id: `consume-${evidence.id}-by-${l4Id}`,
+        input: { id: evidence.id, fingerprint: evidence.fingerprint },
+      },
+    ],
   }));
   const manifest = await createCrossDomainImpactManifest(body);
+  const assertion = manifest.independenceAssertions[0]!;
   const input = await validCrossDomainImpactEvaluationInput();
   return {
     ...input,
@@ -788,13 +847,11 @@ async function preservationEvaluationInput() {
     subject: manifest.subject,
     basis: manifest.basis,
     mechanicalEvidence: {
-      ...input.mechanicalEvidence!,
-      consumptions: input.mechanicalEvidence!.consumptions.map((item) => ({
-        ...item,
-        input: {
-          ...item.input,
-          id: canonicalStepArtifactId(item.input.fingerprint.digest),
-        },
+      evidence: assertion.evidence,
+      consumptions: assertion.inspectedConsumptions.map((item) => ({
+        id: item.id,
+        consumerEvidence: assertion.evidence,
+        input: item.input,
       })),
     },
   };
@@ -974,7 +1031,7 @@ async function evaluationCaptureFixture(
     evidenceFreshness: "fresh" as const,
     consumptions: mechanicalEvidence.consumptions,
   };
-  const artifactInputs = [
+  const artifactInputs = uniqueReferences([
     { id: "manifest-seal-document", fingerprint: impactFingerprint("9") },
     ...branchFacts.flatMap((branch) => [
       branch.method.reference,
@@ -982,7 +1039,7 @@ async function evaluationCaptureFixture(
     ]),
     mechanicalEvidence.evidence,
     ...mechanicalEvidence.consumptions.map((item) => item.input),
-  ].sort((left, right) =>
+  ]).sort((left, right) =>
     `${left.id}:${left.fingerprint.digest}`.localeCompare(
       `${right.id}:${right.fingerprint.digest}`,
     )
@@ -1089,10 +1146,63 @@ async function decisionCaptureFixture(
   });
 }
 
+function uniqueReferences<
+  T extends {
+    readonly id: string;
+    readonly fingerprint: ContentFingerprint;
+  },
+>(items: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const unique: T[] = [];
+  for (const item of items) {
+    const key = `${item.id}:${item.fingerprint.algorithm}:${item.fingerprint.digest}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+  return unique;
+}
+
+function pushUniqueArtifact(
+  artifacts: ThreadArtifact[],
+  artifact: ThreadArtifact,
+) {
+  if (artifacts.some((item) => item.id === artifact.id)) return;
+  artifacts.push(artifact);
+}
+
 function rootSnapshot(
   capture: CrossDomainImpactEvaluationCapture,
   fea: ReturnType<typeof validFeaEvidence>,
 ): ThreadSnapshot {
+  const sealedProof: ThreadArtifact = {
+    id: fea.sealedProof.id,
+    name: "Sealed mechanical proof",
+    kind: "document",
+    version: "1",
+    fingerprint: fea.sealedProof.fingerprint,
+    producer: {
+      serverId: "digital-thread",
+      tool: MECHANICAL_PRESERVATION_PROOF_SEAL_TOOL,
+      runId: "run-proof-seal",
+    },
+    inputArtifactIds: [fea.canonicalStep.id],
+    freshness: fresh(),
+  };
+  const l4Evaluation: ThreadArtifact = {
+    id: fea.l4Evaluation.id,
+    name: "SysON evaluation of isolated CalculiX evidence",
+    kind: "evidence",
+    version: "1",
+    fingerprint: fea.l4Evaluation.fingerprint,
+    producer: {
+      serverId: "digital-thread",
+      tool: MECHANICAL_PRESERVATION_FEA_TOOL,
+      runId: FEA_RUN,
+    },
+    inputArtifactIds: ["mechanical-fea-evidence"],
+    freshness: fresh(),
+  };
   const artifacts: ThreadArtifact[] = capture.artifactInputs.map((input) => {
     if (input.id === "mechanical-fea-evidence") {
       return {
@@ -1128,6 +1238,8 @@ function rootSnapshot(
         freshness: fresh(),
       };
     }
+    if (input.id === sealedProof.id) return sealedProof;
+    if (input.id === l4Evaluation.id) return l4Evaluation;
     return {
       id: input.id,
       name: input.id,
@@ -1147,7 +1259,7 @@ function rootSnapshot(
       freshness: fresh(),
     };
   });
-  artifacts.push({
+  pushUniqueArtifact(artifacts, {
     id: GEOMETRY_ID,
     name: "Canonical geometry capture",
     kind: "cad-model",
@@ -1164,34 +1276,8 @@ function rootSnapshot(
     inputArtifactIds: [],
     freshness: fresh(),
   });
-  artifacts.push({
-    id: fea.sealedProof.id,
-    name: "Sealed mechanical proof",
-    kind: "document",
-    version: "1",
-    fingerprint: fea.sealedProof.fingerprint,
-    producer: {
-      serverId: "digital-thread",
-      tool: MECHANICAL_PRESERVATION_PROOF_SEAL_TOOL,
-      runId: "run-proof-seal",
-    },
-    inputArtifactIds: [fea.canonicalStep.id],
-    freshness: fresh(),
-  });
-  artifacts.push({
-    id: fea.l4Evaluation.id,
-    name: "SysON evaluation of isolated CalculiX evidence",
-    kind: "evidence",
-    version: "1",
-    fingerprint: fea.l4Evaluation.fingerprint,
-    producer: {
-      serverId: "digital-thread",
-      tool: MECHANICAL_PRESERVATION_FEA_TOOL,
-      runId: FEA_RUN,
-    },
-    inputArtifactIds: ["mechanical-fea-evidence"],
-    freshness: fresh(),
-  });
+  pushUniqueArtifact(artifacts, sealedProof);
+  pushUniqueArtifact(artifacts, l4Evaluation);
   artifacts.push({
     id: CLOSEOUT_ID,
     name: "Accepted static-mechanical evaluation closeout",
