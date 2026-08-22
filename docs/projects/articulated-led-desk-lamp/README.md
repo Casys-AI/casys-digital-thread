@@ -10,12 +10,13 @@ identities. Do not repair dl05. Do not copy CA02 values.
 
 ## Pages
 
-| Page | Owns |
-| ---- | ---- |
-| [status.md](status.md) | Evidence-backed current status by truth column |
-| [RFC queue](../../rfcs/articulated-led-desk-lamp-demo/README.md) | Ordered code lots; not runtime project truth |
-| [Human input gates](../../rfcs/articulated-led-desk-lamp-demo/00-human-input-gates.md) | Questions that remain human-owned; not approvals |
-| [Demo contract](../../rfcs/articulated-led-desk-lamp-demo/01-demo-product-contract.md) | Bounded story; no invented values |
+| Page                                                                                   | Owns                                                            |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [status.md](status.md)                                                                 | Evidence-backed current status by truth column                  |
+| [runtime-evidence.md](runtime-evidence.md)                                             | Exact dated local project, Thread, run, and artifact identities |
+| [RFC queue](../../rfcs/articulated-led-desk-lamp-demo/README.md)                       | Ordered code lots; not runtime project truth                    |
+| [Human input gates](../../rfcs/articulated-led-desk-lamp-demo/00-human-input-gates.md) | Questions that remain human-owned; not approvals                |
+| [Demo contract](../../rfcs/articulated-led-desk-lamp-demo/01-demo-product-contract.md) | Bounded story; no invented values                               |
 
 ## Living pages (authoritative for capability)
 
@@ -30,10 +31,9 @@ identities. Do not repair dl05. Do not copy CA02 values.
 
 ## Headline (not a score)
 
-Generic Behave surfaces exist in code. The RFC queue is in progress. Primary
-atelier, **2026-08-22**, local: `state/local/engineering-projects/` contains
-`cantilever-arm-ca02`, `modelica-ramp-mr01`, `modelica-ramp-mr02`, and
-`heated-mug-coaster-hc01`. None is an articulated LED desk-lamp project.
-`heated-mug-coaster-hc01` is the other canary (project r24; see
-[coaster status](../low-voltage-heated-mug-coaster/status.md)). No persisted
-lamp proof and no signed lamp L5. Details: [status.md](status.md).
+Generic Behave surfaces exist in code. The RFC queue is in progress. Primary atelier,
+**2026-08-22**, local: `articulated-led-desk-lamp-al01` is now a live project at project
+r34 and Thread r4. Its approved brief r2, SysON seed, renderer-backed architecture, and
+exact PartDefinition reread are persisted. No CAD, physical branch proof, combined
+verdict, or signed lamp L5 exists. Details: [status.md](status.md) and
+[runtime-evidence.md](runtime-evidence.md).
