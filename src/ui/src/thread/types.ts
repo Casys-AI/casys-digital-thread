@@ -719,7 +719,10 @@ export function isThreadWorkbenchSnapshot(
         candidate.graph,
       )) &&
     (candidate.evaluationCloseouts === undefined ||
-      isThreadEvaluationCloseoutIndex(candidate.evaluationCloseouts, candidate)) &&
+      isThreadEvaluationCloseoutIndex(candidate.evaluationCloseouts, {
+        artifacts: candidate.artifacts,
+        previous: candidate.previous,
+      })) &&
     Array.isArray(candidate.observations) &&
     candidate.observations.every(isThreadObservation) &&
     Array.isArray(candidate.requirements) &&
