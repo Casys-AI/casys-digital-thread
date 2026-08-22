@@ -1,0 +1,60 @@
+{
+  "$schema": "https://raw.githubusercontent.com/denoland/deno/v2.9.2/cli/schemas/config-file.v1.json",
+  "name": "casys-digital-thread-desktop",
+  "version": "0.1.0",
+  "exports": "./main.ts",
+  "lock": false,
+  "compilerOptions": {
+    "lib": [
+      "deno.desktop"
+    ]
+  },
+  "tasks": {
+    "check": "deno check main.ts src/**/*.ts",
+    "fmt": "deno fmt --check deno.json README.md component-manifest.json main.ts src",
+    "lint": "deno lint main.ts src",
+    "test": "deno test",
+    "runtime:check": "deno run --no-prompt src/application/runtime-check.ts",
+    "verify": "deno task fmt && deno task lint && deno task check && deno task test && deno task runtime:check",
+    "dev": "deno task runtime:check && deno desktop --no-prompt --deny-import --hmr -P=desktop main.ts",
+    "package": "deno task runtime:check && deno desktop --no-prompt --deny-import -P=desktop --output=dist/CasysDigitalThread.app main.ts && deno run --no-prompt --allow-run=/usr/bin/plutil,/usr/bin/codesign src/build/finalize-macos.ts dist/CasysDigitalThread.app"
+  },
+  "permissions": {
+    "desktop": {
+      "env": [
+        "HOME",
+        "XDG_DATA_HOME",
+        "APPDATA",
+        "LOCALAPPDATA"
+      ],
+      "import": false
+    }
+  },
+  "desktop": {
+    "app": {
+      "name": "Casys Digital Thread",
+      "identifier": "ai.casys.digital-thread"
+    },
+    "backend": "webview",
+    "output": {
+      "macos": "./dist/CasysDigitalThread.app",
+      "windows": "./dist/CasysDigitalThread",
+      "linux": "./dist/casys-digital-thread"
+    }
+  },
+  "exclude": [
+    "dist/"
+  ],
+  "fmt": {
+    "lineWidth": 88,
+    "semiColons": true,
+    "singleQuote": false
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ]
+    }
+  }
+}
