@@ -100,3 +100,14 @@ Deno.test("generic closed-subset v2 rejects cross-kind names and unsafe units", 
     "invalid unit",
   );
 });
+
+Deno.test("generic closed-subset v2 rejects an equation LHS outside indexed outputs", () => {
+  assertThrows(
+    () =>
+      authorizeModelicaClosedSubsetV2Source(
+        GENERIC_MODEL.replace("der(position)", "der(drive)"),
+      ),
+    TypeError,
+    "equations may only target declared outputs",
+  );
+});

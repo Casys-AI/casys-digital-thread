@@ -54,12 +54,13 @@ export function authorizeModelicaClosedSubsetV2Source(
   }
   exactUniqueNames(model.parameters.map((node) => node.name), "parameters");
   exactUniqueNames(model.variables.map((node) => node.name), "outputs");
-  if (
-    model.parameters.some((parameter) =>
-      model.variables.some((output) => output.name === parameter.name)
-    )
-  ) {
-    fail("Modelica v2 parameter and output names must not collide.");
+  const parameterNames = new Set(model.parameters.map((node) => node.name));
+  const outputNames = new Set(model.variables.map((node) => node.name));
+  const declaredNames = new Set([...parameterNames, ...outputNames]);
+  for (const name of parameterNames) {
+    if (outputNames.has(name)) {
+      fail("Modelica v2 parameter and output names must not collide.");
+    }
   }
   for (const parameter of model.parameters) {
     exactAttributes(parameter.attributes, { unit: "string" }, parameter.name);
@@ -74,11 +75,6 @@ export function authorizeModelicaClosedSubsetV2Source(
   if (model.equations.length !== model.variables.length) {
     fail("Modelica v2 requires exactly one equation per output.");
   }
-  const declared = new Set([
-    ...model.parameters.map((node) => node.name),
-    ...model.variables.map((node) => node.name),
-  ]);
-  const parameterNames = new Set(model.parameters.map((node) => node.name));
   for (const output of model.variables) {
     const start = output.attributes.find((attribute) => attribute.name === "start");
     if (
@@ -89,16 +85,14 @@ export function authorizeModelicaClosedSubsetV2Source(
   }
   const equationLhs = model.equations.map((node) => node.lhsName);
   exactUniqueNames(equationLhs, "equation left-hand sides");
-  if (
-    equationLhs.some((name) => !model.variables.some((output) => output.name === name))
-  ) {
+  if (equationLhs.some((name) => !outputNames.has(name))) {
     fail("Modelica v2 equations may only target declared outputs.");
   }
   if (!model.equations.some((node) => node.discriminator === "der")) {
     fail("Modelica v2 requires at least one derivative equation.");
   }
   for (const equation of model.equations) {
-    if (equation.rhsNames.some((name) => !declared.has(name))) {
+    if (equation.rhsNames.some((name) => !declaredNames.has(name))) {
       fail("Modelica v2 RHS expressions may reference only declared names.");
     }
   }
