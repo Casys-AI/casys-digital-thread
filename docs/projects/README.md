@@ -8,12 +8,12 @@ decisions.
 
 ## Not a second authority
 
-| Authoritative surface | Owns | Tracking pages must not |
-| --------------------- | ---- | ----------------------- |
-| [`EngineeringProjectSnapshot`](../reference/contracts/engineering-project.md) | Live project intent, plan, work, decisions, approvals | Invent a project id, revision, or brief |
-| [`ThreadSnapshot`](../reference/contracts/thread-snapshot.md) and CAS | Documentary and technical evidence | Treat a markdown row as persisted proof |
-| Provider captures and registered operations | Execution, lowering, recovery | Choose a provider, tool, envelope, or runtime |
-| Signed MRTR in the paired chat | Consequential human decisions | Self-approve, infer L5, or treat an engine success as an oracle |
+| Authoritative surface                                                         | Owns                                                  | Tracking pages must not                                         |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------- |
+| [`EngineeringProjectSnapshot`](../reference/contracts/engineering-project.md) | Live project intent, plan, work, decisions, approvals | Invent a project id, revision, or brief                         |
+| [`ThreadSnapshot`](../reference/contracts/thread-snapshot.md) and CAS         | Documentary and technical evidence                    | Treat a markdown row as persisted proof                         |
+| Provider captures and registered operations                                   | Execution, lowering, recovery                         | Choose a provider, tool, envelope, or runtime                   |
+| Signed MRTR in the paired chat                                                | Consequential human decisions                         | Self-approve, infer L5, or treat an engine success as an oracle |
 
 Actor split: [AGENTS.md](../../AGENTS.md). Pipeline:
 [source analysis and authority](../reference/pipeline/analysis-authority-pipeline.md).
@@ -26,9 +26,9 @@ substitutes. Living coverage remains in
 
 ## Registry
 
-| Folder | Role | Status page | Live EngineeringProject (primary atelier, 2026-08-22, local) |
-| ------ | ---- | ----------- | ----------------------------------------------------------- |
-| [articulated-led-desk-lamp](articulated-led-desk-lamp/README.md) | Reference demo (existing RFC + generic surfaces) | [status](articulated-led-desk-lamp/status.md) | None. Directory names: `cantilever-arm-ca02`, `modelica-ramp-mr01`, `modelica-ramp-mr02`, `heated-mug-coaster-hc01`. None is the articulated lamp. |
+| Folder                                                                     | Role                                                                                 | Status page                                        | Live EngineeringProject (primary atelier, 2026-08-22, local)                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [articulated-led-desk-lamp](articulated-led-desk-lamp/README.md)           | Reference demo (existing RFC + generic surfaces)                                     | [status](articulated-led-desk-lamp/status.md)      | `articulated-led-desk-lamp-al01` project r34; Thread r4 structure. Exact dated identities: [runtime evidence](articulated-led-desk-lamp/runtime-evidence.md).                                                                                                                                                                                                                         |
 | [low-voltage-heated-mug-coaster](low-voltage-heated-mug-coaster/README.md) | Portability canary (agent-proposed class; human-sourced demo scope; confirmed brief) | [status](low-voltage-heated-mug-coaster/status.md) | `heated-mug-coaster-hc01` project r24 (`heated-mug-coaster-hc01:project:r24:9bba9569723386b7`). Thread r1 documentary baseline, r2 SysON seed container, r3 single-part architecture (`HeatedMugCoasterPackage` / `HeatedMugCoaster`; no components, no attributes). No requirements, CAD, FEA, Modelica, electrical, or impact. Cockpit primary focus revision 2 is projection only. |
 
 Neither row is a percentage, a verdict, or permission to invent values, units,
@@ -38,28 +38,28 @@ materials, thresholds, parts, or operations.
 
 Use these columns on every status page. A later page must not collapse them.
 
-| Column | Means | Evidence that may tick it | Must not be filled by |
-| ------ | ----- | ------------------------- | --------------------- |
-| **Code capability available** | A generic registered operation or public review tool exists in this repository | Registry / living coverage / how-to | RFC wording, a fixture name, a UI card |
-| **Project/capture written** | Git or dated local files exist for *this* product identity | Named fixture, RFC, or CAS path | A similar historical vehicle (`desk-lamp-dl05`, CA02) |
-| **Live runtime observed** | Dated inspection of gitignored local runtime | Directory names under `state/local/engineering-projects/` | Docs, tests, or another machine's atelier |
-| **Persisted proof** | Rereadable Thread/CAS identity (id, revision, fingerprint, digest) | Exact identity from a snapshot or capture store | A terminal log, solver exit, or “it ran” |
-| **Human decision** | Signed MRTR or recorded L5 on those exact identities | Project `approvals` / decision records | Agent proposal, RFC gate text, cockpit focus, or engine success |
+| Column                        | Means                                                                          | Evidence that may tick it                                 | Must not be filled by                                           |
+| ----------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------------- |
+| **Code capability available** | A generic registered operation or public review tool exists in this repository | Registry / living coverage / how-to                       | RFC wording, a fixture name, a UI card                          |
+| **Project/capture written**   | Git or dated local files exist for _this_ product identity                     | Named fixture, RFC, or CAS path                           | A similar historical vehicle (`desk-lamp-dl05`, CA02)           |
+| **Live runtime observed**     | Dated inspection of gitignored local runtime                                   | Directory names under `state/local/engineering-projects/` | Docs, tests, or another machine's atelier                       |
+| **Persisted proof**           | Rereadable Thread/CAS identity (id, revision, fingerprint, digest)             | Exact identity from a snapshot or capture store           | A terminal log, solver exit, or “it ran”                        |
+| **Human decision**            | Signed MRTR or recorded L5 on those exact identities                           | Project `approvals` / decision records                    | Agent proposal, RFC gate text, cockpit focus, or engine success |
 
 `unavailable`, `unresolved`, `error`, `provisional`, `documentary`, `unverified`,
-`demo`, `TRACE GAP`, and `UNLINKED` stay literal
-([AGENTS.md](../../AGENTS.md)). Checkboxes mark only facts that can be evidenced.
-Do not derive a completion percentage from prose.
+`demo`, `TRACE GAP`, and `UNLINKED` stay literal ([AGENTS.md](../../AGENTS.md)).
+Checkboxes mark only facts that can be evidenced. Do not derive a completion percentage
+from prose.
 
 A successful engine run is **not** an oracle and **not** L5
 ([proofs and verdicts](../explanations/product/proofs-and-verdicts.md),
-[Behave decision roadmap](../explanations/product/behave-decision-roadmap.md)).
-`pass` is L4. Make and Buy are other judgement branches; they do not close Behave
+[Behave decision roadmap](../explanations/product/behave-decision-roadmap.md)). `pass`
+is L4. Make and Buy are other judgement branches; they do not close Behave
 ([three judgement branches](../explanations/product/product-direction.md#three-judgement-branches)).
 
 ## Local observation rule
 
-`state/local/` is gitignored ([`.gitignore`](../../.gitignore)). It may drift.
-Name the atelier, the observation date, and the label **local**. A docs worktree
-listing is not the primary atelier. The 2026-08-22 primary-atelier names above
-are the current local observation for these pages.
+`state/local/` is gitignored ([`.gitignore`](../../.gitignore)). It may drift. Name the
+atelier, the observation date, and the label **local**. A docs worktree listing is not
+the primary atelier. The 2026-08-22 primary-atelier names above are the current local
+observation for these pages.
