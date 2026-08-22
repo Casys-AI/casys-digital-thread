@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "casys-desktop-components/1.0",
+  "product": {
+    "identifier": "ai.casys.digital-thread",
+    "name": "Casys Digital Thread",
+    "version": "0.2.0"
+  },
+  "runtime": {
+    "denoVersion": "2.9.2",
+    "desktopRuntimeVersion": "2.9.2",
+    "backend": "webview",
+    "backendVersionAuthority": "operating-system"
+  },
+  "components": [
+    {
+      "id": "desktop-shell",
+      "version": "0.2.0",
+      "delivery": "bundled",
+      "lifecycle": "active"
+    },
+    {
+      "id": "casys-control-plane",
+      "version": "0.2.0",
+      "delivery": "sidecar",
+      "lifecycle": "active"
+    },
+    {
+      "id": "workbench-projection",
+      "version": null,
+      "delivery": "bundled",
+      "lifecycle": "deferred-lot-3"
+    },
+    {
+      "id": "chat-host",
+      "version": null,
+      "delivery": "sidecar",
+      "lifecycle": "deferred-lot-4"
+    }
+  ]
+}
