@@ -77,6 +77,7 @@ Full tables: [lookalike traps](lookalike-traps.md). Keep this heading so older
 | CAD and compile              | [lookalike traps § CAD](lookalike-traps.md#cad-and-compile)            |
 | Modelica                     | [lookalike traps § Modelica](lookalike-traps.md#modelica)              |
 | FEA, sensitivity, correction | [lookalike traps § FEA](lookalike-traps.md#fea-sensitivity-correction) |
+| Cross-domain impact          | [lookalike traps § Impact](lookalike-traps.md#cross-domain-impact)     |
 | DFM and print                | [lookalike traps § DFM](lookalike-traps.md#dfm-and-print)              |
 | Other                        | [lookalike traps § Other](lookalike-traps.md#other)                    |
 
@@ -252,7 +253,9 @@ seal / run tools stay.
 | `project_vector_correction_review`           | None               | Parameters for `design.apply-vector-correction@1`. No Thread write                                                               |
 | `project_sensitivity_base_evaluation_review` | None               | Ready only if study metrics join Thread requirements exactly                                                                     |
 | `project_corrected_admission_review`         | None               | Parameters for `compile.seal-admission@1` from a corrected source                                                                |
-| `project_evaluation_closeout_review`         | None               | `projectId` only. Server reopens one current static FEA `@3` branch and derives closed human L5 accept/reject parameters; no solver/SysON/CAD/correction grant |
+| `project_evaluation_closeout_review`         | None               | `projectId` only. Server reopens one current static FEA `@3` branch and derives closed human L5 accept/reject parameters; no solver/SysON/CAD/correction grant. Accept is offered only when every L4 criterion is literal `pass`. How-to: [review static-mechanical closeout](../../how-to/behave/review-static-mechanical-closeout.md) |
+| `project_cross_domain_impact_manifest_seal_review` | None         | `projectId` + opaque manifest fingerprint. Canonical MRTR for `verify.seal-cross-domain-impact-manifest@1`. No evaluation, claim mutation, or capture of manifest bytes |
+| `project_cross_domain_impact_decision_review` | None              | `projectId` only. Unique current X07/X08 capture → canonical MRTR for `decide.accept-cross-domain-impact@1`. No rerun. How-to: [walk cross-domain impact judgement](../../how-to/behave/walk-cross-domain-impact-judgement.md) |
 | `project_modelica_qualified_kit_run_review`  | None               | Parameters for the one local Modelica kit                                                                                        |
 | `project_admitted_modelica_run_review`       | None               | `projectId` only. Server selects current tip + unique fresh sealed Modelica admission. No `modelicaText`                         |
 | `project_admitted_modelica_evaluation_review` | None              | `projectId` only. Unique current tip + unique sealed thermal method sheet + unique admitted evidence for L4. No L4 verdict      |
@@ -314,6 +317,8 @@ Unknown ids/versions are indistinguishable from absent.
 | `design.write-geometry@1`                           | trusted                   | none (seal)                  | Canonical geometry capture                                                                                              | Re-execution of CAD                                                  |
 | `verify.seal-proof-case@1`                          | trusted                   | none                         | Sealed proof-case; optional signed catalog-offer artifact                                                               | A solve or complete sensitivity case                                 |
 | `verify.run-fea-static-proof@3`                     | trusted                   | local microVM + SysON oracle | Isolated CalculiX verdict                                                                                               | Historical MCP FEA, agent `.inp`, or a cad-model as `geometry`       |
+| `verify.seal-cross-domain-impact-manifest@1`        | trusted                   | none                         | Documentary seal of one already-captured closed manifest, Thread lineage, Brief V2 gates, and declared mechanical evidence | An impact evaluation, claim mutation, or public manifest authoring |
+| `analyze.evaluate-cross-domain-impact@1`            | trusted                   | none                         | X07 pure recross plus X08 documentary capture; proposes gate-claim statuses; `workItemInvalidations`/`rerunProposals` = `none` | A human decision, applied claims, or X10 rerun |
 | `decide.accept-cross-domain-impact@1`               | trusted, **human origin** | none                         | Apply the exact X07/X08 proposed gate-claim statuses onto existing work-item claims after signed MRTR                   | Work-item invention/invalidation, a rerun, or a provider/solver call |
 | `analyze.evaluate-mechanical-preservation@1`        | trusted                   | none                         | Documentary recross after X09: exact FEA proof/closeout identities and independence assertion → `carried-forward` or literal `impact-unresolved` | CalculiX, X10 work/rerun, thermal/electrical verdict, or claim mutation |
 | `decide.accept-evaluation-closeout@1`               | trusted                   | none                         | Agent-dispatched documentary successor after exact human MRTR; accepts only all literal L4 `pass` criteria              | An implicit L5, solver/SysON call, or CAD/correction grant           |
@@ -412,7 +417,8 @@ Bindings published by the architecture SysML analyzer are **symbol ids**, never 
 Labels are display data.
 
 Exact accepted constructs, exclusions and extension rules live with their bounded
-contexts under [engineering domains](../domains/README.md). Inventories under
+contexts under [engineering domains](../domains/README.md). Impact judgement:
+[impact coverage](../domains/impact/coverage.md). Inventories under
 `config/*-api/` remain documentary ground truth until a domain compiler consumes them.
 
 ## 7. Golden path (generic V3)
@@ -485,6 +491,7 @@ adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
 | `modelica`      | `src/domain/modelica/`           | `admitted/` ≠ `qualified-kit/`; recorded island and sidecar observer are retired                     |
 | `cad`           | `src/domain/cad/`                | `source/` ≠ `isolated/` ≠ `canonical/` ≠ `sealed-isolated/`                                          |
 | `fea`           | `src/domain/fea/`                | `seal-case/` ≠ `isolated-v3/`                                                                        |
+| `impact`        | `src/domain/impact/`             | Manifest seal ≠ X07 evaluation ≠ X09 decision ≠ X11 preservation; not X10                            |
 | `compile`       | `src/domain/compile/`            | Isolation ≠ admission ≠ source ≠ ROP ≠ brief; CAD **and** Modelica                                   |
 | `project`       | `src/domain/project/`            | Ledger and brief; not Thread bytes                                                                   |
 | `thread`        | `src/domain/thread/`             | Canonical snapshot; not a project command                                                            |
@@ -493,9 +500,9 @@ adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
 | `control-plane` | `src/application/control-plane/` | Fleet ops service + `console_*` tools. No domain kernel. Not a cockpit page                          |
 
 The same split lives under
-`src/adapters/{modelica,cad,fea,compile,architecture,sensitivity,make,control-plane,shared}/`
+`src/adapters/{modelica,cad,fea,compile,architecture,sensitivity,impact,make,control-plane,shared}/`
 and
-`src/application/{ports,use-cases}/{modelica,cad,fea,compile,architecture,sensitivity}/`.
+`src/application/{ports,use-cases}/{modelica,cad,fea,compile,architecture,sensitivity,impact}/`.
 Folder = authority; lookalikes stay in sibling directories. Control-plane adapters are
 fleet-manifest + run fixtures. Cross-authority adapters (MCP HTTP, project/thread
 stores, microsandbox backend, byte/CAS, generic WAL helpers, executor-run-helpers,

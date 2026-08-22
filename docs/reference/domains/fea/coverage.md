@@ -15,8 +15,8 @@ product capability by itself.
 | Seal        | `verify.seal-proof-case@1` rereads the exact declaration, Thread joins, and signed seal MRTR, then publishes a proof document without calling a solver. |
 | Run         | `verify.run-fea-static-proof@3` rereads that sealed proof and the exact canonical part STEP, then uses the fixed isolated Gmsh/CalculiX profile.        |
 | Result      | Evidence, declared criterion observations, and separately captured SysON constraint evaluations on the exact proof/STEP lineage.                        |
-| Closeout    | `decide.accept-evaluation-closeout@1` / `decide.reject-evaluation-closeout@1` record a human L5 over that exact `@3` branch. An L4 `pass` is never L5. |
-| Preservation | After a cross-domain impact decision, `analyze.evaluate-mechanical-preservation@1` rereads that exact FEA proof, its consumptions, and the L5 closeout. `carried-forward` requires a current independence assertion covering those exact inputs; otherwise the result stays `impact-unresolved`. No CalculiX call. |
+| Closeout    | `project_evaluation_closeout_review` then `decide.accept-evaluation-closeout@1` / `decide.reject-evaluation-closeout@1` record a human L5 over that exact `@3` branch. Accept is offered only when every L4 criterion is literal `pass`. An L4 `pass` is never L5. How-to: [review static-mechanical closeout](../../../how-to/behave/review-static-mechanical-closeout.md). |
+| Preservation | After a cross-domain impact decision, `analyze.evaluate-mechanical-preservation@1` rereads that exact FEA proof, its consumptions, and the L5 closeout. `carried-forward` requires a current independence assertion covering those exact inputs; otherwise the result stays `impact-unresolved`. No CalculiX call. Impact inventory: [impact coverage](../impact/coverage.md). |
 
 ### Admitted V1 mechanics
 
@@ -54,6 +54,7 @@ MCP FEA operations are not registered product alternatives.
   a thermal/electrical capture as a FEA verdict. Preservation is
   `analyze.evaluate-mechanical-preservation@1` only, after
   `decide.accept-cross-domain-impact@1`. It is not X10 and not a CalculiX rerun.
+  Operator walk: [walk cross-domain impact judgement](../../../how-to/behave/walk-cross-domain-impact-judgement.md).
 
 ## Candidates are not catalog rows
 

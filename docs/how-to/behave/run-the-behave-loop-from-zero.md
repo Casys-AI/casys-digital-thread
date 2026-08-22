@@ -139,7 +139,10 @@ unique SysML names. Unresolved previews name those joins in `gaps`. It does not 
 lever or an AttributeUsage. `design.write-geometry@1` refuses a draft that was not
 exported from a parameterized `compile.seal-admission@1`.
 
-Oracle `pass` or publishable `fail` stay literal.
+Oracle `pass` or publishable `fail` stay literal. Human L5 over that exact `@3`
+branch is a separate walk:
+[Review static-mechanical closeout](review-static-mechanical-closeout.md). An L4
+`pass` is never L5.
 
 Optional experience, not a second proof:
 
@@ -182,6 +185,9 @@ They must not be the same view.
   atelier that ran the isolated join). That is a contrast vehicle, not this script.
 - Modelica. Other product family. Product Modelica is admitted `@1`, not a recorded
   scenario.
+- Cross-domain impact. After a closed manifest already exists:
+  [Walk cross-domain impact judgement](walk-cross-domain-impact-judgement.md).
+  There is no public manifest capture and no generic X10 rerun planner.
 
 When two operations look similar, read
 [agent workspace](../../reference/agent/agent-workspace.md) before calling either.
