@@ -10,6 +10,8 @@ shared-schema and lowering change, not catalog data.
 
 - [Mechanical proof case V1](mechanical-proof-case-v1.md) defines the catalogued
   declaration and seal boundary.
+- [Boundedness](boundedness.md) inventories catalog/declaration cardinality and the
+  fixed CalculiX byte and output-role ceilings.
 - [CalculiX static proof V3](calculix-static-proof-v3.md) defines generic lowering of a
   sealed proof and exact STEP into the isolated CalculiX worker.
 - [Coverage](coverage.md) separates the product surface, exclusions, and future method

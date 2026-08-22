@@ -41,3 +41,5 @@ D1 (closed circuit representation) and D3 (method/evaluator) remain human decisi
 D2 probe turns an engine result into L4 or L5.
 
 See [the reproducible runbook](../../../how-to/behave/preflight-spice-provider.md).
+Electrical product bounds (human-source bytes only; no ngspice WAL) are on
+[electrical boundedness](../../domains/electrical/boundedness.md).

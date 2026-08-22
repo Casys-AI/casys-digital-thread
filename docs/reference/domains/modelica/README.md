@@ -11,6 +11,8 @@ Start with:
 
 - [Language](language.md) defines the bounded, family-free Modelica grammar and the
   source-owned experiment annotation.
+- [Boundedness](boundedness.md) inventories enforced IR/runtime ceilings and missing
+  token, expression-node, and identifier-length caps.
 - [Execution](execution.md) defines server-owned execution, OMC/DASSL, evidence and the
   documentary boundary.
 - [Coverage](coverage.md) inventories the current executable surface, the deliberately

@@ -17,6 +17,9 @@ escape hatch.
 
 - [Coverage](coverage.md) separates the implemented language and evidence surface from
   candidates and explicit exclusions.
+- [Boundedness](boundedness.md) inventories proposal/live-graph cardinality: uniqueness
+  is enforced; no upper count exists, and SysON capacity in this repo does not supply
+  one.
 - [Extension runbook](../../../how-to/extend/sysml-surface.md) is the required path for
   a new generic SysML concept.
 - [SysON provider reference](../../providers/syson/README.md) owns the configured

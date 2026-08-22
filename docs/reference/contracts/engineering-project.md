@@ -350,6 +350,9 @@ simulation, measurement, or verification operation needs its own reviewed contra
 
 ## Exact thread references
 
+`evidenceRefs` are unique exact tuples with no upper cardinality; see
+[isolation and Thread boundedness](../runtime/isolation-and-thread-boundedness.md).
+
 A root thread reference always names the full immutable identity:
 
 ```json

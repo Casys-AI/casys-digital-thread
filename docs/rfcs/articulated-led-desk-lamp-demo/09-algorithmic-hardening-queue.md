@@ -40,6 +40,15 @@ Inventory current enforced bounds for:
 Record missing bounds as explicit findings. Add no arbitrary limit without tying it to
 an existing runtime/profile capacity or a reviewed product decision.
 
+Living inventory (documentation only; no invented numbers):
+[SysML](../../reference/domains/sysml/boundedness.md),
+[CAD](../../reference/domains/cad/boundedness.md),
+[Modelica](../../reference/domains/modelica/boundedness.md),
+[FEA](../../reference/domains/fea/boundedness.md),
+[sensitivity](../../reference/domains/sensitivity/boundedness.md),
+[electrical](../../reference/domains/electrical/boundedness.md),
+[isolation and Thread](../../reference/runtime/isolation-and-thread-boundedness.md).
+
 ### H02 — one-pass exact artifact selection
 
 Audit selectors used by the demo for repeated scans, prefix matching and “first”/“last”

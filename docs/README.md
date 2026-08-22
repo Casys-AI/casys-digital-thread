@@ -89,6 +89,7 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 
 - [Workspace map](reference/runtime/workspace-map.md)
 - [Workspace source map](reference/runtime/workspace-source-map.md)
+- [Isolation, WAL, and Thread collection bounds](reference/runtime/isolation-and-thread-boundedness.md)
 - [MCP console](reference/runtime/console.md)
 
 ### Reference — `domains/`
@@ -98,6 +99,8 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 - [Modelica](reference/domains/modelica/README.md)
 - [FEA](reference/domains/fea/README.md)
 - [SysML](reference/domains/sysml/README.md)
+- [Sensitivity](reference/domains/sensitivity/README.md)
+- [Electrical](reference/domains/electrical/README.md)
 
 ### Reference — `pipeline/`
 

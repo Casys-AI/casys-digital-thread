@@ -7,6 +7,8 @@ verticals. Capture → MRTR → dispatch spine stays on
 [the authority pipeline](analysis-authority-pipeline.md). Recurrent admitted-source
 pattern: [admitted source isolated execution](admitted-source-isolated-execution.md).
 File census: [workspace source map](../runtime/workspace-source-map.md).
+Isolated output counts, WAL generations, and Thread collection cardinality:
+[isolation and Thread boundedness](../runtime/isolation-and-thread-boundedness.md).
 
 ## Product admission compiler boundary
 

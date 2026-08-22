@@ -22,6 +22,8 @@ cannot select a SysON endpoint, raw tool, AQL expression, UUID or SysML payload.
 
 Shared references:
 
+- [SysML boundedness](../../domains/sysml/boundedness.md) — proposal/live-graph
+  cardinality; no SysON capacity in this repo justifies a number
 - [SysML lookalike traps](../../agent/lookalike-traps.md#sysml)
 - [Engineering project contract](../../contracts/engineering-project.md)
 - [Provider responsibility map](../building-blocks.md)

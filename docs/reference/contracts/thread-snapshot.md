@@ -57,6 +57,8 @@ The validator in
 [`src/domain/thread/thread-snapshot-validation.ts`](../../../src/domain/thread/thread-snapshot-validation.ts)
 rejects structurally invalid JSON and broken references. It never fills missing
 engineering data, invents units, or converts an unresolved state into success.
+Collection cardinality is schema-validated with no upper bound; see
+[isolation and Thread boundedness](../runtime/isolation-and-thread-boundedness.md).
 
 ## Artifact identity and consumption
 
