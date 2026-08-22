@@ -39,10 +39,18 @@ import {
   type ReviewedAdmittedModelicaAuthority,
 } from "../../../application/use-cases/modelica/admitted/reopen-reviewed-execution.ts";
 import {
-  type CompleteRunCommand,
+  assertAdmittedModelicaCommandReceiptExact,
+  assertCompletedAdmittedModelicaBinding,
+  claimCommand,
+  commandStep,
+  completionCommand,
+  publishCommand,
+  requireAdmittedModelicaCommandReceipt,
+  requireAdmittedModelicaCompletedReceipts,
+} from "../../../application/use-cases/modelica/admitted/completed-replay-verification.ts";
+import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
-  type RunCommand,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   type ModelicaAdmittedExecutionCapture,
@@ -74,7 +82,6 @@ import type {
   EngineeringAgentRun,
   EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
-  EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
 } from "../../../domain/project/engineering-project.ts";
 import type {
@@ -89,7 +96,6 @@ import {
   requireBasis,
   requiredStart,
   requireRun,
-  snapshotRef,
   unexpectedStatus,
 } from "../../shared/executor-run-helpers.ts";
 import {
@@ -743,7 +749,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     command: RegisteredProjectRunExecutorCommand,
   ): Promise<void> {
     const project = await this.#requiredProject(command.projectId);
-    const receipt = exactCommandReceipt(
+    const receipt = requireAdmittedModelicaCommandReceipt(
       project,
       commandStep(command.commandId, "claim"),
       "agent-run.claim",
@@ -765,7 +771,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
       );
     }
     await this.#assertReceiptSnapshotExact(project, receipt);
-    await assertCommandReceiptExact(
+    await assertAdmittedModelicaCommandReceiptExact(
       claimedRun,
       receipt,
       "agent-run.claim",
@@ -788,7 +794,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     let expectedRevision = project.revision;
     let issuedAt = command.issuedAt;
     if (run.status === "publishing" || run.status === "completed") {
-      const receipt = exactCommandReceipt(
+      const receipt = requireAdmittedModelicaCommandReceipt(
         project,
         commandStep(command.commandId, "publish"),
         "agent-run.publish",
@@ -803,7 +809,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         );
       }
       await this.#assertReceiptSnapshotExact(project, receipt);
-      await assertCommandReceiptExact(
+      await assertAdmittedModelicaCommandReceiptExact(
         run,
         receipt,
         "agent-run.publish",
@@ -830,7 +836,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     let expectedRevision = project.revision;
     let issuedAt = command.issuedAt;
     if (run.status === "completed") {
-      const receipt = exactCommandReceipt(
+      const receipt = requireAdmittedModelicaCommandReceipt(
         project,
         commandStep(command.commandId, "complete"),
         "agent-run.complete",
@@ -850,7 +856,7 @@ export class SimulateRunAdmittedModelicaRunExecutor {
         );
       }
       await this.#assertReceiptSnapshotExact(project, receipt);
-      await assertCommandReceiptExact(
+      await assertAdmittedModelicaCommandReceiptExact(
         run,
         receipt,
         "agent-run.complete",
@@ -1024,111 +1030,62 @@ export class SimulateRunAdmittedModelicaRunExecutor {
     >,
   ): Promise<void> {
     const run = requireRun(project, command.runId);
-    const workItem = project.workItems.find((item) => item.id === run.workItemId);
-    const phase = workItem &&
-      project.phases.find((item) => item.id === workItem.phaseId);
-    const expectedRefs = expected.artifacts.map((artifact) =>
-      artifactEvidence(expected.snapshot, artifact)
-    );
-    const projectSnapshotMatches = project.threadSnapshots.filter((reference) =>
-      deterministicJson(reference) === deterministicJson(snapshotRef(expected.snapshot))
-    );
-    const expectedCompletionSummary = completionCommand(
+    assertCompletedAdmittedModelicaBinding({
+      project,
       command,
-      project.revision,
-      expected,
-    ).summary;
-    if (
-      run.status !== "completed" || !run.resultSnapshot || !workItem || !phase ||
-      workItem.status !== "completed" || run.summary !== expectedCompletionSummary ||
-      deterministicJson(run.resultSnapshot) !==
-        deterministicJson(snapshotRef(expected.snapshot)) ||
-      deterministicJson(run.evidenceRefs) !== deterministicJson(expectedRefs) ||
-      deterministicJson(workItem.evidenceRefs) !== deterministicJson(expectedRefs) ||
-      !expectedRefs.every((expectedRef) =>
-        phase.evidenceRefs.filter((actualRef) =>
-          deterministicJson(actualRef) === deterministicJson(expectedRef)
-        ).length === 1
-      ) ||
-      projectSnapshotMatches.length !== 1 ||
-      run.startedAt !== originalRun.startedAt ||
-      deterministicJson(attempt.receiptRecord) !==
-        deterministicJson(capture.capture.receipt) ||
-      capture.capture.executionRunId !== context.request.runId ||
-      capture.capture.agentRunId !== run.id ||
-      capture.capture.projectId !== project.project.id
-    ) {
-      throw invalidTransition(
-        "The completed admitted Modelica project state does not exactly bind its journal, capture, Thread successor and three evidence references.",
-      );
-    }
-    await this.#assertThreadExact(expected);
-    const claimReceipt = exactCommandReceipt(
-      project,
-      commandStep(command.commandId, "claim"),
-      "agent-run.claim",
-      origin,
-    );
-    const publishReceipt = exactCommandReceipt(
-      project,
-      commandStep(command.commandId, "publish"),
-      "agent-run.publish",
-      origin,
-    );
-    const completeReceipt = exactCommandReceipt(
-      project,
-      commandStep(command.commandId, "complete"),
-      "agent-run.complete",
-      origin,
-    );
-    if (
-      run.claimedAt !== claimReceipt.appliedAt ||
-      run.startedAt !== claimReceipt.appliedAt ||
-      run.completedAt !== completeReceipt.appliedAt
-    ) {
-      throw invalidTransition(
-        "The completed admitted Modelica run timeline differs from its exact claim and completion receipts.",
-      );
-    }
-    await Promise.all([
-      this.#assertReceiptSnapshotExact(project, claimReceipt),
-      this.#assertReceiptSnapshotExact(project, publishReceipt),
-      this.#assertReceiptSnapshotExact(project, completeReceipt),
-    ]);
-    await assertCommandReceiptExact(
       run,
-      claimReceipt,
+      originalStartedAt: originalRun.startedAt,
+      expected,
+      capture: capture.capture,
+      executionRunId: context.request.runId,
+      journalReceipt: attempt.receiptRecord,
+    });
+    await this.#assertThreadExact(expected);
+    const receipts = requireAdmittedModelicaCompletedReceipts({
+      project,
+      command,
+      origin,
+      run,
+    });
+    await Promise.all([
+      this.#assertReceiptSnapshotExact(project, receipts.claim),
+      this.#assertReceiptSnapshotExact(project, receipts.publish),
+      this.#assertReceiptSnapshotExact(project, receipts.complete),
+    ]);
+    await assertAdmittedModelicaCommandReceiptExact(
+      run,
+      receipts.claim,
       "agent-run.claim",
       origin,
       claimCommand(
         command,
-        claimReceipt.resultingSnapshot.revision - 1,
-        claimReceipt.issuedAt,
+        receipts.claim.resultingSnapshot.revision - 1,
+        receipts.claim.issuedAt,
       ),
       "running",
     );
-    await assertCommandReceiptExact(
+    await assertAdmittedModelicaCommandReceiptExact(
       run,
-      publishReceipt,
+      receipts.publish,
       "agent-run.publish",
       origin,
       publishCommand(
         command,
-        publishReceipt.resultingSnapshot.revision - 1,
-        publishReceipt.issuedAt,
+        receipts.publish.resultingSnapshot.revision - 1,
+        receipts.publish.issuedAt,
       ),
       "publishing",
     );
-    await assertCommandReceiptExact(
+    await assertAdmittedModelicaCommandReceiptExact(
       run,
-      completeReceipt,
+      receipts.complete,
       "agent-run.complete",
       origin,
       completionCommand(
         command,
-        completeReceipt.resultingSnapshot.revision - 1,
+        receipts.complete.resultingSnapshot.revision - 1,
         expected,
-        completeReceipt.issuedAt,
+        receipts.complete.issuedAt,
       ),
       "completed",
     );
@@ -1337,18 +1294,6 @@ function exactAdmissionArtifact(
   }
 }
 
-function artifactEvidence(
-  snapshot: ThreadSnapshot,
-  artifact: ThreadArtifact,
-): EngineeringThreadEntityRef {
-  return {
-    snapshotId: snapshot.id,
-    snapshotRevision: snapshot.revision,
-    kind: "artifact",
-    id: artifact.id,
-  };
-}
-
 function assertThreadEvidenceExact(
   actual: AdmittedModelicaExecutionThreadEvidence,
   expected: DocumentarySuccessor,
@@ -1358,109 +1303,6 @@ function assertThreadEvidenceExact(
   } catch (error) {
     throw domainTransition(error);
   }
-}
-
-function claimCommand(
-  command: RegisteredProjectRunExecutorCommand,
-  expectedRevision = command.expectedRevision,
-  issuedAt = command.issuedAt,
-): RunCommand {
-  return {
-    ...command,
-    commandId: commandStep(command.commandId, "claim"),
-    expectedRevision,
-    issuedAt,
-    summary: "Started the exact reviewed admitted Modelica run.",
-  };
-}
-
-function publishCommand(
-  command: RegisteredProjectRunExecutorCommand,
-  expectedRevision: number,
-  issuedAt = command.issuedAt,
-): RunCommand {
-  return {
-    ...command,
-    commandId: commandStep(command.commandId, "publish"),
-    expectedRevision,
-    issuedAt,
-    summary: "Publishing the admitted Modelica documentary evidence.",
-  };
-}
-
-function completionCommand(
-  command: RegisteredProjectRunExecutorCommand,
-  expectedRevision: number,
-  expected: DocumentarySuccessor,
-  issuedAt = command.issuedAt,
-): CompleteRunCommand {
-  return {
-    ...command,
-    commandId: commandStep(command.commandId, "complete"),
-    expectedRevision,
-    issuedAt,
-    summary: "Recorded the exact admitted Modelica isolated run.",
-    resultSnapshot: snapshotRef(expected.snapshot),
-    evidenceRefs: expected.artifacts.map((artifact) =>
-      artifactEvidence(expected.snapshot, artifact)
-    ),
-  };
-}
-
-function exactCommandReceipt(
-  project: EngineeringProjectSnapshot,
-  commandId: string,
-  type: "agent-run.claim" | "agent-run.publish" | "agent-run.complete",
-  origin: EngineeringProjectCommandOrigin,
-): EngineeringProjectCommandReceipt {
-  const matches =
-    project.commandReceipts?.filter((receipt) => receipt.commandId === commandId) ??
-      [];
-  const receipt = matches[0];
-  if (
-    matches.length !== 1 || !receipt || receipt.type !== type ||
-    receipt.actor.origin !== origin.kind || receipt.actor.id !== origin.actorId
-  ) {
-    throw invalidTransition(
-      `The admitted Modelica run has no unique exact ${type} receipt.`,
-    );
-  }
-  return receipt;
-}
-
-async function assertCommandReceiptExact(
-  run: EngineeringAgentRun,
-  receipt: EngineeringProjectCommandReceipt,
-  type: "agent-run.claim" | "agent-run.publish" | "agent-run.complete",
-  origin: EngineeringProjectCommandOrigin,
-  command: RunCommand | CompleteRunCommand,
-  status: "running" | "publishing" | "completed",
-): Promise<void> {
-  const expectedFingerprint = await sha256Fingerprint({ type, origin, command });
-  const transitions =
-    run.statusHistory?.filter((transition) =>
-      transition.commandId === receipt.commandId &&
-      transition.status === status &&
-      transition.at === receipt.appliedAt &&
-      transition.actor.origin === origin.kind &&
-      transition.actor.id === origin.actorId &&
-      transition.summary === command.summary
-    ) ?? [];
-  if (
-    command.commandId !== receipt.commandId ||
-    command.issuedAt !== receipt.issuedAt ||
-    receipt.resultingSnapshot.revision !== command.expectedRevision + 1 ||
-    !fingerprintsEqual(receipt.requestFingerprint, expectedFingerprint) ||
-    transitions.length !== 1
-  ) {
-    throw invalidTransition(
-      `The admitted Modelica ${type} receipt does not seal its exact command, revision, issuance, and status transition.`,
-    );
-  }
-}
-
-function commandStep(commandId: string, step: string): string {
-  return `${commandId}:simulate-run-admitted-modelica:${step}`;
 }
 
 function boundedCause(error: unknown, maximum = 300): string {
