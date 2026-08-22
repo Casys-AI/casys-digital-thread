@@ -75,6 +75,35 @@ function lot1Observations() {
   };
 }
 
+function lot2Observations() {
+  const manifest = structuredClone(EMBEDDED_MANIFEST);
+  manifest.product.version = "0.2.0";
+  manifest.components[0].version = "0.2.0";
+  manifest.components[1] = {
+    id: "casys-control-plane",
+    version: "0.2.0",
+    delivery: "sidecar",
+    lifecycle: "active",
+  };
+  return {
+    ...lot1Observations(),
+    manifest: validateComponentManifest(manifest),
+    actualProductVersion: "0.2.0",
+    controlPlane: {
+      configuration: "verified" as const,
+      lifecycle: "owned-ready" as const,
+      controlPlaneVersion: "0.2.0",
+      providers: {
+        state: "unavailable" as const,
+        total: 8,
+        healthy: 0,
+        drift: 8,
+      },
+      persistedEvidence: "unavailable" as const,
+    },
+  };
+}
+
 function serialized(model: DesktopShellViewModel): string {
   return JSON.stringify(model);
 }
@@ -231,4 +260,149 @@ Deno.test("deriveDesktopShellViewModel keeps deferred components unavailable, no
   if (model.status === "ready") {
     throw new Error("Lot 1 must not manufacture an all-ready product state");
   }
+});
+
+Deno.test("deriveDesktopShellViewModel keeps ready control plane separate from unavailable providers", () => {
+  const model = deriveDesktopShellViewModel(lot2Observations());
+  assertEquals(model.status, "degraded");
+  assertEquals(states(model)["desktop-configuration"], "ready");
+  assertEquals(states(model)["casys-control-plane"], "ready");
+  assertEquals(states(model)["engineering-providers"], "unavailable");
+  assertEquals(states(model)["persisted-project-evidence"], "unavailable");
+  assertEquals(states(model)["workbench-projection"], "unavailable");
+  assertEquals(states(model)["chat-host"], "unavailable");
+  assertNoAbsolutePath(model);
+});
+
+Deno.test("an unavailable helper needs no fabricated observed version or fleet counts", () => {
+  const observations = lot2Observations();
+  const model = deriveDesktopShellViewModel({
+    ...observations,
+    controlPlane: {
+      configuration: "missing",
+      lifecycle: "unavailable",
+      providers: { state: "unavailable" },
+      persistedEvidence: "unavailable",
+    },
+  });
+  assertEquals(model.status, "degraded");
+  assertEquals(states(model)["casys-control-plane"], "unavailable");
+  assertEquals(states(model)["engineering-providers"], "unavailable");
+  assertEquals(
+    model.components.find((component) => component.id === "casys-control-plane")
+      ?.version,
+    undefined,
+  );
+  assertNoAbsolutePath(model);
+});
+
+Deno.test("non-ready lifecycle data cannot project process identity into the renderer", () => {
+  const observations = lot2Observations();
+  const projection = {
+    configuration: "missing" as const,
+    lifecycle: "unavailable" as const,
+    controlPlaneVersion: "0.2.0",
+    providers: { state: "unavailable" as const },
+    persistedEvidence: "unavailable" as const,
+    pid: 4242,
+    helperPath: "/Users/ada/private/casys-control-plane",
+    launchId: "11111111-1111-4111-8111-111111111111",
+    configDigest:
+      "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    endpoint: "http://127.0.0.1:3020/mcp",
+  };
+  const model = deriveDesktopShellViewModel({
+    ...observations,
+    controlPlane: projection,
+  });
+  const text = serialized(model);
+  for (
+    const forbidden of [
+      "4242",
+      "/Users/ada/private",
+      "11111111-1111-4111-8111-111111111111",
+      "sha256:",
+      "127.0.0.1",
+      "/mcp",
+    ]
+  ) {
+    if (text.includes(forbidden)) {
+      throw new Error(`renderer DTO leaked ${forbidden}`);
+    }
+  }
+  assertEquals(
+    model.components.find((component) => component.id === "casys-control-plane")
+      ?.version,
+    undefined,
+  );
+});
+
+Deno.test("deriveDesktopShellViewModel fails closed for an unowned canonical listener", () => {
+  const observations = lot2Observations();
+  const model = deriveDesktopShellViewModel({
+    ...observations,
+    controlPlane: {
+      ...observations.controlPlane,
+      lifecycle: "recovery-required",
+      recoveryCode: "foreign-listener",
+    },
+  });
+  assertEquals(model.status, "recovery-required");
+  assertEquals(states(model)["casys-control-plane"], "error");
+  const serializedModel = serialized(model);
+  if (!serializedModel.includes("without exact Desktop ownership")) {
+    throw new Error("foreign listener evidence must remain explicit");
+  }
+  for (const forbidden of ["pid", "launchId", "127.0.0.1:3020"]) {
+    if (serializedModel.includes(forbidden)) {
+      throw new Error(`control-plane projection leaked ${forbidden}`);
+    }
+  }
+  assertNoAbsolutePath(model);
+});
+
+Deno.test("deriveDesktopShellViewModel rejects a control-plane version mismatch without echoing it", () => {
+  const observations = lot2Observations();
+  const sentinel = "/Users/private/nonce-1234";
+  const model = deriveDesktopShellViewModel({
+    ...observations,
+    controlPlane: {
+      ...observations.controlPlane,
+      controlPlaneVersion: sentinel,
+    },
+  });
+  assertEquals(model.status, "recovery-required");
+  assertEquals(states(model)["casys-control-plane"], "error");
+  if (serialized(model).includes(sentinel)) {
+    throw new Error("mismatched runtime identity must not reach the view model");
+  }
+  assertNoAbsolutePath(model);
+});
+
+Deno.test("deriveDesktopShellViewModel never promotes demo or run candidates to verified evidence", () => {
+  const observations = lot2Observations();
+  const model = deriveDesktopShellViewModel({
+    ...observations,
+    controlPlane: {
+      ...observations.controlPlane,
+      persistedEvidence: "candidate-unverified",
+    },
+  });
+  assertEquals(states(model)["persisted-project-evidence"], "unresolved");
+  if (!serialized(model).includes("has not validated exact Thread evidence")) {
+    throw new Error("candidate evidence must retain its unverified limitation");
+  }
+});
+
+Deno.test("deriveDesktopShellViewModel rejects inconsistent provider counts", () => {
+  const observations = lot2Observations();
+  const model = deriveDesktopShellViewModel({
+    ...observations,
+    controlPlane: {
+      ...observations.controlPlane,
+      providers: { state: "healthy", total: 2, healthy: 3, drift: 0 },
+    },
+  });
+  assertEquals(model.status, "recovery-required");
+  assertEquals(states(model)["engineering-providers"], "error");
 });

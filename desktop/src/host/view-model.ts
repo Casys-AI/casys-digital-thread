@@ -1,6 +1,7 @@
 import type {
   ComponentDiagnostic,
   ComponentState,
+  DesktopControlPlaneProjection,
   DesktopShellViewModel,
 } from "../contracts/diagnostics.ts";
 import { classifyShellStatus } from "./classify.ts";
@@ -15,6 +16,7 @@ export interface DesktopShellObservations {
   readonly actualProductVersion: string | null;
   readonly platform: DesktopPlatform;
   readonly layout: HostResult<ApplicationSupportLayout>;
+  readonly controlPlane?: DesktopControlPlaneProjection;
 }
 
 const FALLBACK_PRODUCT_NAME = "Casys Digital Thread";
@@ -23,7 +25,7 @@ const KNOWN_DEFERRED_COMPONENTS = [
     id: "casys-control-plane",
     label: "Casys control plane",
     summary: "The local Casys control plane is unavailable in this Desktop build.",
-    evidence: "Desktop 0.1.0 does not start or health-check the local control plane.",
+    evidence: "No exact control-plane lifecycle observation reached the shell.",
     recovery:
       "Use the existing supervised local workflow until Desktop lifecycle support is installed.",
   },
@@ -31,8 +33,7 @@ const KNOWN_DEFERRED_COMPONENTS = [
     id: "engineering-providers",
     label: "Engineering providers",
     summary: "Engineering provider health is unavailable in this Desktop build.",
-    evidence:
-      "Desktop 0.1.0 does not yet observe the pinned published provider image fleet.",
+    evidence: "No exact console_snapshot provider observation reached the shell.",
     recovery:
       "Do not infer provider readiness from this window; use the existing supervised local runtime.",
   },
@@ -48,7 +49,7 @@ const KNOWN_DEFERRED_COMPONENTS = [
     id: "chat-host",
     label: "Chat host",
     summary: "Embedded chat is unavailable in this Desktop build.",
-    evidence: "Desktop 0.1.0 starts no acpx runtime, agent, or chat sidecar.",
+    evidence: "Desktop 0.2.0 starts no acpx runtime, agent, or chat sidecar.",
     recovery:
       "Use a supported native agent through the bridge until the pinned Chat Host is installed.",
   },
@@ -80,12 +81,22 @@ export function deriveDesktopShellViewModel(
     runtimeDiagnostic,
     layoutDiagnostic,
   );
+  const controlPlaneDiagnostics = observations.controlPlane === undefined
+    ? []
+    : diagnoseControlPlane(
+      observations.manifest,
+      observations.controlPlane,
+    );
+  const projectedIds = new Set(
+    controlPlaneDiagnostics.map((component) => component.id),
+  );
   const components = [
     manifestDiagnostic,
     runtimeDiagnostic,
     layoutDiagnostic,
     shellDiagnostic,
-    ...deferredComponents(observations.manifest),
+    ...controlPlaneDiagnostics,
+    ...deferredComponents(observations.manifest, projectedIds),
   ];
 
   const status = classifyShellStatus(components);
@@ -99,6 +110,347 @@ export function deriveDesktopShellViewModel(
     platform: observations.platform,
     components,
   });
+}
+
+function diagnoseControlPlane(
+  manifest: HostResult<ComponentManifest>,
+  projection: DesktopControlPlaneProjection,
+): ComponentDiagnostic[] {
+  const declared = manifest.ok
+    ? manifest.value.components.find((component) =>
+      component.id === "casys-control-plane"
+    )
+    : undefined;
+  const configuration = diagnoseDesktopConfiguration(projection);
+  const lifecycle = diagnoseControlPlaneLifecycle(projection, declared);
+  return [
+    configuration,
+    lifecycle,
+    diagnoseProviders(projection),
+    diagnosePersistedEvidence(projection),
+  ];
+}
+
+function diagnoseDesktopConfiguration(
+  projection: DesktopControlPlaneProjection,
+): ComponentDiagnostic {
+  switch (projection.configuration) {
+    case "verified":
+      return {
+        id: "desktop-configuration",
+        label: "Desktop configuration",
+        state: "ready",
+        summary: "The local Desktop configuration is ready.",
+        evidence:
+          "The embedded inputs and materialized configuration have the same exact digest.",
+      };
+    case "missing":
+      return configurationFailure(
+        "unavailable",
+        "The local Desktop configuration is unavailable.",
+        "No materialized configuration was observed.",
+      );
+    case "mismatch":
+      return configurationFailure(
+        "error",
+        "The local Desktop configuration is error: its digest does not match.",
+        "The materialized configuration differs from the pinned embedded inputs.",
+      );
+    case "error":
+      return configurationFailure(
+        "error",
+        "The local Desktop configuration is error.",
+        "Configuration materialization or verification failed.",
+      );
+  }
+}
+
+function configurationFailure(
+  state: "unavailable" | "error",
+  summary: string,
+  evidence: string,
+): ComponentDiagnostic {
+  return {
+    id: "desktop-configuration",
+    label: "Desktop configuration",
+    state,
+    summary,
+    evidence,
+    recovery:
+      "Restore the pinned Desktop configuration. Do not replace it with checkout state or an unverified file.",
+  };
+}
+
+function diagnoseControlPlaneLifecycle(
+  projection: DesktopControlPlaneProjection,
+  declared: ManifestComponent | undefined,
+): ComponentDiagnostic {
+  if (
+    declared === undefined || declared.lifecycle !== "active" ||
+    declared.version === null
+  ) {
+    return {
+      id: "casys-control-plane",
+      label: "Casys control plane",
+      state: "error",
+      summary:
+        "The local Casys control plane is error: its active manifest pin is missing.",
+      evidence:
+        "A runtime observation exists without an active exact-version component declaration.",
+      recovery:
+        "Restore the exact active casys-control-plane component manifest entry.",
+    };
+  }
+  const version = projection.controlPlaneVersion;
+  const requiresObservedVersion = projection.lifecycle === "owned-ready" ||
+    projection.lifecycle === "reconnected-ready";
+  if (requiresObservedVersion && version !== declared.version) {
+    return {
+      id: "casys-control-plane",
+      label: "Casys control plane",
+      state: "error",
+      summary:
+        "The local Casys control plane is error: its observed version does not match the pin.",
+      evidence: `The observed version does not match manifest pin ${declared.version}.`,
+      recovery:
+        "Install and start only the exact control-plane helper pinned by this Desktop release.",
+    };
+  }
+
+  switch (projection.lifecycle) {
+    case "owned-ready":
+      return readyControlPlane(
+        declared.version,
+        "The exact Desktop-owned control plane is ready.",
+      );
+    case "reconnected-ready":
+      return readyControlPlane(
+        declared.version,
+        "The exact control plane owned by the running Desktop installation is ready.",
+      );
+    case "starting":
+      return {
+        id: "casys-control-plane",
+        label: "Casys control plane",
+        state: "unresolved",
+        summary: "The local Casys control plane is unresolved while it starts.",
+        evidence: "Lifecycle ownership is established; exact MCP readiness is pending.",
+        recovery: "Wait for the bounded readiness check to complete.",
+      };
+    case "unavailable":
+      return {
+        id: "casys-control-plane",
+        label: "Casys control plane",
+        state: "unavailable",
+        summary: "The local Casys control plane is unavailable.",
+        evidence: "No exact owned or reconnectable control plane was observed.",
+        recovery: "Restore the pinned packaged helper, then reopen Desktop.",
+      };
+    case "recovery-required":
+      return {
+        id: "casys-control-plane",
+        label: "Casys control plane",
+        state: "error",
+        summary: "The local Casys control plane is error and requires recovery.",
+        evidence: recoveryEvidence(projection.recoveryCode),
+        recovery:
+          "Resolve the exact lifecycle conflict. Desktop will not adopt, replace, or stop an unowned process.",
+      };
+  }
+}
+
+function readyControlPlane(
+  version: string,
+  evidence: string,
+): ComponentDiagnostic {
+  return {
+    id: "casys-control-plane",
+    label: "Casys control plane",
+    state: "ready",
+    summary: "The local Casys control plane is ready.",
+    evidence,
+    version,
+  };
+}
+
+function recoveryEvidence(
+  code: DesktopControlPlaneProjection["recoveryCode"],
+): string {
+  const evidence: Record<
+    NonNullable<DesktopControlPlaneProjection["recoveryCode"]>,
+    string
+  > = {
+    "config-mismatch": "The materialized configuration digest does not match.",
+    "foreign-listener":
+      "The canonical loopback endpoint is occupied without exact Desktop ownership.",
+    "helper-unavailable": "The pinned packaged helper could not be executed.",
+    "manifest-mismatch":
+      "The product or control-plane component does not match the exact Lot 2 pin.",
+    "marker-invalid": "The lifecycle ownership marker is invalid or ambiguous.",
+    "permission-denied": "A required scoped Deno permission was denied.",
+    "probe-failed": "Exact MCP identity or readiness verification failed.",
+    "startup-failed": "The owned helper failed before exact readiness.",
+  };
+  return code === undefined
+    ? "The lifecycle controller reported a fail-closed recovery state."
+    : evidence[code];
+}
+
+function diagnoseProviders(
+  projection: DesktopControlPlaneProjection,
+): ComponentDiagnostic {
+  if (!validProviderCounts(projection.providers)) {
+    return {
+      id: "engineering-providers",
+      label: "Engineering providers",
+      state: "error",
+      summary: "Engineering provider observation is error.",
+      evidence: "The fleet observation contains invalid or inconsistent counts.",
+      recovery: "Repair the read-only fleet projection; do not infer readiness.",
+    };
+  }
+  const counts = providerCounts(projection.providers);
+  switch (projection.providers.state) {
+    case "healthy":
+      return {
+        id: "engineering-providers",
+        label: "Engineering providers",
+        state: "ready",
+        summary: "The pinned engineering provider fleet is ready.",
+        evidence: `${counts} Exact loopback MCP observations are healthy.`,
+      };
+    case "degraded":
+      return {
+        id: "engineering-providers",
+        label: "Engineering providers",
+        state: "unresolved",
+        summary: "The pinned engineering provider fleet is degraded.",
+        evidence: `${counts} One or more exact provider observations are not healthy.`,
+        recovery: "Restore the missing pinned provider images or their local services.",
+      };
+    case "unavailable":
+      return {
+        id: "engineering-providers",
+        label: "Engineering providers",
+        state: "unavailable",
+        summary: "The pinned engineering provider fleet is unavailable.",
+        evidence: `${counts} No required provider readiness was observed.`,
+        recovery:
+          "Start the required pinned local providers. The control plane remains available for offline inspection.",
+      };
+    case "unknown":
+      return {
+        id: "engineering-providers",
+        label: "Engineering providers",
+        state: "unresolved",
+        summary: "The pinned engineering provider fleet is unresolved.",
+        evidence: `${counts} Provider readiness could not be classified exactly.`,
+        recovery: "Retry the read-only provider observations.",
+      };
+    case "error":
+      return {
+        id: "engineering-providers",
+        label: "Engineering providers",
+        state: "error",
+        summary: "Engineering provider observation is error.",
+        evidence: "The read-only fleet observation failed structurally.",
+        recovery: "Repair the exact provider observation path; do not infer readiness.",
+      };
+  }
+}
+
+function providerCounts(
+  providers: DesktopControlPlaneProjection["providers"],
+): string {
+  const total = safeCount(providers.total);
+  const healthy = safeCount(providers.healthy);
+  const drift = safeCount(providers.drift);
+  return total === undefined || healthy === undefined || drift === undefined
+    ? "Counts are unresolved."
+    : `${healthy}/${total} healthy; ${drift} drift.`;
+}
+
+function safeCount(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function validProviderCounts(
+  providers: DesktopControlPlaneProjection["providers"],
+): boolean {
+  const values = [providers.total, providers.healthy, providers.drift];
+  if (values.every((value) => value === undefined)) {
+    return providers.state === "unavailable" || providers.state === "unknown" ||
+      providers.state === "error";
+  }
+  const [total, healthy, drift] = values.map(safeCount);
+  if (total === undefined || healthy === undefined || drift === undefined) {
+    return false;
+  }
+  if (healthy > total) return false;
+  if (providers.state === "healthy") return total > 0 && healthy === total;
+  if (providers.state === "unavailable") return healthy === 0;
+  return true;
+}
+
+function diagnosePersistedEvidence(
+  projection: DesktopControlPlaneProjection,
+): ComponentDiagnostic {
+  switch (projection.persistedEvidence) {
+    case "verified":
+      if (
+        projection.lifecycle !== "owned-ready" &&
+        projection.lifecycle !== "reconnected-ready"
+      ) {
+        return {
+          id: "persisted-project-evidence",
+          label: "Persisted project evidence",
+          state: "error",
+          summary: "Persisted project evidence observation is error.",
+          evidence:
+            "Verified evidence was claimed without an exact ready control-plane identity.",
+          recovery:
+            "Reopen and validate the exact durable record through an owned control plane.",
+        };
+      }
+      return {
+        id: "persisted-project-evidence",
+        label: "Persisted project evidence",
+        state: "ready",
+        summary: "Persisted project evidence is ready.",
+        evidence: "An exact durable project record was reopened and validated.",
+      };
+    case "candidate-unverified":
+      return {
+        id: "persisted-project-evidence",
+        label: "Persisted project evidence",
+        state: "unresolved",
+        summary: "Persisted project evidence is unresolved.",
+        evidence:
+          "Candidate local records exist, but this projection has not validated exact Thread evidence.",
+        recovery: "Open an exact project through the read-only Workbench projection.",
+      };
+    case "unavailable":
+      return {
+        id: "persisted-project-evidence",
+        label: "Persisted project evidence",
+        state: "unavailable",
+        summary: "Persisted project evidence is unavailable.",
+        evidence: "No exact validated local project evidence was observed.",
+        recovery:
+          "Create or open a project; directory existence alone is not evidence.",
+      };
+    case "error":
+      return {
+        id: "persisted-project-evidence",
+        label: "Persisted project evidence",
+        state: "error",
+        summary: "Persisted project evidence observation is error.",
+        evidence: "A candidate durable record could not be validated exactly.",
+        recovery: "Repair the durable record; do not fall back to another file.",
+      };
+  }
 }
 
 function diagnoseManifest(
@@ -251,6 +603,7 @@ function diagnoseShell(
 
 function deferredComponents(
   manifest: HostResult<ComponentManifest>,
+  skippedIds: ReadonlySet<string> = new Set(),
 ): ComponentDiagnostic[] {
   const fromManifest = manifest.ok
     ? manifest.value.components.filter((component) => component.id !== "desktop-shell")
@@ -259,22 +612,23 @@ function deferredComponents(
   const diagnostics: ComponentDiagnostic[] = [];
 
   for (const spec of KNOWN_DEFERRED_COMPONENTS) {
+    if (skippedIds.has(spec.id)) continue;
     seen.add(spec.id);
     const declared = fromManifest.find((component) => component.id === spec.id);
     diagnostics.push(unavailableComponent(spec, declared));
   }
 
   for (const component of fromManifest) {
-    if (seen.has(component.id)) continue;
+    if (seen.has(component.id) || skippedIds.has(component.id)) continue;
     seen.add(component.id);
     if (component.lifecycle === "active") {
       diagnostics.push({
         id: component.id,
         label: labelFor(component.id),
         state: "unresolved",
-        summary: `${component.id} is unresolved because Lot 1 does not observe it.`,
+        summary: `${component.id} is unresolved because Desktop does not observe it.`,
         evidence:
-          `${component.id} is active in the manifest but has no Lot 1 observation.`,
+          `${component.id} is active in the manifest but has no runtime observation.`,
         recovery: "Do not treat an unobserved active component as ready.",
         version: component.version ?? undefined,
       });
@@ -298,6 +652,18 @@ function unavailableComponent(
   spec: typeof KNOWN_DEFERRED_COMPONENTS[number],
   declared: ManifestComponent | undefined,
 ): ComponentDiagnostic {
+  if (declared?.lifecycle === "active") {
+    return {
+      id: spec.id,
+      label: spec.label,
+      state: "unavailable",
+      summary: `${spec.label} is unavailable.`,
+      evidence:
+        `${declared.id} is an active ${declared.delivery} component, but no exact runtime observation reached the shell.`,
+      recovery:
+        "Restore the exact packaged component. Do not infer its version or readiness from the manifest pin alone.",
+    };
+  }
   return {
     id: spec.id,
     label: spec.label,

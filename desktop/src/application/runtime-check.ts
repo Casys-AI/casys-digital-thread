@@ -1,6 +1,13 @@
 import rawManifest from "../../component-manifest.json" with { type: "json" };
 import denoConfig from "../../deno.json" with { type: "json" };
+import {
+  CONTROL_PLANE_LOOPBACK_HOST,
+  CONTROL_PLANE_PORT,
+  CONTROL_PLANE_PRODUCT_VERSION,
+  CONTROL_PLANE_SERVER_VERSION,
+} from "../control-plane/contracts.ts";
 import { validateComponentManifest } from "../host/mod.ts";
+import { PACKAGED_CONTROL_PLANE_HELPER_NAME } from "./helper-path.ts";
 
 const manifest = validateComponentManifest(rawManifest);
 if (!manifest.ok) {
@@ -32,6 +39,19 @@ if (
   );
 }
 
+const controlPlane = manifest.value.components.find((component) =>
+  component.id === "casys-control-plane"
+);
+if (
+  manifest.value.product.version !== CONTROL_PLANE_PRODUCT_VERSION ||
+  controlPlane?.version !== CONTROL_PLANE_SERVER_VERSION ||
+  controlPlane?.lifecycle !== "active" || controlPlane?.delivery !== "sidecar"
+) {
+  throw new Error(
+    "Cannot build Desktop: Lot 2 requires the exact active packaged control-plane sidecar pin.",
+  );
+}
+
 const expectedEnvironment = [
   "APPDATA",
   "HOME",
@@ -39,23 +59,30 @@ const expectedEnvironment = [
   "XDG_DATA_HOME",
 ];
 const actualEnvironment = [...denoConfig.permissions.desktop.env].sort();
+const actualRun = [...denoConfig.permissions.desktop.run].sort();
+const actualNet = [...denoConfig.permissions.desktop.net].sort();
 const permissionKeys = Object.keys(denoConfig.permissions.desktop).sort();
 if (
   JSON.stringify(actualEnvironment) !== JSON.stringify(expectedEnvironment) ||
-  JSON.stringify(permissionKeys) !== JSON.stringify(["env", "import"]) ||
+  JSON.stringify(actualRun) !==
+    JSON.stringify([PACKAGED_CONTROL_PLANE_HELPER_NAME]) ||
+  JSON.stringify(actualNet) !==
+    JSON.stringify([`${CONTROL_PLANE_LOOPBACK_HOST}:${CONTROL_PLANE_PORT}`]) ||
+  JSON.stringify(permissionKeys) !==
+    JSON.stringify(["env", "import", "net", "run"]) ||
   denoConfig.permissions.desktop.import !== false
 ) {
   throw new Error(
-    "Cannot build Desktop: the runtime permission set must contain only the exact application-support environment allowlist and denied remote imports.",
+    "Cannot build Desktop: runtime permissions must contain only application-support env reads, the packaged helper basename, the canonical loopback endpoint, and denied remote imports.",
   );
 }
 
 if (
-  !denoConfig.tasks.dev.includes("--deny-import") ||
+  Object.hasOwn(denoConfig.tasks, "dev") ||
   !denoConfig.tasks.package.includes("--deny-import")
 ) {
   throw new Error(
-    "Cannot build Desktop: dev and package tasks must deny runtime remote imports explicitly.",
+    "Cannot build Desktop: the packaged-only helper topology has no checkout dev task, and package must deny runtime remote imports explicitly.",
   );
 }
 

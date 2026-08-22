@@ -22,3 +22,39 @@ export interface DesktopShellViewModel {
   readonly platform: "macOS" | "Windows" | "Linux";
   readonly components: readonly ComponentDiagnostic[];
 }
+
+/** Safe host projection: deliberately contains no pid, path, endpoint, or nonce. */
+export interface DesktopControlPlaneProjection {
+  readonly configuration:
+    | "verified"
+    | "missing"
+    | "mismatch"
+    | "error";
+  readonly lifecycle:
+    | "owned-ready"
+    | "reconnected-ready"
+    | "starting"
+    | "unavailable"
+    | "recovery-required";
+  readonly controlPlaneVersion?: string;
+  readonly recoveryCode?:
+    | "config-mismatch"
+    | "foreign-listener"
+    | "helper-unavailable"
+    | "manifest-mismatch"
+    | "marker-invalid"
+    | "permission-denied"
+    | "probe-failed"
+    | "startup-failed";
+  readonly providers: {
+    readonly state: "healthy" | "degraded" | "unavailable" | "unknown" | "error";
+    readonly total?: number;
+    readonly healthy?: number;
+    readonly drift?: number;
+  };
+  readonly persistedEvidence:
+    | "verified"
+    | "candidate-unverified"
+    | "unavailable"
+    | "error";
+}

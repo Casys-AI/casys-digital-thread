@@ -33,7 +33,7 @@ function model(
 ): DesktopShellViewModel {
   return {
     productName: "Casys Digital Thread",
-    productVersion: "0.1.0",
+    productVersion: "0.2.0",
     status: "degraded",
     title: "Desktop shell is degraded",
     summary:
@@ -177,13 +177,13 @@ Deno.test("renderDesktopShell omits recovery and version when they are absent", 
 
   const withOptional = render({
     components: [
-      component({ recovery: "Reinstall the pinned runtime.", version: "0.1.0" }),
+      component({ recovery: "Reinstall the pinned runtime.", version: "0.2.0" }),
     ],
   });
   assertStringIncludes(withOptional, ">Recovery<");
   assertStringIncludes(withOptional, "Reinstall the pinned runtime.");
   assertStringIncludes(withOptional, ">Observed version<");
-  assertStringIncludes(withOptional, "0.1.0");
+  assertStringIncludes(withOptional, "0.2.0");
 });
 
 Deno.test(

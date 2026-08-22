@@ -19,7 +19,7 @@ function textResponse(
 }
 
 /**
- * Closed Lot 1 HTTP surface. The renderer can load one static document; no
+ * Closed Desktop HTTP surface. The renderer can load one static document; no
  * command, filesystem, process, provider, MCP, or project-state route exists.
  */
 export function createDesktopShellHandler(
@@ -30,15 +30,15 @@ export function createDesktopShellHandler(
 
   return (request: Request): Response => {
     const method = request.method.toUpperCase();
+    const path = new URL(request.url).pathname;
+    if (!DOCUMENT_PATHS.has(path)) {
+      return textResponse(method === "HEAD" ? null : "Not found.\n", 404);
+    }
+
     if (method !== "GET" && method !== "HEAD") {
       return textResponse("Method not allowed.\n", 405, {
         Allow: "GET, HEAD",
       });
-    }
-
-    const path = new URL(request.url).pathname;
-    if (!DOCUMENT_PATHS.has(path)) {
-      return textResponse(method === "HEAD" ? null : "Not found.\n", 404);
     }
 
     return new Response(method === "HEAD" ? null : document, {

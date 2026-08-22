@@ -4,7 +4,7 @@ import { createDesktopShellHandler } from "./shell-handler.ts";
 
 const MODEL: DesktopShellViewModel = {
   productName: "Casys Digital Thread",
-  productVersion: "0.1.0",
+  productVersion: "0.2.0",
   status: "degraded",
   title: "Local control plane unavailable",
   summary: "The native shell is ready; local engineering services are not observed.",
@@ -15,7 +15,7 @@ const MODEL: DesktopShellViewModel = {
     state: "ready",
     summary: "The shell manifest matches the installed runtime.",
     evidence: "Manifest and runtime observed at bootstrap.",
-    version: "0.1.0",
+    version: "0.2.0",
   }],
 };
 
@@ -35,7 +35,7 @@ Deno.test("shell handler serves only the static document through GET and HEAD", 
   assertEquals(await head.text(), "");
 });
 
-Deno.test("shell handler rejects command-shaped methods and unknown routes", async () => {
+Deno.test("shell handler rejects command-shaped methods and every privileged route", async () => {
   const handler = createDesktopShellHandler(MODEL);
 
   const post = handler(new Request("http://127.0.0.1/", { method: "POST" }));
@@ -47,7 +47,11 @@ Deno.test("shell handler rejects command-shaped methods and unknown routes", asy
   );
   assertEquals(await post.text(), "Method not allowed.\n");
 
-  const missing = handler(new Request("http://127.0.0.1/api/control"));
-  assertEquals(missing.status, 404);
-  assertEquals(await missing.text(), "Not found.\n");
+  for (const path of ["/api/control", "/mcp", "/health", "/lifecycle"]) {
+    for (const method of ["GET", "HEAD", "POST"]) {
+      const missing = handler(new Request(`http://127.0.0.1${path}`, { method }));
+      assertEquals(missing.status, 404);
+      assertEquals(await missing.text(), method === "HEAD" ? "" : "Not found.\n");
+    }
+  }
 });

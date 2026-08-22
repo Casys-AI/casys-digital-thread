@@ -209,6 +209,12 @@ Deno.test("validateComponentManifest rejects an unpinned active executable compo
   }
 });
 
+Deno.test("validateComponentManifest binds the shell version to the product release", () => {
+  const manifest = cloneManifest();
+  (manifest.components as Record<string, unknown>[])[0].version = "0.1.1";
+  assertFailed(manifest, "manifest.lifecycle-inconsistent");
+});
+
 Deno.test("validateComponentManifest rejects inconsistent lifecycle and version combinations", () => {
   const pinnedDeferred = cloneManifest();
   (pinnedDeferred.components as Record<string, unknown>[])[1].version = "1.0.0";

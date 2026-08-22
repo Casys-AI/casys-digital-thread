@@ -1,5 +1,18 @@
 import rawManifest from "../../component-manifest.json" with { type: "json" };
 import { validateComponentManifest } from "../host/mod.ts";
+import {
+  assertNoGeneralDenoCli,
+  HELPER_STAGE_SOURCE,
+  helperBundlePath,
+  stageControlPlaneHelper,
+} from "./helper-bundle.ts";
+import {
+  assertMacosBundleStrings,
+  expectedMacosBundleStrings,
+  MACOS_BUNDLE_STRING_KEYS,
+  MACOS_MINIMUM_SYSTEM_VERSION,
+} from "./macos-bundle-contract.ts";
+import { installMacosLauncher, macosRuntimeExecutablePath } from "./macos-launcher.ts";
 
 const PLUTIL = "/usr/bin/plutil";
 const CODESIGN = "/usr/bin/codesign";
@@ -66,6 +79,10 @@ await replacePlistString(
   manifest.value.product.version,
 );
 await replacePlistString("CFBundleVersion", manifest.value.product.version);
+await replacePlistString(
+  "LSMinimumSystemVersion",
+  MACOS_MINIMUM_SYSTEM_VERSION,
+);
 
 for (const key of UNUSED_PRIVACY_KEYS) {
   if (await plistValue(key) !== undefined) {
@@ -73,19 +90,42 @@ for (const key of UNUSED_PRIVACY_KEYS) {
   }
 }
 
-await command(CODESIGN, ["--force", "--deep", "--sign", "-", appPath]);
+const helperPath = await stageControlPlaneHelper({
+  appPath,
+  sourcePath: HELPER_STAGE_SOURCE,
+});
+const bundleExecutable = await plistValue("CFBundleExecutable");
+if (bundleExecutable === undefined) {
+  throw new Error("Final bundle omits CFBundleExecutable.");
+}
+const installed = await installMacosLauncher({
+  appPath,
+  bundleExecutable,
+});
+await assertNoGeneralDenoCli(appPath);
+await command(CODESIGN, ["--force", "--sign", "-", helperPath]);
+await command(CODESIGN, ["--force", "--sign", "-", installed.runtimePath]);
+await command(CODESIGN, ["--force", "--sign", "-", installed.launcherPath]);
+await command(CODESIGN, ["--force", "--sign", "-", appPath]);
+await command(CODESIGN, ["--verify", "--strict", helperPath]);
+await command(CODESIGN, ["--verify", "--strict", installed.runtimePath]);
+await command(CODESIGN, ["--verify", "--strict", installed.launcherPath]);
 await command(CODESIGN, ["--verify", "--deep", "--strict", appPath]);
+if (helperBundlePath(appPath) !== helperPath) {
+  throw new Error("Staged helper path is not the exact bundle Helpers path.");
+}
+if (macosRuntimeExecutablePath(appPath) !== installed.runtimePath) {
+  throw new Error("Staged Desktop runtime path is not the exact MacOS path.");
+}
 
 const expected = manifest.value.product;
-if (await plistValue("CFBundleIdentifier") !== expected.identifier) {
-  throw new Error("Final bundle identifier does not match the component manifest.");
-}
-if (await plistValue("CFBundleShortVersionString") !== expected.version) {
-  throw new Error("Final bundle short version does not match the component manifest.");
-}
-if (await plistValue("CFBundleVersion") !== expected.version) {
-  throw new Error("Final bundle version does not match the component manifest.");
-}
+const expectedBundleStrings = expectedMacosBundleStrings(expected);
+const actualBundleStrings = Object.fromEntries(
+  await Promise.all(
+    MACOS_BUNDLE_STRING_KEYS.map(async (key) => [key, await plistValue(key)]),
+  ),
+);
+assertMacosBundleStrings(actualBundleStrings, expectedBundleStrings);
 for (const key of UNUSED_PRIVACY_KEYS) {
   if (await plistValue(key) !== undefined) {
     throw new Error(`Final bundle still declares unused privacy key ${key}.`);

@@ -49,6 +49,10 @@ Deno.test("resolveApplicationSupportLayout returns the macOS application-support
   const root = "/Users/ada/Library/Application Support/ai.casys.digital-thread";
   assertEquals(result.value, {
     root,
+    controlPlaneLaunchCwd: "/Users/ada/Library/Application Support",
+    controlPlaneWorkspace: `${root}/control-plane`,
+    controlPlaneRelativeWorkspace: "ai.casys.digital-thread/control-plane",
+    controlPlaneLayoutProfile: "macos-application-support",
     config: `${root}/config`,
     thread: `${root}/thread`,
     cas: `${root}/cas`,
@@ -58,7 +62,20 @@ Deno.test("resolveApplicationSupportLayout returns the macOS application-support
     cache: `${root}/cache`,
     runtime: `${root}/runtime`,
   });
-  for (const path of Object.values(result.value)) {
+  for (
+    const path of [
+      result.value.root,
+      result.value.controlPlaneWorkspace,
+      result.value.config,
+      result.value.thread,
+      result.value.cas,
+      result.value.experience,
+      result.value.journals,
+      result.value.logs,
+      result.value.cache,
+      result.value.runtime,
+    ]
+  ) {
     if (path === "/Users/ada") {
       throw new Error("macOS layout must not use the home-directory root");
     }
@@ -77,6 +94,12 @@ Deno.test("resolveApplicationSupportLayout prefers Linux XDG_DATA_HOME over HOME
   if (!result.ok) throw new Error(result.error.message);
   const root = "/var/lib/casys-data/ai.casys.digital-thread";
   assertEquals(result.value.root, root);
+  assertEquals(result.value.controlPlaneLaunchCwd, "/var/lib/casys-data");
+  assertEquals(
+    result.value.controlPlaneRelativeWorkspace,
+    "ai.casys.digital-thread/control-plane",
+  );
+  assertEquals(result.value.controlPlaneLayoutProfile, "linux-xdg");
   assertEquals(result.value.thread, `${root}/thread`);
   assertEquals(result.value.cas, `${root}/cas`);
   if (result.value.root.startsWith("/home/ada")) {
@@ -95,6 +118,12 @@ Deno.test("resolveApplicationSupportLayout uses the Linux XDG default under HOME
   if (!result.ok) throw new Error(result.error.message);
   const root = "/home/ada/.local/share/ai.casys.digital-thread";
   assertEquals(result.value.root, root);
+  assertEquals(result.value.controlPlaneLaunchCwd, "/home/ada");
+  assertEquals(
+    result.value.controlPlaneRelativeWorkspace,
+    ".local/share/ai.casys.digital-thread/control-plane",
+  );
+  assertEquals(result.value.controlPlaneLayoutProfile, "linux-home");
   assertEquals(result.value.config, `${root}/config`);
   assertEquals(result.value.runtime, `${root}/runtime`);
   if (result.value.root === "/home/ada") {
@@ -116,6 +145,10 @@ Deno.test("resolveApplicationSupportLayout splits Windows roaming config from lo
   const roaming = "C:\\Users\\ada\\AppData\\Roaming\\ai.casys.digital-thread";
   assertEquals(result.value, {
     root,
+    controlPlaneLaunchCwd: "C:\\Users\\ada\\AppData\\Local",
+    controlPlaneWorkspace: `${root}\\control-plane`,
+    controlPlaneRelativeWorkspace: "ai.casys.digital-thread\\control-plane",
+    controlPlaneLayoutProfile: "windows-local-appdata",
     config: `${roaming}\\config`,
     thread: `${root}\\thread`,
     cas: `${root}\\cas`,

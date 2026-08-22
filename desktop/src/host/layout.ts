@@ -1,4 +1,5 @@
 import { fail, type HostResult, ok } from "./result.ts";
+import type { ControlPlaneLayoutProfile } from "../control-plane/contracts.ts";
 
 export type DesktopPlatform = "macOS" | "Windows" | "Linux";
 
@@ -14,6 +15,13 @@ export type EnvironmentReader = (
 
 export interface ApplicationSupportLayout {
   readonly root: string;
+  /** Existing directory used as the helper cwd; never the persistence root. */
+  readonly controlPlaneLaunchCwd: string;
+  /** Closed persistence cwd used by the existing server's relative stores. */
+  readonly controlPlaneWorkspace: string;
+  /** Workspace path relative to controlPlaneLaunchCwd for baked permissions. */
+  readonly controlPlaneRelativeWorkspace: string;
+  readonly controlPlaneLayoutProfile: ControlPlaneLayoutProfile;
   readonly config: string;
   readonly thread: string;
   readonly cas: string;
@@ -28,6 +36,12 @@ export interface ResolveApplicationSupportLayoutInput {
   readonly platform: DesktopPlatform;
   readonly productIdentifier: string;
   readonly env: EnvironmentReader;
+}
+
+interface ControlPlaneLayoutInput {
+  readonly launchCwd: string;
+  readonly relativeWorkspace: string;
+  readonly profile: ApplicationSupportLayout["controlPlaneLayoutProfile"];
 }
 
 const PLATFORMS: readonly DesktopPlatform[] = ["macOS", "Windows", "Linux"];
@@ -74,7 +88,21 @@ function resolveMacos(
     "Application Support",
     input.productIdentifier,
   );
-  return children("macOS", root, root);
+  const launchCwd = join(
+    "macOS",
+    home.value,
+    "Library",
+    "Application Support",
+  );
+  return children("macOS", root, root, {
+    launchCwd,
+    relativeWorkspace: joinRelative(
+      "macOS",
+      input.productIdentifier,
+      "control-plane",
+    ),
+    profile: "macos-application-support",
+  });
 }
 
 function resolveLinux(
@@ -93,13 +121,31 @@ function resolveLinux(
       );
     }
     const root = join("Linux", base.value, input.productIdentifier);
-    return children("Linux", root, root);
+    return children("Linux", root, root, {
+      launchCwd: base.value,
+      relativeWorkspace: joinRelative(
+        "Linux",
+        input.productIdentifier,
+        "control-plane",
+      ),
+      profile: "linux-xdg",
+    });
   }
 
   const home = readBase(input.env, "HOME", "Linux");
   if (!home.ok) return home;
   const root = join("Linux", home.value, ".local", "share", input.productIdentifier);
-  return children("Linux", root, root);
+  return children("Linux", root, root, {
+    launchCwd: home.value,
+    relativeWorkspace: joinRelative(
+      "Linux",
+      ".local",
+      "share",
+      input.productIdentifier,
+      "control-plane",
+    ),
+    profile: "linux-home",
+  });
 }
 
 function resolveWindows(
@@ -111,16 +157,29 @@ function resolveWindows(
   if (!local.ok) return local;
   const root = join("Windows", local.value, input.productIdentifier);
   const configRoot = join("Windows", roaming.value, input.productIdentifier);
-  return children("Windows", root, configRoot);
+  return children("Windows", root, configRoot, {
+    launchCwd: local.value,
+    relativeWorkspace: joinRelative(
+      "Windows",
+      input.productIdentifier,
+      "control-plane",
+    ),
+    profile: "windows-local-appdata",
+  });
 }
 
 function children(
   platform: DesktopPlatform,
   root: string,
   configRoot: string,
+  controlPlane: ControlPlaneLayoutInput,
 ): HostResult<ApplicationSupportLayout> {
   return ok({
     root,
+    controlPlaneLaunchCwd: controlPlane.launchCwd,
+    controlPlaneWorkspace: join(platform, root, "control-plane"),
+    controlPlaneRelativeWorkspace: controlPlane.relativeWorkspace,
+    controlPlaneLayoutProfile: controlPlane.profile,
     config: join(platform, configRoot, "config"),
     thread: join(platform, root, "thread"),
     cas: join(platform, root, "cas"),
@@ -130,6 +189,16 @@ function children(
     cache: join(platform, root, "cache"),
     runtime: join(platform, root, "runtime"),
   });
+}
+
+function joinRelative(
+  platform: DesktopPlatform,
+  ...parts: readonly string[]
+): string {
+  const separator = platform === "Windows" ? "\\" : "/";
+  return parts.map((part) => part.replace(/^[\\/]+|[\\/]+$/g, "")).join(
+    separator,
+  );
 }
 
 function readWindowsSupportBase(

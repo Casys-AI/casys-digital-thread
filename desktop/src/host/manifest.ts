@@ -113,6 +113,13 @@ export function validateComponentManifest(
       MANIFEST_RECOVERY,
     );
   }
+  if (shell.version !== product.value.version) {
+    return fail(
+      "manifest.lifecycle-inconsistent",
+      "the active desktop-shell version must equal manifest.product.version",
+      MANIFEST_RECOVERY,
+    );
+  }
 
   return ok(deepFreeze({
     schemaVersion: COMPONENT_MANIFEST_SCHEMA_VERSION,
