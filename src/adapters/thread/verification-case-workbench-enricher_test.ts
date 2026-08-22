@@ -36,7 +36,7 @@ import { enrichThreadWorkbenchWithVerificationCases } from "./verification-case-
 const PROOF_CASE = validateMechanicalProofCase(JSON.parse(
   await Deno.readTextFile(
     new URL(
-      "../../../config/mechanical-proof-cases/desk-lamp-dl05-arm-cantilever.json",
+      "../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl05-arm-cantilever.json",
       import.meta.url,
     ),
   ),
@@ -357,7 +357,7 @@ Deno.test(
         {
           mechanicalProof: { read: () => Promise.resolve(proof.captureText) },
           sensitivityStudy: { read: () => Promise.resolve(undefined) },
-          },
+        },
         mutation.context,
       );
       assertEquals(enriched.verificationCases.cases, [], mutation.name);

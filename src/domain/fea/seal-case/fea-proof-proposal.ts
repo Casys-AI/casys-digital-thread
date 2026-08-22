@@ -126,6 +126,8 @@ export interface FeaProofRequirementParams {
  */
 export interface FeaProofDecisionParameters {
   readonly proofDigest: string;
+  /** Exact captured agent source fingerprint. Not the compiled proof digest. */
+  readonly sourceFingerprint: string;
   readonly schemaVersion: typeof MECHANICAL_PROOF_CASE_SCHEMA;
   readonly id: string;
   readonly revision: number;
@@ -213,9 +215,11 @@ export function encodeFeaProofDecisionParameters(
     readonly id: string;
     readonly fingerprint: ContentFingerprint;
   },
+  sourceFingerprint: string,
   sensitivityCatalog?: FeaProofDecisionParameters["sensitivityCatalog"],
 ): ReadonlyArray<{ key: string; label: string; value: string | number | boolean }> {
   assertFingerprint(proofDigest, "proofDigest");
+  assertFingerprint(sourceFingerprint, "sourceFingerprint");
   assertFingerprint(
     geometryArtifact.fingerprint.digest,
     "geometryArtifact.fingerprint",
@@ -232,6 +236,11 @@ export function encodeFeaProofDecisionParameters(
     result.push({ key, label, value });
 
   p("fea.proof.digest", "Proof SHA-256 digest", proofDigest);
+  p(
+    "fea.proof.source.fingerprint",
+    "Proof source capture SHA-256",
+    sourceFingerprint,
+  );
   p("fea.proof.schemaVersion", "Proof schema version", proofCase.schemaVersion);
   p("fea.proof.id", "Proof case ID", proofCase.id);
   p("fea.proof.revision", "Proof revision", proofCase.revision);
@@ -509,6 +518,8 @@ export function parseFeaProofDecisionParameters(
 
   const proofDigest = str("fea.proof.digest");
   assertFingerprint(proofDigest, "fea.proof.digest");
+  const sourceFingerprint = str("fea.proof.source.fingerprint");
+  assertFingerprint(sourceFingerprint, "fea.proof.source.fingerprint");
 
   const schemaVersion = str("fea.proof.schemaVersion");
   if (schemaVersion !== MECHANICAL_PROOF_CASE_SCHEMA) {
@@ -642,6 +653,7 @@ export function parseFeaProofDecisionParameters(
 
   return {
     proofDigest,
+    sourceFingerprint,
     schemaVersion: MECHANICAL_PROOF_CASE_SCHEMA,
     id,
     revision,

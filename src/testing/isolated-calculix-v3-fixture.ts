@@ -274,6 +274,7 @@ async function createIsolatedCalculixFixture(
           id: candidate.requirementsArtifact.id,
           fingerprint: candidate.requirementsArtifact.fingerprint,
         },
+        "1".repeat(64),
       ),
     },
   });
@@ -492,7 +493,7 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
   );
   const rawProof = JSON.parse(
     await Deno.readTextFile(
-      "config/mechanical-proof-cases/desk-lamp-dl01-articulated-arm-cantilever.json",
+      "src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl01-articulated-arm-cantilever.json",
     ),
   );
   rawProof.project = {

@@ -22,7 +22,7 @@ import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../../src/adapters/fea/is
 
 const DEFAULT_IMAGE = "casys/calculix-microsandbox-worker:gate";
 const DEFAULT_PROOF =
-  "config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json";
+  "src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json";
 const DEFAULT_STEP =
   "state/local/thread-assets/c2f04aa6660caad85bc1a179d64ab2f68cd966781a2646a5c8e8be308fbe187f.step";
 const WRAPPER = "src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts";

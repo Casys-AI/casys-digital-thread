@@ -7,11 +7,11 @@ import {
 } from "./mechanical-proof-case.ts";
 
 const CONFIG_URL = new URL(
-  "../../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
+  "../../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
   import.meta.url,
 );
 const DL06_CONFIG_URL = new URL(
-  "../../../../config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
+  "../../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
   import.meta.url,
 );
 const CONFIG_TEXT = await Deno.readTextFile(CONFIG_URL);

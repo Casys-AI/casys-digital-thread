@@ -117,7 +117,8 @@ family from timestamps.
 ## 6. Proof, then stop or join
 
 ```text
-project_fea_proof_seal_review          # catalog id → fea.proof.*; optional signed catalog offer
+project_fea_proof_case_capture         # mechanical-proof-case-source/1.0 JSON → opaque fingerprint
+project_fea_proof_seal_review          # caseRef.fingerprint → fea.proof.*; optional signed catalog offer
   → verify.seal-proof-case@1
 project_fea_isolated_run_review        # sealed document → proofCase + STEP
   → verify.run-fea-static-proof@3

@@ -497,8 +497,8 @@ async function calculixFixture(
   const rawProof = JSON.parse(
     await Deno.readTextFile(
       options.sensitivityCatalogOffer
-        ? "config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json"
-        : "config/mechanical-proof-cases/desk-lamp-dl01-articulated-arm-cantilever.json",
+        ? "src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json"
+        : "src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl01-articulated-arm-cantilever.json",
     ),
   );
   const stepBytes = new TextEncoder().encode("ISO-10303-21; synthetic exact STEP");
@@ -772,6 +772,7 @@ async function calculixFixture(
       proofCase,
       { id: geometryCapture.id, fingerprint: geometryCapture.fingerprint },
       { id: requirementsArtifact.id, fingerprint: requirementsArtifact.fingerprint },
+      "1".repeat(64),
       sensitivityCatalogOffer && catalogOfferDigest &&
         options.sensitivityCatalogOffer !== "unsigned"
         ? {

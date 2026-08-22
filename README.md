@@ -240,7 +240,7 @@ briefs or studies, not the product contract.
 | `server.ts`, `src/`                           | Console, project control plane, thread contracts, and orchestration                                                      |
 | `config/mcp-fleet.json`                       | Desired fleet, topology, tools, views, and trust boundaries                                                              |
 | `experiments/thread-workflow/`                | Frozen YAML authoring prototype (reviewed spec + engine, no production caller)                                           |
-| `config/mechanical-proof-cases/`              | Candidate mechanical proof-case declarations; authoring only — execution authority belongs to the sealed thread artifact |
+| `src/testing/fixtures/fea/mechanical-proof-cases/` | Test/conformance compiled proof-case JSON only — not live production authority |
 | `state/fixtures/`                             | Canonical, explicitly labelled console and run fixtures                                                                  |
 | `state/local/engineering-projects/`           | Ignored immutable active project revisions and command receipts                                                          |
 | `state/local/engineering-project-run-leases/` | Empty local OS lock targets that serialize one trusted project run; never evidence                                       |

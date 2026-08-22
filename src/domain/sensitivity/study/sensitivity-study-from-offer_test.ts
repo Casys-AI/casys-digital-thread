@@ -14,7 +14,7 @@ const DL06_PROOF = validateMechanicalProofCase(
   JSON.parse(
     await Deno.readTextFile(
       new URL(
-        "../../../../config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
+        "../../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
         import.meta.url,
       ),
     ),

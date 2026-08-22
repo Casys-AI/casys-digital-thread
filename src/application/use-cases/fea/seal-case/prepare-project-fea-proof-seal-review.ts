@@ -1,10 +1,11 @@
 /**
- * Provider-free compilation of one catalogued proof case into
+ * Provider-free compilation of one captured proof-case source into
  * `verify.seal-proof-case@1` MRTR parameters.
  *
- * The server reopens the catalogued JSON and the resolved Thread basis.
- * The caller never supplies proof bytes, hashes or solver numbers. This
- * writes no project or Thread state and grants no MRTR authority.
+ * The server reopens the exact source fingerprint and recrosses the unique
+ * current Thread tip. The caller never supplies proof bytes, hashes, solver
+ * numbers, provider, tool or runtime. This writes no project or Thread state
+ * and grants no MRTR authority.
  */
 
 import type {
@@ -14,15 +15,12 @@ import type {
   ProjectFeaProofSealReviewUseCase,
 } from "../../../ports/in/fea/seal-case/project-fea-proof-seal-review.ts";
 import type { CanonicalAssetReader } from "../../../ports/out/canonical-asset-reader.ts";
-import type { CataloguedMechanicalProofCaseReader } from "../../../ports/out/fea/seal-case/catalogued-mechanical-proof-case-reader.ts";
+import type { FeaProofCaseSourceCaptureReader } from "../../../ports/out/fea/seal-case/fea-proof-case-source-capture-reader.ts";
 import type { FeaProofSealRequirementsReviewer } from "../../../ports/out/fea/seal-case/fea-proof-seal-requirements-reviewer.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
-import {
-  selectUniqueCataloguedProofCase,
-} from "../../../../domain/fea/seal-case/fea-proof-case-catalog.ts";
+import { validateFeaProofCaseSourceCaptureReference } from "../../../../domain/fea/seal-case/fea-proof-case-source-capture.ts";
 import {
   type FeaProofSealBindingDiagnostic,
-  resolveFeaProofSealThreadBindings,
 } from "../../../../domain/fea/seal-case/fea-proof-seal-bindings.ts";
 import {
   encodeFeaProofDecisionParameters,
@@ -31,10 +29,7 @@ import {
   parseFeaProofDecisionParameters,
   sealProofCaseWorkItemOperation,
 } from "../../../../domain/fea/seal-case/fea-proof-proposal.ts";
-import {
-  type MechanicalProofCase,
-  validateMechanicalProofCase,
-} from "../../../../domain/fea/seal-case/mechanical-proof-case.ts";
+import type { MechanicalProofCase } from "../../../../domain/fea/seal-case/mechanical-proof-case.ts";
 import { compileSensitivityCatalogOfferFromAdmission } from "../../../../domain/sensitivity/study/sensitivity-catalog-from-proof.ts";
 import { listCompileAdmissionArtifacts } from "../../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
 import {
@@ -49,6 +44,7 @@ import {
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
+import { recrossMechanicalProofCaseFromSource } from "./compile-fea-proof-from-source.ts";
 import {
   admitFeaProofSealSource,
   type FeaProofSealGeometryCaptureReader,
@@ -58,7 +54,6 @@ import {
   type FeaReviewProjectReader,
   type FeaReviewSnapshotStore,
   openFeaReviewSnapshot,
-  parseOptionalThreadBasis,
   validateFeaReviewNextState,
 } from "./fea-review-support.ts";
 
@@ -66,9 +61,7 @@ export type ProjectFeaProofSealReviewErrorCode =
   | "invalid_request"
   | "project_not_found"
   | "snapshot_not_found"
-  | "snapshot_resolution_failed"
-  | "catalog_unavailable"
-  | "catalog_integrity_failed";
+  | "snapshot_resolution_failed";
 
 export class ProjectFeaProofSealReviewError extends Error {
   constructor(
@@ -83,7 +76,7 @@ export class ProjectFeaProofSealReviewError extends Error {
 export interface PrepareProjectFeaProofSealReviewDependencies {
   readonly snapshots: FeaReviewSnapshotStore;
   readonly projects?: FeaReviewProjectReader;
-  readonly catalogReader: CataloguedMechanicalProofCaseReader;
+  readonly proofCaseSources: FeaProofCaseSourceCaptureReader;
   readonly requirementsReviewer: FeaProofSealRequirementsReviewer;
   readonly geometryCaptures: FeaProofSealGeometryCaptureReader;
   readonly stepAssets: CanonicalAssetReader;
@@ -95,7 +88,7 @@ export class PrepareProjectFeaProofSealReview
   implements ProjectFeaProofSealReviewUseCase {
   readonly #snapshots: FeaReviewSnapshotStore;
   readonly #projects: FeaReviewProjectReader | undefined;
-  readonly #catalogReader: CataloguedMechanicalProofCaseReader;
+  readonly #proofCaseSources: FeaProofCaseSourceCaptureReader;
   readonly #requirementsReviewer: FeaProofSealRequirementsReviewer;
   readonly #geometryCaptures: FeaProofSealGeometryCaptureReader;
   readonly #stepAssets: CanonicalAssetReader;
@@ -104,7 +97,7 @@ export class PrepareProjectFeaProofSealReview
   constructor(dependencies: PrepareProjectFeaProofSealReviewDependencies) {
     this.#snapshots = dependencies.snapshots;
     this.#projects = dependencies.projects;
-    this.#catalogReader = dependencies.catalogReader;
+    this.#proofCaseSources = dependencies.proofCaseSources;
     this.#requirementsReviewer = dependencies.requirementsReviewer;
     this.#geometryCaptures = dependencies.geometryCaptures;
     this.#stepAssets = dependencies.stepAssets;
@@ -124,7 +117,7 @@ export class PrepareProjectFeaProofSealReview
 
     const opened = await openFeaReviewSnapshot({
       projectId: command.projectId,
-      named: command.basis,
+      named: undefined,
       projects: this.#projects,
       snapshots: this.#snapshots,
     });
@@ -146,59 +139,58 @@ export class PrepareProjectFeaProofSealReview
       );
     }
     if (opened.status !== "ok") {
-      return unresolved(command.caseId ?? "", [opened.diagnostic], opened.basis);
+      return unresolved("", [opened.diagnostic], opened.basis);
     }
     const { basis, snapshot, project } = opened;
 
-    const catalogued = await this.#openCataloguedCase(
-      command.projectId,
-      command.caseId,
-    );
-    if (catalogued.status === "unresolved") {
-      return unresolved(catalogued.caseId, catalogued.diagnostics, basis);
+    let reopened;
+    try {
+      reopened = await this.#proofCaseSources.reopen(command.caseRef);
+    } catch (error) {
+      return unresolved("", [sourceDiagnostic(error)], basis);
     }
-    if (catalogued.status !== "ok") {
-      return unresolved(command.caseId ?? "", [{
-        code: catalogued.status === "catalog_unavailable"
-          ? "catalog-unavailable"
-          : "catalog-integrity-failed",
-        artifactId: null,
-        message: catalogued.message,
-      }], basis);
+
+    const recrossed = await recrossMechanicalProofCaseFromSource({
+      source: reopened.source,
+      projectId: command.projectId,
+      snapshot,
+      geometryCaptures: this.#geometryCaptures,
+      stepAssets: this.#stepAssets,
+    });
+    if (recrossed.status !== "ok") {
+      return notAppendable(
+        recrossed.status,
+        reopened.source.id,
+        recrossed.diagnostics,
+        basis,
+      );
     }
 
     const requirements = await this.#requirementsReviewer.review({
       snapshot,
-      proofCase: catalogued.proofCase,
+      proofCase: recrossed.proofCase,
     });
     if (requirements.status !== "resolved") {
-      return unresolved(catalogued.caseId, requirements.diagnostics, basis);
+      return unresolved(reopened.source.id, requirements.diagnostics, basis);
     }
-    const resolved = resolveFeaProofSealThreadBindings(
-      snapshot,
-      catalogued.proofCase,
-      command.projectId,
-      requirements.artifact,
-    );
-    if (resolved.status !== "resolved") {
-      return unresolved(catalogued.caseId, resolved.diagnostics, basis);
-    }
+
     try {
       let compiled = await compileSealParameters(
-        catalogued.proofCase,
-        resolved.bindings.geometryArtifact,
-        resolved.bindings.requirementsArtifact,
+        recrossed.proofCase,
+        recrossed.geometryArtifact,
+        requirements.artifact,
+        reopened.reference.fingerprint,
       );
       const sensitivityCatalog = await this.#sensitivityCatalog(
         snapshot,
-        catalogued.proofCase,
+        recrossed.proofCase,
         compiled.proofDigest,
         command.projectId,
         basis,
       );
       if (command.sensitivityCatalogOptIn === true) {
         if (sensitivityCatalog.status !== "ready-for-opt-in") {
-          return unresolved(catalogued.caseId, [{
+          return unresolved(reopened.source.id, [{
             code: "sensitivity-catalog-unavailable",
             artifactId: null,
             message:
@@ -206,9 +198,10 @@ export class PrepareProjectFeaProofSealReview
           }], basis);
         }
         compiled = await compileSealParameters(
-          catalogued.proofCase,
-          resolved.bindings.geometryArtifact,
-          resolved.bindings.requirementsArtifact,
+          recrossed.proofCase,
+          recrossed.geometryArtifact,
+          requirements.artifact,
+          reopened.reference.fingerprint,
           {
             schemaVersion: sensitivityCatalog.schemaVersion,
             digest: (await sha256Fingerprint(sensitivityCatalog)).digest,
@@ -228,23 +221,24 @@ export class PrepareProjectFeaProofSealReview
       if (admission.status !== "admitted") {
         return notAppendable(
           admission.status,
-          catalogued.caseId,
+          reopened.source.id,
           [admission.diagnostic],
           basis,
         );
       }
       const selected = {
-        caseId: catalogued.caseId,
+        caseId: recrossed.proofCase.id,
+        sourceFingerprint: reopened.reference.fingerprint,
         proofDigest: compiled.proofDigest,
         basis,
-        geometryArtifactId: resolved.bindings.geometryArtifact.id,
-        requirementsArtifactId: resolved.bindings.requirementsArtifact.id,
-        stepArtifactId: resolved.bindings.stepArtifact.id,
-        workItemId: catalogued.proofCase.authorization.workItemId,
-        decisionId: catalogued.proofCase.authorization.decisionId,
+        geometryArtifactId: recrossed.geometryArtifact.id,
+        requirementsArtifactId: requirements.artifact.id,
+        stepArtifactId: recrossed.stepArtifact.id,
+        workItemId: recrossed.proofCase.authorization.workItemId,
+        decisionId: recrossed.proofCase.authorization.decisionId,
       };
       const summary =
-        `Seal catalogued proof case ${selected.caseId} against Thread r${basis.revision} ` +
+        `Seal captured proof case ${selected.caseId} against Thread r${basis.revision} ` +
         `(geometry ${selected.geometryArtifactId}, STEP ${selected.stepArtifactId}).`;
       const phaseId = `phase-${selected.workItemId}`;
       const nextState = validateFeaReviewNextState({
@@ -258,14 +252,14 @@ export class PrepareProjectFeaProofSealReview
       if (nextState.status !== "ready") {
         return notAppendable(
           nextState.status,
-          catalogued.caseId,
+          recrossed.proofCase.id,
           [nextState.diagnostic],
           basis,
         );
       }
       return deepFreeze({
         status: "resolved" as const,
-        caseId: catalogued.caseId,
+        caseId: recrossed.proofCase.id,
         diagnostics: [],
         basis,
         selected,
@@ -280,78 +274,22 @@ export class PrepareProjectFeaProofSealReview
           phaseId,
           phaseName: "Seal FEA proof declaration",
           phaseDescription:
-            "Seal the catalogued mechanical proof declaration without calling a provider.",
+            "Seal the captured mechanical proof declaration without calling a provider.",
           workItemId: selected.workItemId,
           decisionId: selected.decisionId,
           decisionTitle: "Approve FEA proof-case seal",
           decisionQuestion:
-            "Approve sealing this exact catalogued proof case against the current Thread basis?",
+            "Approve sealing this exact captured proof case against the current Thread basis?",
         }),
       });
     } catch (error) {
-      return unresolved(catalogued.caseId, [{
+      return unresolved(reopened.source.id, [{
         code: "proposal-grammar-rejected",
         artifactId: null,
         message: error instanceof Error
           ? error.message
           : "The compiled FEA proof parameters were refused.",
       }], basis);
-    }
-  }
-
-  async #openCataloguedCase(
-    projectId: string,
-    caseId: string | undefined,
-  ): Promise<
-    | {
-      readonly status: "ok";
-      readonly caseId: string;
-      readonly proofCase: MechanicalProofCase;
-    }
-    | {
-      readonly status: "unresolved";
-      readonly caseId: string;
-      readonly diagnostics: readonly FeaProofSealBindingDiagnostic[];
-    }
-    | { readonly status: "catalog_unavailable"; readonly message: string }
-    | { readonly status: "catalog_integrity_failed"; readonly message: string }
-  > {
-    const selected = caseId
-      ? await namedCase(caseId, this.#catalogReader)
-      : await uniqueCaseForProject(projectId, this.#catalogReader);
-    if (selected.status !== "ok") return selected;
-    let raw: string | undefined;
-    try {
-      raw = await this.#catalogReader.read(selected.caseId);
-    } catch {
-      return {
-        status: "catalog_unavailable",
-        message:
-          `Catalog entry "${selected.caseId}" could not be read from the server-owned manifest.`,
-      };
-    }
-    if (raw === undefined) {
-      return {
-        status: "catalog_unavailable",
-        message:
-          `Catalog entry "${selected.caseId}" is registered, but its manifest file is unavailable.`,
-      };
-    }
-    try {
-      const proofCase = validateMechanicalProofCase(JSON.parse(raw));
-      if (proofCase.id !== selected.caseId) {
-        return {
-          status: "catalog_integrity_failed",
-          message:
-            `Catalog source for "${selected.caseId}" declares proof id "${proofCase.id}".`,
-        };
-      }
-      return { status: "ok", caseId: selected.caseId, proofCase };
-    } catch {
-      return {
-        status: "catalog_integrity_failed",
-        message: `Catalog source for "${selected.caseId}" is invalid or non-canonical.`,
-      };
     }
   }
 
@@ -426,6 +364,7 @@ async function compileSealParameters(
     readonly id: string;
     readonly fingerprint: ContentFingerprint;
   },
+  sourceFingerprint: string,
   sensitivityCatalog?: NonNullable<
     FeaProofDecisionParameters["sensitivityCatalog"]
   >,
@@ -442,6 +381,7 @@ async function compileSealParameters(
     proofCase,
     geometryArtifact,
     requirementsArtifact,
+    sourceFingerprint,
     sensitivityCatalog,
   );
   const reparsed = parseFeaProofDecisionParameters(
@@ -452,6 +392,7 @@ async function compileSealParameters(
     proofCase,
     reparsed.geometryArtifact,
     reparsed.requirementsArtifact,
+    reparsed.sourceFingerprint,
     reparsed.sensitivityCatalog,
   );
   if (deterministicJson(reencoded) !== deterministicJson(decisionParameters)) {
@@ -463,13 +404,9 @@ async function compileSealParameters(
 function parseCommand(value: unknown): ProjectFeaProofSealReviewCommand {
   const command = closedRecord(
     value,
-    ["projectId", "basis", "caseId", "sensitivityCatalogOptIn"],
-    ["projectId"],
+    ["projectId", "caseRef", "sensitivityCatalogOptIn"],
+    ["projectId", "caseRef"],
     "$feaProofSealReview",
-  );
-  const basis = parseOptionalThreadBasis(
-    command.basis,
-    "$feaProofSealReview.basis",
   );
   if (
     command.sensitivityCatalogOptIn !== undefined &&
@@ -481,121 +418,30 @@ function parseCommand(value: unknown): ProjectFeaProofSealReviewCommand {
   }
   return deepFreeze({
     projectId: safeId(command.projectId, "$feaProofSealReview.projectId"),
-    ...(basis ? { basis } : {}),
-    ...(command.caseId === undefined
-      ? {}
-      : { caseId: safeId(command.caseId, "$feaProofSealReview.caseId") }),
+    caseRef: validateFeaProofCaseSourceCaptureReference(
+      command.caseRef,
+      "$feaProofSealReview.caseRef",
+    ),
     ...(command.sensitivityCatalogOptIn === undefined
       ? {}
       : { sensitivityCatalogOptIn: command.sensitivityCatalogOptIn }),
   });
 }
 
-async function namedCase(
-  caseId: string,
-  reader: CataloguedMechanicalProofCaseReader,
-): Promise<
-  | { readonly status: "ok"; readonly caseId: string }
-  | {
-    readonly status: "unresolved";
-    readonly caseId: string;
-    readonly diagnostics: readonly FeaProofSealBindingDiagnostic[];
+function sourceDiagnostic(error: unknown): FeaProofSealBindingDiagnostic {
+  const code = error !== null && typeof error === "object" && "code" in error
+    ? String((error as { code: unknown }).code)
+    : "";
+  const message = error instanceof Error
+    ? error.message
+    : "The captured proof-case source could not be reopened.";
+  if (code === "source_absent") {
+    return { code: "source-absent", artifactId: null, message };
   }
-  | { readonly status: "catalog_unavailable"; readonly message: string }
-> {
-  let entries: readonly { readonly caseId: string }[];
-  try {
-    entries = await reader.list();
-  } catch {
-    return {
-      status: "catalog_unavailable",
-      message:
-        `The server-owned mechanical proof-case catalog manifest could not be opened for "${caseId}".`,
-    };
+  if (code === "source_capture_invalid") {
+    return { code: "source-corrupt", artifactId: null, message };
   }
-  if (!entries.some((entry) => entry.caseId === caseId)) {
-    return {
-      status: "unresolved",
-      caseId,
-      diagnostics: [{
-        code: "catalog-absent",
-        artifactId: null,
-        message: `Proof case "${caseId}" is not in the server-owned catalog. ` +
-          "Add an entry to config/mechanical-proof-cases/catalog.json and its JSON file.",
-      }],
-    };
-  }
-  return { status: "ok", caseId };
-}
-
-async function uniqueCaseForProject(
-  projectId: string,
-  reader: CataloguedMechanicalProofCaseReader,
-): Promise<
-  | { readonly status: "ok"; readonly caseId: string }
-  | {
-    readonly status: "unresolved";
-    readonly caseId: string;
-    readonly diagnostics: readonly FeaProofSealBindingDiagnostic[];
-  }
-  | { readonly status: "catalog_unavailable"; readonly message: string }
-> {
-  const loaded: Array<{ readonly caseId: string; readonly projectId: string }> = [];
-  let entries: readonly { readonly caseId: string }[];
-  try {
-    entries = await reader.list();
-  } catch {
-    return {
-      status: "catalog_unavailable",
-      message:
-        "The server-owned mechanical proof-case catalog manifest could not be opened.",
-    };
-  }
-  for (const { caseId } of entries) {
-    const candidate = await readCataloguedProofCase(reader, caseId);
-    if (candidate) loaded.push(candidate);
-  }
-  const selected = selectUniqueCataloguedProofCase(projectId, loaded);
-  if (selected.status === "ok") {
-    return { status: "ok", caseId: selected.caseId };
-  }
-  return {
-    status: "unresolved",
-    caseId: "",
-    diagnostics: [{
-      code: selected.code,
-      artifactId: null,
-      message: selected.message,
-    }],
-  };
-}
-
-/**
- * Auto-select only considers readable, exact catalog entries. A missing or
- * invalid sibling must not fail another project's unique-case scan; naming
- * that sibling as `caseId` still reports catalog-unavailable / integrity.
- */
-async function readCataloguedProofCase(
-  reader: CataloguedMechanicalProofCaseReader,
-  caseId: string,
-): Promise<
-  | { readonly caseId: string; readonly projectId: string }
-  | undefined
-> {
-  let raw: string | undefined;
-  try {
-    raw = await reader.read(caseId);
-  } catch {
-    return undefined;
-  }
-  if (raw === undefined) return undefined;
-  try {
-    const proofCase = validateMechanicalProofCase(JSON.parse(raw));
-    if (proofCase.id !== caseId) return undefined;
-    return { caseId, projectId: proofCase.project.id };
-  } catch {
-    return undefined;
-  }
+  return { code: "source-unavailable", artifactId: null, message };
 }
 
 function unresolved(

@@ -1,5 +1,8 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { deterministicJson, sha256Fingerprint } from "../../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../kernel/deterministic-json.ts";
 import { validateMechanicalProofCase } from "../../fea/seal-case/mechanical-proof-case.ts";
 import {
   compileSensitivityCatalogOffer,
@@ -11,7 +14,7 @@ const DL06_PROOF = validateMechanicalProofCase(
   JSON.parse(
     await Deno.readTextFile(
       new URL(
-        "../../../../config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
+        "../../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
         import.meta.url,
       ),
     ),

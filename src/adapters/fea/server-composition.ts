@@ -36,7 +36,8 @@ import { FileCalculixIsolatedExecutionEvidenceStore } from "./isolated-v3/calcul
 import { PrepareProjectEvaluationCloseoutReview } from "./evaluation-closeout/prepare-project-evaluation-closeout-review.ts";
 import { DecideStaticMechanicalEvaluationCloseoutRunExecutor } from "./evaluation-closeout/decide-static-mechanical-evaluation-closeout-run-executor.ts";
 import { CaptureBackedFeaProofSealRequirementsReviewer } from "./seal-case/capture-backed-fea-proof-seal-requirements-reviewer.ts";
-import { FileCataloguedMechanicalProofCaseReader } from "./seal-case/file-catalogued-mechanical-proof-case-reader.ts";
+import { FeaProofCaseSourceCaptureService } from "./seal-case/fea-proof-case-source-capture.ts";
+import { PrepareProjectFeaProofCaseCapture } from "../../application/use-cases/fea/seal-case/prepare-project-fea-proof-case-capture.ts";
 import {
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VerifySealProofCaseRunExecutor,
@@ -80,6 +81,7 @@ export interface FeaProjectOptions {
 }
 
 export interface FeaProject {
+  readonly feaProofCaseCapture: PrepareProjectFeaProofCaseCapture;
   readonly feaProofSealReview: PrepareProjectFeaProofSealReview;
   readonly feaIsolatedRunReview: PrepareProjectFeaIsolatedRunReview;
   readonly genericVerifySealProofCase: VerifySealProofCaseRunExecutor;
@@ -137,7 +139,14 @@ export function createFeaFoundation(): FeaFoundation {
 
 export function createFeaProject(options: FeaProjectOptions): FeaProject {
   const geometryCaptures = new FileCaptureStore(GEOMETRY_CAPTURE_DESCRIPTOR);
-  const proofCaseCatalogReader = new FileCataloguedMechanicalProofCaseReader();
+  const proofCaseSources = new FeaProofCaseSourceCaptureService({
+    sourceCaptures: new FileByteStore({
+      kind: "fea-proof-case-source",
+      directory: `${options.recordedAnalysisDirectory}/fea/proof-case-source`,
+      uriNamespace: "fea-proof-case-source",
+      label: "Captured mechanical proof-case source",
+    }),
+  });
   const proofSealRequirementsReviewer =
     new CaptureBackedFeaProofSealRequirementsReviewer({
       requirementsCaptures: options.requirementsCaptures,
@@ -163,13 +172,17 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
   });
   const closeoutCaptures = new FileCaptureStore({
     ...EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-    directory: `${options.recordedAnalysisDirectory}/calculix/evaluation-closeout-captures`,
+    directory:
+      `${options.recordedAnalysisDirectory}/calculix/evaluation-closeout-captures`,
     syncBoundary: options.recordedAnalysisDirectory,
+  });
+  const feaProofCaseCapture = new PrepareProjectFeaProofCaseCapture({
+    captures: proofCaseSources,
   });
   const feaProofSealReview = new PrepareProjectFeaProofSealReview({
     snapshots: options.snapshots,
     projects: options.projects,
-    catalogReader: proofCaseCatalogReader,
+    proofCaseSources,
     requirementsReviewer: proofSealRequirementsReviewer,
     geometryCaptures,
     stepAssets: feaProofStepAssets,
@@ -191,7 +204,7 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
     requirementsCaptures: options.requirementsCaptures,
     seedCaptures: options.seedCaptures,
     canonicalAssetReader: feaProofStepAssets,
-    catalog: proofCaseCatalogReader,
+    proofCaseSources,
     lease: options.lease,
   });
   const staticMechanicalEvaluationCloseoutReview =
@@ -242,6 +255,7 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
     })
     : undefined;
   return {
+    feaProofCaseCapture,
     feaProofSealReview,
     feaIsolatedRunReview,
     genericVerifySealProofCase,

@@ -4,8 +4,9 @@ Audience: implementer · Diátaxis: how-to · Kind: runbook
 
 Use this runbook only when the requested physics does not fit the existing FEA surface.
 It is not a way to bypass the current proof schema with extra JSON fields or a
-hand-written solver deck. For a project that already fits V1, add a reviewed declaration
-and manifest entry instead; see [coverage](../../reference/domains/fea/coverage.md).
+hand-written solver deck. For a project that already fits V1, capture a
+`mechanical-proof-case-source/1.0` document; see
+[coverage](../../reference/domains/fea/coverage.md). Do not add a Git catalog row.
 
 ## 1. Close the domain and schema
 
@@ -18,8 +19,8 @@ identities, not provider commands or paths.
 
 Extend or introduce the closed proposal grammar so a human can sign the exact new
 consequential inputs. Keep the proof seal and any execution MRTR separate. The review
-must reopen catalog data and Thread artifacts server-side; it must not accept raw solver
-payloads from the caller.
+must reopen the captured source and Thread artifacts server-side; it must not accept
+raw solver payloads from the caller.
 
 ## 3. Implement deterministic Gmsh/CalculiX lowering
 
@@ -47,9 +48,9 @@ Demonstrate reopening and digest checks from schema through MRTR, lowering, work
 outputs, observations, oracle capture, WAL/recovery, and Thread publication. A completed
 replay must reuse durable evidence rather than dispatch Gmsh, CalculiX, or SysON again.
 
-## 7. Then admit catalog data
+## 7. Then admit a captured source
 
-Only after those shared capabilities are qualified may a reviewed project case use the
-new surface. Add its versioned declaration and exactly one
-`config/mechanical-proof-cases/catalog.json` entry. A catalog change supplies data for
-an already-qualified method; it never creates the method itself.
+Only after those shared capabilities are qualified may a project case use the new
+surface. Capture one `mechanical-proof-case-source/1.0` JSON document. That supplies
+data for an already-qualified method; it never creates the method itself. Historical
+Git catalog rows are not live authority.

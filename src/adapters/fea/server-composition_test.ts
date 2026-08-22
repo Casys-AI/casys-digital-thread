@@ -9,10 +9,7 @@ import { createRecordedOperationPlanComposition } from "../compile/plans/server-
 import type { CalculixIsolatedExecutionComposition } from "./isolated-v3/calculix-isolated-execution-composition.ts";
 import { VerifyRunFeaStaticProofV3RunExecutor } from "./isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts";
 import { VerifySealProofCaseRunExecutor } from "./seal-case/verify-seal-proof-case-run-executor.ts";
-import {
-  createFeaFoundation,
-  createFeaProject,
-} from "./server-composition.ts";
+import { createFeaFoundation, createFeaProject } from "./server-composition.ts";
 
 Deno.test("FEA @3 requires SysON plus CalculiX runtime and keeps the historical proof CAS", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-fea-composition-" });
@@ -61,8 +58,7 @@ Deno.test("FEA @3 requires SysON plus CalculiX runtime and keeps the historical 
     const plans = createRecordedOperationPlanComposition({
       snapshots,
       feaProofCaptures: foundation.feaProofCaptures,
-      sensitivityCatalogOfferCaptures:
-        foundation.sensitivityCatalogOfferCaptures,
+      sensitivityCatalogOfferCaptures: foundation.sensitivityCatalogOfferCaptures,
       requirementsCaptures: architecture.requirementsCaptures,
       admissions: compilation.technicalCompilationAdmissions,
       recordedAnalysisDirectory: `${root}/analysis`,
@@ -133,6 +129,8 @@ Deno.test("FEA @3 requires SysON plus CalculiX runtime and keeps the historical 
       new URL("./server-composition.ts", import.meta.url),
     );
     assertEquals(source.includes("CreateConsoleServerOptions"), false);
+    assertEquals(source.includes("FileCataloguedMechanicalProofCaseReader"), false);
+    assertEquals(source.includes("config/mechanical-proof-cases"), false);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

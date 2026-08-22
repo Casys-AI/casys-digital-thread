@@ -39,7 +39,7 @@ async function catalogRequirements(): Promise<readonly MechanicalRequirement[]> 
   return validateMechanicalProofCase(JSON.parse(
     await Deno.readTextFile(
       new URL(
-        "../../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
+        "../../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
         import.meta.url,
       ),
     ),
@@ -237,9 +237,11 @@ function passOutcomes(requirements: readonly MechanicalRequirement[]) {
 
 Deno.test("static proof successor publishes nine closed roles as eleven artifacts", async () => {
   const requirements = await catalogRequirements();
-  const basis = basisSnapshot(requirements.map((requirement) =>
-    traced(`thread-${requirement.id}`, requirement.feature, "req-a")
-  ));
+  const basis = basisSnapshot(
+    requirements.map((requirement) =>
+      traced(`thread-${requirement.id}`, requirement.feature, "req-a")
+    ),
+  );
   const snapshot = buildStaticProofSuccessor(
     successorInput(basis, requirements, passOutcomes(requirements)),
   );
@@ -292,9 +294,11 @@ Deno.test("static proof successor observes only declared criteria and keeps uniq
 Deno.test("static proof successor keeps pass/fail/error/unresolved oracle semantics", async () => {
   const requirements = await catalogRequirements();
   const [disp, stress] = requirements;
-  const basis = basisSnapshot(requirements.map((requirement) =>
-    traced(`thread-${requirement.id}`, requirement.feature, "req-a")
-  ));
+  const basis = basisSnapshot(
+    requirements.map((requirement) =>
+      traced(`thread-${requirement.id}`, requirement.feature, "req-a")
+    ),
+  );
   const mixed = buildStaticProofSuccessor(successorInput(
     basis,
     requirements,
@@ -371,9 +375,11 @@ Deno.test("static proof successor keeps pass/fail/error/unresolved oracle semant
 Deno.test("static proof fail successor publishes closed caused_by, evidences and addresses provenance", async () => {
   const requirements = await catalogRequirements();
   const [disp, stress] = requirements;
-  const basis = basisSnapshot(requirements.map((requirement) =>
-    traced(`thread-${requirement.id}`, requirement.feature, "req-a")
-  ));
+  const basis = basisSnapshot(
+    requirements.map((requirement) =>
+      traced(`thread-${requirement.id}`, requirement.feature, "req-a")
+    ),
+  );
   const snapshot = buildStaticProofSuccessor(successorInput(
     basis,
     requirements,
@@ -440,17 +446,18 @@ Deno.test("static proof fail successor publishes closed caused_by, evidences and
       relation: "addresses",
       from: { kind: "action", id: actionId },
       to: { kind: "violation", id: violation.id },
-      rationale:
-        "The proposed review addresses the named local CalculiX violation.",
+      rationale: "The proposed review addresses the named local CalculiX violation.",
     },
   ]);
 });
 
 Deno.test("static proof successor replay is byte-identical including evidence refs", async () => {
   const requirements = await catalogRequirements();
-  const basis = basisSnapshot(requirements.map((requirement) =>
-    traced(`thread-${requirement.id}`, requirement.feature, "req-a")
-  ));
+  const basis = basisSnapshot(
+    requirements.map((requirement) =>
+      traced(`thread-${requirement.id}`, requirement.feature, "req-a")
+    ),
+  );
   const input = successorInput(basis, requirements, passOutcomes(requirements));
   const first = buildStaticProofSuccessor(input);
   const second = buildStaticProofSuccessor(input);

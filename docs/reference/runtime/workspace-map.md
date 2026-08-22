@@ -129,11 +129,13 @@ tool input names an immutable model, scenario, profile, case or run identity, an
 response supplies media type, byte count and independently verified SHA-256. A mutable
 alias such as `latest` cannot become capture evidence or authority.
 
-`config/mechanical-proof-cases/` contains reviewed declarations using the generic
-`mechanical-proof-case/1.0` form. A declaration is candidate input for review: it
-neither authorizes execution nor attests effective provider arguments or results. See
-the [candidate mechanical-analysis declaration](../contracts/mechanical-proof-case.md) reference for
-the distinct proof-seal and execution-admission contracts.
+Public FEA proof authoring is `project_fea_proof_case_capture`
+(`mechanical-proof-case-source/1.0`). The compiled `mechanical-proof-case/1.0` is
+server-owned. Historical JSON under `src/testing/fixtures/fea/mechanical-proof-cases/`
+is test/conformance data only, not live production authority. See
+[mechanical proof-case source](../domains/fea/mechanical-proof-case-source.md) and the
+[candidate mechanical-analysis declaration](../contracts/mechanical-proof-case.md)
+compatibility index.
 
 Since the mechanical verdict moved to a separate evaluation step, a loaded proof case
 supplies the _limits_, never the pass/fail decision. `syson_constraint_evaluate` renders

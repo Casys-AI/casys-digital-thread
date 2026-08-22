@@ -11,11 +11,17 @@ import type {
   TechnicalCompilationAdmissionReader,
   TechnicalCompilationAdmissionReadRequest,
 } from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import { FileByteStore } from "../../../../adapters/shared/cas/file-byte-store.ts";
+import { FeaProofCaseSourceCaptureService } from "../../../../adapters/fea/seal-case/fea-proof-case-source-capture.ts";
+import { PrepareProjectFeaProofCaseCapture } from "./prepare-project-fea-proof-case-capture.ts";
 import { PrepareProjectFeaProofSealReview } from "./prepare-project-fea-proof-seal-review.ts";
+import {
+  dl06LikeSourceText,
+  mechanicalProofCaseSourceText,
+} from "../../../../testing/fea-proof-case-source-fixtures.ts";
 
 const ADMISSION_ID = "admission-compile-1";
 const ADMISSION_DIGEST = "d".repeat(64);
-
 const AT = "2026-08-16T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl06";
 const SUBJECT_ID = "project:desk-lamp-dl06";
@@ -29,85 +35,16 @@ const STEP_DIGEST = await sha256Hex(STEP_BYTES_DATA);
 const LINKED_SOURCE_TEXT =
   "from build123d import Box\narm_thickness = 10\nresult = Box(220, 20, arm_thickness)\n";
 const PHOTO_SOURCE_TEXT = "from build123d import Box\nresult = Box(20, 10, 5)\n";
-const CATALOG_READER = {
-  async list(): Promise<readonly { readonly caseId: string }[]> {
-    return (await catalogEntries()).map(({ id }) => ({ caseId: id }));
-  },
-  async read(caseId: string): Promise<string | undefined> {
-    try {
-      const entry = (await catalogEntries()).find((item) => item.id === caseId);
-      if (!entry) return undefined;
-      const parsed = JSON.parse(
-        await Deno.readTextFile(
-          `config/mechanical-proof-cases/${entry.file}`,
-        ),
-      ) as {
-        expectedCadArtifact: { sha256: string; bytes: number };
-      };
-      parsed.expectedCadArtifact.sha256 = STEP_DIGEST;
-      parsed.expectedCadArtifact.bytes = STEP_BYTES;
-      return JSON.stringify(parsed);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return undefined;
-      throw error;
-    }
-  },
-};
+const CAD_SCRIPT_DIGEST = await sha256Hex(
+  new TextEncoder().encode(LINKED_SOURCE_TEXT),
+);
+const PHOTO_SCRIPT_DIGEST = await sha256Hex(
+  new TextEncoder().encode(PHOTO_SOURCE_TEXT),
+);
 
-async function catalogEntries(): Promise<
-  readonly { readonly id: string; readonly file: string }[]
-> {
-  const manifest = JSON.parse(
-    await Deno.readTextFile("config/mechanical-proof-cases/catalog.json"),
-  ) as { cases: readonly { readonly id: string; readonly file: string }[] };
-  return manifest.cases;
-}
-const LINKED_CATALOG_READER = catalogReaderForSource(LINKED_SOURCE_TEXT);
-const PHOTO_CATALOG_READER = catalogReaderForSource(PHOTO_SOURCE_TEXT);
-const ADMITTED_GEOMETRY = {
-  read: () =>
-    Promise.resolve(JSON.stringify({
-      schemaVersion: "geometry-capture/2.1",
-      manifest: {
-        partDefinitions: [{
-          elementId: TARGET_ELEMENT_ID,
-          files: [{
-            format: "step",
-            fingerprint: { algorithm: "sha256", digest: STEP_DIGEST },
-          }],
-        }],
-      },
-    })),
-};
 const ADMITTED_STEP = {
   read: () => Promise.resolve(STEP_BYTES_DATA),
 };
-
-function catalogReaderForSource(sourceText: string) {
-  return {
-    list: () => CATALOG_READER.list(),
-    async read(caseId: string): Promise<string | undefined> {
-      const raw = await CATALOG_READER.read(caseId);
-      if (raw === undefined) return undefined;
-      const parsed = JSON.parse(raw) as {
-        cadSource: {
-          kind: string;
-          generator: {
-            definition: { mediaType: string; sha256: string; bytes: number };
-          };
-        };
-      };
-      const fingerprint = await fingerprintTechnicalSourceText(sourceText);
-      parsed.cadSource.kind = "parametric";
-      parsed.cadSource.generator.definition = {
-        mediaType: "text/x-python",
-        sha256: fingerprint.digest,
-        bytes: new TextEncoder().encode(sourceText).byteLength,
-      };
-      return JSON.stringify(parsed);
-    },
-  };
-}
 
 const REQUIREMENTS_REVIEWER = {
   review({ snapshot }: { readonly snapshot: ThreadSnapshot }) {
@@ -128,511 +65,344 @@ const REQUIREMENTS_REVIEWER = {
   },
 };
 
-Deno.test("fea proof-case seal review refuses an unknown catalog id without opening a file", async () => {
-  let reads = 0;
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(basisSnapshot()),
-    catalogReader: {
-      list: () => Promise.resolve([]),
-      read: () => {
-        reads += 1;
-        return Promise.resolve("{}");
-      },
-    },
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
+async function captureSource(sourceText: string) {
+  const root = await Deno.makeTempDir({ prefix: "fea-proof-source-review-" });
+  const captures = new FeaProofCaseSourceCaptureService({
+    sourceCaptures: new FileByteStore({
+      kind: "fea-proof-case-source",
+      directory: `${root}/sources`,
+      uriNamespace: "fea-proof-case-source",
+      label: "FEA proof-case source",
+    }),
   });
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    caseId: "cm-01-retired-replay",
-    basis: basisRef(),
-  });
-  assertEquals(result.status, "unresolved");
-  assertEquals(result.decisionParameters, undefined);
-  assertEquals(result.diagnostics.map((item) => item.code), ["catalog-absent"]);
-  assertEquals(reads, 0);
+  const review = await new PrepareProjectFeaProofCaseCapture({ captures })
+    .capture({ sourceText });
+  return { captures, review, root };
+}
+
+function geometryCapture(script: string, digest: string) {
+  return {
+    read: () =>
+      Promise.resolve(JSON.stringify({
+        schemaVersion: "geometry-capture/2.1",
+        manifest: {
+          partDefinitions: [{
+            elementId: TARGET_ELEMENT_ID,
+            files: [{
+              format: "step",
+              fingerprint: { algorithm: "sha256", digest: STEP_DIGEST },
+            }],
+          }],
+        },
+        sourceScripts: {
+          partDefinitions: [{
+            elementId: TARGET_ELEMENT_ID,
+            script,
+            scriptHash: { algorithm: "sha256", digest },
+          }],
+        },
+      })),
+  };
+}
+
+Deno.test("fea proof-case seal review compiles fea.proof.* from a captured source and matching STEP", async () => {
+  const { captures, review, root } = await captureSource(dl06LikeSourceText());
+  try {
+    const snapshot = basisSnapshot();
+    const result = await new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      proofCaseSources: captures,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+      stepAssets: ADMITTED_STEP,
+    }).execute({
+      projectId: PROJECT_ID,
+      caseRef: review.reference,
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertExists(result.decisionParameters);
+    const parsed = parseFeaProofDecisionParameters(
+      feaProofDecisionParametersToMap(result.decisionParameters),
+    );
+    assertEquals(parsed.id, CASE_ID);
+    assertEquals(parsed.sourceFingerprint, review.reference.fingerprint);
+    assertEquals(parsed.step.digest, STEP_DIGEST);
+    assertEquals(parsed.geometryArtifact.id, `geometry-${GEOM_DIGEST}`);
+    assertEquals(
+      result.selected.workItemId,
+      "wi-proof-seal-desk-lamp-dl06-arm-cantilever-r1",
+    );
+    assertEquals(result.sensitivityCatalog.status, "admission-absent");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
-Deno.test("fea proof-case seal review compiles fea.proof.* from the catalog and the matching STEP", async () => {
-  const snapshot = basisSnapshot();
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(snapshot),
-    projects: new MemoryProjects(snapshot),
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    caseId: CASE_ID,
-    basis: basisRef(),
-  });
-  assertEquals(result.status, "resolved");
-  if (result.status !== "resolved") return;
-  assertExists(result.decisionParameters);
-  const parsed = parseFeaProofDecisionParameters(
-    feaProofDecisionParametersToMap(result.decisionParameters),
+Deno.test("a completely new non-lamp source reaches resolved seal review without a catalog entry", async () => {
+  const { captures, review, root } = await captureSource(
+    mechanicalProofCaseSourceText({
+      project: { id: PROJECT_ID, subjectId: SUBJECT_ID },
+      target: {
+        id: "br01-bracket",
+        modelElementId: TARGET_ELEMENT_ID,
+      },
+    }),
   );
-  assertEquals(parsed.id, CASE_ID);
-  assertEquals(parsed.step.digest, STEP_DIGEST);
-  assertEquals(parsed.geometryArtifact.id, `geometry-${GEOM_DIGEST}`);
-  assertEquals(parsed.requirementsArtifact.id, "req-Arm-test");
-  assertEquals(parsed.sensitivityCatalog, undefined);
-  assertEquals(result.sensitivityCatalog.status, "admission-absent");
+  try {
+    const snapshot = basisSnapshot();
+    const result = await new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      proofCaseSources: captures,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+      stepAssets: ADMITTED_STEP,
+    }).execute({
+      projectId: PROJECT_ID,
+      caseRef: review.reference,
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.caseId, "bracket-br01-static");
+    assertEquals(result.selected.workItemId, "wi-proof-seal-bracket-br01-static-r1");
+    assertEquals(
+      result.next.append.arguments.workItems[0]?.operation.id,
+      "verify.seal-proof-case",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("fea proof-case seal review is unresolved for a missing source fingerprint", async () => {
+  const { captures, root } = await captureSource(dl06LikeSourceText());
+  try {
+    const result = await new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(basisSnapshot()),
+      projects: new MemoryProjects(basisSnapshot()),
+      proofCaseSources: captures,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+      stepAssets: ADMITTED_STEP,
+    }).execute({
+      projectId: PROJECT_ID,
+      caseRef: { fingerprint: "a".repeat(64) },
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.diagnostics.map((item) => item.code), ["source-absent"]);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("fea proof-case seal review is unresolved when the source project does not match", async () => {
+  const { captures, review, root } = await captureSource(
+    dl06LikeSourceText({ projectId: "other-project" }),
+  );
+  try {
+    const result = await new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(basisSnapshot()),
+      projects: new MemoryProjects(basisSnapshot()),
+      proofCaseSources: captures,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+      stepAssets: ADMITTED_STEP,
+    }).execute({
+      projectId: PROJECT_ID,
+      caseRef: review.reference,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.diagnostics.map((item) => item.code), ["project-mismatch"]);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("fea proof-case seal review is unresolved when the source subject does not match", async () => {
+  const { captures, review, root } = await captureSource(
+    dl06LikeSourceText({ subjectId: "project:other" }),
+  );
+  try {
+    const result = await new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(basisSnapshot()),
+      projects: new MemoryProjects(basisSnapshot()),
+      proofCaseSources: captures,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+      stepAssets: ADMITTED_STEP,
+    }).execute({
+      projectId: PROJECT_ID,
+      caseRef: review.reference,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.diagnostics.map((item) => item.code), ["subject-mismatch"]);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("fea proof-case seal review refuses extra caseId or basis authority", async () => {
+  const { captures, review, root } = await captureSource(dl06LikeSourceText());
+  try {
+    const reviewUseCase = new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(basisSnapshot()),
+      proofCaseSources: captures,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+      stepAssets: ADMITTED_STEP,
+    });
+    let failed = false;
+    try {
+      await reviewUseCase.execute({
+        projectId: PROJECT_ID,
+        caseRef: review.reference,
+        caseId: CASE_ID,
+      });
+    } catch {
+      failed = true;
+    }
+    assertEquals(failed, true);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test(
   "fea proof-case seal review offers a ready-for-opt-in catalog from a unique cotée admission",
   async () => {
-    const snapshot = basisSnapshot({ withAdmission: true });
-    const review = new PrepareProjectFeaProofSealReview({
-      snapshots: new MemorySnapshots(snapshot),
-      projects: new MemoryProjects(snapshot),
-      catalogReader: LINKED_CATALOG_READER,
-      requirementsReviewer: REQUIREMENTS_REVIEWER,
-      geometryCaptures: ADMITTED_GEOMETRY,
-      stepAssets: ADMITTED_STEP,
-      admissions: new FakeAdmissionReader(LINKED_SOURCE_TEXT),
-    });
-    const result = await review.execute({
-      projectId: PROJECT_ID,
-      caseId: CASE_ID,
-      basis: basisRef(),
-      sensitivityCatalogOptIn: true,
-    });
-    assertEquals(result.status, "resolved");
-    if (result.status !== "resolved") return;
-    assertEquals(result.sensitivityCatalog.status, "ready-for-opt-in");
-    if (result.sensitivityCatalog.status !== "ready-for-opt-in") return;
-    assertEquals(result.sensitivityCatalog.optInDefault, false);
-    assertEquals(result.sensitivityCatalog.lever, {
-      semanticKey: "arm_thickness",
-      value: 10,
-    });
-    assertEquals(
-      result.sensitivityCatalog.metrics.map((metric) => metric.id).sort(),
-      ["maxDisplacement", "maxVonMises"],
-    );
-    assertEquals(
-      result.sensitivityCatalog.metrics.find((metric) => metric.id === "maxVonMises")
-        ?.unit,
-      "MPa",
-    );
-    assertEquals(
-      result.sensitivityCatalog.authority.resultBinding.modelElementId,
-      TARGET_ELEMENT_ID,
-    );
-    assertEquals(result.sensitivityCatalog.solver.mesh.targetSize, {
-      value: 3,
-      unit: "mm",
-    });
-    assertEquals(result.sensitivityCatalog.solver.loads[0]?.force, {
-      value: [0, 0, -10],
-      unit: "N",
-    });
-    assertEquals(result.sensitivityCatalog.step.status, "not-compiled");
-    const parsed = parseFeaProofDecisionParameters(
-      feaProofDecisionParametersToMap(result.decisionParameters),
-    );
-    assertEquals(parsed.id, CASE_ID);
-    assertEquals(
-      parsed.sensitivityCatalog?.admissionArtifact.id,
-      ADMISSION_ID,
-    );
+    const { captures, review, root } = await captureSource(dl06LikeSourceText());
+    try {
+      const snapshot = basisSnapshot({ withAdmission: true });
+      const result = await new PrepareProjectFeaProofSealReview({
+        snapshots: new MemorySnapshots(snapshot),
+        projects: new MemoryProjects(snapshot),
+        proofCaseSources: captures,
+        requirementsReviewer: REQUIREMENTS_REVIEWER,
+        geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+        stepAssets: ADMITTED_STEP,
+        admissions: new FakeAdmissionReader(LINKED_SOURCE_TEXT),
+      }).execute({
+        projectId: PROJECT_ID,
+        caseRef: review.reference,
+        sensitivityCatalogOptIn: true,
+      });
+      assertEquals(result.status, "resolved");
+      if (result.status !== "resolved") return;
+      assertEquals(result.sensitivityCatalog.status, "ready-for-opt-in");
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
   },
 );
 
-Deno.test(
-  "fea proof-case seal review stays resolved when the admission is only a photo",
-  async () => {
+Deno.test("fea proof-case seal review stays resolved when the admission is only a photo", async () => {
+  const { captures, review, root } = await captureSource(dl06LikeSourceText());
+  try {
     const snapshot = basisSnapshot({ withAdmission: true });
-    const review = new PrepareProjectFeaProofSealReview({
+    const result = await new PrepareProjectFeaProofSealReview({
       snapshots: new MemorySnapshots(snapshot),
       projects: new MemoryProjects(snapshot),
-      catalogReader: PHOTO_CATALOG_READER,
+      proofCaseSources: captures,
       requirementsReviewer: REQUIREMENTS_REVIEWER,
-      geometryCaptures: ADMITTED_GEOMETRY,
+      geometryCaptures: geometryCapture(PHOTO_SOURCE_TEXT, PHOTO_SCRIPT_DIGEST),
       stepAssets: ADMITTED_STEP,
       admissions: new FakeAdmissionReader(PHOTO_SOURCE_TEXT),
-    });
-    const result = await review.execute({
+    }).execute({
       projectId: PROJECT_ID,
-      caseId: CASE_ID,
-      basis: basisRef(),
+      caseRef: review.reference,
     });
     assertEquals(result.status, "resolved");
     if (result.status !== "resolved") return;
     assertEquals(result.sensitivityCatalog.status, "no-named-lever");
-    assertExists(result.decisionParameters);
-    assertExists(result.next);
-  },
-);
-
-Deno.test(
-  "fea proof-case seal review refuses an opt-in joined to a different CAD definition",
-  async () => {
-    const snapshot = basisSnapshot({ withAdmission: true });
-    const review = new PrepareProjectFeaProofSealReview({
-      snapshots: new MemorySnapshots(snapshot),
-      projects: new MemoryProjects(snapshot),
-      catalogReader: CATALOG_READER,
-      requirementsReviewer: REQUIREMENTS_REVIEWER,
-      geometryCaptures: ADMITTED_GEOMETRY,
-      stepAssets: ADMITTED_STEP,
-      admissions: new FakeAdmissionReader(LINKED_SOURCE_TEXT),
-    });
-    const result = await review.execute({
-      projectId: PROJECT_ID,
-      caseId: CASE_ID,
-      basis: basisRef(),
-      sensitivityCatalogOptIn: true,
-    });
-    assertEquals(result.status, "unresolved");
-    assertEquals(result.decisionParameters, undefined);
-    assertEquals(
-      result.diagnostics.map((diagnostic) => diagnostic.code),
-      ["sensitivity-catalog-unavailable"],
-    );
-  },
-);
-
-Deno.test(
-  "fea proof-case seal review preserves an admission reopening failure as unavailable",
-  async () => {
-    const snapshot = basisSnapshot({ withAdmission: true });
-    const review = new PrepareProjectFeaProofSealReview({
-      snapshots: new MemorySnapshots(snapshot),
-      projects: new MemoryProjects(snapshot),
-      catalogReader: LINKED_CATALOG_READER,
-      requirementsReviewer: REQUIREMENTS_REVIEWER,
-      geometryCaptures: ADMITTED_GEOMETRY,
-      stepAssets: ADMITTED_STEP,
-      admissions: {
-        read(): Promise<undefined> {
-          throw new Error("CAS unavailable");
-        },
-      },
-    });
-    const result = await review.execute({
-      projectId: PROJECT_ID,
-      caseId: CASE_ID,
-      basis: basisRef(),
-    });
-    assertEquals(result.status, "resolved");
-    if (result.status !== "resolved") return;
-    assertEquals(result.sensitivityCatalog.status, "admission-unavailable");
-  },
-);
-
-Deno.test("fea proof-case seal review auto-select ignores a broken sibling catalog entry", async () => {
-  const snapshot = basisSnapshot();
-  for (
-    const sibling of [
-      undefined,
-      "{}",
-      "throw",
-    ] as const
-  ) {
-    const review = new PrepareProjectFeaProofSealReview({
-      snapshots: new MemorySnapshots(snapshot),
-      catalogReader: {
-        list: () => CATALOG_READER.list(),
-        read(caseId: string): Promise<string | undefined> {
-          if (caseId !== "desk-lamp-dl06-arm-cantilever") {
-            if (sibling === "throw") {
-              throw new Error("sibling catalog source is unreadable");
-            }
-            return Promise.resolve(sibling);
-          }
-          return CATALOG_READER.read(caseId);
-        },
-      },
-      requirementsReviewer: REQUIREMENTS_REVIEWER,
-      projects: new MemoryProjects(snapshot),
-      geometryCaptures: ADMITTED_GEOMETRY,
-      stepAssets: ADMITTED_STEP,
-    });
-    const result = await review.execute({
-      projectId: PROJECT_ID,
-      basis: basisRef(),
-    });
-    assertEquals(result.status, "resolved");
-    if (result.status !== "resolved") return;
-    assertEquals(result.caseId, CASE_ID);
+  } finally {
+    await Deno.remove(root, { recursive: true });
   }
 });
 
-Deno.test("fea proof-case seal review selects the unique catalogued case when caseId is omitted", async () => {
-  const snapshot = basisSnapshot();
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(snapshot),
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    projects: new MemoryProjects(snapshot),
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    basis: basisRef(),
-  });
-  assertEquals(result.status, "resolved");
-  if (result.status !== "resolved") return;
-  assertEquals(result.caseId, CASE_ID);
-  assertExists(result.decisionParameters);
-  assertEquals(result.basis, basisRef());
-  assertEquals(result.next.append.tool, "project_change_append");
-  assertEquals(result.next.propose.tool, "project_decision_propose");
-  assertEquals(result.next.append.arguments.workItems[0]?.operation, {
-    id: "verify.seal-proof-case",
-    version: "1",
-    bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
-  });
-  assertEquals(
-    result.next.propose.arguments.proposal.parameters,
-    result.decisionParameters,
-  );
-  assertEquals(result.next.append.arguments.workItems[0]?.id, "wi-proof-seal");
-  assertEquals(
-    result.next.append.arguments.requiredDecisions[0]?.id,
-    "dec-proof-seal",
-  );
-  assertEquals(result.next.propose.arguments.decisionId, "dec-proof-seal");
-  assertEquals(result.next.queue.workItemId, "wi-proof-seal");
-  assertEquals(result.selected.caseId, CASE_ID);
-  assertEquals(result.selected.stepArtifactId.startsWith("cad-asset-"), true);
-  assertEquals(
-    result.next.propose.arguments.proposal.summary.includes(CASE_ID),
-    true,
-  );
-});
-
-Deno.test("fea proof-case seal review selects the current Thread tip when basis is omitted", async () => {
-  const snapshot = basisSnapshot();
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(snapshot),
-    projects: new MemoryProjects(snapshot),
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({ projectId: PROJECT_ID });
-  assertEquals(result.status, "resolved");
-  if (result.status !== "resolved") return;
-  assertEquals(result.basis, basisRef());
-  assertExists(result.decisionParameters);
-  assertEquals(result.next.append.arguments.expectedRevision, 12);
+Deno.test("fea proof-case seal review is unresolved when the unique STEP is absent", async () => {
+  const { captures, review, root } = await captureSource(dl06LikeSourceText());
+  try {
+    const snapshot = basisSnapshot({ omitStep: true });
+    const result = await new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot),
+      proofCaseSources: captures,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+      stepAssets: ADMITTED_STEP,
+    }).execute({
+      projectId: PROJECT_ID,
+      caseRef: review.reference,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(
+      result.diagnostics.some((item) => item.code === "step-absent"),
+      true,
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("fea proof-case seal review is unresolved when the project has no Thread tip", async () => {
-  const snapshot = basisSnapshot();
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(snapshot),
-    projects: {
-      get: () =>
-        Promise.resolve({
-          ...projectState(snapshot),
-          threadSnapshots: [],
-        } as EngineeringProjectSnapshot),
-    },
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({ projectId: PROJECT_ID });
-  assertEquals(result.status, "unresolved");
-  assertEquals(result.diagnostics.map((item) => item.code), ["basis-absent"]);
-});
-
-Deno.test("fea proof-case seal review refuses latest as an unresolved basis-latest", async () => {
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(basisSnapshot()),
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    basis: { ...basisRef(), snapshotId: "latest" },
-  });
-  assertEquals(result.status, "unresolved");
-  assertEquals(result.decisionParameters, undefined);
-  assertEquals(result.diagnostics.map((item) => item.code), ["basis-latest"]);
-});
-
-Deno.test("fea proof-case seal review names a basis identity mismatch instead of a grammar error", async () => {
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(basisSnapshot()),
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    basis: { ...basisRef(), subjectId: "other-subject" },
-  });
-  assertEquals(result.status, "unresolved");
-  assertEquals(result.diagnostics.map((item) => item.code), ["basis-mismatch"]);
-});
-
-Deno.test("fea proof-case seal review is unresolved when the catalogued STEP is absent", async () => {
-  const snapshot = basisSnapshot({ omitStep: true });
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(snapshot),
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    caseId: CASE_ID,
-    basis: basisRef(),
-  });
-  assertEquals(result.status, "unresolved");
-  assertEquals(result.decisionParameters, undefined);
-  assertEquals(
-    result.diagnostics.some((item) => item.code === "step-absent"),
-    true,
-  );
-});
-
-Deno.test("fea proof-case seal review emits no paste-ready hop from a historical project basis", async () => {
-  const snapshot = basisSnapshot();
-  const current = {
-    kind: "thread-snapshot" as const,
-    snapshotId: "snap-fea-seal-current",
-    revision: 6,
-    subjectId: SUBJECT_ID,
-  };
-  const project = {
-    ...projectState(snapshot),
-    threadSnapshots: [
-      projectState(snapshot).threadSnapshots[0]!,
-      current,
-    ],
-  } as EngineeringProjectSnapshot;
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(snapshot),
-    projects: { get: () => Promise.resolve(project) },
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    caseId: CASE_ID,
-    basis: basisRef(),
-  });
-
-  assertEquals(result.status, "unavailable");
-  assertEquals(result.next, undefined);
-  assertEquals(result.decisionParameters, undefined);
-  assertEquals(
-    result.diagnostics.map((item) => item.code),
-    ["basis-not-current"],
-  );
-});
-
-Deno.test("fea proof-case seal review is unresolved when compiled identities already exist", async () => {
-  const snapshot = basisSnapshot();
-  const project = {
-    ...projectState(snapshot),
-    workItems: [{ id: "wi-proof-seal" }],
-    decisions: [{ id: "dec-proof-seal" }],
-  } as unknown as EngineeringProjectSnapshot;
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(snapshot),
-    projects: { get: () => Promise.resolve(project) },
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: ADMITTED_GEOMETRY,
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    caseId: CASE_ID,
-    basis: basisRef(),
-  });
-  assertEquals(result.status, "unresolved");
-  assertEquals(result.next, undefined);
-  assertEquals(result.decisionParameters, undefined);
-  assertEquals(
-    result.diagnostics.map((item) => item.code),
-    ["compiled-identities-conflict"],
-  );
-});
-
-Deno.test("fea proof-case seal review emits no next when the geometry capture is unreadable", async () => {
-  const snapshot = basisSnapshot();
-  const review = new PrepareProjectFeaProofSealReview({
-    snapshots: new MemorySnapshots(snapshot),
-    projects: new MemoryProjects(snapshot),
-    catalogReader: CATALOG_READER,
-    requirementsReviewer: REQUIREMENTS_REVIEWER,
-    geometryCaptures: { read: () => Promise.resolve(undefined) },
-    stepAssets: ADMITTED_STEP,
-  });
-  const result = await review.execute({
-    projectId: PROJECT_ID,
-    caseId: CASE_ID,
-    basis: basisRef(),
-  });
-  assertEquals(result.status, "unavailable");
-  assertEquals(result.next, undefined);
-  assertEquals(result.decisionParameters, undefined);
-  assertEquals(
-    result.diagnostics.map((item) => item.code),
-    ["geometry-capture-unavailable"],
-  );
-});
-
-Deno.test("fea proof-case seal review distinguishes unavailable and corrupt catalog sources", async () => {
-  for (
-    const [text, code] of [
-      [undefined, "catalog-unavailable"],
-      ["{}", "catalog-integrity-failed"],
-    ] as const
-  ) {
-    const review = new PrepareProjectFeaProofSealReview({
-      snapshots: new MemorySnapshots(basisSnapshot()),
-      catalogReader: {
-        list: () => Promise.resolve([{ caseId: "desk-lamp-dl06-arm-cantilever" }]),
-        read: () => Promise.resolve(text),
+  const { captures, review, root } = await captureSource(dl06LikeSourceText());
+  try {
+    const snapshot = basisSnapshot();
+    const result = await new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: {
+        get: () =>
+          Promise.resolve({
+            ...projectState(snapshot),
+            threadSnapshots: [],
+          } as EngineeringProjectSnapshot),
       },
+      proofCaseSources: captures,
       requirementsReviewer: REQUIREMENTS_REVIEWER,
-      geometryCaptures: ADMITTED_GEOMETRY,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
       stepAssets: ADMITTED_STEP,
-    });
-
-    const result = await review.execute({
+    }).execute({
       projectId: PROJECT_ID,
-      caseId: CASE_ID,
-      basis: basisRef(),
+      caseRef: review.reference,
     });
-
     assertEquals(result.status, "unresolved");
-    assertEquals(result.next, undefined);
-    assertEquals(result.diagnostics.map((item) => item.code), [code]);
+    assertEquals(result.diagnostics.map((item) => item.code), ["basis-absent"]);
+  } finally {
+    await Deno.remove(root, { recursive: true });
   }
 });
 
-function basisRef() {
-  return {
-    kind: "thread-snapshot" as const,
-    snapshotId: "snap-fea-seal",
-    revision: 5,
-    subjectId: SUBJECT_ID,
-  };
-}
+Deno.test("fea proof-case seal review is unresolved when compiled identities already exist", async () => {
+  const { captures, review, root } = await captureSource(dl06LikeSourceText());
+  try {
+    const snapshot = basisSnapshot();
+    const project = {
+      ...projectState(snapshot),
+      workItems: [{ id: "wi-proof-seal-desk-lamp-dl06-arm-cantilever-r1" }],
+      decisions: [{ id: "dec-proof-seal-desk-lamp-dl06-arm-cantilever-r1" }],
+    } as unknown as EngineeringProjectSnapshot;
+    const result = await new PrepareProjectFeaProofSealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: { get: () => Promise.resolve(project) },
+      proofCaseSources: captures,
+      requirementsReviewer: REQUIREMENTS_REVIEWER,
+      geometryCaptures: geometryCapture(LINKED_SOURCE_TEXT, CAD_SCRIPT_DIGEST),
+      stepAssets: ADMITTED_STEP,
+    }).execute({
+      projectId: PROJECT_ID,
+      caseRef: review.reference,
+    });
+    assertEquals(result.status, "unresolved");
+    assertEquals(
+      result.diagnostics.map((item) => item.code),
+      ["compiled-identities-conflict"],
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
 
 function basisSnapshot(
   options: { readonly omitStep?: boolean; readonly withAdmission?: boolean } = {},
@@ -651,7 +421,7 @@ function basisSnapshot(
     }),
     ...(options.omitStep ? [] : [
       artifact(stepId, "Arm STEP", "step", STEP_DIGEST, {
-        uri: `casys://step-export/${STEP_DIGEST}.step`,
+        uri: `/api/thread/assets/${STEP_DIGEST}.step`,
         mediaType: "model/step",
       }),
     ]),
@@ -838,6 +608,21 @@ function fresh() {
   return { status: "fresh" as const, changedAt: AT, invalidatedByChangeIds: [] };
 }
 
+class MemorySnapshots {
+  constructor(private readonly snapshot: ThreadSnapshot) {}
+  get(snapshotId: string) {
+    return Promise.resolve(
+      snapshotId === this.snapshot.id ? this.snapshot : undefined,
+    );
+  }
+  latest(_subjectId: string) {
+    return Promise.resolve(this.snapshot);
+  }
+  save() {
+    return Promise.resolve();
+  }
+}
+
 class MemoryProjects {
   constructor(private readonly snapshot: ThreadSnapshot) {}
   get(projectId: string) {
@@ -867,22 +652,5 @@ function projectState(snapshot: ThreadSnapshot): EngineeringProjectSnapshot {
     workItems: [],
     agentRuns: [],
     decisions: [],
-    approvals: [],
-    blockers: [],
-  } as EngineeringProjectSnapshot;
-}
-
-class MemorySnapshots {
-  saves = 0;
-  constructor(private readonly snapshot: ThreadSnapshot) {}
-  get(id: string) {
-    return Promise.resolve(id === this.snapshot.id ? this.snapshot : undefined);
-  }
-  latest(_subjectId: string) {
-    return Promise.resolve(this.snapshot);
-  }
-  save() {
-    this.saves += 1;
-    return Promise.reject(new Error("review must not persist a Thread snapshot"));
-  }
+  } as unknown as EngineeringProjectSnapshot;
 }

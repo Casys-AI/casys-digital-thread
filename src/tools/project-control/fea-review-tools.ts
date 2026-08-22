@@ -1,7 +1,9 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { ProjectFeaProofCaseCaptureUseCase } from "../../application/ports/in/fea/seal-case/project-fea-proof-case-capture.ts";
 import type { ProjectFeaProofSealReviewUseCase } from "../../application/ports/in/fea/seal-case/project-fea-proof-seal-review.ts";
 import type { ProjectFeaIsolatedRunReviewUseCase } from "../../application/ports/in/fea/isolated-v3/project-fea-isolated-run-review.ts";
 import type { ProjectEvaluationCloseoutReviewUseCase } from "../../application/ports/in/fea/evaluation-closeout/project-evaluation-closeout-review.ts";
+import { captureReviewContent } from "../../domain/fea/seal-case/fea-proof-case-source-capture.ts";
 import {
   OBJECT_OUTPUT_SCHEMA,
   PROJECT_ID,
@@ -9,7 +11,9 @@ import {
 } from "./mcp-tool-schemas.ts";
 
 export interface ProjectFeaReviewToolDependencies {
-  /** Provider-free compilation of one catalogued case into fea.proof.* parameters. */
+  /** Provider-free draft-CAS capture of exact mechanical-proof-case-source/1.0 JSON. */
+  feaProofCaseCapture?: ProjectFeaProofCaseCaptureUseCase;
+  /** Provider-free compilation of one captured source into fea.proof.* parameters. */
   feaProofSealReview?: ProjectFeaProofSealReviewUseCase;
   /** Provider-free compilation of isolated @3 bindings from a sealed proof document. */
   feaIsolatedRunReview?: ProjectFeaIsolatedRunReviewUseCase;
@@ -17,14 +21,32 @@ export interface ProjectFeaReviewToolDependencies {
   evaluationCloseoutReview?: ProjectEvaluationCloseoutReviewUseCase;
 }
 
-/** Register the provider-free FEA seal and isolated-run review surfaces. */
+/** Register the provider-free FEA capture, seal and isolated-run surfaces. */
 export function registerProjectFeaReviewTools(
   app: McpApp,
   dependencies: ProjectFeaReviewToolDependencies,
 ): void {
+  registerCapture(app, dependencies);
   registerSeal(app, dependencies);
   registerIsolatedRun(app, dependencies);
   registerEvaluationCloseout(app, dependencies);
+}
+
+function registerCapture(
+  app: McpApp,
+  dependencies: ProjectFeaReviewToolDependencies,
+): void {
+  if (!dependencies.feaProofCaseCapture) return;
+  const capture = dependencies.feaProofCaseCapture;
+  app.registerTool(projectFeaProofCaseCaptureTool, async (args) => {
+    const review = await capture.capture({
+      sourceText: String(args.sourceText ?? ""),
+    });
+    return {
+      content: captureReviewContent(review),
+      structuredContent: review as unknown as Record<string, unknown>,
+    };
+  });
 }
 
 function registerEvaluationCloseout(
@@ -61,7 +83,7 @@ function registerSeal(
       ? `Resolved ${result.selected.caseId} on current Thread r${result.selected.basis.revision}. Paste next.append.arguments into project_change_append and next.propose.arguments into project_decision_propose; compiled workItemId=${result.selected.workItemId}, decisionId=${result.selected.decisionId}. STEP is ${result.selected.stepArtifactId}. No project or Thread write.`
       : result.status === "unavailable"
       ? "Unavailable: diagnostics name the missing project head, historical basis, or unreadable geometry/STEP source. No paste-ready next hop. Do not invent fea.proof.*."
-      : "Unresolved: diagnostics name the catalog, Thread join, conflicting identity, or inconsistent source that failed. No decisionParameters. Do not invent fea.proof.*.";
+      : "Unresolved: diagnostics name the captured source, Thread join, conflicting identity, or inconsistent CAD lineage that failed. No decisionParameters. Do not invent fea.proof.*.";
     return {
       content,
       structuredContent: result as unknown as Record<string, unknown>,
@@ -89,13 +111,16 @@ function registerIsolatedRun(
   });
 }
 
-const CASE_ID_SCHEMA = {
-  type: "string",
-  minLength: 1,
-  maxLength: 256,
-  pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
-  description:
-    "Server-owned mechanical proof-case catalog id. Unknown ids yield unresolved; the caller never supplies a path or JSON.",
+const SOURCE_CAPTURE_REFERENCE_SCHEMA = {
+  type: "object",
+  properties: {
+    fingerprint: {
+      type: "string",
+      pattern: "^[a-f0-9]{64}$",
+    },
+  },
+  required: ["fingerprint"],
+  additionalProperties: false,
 } as const;
 
 const ARTIFACT_ID_SCHEMA = {
@@ -104,6 +129,83 @@ const ARTIFACT_ID_SCHEMA = {
   maxLength: 256,
   pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
 } as const;
+
+const DRAFT_CAS_WRITE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+const projectFeaProofCaseCaptureTool: MCPTool = {
+  name: "project_fea_proof_case_capture",
+  description:
+    "Capture exact agent-authored mechanical-proof-case-source/1.0 JSON in immutable draft CAS. The server parses, validates, stores canonical bytes, and rereads them. Pass result.reference, never this whole review, to project_fea_proof_seal_review. The caller supplies only sourceText; Thread tip, CAD provenance, solver, provider, tool, runtime and work/decision identities remain server-owned. This writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      sourceText: {
+        type: "string",
+        minLength: 1,
+        maxLength: 262_144,
+        description:
+          "Exact mechanical-proof-case-source/1.0 JSON. Canonical form is stored.",
+      },
+    },
+    required: ["sourceText"],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      schemaVersion: { const: "fea-proof-case-source-capture-review/1.0" },
+      status: { const: "captured" },
+      reference: SOURCE_CAPTURE_REFERENCE_SCHEMA,
+      id: {
+        type: "string",
+        minLength: 1,
+        maxLength: 256,
+      },
+      revision: { type: "integer", minimum: 1 },
+      project: {
+        type: "object",
+        properties: {
+          id: ARTIFACT_ID_SCHEMA,
+          subjectId: ARTIFACT_ID_SCHEMA,
+        },
+        required: ["id", "subjectId"],
+        additionalProperties: false,
+      },
+      target: {
+        type: "object",
+        properties: {
+          id: ARTIFACT_ID_SCHEMA,
+          modelElementId: ARTIFACT_ID_SCHEMA,
+        },
+        required: ["id", "modelElementId"],
+        additionalProperties: false,
+      },
+      metrics: {
+        type: "array",
+        items: { type: "string" },
+      },
+      grants: { const: "none" },
+    },
+    required: [
+      "schemaVersion",
+      "status",
+      "reference",
+      "id",
+      "revision",
+      "project",
+      "target",
+      "metrics",
+      "grants",
+    ],
+    additionalProperties: false,
+  },
+  annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
+};
 
 const BASIS_SCHEMA = {
   type: "object",
@@ -124,20 +226,19 @@ const BASIS_SCHEMA = {
 const projectFeaProofSealReviewTool: MCPTool = {
   name: "project_fea_proof_seal_review",
   description:
-    "Compile verify.seal-proof-case@1 MRTR parameters and catalog-owned work/decision identities. Name the project; caseId and basis are optional (unique catalog case, unique current Thread tip — not latest). sensitivityCatalogOptIn is an explicit false-by-default request: true is accepted only when one exact causal admission lever joins the proof CAD definition and target, then the offer digest and admission identity are added to the same MRTR. Only an appendable review against the exact current project head is resolved and carries next.append / next.propose. A historical basis, conflicting identity, or unreadable geometry/STEP source is unavailable or unresolved — never resolved. The caller never supplies material, mesh, loads, hashes or SysON UUIDs. Read-only: no project, Thread, MRTR or solver authority.",
+    "Compile verify.seal-proof-case@1 MRTR parameters from one opaque captured source. Name projectId and caseRef.fingerprint from project_fea_proof_case_capture result.reference. The server selects the unique current Thread tip — not latest — and recrosses unique canonical part STEP, CAD provenance, SysON requirements and derived work/decision identities. sensitivityCatalogOptIn is an explicit false-by-default request: true is accepted only when one exact causal admission lever joins the proof CAD definition and target after those joins. Only an appendable review against the exact current project head is resolved and carries next.append / next.propose. The caller never supplies material, mesh, loads, hashes, provider, tool, runtime, workItemId, decisionId or basis. Read-only: no project, Thread, MRTR or solver authority.",
   inputSchema: {
     type: "object",
     properties: {
       projectId: PROJECT_ID,
-      caseId: CASE_ID_SCHEMA,
-      basis: BASIS_SCHEMA,
+      caseRef: SOURCE_CAPTURE_REFERENCE_SCHEMA,
       sensitivityCatalogOptIn: {
         type: "boolean",
         description:
           "Explicit opt-in to seal the causally joined sensitivity catalog offer with the FEA proof. Omit or send false to seal only the proof.",
       },
     },
-    required: ["projectId"],
+    required: ["projectId", "caseRef"],
     additionalProperties: false,
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,

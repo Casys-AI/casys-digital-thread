@@ -70,14 +70,16 @@ the product `.mo`. Same image family `casys/modelica-microsandbox-worker`; kit
 
 ## FEA, sensitivity, correction
 
-Domain contracts: [mechanical proof case](../domains/fea/mechanical-proof-case-v1.md)
+Domain contracts: [mechanical proof-case source](../domains/fea/mechanical-proof-case-source.md),
+[mechanical proof case](../domains/fea/mechanical-proof-case-v1.md)
 and [CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 
 | This                                         | Is                                                                                               | Is not                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
 | `verify.run-fea-static-proof@1` / `@2`       | Historical MCP FEA. Not registered                                                               | Product isolated `@3`                                        |
 | `verify.run-fea-static-proof@3`              | Isolated local CalculiX + separate SysON oracle                                                  | MCP CalculiX, agent `.inp`, or a cad-model as `geometry`     |
-| `project_fea_proof_seal_review`              | Catalog id → `fea.proof.*` for `verify.seal-proof-case@1`                                        | Case authoring or a `fea.run.*` grammar                      |
+| `project_fea_proof_case_capture`             | Draft CAS write of exact `mechanical-proof-case-source/1.0` JSON. Pass `result.reference` only   | The compiled `mechanical-proof-case/1.0`, MRTR, or a solve   |
+| `project_fea_proof_seal_review`              | Opaque source fingerprint → `fea.proof.*` for `verify.seal-proof-case@1`                         | Case authoring, a catalog id, or a `fea.run.*` grammar       |
 | `project_sensitivity_study_seal_review`      | Catalog id or signed catalog-offer → `sensitivity.case.*` for `analyze.seal-sensitivity-study@1` | Case authoring, a solve, or inventing `cadSource`            |
 | `project_fea_isolated_run_review`            | Sealed proof document → `@3` bindings (`proofCase` document + STEP)                              | Binding the assembly cad-model as `geometry`                 |
 | Isolated `geometry` binding                  | Canonical part STEP (`kind: step`, `mediaType: model/step`)                                      | The sibling `cad-model`                                      |

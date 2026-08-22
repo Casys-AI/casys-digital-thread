@@ -12,7 +12,7 @@ const PROOF_DECLARATION_FINGERPRINT = {
   digest: "d".repeat(64),
 };
 const PROOF_CASE_URL = new URL(
-  "../../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
+  "../../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
   import.meta.url,
 );
 const PROOF_CASE_TEXT = await Deno.readTextFile(PROOF_CASE_URL);

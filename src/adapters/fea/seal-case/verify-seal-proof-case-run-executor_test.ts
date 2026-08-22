@@ -40,6 +40,12 @@ import {
 } from "../../../domain/fea/seal-case/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
 import {
+  canonicalizeMechanicalProofCaseSource,
+  parametricCadSourceFromPartScript,
+  validateMechanicalProofCaseSource,
+} from "../../../domain/fea/seal-case/mechanical-proof-case-source.ts";
+import { validateFeaProofCaseSourceCaptureReference } from "../../../domain/fea/seal-case/fea-proof-case-source-capture.ts";
+import {
   compileSensitivityCatalogOfferFromAdmission,
   SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
 } from "../../../domain/sensitivity/study/sensitivity-catalog-from-proof.ts";
@@ -112,11 +118,15 @@ const REQUIREMENTS_ELEMENT_ID = "req-element-test-001";
 const GEOM_DIGEST = "a".repeat(64);
 const STEP_BYTES = 12345;
 const STEP_DIGEST = await sha256Hex(new Uint8Array(STEP_BYTES));
+const CAD_SCRIPT = "from build123d import Box\nresult = Box(20, 10, 5)\n";
+const CAD_SCRIPT_BYTES = new TextEncoder().encode(CAD_SCRIPT);
+const CAD_SCRIPT_DIGEST = await sha256Hex(CAD_SCRIPT_BYTES);
 const REQ_DIGEST = "c".repeat(64);
 const SEED_DIGEST = "d".repeat(64);
 
 /** ISO datetime reused across stubs. */
 const NOW = "2026-08-09T10:00:00.000Z";
+const SOURCE_FINGERPRINT = "1".repeat(64);
 
 // ---------------------------------------------------------------------------
 // Test 1 — Human-origin rejection: no I/O touched
@@ -137,7 +147,7 @@ Deno.test(
       seedCaptures: {} as never,
       canonicalAssetReader: {} as never,
       lease: {} as never,
-      catalog: {} as never,
+      proofCaseSources: {} as never,
     });
     await assertRejects(
       () =>
@@ -216,7 +226,7 @@ Deno.test(
       seedCaptures: {} as never,
       canonicalAssetReader: {} as never,
       lease: {} as never,
-      catalog: {} as never,
+      proofCaseSources: {} as never,
     });
     await assertRejects(
       () =>
@@ -260,6 +270,7 @@ Deno.test(
         retiredCase,
         { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
         { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
       );
 
       const fixture = await queuedSealFixture(directory, {
@@ -283,23 +294,29 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        catalog: {
-          list: () => Promise.resolve([]),
-          read: () => Promise.resolve(undefined),
+        proofCaseSources: {
+          capture: () => Promise.reject(new Error("must not capture")),
+          reopen: () => {
+            const error = new Error(
+              "The signed proof-case source is absent from draft CAS.",
+            );
+            (error as { code?: string }).code = "source_absent";
+            return Promise.reject(error);
+          },
         },
       });
 
       await assertRejects(
         () =>
           executor.execute(AGENT, {
-            commandId: "catalog-absent",
+            commandId: "source-absent",
             projectId: PROJECT_ID,
             expectedRevision: fixture.queued.revision,
             issuedAt: NOW,
             runId: fixture.runId,
           }),
         EngineeringProjectCommandError,
-        "server-side catalog",
+        "absent from draft CAS",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -331,6 +348,7 @@ Deno.test(
         realCase,
         { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
         { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
       );
 
       const fixture = await queuedSealFixture(directory, {
@@ -354,7 +372,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        catalog: makeCatalogStub(realCase),
+        proofCaseSources: makeSourceStub(realCase),
       });
 
       await assertRejects(
@@ -401,6 +419,7 @@ Deno.test(
         mismatched,
         { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
         { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
       );
       const fixture = await queuedSealFixture(directory, {
         proofCase: mismatched,
@@ -422,7 +441,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        catalog: makeCatalogStub(mismatched),
+        proofCaseSources: makeSourceStub(mismatched),
       });
 
       await assertRejects(
@@ -435,7 +454,7 @@ Deno.test(
             runId: fixture.runId,
           }),
         EngineeringProjectCommandError,
-        "authorization.workItemId",
+        "workItemId",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -478,6 +497,7 @@ Deno.test(
         testCase,
         { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
         { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
       );
 
       // Phase 2: queue the seal run with the correct proof case.
@@ -519,7 +539,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        catalog: makeCatalogStub(testCase),
+        proofCaseSources: makeSourceStub(testCase),
       });
 
       await assertRejects(
@@ -595,6 +615,7 @@ Deno.test(
           id: wrongReqArtifact.id,
           fingerprint: wrongReqArtifact.fingerprint,
         },
+        SOURCE_FINGERPRINT,
       );
 
       // Actual requirements artifact in the snapshot is the real one.
@@ -621,7 +642,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        catalog: makeCatalogStub(testCase),
+        proofCaseSources: makeSourceStub(testCase),
       });
 
       await assertRejects(
@@ -822,6 +843,7 @@ Deno.test(
         proofCase,
         { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
         { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
       );
 
       // Register r2 in project.threadSnapshots via a stub fixture run (same
@@ -893,11 +915,11 @@ Deno.test(
           description: "Seal the reviewed mechanical proof case.",
         }],
         workItems: [{
-          id: "seal-item",
+          id: proofCase.authorization.workItemId,
           phaseId: "seal-phase",
           owner: "agent",
           dependsOnWorkItemIds: ["record-brief"],
-          decisionIds: ["seal-decision"],
+          decisionIds: [proofCase.authorization.decisionId],
           operation: {
             id: VERIFY_SEAL_PROOF_CASE_OPERATION.id,
             version: VERIFY_SEAL_PROOF_CASE_OPERATION.version,
@@ -905,7 +927,7 @@ Deno.test(
           },
         }],
         requiredDecisions: [{
-          id: "seal-decision",
+          id: proofCase.authorization.decisionId,
           phaseId: "seal-phase",
           title: "Approve FEA proof case seal",
           question: "Approve the seal of the mechanical proof case into the thread?",
@@ -914,21 +936,21 @@ Deno.test(
 
       project = await commands.proposeDecision(AGENT, {
         ...ctx("propose-seal-decision", project.revision),
-        decisionId: "seal-decision",
+        decisionId: proofCase.authorization.decisionId,
         baseSnapshot: r2Ref,
         proposal: {
-          summary: "Seal the desk-lamp-dl04-arm-cantilever proof case.",
+          summary: "Seal the captured proof case.",
           parameters: [...proposalParameters],
         },
       });
       const sealDecision = project.decisions.find(
-        (d) => d.id === "seal-decision",
+        (d) => d.id === proofCase.authorization.decisionId,
       )!;
       assertExists(sealDecision.inputFingerprint, "Decision must have a fingerprint.");
 
       project = await commands.approveDecision(HUMAN, {
         ...ctx("approve-seal-decision", project.revision),
-        decisionId: "seal-decision",
+        decisionId: proofCase.authorization.decisionId,
         rationale: "MRTR approved: seal the exact mechanical proof case.",
         inputFingerprint: sealDecision.inputFingerprint!,
       });
@@ -937,8 +959,8 @@ Deno.test(
       project = await commands.queueRun(AGENT, {
         ...ctx("queue-seal", project.revision),
         runId,
-        workItemId: "seal-item",
-        summary: "Seal the desk-lamp-dl04-arm-cantilever proof case.",
+        workItemId: proofCase.authorization.workItemId,
+        summary: "Seal the captured proof case.",
         basis: { kind: "thread-snapshot" as const, ...r2Ref },
       });
 
@@ -952,7 +974,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        catalog: makeCatalogStub(proofCase),
+        proofCaseSources: makeSourceStub(proofCase),
       });
 
       const completed = await executor.execute(AGENT, {
@@ -1132,8 +1154,8 @@ Deno.test(
           modelElementId: TARGET_ELEMENT_ID,
         },
         authorization: {
-          workItemId: "seal-item",
-          decisionId: "seal-decision",
+          workItemId: "wi-proof-seal-desk-lamp-dl04-arm-cantilever-r1",
+          decisionId: "dec-proof-seal-desk-lamp-dl04-arm-cantilever-r1",
         },
         requirementsSource: {
           provider: "syson",
@@ -1145,35 +1167,10 @@ Deno.test(
           tool: "calculix_solve_static",
           resultSchemaVersion: "2.0",
         },
-        cadSource: {
-          kind: "imported-or-reconstructed",
-          method: "import",
-          sources: [{
-            id: "source-step-01",
-            name: "DripTray_v1.step",
-            format: "step",
-            sha256: "e".repeat(64),
-            bytes: 98765,
-            sourceUri: "casys://cad-repository/drip-tray/v1.step",
-          }],
-          license: {
-            identifier: "proprietary-demo",
-            evidenceUri: "casys://licenses/demo-cad-license",
-          },
-          conversion: {
-            tool: "FreeCAD",
-            revision: "0.21.1",
-            losses: ["parametric-features-not-preserved"],
-          },
-          engineeringBoundary: {
-            designIntent: "partial",
-            editableCad: "reconstructed",
-            manufacturability: "not-established",
-            limitations: [
-              "Reconstruction-only; original parametric intent not preserved.",
-            ],
-          },
-        },
+        cadSource: parametricCadSourceFromPartScript({
+          sha256: CAD_SCRIPT_DIGEST,
+          bytes: CAD_SCRIPT_BYTES.byteLength,
+        }),
         expectedCadArtifact: {
           format: "step",
           sha256: STEP_DIGEST,
@@ -1233,6 +1230,7 @@ Deno.test(
         proofCase,
         { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
         { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
       );
 
       // Phase 2: append the seal run using the fixture base.
@@ -1257,7 +1255,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        catalog: makeCatalogStub(proofCase),
+        proofCaseSources: makeSourceStub(proofCase),
       });
 
       const completed = await executor.execute(AGENT, {
@@ -1309,9 +1307,9 @@ Deno.test(
       const captureRecord = JSON.parse(rawCapture) as Record<string, unknown>;
       const canonicalProofText = captureRecord.canonicalProofText as string;
       assertEquals(
-        canonicalProofText.includes("imported-or-reconstructed"),
+        canonicalProofText.includes("parametric"),
         true,
-        "Canonical proof text must contain the cadSource kind.",
+        "Canonical proof text must contain the recrossed cadSource kind.",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -1383,6 +1381,7 @@ Deno.test(
         proofCase,
         { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
         { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
         {
           schemaVersion: offer.schemaVersion,
           digest: offerDigest,
@@ -1416,7 +1415,10 @@ Deno.test(
               document: admissionDocument,
             } as never),
         },
-        geometryCaptures: makeGeomCaptureStub() as never,
+        geometryCaptures: makeGeomCaptureStub(
+          sourceText,
+          sourceFingerprint.digest,
+        ) as never,
         requirementsCaptures: makeReqCaptureStub(
           "maxDisplacement",
           "maxVonMises",
@@ -1424,7 +1426,7 @@ Deno.test(
         seedCaptures: makeSeedCaptureStub() as never,
         canonicalAssetReader: makeCanonicalAssetReader() as never,
         lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-        catalog: makeCatalogStub(proofCase),
+        proofCaseSources: makeSourceStub(proofCase),
       });
       const completed = await executor.execute(AGENT, {
         commandId: "agent-seal-with-sensitivity-catalog",
@@ -1599,6 +1601,7 @@ async function sensitivityOptInHarness(
     proofCase,
     { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
     { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+    SOURCE_FINGERPRINT,
     {
       schemaVersion: offer.schemaVersion,
       digest: options.signedDigest ?? offerDigest,
@@ -1647,7 +1650,10 @@ async function sensitivityOptInHarness(
           unavailable ? undefined : { document: reopenedDocument } as never,
         ),
     },
-    geometryCaptures: makeGeomCaptureStub() as never,
+    geometryCaptures: makeGeomCaptureStub(
+      sourceText,
+      sourceFingerprint.digest,
+    ) as never,
     requirementsCaptures: makeReqCaptureStub(
       "maxDisplacement",
       "maxVonMises",
@@ -1655,7 +1661,7 @@ async function sensitivityOptInHarness(
     seedCaptures: makeSeedCaptureStub() as never,
     canonicalAssetReader: makeCanonicalAssetReader() as never,
     lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
-    catalog: makeCatalogStub(proofCase),
+    proofCaseSources: makeSourceStub(proofCase),
   });
   return {
     executor,
@@ -1928,6 +1934,8 @@ async function appendSealRun(
   };
   let project = await projects.get(PROJECT_ID);
   if (!project) throw new Error("Project not found in appendSealRun");
+  const workItemId = opts.proofCase.authorization.workItemId;
+  const decisionId = opts.proofCase.authorization.decisionId;
 
   project = await commands.appendChange(AGENT, {
     ...ctx("append-seal", project.revision),
@@ -1938,11 +1946,11 @@ async function appendSealRun(
       description: "Seal the reviewed proof case.",
     }],
     workItems: [{
-      id: "seal-item",
+      id: workItemId,
       phaseId: "seal-phase",
       owner: "agent",
       dependsOnWorkItemIds: ["record-brief"],
-      decisionIds: ["seal-decision"],
+      decisionIds: [decisionId],
       operation: {
         id: VERIFY_SEAL_PROOF_CASE_OPERATION.id,
         version: VERIFY_SEAL_PROOF_CASE_OPERATION.version,
@@ -1950,7 +1958,7 @@ async function appendSealRun(
       },
     }],
     requiredDecisions: [{
-      id: "seal-decision",
+      id: decisionId,
       phaseId: "seal-phase",
       title: "Approve FEA proof case seal",
       question: "Approve the mechanical proof case seal?",
@@ -1959,18 +1967,18 @@ async function appendSealRun(
 
   project = await commands.proposeDecision(AGENT, {
     ...ctx("propose-seal-decision", project.revision),
-    decisionId: "seal-decision",
+    decisionId,
     baseSnapshot: r2Ref,
     proposal: {
       summary: "Seal the mechanical proof case into the thread.",
       parameters: [...opts.params],
     },
   });
-  const sealDecision = project.decisions.find((d) => d.id === "seal-decision")!;
+  const sealDecision = project.decisions.find((d) => d.id === decisionId)!;
 
   project = await commands.approveDecision(HUMAN, {
     ...ctx("approve-seal-decision", project.revision),
-    decisionId: "seal-decision",
+    decisionId,
     rationale: "MRTR approved for FEA seal executor test.",
     inputFingerprint: sealDecision.inputFingerprint!,
   });
@@ -1979,7 +1987,7 @@ async function appendSealRun(
   const queued = await commands.queueRun(AGENT, {
     ...ctx("queue-seal", project.revision),
     runId,
-    workItemId: "seal-item",
+    workItemId,
     summary: "Seal the mechanical proof case.",
     basis: { kind: "thread-snapshot" as const, ...r2Ref },
   });
@@ -2089,7 +2097,7 @@ function makeStepArtifact(): ThreadArtifact {
     kind: "step",
     version: STEP_DIGEST,
     fingerprint: fp,
-    uri: `casys://step-export/${STEP_DIGEST}.step`,
+    uri: `/api/thread/assets/${STEP_DIGEST}.step`,
     mediaType: "model/step",
     producer: {
       serverId: "build123d",
@@ -2233,7 +2241,10 @@ function buildExtendedSnapshot(
 // ---------------------------------------------------------------------------
 
 /** Minimal geometry capture that will pass the executor's schemaVersion check. */
-function makeGeomCaptureStub(): { read: () => Promise<string> } {
+function makeGeomCaptureStub(
+  script = CAD_SCRIPT,
+  scriptDigest = CAD_SCRIPT_DIGEST,
+): { read: () => Promise<string> } {
   const content = JSON.stringify({
     schemaVersion: GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
     manifest: {
@@ -2245,6 +2256,13 @@ function makeGeomCaptureStub(): { read: () => Promise<string> } {
           name: "drip-tray.step",
           fingerprint: { algorithm: "sha256", digest: STEP_DIGEST },
         }],
+      }],
+    },
+    sourceScripts: {
+      partDefinitions: [{
+        elementId: TARGET_ELEMENT_ID,
+        script,
+        scriptHash: { algorithm: "sha256", digest: scriptDigest },
       }],
     },
   });
@@ -2422,8 +2440,8 @@ function makeTestCase(
       modelElementId: TARGET_ELEMENT_ID,
     },
     authorization: {
-      workItemId: "seal-item",
-      decisionId: "seal-decision",
+      workItemId: `wi-proof-seal-${overrideId ?? "desk-lamp-dl04-arm-cantilever"}-r1`,
+      decisionId: `dec-proof-seal-${overrideId ?? "desk-lamp-dl04-arm-cantilever"}-r1`,
     },
     requirementsSource: {
       provider: "syson",
@@ -2435,24 +2453,10 @@ function makeTestCase(
       tool: "calculix_solve_static",
       resultSchemaVersion: "2.0",
     },
-    cadSource: {
-      kind: "parametric",
-      generator: {
-        provider: "build123d",
-        tool: "build123d_execute",
-        definition: {
-          mediaType: "text/x-python",
-          sha256: "e".repeat(64),
-          bytes: 500,
-        },
-      },
-      engineeringBoundary: {
-        designIntent: "preserved",
-        editableCad: "native",
-        manufacturability: "not-established",
-        limitations: ["FEA only, not manufacturing."],
-      },
-    },
+    cadSource: parametricCadSourceFromPartScript({
+      sha256: CAD_SCRIPT_DIGEST,
+      bytes: CAD_SCRIPT_BYTES.byteLength,
+    }),
     expectedCadArtifact: {
       format: "step",
       sha256: STEP_DIGEST,
@@ -2506,21 +2510,48 @@ function makeTestCase(
   });
 }
 
-/**
- * Build an identifier-only catalog stub with deterministic case bytes.
- */
-function makeCatalogStub(
+function sourceFromProofCase(
   proofCase: ReturnType<typeof validateMechanicalProofCase>,
-): {
-  readonly list: () => Promise<readonly { readonly caseId: string }[]>;
-  readonly read: (caseId: string) => Promise<string | undefined>;
-} {
+) {
+  return validateMechanicalProofCaseSource({
+    schemaVersion: "mechanical-proof-case-source/1.0",
+    id: proofCase.id,
+    revision: proofCase.revision,
+    scope: proofCase.scope,
+    evidenceBoundary: proofCase.evidenceBoundary,
+    project: {
+      id: proofCase.project.id,
+      subjectId: proofCase.project.subjectId,
+    },
+    target: proofCase.target,
+    requirementsSource: {
+      editingContextId: proofCase.requirementsSource.editingContextId,
+      elementId: proofCase.requirementsSource.elementId,
+    },
+    analysis: proofCase.analysis,
+    requirements: proofCase.requirements,
+  });
+}
+
+function makeSourceStub(
+  proofCase: ReturnType<typeof validateMechanicalProofCase>,
+  fingerprint = SOURCE_FINGERPRINT,
+) {
+  const source = sourceFromProofCase(proofCase);
+  const sourceText = canonicalizeMechanicalProofCaseSource(source).text;
   return {
-    list: () => Promise.resolve([{ caseId: proofCase.id }]),
-    read: (caseId) =>
-      Promise.resolve(
-        caseId === proofCase.id ? deterministicJson(proofCase) : undefined,
-      ),
+    capture: () => Promise.resolve({ fingerprint }),
+    reopen(value: unknown) {
+      const reference = validateFeaProofCaseSourceCaptureReference(value);
+      if (reference.fingerprint !== fingerprint) {
+        const error = new Error(
+          "The signed proof-case source is absent from draft CAS.",
+        );
+        (error as { code?: string }).code = "source_absent";
+        return Promise.reject(error);
+      }
+      return Promise.resolve({ reference, sourceText, source });
+    },
   };
 }
 

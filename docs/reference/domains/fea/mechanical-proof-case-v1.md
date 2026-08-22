@@ -2,18 +2,23 @@
 
 Audience: both · Diátaxis: reference · Kind: domain contract
 
-`mechanical-proof-case/1.0` is the reviewed declaration consumed by the current static
-FEA method. It records assumptions and exact identities. Validating or sealing it does
-not mesh a part, run CalculiX or establish a requirement verdict.
+`mechanical-proof-case/1.0` is the **compiled** internal declaration consumed by the
+current static FEA method. Agents do not author this document. They author
+[`mechanical-proof-case-source/1.0`](mechanical-proof-case-source.md); the server
+recrosses Thread CAD, STEP, SysON and authorization facts, then validates this compiled
+form. Validating or sealing it does not mesh a part, run CalculiX or establish a
+requirement verdict.
 
 Source contracts:
 
 - [`mechanical-proof-case.ts`](../../../../src/domain/fea/seal-case/mechanical-proof-case.ts)
-- [`fea-proof-case-catalog.ts`](../../../../src/domain/fea/seal-case/fea-proof-case-catalog.ts)
-- reviewed declarations under
-  [`config/mechanical-proof-cases/`](../../../../config/mechanical-proof-cases/)
+- compiled from
+  [`mechanical-proof-case-source.ts`](../../../../src/domain/fea/seal-case/mechanical-proof-case-source.ts)
 
-## Accepted case
+Historical vehicle JSON under `src/testing/fixtures/fea/mechanical-proof-cases/` is
+test/conformance data only. It is **not** live production authority.
+
+## Accepted compiled case
 
 | Area     | `mechanical-proof-case/1.0` accepts                                                                                      |
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -54,33 +59,20 @@ native feature:
 Adding one of those capabilities requires a new versioned case and qualified method. It
 must not be smuggled into V1 through an extra JSON field or a hand-written solver deck.
 
-## Catalog and authority
+## Authority
 
-A declaration file is candidate configuration, not execution authority. The server opens
-the versioned `mechanical-proof-case-catalog/1.0` manifest at
-`config/mechanical-proof-cases/catalog.json`, resolves its fixed id-to-file entry, then
-validates the declared JSON and its matching case id. The application sees an opaque
-`caseId`, never a filesystem path. If `caseId` is omitted,
-`project_fea_proof_seal_review` selects exactly one readable declaration whose
-`project.id` matches; zero or several matches stay unresolved.
-
-A new project proof case therefore adds one versioned JSON declaration and one manifest
-entry, with no TypeScript project map or server path change. That extends data only. A
-new analysis capability still requires a shared schema, generic lowering, and qualified
-method; it must not be represented as an extra field in a V1 case. The caller does not
+`project_fea_proof_case_capture` is the public authoring capture. Production does not
+select preinstalled desk-lamp, dl, CA, or other Git catalog cases. The caller does not
 send material, mesh, loads, boxes, hashes, units or SysON identifiers.
 
-`project_fea_proof_seal_review` is read-only. The agent uses its returned
-`next.append.arguments` and `next.propose.arguments`; a human signs the exact MRTR.
-`verify.seal-proof-case@1` then reopens the catalog bytes and publishes a
-content-addressed Thread document.
+`project_fea_proof_seal_review` is read-only. It takes `projectId` plus opaque
+`caseRef.fingerprint`. The agent uses its returned `next.append.arguments` and
+`next.propose.arguments`; a human signs the exact MRTR.
+`verify.seal-proof-case@1` then reopens the signed source capture, recrosses the unique
+current Thread tip, and publishes a content-addressed Thread document.
 
-Missing and ambiguous catalog matches remain `catalog-absent` and `catalog-ambiguous`.
-They never authorize a sibling manifest, caller-supplied solver values, or a
-hand-authored replacement declaration.
-
-The case's `authorization.workItemId` and `authorization.decisionId` identify that seal
-decision only. Running [`verify.run-fea-static-proof@3`](calculix-static-proof-v3.md)
+The compiled `authorization.workItemId` and `authorization.decisionId` identify that
+seal decision only. Running [`verify.run-fea-static-proof@3`](calculix-static-proof-v3.md)
 requires a new plan, work item and MRTR bound to the sealed proof and canonical STEP.
 
 Operational guide:

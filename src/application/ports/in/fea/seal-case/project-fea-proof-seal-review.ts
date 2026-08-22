@@ -1,13 +1,12 @@
 /**
- * Inward port for compiling one catalogued mechanical proof case into the
+ * Inward port for compiling one captured mechanical proof-case source into the
  * canonical `verify.seal-proof-case@1` MRTR parameters.
  *
- * The caller names the project. The catalog id and Thread basis are optional:
- * omitted `caseId` selects the unique catalogued case for that project;
- * omitted `basis` selects the unique current Thread tip from the project
- * ledger. That is not `latest`. No JSON, path, material, mesh, force, box or
- * SysON UUID is accepted. A mismatch against Thread yields `unresolved`
- * with diagnostics and no parameters.
+ * The caller names the project and the opaque source fingerprint. The server
+ * selects the unique current Thread tip — not `latest`. No JSON, path,
+ * material, mesh, force, box, provider, tool or SysON UUID is accepted from
+ * the caller. A mismatch against Thread yields `unresolved` with diagnostics
+ * and no parameters.
  */
 
 import type {
@@ -35,16 +34,14 @@ export type FeaProofSensitivityCatalog =
 
 export interface ProjectFeaProofSealReviewCommand {
   readonly projectId: string;
-  /** When omitted, the unique current Thread tip on the project is selected. */
-  readonly basis?: EngineeringThreadSnapshotBasis;
-  /** When omitted, the unique catalogued case for this project is selected. */
-  readonly caseId?: string;
+  readonly caseRef: { readonly fingerprint: string };
   /** Explicit opt-in; omission and false do not authorize a catalog artifact. */
   readonly sensitivityCatalogOptIn?: boolean;
 }
 
 export interface FeaProofSealReviewSelection {
   readonly caseId: string;
+  readonly sourceFingerprint: string;
   readonly proofDigest: string;
   readonly basis: EngineeringThreadSnapshotBasis;
   readonly geometryArtifactId: string;

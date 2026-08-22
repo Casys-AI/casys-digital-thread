@@ -1,6 +1,5 @@
 import { assertEquals } from "@std/assert";
 import { ARTICULATED_LED_DESK_LAMP_FIXTURE_PROJECT_ID } from "./articulated-led-desk-lamp-brief-fixture.ts";
-import { selectUniqueCataloguedProofCase } from "../domain/fea/seal-case/fea-proof-case-catalog.ts";
 import { resolveFeaProofSealThreadBindings } from "../domain/fea/seal-case/fea-proof-seal-bindings.ts";
 import { validateMechanicalProofCase } from "../domain/fea/seal-case/mechanical-proof-case.ts";
 import type {
@@ -9,38 +8,11 @@ import type {
 } from "../domain/thread/thread-snapshot.ts";
 
 Deno.test(
-  "fresh lamp catalog selection stays absent for historical desk-lamp and CA02 cases",
-  () => {
-    const selected = selectUniqueCataloguedProofCase(
-      ARTICULATED_LED_DESK_LAMP_FIXTURE_PROJECT_ID,
-      [
-        {
-          caseId: "desk-lamp-dl05-arm-cantilever",
-          projectId: "desk-lamp-dl05",
-        },
-        {
-          caseId: "desk-lamp-dl04-arm-cantilever",
-          projectId: "desk-lamp-dl04",
-        },
-        {
-          caseId: "cantilever-arm-ca02",
-          projectId: "cantilever-arm-ca02",
-        },
-      ],
-    );
-    assertEquals(selected.status, "unresolved");
-    if (selected.status !== "unresolved") return;
-    assertEquals(selected.code, "catalog-absent");
-    assertEquals(selected.caseIds, []);
-  },
-);
-
-Deno.test(
   "fresh lamp proof seal refuses a historical dl05 case instead of joining by label",
   async () => {
     const raw = JSON.parse(
       await Deno.readTextFile(
-        "config/mechanical-proof-cases/desk-lamp-dl05-arm-cantilever.json",
+        "src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl05-arm-cantilever.json",
       ),
     );
     const proofCase = validateMechanicalProofCase(raw);

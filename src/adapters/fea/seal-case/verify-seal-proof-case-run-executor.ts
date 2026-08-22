@@ -19,10 +19,10 @@
  *  1. Agent-only origin gate.
  *  2. requireShape: operation id / version check.
  *  3. requireMrtrApproval: find the sole human-approved decision for this run.
- *  4. Parse fea.proof.* from the proposal parameters; reopen the case through
- *     the catalog reader; validateMechanicalProofCase; compute
+ *  4. Parse fea.proof.* from the proposal parameters; reopen the exact signed
+ *     source capture; recross the unique current tip; compute
  *     canonicalProofText + proofDigest; assert MRTR-signed proofDigest matches
- *     the computed one (fail-fast, before the lease); cross-check every field.
+ *     the computed one; cross-check every field. Never catalog.read or caseId.
  *  5. Project / subject / authorization guards.
  *  6. Lease threadWriteBasisLeaseScope.
  *  7. Inside lease — pre-claim checks (in order):
@@ -64,7 +64,7 @@ import {
   type EngineeringProjectRevisionStore,
 } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
-import type { CataloguedMechanicalProofCaseReader } from "../../../application/ports/out/fea/seal-case/catalogued-mechanical-proof-case-reader.ts";
+import type { FeaProofCaseSourceCaptureReader } from "../../../application/ports/out/fea/seal-case/fea-proof-case-source-capture-reader.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -87,10 +87,9 @@ import {
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   verifyFeaProofParametersMatchCase,
 } from "../../../domain/fea/seal-case/fea-proof-proposal.ts";
-import {
-  type MechanicalProofCase,
-  validateMechanicalProofCase,
-} from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
+import type { MechanicalProofCase } from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
+import { recrossMechanicalProofCaseFromSource } from "../../../application/use-cases/fea/seal-case/compile-fea-proof-from-source.ts";
+import { selectCurrentThreadTip } from "../../../domain/project/thread-tip.ts";
 import { buildMechanicalProofCaseAnalysisGraph } from "../../../domain/fea/seal-case/mechanical-proof-case-analysis-graph.ts";
 import {
   compileSensitivityCatalogOfferFromAdmission,
@@ -224,8 +223,8 @@ export interface VerifySealProofCaseRunExecutorDependencies {
   readonly seedCaptures: FileCaptureStore<"syson-model-seed">;
   readonly canonicalAssetReader: CanonicalAssetReader;
   readonly lease: EngineeringProjectRunLease;
-  /** Server-owned manifest reader; no path crosses the executor boundary. */
-  readonly catalog: CataloguedMechanicalProofCaseReader;
+  /** Exact captured source CAS; never a catalog id or filesystem path. */
+  readonly proofCaseSources: FeaProofCaseSourceCaptureReader;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,7 +245,7 @@ export class VerifySealProofCaseRunExecutor {
   readonly #seedCaptures: FileCaptureStore<"syson-model-seed">;
   readonly #canonicalAssetReader: CanonicalAssetReader;
   readonly #lease: EngineeringProjectRunLease;
-  readonly #catalog: CataloguedMechanicalProofCaseReader;
+  readonly #proofCaseSources: FeaProofCaseSourceCaptureReader;
 
   constructor(deps: VerifySealProofCaseRunExecutorDependencies) {
     this.#projects = deps.projects;
@@ -260,7 +259,7 @@ export class VerifySealProofCaseRunExecutor {
     this.#seedCaptures = deps.seedCaptures;
     this.#canonicalAssetReader = deps.canonicalAssetReader;
     this.#lease = deps.lease;
-    this.#catalog = deps.catalog;
+    this.#proofCaseSources = deps.proofCaseSources;
   }
 
   async execute(
@@ -296,10 +295,13 @@ export class VerifySealProofCaseRunExecutor {
       );
     }
 
-    // Steps 4b–4c — read the proof case from the server-side catalog, validate,
-    // compute digest, and cross-check every MRTR field.
+    const alreadyCompleted = await this.#completedFor(command);
+    if (alreadyCompleted) return alreadyCompleted;
+
+    // Steps 4b–4c — reopen the exact signed source, recross the unique current
+    // tip, compute digest, and cross-check every MRTR field.
     const { validatedCase, proofText, proofDigest } = await this
-      .#loadAndVerifyCase(decisionParams);
+      .#loadAndVerifyCase(project, run, decisionParams);
 
     // Step 5 — project / subject / authorization guards.
     const basis = requireBasis(run);
@@ -842,75 +844,116 @@ export class VerifySealProofCaseRunExecutor {
   // ── Private: case loading + verification ───────────────────────────────────
 
   async #loadAndVerifyCase(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
     decisionParams: FeaProofDecisionParameters,
   ): Promise<{
     validatedCase: MechanicalProofCase;
     proofText: string;
     proofDigest: string;
   }> {
-    // Catalog lookup (fail-fast before any snapshot or lease access).
-    const caseId = decisionParams.id;
-    let raw: string | undefined;
+    let reopened;
     try {
-      raw = await this.#catalog.read(caseId);
+      reopened = await this.#proofCaseSources.reopen({
+        fingerprint: decisionParams.sourceFingerprint,
+      });
     } catch (error) {
+      const code = error !== null && typeof error === "object" && "code" in error
+        ? String((error as { code: unknown }).code)
+        : "";
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Proof case "${caseId}" could not be read from the server-owned manifest: ` +
-          errorMessage(error),
+        code === "source_absent"
+          ? "The signed proof-case source is absent from draft CAS."
+          : `The signed proof-case source could not be reopened: ${
+            errorMessage(error)
+          }`,
       );
     }
-    if (raw === undefined) {
+    if (reopened.reference.fingerprint !== decisionParams.sourceFingerprint) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Proof case "${caseId}" is not in the server-side catalog. ` +
-          "Add it to config/mechanical-proof-cases/catalog.json and its JSON file.",
-      );
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        `Proof case "${caseId}" is not valid JSON.`,
+        "The signed caseRef fingerprint does not match the reopened source capture.",
       );
     }
 
-    let validatedCase: MechanicalProofCase;
-    try {
-      validatedCase = validateMechanicalProofCase(parsed);
-    } catch (error) {
+    const current = selectCurrentThreadTip(project.threadSnapshots);
+    if (current.status !== "ok") {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `Proof case "${caseId}" failed validation: ${errorMessage(error)}`,
+        `The unique current Thread tip could not be selected: ${current.diagnostic.message}`,
+      );
+    }
+    const basis = requireBasis(run);
+    if (
+      current.basis.snapshotId !== basis.snapshotId ||
+      current.basis.revision !== basis.revision ||
+      current.basis.subjectId !== basis.subjectId
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `The run basis is not the unique current Thread tip (${current.basis.snapshotId} r${current.basis.revision}). The signed proof source cannot be recrossed against a stale tip.`,
+      );
+    }
+    const snapshot = await this.#snapshots.get(basis.snapshotId);
+    if (!snapshot) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The unique current Thread tip snapshot is unavailable.",
       );
     }
 
-    // Canonical text + digest. validateMechanicalProofCase sorts requirements
-    // deterministically; the digest is stable for the same logical proof case.
+    const recrossed = await recrossMechanicalProofCaseFromSource({
+      source: reopened.source,
+      projectId: project.project.id,
+      snapshot,
+      geometryCaptures: this.#geometryCaptures,
+      stepAssets: this.#canonicalAssetReader,
+    });
+    if (recrossed.status !== "ok") {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        recrossed.diagnostics.map((item) => item.message).join(" ") ||
+          "The captured proof source could not be recrossed against the current Thread tip.",
+      );
+    }
+    const validatedCase = recrossed.proofCase;
+    if (validatedCase.id !== decisionParams.id) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Recrossed proof case id "${validatedCase.id}" does not match the signed MRTR id "${decisionParams.id}".`,
+      );
+    }
+    if (validatedCase.authorization.workItemId !== run.workItemId) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Derived workItemId "${validatedCase.authorization.workItemId}" does not match the run work item "${run.workItemId}".`,
+      );
+    }
+
     const proofText = canonicalProofText(validatedCase);
     const proofFp = await sha256Fingerprint(validatedCase);
     const proofDigest = proofFp.digest;
 
-    // Assert the MRTR-signed proofDigest matches the computed one.
     if (decisionParams.proofDigest !== proofDigest) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
         `Proof case digest divergence: the MRTR signed proofDigest ` +
           `"${decisionParams.proofDigest.slice(0, 16)}…" does not match the ` +
-          `computed digest "${proofDigest.slice(0, 16)}…" of case "${caseId}".`,
+          `computed digest "${
+            proofDigest.slice(0, 16)
+          }…" of case "${validatedCase.id}".`,
       );
     }
 
-    // Cross-check every MRTR field against the live MechanicalProofCase.
     try {
       verifyFeaProofParametersMatchCase(decisionParams, validatedCase);
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `FEA proof MRTR parameters diverge from the live case: ${errorMessage(error)}`,
+        `FEA proof MRTR parameters diverge from the recrossed case: ${
+          errorMessage(error)
+        }`,
       );
     }
 

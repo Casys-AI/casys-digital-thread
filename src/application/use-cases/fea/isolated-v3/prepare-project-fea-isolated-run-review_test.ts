@@ -217,7 +217,7 @@ async function harness(options: { readonly omitStep?: boolean } = {}) {
   const proofCase = validateMechanicalProofCase(
     JSON.parse(
       await Deno.readTextFile(
-        "config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
+        "src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
       ),
     ),
   );

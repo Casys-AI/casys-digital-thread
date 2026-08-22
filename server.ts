@@ -953,6 +953,7 @@ async function createProjectControl(
       architectureSysmlPreview: architectureFoundation.architectureSysmlPreview,
       briefArchitectureReview: architectureProject.briefArchitectureReview,
       briefRequirementsReview: architectureProject.briefRequirementsReview,
+      feaProofCaseCapture: feaProject.feaProofCaseCapture,
       feaProofSealReview: feaProject.feaProofSealReview,
       feaIsolatedRunReview: feaProject.feaIsolatedRunReview,
       evaluationCloseoutReview: feaProject.staticMechanicalEvaluationCloseoutReview,

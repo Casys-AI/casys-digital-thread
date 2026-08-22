@@ -2,32 +2,34 @@
 
 Audience: both · Diátaxis: reference · Kind: inventory
 
-HEAD inventory of catalogued mechanical proof declarations, CalculiX isolated I/O, and
-the fixed local runtime. It does not invent a limit. Status words: **enforced**,
-**physical-only**, **unbounded**, **needs decision**.
+HEAD inventory of captured mechanical proof sources, compiled declarations, CalculiX
+isolated I/O, and the fixed local runtime. It does not invent a limit. Status words:
+**enforced**, **physical-only**, **unbounded**, **needs decision**.
 
-A case label or past result never selects a solver deck. Missing or ambiguous catalog
-matches stay `catalog-absent` or `catalog-ambiguous`.
+A case label or past result never selects a solver deck. Missing or unreadable source
+captures stay `source-absent` or `source-corrupt`. Unique CAD/STEP ambiguity stays
+`cad-lineage-ambiguous` or `step-ambiguous`.
 
-Sibling contracts: [mechanical proof case V1](mechanical-proof-case-v1.md),
+Sibling contracts: [mechanical proof-case source](mechanical-proof-case-source.md),
+[mechanical proof case V1](mechanical-proof-case-v1.md),
 [CalculiX static proof V3](calculix-static-proof-v3.md). Shared isolation:
 [isolation and Thread boundedness](../../runtime/isolation-and-thread-boundedness.md).
 
-## Catalog and declaration
+## Source and declaration
 
-Catalog reader:
-[`file-catalogued-mechanical-proof-case-reader.ts`](../../../../src/adapters/fea/seal-case/file-catalogued-mechanical-proof-case-reader.ts)
-(`mechanical-proof-case-catalog/1.0` at `config/mechanical-proof-cases/`). Declaration:
+Public capture:
+[`project_fea_proof_case_capture`](../../../../src/tools/project-control/fea-review-tools.ts)
+(`mechanical-proof-case-source/1.0`, max 262144 characters). Compiled declaration:
 [`mechanical-proof-case.ts`](../../../../src/domain/fea/seal-case/mechanical-proof-case.ts).
+Historical JSON under `src/testing/fixtures/fea/mechanical-proof-cases/` is
+test/conformance data only. It is not live production authority.
 
 | Surface | Today | Status | Missing value |
 | ------- | ----- | ------ | ------------- |
-| Catalog schema / keys | Exact `{schemaVersion, cases}`; each case `{id, file}` | Enforced | None |
-| Catalog ids | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$` | Enforced (1–256 chars) | None |
-| Catalog paths | Relative `*.json`; no `/` prefix, `\`, empty, `.`, or `..` segments | Enforced | None |
-| Catalog uniqueness | Unique id and unique file; case-file `id` must match manifest | Enforced | None |
-| Catalog entry count | No max | **Unbounded** | Needs a product/storage decision. Not implied by the CalculiX profile. |
-| Catalog / case raw bytes | `Deno.readTextFile` with no byte ceiling | **Unbounded** | Same |
+| Source schema / keys | Exact closed `mechanical-proof-case-source/1.0` | Enforced | None |
+| Source ids | `^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$` | Enforced (1–256 chars) | None |
+| Source capture | Canonical JSON in dedicated draft CAS; fingerprint is SHA-256 of those bytes | Enforced | None |
+| Source raw characters | 262144 | Enforced | None |
 | Supports | Non-empty; unique ids; unique selection names; closed mm boxes; no support/load overlap | Enforced non-empty + unique; **unbounded** upper count | Needs a product/storage decision. Not implied by the nine output roles. |
 | Loads | Same; force is exactly three finite newtons, not all zero | Enforced non-empty + unique + vector length 3; **unbounded** upper count | Same |
 | Requirements | Non-empty; at most the two admitted metrics `maximum-displacement` and `maximum-von-mises-stress`; unique id/name/feature/metric | Enforced 1–2 by metric kind | None |

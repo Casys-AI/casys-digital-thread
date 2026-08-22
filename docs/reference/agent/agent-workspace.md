@@ -180,23 +180,26 @@ records where the value came from; the signing human confirms what it says.
 
 How-to: [Compile brief parameters](../../how-to/compile/compile-brief-parameters.md).
 
-### FEA compilation (catalog / sealed proof → proposal)
+### FEA compilation (captured source / sealed proof → proposal)
 
-| Tool                              | Writes | Grant                                                                                   |
-| --------------------------------- | ------ | --------------------------------------------------------------------------------------- |
-| `project_fea_proof_seal_review`   | None   | `decisionParameters` plus `next.append` / `next.propose` for `verify.seal-proof-case@1` |
-| `project_fea_isolated_run_review` | None   | Isolated `@3` bindings plus guarded hops. `geometry` = canonical part STEP              |
+| Tool                              | Writes         | Grant                                                                                   |
+| --------------------------------- | -------------- | --------------------------------------------------------------------------------------- |
+| `project_fea_proof_case_capture`  | Draft CAS only | `fea-proof-case-source-capture-review/1.0`. Pass `result.reference` only. Grants none   |
+| `project_fea_proof_seal_review`   | None           | `decisionParameters` plus `next.append` / `next.propose` for `verify.seal-proof-case@1` |
+| `project_fea_isolated_run_review` | None           | Isolated `@3` bindings plus guarded hops. `geometry` = canonical part STEP              |
 
-The caller names `projectId`, with optional `caseId`, `basis`, and false-by-default
-`sensitivityCatalogOptIn` on the proof-seal review. Omitted `caseId` / `proofArtifactId`
-/ `basis` are resolved server-side (unique catalog case, unique sealed document, unique
-current Thread tip). That tip is not `latest`. There is no `fea.run.*` grammar: numbers
-stay in the sealed proof; the isolated `@3` run admits thread-entity bindings. A true
+Capture takes only `sourceText` (`mechanical-proof-case-source/1.0`). The seal review
+takes `projectId` + opaque `caseRef.fingerprint` and optional false-by-default
+`sensitivityCatalogOptIn`. The server selects the unique current Thread tip — not
+`latest` — and recrosses unique canonical part STEP, CAD provenance, SysON requirements,
+and derived work/decision identities. There is no `fea.run.*` grammar: numbers stay in
+the sealed proof; the isolated `@3` run admits thread-entity bindings. A true
 sensitivity opt-in is accepted only when the exact admission source matches the proof
 CAD definition and its unique causal lever and `result` bindings join the proof target.
 The same MRTR signs the offer digest and admission artifact. The executor reopens both
 and publishes a separate catalog-offer document derived from the proof and admission; it
-does not invent the still-uncompiled sensitivity step.
+does not invent the still-uncompiled sensitivity step. Production does not select
+preinstalled desk-lamp/dl/CA Git cases.
 
 The result names `selected` (case, digest, STEP, proof document, work item, decision).
 Only an exact current project head also receives `next.append.arguments` /
@@ -207,7 +210,7 @@ requested sensitivity offer without an exact causal join returns `unavailable` o
 The isolated-run proposal restates the compiled identities so the agent does not invent
 solver numbers.
 
-An unknown catalog id, a project or subject mismatch, an absent or ambiguous STEP, or a
+A missing source capture, a project or subject mismatch, an absent or ambiguous STEP, or a
 cad-model offered as `geometry` yields `unresolved` with diagnostics and **no**
 parameters or bindings. `rejectedLookalikes` names the assembly cad-model (and any
 sibling cad-models in one diagnostic) so they are not copied into a later `@3` proposal.

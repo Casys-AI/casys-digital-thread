@@ -30,7 +30,7 @@ import { validateMechanicalProofCase } from "./mechanical-proof-case.ts";
 const PROOF_JSON = JSON.parse(
   await Deno.readTextFile(
     new URL(
-      "../../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
+      "../../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
       import.meta.url,
     ),
   ),
@@ -53,6 +53,8 @@ const REQUIREMENTS_ARTIFACT = {
     digest: "b".repeat(64),
   },
 };
+
+const SOURCE_FINGERPRINT = "1".repeat(64);
 
 /** Return the active parametric proof declaration used by these contract tests. */
 function makeParametricProofCase() {
@@ -138,11 +140,13 @@ Deno.test("encode→parse round-trip is symmetric for the parametric cadSource v
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const map = feaProofDecisionParametersToMap(encoded);
   const parsed = parseFeaProofDecisionParameters(map);
 
   assertEquals(parsed.proofDigest, proofDigest);
+  assertEquals(parsed.sourceFingerprint, SOURCE_FINGERPRINT);
   assertEquals(parsed.schemaVersion, "mechanical-proof-case/1.0");
   assertEquals(parsed.id, proofCase.id);
   assertEquals(parsed.revision, proofCase.revision);
@@ -221,6 +225,7 @@ Deno.test("encode→parse round-trip is symmetric for the imported-or-reconstruc
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const map = feaProofDecisionParametersToMap(encoded);
   const parsed = parseFeaProofDecisionParameters(map);
@@ -287,6 +292,7 @@ Deno.test("parseFeaProofDecisionParameters rejects an unexpected_parameter", () 
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const withExtra = [...encoded, { key: "fea.proof.injected", value: "evil" }];
   const map = feaProofDecisionParametersToMap(withExtra);
@@ -309,6 +315,7 @@ Deno.test("parseFeaProofDecisionParameters rejects a missing_parameter", () => {
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   // Drop the proof digest entry.
   const withoutDigest = encoded.filter((p) => p.key !== "fea.proof.digest");
@@ -332,6 +339,7 @@ Deno.test("parseFeaProofDecisionParameters rejects an invalid_fingerprint", () =
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const withBadFp = encoded.map((p) =>
     p.key === "fea.proof.digest" ? { ...p, value: "not-a-fingerprint" } : p
@@ -356,6 +364,7 @@ Deno.test("verifyFeaProofParametersMatchCase passes when params match the proof 
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const map = feaProofDecisionParametersToMap(encoded);
   const parsed = parseFeaProofDecisionParameters(map);
@@ -372,6 +381,7 @@ Deno.test("verifyFeaProofParametersMatchCase detects a divergent proof id", () =
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const tampered = encoded.map((p) =>
     p.key === "fea.proof.id" ? { ...p, value: "tampered-id" } : p
@@ -395,6 +405,7 @@ Deno.test("verifyFeaProofParametersMatchCase detects a divergent step digest", (
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const tampered = encoded.map((p) =>
     p.key === "fea.proof.step.digest" ? { ...p, value: "0".repeat(64) } : p
@@ -418,6 +429,7 @@ Deno.test("verifyFeaProofParametersMatchCase detects a divergent requirement lim
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   // Tamper the first requirement's limit value.
   const tampered = encoded.map((p) =>
@@ -442,6 +454,7 @@ Deno.test("verifyFeaProofParametersMatchCase detects a divergent cadSource gener
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const tampered = encoded.map((p) =>
     p.key === "fea.proof.cadSource.generator.tool" ? { ...p, value: "evil_tool" } : p
@@ -467,6 +480,7 @@ Deno.test("verifyFeaProofParametersMatchCase passes for the imported-or-reconstr
     proofCase,
     GEOMETRY_ARTIFACT,
     REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
   );
   const map = feaProofDecisionParametersToMap(encoded);
   const parsed = parseFeaProofDecisionParameters(map);

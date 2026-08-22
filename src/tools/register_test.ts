@@ -560,6 +560,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_decision_reject",
     "project_evaluation_closeout_review",
     "project_fea_isolated_run_review",
+    "project_fea_proof_case_capture",
     "project_fea_proof_seal_review",
     "project_isolated_geometry_seal_review",
     "project_led_driver_source_capture",
@@ -627,6 +628,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_decision_reject",
       "project_evaluation_closeout_review",
       "project_fea_isolated_run_review",
+      "project_fea_proof_case_capture",
       "project_fea_proof_seal_review",
       "project_isolated_geometry_seal_review",
       "project_led_driver_source_capture",
@@ -697,7 +699,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     >;
     assertEquals(
       Object.keys(proofSealReviewProperties).sort(),
-      ["basis", "caseId", "projectId", "sensitivityCatalogOptIn"],
+      ["caseRef", "projectId", "sensitivityCatalogOptIn"],
     );
     assertEquals(proofSealReviewProperties.sensitivityCatalogOptIn, {
       type: "boolean",
@@ -881,6 +883,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_architecture_sysml_source_capture" ||
           tool.name === "project_cross_domain_impact_manifest_capture" ||
           tool.name === "project_led_driver_source_capture" ||
+          tool.name === "project_fea_proof_case_capture" ||
           tool.name === "project_technical_compilation_preview" ||
           tool.name === "project_technical_source_capture" ||
           tool.name === "project_work_item_abandon" ||

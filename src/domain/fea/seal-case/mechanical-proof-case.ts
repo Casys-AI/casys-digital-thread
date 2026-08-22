@@ -279,60 +279,10 @@ export function validateMechanicalProofCase(value: unknown): MechanicalProofCase
     "$case.solver.resultSchemaVersion",
   );
 
-  const analysisInput = exactRecord(
-    root.analysis,
-    ["kind", "material", "mesh", "supports", "loads"],
-    "$case.analysis",
-  );
-  literalValue(analysisInput.kind, "linear-static", "$case.analysis.kind");
-  const material = mechanicalMaterial(
-    analysisInput.material,
-    "$case.analysis.material",
-  );
-  const mesh = mechanicalMesh(analysisInput.mesh, "$case.analysis.mesh");
-  const supports = nonEmptyArray(
-    analysisInput.supports,
-    "$case.analysis.supports",
-  ).map((item, index) => fixedSupport(item, `$case.analysis.supports[${index}]`));
-  const loads = nonEmptyArray(analysisInput.loads, "$case.analysis.loads").map(
-    (item, index) => forceLoad(item, `$case.analysis.loads[${index}]`),
-  );
-  rejectDuplicates(supports.map((item) => item.id), "$case.analysis.supports ids");
-  rejectDuplicates(loads.map((item) => item.id), "$case.analysis.loads ids");
-  const selections = [...supports, ...loads].map((item) => item.selection.name);
-  rejectDuplicates(selections, "$case.analysis selection names");
-  rejectSupportLoadSelectionOverlap(supports, loads);
-
-  const requirements = arrayOf(root.requirements, "$case.requirements").map(
-    (item, index) => requirement(item, `$case.requirements[${index}]`),
-  );
-  if (requirements.length === 0) {
-    throw new Error("$case.requirements must not be empty.");
-  }
-  if (requirements.length > REQUIREMENT_ORDER.size) {
-    throw new Error(
-      "$case.requirements may only declare maximum-displacement and/or maximum-von-mises-stress.",
-    );
-  }
-  rejectDuplicates(requirements.map((item) => item.id), "$case.requirements ids");
-  rejectDuplicates(
-    requirements.map((item) => item.name),
-    "$case.requirements names",
-  );
-  rejectDuplicates(
-    requirements.map((item) => item.feature),
-    "$case.requirements features",
-  );
-  rejectDuplicates(
-    requirements.map((item) => item.metric),
-    "$case.requirements metrics",
-  );
-  if (requirements.some((item) => !REQUIREMENT_ORDER.has(item.metric))) {
-    throw new Error("$case.requirements contains an unsupported metric.");
-  }
-  const orderedRequirements = [...requirements].sort(
-    (left, right) =>
-      REQUIREMENT_ORDER.get(left.metric)! - REQUIREMENT_ORDER.get(right.metric)!,
+  const analysis = parseMechanicalProofAnalysis(root.analysis, "$case.analysis");
+  const orderedRequirements = parseMechanicalProofRequirements(
+    root.requirements,
+    "$case.requirements",
   );
 
   return deepFreeze({
@@ -380,15 +330,78 @@ export function validateMechanicalProofCase(value: unknown): MechanicalProofCase
       root.expectedCadArtifact,
       "$case.expectedCadArtifact",
     ),
-    analysis: {
-      kind: "linear-static",
-      material,
-      mesh,
-      supports,
-      loads,
-    },
+    analysis,
     requirements: orderedRequirements,
   });
+}
+
+/** Closed linear-static analysis vocabulary shared with the agent source document. */
+export function parseMechanicalProofAnalysis(
+  value: unknown,
+  path = "$case.analysis",
+): MechanicalProofCase["analysis"] {
+  const analysisInput = exactRecord(
+    value,
+    ["kind", "material", "mesh", "supports", "loads"],
+    path,
+  );
+  literalValue(analysisInput.kind, "linear-static", `${path}.kind`);
+  const material = mechanicalMaterial(
+    analysisInput.material,
+    `${path}.material`,
+  );
+  const mesh = mechanicalMesh(analysisInput.mesh, `${path}.mesh`);
+  const supports = nonEmptyArray(
+    analysisInput.supports,
+    `${path}.supports`,
+  ).map((item, index) => fixedSupport(item, `${path}.supports[${index}]`));
+  const loads = nonEmptyArray(analysisInput.loads, `${path}.loads`).map(
+    (item, index) => forceLoad(item, `${path}.loads[${index}]`),
+  );
+  rejectDuplicates(supports.map((item) => item.id), `${path}.supports ids`);
+  rejectDuplicates(loads.map((item) => item.id), `${path}.loads ids`);
+  const selections = [...supports, ...loads].map((item) => item.selection.name);
+  rejectDuplicates(selections, `${path} selection names`);
+  rejectSupportLoadSelectionOverlap(supports, loads, path);
+  return {
+    kind: "linear-static",
+    material,
+    mesh,
+    supports,
+    loads,
+  };
+}
+
+/** Closed requirement vocabulary shared with the agent source document. */
+export function parseMechanicalProofRequirements(
+  value: unknown,
+  path = "$case.requirements",
+): readonly MechanicalRequirement[] {
+  const requirements = arrayOf(value, path).map(
+    (item, index) => requirement(item, `${path}[${index}]`),
+  );
+  if (requirements.length === 0) {
+    throw new Error(`${path} must not be empty.`);
+  }
+  if (requirements.length > REQUIREMENT_ORDER.size) {
+    throw new Error(
+      `${path} may only declare maximum-displacement and/or maximum-von-mises-stress.`,
+    );
+  }
+  rejectDuplicates(requirements.map((item) => item.id), `${path} ids`);
+  rejectDuplicates(requirements.map((item) => item.name), `${path} names`);
+  rejectDuplicates(
+    requirements.map((item) => item.feature),
+    `${path} features`,
+  );
+  rejectDuplicates(requirements.map((item) => item.metric), `${path} metrics`);
+  if (requirements.some((item) => !REQUIREMENT_ORDER.has(item.metric))) {
+    throw new Error(`${path} contains an unsupported metric.`);
+  }
+  return [...requirements].sort(
+    (left, right) =>
+      REQUIREMENT_ORDER.get(left.metric)! - REQUIREMENT_ORDER.get(right.metric)!,
+  );
 }
 
 /**
@@ -569,12 +582,13 @@ function selection(value: unknown, path: string): MechanicalSelection {
 function rejectSupportLoadSelectionOverlap(
   supports: readonly MechanicalFixedSupport[],
   loads: readonly MechanicalForceLoad[],
+  path: string,
 ): void {
   for (const support of supports) {
     for (const load of loads) {
       if (!selectionBoxesOverlap(support.selection, load.selection)) continue;
       throw new Error(
-        `$case.analysis support ${support.id} and load ${load.id} selection boxes must not overlap.`,
+        `${path} support ${support.id} and load ${load.id} selection boxes must not overlap.`,
       );
     }
   }

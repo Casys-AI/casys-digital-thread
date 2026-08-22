@@ -207,7 +207,7 @@ async function proofFor(step: Uint8Array): Promise<MechanicalProofCase> {
   const base = validateMechanicalProofCase(JSON.parse(
     await Deno.readTextFile(
       new URL(
-        "../../../../config/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
+        "../../../../src/testing/fixtures/fea/mechanical-proof-cases/desk-lamp-dl04-arm-cantilever.json",
         import.meta.url,
       ),
     ),

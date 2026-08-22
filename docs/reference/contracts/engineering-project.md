@@ -283,13 +283,14 @@ provider call; history stays readable while current views exclude the retired li
 
 `verify.seal-proof-case@1` seals the human-reviewed mechanical proof case into the
 thread without any provider call. Its signed MRTR proposal carries every consequential
-input in the flat `fea.proof.*` grammar: case ID, digest, geometry and requirements
-artifact identities, target model element, STEP byte count, and material constants. The
-executor resolves that id through the server-owned
-`config/mechanical-proof-cases/catalog.json` manifest — the agent never supplies a
-path or raw case bytes — validates the JSON against `mechanical-proof-case/1.0`,
-computes `canonicalProofText` and its SHA-256, and fails
-immediately if the MRTR-signed digest diverges. It then verifies the geometry artifact
+input in the flat `fea.proof.*` grammar: source fingerprint, case ID, digest, geometry
+and requirements artifact identities, target model element, STEP byte count, and
+material constants. The executor reopens the exact signed
+`mechanical-proof-case-source/1.0` capture — the agent never supplies a path, catalog
+id or raw compiled case bytes — recrosses the unique current Thread tip, validates the
+compiled JSON against `mechanical-proof-case/1.0`, computes `canonicalProofText` and
+its SHA-256, and fails immediately if the MRTR-signed digest diverges. It then verifies
+the geometry artifact
 by kind, fingerprint, and `geometry-capture/2.0` schema, confirms the target
 `PartDefinition` model element in that capture, re-reads the requirements-capture to
 confirm the authoritative tip matches the MRTR-signed artifact, and checks every proof
@@ -600,9 +601,9 @@ and architecture checks; for v2, the manifest must cover every captured PartUsag
 every distinct targeted PartDefinition. The provider execution occurred earlier in the
 isolated preview boundary. `record.archive-lineage@1` runs the governed retirement
 cascade with no provider call, gated by a human-approved decision sealing the exact
-thread-entity targets. `verify.seal-proof-case@1` resolves the reviewed proof
-case by id through the versioned `config/mechanical-proof-cases/catalog.json` manifest,
-cross-checks the MRTR-signed digest and every parameter against the canonical bytes,
+thread-entity targets. `verify.seal-proof-case@1` reopens the exact signed proof-case
+source capture, recrosses the unique current Thread tip, cross-checks the MRTR-signed
+digest and every parameter against the canonical bytes,
 verifies geometry and requirements-tip links in the basis, and publishes the
 content-addressed mandate with no provider call.
 `verify.run-fea-static-proof@3` is the registered isolated CalculiX run after that seal.

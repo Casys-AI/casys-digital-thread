@@ -3,16 +3,16 @@
 Audience: both · Diátaxis: reference · Kind: scope
 
 This is the product surface currently admitted by the FEA bounded context. A native
-CalculiX feature, a row in a Git catalog, or a successful local experiment is not a
-product capability by itself.
+CalculiX feature, a historical Git fixture row, or a successful local experiment is not
+a product capability by itself.
 
 ## Current surface
 
 | Surface     | Current product boundary                                                                                                                                |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Declaration | `mechanical-proof-case/1.0`: one reviewed linear-static part proof with the V1 material, mesh, support, load, and criterion vocabulary.                 |
-| Catalog     | Versioned `mechanical-proof-case-catalog/1.0` Git manifest plus one validated JSON declaration per case.                                                |
-| Seal        | `verify.seal-proof-case@1` rereads the exact declaration, Thread joins, and signed seal MRTR, then publishes a proof document without calling a solver. |
+| Source      | `mechanical-proof-case-source/1.0`: agent-authored linear-static intent. Public capture is `project_fea_proof_case_capture`.                            |
+| Declaration | Compiled `mechanical-proof-case/1.0`: server recross of Thread STEP, CAD provenance, SysON requirements, and derived identities.                       |
+| Seal        | `verify.seal-proof-case@1` rereads the exact source capture, Thread joins, and signed seal MRTR, then publishes a proof document without calling a solver. |
 | Run         | `verify.run-fea-static-proof@3` rereads that sealed proof and the exact canonical part STEP, then uses the fixed isolated Gmsh/CalculiX profile.        |
 | Result      | Evidence, declared criterion observations, and separately captured SysON constraint evaluations on the exact proof/STEP lineage.                        |
 | Closeout    | `project_evaluation_closeout_review` then `decide.accept-evaluation-closeout@1` / `decide.reject-evaluation-closeout@1` record a human L5 over that exact `@3` branch. Accept is offered only when every L4 criterion is literal `pass`. An L4 `pass` is never L5. How-to: [review static-mechanical closeout](../../../how-to/behave/review-static-mechanical-closeout.md). |
@@ -31,10 +31,12 @@ product capability by itself.
 | Criteria | Maximum displacement and/or maximum von Mises stress                                      |
 | Verdict  | SysON constraint oracle evaluates declared criteria; solver output alone is not a verdict |
 
-The detailed declaration and execution contracts remain
+The detailed source, declaration and execution contracts remain
+[Mechanical proof-case source](mechanical-proof-case-source.md),
 [Mechanical proof case V1](mechanical-proof-case-v1.md) and
 [CalculiX static proof V3](calculix-static-proof-v3.md). The historical `@1` and `@2`
-MCP FEA operations are not registered product alternatives.
+MCP FEA operations are not registered product alternatives. Preinstalled desk-lamp, dl,
+CA or cantilever Git cases are not live production authority.
 
 ## Outside the current surface
 
@@ -56,11 +58,11 @@ MCP FEA operations are not registered product alternatives.
   `decide.accept-cross-domain-impact@1`. It is not X10 and not a CalculiX rerun.
   Operator walk: [walk cross-domain impact judgement](../../../how-to/behave/walk-cross-domain-impact-judgement.md).
 
-## Candidates are not catalog rows
+## Candidates are not fixture rows
 
 Future method candidates may include another analysis family, another material model,
 another element formulation, or a new requirement metric. They remain candidates until
-they pass the [extension runbook](../../../how-to/extend/fea-surface.md). Adding a JSON
-case and manifest entry is sufficient only when it stays entirely inside the current
-declaration schema, MRTR grammar, qualified lowering, worker contract, output
+they pass the [extension runbook](../../../how-to/extend/fea-surface.md). Capturing a
+JSON source is sufficient only when it stays entirely inside the current source schema,
+compiled declaration, MRTR grammar, qualified lowering, worker contract, output
 validation, and oracle projection.

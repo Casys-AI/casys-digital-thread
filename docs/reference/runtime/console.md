@@ -92,7 +92,8 @@ not grant MRTR or provider authority. Full grants:
 | `project_isolated_geometry_seal_review`     | Read           | MRTR parameters for `design.seal-isolated-geometry@1`. No STEP bytes                                                       |
 | `project_modelica_qualified_kit_run_review` | Read           | MRTR parameters for the one local Modelica kit                                                                             |
 | `project_admitted_modelica_run_review`      | Read           | MRTR parameters for `simulate.run-admitted-modelica@1`. No Modelica text                                                   |
-| `project_fea_proof_seal_review`             | Read           | `fea.proof.*` plus paste-ready `next.append` / `next.propose` for the seal                                                 |
+| `project_fea_proof_case_capture`            | Draft CAS      | Exact `mechanical-proof-case-source/1.0` JSON. Pass `result.reference` only                                                |
+| `project_fea_proof_seal_review`             | Read           | Opaque source fingerprint → `fea.proof.*` plus paste-ready `next.append` / `next.propose` for the seal                     |
 | `project_fea_isolated_run_review`           | Read           | Isolated `@3` bindings plus paste-ready hops; geometry is STEP, never cad-model                                            |
 | `project_sensitivity_study_seal_review`     | Read           | `sensitivity.case.*` plus paste-ready hops; `cadSource` is an admission, never STEP. `desk-lamp-dl06` is `catalog-absent`. |
 | `project_geometry_preview`                  | None           | Not registered. Canonical drafts come from `project_admitted_geometry_export`                                              |

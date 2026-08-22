@@ -725,12 +725,10 @@ const OPERATIONS = [
   /**
    * FEA proof-case seal — trusted executor `verify.seal-proof-case@1`.
    *
-   * Turns a reviewed authoring JSON (mechanical-proof-case/1.0, resolved through
-   * the server-owned mechanical proof-case catalog — the agent never supplies a
-   * path) into a content-addressed Thread artifact: the execution authority for
-   * any later FEA run. The signed MRTR parameters spell out every consequential
-   * input in clear text; the executor recrosses each one against the canonical
-   * proof bytes. No provider is called.
+   * Reopens the exact captured mechanical-proof-case-source/1.0, recrosses the
+   * unique current Thread tip, and publishes a content-addressed
+   * mechanical-proof-case/1.0 Thread artifact. The agent never supplies a
+   * catalog id, path, provider, tool or runtime. No provider is called.
    */
   {
     id: "verify.seal-proof-case",
@@ -739,10 +737,10 @@ const OPERATIONS = [
     allowedBasisKinds: ["thread-snapshot"],
     title: "Seal the reviewed FEA proof case into the evidence thread",
     description:
-      "Resolve the reviewed proof-case JSON through the server-owned catalog, verify the " +
-      "operator-signed digest and every clear-text parameter against the canonical bytes, " +
-      "prove the geometry, STEP and requirements-tip links against the basis snapshot, and " +
-      "publish the content-addressed proof-case artifact. No provider is called.",
+      "Reopen the exact signed proof-case source capture, recross unique canonical " +
+      "part STEP, CAD provenance and SysON requirements against the current Thread tip, " +
+      "verify the operator-signed digest and every clear-text parameter, and publish " +
+      "the content-addressed proof-case artifact. No provider is called.",
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
