@@ -250,11 +250,12 @@ async function publishedFixture(options: {
 async function buildFrom(
   fixture: Awaited<ReturnType<typeof publishedFixture>>,
   receipt = fixture.receipt,
+  executionRunId = "admitted-modelica-run",
 ) {
   return await buildAdmittedModelicaPublishedOutputCapture({
     projectId: "project.ramp",
     agentRunId: "run.admitted",
-    executionRunId: "admitted-modelica-run",
+    executionRunId,
     admission: fixture.admission,
     sourceBytes: fixture.sourceBytes,
     sourceSha256: fixture.sourceSha256,
@@ -309,6 +310,15 @@ Deno.test("published output evidence rejects journaled hash mismatch and extra o
     () => buildFrom(extra),
     TypeError,
     "must publish evidence.json and result.csv",
+  );
+});
+
+Deno.test("published output evidence rejects executionRunId drift from the receipt run", async () => {
+  const fixture = await publishedFixture();
+  await assertRejects(
+    () => buildFrom(fixture, fixture.receipt, "admitted-modelica-foreign"),
+    TypeError,
+    "does not match the isolated receipt run",
   );
 });
 

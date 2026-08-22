@@ -223,22 +223,37 @@ export async function validateModelicaAdmittedExecutionCapture(
     SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version,
     `${path}.operation.version`,
   );
+  const projectId = safeId(root.projectId, `${path}.projectId`);
+  const agentRunId = safeId(root.agentRunId, `${path}.agentRunId`);
+  const executionRunId = nonEmptyText(root.executionRunId, `${path}.executionRunId`);
+  const admission = validateModelicaAdmittedRunAdmission(
+    root.admission,
+    `${path}.admission`,
+  );
+  const sourceSha256 = sha256Hex(root.sourceSha256, `${path}.sourceSha256`);
+  const receipt = await validateIsolatedCodeExecutionReceiptRecord(root.receipt);
+  const modelName = safeId(root.modelName, `${path}.modelName`);
+  const scenario = parseScenario(root.scenario, `${path}.scenario`);
+  const parameters = parseParameters(root.parameters, `${path}.parameters`);
+  const metrics = parseMetrics(root.metrics, `${path}.metrics`);
+  if (executionRunId !== receipt.runId) {
+    throw new TypeError(
+      `${path}.executionRunId does not match the isolated receipt run.`,
+    );
+  }
   return deepFreeze({
     schemaVersion: MODELICA_ADMITTED_EXECUTION_CAPTURE_SCHEMA,
     operation: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
-    projectId: safeId(root.projectId, `${path}.projectId`),
-    agentRunId: safeId(root.agentRunId, `${path}.agentRunId`),
-    executionRunId: nonEmptyText(root.executionRunId, `${path}.executionRunId`),
-    admission: validateModelicaAdmittedRunAdmission(
-      root.admission,
-      `${path}.admission`,
-    ),
-    sourceSha256: sha256Hex(root.sourceSha256, `${path}.sourceSha256`),
-    receipt: await validateIsolatedCodeExecutionReceiptRecord(root.receipt),
-    modelName: safeId(root.modelName, `${path}.modelName`),
-    scenario: parseScenario(root.scenario, `${path}.scenario`),
-    parameters: parseParameters(root.parameters, `${path}.parameters`),
-    metrics: parseMetrics(root.metrics, `${path}.metrics`),
+    projectId,
+    agentRunId,
+    executionRunId,
+    admission,
+    sourceSha256,
+    receipt,
+    modelName,
+    scenario,
+    parameters,
+    metrics,
   });
 }
 
