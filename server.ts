@@ -42,6 +42,8 @@ import { BriefSourceAnalysisCaptureService } from "./src/adapters/compile/captur
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "./src/adapters/architecture/agent-seal/model-seal-architecture-sysml-run-executor.ts";
 import type { Build123dExecutionServerOptions } from "./src/adapters/cad/isolated/build123d-execution-composition.ts";
 import type { AdmittedModelicaExecutionServerOptions } from "./src/adapters/modelica/admitted/execution-composition.ts";
+import type { AdmittedSpiceExecutionServerOptions } from "./src/adapters/electrical/spice/admitted/execution-composition.ts";
+import { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE } from "./src/adapters/electrical/spice/admitted/local-image-references.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "./src/adapters/cad/sealed-isolated/design-seal-isolated-geometry-run-executor.ts";
 import type { ModelicaIsolatedExecutionServerOptions } from "./src/adapters/modelica/qualified-kit/execution-composition.ts";
 import type { CalculixIsolatedExecutionServerOptions } from "./src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
@@ -82,6 +84,7 @@ import { COMPILE_SEAL_ADMISSION_OPERATION } from "./src/adapters/compile/executo
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "./src/adapters/cad/isolated/design-execute-build123d-run-executor.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "./src/adapters/modelica/qualified-kit/run-executor.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "./src/adapters/modelica/admitted/run-executor.ts";
+import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "./src/adapters/electrical/spice/admitted/run-executor.ts";
 import { ExportVolumeGeometryStager } from "./src/adapters/make/printability/export-volume-geometry-stager.ts";
 import { ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION } from "./src/adapters/sensitivity/study/analyze-seal-sensitivity-study-run-executor.ts";
 import { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION } from "./src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts";
@@ -168,6 +171,18 @@ import {
 import { createRecordedOperationPlanComposition } from "./src/adapters/compile/plans/server-composition.ts";
 import { createLedDriverSourceComposition } from "./src/adapters/electrical/led-driver/server-composition.ts";
 import {
+  createAdmittedSpiceCapability,
+  createAdmittedSpiceProject,
+} from "./src/adapters/electrical/spice/admitted/server-composition.ts";
+import {
+  createElectricalMethodSheetJoin,
+  createElectricalProject,
+  DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
+  VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION,
+  VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
+} from "./src/adapters/electrical/server-composition.ts";
+import {
   createCalculixCapability,
   createFeaFoundation,
   createFeaProject,
@@ -245,6 +260,7 @@ export const LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE =
   "casys/modelica-microsandbox-worker@sha256:d25f220287cd8d1713e9e7d773afb8bb867fc5404a112e5e50ffa2e862fd6fdf" as const;
 export const LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE =
   "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2" as const;
+export { LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE };
 const LOCAL_CALCULIX_WRAPPER_SHA256 =
   "507c29da72e346aa87465ce96572b19b42e96105c64b2854be73d6894592e4e2";
 const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
@@ -310,6 +326,29 @@ const LOCAL_ADMITTED_MODELICA_EXECUTION_POLICY_BODY = Object.freeze({
   workerUser: "65532:65532",
   fixedExecutables: ["omc", "perl"],
   limits: LOCAL_MODELICA_EXECUTION_LIMITS,
+});
+
+const LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS = Object.freeze({
+  maxWallTimeMs: 30_000,
+  maxCpuTimeMs: 25_000,
+  maxMemoryBytes: 512 * 1_048_576,
+  maxProcesses: 16,
+  maxStdoutBytes: 65_536,
+  maxStderrBytes: 65_536,
+  maxOutputFileBytes: 262_144,
+  maxOutputTotalBytes: 524_288,
+});
+
+const LOCAL_ADMITTED_SPICE_EXECUTION_POLICY_BODY = Object.freeze({
+  schemaVersion: "spice-admitted-microsandbox-policy/1.0",
+  backend: "microsandbox-local@0.6.8",
+  imageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
+  network: "deny-all",
+  pullPolicy: "never",
+  securityProfile: "restricted",
+  workerUser: "65532:65532",
+  fixedExecutables: ["ngspice"],
+  limits: LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS,
 });
 
 const LOCAL_CALCULIX_EXECUTION_LIMITS = Object.freeze({
@@ -422,6 +461,12 @@ export interface CreateConsoleServerOptions {
    * Distinct from the pinned kit. Omitted means no review tool and no executor.
    */
   admittedModelicaExecution?: AdmittedModelicaExecutionServerOptions;
+  /**
+   * Admitted SPICE closed-subset profile and optional isolated runtime.
+   * Distinct from mcp-spice and the LED-driver fiche. Omitted means no review
+   * tool and no executor.
+   */
+  admittedSpiceExecution?: AdmittedSpiceExecutionServerOptions;
   /** Local CalculiX profile; product execution additionally requires SysON. */
   calculixIsolatedExecution?: CalculixIsolatedExecutionServerOptions;
 }
@@ -481,7 +526,7 @@ export async function createConsoleServer(
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const instructions = baseInstructions +
     (approvalMode.kind === "local-yolo"
-      ? " Explicit local YOLO startup opt-in is active: positive project_brief_confirm and project_decision_approve calls auto-confirm through the canonical human command services with a persisted local-yolo origin and rationale, without fabricating MCP elicitation responses. Rejection, cancellation, supersession and human-only execution still require interactive signed MRTR elicitation."
+      ? " Explicit local YOLO startup opt-in is active: positive project_brief_confirm, project_decision_approve, project_agent_run_cancel, and human-only project_agent_run_execute calls auto-confirm through the canonical human command services or the same registered runExecutor with a persisted local-yolo origin, without fabricating MCP elicitation responses. Rejection and supersession still require interactive signed MRTR elicitation."
       : "");
   const app = new McpApp({
     name: "casys-digital-thread-console",
@@ -643,6 +688,10 @@ async function createProjectControl(
     admittedModelicaExecution: options.admittedModelicaExecution,
     recordedAnalysisDirectory,
   });
+  const admittedSpice = await createAdmittedSpiceCapability({
+    admittedSpiceExecution: options.admittedSpiceExecution,
+    recordedAnalysisDirectory,
+  });
   const calculixCapability = await createCalculixCapability({
     calculixIsolatedExecution: options.calculixIsolatedExecution,
     recordedAnalysisDirectory,
@@ -796,6 +845,27 @@ async function createProjectControl(
   });
   const electrical = createLedDriverSourceComposition({
     recordedAnalysisDirectory,
+  });
+  const spiceProject = createAdmittedSpiceProject({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: build123dThreadSnapshots,
+    lease,
+    recordedAnalysisDirectory,
+    admissions: compilationFoundation.technicalCompilationAdmissions,
+    admitted: admittedSpice,
+  });
+  const electricalMethodSheets = createElectricalMethodSheetJoin({
+    recordedAnalysisDirectory,
+  });
+  const electricalProject = createElectricalProject({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: build123dThreadSnapshots,
+    lease,
+    recordedAnalysisDirectory,
+    methodSheets: electricalMethodSheets,
+    spiceCaptures: admittedSpice.captures,
   });
 
   const baseline = new ApprovedBriefBaselineRunExecutor({
@@ -976,6 +1046,13 @@ async function createProjectControl(
       crossDomainImpactDecisionReview: impactProject.crossDomainImpactDecisionReview,
       ledDriverSourceCapture: electrical.ledDriverSourceCapture,
       ledDriverSourceReview: electrical.ledDriverSourceReview,
+      admittedSpiceRunReview: spiceProject.admittedSpiceRunReview,
+      electricalObservationMethodSheetSealReview:
+        electricalProject.electricalObservationMethodSheetSealReview,
+      admittedSpiceEvaluationReview:
+        electricalProject.admittedSpiceEvaluationReview,
+      admittedSpiceEvaluationCloseoutReview:
+        electricalProject.admittedSpiceEvaluationCloseoutReview,
       ...composePrivateBuild123dGeometrySurfaces(
         build123dSandboxMcpUrl,
         cadProject.geometrySourceAnalysis,
@@ -1061,6 +1138,28 @@ async function createProjectControl(
             executor: modelicaProject.simulateRunAdmittedModelica,
             unavailableMessage:
               "The server has no admitted Modelica closed-subset isolated runtime configured for this run.",
+          },
+          {
+            operation: SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+            executor: spiceProject.simulateRunAdmittedSpice,
+            unavailableMessage:
+              "The server has no admitted SPICE closed-subset isolated runtime configured for this run.",
+          },
+          {
+            operation: VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
+            executor: electricalProject.verifySealElectricalObservationMethodSheet,
+          },
+          {
+            operation: VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION,
+            executor: electricalProject.verifyEvaluateAdmittedSpiceObservations,
+          },
+          {
+            operation: DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
+            executor: electricalProject.decideAdmittedSpiceEvaluation,
+          },
+          {
+            operation: DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
+            executor: electricalProject.decideAdmittedSpiceEvaluation,
           },
           {
             operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
@@ -1212,6 +1311,9 @@ if (import.meta.main) {
     admittedModelicaExecution: localExecution
       ? await createLocalAdmittedModelicaExecutionServerOptions()
       : undefined,
+    admittedSpiceExecution: localExecution
+      ? await createLocalAdmittedSpiceExecutionServerOptions()
+      : undefined,
     calculixIsolatedExecution: localExecution
       ? await createLocalCalculixIsolatedExecutionServerOptions()
       : undefined,
@@ -1231,7 +1333,7 @@ if (import.meta.main) {
       }
       if (localExecution) {
         console.error(
-          `LOCAL EXECUTION ACTIVE: qualified Build123d, Modelica kit, admitted Modelica, and CalculiX runs use ${LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE}, and ${LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE} through the attached local Microsandbox backend; CalculiX publication still requires the SysON oracle.`,
+          `LOCAL EXECUTION ACTIVE: qualified Build123d, Modelica kit, admitted Modelica, admitted SPICE, and CalculiX runs use ${LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE}, ${LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE}, and ${LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE} through the attached local Microsandbox backend; CalculiX publication still requires the SysON oracle.`,
         );
       }
       if (!projectToolsEnabled) {
@@ -1363,6 +1465,27 @@ export async function createLocalAdmittedModelicaExecutionServerOptions(): Promi
       imageReference: LOCAL_ADMITTED_MODELICA_EXECUTION_IMAGE_REFERENCE,
       policy,
       limits: LOCAL_MODELICA_EXECUTION_LIMITS,
+    }),
+    runtime: Object.freeze({}),
+  });
+}
+
+/** Code-owned binding for admitted SPICE closed-subset operating-point execution. */
+export async function createLocalAdmittedSpiceExecutionServerOptions(): Promise<
+  AdmittedSpiceExecutionServerOptions
+> {
+  const policy = Object.freeze({
+    id: "spice-admitted-microsandbox-deny-all-v1",
+    version: "1.0.0",
+    fingerprint: await sha256Fingerprint(
+      LOCAL_ADMITTED_SPICE_EXECUTION_POLICY_BODY,
+    ),
+  });
+  return Object.freeze({
+    profile: Object.freeze({
+      imageReference: LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE,
+      policy,
+      limits: LOCAL_ADMITTED_SPICE_EXECUTION_LIMITS,
     }),
     runtime: Object.freeze({}),
   });

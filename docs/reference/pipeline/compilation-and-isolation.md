@@ -2,12 +2,12 @@
 
 Audience: agent · Diátaxis: reference · Kind: contract
 
-Product admission compiler, reusable isolation spine, and the CAD / Modelica / CalculiX
-verticals. Capture → MRTR → dispatch spine stays on
+Product admission compiler, reusable isolation spine, and the CAD / Modelica / SPICE /
+CalculiX verticals. Capture → MRTR → dispatch spine stays on
 [the authority pipeline](analysis-authority-pipeline.md). Recurrent admitted-source
 pattern: [admitted source isolated execution](admitted-source-isolated-execution.md).
-File census: [workspace source map](../runtime/workspace-source-map.md).
-Isolated output counts, WAL generations, and Thread collection cardinality:
+File census: [workspace source map](../runtime/workspace-source-map.md). Isolated output
+counts, WAL generations, and Thread collection cardinality:
 [isolation and Thread boundedness](../runtime/isolation-and-thread-boundedness.md).
 
 ## Product admission compiler boundary
@@ -62,8 +62,8 @@ exact reread SysML basis + captured native source + explicit bindings
 The sealed compilation is reviewed engineering input, not a transport envelope. A
 specialized, code-owned backend adapter remains responsible for lowering it immediately
 before execution and for capturing what the provider actually observed. Build123d,
-Modelica and CalculiX consequently keep distinct method and evidence contracts even when
-they consume projections from the same compilation.
+Modelica, circuit-only SPICE and CalculiX consequently keep distinct method and evidence
+contracts even when they consume projections from the same compilation.
 
 ### Reusable substrate versus first vertical
 

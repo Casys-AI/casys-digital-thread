@@ -28,19 +28,22 @@ import {
   FileCaptureStore,
   THERMAL_METHOD_SHEET_CAPTURE_DESCRIPTOR,
 } from "../shared/cas/file-capture-store.ts";
-import { FileIsolatedOutputCas } from "../shared/cas/file-isolated-output-cas.ts";
+import {
+  FileIsolatedOutputCas,
+  isolatedOutputCasObjectStore,
+} from "../shared/cas/file-isolated-output-cas.ts";
 import { HttpMcpToolClient } from "../shared/mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import {
-  createAdmittedModelicaExecutionComposition,
   type AdmittedModelicaExecutionComposition,
   type AdmittedModelicaExecutionServerOptions,
+  createAdmittedModelicaExecutionComposition,
 } from "./admitted/execution-composition.ts";
 import { FileAdmittedModelicaExecutionAttemptStore } from "./admitted/file-execution-attempt-store.ts";
 import {
+  type AdmittedModelicaExecutionCaptureStore,
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
   SimulateRunAdmittedModelicaRunExecutor,
-  type AdmittedModelicaExecutionCaptureStore,
 } from "./admitted/run-executor.ts";
 import { FileAdmittedObservationEvidenceReader } from "./evaluation/file-admitted-observation-evidence-reader.ts";
 import { FileAdmittedObservationEvaluationAttemptStore } from "./evaluation/file-admitted-observation-evaluation-attempt-store.ts";
@@ -72,17 +75,17 @@ import { CaptureBackedThermalMethodSheetCompilationJoin } from "./thermal-method
 import { FileThermalMethodSheetSourceCaptureReader } from "./thermal-method-sheet/file-thermal-method-sheet-source-capture-reader.ts";
 import { FileThermalMethodSheetStore } from "./thermal-method-sheet/file-thermal-method-sheet-store.ts";
 import {
+  type ThermalMethodSheetSealCaptureStore,
   VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
   VerifySealModelicaThermalMethodSheetRunExecutor,
-  type ThermalMethodSheetSealCaptureStore,
 } from "./thermal-method-sheet/verify-seal-modelica-thermal-method-sheet-run-executor.ts";
 
 export {
+  DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
   SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION,
   VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
-  DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
-  DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
   VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
 };
 
@@ -220,8 +223,7 @@ export async function createAdmittedModelicaCapability(
     );
   const captureBytes = new FileByteStore({
     kind: "modelica-admitted-execution-capture",
-    directory:
-      `${options.recordedAnalysisDirectory}/modelica/admitted/captures`,
+    directory: `${options.recordedAnalysisDirectory}/modelica/admitted/captures`,
     uriNamespace: "modelica-admitted-execution-capture",
     label: "Admitted Modelica execution capture",
   });
@@ -275,18 +277,27 @@ export function createModelicaThermalMethodSheetJoin(
   };
 }
 
+export function createAdmittedObservationEvidenceReader(
+  recordedAnalysisDirectory: string,
+): FileAdmittedObservationEvidenceReader {
+  return new FileAdmittedObservationEvidenceReader(
+    isolatedOutputCasObjectStore(
+      `${recordedAnalysisDirectory}/modelica/admitted/outputs`,
+    ),
+  );
+}
+
 export function createModelicaProject(
   options: ModelicaProjectOptions,
 ): ModelicaProject {
   const sourceCaptures = new FileThermalMethodSheetSourceCaptureReader(
     options.technicalSourceAnalysisCaptures,
   );
-  const thermalMethodSheetSealReview =
-    new PrepareProjectThermalMethodSheetSealReview({
-      sheets: options.thermal.thermalMethodSheets,
-      sourceCaptures,
-      basisResolver: options.basisResolver,
-    });
+  const thermalMethodSheetSealReview = new PrepareProjectThermalMethodSheetSealReview({
+    sheets: options.thermal.thermalMethodSheets,
+    sourceCaptures,
+    basisResolver: options.basisResolver,
+  });
   const verifySealModelicaThermalMethodSheet =
     new VerifySealModelicaThermalMethodSheetRunExecutor({
       projects: options.projects,
@@ -298,14 +309,8 @@ export function createModelicaProject(
       captures: options.thermal.thermalMethodSheetSeals,
       lease: options.lease,
     });
-  const admittedObservationEvidence = new FileAdmittedObservationEvidenceReader(
-    new FileByteStore({
-      kind: "isolated-output",
-      directory:
-        `${options.recordedAnalysisDirectory}/modelica/admitted/outputs`,
-      uriNamespace: "isolated-output",
-      label: "Admitted Modelica isolated output",
-    }),
+  const admittedObservationEvidence = createAdmittedObservationEvidenceReader(
+    options.recordedAnalysisDirectory,
   );
   const admittedObservationEvaluationCaptures =
     new FileAdmittedObservationEvaluationCaptureStore(
@@ -321,6 +326,7 @@ export function createModelicaProject(
       snapshots: options.snapshots,
       methodSheets: options.thermal.thermalMethodSheetCompilationJoin,
       evidence: admittedObservationEvidence,
+      sourceCaptures,
     });
   const admittedModelicaEvaluationCloseoutReview =
     new PrepareProjectAdmittedModelicaEvaluationCloseoutReview({
@@ -337,6 +343,7 @@ export function createModelicaProject(
       snapshots: options.snapshots,
       sheets: options.thermal.thermalMethodSheets,
       evidence: admittedObservationEvidence,
+      sourceCaptures,
       captures: admittedObservationEvaluationCaptures,
       sheetCaptures: options.thermal.thermalMethodSheetSeals,
       attempts: new FileAdmittedObservationEvaluationAttemptStore(
@@ -396,8 +403,7 @@ export function createModelicaProject(
           lease: options.lease,
           runner: options.qualified.isolatedExecution.execution.runner,
           recovery: options.qualified.isolatedExecution.execution.recovery,
-          publications:
-            options.qualified.isolatedExecution.execution.publications,
+          publications: options.qualified.isolatedExecution.execution.publications,
           attempts: new FileModelicaIsolatedExecutionAttemptStore(
             `${options.recordedAnalysisDirectory}/modelica/isolated-execution/attempts`,
           ),
@@ -417,6 +423,7 @@ export function createModelicaProject(
     : new ResolveProjectAdmittedModelicaRunReview({
       projects: options.projects,
       snapshots: options.executionSnapshots,
+      admissions: options.admissions,
       exactReview: exactAdmittedModelicaRunReview,
     });
   const simulateRunAdmittedModelica =

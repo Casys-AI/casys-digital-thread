@@ -4,6 +4,11 @@
  * Identity unit policy only. A unit mismatch is unresolved and is never
  * converted locally. Observation values in the SysON request come from
  * reopened evidence, not from the caller.
+ *
+ * OracleRequirement.id is the exact SysML RequirementUsage / selection
+ * identity. threadRequirementId is the Thread TracedRequirement record id.
+ * They are not interchangeable: SysON is keyed by the SysML id; Thread
+ * evaluations are keyed by the record id.
  */
 
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
@@ -28,6 +33,7 @@ import {
 export interface AdmittedObservationOraclePair {
   readonly selection: AdmittedObservationSelection;
   readonly requirement: OracleRequirement;
+  readonly threadRequirementId: string;
   readonly observation: { readonly value: number; readonly unit: string };
 }
 

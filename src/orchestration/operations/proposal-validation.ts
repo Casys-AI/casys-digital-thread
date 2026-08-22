@@ -73,6 +73,24 @@ import {
   SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
 } from "../../domain/modelica/admitted/run-proposal.ts";
 import {
+  parseSpiceAdmittedRunAdmissionParameters,
+  SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+} from "../../domain/electrical/spice/admitted/run-proposal.ts";
+import {
+  parseElectricalObservationMethodSheetSealParameters,
+  VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
+} from "../../domain/electrical/observation-method-sheet-proposal.ts";
+import {
+  parseSpiceAdmittedObservationEvaluationParameters,
+  VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION,
+} from "../../domain/electrical/spice/evaluation/admitted-observation-evaluation-proposal.ts";
+import {
+  DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
+  parseAcceptAdmittedSpiceEvaluationParameters,
+  parseRejectAdmittedSpiceEvaluationParameters,
+} from "../../domain/electrical/spice/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
+import {
   parseThermalMethodSheetSealParameters,
   VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION,
 } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
@@ -154,6 +172,32 @@ const PROPOSAL_VALIDATORS = new Map<
     (parameters) => {
       parseModelicaAdmittedRunAdmissionParameters(parameters);
     },
+  ],
+  [
+    keyOf(SIMULATE_RUN_ADMITTED_SPICE_OPERATION),
+    (parameters) => {
+      parseSpiceAdmittedRunAdmissionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION),
+    (parameters) => {
+      parseElectricalObservationMethodSheetSealParameters(parameters);
+    },
+  ],
+  [
+    keyOf(VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION),
+    (parameters) => {
+      parseSpiceAdmittedObservationEvaluationParameters(parameters);
+    },
+  ],
+  [
+    keyOf(DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION),
+    parseAcceptAdmittedSpiceEvaluationParameters,
+  ],
+  [
+    keyOf(DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION),
+    parseRejectAdmittedSpiceEvaluationParameters,
   ],
   [
     keyOf(SYSON_MODEL_SEED_OPERATION),

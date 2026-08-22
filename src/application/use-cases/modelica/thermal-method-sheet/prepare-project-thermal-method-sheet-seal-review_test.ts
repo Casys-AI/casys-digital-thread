@@ -178,6 +178,14 @@ class MemorySourceReader implements ThermalMethodSheetSourceCaptureReader {
       fingerprint,
       role: "modelica-model",
       language: "modelica",
+      symbols: [
+        {
+          id: "placeholder-parameter",
+          kind: "parameter",
+          name: "placeholder-parameter",
+        },
+        { id: "placeholder-output", kind: "variable", name: "placeholder-output" },
+      ],
     });
   }
 }

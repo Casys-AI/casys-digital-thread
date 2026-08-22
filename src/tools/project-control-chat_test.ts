@@ -27,9 +27,6 @@ import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 
-type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
-  : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
-  : T;
 const APPROVAL_ID = "approval:airframe-material:proposal-1";
 const COMMON = {
   commandId: "chat-command-1",
@@ -775,7 +772,7 @@ Deno.test("local YOLO auto-approves only positive MRTR decisions through the can
   assertEquals(rejected, []);
 });
 
-Deno.test("local YOLO auto-cancels a queued unclaimed run and still elicits reject and human-only execute", async () => {
+Deno.test("local YOLO auto-cancels a queued unclaimed run", async () => {
   const cancellationApp = new CapturingApp();
   const queued = queuedRunSnapshot();
   const cancellations: Array<{ origin: unknown; command: Record<string, unknown> }> =
@@ -807,32 +804,75 @@ Deno.test("local YOLO auto-cancels a queued unclaimed run and still elicits reje
         "YOLO local startup opt-in auto-approved queued-run cancellation run:queued-before-cancellation without MCP elicitation. Caller rationale: Cancel this queued run.",
     },
   }]);
-
-  const humanOnly = structuredClone(queued) as Mutable<EngineeringProjectSnapshot>;
-  humanOnly.workItems[0]!.operation = {
-    id: "record.reconcile-uncertain-writer",
-    version: "1",
-    bindings: [],
-  };
-  let executions = 0;
-  const humanOnlyApp = new CapturingApp();
-  registerProjectControlTools(humanOnlyApp as unknown as McpApp, {
-    ...dependencies(humanOnly),
-    approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
-    runExecutor: {
-      execute: () => {
-        executions++;
-        return Promise.resolve(humanOnly);
-      },
-    },
-  });
-  const execution = await humanOnlyApp.handler("project_agent_run_execute")({
-    ...COMMON,
-    runId: "run:queued-before-cancellation",
-  }, clientContext()) as Record<string, unknown>;
-  assertEquals(execution.resultType, "input_required");
-  assertEquals(executions, 0);
 });
+
+Deno.test(
+  "local YOLO executes a human-only queued run through the registered executor with the persisted human origin",
+  async () => {
+    const snapshot = humanOnlyQueuedRunSnapshot();
+    const executions: Array<{ origin: unknown; command: Record<string, unknown> }> = [];
+    const app = new CapturingApp();
+    registerProjectControlTools(app as unknown as McpApp, {
+      ...dependencies(snapshot),
+      approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
+      runExecutor: {
+        execute: (origin, command) => {
+          executions.push({
+            origin,
+            command: command as unknown as Record<string, unknown>,
+          });
+          return Promise.resolve(snapshot);
+        },
+      },
+    });
+    const args = {
+      ...COMMON,
+      runId: "run:queued-before-cancellation",
+    };
+    const execution = await app.handler("project_agent_run_execute")(
+      args,
+      clientContext(),
+    ) as Record<string, unknown>;
+    assertEquals(execution.resultType, undefined);
+    assertEquals(execution.inputRequests, undefined);
+    assertStringIncludes(execution.content as string, "YOLO local startup opt-in");
+    assertStringIncludes(
+      execution.content as string,
+      "No inputResponses or retryVerified value was fabricated.",
+    );
+    assertEquals(executions, [{
+      origin: { kind: "human", actorId: "local-yolo:startup-opt-in" },
+      command: args,
+    }]);
+  },
+);
+
+Deno.test(
+  "interactive human-only queued-run execution still elicits and does not execute",
+  async () => {
+    const snapshot = humanOnlyQueuedRunSnapshot();
+    const executions: Array<{ origin: unknown; command: Record<string, unknown> }> = [];
+    const app = new CapturingApp();
+    registerProjectControlTools(app as unknown as McpApp, {
+      ...dependencies(snapshot),
+      runExecutor: {
+        execute: (origin, command) => {
+          executions.push({
+            origin,
+            command: command as unknown as Record<string, unknown>,
+          });
+          return Promise.resolve(snapshot);
+        },
+      },
+    });
+    const execution = await app.handler("project_agent_run_execute")({
+      ...COMMON,
+      runId: "run:queued-before-cancellation",
+    }, clientContext()) as Record<string, unknown>;
+    assertEquals(execution.resultType, "input_required");
+    assertEquals(executions, []);
+  },
+);
 
 Deno.test("decision elicitation renders the complete parameter array as injective canonical JSON", async () => {
   const elicit = async (
@@ -1685,5 +1725,24 @@ function queuedRunSnapshot(): EngineeringProjectSnapshot {
         summary: "Execute the reviewed documentary baseline.",
       }],
     }],
+  };
+}
+
+function humanOnlyQueuedRunSnapshot(): EngineeringProjectSnapshot {
+  const snapshot = queuedRunSnapshot();
+  return {
+    ...snapshot,
+    workItems: snapshot.workItems.map((item) =>
+      item.id === "establish-baseline"
+        ? {
+          ...item,
+          operation: {
+            id: "record.reconcile-uncertain-writer",
+            version: "1",
+            bindings: [],
+          },
+        }
+        : item
+    ),
   };
 }

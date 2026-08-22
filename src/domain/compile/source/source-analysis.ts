@@ -2,7 +2,7 @@
  * Language-neutral, source-local facts emitted by a source-analysis frontend.
  *
  * This contract is deliberately below every MCP provider and projection. A
- * Python, Modelica, SysML, CalculiX, or plain-text frontend may create this
+ * Python, Modelica, SPICE, SysML, CalculiX, or plain-text frontend may create this
  * bundle; neither the frontend AST nor any provider-specific invocation leaks
  * into it. The bundle reports facts and diagnostics. It grants no authority.
  */
@@ -26,6 +26,7 @@ export type SourceAnalysisSourceRole =
   | "sysml-model"
   | "cad-script"
   | "modelica-model"
+  | "spice-circuit"
   | "calculix-input";
 
 export type SourceAnalysisLanguage =
@@ -34,6 +35,7 @@ export type SourceAnalysisLanguage =
   | "python"
   | "typescript"
   | "modelica"
+  | "spice"
   | "calculix-inp";
 
 export type SourceAnalysisDependencyKind =
@@ -141,12 +143,23 @@ const ROOT_KEYS = [
   "unresolvedConstructs",
 ] as const;
 
-const SOURCE_ROLES = new Set<SourceAnalysisSourceRole>(
-  ["brief", "sysml-model", "cad-script", "modelica-model", "calculix-input"],
-);
-const SOURCE_LANGUAGES = new Set<SourceAnalysisLanguage>(
-  ["plain-text", "sysml-v2", "python", "typescript", "modelica", "calculix-inp"],
-);
+const SOURCE_ROLES = new Set<SourceAnalysisSourceRole>([
+  "brief",
+  "sysml-model",
+  "cad-script",
+  "modelica-model",
+  "spice-circuit",
+  "calculix-input",
+]);
+const SOURCE_LANGUAGES = new Set<SourceAnalysisLanguage>([
+  "plain-text",
+  "sysml-v2",
+  "python",
+  "typescript",
+  "modelica",
+  "spice",
+  "calculix-inp",
+]);
 const SYMBOL_KINDS = new Set<SourceAnalysisSymbolKind>([
   "artifact",
   "brief-item",

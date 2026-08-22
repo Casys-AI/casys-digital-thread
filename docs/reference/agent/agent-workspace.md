@@ -76,6 +76,7 @@ Full tables: [lookalike traps](lookalike-traps.md). Keep this heading so older
 | SysML                        | [lookalike traps § SysML](lookalike-traps.md#sysml)                    |
 | CAD and compile              | [lookalike traps § CAD](lookalike-traps.md#cad-and-compile)            |
 | Modelica                     | [lookalike traps § Modelica](lookalike-traps.md#modelica)              |
+| Electrical / SPICE           | [lookalike traps § Electrical](lookalike-traps.md#electrical)          |
 | FEA, sensitivity, correction | [lookalike traps § FEA](lookalike-traps.md#fea-sensitivity-correction) |
 | Cross-domain impact          | [lookalike traps § Impact](lookalike-traps.md#cross-domain-impact)     |
 | DFM and print                | [lookalike traps § DFM](lookalike-traps.md#dfm-and-print)              |
@@ -264,6 +265,10 @@ seal / run tools stay.
 | `project_admitted_modelica_run_review`       | None               | `projectId` only. Server selects current tip + unique fresh sealed Modelica admission. No `modelicaText`                         |
 | `project_admitted_modelica_evaluation_review` | None              | `projectId` only. Unique current tip + unique sealed thermal method sheet + unique admitted evidence for L4. No L4 verdict      |
 | `project_admitted_modelica_evaluation_closeout_review` | None       | `projectId` only. Unique current L4 from `verify.evaluate-admitted-modelica-observations@1`. Both accept and reject; L4 pass is never implicit L5. No OMC/SysON/CAD/correction/rerun grant |
+| `project_admitted_spice_run_review`          | None               | `projectId` only. Unique current tip + unique fresh sealed SPICE admission. No netlist, image, args, path, or observations. Not mcp-spice |
+| `project_electrical_observation_method_sheet_seal_review` | None | `projectId` + sheet fingerprint. Canonical MRTR for `verify.seal-electrical-observation-method-sheet@1`. No ngspice or L4 |
+| `project_admitted_spice_evaluation_review`   | None               | `projectId` only. Unique sheet + unique admitted SPICE evidence for L4. No L4 verdict, ngspice, or SysON |
+| `project_admitted_spice_evaluation_closeout_review` | None        | `projectId` only. Unique current L4 from `verify.evaluate-admitted-spice-observations@1`. Both accept and reject; L4 pass is never implicit L5 |
 | `project_geometry_preview`                   | None               | Not registered. Not a product entry                                                                                              |
 
 `project_technical_compilation_preview` takes `projectId` and `result.reference` only.
@@ -329,6 +334,13 @@ Unknown ids/versions are indistinguishable from absent.
 | `decide.reject-evaluation-closeout@1`               | trusted                   | none                         | Agent-dispatched documentary successor after exact human MRTR; records only `none` or `mechanical-review-required`      | A correction/CAD/FEA/provider action grant                           |
 | `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | Separate fixed LinearThermalRamp qualified-kit V1 smoke                                                                | Admitted closed-subset `.mo`                                         |
 | `simulate.run-admitted-modelica@1`                  | trusted                   | local microVM                | Documentary run of sealed `compile.seal-admission@1` Modelica bytes                                                     | The pinned kit or caller `modelicaText`                              |
+| `verify.seal-modelica-thermal-method-sheet@1`       | trusted                   | none                         | Documentary seal of one reviewed thermal method sheet                                                                   | An admitted run, L4, or OMC                                          |
+| `verify.evaluate-admitted-modelica-observations@1`  | trusted                   | SysON                        | L4 comparison of exact admitted observations to that sheet                                                              | L5, kit `@1`, or a whole-lamp verdict                                |
+| `decide.accept-admitted-modelica-evaluation@1` / `decide.reject-admitted-modelica-evaluation@1` | trusted, **human origin** | none | Human closeout of that exact L4; no OMC/SysON call                                                                      | Implicit L5 from an L4 `pass`                                        |
+| `simulate.run-admitted-spice@1`                     | trusted                   | local microVM                | Documentary operating-point run of sealed circuit-only SPICE bytes                                                      | mcp-spice, LED-driver fiche, L4, or L5                               |
+| `verify.seal-electrical-observation-method-sheet@1` | trusted                   | none                         | Documentary seal of one reviewed electrical observation method sheet                                                    | An admitted run, L4, or ngspice                                      |
+| `verify.evaluate-admitted-spice-observations@1`     | trusted                   | none (closed comparator)     | L4 of exact admitted observations against that sheet; may derive named current/power criteria                           | ngspice, SysON, L5, or a safety claim                                |
+| `decide.accept-admitted-spice-evaluation@1` / `decide.reject-admitted-spice-evaluation@1` | trusted, **human origin** | none | Human closeout of that exact L4; no ngspice/SysON call                                                                  | Implicit L5 from an L4 `pass`                                        |
 | `analyze.seal-sensitivity-study@1`                  | trusted                   | none                         | Sealed 2.0 study-case document                                                                                          | A solve or a verdict                                                 |
 | `analyze.run-fea-sensitivity@1`                     | trusted                   | isolated CAD + fleet `mcp-calculix` | Dimensioned observations + study capture                                                                          | A verdict or product static `@3`                                     |
 | `verify.evaluate-sensitivity-base@1`                | trusted                   | SysON                        | Evaluations that cite `sensitivity-base-<metric>-<digest>`                                                              | A solve, a proof `@3`, or a metric alias                             |
@@ -495,8 +507,9 @@ adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
 | `modelica`      | `src/domain/modelica/`           | `admitted/` ≠ `qualified-kit/`; recorded island and sidecar observer are retired                     |
 | `cad`           | `src/domain/cad/`                | `source/` ≠ `isolated/` ≠ `canonical/` ≠ `sealed-isolated/`                                          |
 | `fea`           | `src/domain/fea/`                | `seal-case/` ≠ `isolated-v3/`                                                                        |
+| `electrical`    | `src/domain/electrical/`         | LED-driver fiche ≠ circuit-only SPICE ≠ admitted L3 ≠ method-sheet L4/L5; not mcp-spice              |
 | `impact`        | `src/domain/impact/`             | Manifest seal ≠ X07 evaluation ≠ X09 decision ≠ X11 preservation; not X10                            |
-| `compile`       | `src/domain/compile/`            | Isolation ≠ admission ≠ source ≠ ROP ≠ brief; CAD **and** Modelica                                   |
+| `compile`       | `src/domain/compile/`            | Isolation ≠ admission ≠ source ≠ ROP ≠ brief; CAD, Modelica, **and** circuit-only SPICE              |
 | `project`       | `src/domain/project/`            | Ledger and brief; not Thread bytes                                                                   |
 | `thread`        | `src/domain/thread/`             | Canonical snapshot; not a project command                                                            |
 | `kernel`        | `src/domain/kernel/`             | Shared primitives only                                                                               |
@@ -504,9 +517,9 @@ adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
 | `control-plane` | `src/application/control-plane/` | Fleet ops service + `console_*` tools. No domain kernel. Not a cockpit page                          |
 
 The same split lives under
-`src/adapters/{modelica,cad,fea,compile,architecture,sensitivity,impact,make,control-plane,shared}/`
+`src/adapters/{modelica,cad,fea,compile,architecture,sensitivity,electrical,impact,make,control-plane,shared}/`
 and
-`src/application/{ports,use-cases}/{modelica,cad,fea,compile,architecture,sensitivity,impact}/`.
+`src/application/{ports,use-cases}/{modelica,cad,fea,compile,architecture,sensitivity,electrical,impact}/`.
 Folder = authority; lookalikes stay in sibling directories. Control-plane adapters are
 fleet-manifest + run fixtures. Cross-authority adapters (MCP HTTP, project/thread
 stores, microsandbox backend, byte/CAS, generic WAL helpers, executor-run-helpers,

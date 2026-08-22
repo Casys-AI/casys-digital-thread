@@ -45,6 +45,64 @@ Deno.test("two CAD sources share the unique Build123d profile request", () => {
   );
 });
 
+Deno.test("unique catalog role selects the one SPICE profile among CAD and Modelica", () => {
+  assertEquals(
+    deriveTechnicalCompilationProfileRequests(
+      [spiceSource("source.spice")],
+      catalogWith(build123dProfile(), modelicaProfile(), spiceProfile()),
+    ),
+    [{
+      profileId: "profile.spice",
+      profileVersion: "1.0.0",
+      sourceIds: ["source.spice"],
+    }],
+  );
+});
+
+Deno.test("unique SPICE circuit and unique PartDefinition become represents", () => {
+  assertEquals(
+    deriveUniqueTechnicalCompilationBindings(
+      [spiceSource("source.spice")],
+      [part("sysml.clamp", "Clamp")],
+    ),
+    [{
+      id: "binding:source.spice:artifact.circuit:represents",
+      sourceId: "source.spice",
+      sourceSymbolId: "artifact.circuit",
+      sysmlElementId: "sysml.clamp",
+      sysmlElementKind: "PartDefinition",
+      relation: "represents",
+    }],
+  );
+});
+
+Deno.test("unique SPICE .param joins unique AttributeUsage as parameterizes", () => {
+  assertEquals(
+    deriveUniqueTechnicalCompilationBindings(
+      [spiceSourceWithParameter("source.spice", "rseries")],
+      [
+        part("sysml.clamp", "Clamp"),
+        attribute("sysml.clamp.rseries", "rseries", "sysml.clamp"),
+      ],
+    ),
+    [{
+      id: "binding:source.spice:artifact.circuit:represents",
+      sourceId: "source.spice",
+      sourceSymbolId: "artifact.circuit",
+      sysmlElementId: "sysml.clamp",
+      sysmlElementKind: "PartDefinition",
+      relation: "represents",
+    }, {
+      id: "binding:source.spice:parameter.rseries:parameterizes",
+      sourceId: "source.spice",
+      sourceSymbolId: "parameter.rseries",
+      sysmlElementId: "sysml.clamp.rseries",
+      sysmlElementKind: "AttributeUsage",
+      relation: "parameterizes",
+    }],
+  );
+});
+
 Deno.test("absent or ambiguous compilation profiles fail closed", () => {
   assertThrows(
     () =>
@@ -131,6 +189,38 @@ Deno.test("unique Modelica root model and unique PartDefinition become represent
     }],
   );
 });
+
+Deno.test(
+  "multi-part Modelica joins unique parameterizes and does not invent represents",
+  () => {
+    assertEquals(
+      deriveUniqueTechnicalCompilationBindings(
+        [modelicaSourceWithParameters("source.modelica", ["state", "power"])],
+        [
+          part("sysml.head", "Head"),
+          part("sysml.driver", "Driver"),
+          attribute("sysml.head.state", "state", "sysml.head"),
+          attribute("sysml.driver.power", "power", "sysml.driver"),
+        ],
+      ),
+      [{
+        id: "binding:source.modelica:parameter.power:parameterizes",
+        sourceId: "source.modelica",
+        sourceSymbolId: "parameter.power",
+        sysmlElementId: "sysml.driver.power",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      }, {
+        id: "binding:source.modelica:parameter.state:parameterizes",
+        sourceId: "source.modelica",
+        sourceSymbolId: "parameter.state",
+        sysmlElementId: "sysml.head.state",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      }],
+    );
+  },
+);
 
 Deno.test("several Modelica artifacts do not invent a represented root", () => {
   const source = modelicaSource("source.modelica");
@@ -392,6 +482,90 @@ function cadSourceWithTwoReachableLevers(
   };
 }
 
+function modelicaSourceWithParameters(
+  id: string,
+  names: readonly string[],
+): {
+  sourceText: string;
+  analysis: SourceAnalysisBundle;
+} {
+  return {
+    sourceText: "model Root end Root;",
+    analysis: {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id,
+        role: "modelica-model",
+        language: "modelica",
+        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+      },
+      analyzer: { id: "test.ast", version: "1.0.0" },
+      policy: { profile: "policy.modelica-safe", status: "passed", findings: [] },
+      symbols: [
+        { id: "artifact.Root", kind: "artifact", name: "Root" },
+        ...names.map((name) => ({
+          id: `parameter.${name}`,
+          kind: "parameter" as const,
+          name,
+        })),
+      ],
+      dependencies: names.map((name) => ({
+        id: `dependency.${name}.Root`,
+        kind: "structural-incidence" as const,
+        fromSymbolId: `parameter.${name}`,
+        toSymbolId: "artifact.Root",
+      })),
+      unresolvedConstructs: [],
+    },
+  };
+}
+
+function spiceSource(id: string): {
+  sourceText: string;
+  analysis: SourceAnalysisBundle;
+} {
+  return {
+    sourceText: "Vin in 0 5\nRload in 0 1k\n",
+    analysis: {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id,
+        role: "spice-circuit",
+        language: "spice",
+        fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+      },
+      analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+      policy: {
+        profile: "spice-circuit-closed-subset-v1",
+        status: "passed",
+        findings: [],
+      },
+      symbols: [
+        { id: "artifact.circuit", kind: "artifact", name: "circuit" },
+      ],
+      dependencies: [],
+      unresolvedConstructs: [],
+    },
+  };
+}
+
+function spiceSourceWithParameter(id: string, name: string): {
+  sourceText: string;
+  analysis: SourceAnalysisBundle;
+} {
+  const source = spiceSource(id);
+  return {
+    sourceText: `Vin in 0 5\nRload in 0 {${name}}\n.param ${name}=1000\n`,
+    analysis: {
+      ...source.analysis,
+      symbols: [
+        ...source.analysis.symbols,
+        { id: `parameter.${name}`, kind: "parameter", name },
+      ],
+    },
+  };
+}
+
 function modelicaSource(id: string): {
   sourceText: string;
   analysis: SourceAnalysisBundle;
@@ -452,6 +626,19 @@ function modelicaProfile(): TechnicalCompilationProfileCatalog["profiles"][numbe
     analyzer: { id: "test.ast", version: "1.0.0" },
     analysisPolicyProfile: "policy.modelica-safe",
     requiredBindingSymbolKinds: ["artifact", "parameter"],
+  };
+}
+
+function spiceProfile(): TechnicalCompilationProfileCatalog["profiles"][number] {
+  return {
+    id: "profile.spice",
+    version: "1.0.0",
+    target: "spice-circuit-source",
+    sourceRole: "spice-circuit",
+    language: "spice",
+    analyzer: { id: "test.ast", version: "1.0.0" },
+    analysisPolicyProfile: "policy.spice-safe",
+    requiredBindingSymbolKinds: ["parameter"],
   };
 }
 

@@ -18,6 +18,13 @@ import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../../domain/electrical/spice/admitted/run-proposal.ts";
+import { VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION } from "../../domain/electrical/observation-method-sheet-proposal.ts";
+import { VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION } from "../../domain/electrical/spice/evaluation/admitted-observation-evaluation-proposal.ts";
+import {
+  DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
+} from "../../domain/electrical/spice/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
@@ -405,6 +412,129 @@ const OPERATIONS = [
       allowedSourceKinds: ["thread-entity"],
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Admitted SPICE closed-subset operating-point execution — trusted executor
+   * `simulate.run-admitted-spice@1`.
+   *
+   * The signed proposal names one exact `compile.seal-admission@1` SPICE
+   * compilation and one server-owned isolation profile. Execution reopens
+   * those admitted `.cir` bytes. It is not mcp-spice, not the LED-driver
+   * fiche, and not a caller-supplied netlist, image, path or observation list.
+   */
+  {
+    id: SIMULATE_RUN_ADMITTED_SPICE_OPERATION.id,
+    version: SIMULATE_RUN_ADMITTED_SPICE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Execute the reviewed admitted SPICE compilation in isolation",
+    description:
+      "Reopen one exact sealed technical-compilation admission, verify the human-signed " +
+      "server-owned execution and isolation contract, execute its qualified SPICE source, " +
+      "and publish documentary operating-point evidence only. Callers never supply SPICE " +
+      "text, image, runtime, path, or observations.",
+    workItemKind: "simulate",
+    riskClass: "consequential",
+    execution: "trusted",
+    decisionEvidenceScope: "thread-entity-bindings",
+    bindings: [{
+      name: "compilationAdmission",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Provider-free seal of one reviewed `electrical-observation-method-sheet/1.0`.
+   * The MRTR names identities and fingerprints only. No ngspice, SPICE text,
+   * provider tool or L4 verdict is granted.
+   */
+  {
+    id: VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION.id,
+    version: VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed electrical observation method sheet",
+    description:
+      "Reopen one exact reviewed electrical observation method sheet, recross its identities and " +
+      "fingerprints, and publish the content-addressed method document. Callers never " +
+      "supply SPICE text, provider tools, or solver arguments. This is not an " +
+      "admitted run and not an evaluation.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Trusted closed-method evaluation of admitted SPICE observations. The MRTR
+   * names identities and fingerprints only. No ngspice, caller values, or
+   * SysON envelope.
+   */
+  {
+    id: VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION.id,
+    version: VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Evaluate admitted SPICE observations",
+    description:
+      "Reopen one sealed electrical observation method sheet and one admitted SPICE result, " +
+      "recross identities, and evaluate the exact criteria with the server-owned closed " +
+      "comparator. Callers never supply values, units, provider tools, or ngspice arguments. " +
+      "Unresolved natives stay unresolved. An L4 pass is not L5.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Human-only L5 closeout of one exact L4 admitted SPICE evaluation
+   * capture. Reopens the signed capture, electrical method sheet, and
+   * selected L3 run/capture/evidence/result. Never calls ngspice or SysON.
+   * An L4 `pass` is never implicit L5.
+   */
+  {
+    id: DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION.id,
+    version: DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Accept the admitted SPICE evaluation closeout",
+    description:
+      "Reopen one exact L4 admitted SPICE observation evaluation capture, its electrical " +
+      "method sheet, and the selected L3 run/capture/evidence/result, recross the signed " +
+      "Thread basis, and record the human accept closeout. No engine is called. An L4 pass is not L5.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    mustOrigin: "human",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  {
+    id: DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION.id,
+    version: DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Reject the admitted SPICE evaluation closeout",
+    description:
+      "Reopen one exact L4 admitted SPICE observation evaluation capture, its electrical " +
+      "method sheet, and the selected L3 run/capture/evidence/result, recross the signed " +
+      "Thread basis, and record the human reject closeout. No engine is called. An L4 pass is not L5.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    mustOrigin: "human",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
     }],
   },
   /**

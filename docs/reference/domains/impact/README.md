@@ -23,7 +23,8 @@ vocabularies are not interchangeable.
 
 Lookalikes: [lookalike traps § Cross-domain impact](../../agent/lookalike-traps.md#cross-domain-impact).
 Mechanical L4/L5 stays on [FEA coverage](../fea/coverage.md). Electrical product
-runtime remains the provider-free fiche; ngspice is not an impact path.
+runtime is the admitted SPICE path plus method-sheet L4/L5, not an impact path and
+not `mcp-spice`.
 
 A successful CalculiX, OpenModelica, or SysON call is never L4 and never L5. An L4
 `pass` is never L5. Gate-claim statuses are `current`, `impact-unresolved`,

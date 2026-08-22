@@ -49,7 +49,8 @@ export const PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION = "2.0.0" as co
 export type TechnicalCompilationTarget =
   | "build123d-source"
   | "calculix-source-candidate"
-  | "modelica-source-qualification";
+  | "modelica-source-qualification"
+  | "spice-circuit-source";
 
 export type TechnicalCompilationStatus =
   | "ready-for-review"
@@ -168,8 +169,8 @@ export interface TechnicalCompilationProfile {
   readonly id: string;
   readonly version: string;
   readonly target: TechnicalCompilationTarget;
-  readonly sourceRole: "cad-script" | "modelica-model";
-  readonly language: "python" | "modelica";
+  readonly sourceRole: "cad-script" | "modelica-model" | "spice-circuit";
+  readonly language: "python" | "modelica" | "spice";
   /** Exact parser implementation qualified by this server-owned profile. */
   readonly analyzer: TechnicalCompilationAnalyzerRef;
   readonly analysisPolicyProfile: string;
@@ -251,6 +252,7 @@ const TARGETS = new Set<TechnicalCompilationTarget>([
   "build123d-source",
   "calculix-source-candidate",
   "modelica-source-qualification",
+  "spice-circuit-source",
 ]);
 
 const SYMBOL_KINDS = new Set<SourceAnalysisSymbolKind>([
@@ -287,9 +289,133 @@ const TARGET_SOURCE_CONTRACT: Readonly<
     role: "modelica-model",
     language: "modelica",
   },
+  "spice-circuit-source": { role: "spice-circuit", language: "spice" },
 };
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+/**
+ * Sealed-admission facts that carry compilation target and source contract.
+ *
+ * Profile ids, artifact names, prefixes and labels are deliberately absent:
+ * unique language selection is a target/source join only.
+ */
+export interface CompilationAdmissionTargetFacts {
+  readonly admission: {
+    readonly sources: readonly {
+      readonly language: string;
+      readonly role: string;
+    }[];
+    readonly compilationProfileRequests: readonly {
+      readonly target: string;
+    }[];
+  };
+  readonly document: {
+    readonly projections: readonly {
+      readonly target: string;
+      readonly profile: {
+        readonly target: string;
+        readonly language: string;
+        readonly sourceRole: string;
+      };
+    }[];
+    readonly inputManifest: {
+      readonly sources: readonly {
+        readonly analysis: {
+          readonly source: {
+            readonly language: string;
+            readonly role: string;
+          };
+        };
+      }[];
+    };
+  };
+}
+
+/**
+ * Return the unique registered compilation target when every projection and
+ * source in a compilation document agrees with the target/source contract.
+ * Mixed, empty, or unregistered facts stay undefined. Profile ids, labels
+ * and artifact names never participate.
+ */
+export function uniqueCompilationDocumentTarget(
+  document: CompilationAdmissionTargetFacts["document"],
+): TechnicalCompilationTarget | undefined {
+  const { projections, inputManifest } = document;
+  if (projections.length === 0 || inputManifest.sources.length === 0) {
+    return undefined;
+  }
+  const declaredTargets = new Set<string>();
+  for (const projection of projections) {
+    declaredTargets.add(projection.target);
+    declaredTargets.add(projection.profile.target);
+  }
+  return uniqueTargetMatchingSourceContract(
+    declaredTargets,
+    inputManifest.sources.map((source) => source.analysis.source),
+    projections.map((projection) => projection.profile),
+  );
+}
+
+/**
+ * Return the unique registered compilation target when every sealed request,
+ * projection and source agrees with the target/source contract. Mixed,
+ * empty, or unregistered facts stay undefined.
+ */
+export function uniqueCompilationAdmissionTarget(
+  facts: CompilationAdmissionTargetFacts,
+): TechnicalCompilationTarget | undefined {
+  const documentTarget = uniqueCompilationDocumentTarget(facts.document);
+  if (documentTarget === undefined) return undefined;
+  const { sources, compilationProfileRequests } = facts.admission;
+  if (sources.length === 0 || compilationProfileRequests.length === 0) {
+    return undefined;
+  }
+  const declaredTargets = new Set<string>([documentTarget]);
+  for (const request of compilationProfileRequests) {
+    declaredTargets.add(request.target);
+  }
+  return uniqueTargetMatchingSourceContract(
+    declaredTargets,
+    sources,
+    facts.document.projections.map((projection) => projection.profile),
+  );
+}
+
+function uniqueTargetMatchingSourceContract(
+  declaredTargets: ReadonlySet<string>,
+  sources: readonly { readonly language: string; readonly role: string }[],
+  profiles: readonly {
+    readonly language: string;
+    readonly sourceRole: string;
+  }[],
+): TechnicalCompilationTarget | undefined {
+  if (
+    declaredTargets.size !== 1 ||
+    sources.length === 0 ||
+    profiles.length === 0
+  ) {
+    return undefined;
+  }
+  const [declared] = declaredTargets;
+  if (!TARGETS.has(declared as TechnicalCompilationTarget)) return undefined;
+  const target = declared as TechnicalCompilationTarget;
+  const expected = TARGET_SOURCE_CONTRACT[target];
+  for (const source of sources) {
+    if (source.language !== expected.language || source.role !== expected.role) {
+      return undefined;
+    }
+  }
+  for (const profile of profiles) {
+    if (
+      profile.language !== expected.language ||
+      profile.sourceRole !== expected.role
+    ) {
+      return undefined;
+    }
+  }
+  return target;
+}
 
 /** Compute SHA-256 over the exact UTF-8 bytes of a technical source. */
 export async function fingerprintTechnicalSourceText(
@@ -1059,10 +1185,12 @@ function assertTechnicalSourceKind(
   const supported =
     (analysis.source.role === "cad-script" && analysis.source.language === "python") ||
     (analysis.source.role === "modelica-model" &&
-      analysis.source.language === "modelica");
+      analysis.source.language === "modelica") ||
+    (analysis.source.role === "spice-circuit" &&
+      analysis.source.language === "spice");
   if (!supported) {
     throw new TypeError(
-      `${path} must be cad-script/python or modelica-model/modelica; brief, plain-text, and solver input are not compilable sources.`,
+      `${path} must be cad-script/python, modelica-model/modelica, or spice-circuit/spice; brief, plain-text, and solver input are not compilable sources.`,
     );
   }
 }
@@ -1426,8 +1554,13 @@ function profileSourceRole(
   value: unknown,
   path: string,
 ): TechnicalCompilationProfile["sourceRole"] {
-  if (value !== "cad-script" && value !== "modelica-model") {
-    throw new TypeError(`${path} must be cad-script or modelica-model.`);
+  if (
+    value !== "cad-script" && value !== "modelica-model" &&
+    value !== "spice-circuit"
+  ) {
+    throw new TypeError(
+      `${path} must be cad-script, modelica-model, or spice-circuit.`,
+    );
   }
   return value;
 }
@@ -1436,8 +1569,8 @@ function profileLanguage(
   value: unknown,
   path: string,
 ): TechnicalCompilationProfile["language"] {
-  if (value !== "python" && value !== "modelica") {
-    throw new TypeError(`${path} must be python or modelica.`);
+  if (value !== "python" && value !== "modelica" && value !== "spice") {
+    throw new TypeError(`${path} must be python, modelica, or spice.`);
   }
   return value;
 }

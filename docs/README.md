@@ -54,6 +54,8 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 - [Run the behave loop from zero](how-to/behave/run-the-behave-loop-from-zero.md)
 - [Walk the post-proof loop](how-to/behave/walk-the-post-proof-loop.md)
 - [Sequence a SysON seed work item](how-to/behave/sequence-seed-work-item.md)
+- [Review static-mechanical closeout](how-to/behave/review-static-mechanical-closeout.md)
+- [Walk cross-domain impact judgement](how-to/behave/walk-cross-domain-impact-judgement.md)
 
 ### How-to — `compile/`
 
@@ -65,6 +67,7 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 ### How-to — `run/`
 
 - [Run admitted Modelica](how-to/run/run-admitted-modelica.md)
+- [Run admitted SPICE](how-to/run/run-admitted-spice.md)
 - [Recover a quarantined provider run](how-to/run/recover-a-quarantined-provider-run.md)
 
 ### How-to — `cockpit/`
@@ -101,6 +104,7 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 - [SysML](reference/domains/sysml/README.md)
 - [Sensitivity](reference/domains/sensitivity/README.md)
 - [Electrical](reference/domains/electrical/README.md)
+- [Impact](reference/domains/impact/README.md)
 
 ### Reference — `pipeline/`
 

@@ -6,7 +6,6 @@ import type {
   EphemeralOutputInventoryEntry,
 } from "../../../ports/out/compile/isolation/ephemeral-execution-backend.ts";
 import type {
-  IsolatedCodeRunner,
   IsolatedCodeRunRecovery,
   IsolatedOutputCasSink,
   IsolatedOutputCasWriteReceipt,
@@ -14,12 +13,18 @@ import type {
   StagedIsolatedOutputBatch,
 } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
+  IsolatedCodeExecutionRejectedError,
+  type IsolatedCodeRunner,
+} from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
+import {
   copyObservedUint8Array,
   createIsolatedCodeExecutionReceipt,
+  createIsolatedCodeExecutionRejectionDiagnostic,
   createIsolatedOutputPublicationRef,
   fingerprintIsolatedOutputPublicationManifest,
   type IsolatedCodeExecutionReceipt,
   isolatedCodeExecutionReceiptRecord,
+  type IsolatedCodeExecutionRejectionDiagnostic,
   type IsolatedCodeExecutionRequest,
   type IsolatedCodeOutputDeclaration,
   isolatedCodeOutputManifestsEqual,
@@ -27,6 +32,7 @@ import {
   type IsolatedCodeProfileRef,
   isolatedCodeRefsEqual,
   type IsolatedCodeRuntimeAttestation,
+  isolatedCodeTerminationIsRejected,
   type IsolatedOutputProducerGeneration,
   type IsolatedOutputProducerGenerationAdvance,
   type IsolatedOutputProducerGenerationAdvanceInput,
@@ -35,6 +41,7 @@ import {
   runtimeAttestationsEqual,
   validateContentFingerprint,
   validateIsolatedCodeExecutionReceiptRecord,
+  validateIsolatedCodeExecutionRejectionDiagnostic,
   validateIsolatedCodeExecutionRequest,
   validateIsolatedCodeOutputBasename,
   validateIsolatedCodeOutputManifest,
@@ -68,7 +75,6 @@ export type BrokeredIsolatedCodeRunnerErrorCode =
   | "unregistered_policy"
   | "infrastructure_failure"
   | "backend_contract_violation"
-  | "execution_rejected"
   | "output_manifest_mismatch"
   | "output_integrity_failed"
   | "output_quota_exceeded"
@@ -249,7 +255,10 @@ export class BrokeredIsolatedCodeRunner<
     }
 
     let prepared: PreparedExecution | undefined;
-    let executionFailure: BrokeredIsolatedCodeRunnerError | undefined;
+    let executionFailure:
+      | BrokeredIsolatedCodeRunnerError
+      | IsolatedExecutionRejectionInspection
+      | undefined;
     try {
       prepared = await this.#executeAndInspect(lease, this.#outputManifest);
     } catch (failure) {
@@ -277,6 +286,12 @@ export class BrokeredIsolatedCodeRunner<
       destruction = recovered;
     }
 
+    if (executionFailure instanceof IsolatedExecutionRejectionInspection) {
+      throw new IsolatedCodeExecutionRejectedError(
+        executionFailure.diagnostic,
+        destruction,
+      );
+    }
     if (executionFailure !== undefined) throw executionFailure;
     if (!prepared) {
       throw new BrokeredIsolatedCodeRunnerError(
@@ -405,10 +420,16 @@ export class BrokeredIsolatedCodeRunner<
       "$backend.report.termination",
     );
     const logs = validateBackendLogs(report.logs, this.#runtime);
-    if (termination.kind !== "exited" || termination.exitCode !== 0) {
-      throw new BrokeredIsolatedCodeRunnerError(
-        "execution_rejected",
-        "The isolated program did not terminate successfully.",
+    if (isolatedCodeTerminationIsRejected(termination)) {
+      throw new IsolatedExecutionRejectionInspection(
+        await createIsolatedCodeExecutionRejectionDiagnostic({
+          termination,
+          logs,
+          maximumLogBytes: {
+            stdout: this.#runtime.requestedLimits.maxStdoutBytes,
+            stderr: this.#runtime.requestedLimits.maxStderrBytes,
+          },
+        }),
       );
     }
 
@@ -1148,10 +1169,21 @@ function requireRecoveryRunId(value: unknown): string {
   }
 }
 
+class IsolatedExecutionRejectionInspection {
+  readonly diagnostic: IsolatedCodeExecutionRejectionDiagnostic;
+
+  constructor(diagnostic: IsolatedCodeExecutionRejectionDiagnostic) {
+    this.diagnostic = validateIsolatedCodeExecutionRejectionDiagnostic(diagnostic);
+  }
+}
+
 function normalizeBackendInspectionFailure(
   failure: unknown,
-): BrokeredIsolatedCodeRunnerError {
+): BrokeredIsolatedCodeRunnerError | IsolatedExecutionRejectionInspection {
   try {
+    if (failure instanceof IsolatedExecutionRejectionInspection) {
+      return new IsolatedExecutionRejectionInspection(failure.diagnostic);
+    }
     if (failure instanceof BrokeredIsolatedCodeRunnerError) {
       const code = failure.code;
       const message = failure.message;
@@ -1188,7 +1220,6 @@ const SAFE_BACKEND_INSPECTION_ERROR_KEYS = new Set<string>([
   "backend_contract_violation\0Backend logs exceed the server-owned byte cap.",
   "backend_contract_violation\0The backend output kind is unsupported.",
   "backend_contract_violation\0The backend output byte-count claim is invalid.",
-  "execution_rejected\0The isolated program did not terminate successfully.",
   "output_manifest_mismatch\0Backend outputs do not match the declared manifest exactly.",
   "output_manifest_mismatch\0Every declared output must resolve to one regular file.",
   "output_manifest_mismatch\0The backend output inventory contains a duplicate handle.",

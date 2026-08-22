@@ -109,6 +109,14 @@ project_technical_source_capture          # modelica-closed-subset-v2
 How-to: [run admitted Modelica](../run/run-admitted-modelica.md). Do not walk it on a vehicle
 that already has a joined `pass`.
 
+Optional product circuit-only SPICE is a separate capture → admission → admitted
+microVM walk ([run admitted SPICE](../run/run-admitted-spice.md)). It is not mcp-spice
+and not the LED-driver fiche.
+
+A local AL01 walk of those optional verticals is tracking evidence, not this from-zero
+script: [AL01 status](../../projects/articulated-led-desk-lamp/status.md). Do not clone
+AL01.
+
 If a later geometry **replaces** an earlier one, the writer emits `supersedes` (exact
 predecessor artifact). Evidence then photographs the tip. Activity keeps the old card
 and marks it superseded. No `supersedes` means two current events — do not invent the

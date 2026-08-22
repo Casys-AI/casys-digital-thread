@@ -4,10 +4,11 @@ import type {
   AdmittedObservationEvidence,
   AdmittedObservationEvidenceReader,
 } from "../../../ports/out/modelica/evaluation/admitted-observation-evidence-reader.ts";
+import type { ThermalMethodSheetSourceCaptureReader } from "../../../ports/out/modelica/thermal-method-sheet-source-capture-reader.ts";
+import type { ThermalMethodSheetSourceIdentity } from "../../../../domain/modelica/thermal-method-sheet-recross.ts";
 import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
-import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import { parseAdmittedObservationEvaluationParameters } from "../../../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import { fingerprintModelicaThermalMethodSheet } from "../../../../domain/modelica/thermal-method-sheet.ts";
 import { validateModelicaThermalMethodSheet } from "../../../../domain/modelica/thermal-method-sheet.ts";
@@ -21,6 +22,10 @@ const AT = "2026-08-21T12:00:00.000Z";
 const PROJECT_ID = "articulated-led-desk-lamp";
 const SUBJECT_ID = "articulated-led-desk-lamp";
 const EVIDENCE_DIGEST = "c".repeat(64);
+const PARAMETER_SYMBOL_ID = `3b6a${"d".repeat(60)}`;
+const OUTPUT_SYMBOL_ID = `3b6a${"c".repeat(60)}`;
+const NATIVE_PARAMETER_NAME = "heatingRate";
+const NATIVE_OUTPUT_NAME = "temperature";
 
 Deno.test(
   "admitted Modelica evaluation review derives MRTR from projectId only",
@@ -32,7 +37,7 @@ Deno.test(
     );
     assertEquals(result.admission, replay);
     assertEquals(result.admission.projectId, PROJECT_ID);
-    assertEquals(result.method.selections[0]?.outputSymbolId, "placeholder-output");
+    assertEquals(result.method.selections[0]?.outputSymbolId, OUTPUT_SYMBOL_ID);
     assertEquals(result.method.selections[0]?.role, "final");
     assertEquals(
       result.decisionParameters.some((parameter) =>
@@ -90,14 +95,52 @@ Deno.test(
 );
 
 Deno.test(
+  "admitted Modelica evaluation review refuses a native-name mismatch",
+  async () => {
+    const fixture = await harness();
+    fixture.evidence.payload = {
+      modelName: "placeholder-module",
+      outputs: [{ name: "placeholder-output", unit: "unit-pending-source" }],
+      metrics: [{
+        outputName: "placeholder-output",
+        statistic: "final",
+        unit: "unit-pending-source",
+        value: 0,
+      }],
+    };
+    await assertRejects(
+      () => fixture.service.execute({ projectId: PROJECT_ID }),
+      ProjectAdmittedModelicaEvaluationReviewError,
+      "exact native source output",
+    );
+  },
+);
+
+Deno.test(
+  "admitted Modelica evaluation review refuses a wrong-kind source symbol",
+  async () => {
+    const fixture = await harness();
+    fixture.sources.symbols = [
+      { id: PARAMETER_SYMBOL_ID, kind: "parameter", name: NATIVE_PARAMETER_NAME },
+      { id: OUTPUT_SYMBOL_ID, kind: "parameter", name: NATIVE_OUTPUT_NAME },
+    ];
+    await assertRejects(
+      () => fixture.service.execute({ projectId: PROJECT_ID }),
+      ProjectAdmittedModelicaEvaluationReviewError,
+      "exact source-analysis variable",
+    );
+  },
+);
+
+Deno.test(
   "admitted Modelica evaluation review leaves a unit mismatch unresolved",
   async () => {
     const fixture = await harness();
     fixture.evidence.payload = {
       modelName: "placeholder-module",
-      outputs: [{ name: "placeholder-output", unit: "K" }],
+      outputs: [{ name: NATIVE_OUTPUT_NAME, unit: "K" }],
       metrics: [{
-        outputName: "placeholder-output",
+        outputName: NATIVE_OUTPUT_NAME,
         statistic: "final",
         unit: "K",
         value: 0,
@@ -113,9 +156,7 @@ Deno.test(
 
 async function harness(options: { includeEvidence?: boolean } = {}) {
   const includeEvidence = options.includeEvidence !== false;
-  const sheet = validateModelicaThermalMethodSheet(
-    validThermalMethodSheetPlaceholder(),
-  );
+  const sheet = validateModelicaThermalMethodSheet(identitySheetInput());
   await fingerprintModelicaThermalMethodSheet(sheet);
   const evidenceFingerprint: ContentFingerprint = {
     algorithm: "sha256",
@@ -251,14 +292,15 @@ async function harness(options: { includeEvidence?: boolean } = {}) {
   const sheets = new MemorySheetJoin(sheet);
   const evidence = new MemoryEvidenceReader({
     modelName: "placeholder-module",
-    outputs: [{ name: "placeholder-output", unit: "unit-pending-source" }],
+    outputs: [{ name: NATIVE_OUTPUT_NAME, unit: "unit-pending-source" }],
     metrics: [{
-      outputName: "placeholder-output",
+      outputName: NATIVE_OUTPUT_NAME,
       statistic: "final",
       unit: "unit-pending-source",
       value: 0,
     }],
   });
+  const sources = new MemorySourceReader(sheet.model.sourceCaptureFingerprint);
   const service = new PrepareProjectAdmittedModelicaEvaluationReview({
     projects: { get: () => Promise.resolve(project) },
     snapshots: {
@@ -268,8 +310,9 @@ async function harness(options: { includeEvidence?: boolean } = {}) {
     },
     methodSheets: sheets,
     evidence,
+    sourceCaptures: sources,
   });
-  return { service, sheets, evidence, snapshot };
+  return { service, sheets, evidence, sources, snapshot };
 }
 
 class MemorySheetJoin implements ThermalMethodSheetCompilationJoin {
@@ -280,6 +323,28 @@ class MemorySheetJoin implements ThermalMethodSheetCompilationJoin {
   read() {
     if (this.missing) return Promise.resolve(undefined);
     return Promise.resolve(this.sheet);
+  }
+}
+
+class MemorySourceReader implements ThermalMethodSheetSourceCaptureReader {
+  missing = false;
+  symbols: ThermalMethodSheetSourceIdentity["symbols"] = [
+    { id: PARAMETER_SYMBOL_ID, kind: "parameter", name: NATIVE_PARAMETER_NAME },
+    { id: OUTPUT_SYMBOL_ID, kind: "variable", name: NATIVE_OUTPUT_NAME },
+  ];
+  constructor(readonly fingerprint: ContentFingerprint) {}
+  read(
+    fingerprint: ContentFingerprint,
+  ): Promise<ThermalMethodSheetSourceIdentity | undefined> {
+    if (this.missing || fingerprint.digest !== this.fingerprint.digest) {
+      return Promise.resolve(undefined);
+    }
+    return Promise.resolve({
+      fingerprint,
+      role: "modelica-model",
+      language: "modelica",
+      symbols: this.symbols,
+    });
   }
 }
 
@@ -295,4 +360,19 @@ class MemoryEvidenceReader implements AdmittedObservationEvidenceReader {
 
 function fresh(at: string) {
   return { status: "fresh" as const, changedAt: at, invalidatedByChangeIds: [] };
+}
+
+function identitySheetInput(): Record<string, unknown> {
+  const input = validThermalMethodSheetPlaceholder();
+  const parameters = input.parameters as Array<{ modelSymbolId: string }>;
+  const outputs = input.outputs as Array<{ modelSymbolId: string }>;
+  const bindings = input.bindings as {
+    parameterizes: Array<{ modelSymbolId: string }>;
+    outputRequirements: Array<{ modelSymbolId: string }>;
+  };
+  parameters[0]!.modelSymbolId = PARAMETER_SYMBOL_ID;
+  outputs[0]!.modelSymbolId = OUTPUT_SYMBOL_ID;
+  bindings.parameterizes[0]!.modelSymbolId = PARAMETER_SYMBOL_ID;
+  bindings.outputRequirements[0]!.modelSymbolId = OUTPUT_SYMBOL_ID;
+  return input;
 }

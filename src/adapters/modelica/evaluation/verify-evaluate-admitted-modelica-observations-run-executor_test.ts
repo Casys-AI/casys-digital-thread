@@ -5,7 +5,9 @@ import type {
   McpToolResult,
 } from "../../../application/ports/out/mcp-tool-client.ts";
 import type { AdmittedObservationEvidenceReader } from "../../../application/ports/out/modelica/evaluation/admitted-observation-evidence-reader.ts";
+import type { ThermalMethodSheetSourceCaptureReader } from "../../../application/ports/out/modelica/thermal-method-sheet-source-capture-reader.ts";
 import type { ThermalMethodSheetStore } from "../../../application/ports/out/modelica/thermal-method-sheet-store.ts";
+import type { ThermalMethodSheetSourceIdentity } from "../../../domain/modelica/thermal-method-sheet-recross.ts";
 import {
   type CompleteRunCommand,
   EngineeringProjectCommandError,
@@ -70,7 +72,36 @@ const EVIDENCE_DIGEST = "c".repeat(64);
 const CAPTURE_DIGEST = "a".repeat(64);
 const RESULT_DIGEST = "b".repeat(64);
 const CLAIM_SUMMARY = "Started the admitted Modelica observation evaluation.";
-const OBSERVATION_ID = `modelica-admitted-placeholder-output-final-${ADMITTED_RUN_ID}`;
+const PARAMETER_SYMBOL_ID = `3b6a${"d".repeat(60)}`;
+const OUTPUT_SYMBOL_ID = `3b6a${"c".repeat(60)}`;
+const NATIVE_PARAMETER_NAME = "heatingRate";
+const NATIVE_OUTPUT_NAME = "temperature";
+const OBSERVATION_ID = `modelica-admitted-${OUTPUT_SYMBOL_ID}-final-${ADMITTED_RUN_ID}`;
+const NATIVE_ADMITTED_OBSERVATION_ID =
+  `modelica-admitted-${NATIVE_OUTPUT_NAME}-final-${ADMITTED_RUN_ID}`;
+const NATIVE_ADMITTED_OBSERVATION_METRIC = `${NATIVE_OUTPUT_NAME}.final`;
+const SYSML_REQUIREMENT_ELEMENT_ID = "placeholder-requirement";
+const THREAD_REQUIREMENT_ID = "thread-placeholder-requirement";
+const REQUIREMENT_METRIC = "placeholder-output";
+const ORACLE_UNIT = "unit-pending-source";
+const PASS_ORACLE_ROW = {
+  constraintId: SYSML_REQUIREMENT_ELEMENT_ID,
+  status: "pass" as const,
+  computedValue: 0.25,
+  threshold: 1,
+  margin: 0.75,
+  marginPercent: 75,
+  unit: ORACLE_UNIT,
+};
+const FAIL_ORACLE_ROW = {
+  constraintId: SYSML_REQUIREMENT_ELEMENT_ID,
+  status: "fail" as const,
+  computedValue: 2.5,
+  threshold: 1,
+  margin: -1.5,
+  marginPercent: -150,
+  unit: ORACLE_UNIT,
+};
 
 Deno.test(
   "evaluate-admitted-modelica-observations writes unresolved evaluations without a local fail",
@@ -93,6 +124,28 @@ Deno.test(
       );
       assertEquals(snapshot?.violations.length, 0);
       assertEquals(fixture.syson.calls.length, 1);
+      assertSplitRequirementIdentities(snapshot, fixture.syson.calls);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
+  "evaluate-admitted-modelica-observations keys SysON by SysML id and the successor by Thread requirement id",
+  async () => {
+    const fixture = await executeFixture();
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      const snapshot = await fixture.snapshots.getFresh(
+        project.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      assertEquals(snapshot?.requirements[0]?.id, THREAD_REQUIREMENT_ID);
+      assertEquals(
+        snapshot?.requirements[0]?.trace.elementId,
+        SYSML_REQUIREMENT_ELEMENT_ID,
+      );
+      assertSplitRequirementIdentities(snapshot, fixture.syson.calls);
     } finally {
       await fixture.dispose();
     }
@@ -224,7 +277,7 @@ Deno.test(
       response: {
         structuredContent: {
           results: [{
-            constraintId: "placeholder-requirement",
+            constraintId: SYSML_REQUIREMENT_ELEMENT_ID,
             status: "unresolved",
           }],
         },
@@ -258,6 +311,7 @@ Deno.test(
         snapshot?.evaluations.every((item) => item.status === "unresolved"),
         true,
       );
+      assertSplitRequirementIdentities(snapshot);
       assertEquals(
         snapshot?.artifacts.some((item) =>
           item.id ===
@@ -393,6 +447,97 @@ Deno.test(
         1,
       );
       assertEquals(snapshot?.violations.length, 0);
+      assertSplitRequirementIdentities(snapshot, fixture.syson.calls);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
+  "evaluate-admitted-modelica-observations materializes a pass comparison onto a requirement-metric observation",
+  async () => {
+    assertSplitSourceAndRequirementIdentities();
+    const fixture = await executeOracleVerdictFixture(PASS_ORACLE_ROW);
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      const snapshot = await fixture.snapshots.getFresh(
+        project.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      assertNormalizedOracleSuccessor(snapshot, PASS_ORACLE_ROW, fixture.syson.calls);
+      assertEquals(snapshot?.violations.length, 0);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
+  "evaluate-admitted-modelica-observations materializes a fail comparison and violation onto a requirement-metric observation",
+  async () => {
+    assertSplitSourceAndRequirementIdentities();
+    const fixture = await executeOracleVerdictFixture(FAIL_ORACLE_ROW);
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      const snapshot = await fixture.snapshots.getFresh(
+        project.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      const evaluation = assertNormalizedOracleSuccessor(
+        snapshot,
+        FAIL_ORACLE_ROW,
+        fixture.syson.calls,
+      );
+      const observationId = evaluation.observationIds[0]!;
+      const captureArtifactId = snapshot?.artifacts.find((item) =>
+        item.producer.tool === "verify.evaluate-admitted-modelica-observations@1"
+      )?.id;
+      if (typeof captureArtifactId !== "string") {
+        throw new Error("missing L4 capture artifact");
+      }
+      assertEquals(snapshot?.violations.length, 1);
+      const violation = snapshot?.violations[0];
+      if (violation === undefined) throw new Error("missing fail violation");
+      assertEquals(violation.requirementId, THREAD_REQUIREMENT_ID);
+      assertEquals(violation.evaluationId, evaluation.id);
+      assertEquals(violation.observationIds, [observationId]);
+      assertEquals(violation.evidenceArtifactIds, [captureArtifactId]);
+      assertEquals(violation.status, "open");
+      assertEquals(violation.severity, "error");
+      assertEquals(
+        snapshot?.provenance.some((link) =>
+          link.relation === "caused_by" &&
+          link.from.kind === "violation" &&
+          link.from.id === violation.id &&
+          link.to.kind === "evaluation" &&
+          link.to.id === evaluation.id
+        ),
+        true,
+      );
+      assertEquals(
+        snapshot?.provenance.some((link) =>
+          link.relation === "evidences" &&
+          link.from.kind === "violation" &&
+          link.from.id === violation.id &&
+          link.to.kind === "artifact" &&
+          link.to.id === captureArtifactId
+        ),
+        true,
+      );
+      assertEquals(snapshot?.proposedActions.length, 1);
+      assertEquals(
+        snapshot?.proposedActions[0]?.addressesViolationIds,
+        [violation.id],
+      );
+      assertEquals(
+        snapshot?.provenance.some((link) =>
+          link.relation === "addresses" &&
+          link.from.kind === "action" &&
+          link.from.id === snapshot.proposedActions[0]?.id &&
+          link.to.kind === "violation" &&
+          link.to.id === violation.id
+        ),
+        true,
+      );
     } finally {
       await fixture.dispose();
     }
@@ -421,23 +566,38 @@ Deno.test(
   },
 );
 
+async function executeOracleVerdictFixture(
+  row: typeof PASS_ORACLE_ROW | typeof FAIL_ORACLE_ROW,
+) {
+  return await executeFixture({
+    admittedObservation: {
+      id: NATIVE_ADMITTED_OBSERVATION_ID,
+      metric: NATIVE_ADMITTED_OBSERVATION_METRIC,
+    },
+    sysonContent: { results: [row] },
+  });
+}
+
 async function executeFixture(
   options: {
     readonly runStatus?: "queued" | "running";
     readonly losePublishAck?: boolean;
     readonly methodSheet?: "matching" | "foreign";
+    readonly admittedObservation?: {
+      readonly id: string;
+      readonly metric: string;
+    };
+    readonly sysonContent?: Record<string, unknown>;
   } = {},
 ) {
   const directory = await Deno.makeTempDir({
     prefix: "evaluate-admitted-modelica-",
   });
-  const sheet = validateModelicaThermalMethodSheet(
-    validThermalMethodSheetPlaceholder(),
-  );
+  const sheet = validateModelicaThermalMethodSheet(identitySheetInput());
   const sheetFingerprint = await fingerprintModelicaThermalMethodSheet(sheet);
   const visibleSheet = options.methodSheet === "foreign"
     ? validateModelicaThermalMethodSheet({
-      ...validThermalMethodSheetPlaceholder(),
+      ...identitySheetInput(),
       id: "foreign-thermal-method-sheet",
     })
     : sheet;
@@ -565,10 +725,10 @@ async function executeFixture(
     }],
     consumptions: [],
     observations: [{
-      id: OBSERVATION_ID,
-      name: "Admitted Modelica placeholder-output final",
-      metric: "placeholder-output.final",
-      quantity: { value: 0, unit: "unit-pending-source" },
+      id: options.admittedObservation?.id ?? OBSERVATION_ID,
+      name: "Admitted Modelica temperature final",
+      metric: options.admittedObservation?.metric ?? `${OUTPUT_SYMBOL_ID}.final`,
+      quantity: { value: 0, unit: ORACLE_UNIT },
       source: {
         operation: {
           serverId: "digital-thread",
@@ -584,18 +744,18 @@ async function executeFixture(
       freshness: fresh(AT),
     }],
     requirements: [{
-      id: "placeholder-requirement",
+      id: THREAD_REQUIREMENT_ID,
       name: "placeholder",
       statement: "Placeholder requirement. Not a thermal verdict.",
       version: "1",
       criterion: {
-        metric: "placeholder-output",
+        metric: REQUIREMENT_METRIC,
         operator: "<=",
-        limit: { value: 1, unit: "unit-pending-source" },
+        limit: { value: 1, unit: ORACLE_UNIT },
       },
       trace: {
         sourceArtifactId: "artifact.brief",
-        elementId: "placeholder-requirement",
+        elementId: SYSML_REQUIREMENT_ELEMENT_ID,
         targetArtifactIds: ["artifact.brief"],
       },
       freshness: fresh(AT),
@@ -611,22 +771,28 @@ async function executeFixture(
     }, {
       id: "trace-requirement-to-brief",
       relation: "traces_to",
-      from: { kind: "requirement", id: "placeholder-requirement" },
+      from: { kind: "requirement", id: THREAD_REQUIREMENT_ID },
       to: { kind: "artifact", id: "artifact.brief" },
       rationale: "The placeholder requirement constrains the brief artifact.",
     }, {
-      id: `${OBSERVATION_ID}-from-evidence`,
+      id: `${options.admittedObservation?.id ?? OBSERVATION_ID}-from-evidence`,
       relation: "derived_from",
-      from: { kind: "observation", id: OBSERVATION_ID },
+      from: {
+        kind: "observation",
+        id: options.admittedObservation?.id ?? OBSERVATION_ID,
+      },
       to: {
         kind: "artifact",
         id: `modelica-admitted-evidence-${EVIDENCE_DIGEST}`,
       },
       rationale: "The observation is reported by the exact normalized evidence.",
     }, {
-      id: `${OBSERVATION_ID}-from-result`,
+      id: `${options.admittedObservation?.id ?? OBSERVATION_ID}-from-result`,
       relation: "derived_from",
-      from: { kind: "observation", id: OBSERVATION_ID },
+      from: {
+        kind: "observation",
+        id: options.admittedObservation?.id ?? OBSERVATION_ID,
+      },
       to: { kind: "artifact", id: `modelica-admitted-result-${RESULT_DIGEST}` },
       rationale: "The observation is reported by the exact retained solver result.",
     }],
@@ -763,12 +929,15 @@ async function executeFixture(
   const captures = new ExecuteMemoryCaptures();
   const sheets = new MemorySheetStore(sheet, sheetFingerprint);
   const evidence = new MemoryEvidenceReader();
-  const syson = new RecordingSysonClient({
-    results: [{
-      constraintId: "placeholder-requirement",
-      status: "unresolved",
-    }],
-  });
+  const sources = new MemorySourceReader(sheet.model.sourceCaptureFingerprint);
+  const syson = new RecordingSysonClient(
+    options.sysonContent ?? {
+      results: [{
+        constraintId: SYSML_REQUIREMENT_ELEMENT_ID,
+        status: "unresolved",
+      }],
+    },
+  );
   const attempts = new FileAdmittedObservationEvaluationAttemptStore(
     `${directory}/attempts`,
   );
@@ -799,6 +968,7 @@ async function executeFixture(
       snapshots,
       sheets,
       evidence,
+      sourceCaptures: sources,
       captures,
       sheetCaptures,
       attempts,
@@ -895,13 +1065,33 @@ class MemorySheetStore implements ThermalMethodSheetStore {
   }
 }
 
+class MemorySourceReader implements ThermalMethodSheetSourceCaptureReader {
+  constructor(readonly fingerprint: ContentFingerprint) {}
+  read(
+    fingerprint: ContentFingerprint,
+  ): Promise<ThermalMethodSheetSourceIdentity | undefined> {
+    if (fingerprint.digest !== this.fingerprint.digest) {
+      return Promise.resolve(undefined);
+    }
+    return Promise.resolve({
+      fingerprint,
+      role: "modelica-model",
+      language: "modelica",
+      symbols: [
+        { id: PARAMETER_SYMBOL_ID, kind: "parameter", name: NATIVE_PARAMETER_NAME },
+        { id: OUTPUT_SYMBOL_ID, kind: "variable", name: NATIVE_OUTPUT_NAME },
+      ],
+    });
+  }
+}
+
 class MemoryEvidenceReader implements AdmittedObservationEvidenceReader {
   read() {
     return Promise.resolve({
       modelName: "placeholder-module",
-      outputs: [{ name: "placeholder-output", unit: "unit-pending-source" }],
+      outputs: [{ name: NATIVE_OUTPUT_NAME, unit: "unit-pending-source" }],
       metrics: [{
-        outputName: "placeholder-output",
+        outputName: NATIVE_OUTPUT_NAME,
         statistic: "final" as const,
         unit: "unit-pending-source",
         value: 0,
@@ -1098,6 +1288,110 @@ function fresh(at: string) {
   return { status: "fresh" as const, changedAt: at, invalidatedByChangeIds: [] };
 }
 
+function assertSplitSourceAndRequirementIdentities(): void {
+  assertEquals(distinctText(OUTPUT_SYMBOL_ID, NATIVE_OUTPUT_NAME), true);
+  assertEquals(
+    distinctText(THREAD_REQUIREMENT_ID, SYSML_REQUIREMENT_ELEMENT_ID),
+    true,
+  );
+}
+
+function distinctText(left: string, right: string): boolean {
+  return left !== right;
+}
+
+function assertNormalizedOracleSuccessor(
+  snapshot: ThreadSnapshot | undefined,
+  oracle: typeof PASS_ORACLE_ROW | typeof FAIL_ORACLE_ROW,
+  sysonCalls: readonly McpToolCall[],
+) {
+  assertSplitRequirementIdentities(snapshot, sysonCalls);
+  const evaluation = snapshot?.evaluations[0];
+  const captureArtifactId = snapshot?.artifacts.find((item) =>
+    item.producer.tool === "verify.evaluate-admitted-modelica-observations@1"
+  )?.id;
+  const admitted = snapshot?.observations.find((item) =>
+    item.id === NATIVE_ADMITTED_OBSERVATION_ID
+  );
+  const observation = snapshot?.observations.find((item) =>
+    item.id === evaluation?.observationIds[0]
+  );
+  if (typeof captureArtifactId !== "string" || observation === undefined) {
+    throw new Error("missing L4 capture artifact or normalized observation");
+  }
+  assertEquals(evaluation?.status, oracle.status);
+  assertEquals(evaluation?.observationIds.length, 1);
+  assertEquals(evaluation?.observationIds[0] === NATIVE_ADMITTED_OBSERVATION_ID, false);
+  assertEquals(admitted?.metric, NATIVE_ADMITTED_OBSERVATION_METRIC);
+  assertEquals(observation.metric, REQUIREMENT_METRIC);
+  assertEquals(observation.quantity, {
+    value: oracle.computedValue,
+    unit: oracle.unit,
+  });
+  assertEquals(observation.source.operation, {
+    serverId: "digital-thread",
+    tool: "verify.evaluate-admitted-modelica-observations@1",
+    runId: RUN_ID,
+  });
+  assertEquals(observation.source.artifactIds, [captureArtifactId]);
+  assertEquals(evaluation?.comparison, {
+    observationId: observation.id,
+    actual: { value: oracle.computedValue, unit: oracle.unit },
+    operator: "<=",
+    limit: { value: oracle.threshold, unit: oracle.unit },
+    normalizedUnit: oracle.unit,
+    margin: { value: oracle.margin, unit: oracle.unit },
+  });
+  assertEquals(evaluation?.evidenceArtifactIds, [captureArtifactId]);
+  assertEquals(
+    snapshot?.provenance.some((link) =>
+      link.relation === "derived_from" &&
+      link.from.kind === "observation" &&
+      link.from.id === observation?.id &&
+      link.to.kind === "artifact" &&
+      link.to.id === captureArtifactId
+    ),
+    true,
+  );
+  assertEquals(
+    snapshot?.provenance.some((link) =>
+      link.relation === "uses" &&
+      link.from.kind === "evaluation" &&
+      link.from.id === evaluation?.id &&
+      link.to.kind === "observation" &&
+      link.to.id === observation?.id
+    ),
+    true,
+  );
+  if (!evaluation) throw new Error("missing evaluation");
+  return evaluation;
+}
+
+function assertSplitRequirementIdentities(
+  snapshot: ThreadSnapshot | undefined,
+  sysonCalls?: readonly McpToolCall[],
+): void {
+  if (sysonCalls !== undefined) {
+    const constraints = sysonCalls[0]?.arguments?.constraints as
+      | Array<{ id?: string }>
+      | undefined;
+    assertEquals(constraints?.[0]?.id, SYSML_REQUIREMENT_ELEMENT_ID);
+  }
+  const evaluation = snapshot?.evaluations[0];
+  assertEquals(evaluation?.requirementId, THREAD_REQUIREMENT_ID);
+  assertEquals(evaluation?.id, `${THREAD_REQUIREMENT_ID}-evaluation`);
+  assertEquals(
+    snapshot?.provenance.some((link) =>
+      link.relation === "evaluates" &&
+      link.from.kind === "evaluation" &&
+      link.from.id === evaluation?.id &&
+      link.to.kind === "requirement" &&
+      link.to.id === THREAD_REQUIREMENT_ID
+    ),
+    true,
+  );
+}
+
 function retryCommand(expectedRevision: number) {
   return {
     commandId: COMMAND_ID,
@@ -1179,4 +1473,19 @@ async function persistMethodSheetSeal(
   const fingerprint = await sha256Fingerprint(capture);
   await captures.save(fingerprint, text);
   return { capture, fingerprint, text };
+}
+
+function identitySheetInput(): Record<string, unknown> {
+  const input = validThermalMethodSheetPlaceholder();
+  const parameters = input.parameters as Array<{ modelSymbolId: string }>;
+  const outputs = input.outputs as Array<{ modelSymbolId: string }>;
+  const bindings = input.bindings as {
+    parameterizes: Array<{ modelSymbolId: string }>;
+    outputRequirements: Array<{ modelSymbolId: string }>;
+  };
+  parameters[0]!.modelSymbolId = PARAMETER_SYMBOL_ID;
+  outputs[0]!.modelSymbolId = OUTPUT_SYMBOL_ID;
+  bindings.parameterizes[0]!.modelSymbolId = PARAMETER_SYMBOL_ID;
+  bindings.outputRequirements[0]!.modelSymbolId = OUTPUT_SYMBOL_ID;
+  return input;
 }

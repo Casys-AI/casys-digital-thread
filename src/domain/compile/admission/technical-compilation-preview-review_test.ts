@@ -237,6 +237,7 @@ Deno.test(
           attribute("placeholder-attribute-usage", "placeholder"),
           { id: "placeholder-requirement", kind: "RequirementUsage" },
         ],
+        "modelica-source-qualification",
       ),
       [],
     );
@@ -250,6 +251,7 @@ Deno.test("absent thermal method sheet does not invent compilation gaps", () => 
       [modelicaSource()],
       [parameterizesBinding()],
       [attribute("placeholder-attribute-usage", "placeholder")],
+      "modelica-source-qualification",
     ),
     [],
   );
@@ -266,6 +268,7 @@ Deno.test(
       [modelicaSource()],
       [],
       [{ id: "placeholder-requirement", kind: "RequirementUsage" }],
+      "modelica-source-qualification",
     );
     assertEquals(gaps, [{
       code: "thermal-method-sheet.parameter.unresolved",
@@ -274,6 +277,58 @@ Deno.test(
       reason: "no-unique-parameterizes",
       recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalParameterizes,
     }]);
+  },
+);
+
+Deno.test(
+  "thermal method sheet recross does not contaminate SPICE or CAD compilation",
+  () => {
+    const sheet = validateModelicaThermalMethodSheet(
+      validThermalMethodSheetPlaceholder(),
+    );
+    const elements = [
+      attribute("placeholder-attribute-usage", "placeholder"),
+      { id: "placeholder-requirement", kind: "RequirementUsage" },
+    ];
+    assertEquals(
+      assembleThermalMethodSheetCompilationGaps(
+        sheet,
+        [spiceSource()],
+        [],
+        elements,
+        "spice-circuit-source",
+      ),
+      [],
+    );
+    assertEquals(
+      assembleThermalMethodSheetCompilationGaps(
+        sheet,
+        [cadSource("source.cad")],
+        [],
+        elements,
+        "build123d-source",
+      ),
+      [],
+    );
+    assertEquals(
+      assembleThermalMethodSheetCompilationGaps(
+        sheet,
+        [modelicaSource()],
+        [],
+        elements,
+        "spice-circuit-source",
+      ),
+      [],
+    );
+    assertEquals(
+      assembleThermalMethodSheetCompilationGaps(
+        sheet,
+        [modelicaSource()],
+        [],
+        elements,
+      ),
+      [],
+    );
   },
 );
 
@@ -315,5 +370,32 @@ function parameterizesBinding() {
     sysmlElementId: "placeholder-attribute-usage",
     sysmlElementKind: "AttributeUsage",
     relation: "parameterizes" as const,
+  };
+}
+
+function spiceSource(): {
+  sourceText: string;
+  analysis: SourceAnalysisBundle;
+} {
+  return {
+    sourceText: "Vin in 0 5\nRload in 0 1k\n",
+    analysis: {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id: "source.spice",
+        role: "spice-circuit",
+        language: "spice",
+        fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+      },
+      analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+      policy: {
+        profile: "spice-circuit-closed-subset-v1",
+        status: "passed",
+        findings: [],
+      },
+      symbols: [{ id: "artifact.circuit", kind: "artifact", name: "circuit" }],
+      dependencies: [],
+      unresolvedConstructs: [],
+    },
   };
 }

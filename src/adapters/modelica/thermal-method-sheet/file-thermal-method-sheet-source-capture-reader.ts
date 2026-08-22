@@ -58,6 +58,11 @@ export class FileThermalMethodSheetSourceCaptureReader
       fingerprint,
       role: "modelica-model",
       language: "modelica",
+      symbols: bundle.symbols.map((symbol) => ({
+        id: symbol.id,
+        kind: symbol.kind,
+        name: symbol.name,
+      })),
     };
   }
 }

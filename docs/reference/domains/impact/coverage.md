@@ -25,7 +25,7 @@ fixture, or a successful solver call is not a product capability by itself.
 | X07 | Supported | Pure analysis: registered `analyze.evaluate-cross-domain-impact@1`. Internal command is not an agent JSON envelope. Proposes branch and gate-claim statuses. Mutates none. |
 | X08 | Supported | Documentary Thread capture of that X07 recross (`cross-domain-impact-evaluation-capture/1.0`). `workItemInvalidations` and `rerunProposals` are literal `none`. |
 | X09 | Bounded | Read-only `project_cross_domain_impact_decision_review` (`projectId` only) then human-origin `decide.accept-cross-domain-impact@1`. Applies the already-proposed statuses onto existing work-item claims. No `decide.reject-cross-domain-impact@1`. |
-| X10 | `unavailable` | No registered rerun planner, no public review, no generic thermal/electrical redispatch from impact. X07/X08 keep `rerunProposals: none`. Independent Modelica or LED-fiche paths are not X10. ngspice is not a product run. |
+| X10 | `unavailable` | No registered rerun planner, no public review, no generic thermal/electrical redispatch from impact. X07/X08 keep `rerunProposals: none`. Independent admitted Modelica or admitted SPICE walks are not X10. `mcp-spice` is not a product run. |
 | X11 | Supported | Registered `analyze.evaluate-mechanical-preservation@1` after X09. Recrosses exact FEA proof/closeout identities and the reviewed independence assertion. Result is `carried-forward` or literal `impact-unresolved`. No CalculiX call. |
 
 ## Distinctions that must not collapse
@@ -40,7 +40,8 @@ fixture, or a successful solver call is not a product capability by itself.
 
 Electrical or thermal `method.available = false` keeps that branch
 `impact-unresolved` even when a positive causal edge exists. That is bounded
-readiness, not an implemented electrical/ngspice run.
+readiness. An available admitted SPICE or Modelica method still does not make
+X10 exist.
 
 ## Public and registered surfaces
 

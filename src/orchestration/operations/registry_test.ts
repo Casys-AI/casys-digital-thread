@@ -24,6 +24,13 @@ import {
 } from "../../domain/cad/canonical/geometry-proposal.ts";
 import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/modelica/qualified-kit/run-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
+import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../../domain/electrical/spice/admitted/run-proposal.ts";
+import { VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION } from "../../domain/electrical/observation-method-sheet-proposal.ts";
+import { VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION } from "../../domain/electrical/spice/evaluation/admitted-observation-evaluation-proposal.ts";
+import {
+  DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
+  DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
+} from "../../domain/electrical/spice/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
@@ -491,6 +498,60 @@ Deno.test("admitted Modelica execution binds one compilation admission and refus
                   snapshotRevision: 7,
                   kind: "artifact",
                   id: "artifact.caller-selected-modelica",
+                },
+              },
+            },
+          ],
+        },
+        stage: "planning",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(extraBinding.code, "invalid_bindings");
+});
+
+Deno.test("admitted SPICE execution binds one compilation admission and refuses caller source", () => {
+  const registered = getRegisteredEngineeringOperation(
+    SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+  )!;
+  assertEquals(registered.execution, "trusted");
+  assertEquals(registered.workItemKind, "simulate");
+  assertEquals(registered.riskClass, "consequential");
+  assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
+  assertEquals(registered.bindings, [{
+    name: "compilationAdmission",
+    allowedSourceKinds: ["thread-entity"],
+    cardinality: "one",
+    allowedThreadEntityKinds: ["artifact"],
+  }]);
+
+  const extraBinding = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+          bindings: [
+            {
+              name: "compilationAdmission",
+              source: {
+                kind: "thread-entity",
+                reference: {
+                  snapshotId: "thread.snapshot.7",
+                  snapshotRevision: 7,
+                  kind: "artifact",
+                  id: "artifact.admission",
+                },
+              },
+            },
+            {
+              name: "sourceText",
+              source: {
+                kind: "thread-entity",
+                reference: {
+                  snapshotId: "thread.snapshot.7",
+                  snapshotRevision: 7,
+                  kind: "artifact",
+                  id: "artifact.caller-selected-spice",
                 },
               },
             },
@@ -1122,6 +1183,8 @@ Deno.test("a human-only operation declares its origin so a human can reach it", 
     { id: "record.reconcile-uncertain-writer", version: "1" },
     DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
     DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+    DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
+    DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
     DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
   ];
   for (const operation of humanOnly) {
@@ -1132,6 +1195,84 @@ Deno.test("a human-only operation declares its origin so a human can reach it", 
     assertEquals(registered.mustOrigin, "human");
   }
 });
+
+Deno.test(
+  "admitted SPICE observation evaluation is a trusted closed comparator with approvedBrief only",
+  () => {
+    const operation = getRegisteredEngineeringOperation(
+      VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION,
+    )!;
+    assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+    assertEquals(operation.workItemKind, "verify");
+    assertEquals(operation.riskClass, "consequential");
+    assertEquals(operation.execution, "trusted");
+    assertEquals(operation.bindings, [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }]);
+
+    const extras = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION,
+            bindings: [{
+              name: "ngspiceEnvelope",
+              source: {
+                kind: "thread-entity" as const,
+                reference: {
+                  snapshotId: "thread.snapshot.9",
+                  snapshotRevision: 9,
+                  kind: "artifact" as const,
+                  id: "artifact.ngspice",
+                },
+              },
+            }],
+          },
+          stage: "queue",
+          basisKind: "thread-snapshot",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(extras.code, "invalid_bindings");
+  },
+);
+
+Deno.test(
+  "electrical observation method-sheet seal is trusted, approvedBrief only, and rejects engine bindings",
+  () => {
+    const operation = getRegisteredEngineeringOperation(
+      VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
+    )!;
+    assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+    assertEquals(operation.workItemKind, "verify");
+    assertEquals(operation.execution, "trusted");
+    const extras = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
+            bindings: [{
+              name: "executionCapture",
+              source: {
+                kind: "thread-entity" as const,
+                reference: {
+                  snapshotId: "thread.snapshot.9",
+                  snapshotRevision: 9,
+                  kind: "artifact" as const,
+                  id: "artifact.ngspice",
+                },
+              },
+            }],
+          },
+          stage: "queue",
+          basisKind: "thread-snapshot",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(extras.code, "invalid_bindings");
+  },
+);
 
 Deno.test(
   "admitted Modelica evaluation closeout is human-only, approvedBrief only, and rejects engine bindings",
@@ -1167,6 +1308,54 @@ Deno.test(
                     snapshotRevision: 9,
                     kind: "artifact" as const,
                     id: "artifact.syson",
+                  },
+                },
+              }],
+            },
+            stage: "queue",
+            basisKind: "thread-snapshot",
+          }),
+        EngineeringOperationRegistryError,
+      );
+      assertEquals(extras.code, "invalid_bindings");
+    }
+  },
+);
+
+Deno.test(
+  "admitted SPICE evaluation closeout is human-only, approvedBrief only, and rejects engine bindings",
+  () => {
+    for (
+      const operation of [
+        DECIDE_ACCEPT_ADMITTED_SPICE_EVALUATION_OPERATION,
+        DECIDE_REJECT_ADMITTED_SPICE_EVALUATION_OPERATION,
+      ]
+    ) {
+      const registered = getRegisteredEngineeringOperation(operation)!;
+      assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+      assertEquals(registered.workItemKind, "review");
+      assertEquals(registered.riskClass, "consequential");
+      assertEquals(registered.execution, "trusted");
+      assertEquals(registered.mustOrigin, "human");
+      assertEquals(registered.bindings, [{
+        name: "approvedBrief",
+        allowedSourceKinds: ["approved-brief"],
+      }]);
+
+      const extras = assertThrows(
+        () =>
+          validateRegisteredEngineeringOperationInput({
+            operation: {
+              ...operation,
+              bindings: [{
+                name: "ngspiceEnvelope",
+                source: {
+                  kind: "thread-entity" as const,
+                  reference: {
+                    snapshotId: "thread.snapshot.9",
+                    snapshotRevision: 9,
+                    kind: "artifact" as const,
+                    id: "artifact.ngspice",
                   },
                 },
               }],

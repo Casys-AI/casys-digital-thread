@@ -23,6 +23,7 @@ import {
 } from "./technical-source-analysis-capture.ts";
 import type { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import { qualifiedModelicaSourceAnalysisRegistration } from "../../modelica/source/source-analysis-composition.ts";
+import { spiceCircuitSourceAnalysisRegistration } from "../../electrical/spice/source-analysis-composition.ts";
 
 export const INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES = 262_144;
 
@@ -39,7 +40,7 @@ export const INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE:
     maxSourceBytes: INITIAL_QUALIFIED_BUILD123D_MAX_SOURCE_BYTES,
   });
 
-/** Closed registry: Build123d and Modelica only. CalculiX stays absent. */
+/** Closed registry: Build123d, Modelica, and circuit-only SPICE. CalculiX stays absent. */
 export function createInitialTechnicalSourceAnalysisProfileRegistry(): FixedTechnicalSourceAnalysisProfileRegistry {
   return new FixedTechnicalSourceAnalysisProfileRegistry([
     {
@@ -47,6 +48,7 @@ export function createInitialTechnicalSourceAnalysisProfileRegistry(): FixedTech
       frontend: new QualifiedBuild123dSourceAnalyzer(),
     },
     qualifiedModelicaSourceAnalysisRegistration(),
+    spiceCircuitSourceAnalysisRegistration(),
   ]);
 }
 

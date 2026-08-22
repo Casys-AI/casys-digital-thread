@@ -231,7 +231,8 @@ function compilationTarget(
   if (
     value !== "build123d-source" &&
     value !== "modelica-source-qualification" &&
-    value !== "calculix-source-candidate"
+    value !== "calculix-source-candidate" &&
+    value !== "spice-circuit-source"
   ) {
     throw new TypeError(`${path} is not a registered compilation target.`);
   }

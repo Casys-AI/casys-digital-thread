@@ -119,7 +119,9 @@ export function deriveUniqueTechnicalCompilationBindings(
       symbol.kind === "artifact" &&
       (symbol.name === "result" ||
         (source.analysis.source.role === "modelica-model" &&
-          source.analysis.source.language === "modelica"))
+          source.analysis.source.language === "modelica") ||
+        (source.analysis.source.role === "spice-circuit" &&
+          source.analysis.source.language === "spice"))
     );
     const representedPart = partDefinitions.length === 1
       ? partDefinitions[0]
@@ -154,7 +156,9 @@ export function deriveUniqueTechnicalCompilationBindings(
  * In a multi-PartDefinition architecture, a CAD result is bound only through
  * every analysis-reachable named numeric lever. The target is the one exact
  * parent identity shared by those uniquely joined AttributeUsages; labels,
- * caller choice, and element order never participate.
+ * caller choice, and element order never participate. CAD-only: a Modelica
+ * root or circuit-only SPICE artifact is not a solid, so this path must not
+ * invent a represented PartDefinition.
  */
 function deriveCadRepresentedPartDefinition(
   source: TechnicalCompilationJoinSource,

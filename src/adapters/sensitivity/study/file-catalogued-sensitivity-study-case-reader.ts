@@ -13,37 +13,83 @@ export class FileCataloguedSensitivityStudyCaseReader
     this.#root = root.replace(/\/+$/, "");
   }
   async list(): Promise<readonly { readonly caseId: string }[]> {
-    return (await this.#manifest()).map(({ id }) => ({ caseId: id }));
+    return (await this.#open()).entries.map(({ id }) => ({ caseId: id }));
   }
   async read(caseId: string): Promise<string | undefined> {
-    const entry = (await this.#manifest()).find((item) => item.id === caseId);
+    const { root, entries } = await this.#open();
+    const entry = entries.find((item) => item.id === caseId);
     if (!entry) return undefined;
-    const path = this.#path(entry.file);
-    const raw = await readIfPresent(path);
+    const path = `${root}/${entry.file}`;
+    const raw = await readConfined(root, entry.file);
     if (raw === undefined) return undefined;
     assertCaseFileId(raw, caseId, path);
     return raw;
   }
-  async #manifest(): Promise<readonly CatalogEntry[]> {
-    const path = this.#path(CATALOG_FILE);
-    const raw = await readIfPresent(path);
+  async #open(): Promise<{
+    readonly root: string;
+    readonly entries: readonly CatalogEntry[];
+  }> {
+    const root = await resolveCatalogRoot(this.#root);
+    const path = `${root}/${CATALOG_FILE}`;
+    const raw = await readConfined(root, CATALOG_FILE);
     if (raw === undefined) {
       throw new Error(`Sensitivity-study catalog manifest is missing: ${path}.`);
     }
-    return parseManifest(raw, path);
-  }
-  #path(file: string): string {
-    return `${this.#root}/${file}`;
+    const entries = parseManifest(raw, path);
+    for (const entry of entries) await resolveConfined(root, entry.file);
+    return { root, entries };
   }
 }
-async function readIfPresent(path: string): Promise<string | undefined> {
+
+async function resolveCatalogRoot(root: string): Promise<string> {
   try {
-    return await Deno.readTextFile(path);
+    return (await Deno.realPath(root)).replace(/\/+$/, "");
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) {
+      throw new Error(
+        `Sensitivity-study catalog manifest is missing: ${root}/${CATALOG_FILE}.`,
+      );
+    }
+    throw error;
+  }
+}
+
+async function readConfined(
+  root: string,
+  relativeFile: string,
+): Promise<string | undefined> {
+  const canonical = await resolveConfined(root, relativeFile);
+  if (canonical === undefined) return undefined;
+  try {
+    return await Deno.readTextFile(canonical);
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) return undefined;
     throw error;
   }
 }
+
+async function resolveConfined(
+  root: string,
+  relativeFile: string,
+): Promise<string | undefined> {
+  const path = `${root}/${relativeFile}`;
+  let canonical: string;
+  try {
+    canonical = await Deno.realPath(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return undefined;
+    throw error;
+  }
+  if (!isStrictDescendant(root, canonical)) {
+    throw new Error(`Catalog path escaped the catalog root: ${path}.`);
+  }
+  return canonical;
+}
+
+function isStrictDescendant(root: string, path: string): boolean {
+  return path.startsWith(`${root}/`) && path.length > root.length + 1;
+}
+
 function parseManifest(raw: string, path: string): readonly CatalogEntry[] {
   let parsed: unknown;
   try {

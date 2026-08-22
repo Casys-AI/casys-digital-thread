@@ -104,9 +104,6 @@ export async function createAdmittedModelicaCloseoutEvidenceFixture(
   const threadRequirementId = options.threadRequirementId ??
     "placeholder-requirement";
   const elementId = "placeholder-requirement";
-  const outcomeRequirementId = evaluationStatus === "unresolved"
-    ? elementId
-    : threadRequirementId;
   const includeL4Artifact = options.includeL4Artifact !== false;
   const includeSheet = options.includeSheet !== false;
   const attachProducerRun = options.attachProducerRun ?? includeL4Artifact;
@@ -165,7 +162,7 @@ export async function createAdmittedModelicaCloseoutEvidenceFixture(
     response: {
       structuredContent: {
         results: evaluationStatus === "unresolved" ? [] : [{
-          constraintId: outcomeRequirementId,
+          constraintId: elementId,
           status: evaluationStatus,
           computedValue: 0,
           threshold: 1,
@@ -344,7 +341,7 @@ export async function createAdmittedModelicaCloseoutEvidenceFixture(
     evaluationStatus === "fail";
   const observationId = "placeholder-output-observation";
   const primaryL4 = l4Artifacts[0];
-  const evaluationId = `${outcomeRequirementId}-evaluation`;
+  const evaluationId = `${threadRequirementId}-evaluation`;
   const violationId = "placeholder-requirement-violation";
   const artifacts = [brief, ...sourceArtifacts, ...l4Artifacts];
   const consumptions = l4Artifacts.flatMap((artifact) =>
@@ -361,7 +358,7 @@ export async function createAdmittedModelicaCloseoutEvidenceFixture(
     ? [{
       id: evaluationId,
       name: "placeholder evaluation",
-      requirementId: outcomeRequirementId,
+      requirementId: threadRequirementId,
       observationIds: observationNeeded ? [observationId] : [],
       status: evaluationStatus,
       evaluatedAt: CLOSEOUT_REVIEW_AT,
@@ -391,7 +388,7 @@ export async function createAdmittedModelicaCloseoutEvidenceFixture(
     ? [{
       id: violationId,
       name: "placeholder limit exceeded",
-      requirementId: outcomeRequirementId,
+      requirementId: threadRequirementId,
       evaluationId,
       severity: "error" as const,
       status: "open" as const,

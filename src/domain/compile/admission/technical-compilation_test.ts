@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { fingerprintSourceAnalysisBundle } from "../source/source-analysis.ts";
 import {
+  type CompilationAdmissionTargetFacts,
   compileTechnicalSources,
   fingerprintTechnicalCompilationBasis,
   fingerprintTechnicalCompilationDocument,
@@ -9,6 +10,9 @@ import {
   PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_INPUT_SCHEMA,
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+  type TechnicalCompilationTarget,
+  uniqueCompilationAdmissionTarget,
+  uniqueCompilationDocumentTarget,
   validateTechnicalCompilationDocument,
 } from "./technical-compilation.ts";
 
@@ -888,6 +892,166 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "Modelica admission is ready without represents when unique parameterizes have distinct owners",
+  async () => {
+    const sourceText = "model Root end Root;";
+    const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+    const analysis = {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id: "source.modelica",
+        role: "modelica-model",
+        language: "modelica",
+        fingerprint: sourceFingerprint,
+      },
+      analyzer: { id: "test.ast", version: "1.0.0" },
+      policy: {
+        profile: "policy.modelica-safe",
+        status: "passed",
+        findings: [],
+      },
+      symbols: [
+        { id: "artifact.Root", kind: "artifact", name: "Root" },
+        { id: "parameter.state", kind: "parameter", name: "state" },
+        { id: "parameter.power", kind: "parameter", name: "power" },
+      ],
+      dependencies: [{
+        id: "dependency.state.Root",
+        kind: "structural-incidence",
+        fromSymbolId: "parameter.state",
+        toSymbolId: "artifact.Root",
+      }, {
+        id: "dependency.power.Root",
+        kind: "structural-incidence",
+        fromSymbolId: "parameter.power",
+        toSymbolId: "artifact.Root",
+      }],
+      unresolvedConstructs: [],
+    };
+    const sysmlProvenance = {
+      artifactId: "artifact.sysml",
+      artifactFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+      captureId: "capture.syson",
+    };
+    const sysmlAnchor = {
+      artifactId: "artifact.sysml",
+      artifactFingerprint: sysmlProvenance.artifactFingerprint,
+      captureId: "capture.syson",
+      editingContextId: "editing-context.main",
+      rootElementId: "sysml.root.package",
+      rootElementKind: "Package",
+      elements: [
+        { id: "sysml.root.package", kind: "Package", provenance: sysmlProvenance },
+        {
+          id: "sysml.head",
+          kind: "PartDefinition",
+          name: "Head",
+          provenance: sysmlProvenance,
+        },
+        {
+          id: "sysml.driver",
+          kind: "PartDefinition",
+          name: "Driver",
+          provenance: sysmlProvenance,
+        },
+        {
+          id: "sysml.head.state",
+          kind: "AttributeUsage",
+          name: "state",
+          parentElementId: "sysml.head",
+          provenance: sysmlProvenance,
+        },
+        {
+          id: "sysml.driver.power",
+          kind: "AttributeUsage",
+          name: "power",
+          parentElementId: "sysml.driver",
+          provenance: sysmlProvenance,
+        },
+      ],
+    };
+    const basis = {
+      thread: {
+        projectId: "project.plant",
+        subjectId: "subject.plant",
+        snapshotId: "snapshot.7",
+        revision: 7,
+        snapshotFingerprint: THREAD_FINGERPRINT,
+      },
+      sysmlAnchor,
+      sysmlAnchorFingerprint: await fingerprintTechnicalSysmlAnchor(sysmlAnchor),
+    };
+    const compiled = await compileTechnicalSources({
+      schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
+      basis,
+      basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
+      sources: [{
+        sourceText,
+        analysis,
+        analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+      }],
+      bindings: [{
+        id: "binding:source.modelica:parameter.power:parameterizes",
+        sourceId: "source.modelica",
+        sourceSymbolId: "parameter.power",
+        sysmlElementId: "sysml.driver.power",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      }, {
+        id: "binding:source.modelica:parameter.state:parameterizes",
+        sourceId: "source.modelica",
+        sourceSymbolId: "parameter.state",
+        sysmlElementId: "sysml.head.state",
+        sysmlElementKind: "AttributeUsage",
+        relation: "parameterizes",
+      }],
+      profileRequests: [{
+        profileId: "profile.modelica",
+        profileVersion: "2.0.0",
+        sourceIds: ["source.modelica"],
+      }],
+    }, {
+      schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+      profiles: [{
+        id: "profile.modelica",
+        version: "2.0.0",
+        target: "modelica-source-qualification",
+        sourceRole: "modelica-model",
+        language: "modelica",
+        analyzer: { id: "test.ast", version: "1.0.0" },
+        analysisPolicyProfile: "policy.modelica-safe",
+        requiredBindingSymbolKinds: ["parameter"],
+      }],
+    });
+    assertEquals(compiled.document.status, "ready-for-review");
+    assertEquals(
+      compiled.document.inputManifest.bindings.map((binding) => binding.relation),
+      ["parameterizes", "parameterizes"],
+    );
+    assertEquals(compiled.document.diagnostics, []);
+  },
+);
+
+Deno.test("CAD admission stays unresolved when the result artifact is unbound", async () => {
+  const { input, catalog } = await fixture();
+  const build123d = values(catalog.profiles).map(record).find((profile) =>
+    profile.id === "profile.build123d"
+  );
+  assert(build123d);
+  build123d.requiredBindingSymbolKinds = ["artifact", "parameter"];
+  const compiled = await compileTechnicalSources(input, catalog);
+  assertEquals(compiled.document.status, "unresolved");
+  assert(
+    compiled.document.diagnostics.some((diagnostic) =>
+      diagnostic.code === "binding.missing" &&
+      diagnostic.profileRef ===
+        `profile.build123d@${PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION}` &&
+      diagnostic.subjectRef === "source.cad:cad.result"
+    ),
+  );
+});
+
 Deno.test("missing explicit binding and analyzer uncertainty remain unresolved", async () => {
   const base = await fixture({ cadUnresolved: true });
   const input = structuredClone(base.input);
@@ -1410,6 +1574,271 @@ Deno.test("binding tuple identity is injective for exact ids containing colons",
     "must name a source",
   );
 });
+
+Deno.test("unique compilation admission target joins SPICE by target/source only", () => {
+  const spice = compilationTargetFacts(
+    "spice-circuit-source",
+    "spice",
+    "spice-circuit",
+  );
+  assertEquals(uniqueCompilationAdmissionTarget(spice), "spice-circuit-source");
+  assertEquals(
+    uniqueCompilationDocumentTarget(spice.document),
+    "spice-circuit-source",
+  );
+  const mixed = compilationTargetFacts(
+    "spice-circuit-source",
+    "python",
+    "spice-circuit",
+  );
+  assertEquals(uniqueCompilationAdmissionTarget(mixed), undefined);
+  assertEquals(uniqueCompilationDocumentTarget(mixed.document), undefined);
+  assertEquals(
+    uniqueCompilationAdmissionTarget(
+      compilationTargetFacts(
+        "modelica-source-qualification",
+        "modelica",
+        "modelica-model",
+      ),
+    ),
+    "modelica-source-qualification",
+  );
+  assertEquals(
+    uniqueCompilationDocumentTarget(
+      compilationTargetFacts(
+        "modelica-source-qualification",
+        "modelica",
+        "modelica-model",
+      ).document,
+    ),
+    "modelica-source-qualification",
+  );
+  assertEquals(
+    uniqueCompilationAdmissionTarget(
+      compilationTargetFacts("build123d-source", "python", "cad-script"),
+    ),
+    "build123d-source",
+  );
+  assertEquals(
+    uniqueCompilationDocumentTarget(
+      compilationTargetFacts("build123d-source", "python", "cad-script")
+        .document,
+    ),
+    "build123d-source",
+  );
+});
+
+Deno.test(
+  "SPICE admission is ready without named levers when .param symbols are unbound-free",
+  async () => {
+    const sourceText = "Vin in 0 5\nRload in 0 1k\n";
+    const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+    const analysis = {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id: "source.spice",
+        role: "spice-circuit",
+        language: "spice",
+        fingerprint: sourceFingerprint,
+      },
+      analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+      policy: {
+        profile: "spice-circuit-closed-subset-v1",
+        status: "passed",
+        findings: [],
+      },
+      symbols: [
+        { id: "artifact.circuit", kind: "artifact", name: "circuit" },
+        { id: "component.Vin", kind: "component", name: "Vin" },
+      ],
+      dependencies: [],
+      unresolvedConstructs: [],
+    };
+    const sysmlProvenance = {
+      artifactId: "artifact.sysml",
+      artifactFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+      captureId: "capture.syson",
+    };
+    const sysmlAnchor = {
+      artifactId: "artifact.sysml",
+      artifactFingerprint: sysmlProvenance.artifactFingerprint,
+      captureId: "capture.syson",
+      editingContextId: "editing-context.main",
+      rootElementId: "sysml.root.package",
+      rootElementKind: "Package",
+      elements: [
+        { id: "sysml.root.package", kind: "Package", provenance: sysmlProvenance },
+      ],
+    };
+    const basis = {
+      thread: {
+        projectId: "project.clamp",
+        subjectId: "subject.clamp",
+        snapshotId: "snapshot.3",
+        revision: 3,
+        snapshotFingerprint: THREAD_FINGERPRINT,
+      },
+      sysmlAnchor,
+      sysmlAnchorFingerprint: await fingerprintTechnicalSysmlAnchor(sysmlAnchor),
+    };
+    const compiled = await compileTechnicalSources({
+      schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
+      basis,
+      basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
+      sources: [{
+        sourceText,
+        analysis,
+        analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+      }],
+      bindings: [],
+      profileRequests: [{
+        profileId: "spice-circuit-closed-subset-v1",
+        profileVersion: "1.0.0",
+        sourceIds: ["source.spice"],
+      }],
+    }, {
+      schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+      profiles: [{
+        id: "spice-circuit-closed-subset-v1",
+        version: "1.0.0",
+        target: "spice-circuit-source",
+        sourceRole: "spice-circuit",
+        language: "spice",
+        analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+        analysisPolicyProfile: "spice-circuit-closed-subset-v1",
+        requiredBindingSymbolKinds: ["parameter"],
+      }],
+    });
+    assertEquals(compiled.document.status, "ready-for-review");
+    assertEquals(compiled.document.diagnostics, []);
+    assertEquals(compiled.document.projections[0]?.target, "spice-circuit-source");
+  },
+);
+
+Deno.test("SPICE .param without unique parameterizes stays binding.missing", async () => {
+  const sourceText = "Vin in 0 5\nRload in 0 {rload}\n.param rload=1000\n";
+  const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+  const analysis = {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id: "source.spice",
+      role: "spice-circuit",
+      language: "spice",
+      fingerprint: sourceFingerprint,
+    },
+    analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+    policy: {
+      profile: "spice-circuit-closed-subset-v1",
+      status: "passed",
+      findings: [],
+    },
+    symbols: [
+      { id: "artifact.circuit", kind: "artifact", name: "circuit" },
+      { id: "parameter.rload", kind: "parameter", name: "rload" },
+    ],
+    dependencies: [],
+    unresolvedConstructs: [],
+  };
+  const sysmlProvenance = {
+    artifactId: "artifact.sysml",
+    artifactFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+    captureId: "capture.syson",
+  };
+  const sysmlAnchor = {
+    artifactId: "artifact.sysml",
+    artifactFingerprint: sysmlProvenance.artifactFingerprint,
+    captureId: "capture.syson",
+    editingContextId: "editing-context.main",
+    rootElementId: "sysml.root.package",
+    rootElementKind: "Package",
+    elements: [
+      { id: "sysml.root.package", kind: "Package", provenance: sysmlProvenance },
+    ],
+  };
+  const basis = {
+    thread: {
+      projectId: "project.clamp",
+      subjectId: "subject.clamp",
+      snapshotId: "snapshot.3",
+      revision: 3,
+      snapshotFingerprint: THREAD_FINGERPRINT,
+    },
+    sysmlAnchor,
+    sysmlAnchorFingerprint: await fingerprintTechnicalSysmlAnchor(sysmlAnchor),
+  };
+  const compiled = await compileTechnicalSources({
+    schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
+    basis,
+    basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
+    sources: [{
+      sourceText,
+      analysis,
+      analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+    }],
+    bindings: [],
+    profileRequests: [{
+      profileId: "spice-circuit-closed-subset-v1",
+      profileVersion: "1.0.0",
+      sourceIds: ["source.spice"],
+    }],
+  }, {
+    schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+    profiles: [{
+      id: "spice-circuit-closed-subset-v1",
+      version: "1.0.0",
+      target: "spice-circuit-source",
+      sourceRole: "spice-circuit",
+      language: "spice",
+      analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+      analysisPolicyProfile: "spice-circuit-closed-subset-v1",
+      requiredBindingSymbolKinds: ["parameter"],
+    }],
+  });
+  assertEquals(compiled.document.status, "unresolved");
+  assertEquals(
+    compiled.document.diagnostics.some((diagnostic) =>
+      diagnostic.code === "binding.missing" &&
+      diagnostic.subjectRef === "source.spice:parameter.rload"
+    ),
+    true,
+  );
+  assertEquals(
+    compiled.document.diagnostics.some((diagnostic) =>
+      diagnostic.code === "source.no-named-numeric-lever"
+    ),
+    false,
+  );
+});
+
+function compilationTargetFacts(
+  target: TechnicalCompilationTarget,
+  language: string,
+  role: string,
+): CompilationAdmissionTargetFacts {
+  return {
+    admission: {
+      sources: [{ language, role }],
+      compilationProfileRequests: [{ target }],
+    },
+    document: {
+      projections: [{
+        target,
+        profile: {
+          target,
+          language,
+          sourceRole: role,
+        },
+      }],
+      inputManifest: {
+        sources: [{
+          analysis: {
+            source: { language, role },
+          },
+        }],
+      },
+    },
+  };
+}
 
 function recursiveKeys(value: unknown, into = new Set<string>()): Set<string> {
   if (Array.isArray(value)) {

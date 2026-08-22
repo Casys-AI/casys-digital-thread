@@ -95,6 +95,10 @@ import {
   registerProjectLedDriverSourceTools,
 } from "./project-control/led-driver-source-tools.ts";
 import {
+  type ProjectSpiceReviewToolDependencies,
+  registerProjectSpiceReviewTools,
+} from "./project-control/spice-review-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -120,7 +124,8 @@ export interface ProjectControlToolDependencies
     ProjectFeaReviewToolDependencies,
     ProjectSensitivityReviewToolDependencies,
     ProjectDemoLoopToolDependencies,
-    ProjectLedDriverSourceToolDependencies {
+    ProjectLedDriverSourceToolDependencies,
+    ProjectSpiceReviewToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
@@ -196,6 +201,7 @@ export function registerProjectControlTools(
   registerProjectSensitivityReviewTools(app, dependencies);
   registerProjectDemoLoopTools(app, dependencies);
   registerProjectLedDriverSourceTools(app, dependencies);
+  registerProjectSpiceReviewTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);
@@ -249,12 +255,25 @@ export function registerProjectControlTools(
         common.expectedRevision,
       );
       /**
-       * A human-only operation cannot borrow the agent's origin, so this
-       * surface hands the dispatch itself to the operator's elicitation before
-       * the executor's own gate ever sees it. Everything else keeps the agent
+       * A human-only operation cannot borrow the agent's origin. Interactive
+       * mode hands dispatch to the operator's elicitation. Local YOLO uses
+       * the persisted human origin and still calls the same executor; the
+       * executor gate remains the authority. Everything else keeps the agent
        * origin unchanged.
        */
       if (humanOnlyRunOperation(current, runId)) {
+        const approvalMode = dependencies.approvalMode ??
+          INTERACTIVE_PROJECT_APPROVAL_MODE;
+        if (autoConfirms(approvalMode, "human-only-execute")) {
+          const snapshot = await dependencies.runExecutor!.execute(
+            approvalMode.origin,
+            { ...common, runId },
+          );
+          return await projectResult(
+            `YOLO local startup opt-in executed human-only run ${runId} through its registered server-owned executor at project revision ${snapshot.revision} under the persisted local-yolo human origin. No inputResponses or retryVerified value was fabricated.`,
+            snapshot,
+          );
+        }
         const confirmation = humanRunExecutionConfirmationResponse(context);
         if (confirmation === undefined) {
           return humanRunExecutionConfirmationRequest(current, runId);
@@ -597,7 +616,7 @@ const projectDecisionProposeTool: MCPTool = {
 const projectDecisionApproveTool: MCPTool = {
   name: "project_decision_approve",
   description:
-    "Ask the paired MCP host to present one exact proposed decision for confirmation. In the default interactive mode, the first call requests elicitation and only a signed accepted retry records approval. An explicit loopback-only --yolo startup opt-in instead records the positive approval through the same command service with the persisted local-yolo human origin; it never fabricates elicitation responses. Rejection and all other human-only actions remain interactive.",
+    "Ask the paired MCP host to present one exact proposed decision for confirmation. In the default interactive mode, the first call requests elicitation and only a signed accepted retry records approval. An explicit loopback-only --yolo startup opt-in instead records the positive approval through the same command service with the persisted local-yolo human origin; it never fabricates elicitation responses. Rejection remains interactive.",
   inputSchema: mutationSchema({
     decisionId: { type: "string", minLength: 1 },
     inputFingerprint: FINGERPRINT_SCHEMA,
@@ -678,7 +697,7 @@ const projectAgentRunCancelTool: MCPTool = {
 const projectAgentRunExecuteTool: MCPTool = {
   name: "project_agent_run_execute",
   description:
-    "Execute one agent-queued run through its exact server-owned registered executor. The call accepts no provider, tool arguments, files or result payload. Registered work may record the canonical project brief as a documentary baseline or run an explicitly reviewed engineering operation; it cannot add arbitrary evidence or compliance claims. Reuse the same commandId unchanged to resume an interrupted call safely.",
+    "Execute one agent-queued run through its exact server-owned registered executor. The call accepts no provider, tool arguments, files or result payload. Registered work may record the canonical project brief as a documentary baseline or run an explicitly reviewed engineering operation; it cannot add arbitrary evidence or compliance claims. A human-only queued run still requires signed MCP elicitation in the default interactive mode. An explicit loopback-only --yolo startup opt-in executes that same reviewed queued run through the same executor with the persisted local-yolo human origin; it never fabricates elicitation responses and never uses an agent origin. Reuse the same commandId unchanged to resume an interrupted call safely.",
   inputSchema: mutationSchema({
     runId: { type: "string", minLength: 1 },
   }, ["runId"]),

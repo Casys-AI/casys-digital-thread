@@ -3,8 +3,10 @@ Audience: agent · Diátaxis: none · Kind: RFC Status: active
 # RFC 05 — ngspice LED-driver vertical
 
 This folder is one electrical vertical split into short execution briefs. It is core to
-the articulated-lamp demo, but it does not claim that the current repository already has
-a registered SPICE operation.
+the articulated-lamp demo. Living product path is admitted circuit-only SPICE
+(`simulate.run-admitted-spice@1` plus later L4/L5), not `mcp-spice`. Exact AL01
+identities live on
+[runtime evidence](../../../projects/articulated-led-desk-lamp/runtime-evidence.md).
 
 Read in order:
 

@@ -55,6 +55,23 @@ Product Modelica: capture (`modelica-closed-subset-v2`) → compilation preview 
 the product `.mo`. Same image family `casys/modelica-microsandbox-worker`; kit
 `ENTRYPOINT` pins one `.mo`, admitted worker runs `/input/source.mo`.
 
+## Electrical
+
+Domain contracts: [electrical index](../domains/electrical/README.md) and
+[circuit-only SPICE closed subset v1](../domains/electrical/spice-circuit-closed-subset-v1.md).
+
+| This | Is | Is not |
+| ---- | -- | ------ |
+| `project_led_driver_source_capture` | Draft CAS write of exact `led-driver-human-source/1.0` UTF-8 | Circuit-only SPICE, D1, ngspice, or a Thread write |
+| `project_led_driver_source_review` | Reference-only reopen of one `led-driver-source-capture/1.0` locator | A capture command, `sourceText`, or the capture review object |
+| `simulate.run-admitted-spice@1` | Reopen `compile.seal-admission@1` circuit-only bytes and run ngspice in isolation | mcp-spice, the LED-driver fiche, L4, or L5 |
+| `verify.seal-electrical-observation-method-sheet@1` | Provider-free seal of the reviewed method sheet | An admitted run, L4, or ngspice |
+| `verify.evaluate-admitted-spice-observations@1` | Server-owned comparator of exact admitted observations against that sheet | ngspice, SysON, or L5 |
+| `decide.accept-admitted-spice-evaluation@1` / `decide.reject-admitted-spice-evaluation@1` | Human closeout of that exact L4 | Implicit L5 from an L4 `pass`, mcp-spice, or a safety claim |
+| `mcp-spice` / `probe:spice-contract` | Maintainer-only preflight; integration `unresolved` | The product admitted run |
+
+How-to: [run admitted SPICE](../../how-to/run/run-admitted-spice.md).
+
 ## Cross-domain impact
 
 | This | Is | Is not |
@@ -116,5 +133,3 @@ CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.
 | `config/*-api/` inventory JSON          | Documentary pinned-language ground truth                                                  | A compiler driver or generated qualification table                |
 | `console_*` on `:3020/mcp`              | Control-plane fleet and indexed-run reads                                                 | The native cockpit (`preview:thread` / `preview:cockpit`)         |
 | `preview:browser` / `ui://casys-digital-thread/console` | Retired Console MCP App. The task refuses                                      | A product page or a registered MCP resource                       |
-| `project_led_driver_source_capture` | Draft CAS write of exact `led-driver-human-source/1.0` UTF-8. Pass `result.reference` only | The review envelope, D1, ngspice, or a Thread write |
-| `project_led_driver_source_review` | Reference-only reopen of one `led-driver-source-capture/1.0` locator | A capture command, `sourceText`, or the capture review object |

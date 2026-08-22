@@ -13,13 +13,14 @@ OpenModelica to Modelica, and CalculiX to FEA.
 | FEA         | Mechanical proof declarations, isolated solves and evaluated criteria | [FEA](fea/README.md)                 |
 | SysML       | Bounded architecture source, renderer, captures and Thread documents  | [SysML](sysml/README.md)             |
 | Sensitivity | First-order study declarations and catalogued offers                  | [Sensitivity](sensitivity/README.md) |
-| Electrical  | Provider-free LED-driver human fiche only                             | [Electrical](electrical/README.md)   |
+| Electrical  | LED-driver human fiche and circuit-only SPICE closed subset           | [Electrical](electrical/README.md)   |
+| Impact      | Sealed cross-domain manifest, recross, human X09, mechanical X11      | [Impact](impact/README.md)           |
 
 H01 size inventory (enforced vs missing cardinalities; no invented numbers):
 [SysML](sysml/boundedness.md), [CAD](cad/boundedness.md),
 [Modelica](modelica/boundedness.md), [FEA](fea/boundedness.md),
 [sensitivity](sensitivity/boundedness.md), [electrical](electrical/boundedness.md),
-and the shared
+[impact](impact/boundedness.md), and the shared
 [isolation and Thread page](../runtime/isolation-and-thread-boundedness.md).
 
 Shared contracts remain outside these folders:

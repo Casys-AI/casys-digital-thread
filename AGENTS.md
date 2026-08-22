@@ -17,20 +17,22 @@ from UI copy or tool descriptions.
 
 ## Start here
 
-1. [Agent workspace reference](docs/reference/agent/agent-workspace.md) — tools, operations,
-   code placement
-2. [Lookalike traps](docs/reference/agent/lookalike-traps.md) — pairs that are not substitutes
+1. [Agent workspace reference](docs/reference/agent/agent-workspace.md) — tools,
+   operations, code placement
+2. [Lookalike traps](docs/reference/agent/lookalike-traps.md) — pairs that are not
+   substitutes
 3. [Source analysis and authority pipeline](docs/reference/pipeline/analysis-authority-pipeline.md)
    — capture → analysis → MRTR → dispatch
-4. [Workspace map](docs/reference/runtime/workspace-map.md) — ports, YOLO, runtime ownership.
-   File census: [workspace source map](docs/reference/runtime/workspace-source-map.md).
+4. [Workspace map](docs/reference/runtime/workspace-map.md) — ports, YOLO, runtime
+   ownership. File census:
+   [workspace source map](docs/reference/runtime/workspace-source-map.md).
 5. [CLAUDE.md](CLAUDE.md) — commands, hexagonal rules, CM-01 retirement
-6. [Run the behave loop from zero](docs/how-to/behave/run-the-behave-loop-from-zero.md) — new
-   project, behave only. Do not repair dl05. Do not open make/buy.
-7. [Walk the post-proof loop](docs/how-to/behave/walk-the-post-proof-loop.md) — join, fail-only
-   correction, `z*`, reseal. Historical **dl05 r16** is `UNLINKED` (`assembly_max_*`). A
-   later join on that atelier can be `pass` (Thread r19). Do not invent a mapping or a
-   fail.
+6. [Run the behave loop from zero](docs/how-to/behave/run-the-behave-loop-from-zero.md)
+   — new project, behave only. Do not repair dl05. Do not open make/buy.
+7. [Walk the post-proof loop](docs/how-to/behave/walk-the-post-proof-loop.md) — join,
+   fail-only correction, `z*`, reseal. Historical **dl05 r16** is `UNLINKED`
+   (`assembly_max_*`). A later join on that atelier can be `pass` (Thread r19). Do not
+   invent a mapping or a fail.
 8. [Three judgement branches](docs/explanations/product/product-direction.md#three-judgement-branches)
    — one STEP, three questions; verdicts do not cross.
 
@@ -51,7 +53,9 @@ from UI copy or tool descriptions.
   `compile.seal-admission@1` + `simulate.run-admitted-modelica@1` is the CAD analog for
   Modelica closed-subset source. Both use `ReopenAdmittedCompilationSource` then
   `IsolatedCodeRunner`. `simulate.run-qualified-modelica-kit@1` is the pinned kit. They
-  are not interchangeable. Pattern:
+  are not interchangeable. `compile.seal-admission@1` + `simulate.run-admitted-spice@1`
+  is the same pattern for circuit-only SPICE (`spice-circuit-source`). It is not
+  mcp-spice and not the LED-driver fiche. Pattern:
   [admitted source isolated execution](docs/reference/pipeline/admitted-source-isolated-execution.md).
 - `project_technical_source_capture` returns `technical-source-capture-review/1.0`:
   `parser`, `levers`, and an opaque `reference`. `parser.status` is not admission. Pass

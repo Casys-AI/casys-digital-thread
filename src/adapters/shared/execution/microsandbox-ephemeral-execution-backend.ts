@@ -323,10 +323,45 @@ export function assertMicrosandboxNativeEnvironment(
 
 /** Load the real SDK only after the native environment is pinned fail-closed. */
 let localMicrosandboxSdk: Promise<MicrosandboxSdk> | undefined;
+let localMicrosandboxModule: MicrosandboxModule | undefined;
 
 export function createLocalMicrosandboxSdk(): Promise<MicrosandboxSdk> {
   localMicrosandboxSdk ??= createPinnedLocalMicrosandboxSdk();
   return localMicrosandboxSdk;
+}
+
+/**
+ * Import a local `docker save` archive into the pinned Microsandbox cache.
+ * `tag` is the exact cache key later inspected with pullPolicy never.
+ */
+export async function loadLocalMicrosandboxImageFromArchive(
+  archivePath: string,
+  tag: string,
+): Promise<void> {
+  const sdk = await createLocalMicrosandboxSdk();
+  sdk.assertLocalBackend();
+  const module = localMicrosandboxModule;
+  if (module === undefined) {
+    throw new Error("The code-owned local Microsandbox backend is unavailable.");
+  }
+  if (module.defaultBackendKind() !== "local") {
+    throw new Error("Microsandbox backend drifted away from local.");
+  }
+  const handles = await module.Image.load(archivePath, { tag });
+  if (handles.length === 0) {
+    throw new Error(
+      "Microsandbox imported no image from the docker save archive.",
+    );
+  }
+}
+
+/** Guest architecture string Microsandbox inspectImage attests on this host. */
+export function microsandboxHostArchitecture(): string {
+  if (Deno.build.arch === "aarch64") return "arm64";
+  if (Deno.build.arch === "x86_64") return "amd64";
+  throw new Error(
+    `Unsupported Microsandbox host architecture ${Deno.build.arch}.`,
+  );
 }
 
 async function createPinnedLocalMicrosandboxSdk(): Promise<MicrosandboxSdk> {
@@ -346,6 +381,7 @@ async function createPinnedLocalMicrosandboxSdk(): Promise<MicrosandboxSdk> {
   if (module.defaultBackendKind() !== "local") {
     throw new Error("Microsandbox refused the code-owned local backend.");
   }
+  localMicrosandboxModule = module;
   return new NativeMicrosandboxSdk(module);
 }
 
@@ -1930,12 +1966,6 @@ function sandboxNameFor(runDigest: string): string {
     throw new Error("The derived sandbox name is too long.");
   }
   return name;
-}
-
-function microsandboxHostArchitecture(): string {
-  if (Deno.build.arch === "aarch64") return "arm64";
-  if (Deno.build.arch === "x86_64") return "amd64";
-  throw new Error(`Unsupported Microsandbox host architecture ${Deno.build.arch}.`);
 }
 
 async function sha256HexText(value: string): Promise<string> {

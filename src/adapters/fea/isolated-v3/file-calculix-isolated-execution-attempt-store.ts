@@ -6,6 +6,7 @@ import {
   type CalculixIsolatedExecutionAttemptKey,
   type CalculixIsolatedExecutionAttemptStore,
   type CalculixIsolatedExecutionDispatch,
+  type CalculixIsolatedProvenDestruction,
   type CalculixIsolatedRedispatchConsumption,
   fingerprintCalculixIsolatedExecutionAttemptIdentity,
 } from "../../../application/ports/out/fea/isolated-v3/calculix-isolated-execution-attempt-store.ts";
@@ -14,12 +15,15 @@ import {
   validateCalculixIsolatedExecutionEvidence,
 } from "../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
 import {
+  type IsolatedCodeExecutionReceipt,
+  type IsolatedCodeExecutionRejectionDiagnostic,
   isolatedCodeOutputManifestsEqual,
   isolatedCodeRefsEqual,
   type IsolatedOutputProducerGenerationAdvance,
   runtimeAttestationsEqual,
   validateContentFingerprint,
   validateIsolatedCodeExecutionReceiptRecord,
+  validateIsolatedCodeExecutionRejectionDiagnostic,
   validateIsolatedOutputProducerGenerationAdvance,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
@@ -251,6 +255,84 @@ export class FileCalculixIsolatedExecutionAttemptStore
     });
   }
 
+  markRedispatchExhausted(
+    input: CalculixIsolatedExecutionAttemptKey & {
+      readonly destruction: CalculixIsolatedProvenDestruction;
+    },
+  ) {
+    return this.#transition(input, (current) => {
+      const destruction = validateDestruction(
+        input.destruction,
+        current.executionRunId,
+      );
+      const exhaustion = deepFreeze({
+        producerGeneration: 1 as const,
+        destruction,
+      });
+      if (current.phase === "redispatch-exhausted") {
+        if (deterministicJson(current.exhaustion) === deterministicJson(exhaustion)) {
+          return current;
+        }
+        throw integrity("Isolated CalculiX redispatch exhaustion evidence diverges.");
+      }
+      if (
+        current.phase !== "dispatching" ||
+        current.dispatch.dispatchCount !== 2 ||
+        current.dispatch.redispatch.status !== "consumed"
+      ) {
+        throw integrity("Redispatch exhaustion is out of order.");
+      }
+      return deepFreeze({
+        ...base(current),
+        phase: "redispatch-exhausted" as const,
+        dispatch: current.dispatch,
+        exhaustion,
+      });
+    });
+  }
+
+  markExecutionRejected(
+    input: CalculixIsolatedExecutionAttemptKey & {
+      readonly diagnostic: IsolatedCodeExecutionRejectionDiagnostic;
+      readonly destruction: Extract<
+        IsolatedCodeExecutionReceipt["destruction"],
+        { readonly status: "proven" }
+      >;
+    },
+  ) {
+    return this.#transition(input, (current) => {
+      const diagnostic = validateIsolatedCodeExecutionRejectionDiagnostic(
+        input.diagnostic,
+      );
+      const destruction = validateDestruction(
+        input.destruction,
+        current.executionRunId,
+      );
+      const rejection = deepFreeze({ diagnostic, destruction });
+      if (current.phase === "execution-rejected") {
+        if (deterministicJson(current.rejection) === deterministicJson(rejection)) {
+          return current;
+        }
+        throw integrity("Isolated CalculiX rejection evidence diverges.");
+      }
+      if (current.phase !== "dispatching") {
+        throw integrity("Execution rejection is out of order.");
+      }
+      if (
+        current.dispatch.dispatchCount === 2 &&
+        current.dispatch.redispatch.status !== "consumed"
+      ) {
+        throw integrity("Rejected redispatch follows unconsumed redispatch authority.");
+      }
+      return deepFreeze({
+        ...base(current),
+        phase: "execution-rejected" as const,
+        dispatch: current.dispatch,
+        rejection,
+      });
+    });
+  }
+
   markEvidenceCaptured(
     input: CalculixIsolatedExecutionAttemptKey & { readonly evidence: unknown },
   ) {
@@ -369,6 +451,10 @@ async function validateAttempt(
     ? ["dispatch", "receiptRecord"]
     : phase === "evidence-captured"
     ? ["dispatch", "receiptRecord", "evidence"]
+    : phase === "execution-rejected"
+    ? ["dispatch", "rejection"]
+    : phase === "redispatch-exhausted"
+    ? ["dispatch", "exhaustion"]
     : [];
   const root = exactRecord(value, [
     "schemaVersion",
@@ -407,6 +493,27 @@ async function validateAttempt(
   if (phase === "prepared") return deepFreeze({ ...common, phase });
   const dispatch = await validateDispatch(root.dispatch, key.executionRunId);
   if (phase === "dispatching") return deepFreeze({ ...common, phase, dispatch });
+  if (phase === "execution-rejected") {
+    return deepFreeze({
+      ...common,
+      phase,
+      dispatch,
+      rejection: validateRejection(root.rejection, key.executionRunId),
+    });
+  }
+  if (phase === "redispatch-exhausted") {
+    if (dispatch.dispatchCount !== 2 || dispatch.redispatch.status !== "consumed") {
+      throw integrity(
+        "Redispatch exhaustion requires a consumed generation-1 dispatch.",
+      );
+    }
+    return deepFreeze({
+      ...common,
+      phase,
+      dispatch,
+      exhaustion: validateExhaustion(root.exhaustion, key.executionRunId),
+    });
+  }
   const receiptRecord = await validateIsolatedCodeExecutionReceiptRecord(
     root.receiptRecord,
   );
@@ -552,6 +659,30 @@ function validateDestruction(value: unknown, runId: string) {
       root.proofFingerprint,
       "$destruction.proofFingerprint",
     ),
+  });
+}
+
+function validateRejection(value: unknown, runId: string) {
+  const root = exactRecord(value, ["diagnostic", "destruction"], "$rejection");
+  return deepFreeze({
+    diagnostic: validateIsolatedCodeExecutionRejectionDiagnostic(
+      root.diagnostic,
+      "$rejection.diagnostic",
+    ),
+    destruction: validateDestruction(root.destruction, runId),
+  });
+}
+
+function validateExhaustion(value: unknown, runId: string) {
+  const root = exactRecord(
+    value,
+    ["producerGeneration", "destruction"],
+    "$exhaustion",
+  );
+  literalValue(root.producerGeneration, 1, "$exhaustion.producerGeneration");
+  return deepFreeze({
+    producerGeneration: 1 as const,
+    destruction: validateDestruction(root.destruction, runId),
   });
 }
 

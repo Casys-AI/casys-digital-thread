@@ -1,12 +1,15 @@
-import type {
-  IsolatedCodeExecutionReceipt,
-  IsolatedCodeExecutionReceiptRecord,
-  IsolatedCodeExecutionRequest,
-  IsolatedCodeOutputReceiptRecord,
-  IsolatedOutputProducerGeneration,
-  IsolatedOutputProducerGenerationAdvance,
-  IsolatedOutputProducerGenerationAdvanceInput,
-  IsolatedOutputPublicationRef,
+import {
+  type IsolatedCodeExecutionReceipt,
+  type IsolatedCodeExecutionReceiptRecord,
+  type IsolatedCodeExecutionRejectionDiagnostic,
+  type IsolatedCodeExecutionRequest,
+  type IsolatedCodeOutputReceiptRecord,
+  type IsolatedOutputProducerGeneration,
+  type IsolatedOutputProducerGenerationAdvance,
+  type IsolatedOutputProducerGenerationAdvanceInput,
+  type IsolatedOutputPublicationRef,
+  validateIsolatedCodeExecutionDestruction,
+  validateIsolatedCodeExecutionRejectionDiagnostic,
 } from "../../../../../domain/compile/isolation/isolated-code-execution.ts";
 
 /**
@@ -14,9 +17,46 @@ import type {
  *
  * Neither side can observe a backend lease, filesystem path, container id, or
  * provider handle. A successful return is already closed and content-addressed.
+ * A known unsuccessful termination throws IsolatedCodeExecutionRejectedError
+ * after destruction is proven, without a receipt or outputs.
  */
 export interface IsolatedCodeRunner {
   run(request: IsolatedCodeExecutionRequest): Promise<IsolatedCodeExecutionReceipt>;
+}
+
+/**
+ * Distinct public rejection for a known unsuccessful isolated termination.
+ * The diagnostic is an immutable validated record: termination plus bounded
+ * log observations. Destruction is the already-accepted cleanup proof.
+ */
+export class IsolatedCodeExecutionRejectedError extends Error {
+  readonly code = "execution_rejected" as const;
+  readonly diagnostic: IsolatedCodeExecutionRejectionDiagnostic;
+  readonly destruction: IsolatedCodeExecutionReceipt["destruction"];
+
+  constructor(
+    diagnostic: IsolatedCodeExecutionRejectionDiagnostic,
+    destruction: IsolatedCodeExecutionReceipt["destruction"],
+  ) {
+    super("The isolated program did not terminate successfully.");
+    this.name = "IsolatedCodeExecutionRejectedError";
+    this.diagnostic = validateIsolatedCodeExecutionRejectionDiagnostic(diagnostic);
+    this.destruction = validateIsolatedCodeExecutionDestruction(
+      destruction,
+      destructionRunId(destruction),
+    );
+  }
+}
+
+function destructionRunId(value: unknown): string {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("$destruction must be an object.");
+  }
+  const runId = (value as { runId?: unknown }).runId;
+  if (typeof runId !== "string" || runId.length === 0) {
+    throw new TypeError("$destruction.runId must be a non-empty string.");
+  }
+  return runId;
 }
 
 /**

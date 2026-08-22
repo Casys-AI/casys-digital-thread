@@ -1,8 +1,9 @@
 /**
  * Reopen one technical source-analysis capture named by a thermal method sheet.
  *
- * Callers receive role/language identities only. Source bytes stay behind
- * this port. A CAD or non-Modelica capture is not a thermal method identity.
+ * Callers receive role/language identities and bounded `{id,kind,name}`
+ * symbols from the validated analysis bundle. Source bytes stay behind this
+ * port. A CAD or non-Modelica capture is not a thermal method identity.
  */
 
 import type { ThermalMethodSheetSourceIdentity } from "../../../../domain/modelica/thermal-method-sheet-recross.ts";

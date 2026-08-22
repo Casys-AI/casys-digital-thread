@@ -35,9 +35,38 @@ Deno.test("impact-manifest seal requires exact human MRTR, writes one documentar
   assertEquals(first.agentRuns[0]!.status, "completed");
   const result = first.agentRuns[0]!.resultSnapshot!;
   const sealed = await fixture.snapshots.getFresh(result.snapshotId);
-  assertEquals(sealed?.artifacts.filter((artifact) =>
+  const documents = sealed?.artifacts.filter((artifact) =>
     artifact.producer.tool === "verify.seal-cross-domain-impact-manifest@1"
-  ).length, 1);
+  ) ?? [];
+  assertEquals(documents.length, 1);
+  const document = documents[0]!;
+  assertEquals(document.inputArtifactIds, ["artifact.brief"]);
+  const sealConsumptions = (sealed?.consumptions ?? []).filter((consumption) =>
+    deterministicJson(consumption.consumer) === deterministicJson(document.producer)
+  );
+  assertEquals(sealConsumptions, [{
+    id: `verify-seal-cross-domain-impact-manifest-${RUN}:consume:artifact.brief`,
+    artifactId: "artifact.brief",
+    consumer: document.producer,
+    observedFingerprint: hash("1"),
+    verifiedAt: AT,
+    status: "verified",
+  }]);
+  assertEquals(sealed?.provenance.filter((link) => link.relation === "derived_from"), [{
+    id: `verify-seal-cross-domain-impact-manifest-${RUN}:derived-from:artifact.brief`,
+    relation: "derived_from",
+    from: { kind: "artifact", id: document.id },
+    to: { kind: "artifact", id: "artifact.brief" },
+    rationale: "The sealed impact manifest recrossed this exact declared artifact identity.",
+  }]);
+  assertEquals(sealed?.provenance.filter((link) => link.relation === "uses"), [{
+    id: `verify-seal-cross-domain-impact-manifest-${RUN}:uses:artifact.brief`,
+    relation: "uses",
+    from: { kind: "consumption", id: sealConsumptions[0]!.id },
+    to: { kind: "artifact", id: "artifact.brief" },
+    rationale: "The seal executor reread and fingerprint-attested the exact input.",
+  }]);
+  validateThreadSnapshot(sealed!);
   // This is the narrow X05/X06 documentary successor, not the later X08
   // impact-evaluation transition: it preserves every evaluative surface.
   assertEquals(sealed?.evaluations, fixture.basis.evaluations);
@@ -217,6 +246,7 @@ function admissionFixture(basisFingerprint: ContentFingerprint): CrossDomainImpa
       ],
     },
     sourceAnchors: [
+      sourceAnchor("anchor.brief", "brief", "change.brief", "artifact.brief", "1", "artifact"),
       sourceAnchor("anchor.brightness", "brightness", "change.brightness", "requirement.brightness", "2"),
       sourceAnchor("anchor.power", "electrical-power", "change.power", "requirement.power", "3"),
     ],
@@ -230,13 +260,14 @@ function sourceAnchor(
   changeId: string,
   sourceId: string,
   digest: string,
+  sourceKind: "artifact" | "requirement" = "requirement",
 ) {
   return {
     id,
     changeKind,
     role: "reviewed-change-source" as const,
     threadChange: { id: changeId, kind: "modified" as const, fingerprint: hash(digest) },
-    source: { kind: "requirement" as const, id: sourceId, fingerprint: hash(digest) },
+    source: { kind: sourceKind, id: sourceId, fingerprint: hash(digest) },
   };
 }
 

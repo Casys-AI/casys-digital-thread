@@ -31,6 +31,8 @@ import {
   TECHNICAL_COMPILATION_ADMISSION_LIMITS,
 } from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import { TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY } from "../../../../domain/compile/admission/technical-compilation-preview-review.ts";
+import { validateModelicaThermalMethodSheet } from "../../../../domain/modelica/thermal-method-sheet.ts";
+import { validThermalMethodSheetPlaceholder } from "../../../../testing/modelica-thermal-method-sheet-fixtures.ts";
 import {
   PreviewProjectTechnicalCompilation,
   ProjectTechnicalCompilationPreviewError,
@@ -816,6 +818,453 @@ Deno.test("omitted basis uses the unique current Thread tip", async () => {
   assertEquals(result.status, "ready-for-review");
   assertEquals(withTip.basisResolver.calls, 1);
 });
+
+Deno.test("preview selects the unique SPICE catalogue profile and rejects caller runtime choice", async () => {
+  const sourceText = "Vin in 0 5\nRload in 0 1k\n";
+  const sourceFingerprint = await fingerprintTechnicalSourceText(sourceText);
+  const analysis: SourceAnalysisBundle = {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id: "source.spice",
+      role: "spice-circuit",
+      language: "spice",
+      fingerprint: sourceFingerprint,
+    },
+    analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+    policy: {
+      profile: "spice-circuit-closed-subset-v1",
+      status: "passed",
+      findings: [],
+    },
+    symbols: [{ id: "artifact.circuit", kind: "artifact", name: "circuit" }],
+    dependencies: [],
+    unresolvedConstructs: [],
+  };
+  const source: TechnicalCompilationSource = {
+    sourceText,
+    analysis,
+    analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+  };
+  const sysmlProvenance = {
+    artifactId: "artifact.sysml",
+    artifactFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+    captureId: "capture.syson",
+  };
+  const sysmlAnchor = {
+    artifactId: "artifact.sysml",
+    artifactFingerprint: sysmlProvenance.artifactFingerprint,
+    captureId: "capture.syson",
+    editingContextId: "editing-context.main",
+    rootElementId: "sysml.package.main",
+    rootElementKind: "Package" as const,
+    elements: [
+      { id: "sysml.package.main", kind: "Package", provenance: sysmlProvenance },
+    ],
+  };
+  const basis: TechnicalCompilationBasis = {
+    thread: {
+      projectId: "project.clamp",
+      subjectId: "subject.clamp",
+      snapshotId: "snapshot.3",
+      revision: 3,
+      snapshotFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+    },
+    sysmlAnchor,
+    sysmlAnchorFingerprint: await fingerprintTechnicalSysmlAnchor(sysmlAnchor),
+  };
+  const catalog: TechnicalCompilationProfileCatalog = {
+    schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+    profiles: [{
+      id: "profile.build123d",
+      version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+      target: "build123d-source",
+      sourceRole: "cad-script",
+      language: "python",
+      analyzer: { id: "test.ast", version: "1.0.0" },
+      analysisPolicyProfile: "policy.python-safe",
+      requiredBindingSymbolKinds: ["parameter"],
+    }, {
+      id: "profile.modelica",
+      version: "2.0.0",
+      target: "modelica-source-qualification",
+      sourceRole: "modelica-model",
+      language: "modelica",
+      analyzer: { id: "test.ast", version: "1.0.0" },
+      analysisPolicyProfile: "policy.modelica-safe",
+      requiredBindingSymbolKinds: ["parameter"],
+    }, {
+      id: "spice-circuit-closed-subset-v1",
+      version: "1.0.0",
+      target: "spice-circuit-source",
+      sourceRole: "spice-circuit",
+      language: "spice",
+      analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+      analysisPolicyProfile: "spice-circuit-closed-subset-v1",
+      requiredBindingSymbolKinds: ["parameter"],
+    }],
+  };
+  class SpiceSourceReader extends FakeSourceReader {
+    override read(request: TechnicalCompilationSourceReadRequest) {
+      if (request.reference.captureId !== "capture.source.spice") {
+        return Promise.resolve(undefined);
+      }
+      return super.read({
+        ...request,
+        reference: {
+          schemaVersion: "opaque-capture-ref/1.0",
+          captureId: "capture.source.cad",
+        },
+      });
+    }
+  }
+  const sourceReader = new SpiceSourceReader(source);
+  const draftStore = new FakeDraftStore();
+  const service = new PreviewProjectTechnicalCompilation({
+    basisResolver: new FakeBasisResolver(basis),
+    sourceReader,
+    profileCatalog: new FakeCatalogProvider(catalog),
+    draftStore,
+  });
+  const result = await service.execute({
+    projectId: "project.clamp",
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: "snapshot.3",
+      revision: 3,
+      subjectId: "subject.clamp",
+    },
+    sourceRefs: [{
+      schemaVersion: "opaque-capture-ref/1.0",
+      captureId: "capture.source.spice",
+    }],
+  });
+  assertEquals(result.status, "ready-for-review");
+  if (result.status !== "ready-for-review") throw new Error("unreachable");
+  assertEquals(result.document.projections.map((item) => item.target), [
+    "spice-circuit-source",
+  ]);
+  const admission = parseTechnicalCompilationAdmissionParameters(
+    result.decisionParameters,
+  );
+  assertEquals(admission.sources[0].role, "spice-circuit");
+  assertEquals(admission.sources[0].language, "spice");
+  assertEquals(admission.compilationProfileRequests[0].target, "spice-circuit-source");
+  assertEquals(admission.compilationProfileRequests.length, 1);
+  assertEquals(recursiveKeys(result).has("provider"), false);
+  assertEquals(recursiveKeys(result).has("runtime"), false);
+  assertEquals(recursiveKeys(result).has("ngspice"), false);
+});
+
+Deno.test(
+  "sealed thermal method sheet recross stays on unique Modelica compilation",
+  async () => {
+    const fixture = await crossDomainMethodSheetPreview();
+    const spice = await fixture.service.execute(fixture.spiceCommand);
+    assertEquals(spice.status, "ready-for-review");
+    assertEquals(spice.gaps, []);
+    assertEquals(spice.document.status, "ready-for-review");
+    assertEquals(spice.document.projections.map((item) => item.target), [
+      "spice-circuit-source",
+    ]);
+    assertEquals(fixture.methodSheetReads, 0);
+
+    const cad = await fixture.service.execute(fixture.cadCommand);
+    assertEquals(cad.status, "ready-for-review");
+    assertEquals(cad.gaps, []);
+    assertEquals(cad.document.projections.map((item) => item.target), [
+      "build123d-source",
+    ]);
+    assertEquals(fixture.methodSheetReads, 0);
+
+    const modelica = await fixture.service.execute(fixture.modelicaCommand);
+    assertEquals(modelica.status, "unresolved");
+    assertEquals(modelica.document.status, "ready-for-review");
+    assertEquals(modelica.document.projections.map((item) => item.target), [
+      "modelica-source-qualification",
+    ]);
+    assertEquals(modelica.document.diagnostics, []);
+    assertEquals(
+      modelica.gaps.map((gap) => gap.code),
+      [
+        "thermal-method-sheet.output.unresolved",
+        "thermal-method-sheet.parameter.unresolved",
+      ],
+    );
+    assertEquals(fixture.methodSheetReads, 1);
+    assertEquals("draft" in modelica, false);
+  },
+);
+
+async function crossDomainMethodSheetPreview(): Promise<{
+  readonly service: PreviewProjectTechnicalCompilation;
+  readonly spiceCommand: Record<string, unknown>;
+  readonly cadCommand: Record<string, unknown>;
+  readonly modelicaCommand: Record<string, unknown>;
+  methodSheetReads: number;
+}> {
+  const projectId = "project.clamp";
+  const subjectId = "subject.clamp";
+  const sheetInput = validThermalMethodSheetPlaceholder();
+  (sheetInput.project as { id: string; subjectId: string }).id = projectId;
+  (sheetInput.project as { id: string; subjectId: string }).subjectId = subjectId;
+  (sheetInput.subject as { id: string }).id = subjectId;
+  const sheet = validateModelicaThermalMethodSheet(sheetInput);
+
+  const cadText = [
+    "from build123d import Box",
+    "thickness = 2.0",
+    "result = Box(20, 10, thickness)",
+    "",
+  ].join("\n");
+  const spiceText = "Vin in 0 5\nRload in 0 1k\n";
+  const modelicaText = "model Placeholder\nend Placeholder;\n";
+  const cadFingerprint = await fingerprintTechnicalSourceText(cadText);
+  const spiceFingerprint = await fingerprintTechnicalSourceText(spiceText);
+  const modelicaFingerprint = await fingerprintTechnicalSourceText(modelicaText);
+
+  const cadAnalysis: SourceAnalysisBundle = {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id: "source.cad",
+      role: "cad-script",
+      language: "python",
+      fingerprint: cadFingerprint,
+    },
+    analyzer: { id: "test.ast", version: "1.0.0" },
+    policy: {
+      profile: "policy.python-safe",
+      status: "passed",
+      findings: [],
+    },
+    symbols: [{
+      id: "cad.thickness",
+      kind: "parameter",
+      name: "thickness",
+      span: { start: { line: 2, column: 0 }, end: { line: 2, column: 9 } },
+    }, {
+      id: "cad.result",
+      kind: "artifact",
+      name: "result",
+    }],
+    dependencies: [{
+      id: "dependency.cad.thickness.result",
+      kind: "structural-incidence",
+      fromSymbolId: "cad.thickness",
+      toSymbolId: "cad.result",
+    }],
+    unresolvedConstructs: [],
+  };
+  const spiceAnalysis: SourceAnalysisBundle = {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id: "source.spice",
+      role: "spice-circuit",
+      language: "spice",
+      fingerprint: spiceFingerprint,
+    },
+    analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+    policy: {
+      profile: "spice-circuit-closed-subset-v1",
+      status: "passed",
+      findings: [],
+    },
+    symbols: [{ id: "artifact.circuit", kind: "artifact", name: "circuit" }],
+    dependencies: [],
+    unresolvedConstructs: [],
+  };
+  const modelicaAnalysis: SourceAnalysisBundle = {
+    schemaVersion: "source-analysis/1.0",
+    source: {
+      id: "source.modelica",
+      role: "modelica-model",
+      language: "modelica",
+      fingerprint: modelicaFingerprint,
+    },
+    analyzer: { id: "test.ast", version: "1.0.0" },
+    policy: {
+      profile: "policy.modelica-safe",
+      status: "passed",
+      findings: [],
+    },
+    symbols: [
+      { id: "parameter.heatingRate", kind: "parameter", name: "heatingRate" },
+      { id: "variable.temperature", kind: "variable", name: "temperature" },
+    ],
+    dependencies: [],
+    unresolvedConstructs: [],
+  };
+  const sources: Record<string, TechnicalCompilationSource> = {
+    "capture.source.cad": {
+      sourceText: cadText,
+      analysis: cadAnalysis,
+      analysisFingerprint: await fingerprintSourceAnalysisBundle(cadAnalysis),
+    },
+    "capture.source.spice": {
+      sourceText: spiceText,
+      analysis: spiceAnalysis,
+      analysisFingerprint: await fingerprintSourceAnalysisBundle(spiceAnalysis),
+    },
+    "capture.source.modelica": {
+      sourceText: modelicaText,
+      analysis: modelicaAnalysis,
+      analysisFingerprint: await fingerprintSourceAnalysisBundle(
+        modelicaAnalysis,
+      ),
+    },
+  };
+
+  const sysmlProvenance = {
+    artifactId: "artifact.sysml",
+    artifactFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
+    captureId: "capture.syson",
+  };
+  const sysmlAnchor = {
+    artifactId: "artifact.sysml",
+    artifactFingerprint: sysmlProvenance.artifactFingerprint,
+    captureId: "capture.syson",
+    editingContextId: "editing-context.main",
+    rootElementId: "sysml.package.main",
+    rootElementKind: "Package" as const,
+    elements: [
+      { id: "sysml.package.main", kind: "Package", provenance: sysmlProvenance },
+      {
+        id: "sysml.thickness",
+        kind: "AttributeUsage",
+        name: "thickness",
+        provenance: sysmlProvenance,
+      },
+      {
+        id: "sysml.heatingRate",
+        kind: "AttributeUsage",
+        name: "heatingRate",
+        provenance: sysmlProvenance,
+      },
+      {
+        id: "placeholder-attribute-usage",
+        kind: "AttributeUsage",
+        name: "placeholder",
+        provenance: sysmlProvenance,
+      },
+      {
+        id: "placeholder-requirement",
+        kind: "RequirementUsage",
+        provenance: sysmlProvenance,
+      },
+    ],
+  };
+  const basis: TechnicalCompilationBasis = {
+    thread: {
+      projectId,
+      subjectId,
+      snapshotId: "snapshot.3",
+      revision: 3,
+      snapshotFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+    },
+    sysmlAnchor,
+    sysmlAnchorFingerprint: await fingerprintTechnicalSysmlAnchor(sysmlAnchor),
+  };
+  const catalog: TechnicalCompilationProfileCatalog = {
+    schemaVersion: TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
+    profiles: [{
+      id: "profile.build123d",
+      version: PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+      target: "build123d-source",
+      sourceRole: "cad-script",
+      language: "python",
+      analyzer: { id: "test.ast", version: "1.0.0" },
+      analysisPolicyProfile: "policy.python-safe",
+      requiredBindingSymbolKinds: ["parameter"],
+    }, {
+      id: "profile.modelica",
+      version: "2.0.0",
+      target: "modelica-source-qualification",
+      sourceRole: "modelica-model",
+      language: "modelica",
+      analyzer: { id: "test.ast", version: "1.0.0" },
+      analysisPolicyProfile: "policy.modelica-safe",
+      requiredBindingSymbolKinds: ["parameter"],
+    }, {
+      id: "spice-circuit-closed-subset-v1",
+      version: "1.0.0",
+      target: "spice-circuit-source",
+      sourceRole: "spice-circuit",
+      language: "spice",
+      analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+      analysisPolicyProfile: "spice-circuit-closed-subset-v1",
+      requiredBindingSymbolKinds: ["parameter"],
+    }],
+  };
+
+  const state = { methodSheetReads: 0 };
+  const sourceReader = new MappingSourceReader(sources);
+  const service = new PreviewProjectTechnicalCompilation({
+    basisResolver: new FakeBasisResolver(basis),
+    sourceReader,
+    profileCatalog: new FakeCatalogProvider(catalog),
+    draftStore: new FakeDraftStore(),
+    methodSheets: {
+      read: () => {
+        state.methodSheetReads += 1;
+        return Promise.resolve(sheet);
+      },
+    },
+  });
+  const command = (captureId: string) => ({
+    projectId,
+    basis: {
+      kind: "thread-snapshot" as const,
+      snapshotId: "snapshot.3",
+      revision: 3,
+      subjectId,
+    },
+    sourceRefs: [{
+      schemaVersion: "opaque-capture-ref/1.0",
+      captureId,
+    }],
+  });
+  return {
+    service,
+    spiceCommand: command("capture.source.spice"),
+    cadCommand: command("capture.source.cad"),
+    modelicaCommand: command("capture.source.modelica"),
+    get methodSheetReads() {
+      return state.methodSheetReads;
+    },
+  };
+}
+
+class MappingSourceReader implements TechnicalCompilationSourceReader {
+  constructor(
+    readonly sources: Readonly<Record<string, TechnicalCompilationSource>>,
+  ) {}
+
+  read(
+    request: TechnicalCompilationSourceReadRequest,
+  ): Promise<ReopenedTechnicalCompilationSource | undefined> {
+    const captureId = request.reference.captureId;
+    if (typeof captureId !== "string") return Promise.resolve(undefined);
+    const source = this.sources[captureId];
+    if (!source) return Promise.resolve(undefined);
+    return Promise.resolve({
+      referenceFingerprint: request.referenceFingerprint,
+      source,
+      provenance: {
+        profile: {
+          id: "source-profile.test",
+          version: "1.0.0",
+          fingerprint: {
+            algorithm: "sha256" as const,
+            digest: "3".repeat(64),
+          },
+        },
+        analyzer: source.analysis.analyzer,
+        sourceFingerprint: source.analysis.source.fingerprint,
+        captureFingerprint: request.referenceFingerprint,
+        analysisFingerprint: source.analysisFingerprint,
+      },
+    });
+  }
+}
 
 function recursiveKeys(value: unknown, into = new Set<string>()): Set<string> {
   if (Array.isArray(value)) {

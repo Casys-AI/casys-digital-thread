@@ -92,6 +92,10 @@ not grant MRTR or provider authority. Full grants:
 | `project_isolated_geometry_seal_review`     | Read           | MRTR parameters for `design.seal-isolated-geometry@1`. No STEP bytes                                                       |
 | `project_modelica_qualified_kit_run_review` | Read           | MRTR parameters for the one local Modelica kit                                                                             |
 | `project_admitted_modelica_run_review`      | Read           | MRTR parameters for `simulate.run-admitted-modelica@1`. No Modelica text                                                   |
+| `project_admitted_spice_run_review`         | Read           | MRTR parameters for `simulate.run-admitted-spice@1`. No netlist, image, args, path, or observations                         |
+| `project_electrical_observation_method_sheet_seal_review` | Read | MRTR parameters for `verify.seal-electrical-observation-method-sheet@1`. No ngspice |
+| `project_admitted_spice_evaluation_review`  | Read           | MRTR parameters for `verify.evaluate-admitted-spice-observations@1`. No L4 verdict |
+| `project_admitted_spice_evaluation_closeout_review` | Read    | MRTR parameters for accepted/rejected SPICE L5. L4 pass is never implicit L5 |
 | `project_fea_proof_case_capture`            | Draft CAS      | Exact `mechanical-proof-case-source/1.0` JSON. Pass `result.reference` only                                                |
 | `project_fea_proof_seal_review`             | Read           | Opaque source fingerprint → `fea.proof.*` plus paste-ready `next.append` / `next.propose` for the seal                     |
 | `project_fea_isolated_run_review`           | Read           | Isolated `@3` bindings plus paste-ready hops; geometry is STEP, never cad-model                                            |

@@ -1,7 +1,10 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import type { CalculixIsolatedExecutionAttemptIdentity } from "../../../application/ports/out/fea/isolated-v3/calculix-isolated-execution-attempt-store.ts";
 import type { IsolatedCodeExecutionLimits } from "../../../domain/compile/isolation/isolated-code-execution.ts";
-import { createIsolatedOutputProducerGenerationAdvance } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import {
+  createIsolatedCodeExecutionRejectionDiagnostic,
+  createIsolatedOutputProducerGenerationAdvance,
+} from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { FixedCalculixIsolatedExecutionProfileCatalog } from "./fixed-calculix-isolated-execution-profile.ts";
 import {
   CalculixIsolatedExecutionAttemptIntegrityError,
@@ -57,6 +60,57 @@ Deno.test("isolated CalculiX WAL persists one dispatch and one proven one-shot r
   });
 });
 
+Deno.test("isolated CalculiX WAL persists a terminal execution rejection and refuses redispatch", async () => {
+  await withStore(async (store, directory) => {
+    const identity = await attemptIdentity();
+    const prepared = await store.prepare(identity);
+    const dispatching = await store.markDispatching({
+      ...key(prepared),
+      dispatchedAt: AT,
+    });
+    const diagnostic = await rejectionDiagnostic();
+    const destruction = {
+      status: "proven" as const,
+      runId: identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
+    };
+    const rejected = await store.markExecutionRejected({
+      ...key(dispatching),
+      diagnostic,
+      destruction,
+    });
+    assertEquals(rejected.phase, "execution-rejected");
+    const restarted = new FileCalculixIsolatedExecutionAttemptStore(directory);
+    const recovered = await restarted.read(identity.projectId, identity.agentRunId);
+    assertEquals(recovered, rejected);
+    const replayed = await restarted.markExecutionRejected({
+      ...key(dispatching),
+      diagnostic,
+      destruction,
+    });
+    assertEquals(replayed, rejected);
+    const generationAdvance = await createIsolatedOutputProducerGenerationAdvance({
+      runId: identity.executionRunId,
+      closedGeneration: 0,
+      nextGeneration: 1,
+    });
+    await assertRejects(
+      () =>
+        restarted.authorizeRedispatch({
+          ...key(dispatching),
+          recoveryDestruction: {
+            status: "proven",
+            runId: identity.executionRunId,
+            proofFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+          },
+          generationAdvance,
+        }),
+      CalculixIsolatedExecutionAttemptIntegrityError,
+      "Redispatch is possible only while dispatching",
+    );
+  });
+});
+
 Deno.test("isolated CalculiX WAL rejects a divergent proof or unproven cleanup", async () => {
   await withStore(async (store) => {
     const identity = await attemptIdentity();
@@ -95,6 +149,20 @@ Deno.test("isolated CalculiX WAL rejects a divergent proof or unproven cleanup",
     );
   });
 });
+
+async function rejectionDiagnostic() {
+  return await createIsolatedCodeExecutionRejectionDiagnostic({
+    termination: { kind: "exited", exitCode: 1, signal: null },
+    logs: {
+      stdout: { bytes: new Uint8Array(), truncated: false },
+      stderr: {
+        bytes: new TextEncoder().encode("MeshingError: empty NSET\n"),
+        truncated: false,
+      },
+    },
+    maximumLogBytes: { stdout: 1_024, stderr: 1_024 },
+  });
+}
 
 async function attemptIdentity(): Promise<CalculixIsolatedExecutionAttemptIdentity> {
   const limits: IsolatedCodeExecutionLimits = {

@@ -19,11 +19,20 @@ coverage](../../reference/domains/fea/coverage.md), [SysML
 coverage](../../reference/domains/sysml/coverage.md), and [Modelica
 coverage](../../reference/domains/modelica/coverage.md).
 
-`cantilever-arm-ca02` is the proposed first reference vertical: one isolated,
-parameterized rectangular cantilever part and a linear-static check of declared maximum
-displacement and von Mises stress. Its catalogued declaration itself limits the evidence
-to concept verification: it excludes certification, material release, joints, fatigue,
-stability and fabrication. It is **provisional**, not a completed product proof.
+`cantilever-arm-ca02` is the proposed first **mechanical-family** reference vertical:
+one isolated, parameterized rectangular cantilever part and a linear-static check of
+declared maximum displacement and von Mises stress. Its catalogued declaration itself
+limits the evidence to concept verification: it excludes certification, material
+release, joints, fatigue, stability and fabrication. It is **provisional**, not a
+completed product proof.
+
+A separate local observation, not a replacement of that CA02 horizon, is
+`articulated-led-desk-lamp-al01` on the primary atelier (project r227 / Thread r26):
+distinct mechanical, thermal, and electrical L3–L5 records plus one reviewed impact
+recross. G6 is a proposed shared coupling input for a future re-run, not a thermal
+result. X10 stays `unavailable`. Tracking:
+[AL01 status](../../projects/articulated-led-desk-lamp/status.md). That walk is not
+physical safety, compliance, lifetime, brightness, manufacturing, or vendor validity.
 
 Before using CA02 as the reference, a human must confirm that this isolated-part scope,
 the declared assumptions, and its two criteria are the intended first engineering

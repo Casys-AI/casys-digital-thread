@@ -1,12 +1,17 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import type { ExecuteIsolatedCalculixStaticProof } from "../../../application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts";
+import {
+  type ExecuteIsolatedCalculixStaticProof,
+  IsolatedCalculixRedispatchExhaustedError,
+} from "../../../application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type {
   CalculixIsolatedExecutionEvidence,
   CalculixIsolatedInputBundle,
 } from "../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
 import { CALCULIX_ISOLATED_OUTPUT_MANIFEST } from "../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
+import { IsolatedCodeExecutionRejectedError } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import type { IsolatedCodeExecutionReceiptRecord } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { createIsolatedCodeExecutionRejectionDiagnostic } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   deterministicJson,
@@ -86,6 +91,147 @@ Deno.test("isolated CalculiX @3 publishes nine local outputs and two evidence ar
     );
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 1);
+  });
+});
+
+Deno.test("isolated CalculiX @3 fails the claimed run on a known execution rejection without Thread write", async () => {
+  await withRuntime(async (runtime) => {
+    const diagnostic = await createIsolatedCodeExecutionRejectionDiagnostic({
+      termination: { kind: "exited", exitCode: 1, signal: null },
+      logs: {
+        stdout: { bytes: new Uint8Array(), truncated: false },
+        stderr: {
+          bytes: new TextEncoder().encode(
+            "MeshingError: Selection 'FIXED' matched no surface\n",
+          ),
+          truncated: false,
+        },
+      },
+      maximumLogBytes: { stdout: 1_024, stderr: 1_024 },
+    });
+    const before = await runtime.fixture.projects.get(runtime.fixture.projectId);
+    const beforeSnapshots = before!.threadSnapshots;
+    const failing = runtime.executorWith({
+      executeIsolated: {
+        execute: () => {
+          runtime.counts.execute++;
+          return Promise.reject(
+            new IsolatedCodeExecutionRejectedError(diagnostic, {
+              status: "proven",
+              runId: "run:diagnostic-fixture",
+              proofFingerprint: {
+                algorithm: "sha256",
+                digest: "c".repeat(64),
+              },
+            }),
+          );
+        },
+      },
+    });
+    const failed = await failing.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    const run = failed.agentRuns.find((item) => item.id === runtime.fixture.runId);
+    assertEquals(run?.status, "failed");
+    assertEquals(run?.failure?.code, "isolated_execution_rejected");
+    assertEquals(
+      run?.failure?.message.includes("matched no surface"),
+      true,
+    );
+    assertEquals(failed.threadSnapshots, beforeSnapshots);
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+
+    const replayed = await runtime.executor.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    assertEquals(replayed.revision, failed.revision);
+    assertEquals(
+      replayed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.status,
+      "failed",
+    );
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+  });
+});
+
+Deno.test("isolated CalculiX @3 fails the claimed run when redispatch is exhausted without Thread write", async () => {
+  await withRuntime(async (runtime) => {
+    const before = await runtime.fixture.projects.get(runtime.fixture.projectId);
+    const beforeSnapshots = before!.threadSnapshots;
+    const failing = runtime.executorWith({
+      executeIsolated: {
+        execute: () => {
+          runtime.counts.execute++;
+          return Promise.reject(
+            new IsolatedCalculixRedispatchExhaustedError({
+              executionRunId: "run:diagnostic-fixture",
+              destruction: {
+                status: "proven",
+                runId: "run:diagnostic-fixture",
+                proofFingerprint: {
+                  algorithm: "sha256",
+                  digest: "f".repeat(64),
+                },
+              },
+            }),
+          );
+        },
+      },
+    });
+    const failed = await failing.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    const run = failed.agentRuns.find((item) => item.id === runtime.fixture.runId);
+    assertEquals(run?.status, "failed");
+    assertEquals(run?.failure?.code, "isolated_redispatch_exhausted");
+    assertEquals(
+      run?.failure?.message.includes("no third dispatch occurs"),
+      true,
+    );
+    assertEquals(failed.threadSnapshots, beforeSnapshots);
+    assertEquals(runtime.counts.execute, 1);
+    assertEquals(runtime.counts.syson, 0);
+
+    const replayed = await runtime.executor.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    assertEquals(replayed.revision, failed.revision);
+    assertEquals(
+      replayed.agentRuns.find((item) => item.id === runtime.fixture.runId)?.status,
+      "failed",
+    );
+    assertEquals(runtime.counts.execute, 1);
+  });
+});
+
+Deno.test("isolated CalculiX @3 keeps an unknown isolated failure quarantined without failRun", async () => {
+  await withRuntime(async (runtime) => {
+    await assertRejects(
+      () =>
+        runtime.executorWith({
+          executeIsolated: {
+            execute: () =>
+              Promise.reject(
+                new Error("The isolated execution backend did not return a report."),
+              ),
+          },
+        }).execute(
+          ISOLATED_CALCULIX_FIXTURE_AGENT,
+          runtime.fixture.command,
+        ),
+      Error,
+      "did not return a report",
+    );
+    const project = await runtime.fixture.projects.get(runtime.fixture.projectId);
+    const run = project!.agentRuns.find((item) => item.id === runtime.fixture.runId);
+    assertEquals(run?.status, "running");
+    assertEquals(run?.failure, undefined);
+    assertEquals(runtime.counts.syson, 0);
   });
 });
 

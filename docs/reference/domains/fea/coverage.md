@@ -36,7 +36,9 @@ The detailed source, declaration and execution contracts remain
 [Mechanical proof case V1](mechanical-proof-case-v1.md) and
 [CalculiX static proof V3](calculix-static-proof-v3.md). The historical `@1` and `@2`
 MCP FEA operations are not registered product alternatives. Preinstalled desk-lamp, dl,
-CA or cantilever Git cases are not live production authority.
+CA or cantilever Git cases are not live production authority. A local AL01 static
+walk is tracking evidence, not a catalog specimen:
+[AL01 runtime evidence](../../../projects/articulated-led-desk-lamp/runtime-evidence.md).
 
 ## Outside the current surface
 

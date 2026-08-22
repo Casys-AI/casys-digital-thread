@@ -2,13 +2,33 @@
 
 Audience: both · Diátaxis: reference · Kind: index
 
-The electrical bounded context currently owns only the provider-free LED-driver human
-fiche. That sheet is not a netlist, D1 representation, ngspice payload, or Thread
-result.
+The electrical bounded context owns two non-substitutable surfaces plus a later
+evaluation chain on admitted SPICE observations:
 
+- the provider-free LED-driver human fiche (`led-driver-human-source/1.0`), which is not
+  a netlist, D1 representation, ngspice payload, or Thread result
+- the generic circuit-only SPICE closed subset (`spice-circuit-closed-subset-v1`), which
+  enters the technical-source capture → compilation preview → `compile.seal-admission@1`
+  spine
+- after admitted L3, a sealed `electrical-observation-method-sheet/1.0`,
+  `verify.evaluate-admitted-spice-observations@1` (L4), and human
+  `decide.accept-admitted-spice-evaluation@1` /
+  `decide.reject-admitted-spice-evaluation@1` (L5)
+
+- [Circuit-only SPICE closed subset v1](spice-circuit-closed-subset-v1.md) — admitted
+  netlist grammar and `simulate.run-admitted-spice@1`. Not mcp-spice, not the LED-driver
+  fiche, not a verdict. How-to:
+  [run admitted SPICE](../../../how-to/run/run-admitted-spice.md).
 - [Boundedness inventory](boundedness.md) — H01 source bytes and unknowns.
 - [mcp-spice provider surface](../../providers/spice/README.md) — engine preflight only;
   integration stays `unresolved`.
 
-Unknowns stay `unresolved`. Capture and review grant no seal, run, or ngspice
-authority.
+LED-driver unknowns stay `unresolved`. Capture and review of the fiche grant no seal,
+run, or ngspice authority. Circuit-only SPICE admits through `compile.seal-admission@1`
+then, when `--local-execution` is composed, `simulate.run-admitted-spice@1`. That run is
+documentary L3 evidence. It is not mcp-spice. L4 derives named criteria from a reviewed
+method sheet with a server-owned comparator; ngspice is not the oracle. An L4 `pass` is
+never L5. Safety, EMC, optical output, lifetime, and vendor validity stay `unavailable`.
+
+A local AL01 walk of that chain is tracking evidence, not this contract:
+[AL01 runtime evidence](../../../projects/articulated-led-desk-lamp/runtime-evidence.md).

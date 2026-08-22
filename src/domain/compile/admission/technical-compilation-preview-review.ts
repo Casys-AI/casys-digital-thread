@@ -13,6 +13,7 @@ import type { ModelicaThermalMethodSheet } from "../../modelica/thermal-method-s
 import type {
   TechnicalCompilationDiagnostic,
   TechnicalCompilationStatus,
+  TechnicalCompilationTarget,
   TechnicalSemanticBinding,
 } from "./technical-compilation.ts";
 import type {
@@ -173,14 +174,24 @@ export function assembleTechnicalCompilationJoinGaps(
  * Recross one reviewed thermal method sheet against unique v2 parameterizes
  * bindings and exact RequirementUsage identities. Absence of a sheet is not a
  * gap: compilation does not invent a method. Named gaps never invent physics.
+ *
+ * Recross is source/target scoped: it applies only to the unique Modelica
+ * compilation (`modelica-source-qualification` + `modelica-model`/`modelica`).
+ * A CAD or SPICE preview must not recross a sealed thermal method sheet.
  */
 export function assembleThermalMethodSheetCompilationGaps(
   sheet: ModelicaThermalMethodSheet | undefined,
   sources: readonly TechnicalCompilationJoinSource[],
   bindings: readonly TechnicalSemanticBinding[],
   elements: readonly TechnicalCompilationJoinElement[],
+  uniqueTarget?: TechnicalCompilationTarget,
 ): readonly TechnicalCompilationJoinGap[] {
-  if (sheet === undefined) return [];
+  if (
+    sheet === undefined ||
+    !isModelicaThermalMethodSheetRecrossScope(sources, uniqueTarget)
+  ) {
+    return [];
+  }
   const symbols = sources.flatMap((source) => source.analysis.symbols);
   const gaps: TechnicalCompilationJoinGap[] = [];
   for (const parameter of sheet.parameters) {
@@ -293,6 +304,22 @@ function gapSentence(gap: TechnicalCompilationJoinGap): string {
   return (
     `${gap.code} ${gap.relation} ${gap.symbolName} ` +
     `(${gap.reason}, ${gap.candidateCount} ${target}): ${gap.recovery}`
+  );
+}
+
+function isModelicaThermalMethodSheetRecrossScope(
+  sources: readonly TechnicalCompilationJoinSource[],
+  uniqueTarget: TechnicalCompilationTarget | undefined,
+): boolean {
+  if (
+    uniqueTarget !== "modelica-source-qualification" ||
+    sources.length === 0
+  ) {
+    return false;
+  }
+  return sources.every((source) =>
+    source.analysis.source.role === "modelica-model" &&
+    source.analysis.source.language === "modelica"
   );
 }
 

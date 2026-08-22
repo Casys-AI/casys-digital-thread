@@ -13,6 +13,7 @@ import type { ModelicaThermalMethodSheet } from "./thermal-method-sheet.ts";
 export type ThermalMethodSheetRecrossErrorCode =
   | "source_unavailable"
   | "source_mismatch"
+  | "source_unresolved"
   | "sysml_unavailable"
   | "sysml_unresolved"
   | "identity_mismatch";
@@ -27,10 +28,18 @@ export class ThermalMethodSheetRecrossError extends Error {
   }
 }
 
+/** Bounded source-analysis identity. Spans and analyzer metadata stay behind the reader. */
+export interface ThermalMethodSheetSourceSymbol {
+  readonly id: string;
+  readonly kind: string;
+  readonly name: string;
+}
+
 export interface ThermalMethodSheetSourceIdentity {
   readonly fingerprint: ContentFingerprint;
   readonly role: "modelica-model";
   readonly language: "modelica";
+  readonly symbols: readonly ThermalMethodSheetSourceSymbol[];
 }
 
 export interface ThermalMethodSheetSysmlElement {
@@ -71,6 +80,12 @@ export function recrossThermalMethodSheet(
       "The reopened source capture is not the exact modelica-model identity named by the sheet.",
     );
   }
+  for (const parameter of sheet.parameters) {
+    uniqueSourceSymbol(source.symbols, parameter.modelSymbolId, "parameter");
+  }
+  for (const output of sheet.outputs) {
+    uniqueSourceSymbol(source.symbols, output.modelSymbolId, "variable");
+  }
   if (sysmlElements === undefined) {
     throw recrossError(
       "sysml_unavailable",
@@ -97,6 +112,29 @@ export function recrossThermalMethodSheet(
     attributeUsageIds,
     requirementElementIds,
   };
+}
+
+function uniqueSourceSymbol(
+  symbols: readonly ThermalMethodSheetSourceSymbol[],
+  id: string,
+  kind: "parameter" | "variable",
+): string {
+  const matches = symbols.filter((symbol) => symbol.id === id);
+  if (matches.length !== 1) {
+    throw recrossError(
+      "source_unresolved",
+      `Source ${kind} "${id}" is unresolved on the exact capture.`,
+    );
+  }
+  if (matches[0]!.kind !== kind) {
+    throw recrossError(
+      "source_unresolved",
+      `Source identity "${id}" is unresolved: expected ${kind}, observed ${
+        matches[0]!.kind
+      }.`,
+    );
+  }
+  return id;
 }
 
 function uniqueElement(

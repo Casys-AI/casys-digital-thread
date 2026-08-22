@@ -10,8 +10,10 @@ import {
 } from "../../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
 import { validateMechanicalProofCase } from "../../../../domain/fea/seal-case/mechanical-proof-case.ts";
 import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
+import { IsolatedCodeExecutionRejectedError } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   createIsolatedCodeExecutionReceipt,
+  createIsolatedCodeExecutionRejectionDiagnostic,
   createIsolatedOutputProducerGenerationAdvance,
   createIsolatedOutputPublicationRef,
   fingerprintIsolatedOutputPublicationManifest,
@@ -26,6 +28,7 @@ import { CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR } from "../../../../adapters/f
 import {
   ExecuteIsolatedCalculixStaticProof,
   ExecuteIsolatedCalculixStaticProofError,
+  IsolatedCalculixRedispatchExhaustedError,
 } from "./execute-isolated-calculix-static-proof.ts";
 
 const AT = "2026-08-14T04:00:00.000Z";
@@ -72,6 +75,8 @@ Deno.test("isolated CalculiX rejects an oversized bundle before copy, WAL or dis
       consumeRedispatch: () => Promise.reject(new Error("unreachable")),
       markOutputPublished: () => Promise.reject(new Error("unreachable")),
       markEvidenceCaptured: () => Promise.reject(new Error("unreachable")),
+      markExecutionRejected: () => Promise.reject(new Error("unreachable")),
+      markRedispatchExhausted: () => Promise.reject(new Error("unreachable")),
     },
     evidence: unreachableEvidence(),
     inspector: CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR,
@@ -115,6 +120,8 @@ Deno.test("isolated CalculiX rejects a proof from another project before WAL or 
       consumeRedispatch: () => Promise.reject(new Error("unreachable")),
       markOutputPublished: () => Promise.reject(new Error("unreachable")),
       markEvidenceCaptured: () => Promise.reject(new Error("unreachable")),
+      markExecutionRejected: () => Promise.reject(new Error("unreachable")),
+      markRedispatchExhausted: () => Promise.reject(new Error("unreachable")),
     },
     evidence: unreachableEvidence(),
     inspector: CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR,
@@ -170,6 +177,79 @@ Deno.test("isolated CalculiX recovery never redispatches an unknown publication"
   });
 });
 
+Deno.test("isolated CalculiX persists a known execution rejection and replays it without redispatch", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const fixture = await executionFixture();
+    const diagnostic = await createIsolatedCodeExecutionRejectionDiagnostic({
+      termination: { kind: "exited", exitCode: 1, signal: null },
+      logs: {
+        stdout: { bytes: new Uint8Array(), truncated: false },
+        stderr: {
+          bytes: new TextEncoder().encode(
+            "MeshingError: Selection 'FIXED' matched no surface\n",
+          ),
+          truncated: false,
+        },
+      },
+      maximumLogBytes: { stdout: 1_024, stderr: 1_024 },
+    });
+    const destruction = {
+      status: "proven" as const,
+      runId: fixture.identity.executionRunId,
+      proofFingerprint: { algorithm: "sha256" as const, digest: "c".repeat(64) },
+    };
+    let runs = 0;
+    const attempts = new FileCalculixIsolatedExecutionAttemptStore(
+      `${root}/attempts`,
+    );
+    const useCase = new ExecuteIsolatedCalculixStaticProof({
+      runner: {
+        run: () => {
+          runs++;
+          return Promise.reject(
+            new IsolatedCodeExecutionRejectedError(diagnostic, destruction),
+          );
+        },
+      },
+      recovery: {
+        destroyByRunId: () => Promise.reject(new Error("must not recover")),
+        advanceProducerGeneration: () => Promise.reject(new Error("must not advance")),
+      },
+      publications: publications("not-published"),
+      lease: immediateLease(),
+      attempts,
+      evidence: unreachableEvidence(),
+      inspector: CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR,
+    });
+    const first = await assertRejects(
+      () => useCase.execute(fixture),
+      IsolatedCodeExecutionRejectedError,
+      "did not terminate successfully",
+    );
+    assertEquals(first.diagnostic.logs.stderr.excerpt.includes("empty"), false);
+    assertEquals(
+      first.diagnostic.logs.stderr.excerpt.includes("matched no surface"),
+      true,
+    );
+    assertEquals(runs, 1);
+    const persisted = await attempts.read(
+      fixture.identity.projectId,
+      fixture.identity.agentRunId,
+    );
+    assertEquals(persisted?.phase, "execution-rejected");
+    const replay = await assertRejects(
+      () => useCase.execute(fixture),
+      IsolatedCodeExecutionRejectedError,
+      "did not terminate successfully",
+    );
+    assertEquals(replay.diagnostic, first.diagnostic);
+    assertEquals(runs, 1);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("isolated CalculiX recovery consumes one proven redispatch and never grants a third", async () => {
   await withPreparedDispatch(async ({ attempts, identity, bundle }) => {
     let runs = 0;
@@ -220,18 +300,25 @@ Deno.test("isolated CalculiX recovery consumes one proven redispatch and never g
     assertEquals(runs, 1);
     assertEquals(recoveries, [0]);
     assertEquals(advances, 1);
-    await assertRejects(
+    const exhausted = await assertRejects(
       () => useCase.execute({ identity, bundle }),
-      ExecuteIsolatedCalculixStaticProofError,
-      "cleaned up; no third dispatch occurs",
+      IsolatedCalculixRedispatchExhaustedError,
+      "no third dispatch occurs",
     );
-    await assertRejects(
+    assertEquals(exhausted.producerGeneration, 1);
+    assertEquals(exhausted.executionRunId, identity.executionRunId);
+    assertEquals(exhausted.destruction.status, "proven");
+    assertEquals("diagnostic" in exhausted, false);
+    const persisted = await attempts.read(identity.projectId, identity.agentRunId);
+    assertEquals(persisted?.phase, "redispatch-exhausted");
+    const replay = await assertRejects(
       () => useCase.execute({ identity, bundle }),
-      ExecuteIsolatedCalculixStaticProofError,
-      "cleaned up; no third dispatch occurs",
+      IsolatedCalculixRedispatchExhaustedError,
+      "no third dispatch occurs",
     );
+    assertEquals(replay.destruction, exhausted.destruction);
     assertEquals(runs, 1);
-    assertEquals(recoveries, [0, 1, 1]);
+    assertEquals(recoveries, [0, 1]);
     assertEquals(advances, 1);
   });
 });

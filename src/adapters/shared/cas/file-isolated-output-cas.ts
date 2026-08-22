@@ -51,6 +51,25 @@ const PUBLICATION_MARKER_SCHEMA = "isolated-output-publication-marker/1.0" as co
 const STAGED_BATCH_SCHEMA = "isolated-output-staged-batch/1.0" as const;
 const RUN_CLOSED_FENCE_SCHEMA = "isolated-output-run-closed-fence/1.0" as const;
 const PUBLICATION_URI_PREFIX = "casys://isolated-output-publication/sha256/" as const;
+const ISOLATED_OUTPUT_OBJECTS_SEGMENT = "objects" as const;
+
+/** Digest-addressed object directory owned by `FileIsolatedOutputCas`. */
+export function isolatedOutputCasObjectStore(
+  root: string,
+): FileByteStore<"isolated-output"> {
+  return new FileByteStore({
+    kind: "isolated-output",
+    directory: isolatedOutputCasObjectDirectory(root),
+    uriNamespace: "isolated-output",
+    label: "Isolated output",
+  });
+}
+
+function isolatedOutputCasObjectDirectory(root: string): string {
+  return `${
+    absoluteStorageRoot(validateStorageRoot(root))
+  }/${ISOLATED_OUTPUT_OBJECTS_SEGMENT}`;
+}
 
 export interface FileIsolatedOutputCasSeams {
   readonly afterObjectDurable?: (role: string) => void | Promise<void>;
@@ -125,12 +144,7 @@ export class FileIsolatedOutputCas
 
   constructor(root: string, seams: FileIsolatedOutputCasSeams = {}) {
     this.#root = absoluteStorageRoot(validateStorageRoot(root));
-    this.#objects = new FileByteStore({
-      kind: "isolated-output",
-      directory: `${this.#root}/objects`,
-      uriNamespace: "isolated-output",
-      label: "Isolated output",
-    });
+    this.#objects = isolatedOutputCasObjectStore(this.#root);
     this.#receipts = new FileByteStore({
       kind: "isolated-output-receipt-record",
       directory: `${this.#root}/receipts`,
@@ -294,7 +308,9 @@ export class FileIsolatedOutputCas
         state.runKey,
         state.producerGeneration,
       );
-      await this.#ensurePrivateDirectory(`${this.#root}/objects`);
+      await this.#ensurePrivateDirectory(
+        `${this.#root}/${ISOLATED_OUTPUT_OBJECTS_SEGMENT}`,
+      );
       for (const member of state.objects) {
         await assertRegularFileWithinRoot(
           this.#root,
@@ -303,7 +319,8 @@ export class FileIsolatedOutputCas
         );
         const bytes = await Deno.readFile(member.stagingPath);
         await assertObjectBytes(bytes, member);
-        const objectPath = `${this.#root}/objects/${member.sha256}`;
+        const objectPath =
+          `${this.#root}/${ISOLATED_OUTPUT_OBJECTS_SEGMENT}/${member.sha256}`;
         await assertMissingOrRegularFileWithinRoot(
           this.#root,
           objectPath,
@@ -464,7 +481,7 @@ export class FileIsolatedOutputCas
       for (const output of receipt.outputs) {
         await assertRegularFileWithinRoot(
           this.#root,
-          `${this.#root}/objects/${output.sha256}`,
+          `${this.#root}/${ISOLATED_OUTPUT_OBJECTS_SEGMENT}/${output.sha256}`,
           "Isolated output object",
         );
         const bytes = await this.#objects.read({
@@ -584,7 +601,7 @@ export class FileIsolatedOutputCas
       resolution.receipt.outputs.map(async (output) => {
         await assertRegularFileWithinRoot(
           this.#root,
-          `${this.#root}/objects/${output.sha256}`,
+          `${this.#root}/${ISOLATED_OUTPUT_OBJECTS_SEGMENT}/${output.sha256}`,
           "Isolated output object",
         );
         const bytes = await this.#objects.read({
@@ -629,7 +646,7 @@ export class FileIsolatedOutputCas
     }
     await assertRegularFileWithinRoot(
       this.#root,
-      `${this.#root}/objects/${member.sha256}`,
+      `${this.#root}/${ISOLATED_OUTPUT_OBJECTS_SEGMENT}/${member.sha256}`,
       "Isolated output object",
     );
     const bytes = await this.#objects.read({

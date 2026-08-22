@@ -33,6 +33,18 @@ Deno.test(
         fingerprint,
         role: "modelica-model",
         language: "modelica",
+        symbols: [
+          {
+            id: `3b6a${"c".repeat(60)}`,
+            kind: "variable",
+            name: "temperature",
+          },
+          {
+            id: `3b6a${"d".repeat(60)}`,
+            kind: "parameter",
+            name: "heatingRate",
+          },
+        ],
       });
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -110,7 +122,10 @@ function modelicaBundle(): unknown {
       status: "passed",
       findings: [],
     },
-    symbols: [{ id: "placeholder-parameter", kind: "parameter", name: "param" }],
+    symbols: [
+      { id: `3b6a${"d".repeat(60)}`, kind: "parameter", name: "heatingRate" },
+      { id: `3b6a${"c".repeat(60)}`, kind: "variable", name: "temperature" },
+    ],
     dependencies: [],
     unresolvedConstructs: [],
   };

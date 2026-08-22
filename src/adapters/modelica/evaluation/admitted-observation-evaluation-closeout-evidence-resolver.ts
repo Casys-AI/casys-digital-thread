@@ -586,13 +586,13 @@ function exactEvaluations(
         : "The Thread is missing L4 evaluations required by the exact capture outcomes.",
     );
   }
-  const requirementIds = [...outcomes.keys()].sort();
-  return requirementIds.map((requirementId) => {
-    const outcome = outcomes.get(requirementId)!;
-    const evaluation = byRequirement.get(requirementId);
+  const constraintIds = [...outcomes.keys()].sort();
+  return constraintIds.map((constraintId) => {
+    const outcome = outcomes.get(constraintId)!;
+    const evaluation = byRequirement.get(outcome.requirement.id);
     if (!evaluation) {
       throw integrity(
-        `The Thread is missing the L4 evaluation for capture outcome ${requirementId}.`,
+        `The Thread is missing the L4 evaluation for capture outcome ${constraintId}.`,
       );
     }
     recrossEvaluationTopology(

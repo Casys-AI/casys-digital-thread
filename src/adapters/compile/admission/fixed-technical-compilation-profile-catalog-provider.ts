@@ -19,12 +19,17 @@ import {
   QUALIFIED_MODELICA_SOURCE_ANALYZER_ID,
   QUALIFIED_MODELICA_SOURCE_ANALYZER_VERSION,
 } from "../../modelica/source/qualified-source-analyzer.ts";
+import {
+  SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE,
+  SPICE_CIRCUIT_SOURCE_ANALYZER_ID,
+  SPICE_CIRCUIT_SOURCE_ANALYZER_VERSION,
+} from "../../electrical/spice/circuit-source-analyzer.ts";
 
 /**
  * Registrations correspond to real parser-backed closed subsets: the
- * build123d geometry subset and the executable Modelica closed subset v2.
- * CalculiX remains absent until an independently qualified frontend exists;
- * requesting it therefore fails closed.
+ * build123d geometry subset, the executable Modelica closed subset v2, and
+ * the circuit-only SPICE closed subset v1. CalculiX remains absent until an
+ * independently qualified frontend exists; requesting it therefore fails closed.
  */
 export const INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG:
   TechnicalCompilationProfileCatalog = validateTechnicalCompilationProfileCatalog({
@@ -52,7 +57,19 @@ export const INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG:
         version: QUALIFIED_MODELICA_SOURCE_ANALYZER_VERSION,
       },
       analysisPolicyProfile: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
-      requiredBindingSymbolKinds: ["artifact", "parameter"],
+      requiredBindingSymbolKinds: ["parameter"],
+    }, {
+      id: SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE,
+      version: "1.0.0",
+      target: "spice-circuit-source",
+      sourceRole: "spice-circuit",
+      language: "spice",
+      analyzer: {
+        id: SPICE_CIRCUIT_SOURCE_ANALYZER_ID,
+        version: SPICE_CIRCUIT_SOURCE_ANALYZER_VERSION,
+      },
+      analysisPolicyProfile: SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE,
+      requiredBindingSymbolKinds: ["parameter"],
     }],
   });
 

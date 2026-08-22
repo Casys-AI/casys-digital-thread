@@ -83,6 +83,31 @@ Deno.test(
 );
 
 Deno.test(
+  "circuit-only SPICE capture review does not invent a CAD lever diagnosis",
+  () => {
+    const bundle = analysis([artifactSymbol()], []);
+    const spice = {
+      ...bundle,
+      source: {
+        ...bundle.source,
+        role: "spice-circuit" as const,
+        language: "spice" as const,
+      },
+    };
+    const review = assembleTechnicalSourceCaptureReview(
+      REFERENCE,
+      "Vin in 0 5\nRload in 0 1k\n",
+      spice,
+    );
+    assertEquals(review.levers, { status: "not-applicable" });
+    assertEquals(
+      captureReviewContent(review).includes("not-applicable for this source role"),
+      true,
+    );
+  },
+);
+
+Deno.test(
   "Modelica capture review does not invent a CAD lever diagnosis",
   () => {
     const bundle = analysis([artifactSymbol()], []);

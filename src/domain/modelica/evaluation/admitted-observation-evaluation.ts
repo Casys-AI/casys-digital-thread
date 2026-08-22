@@ -19,6 +19,7 @@ import {
 import { sha256Fingerprint } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import type { ModelicaThermalMethodSheet } from "../thermal-method-sheet.ts";
+import type { ThermalMethodSheetSourceSymbol } from "../thermal-method-sheet-recross.ts";
 
 export const MODELICA_ADMITTED_OBSERVATION_EVALUATION_METHOD_SCHEMA =
   "modelica-admitted-observation-evaluation-method/1.0" as const;
@@ -211,6 +212,79 @@ export function validateAdmittedObservationEvaluationMethod(
     unitPolicy,
     selections,
   });
+}
+
+/**
+ * Attest a unique source-analysis id → native Modelica name mapping, then
+ * return identity-keyed outputs and metrics. Extra metric fields such as
+ * value are preserved. Callers must pass exact source symbols; this helper
+ * never invents a name, digest, or product-specific alias.
+ */
+export function mapAdmittedObservationEvidenceBySourceIdentity<
+  TOutput extends AdmittedObservationSourceOutput,
+  TMetric extends AdmittedObservationPublishedMetric,
+>(
+  method: AdmittedObservationEvaluationMethod,
+  sourceSymbols: readonly ThermalMethodSheetSourceSymbol[],
+  sourceOutputs: readonly TOutput[],
+  publishedMetrics: readonly TMetric[],
+): {
+  readonly outputs: readonly TOutput[];
+  readonly metrics: readonly TMetric[];
+} {
+  const selectedIds = [
+    ...new Set(method.selections.map((selection) => selection.outputSymbolId)),
+  ];
+  const idToName = new Map<string, string>();
+  const nameToId = new Map<string, string>();
+  for (const id of selectedIds) {
+    const matches = sourceSymbols.filter((symbol) => symbol.id === id);
+    if (matches.length !== 1) {
+      throw new TypeError(
+        `Admitted observation output "${id}" is not an exact source-analysis symbol.`,
+      );
+    }
+    const symbol = matches[0]!;
+    if (symbol.kind !== "variable") {
+      throw new TypeError(
+        `Admitted observation output "${id}" is not an exact source-analysis variable.`,
+      );
+    }
+    const nativeName = symbol.name;
+    const nameMatches = sourceSymbols.filter((item) => item.name === nativeName);
+    if (nameMatches.length !== 1) {
+      throw new TypeError(
+        `Admitted observation native name "${nativeName}" is not unique.`,
+      );
+    }
+    if (nameToId.has(nativeName) && nameToId.get(nativeName) !== id) {
+      throw new TypeError(
+        `Admitted observation native name "${nativeName}" is not unique.`,
+      );
+    }
+    idToName.set(id, nativeName);
+    nameToId.set(nativeName, id);
+  }
+
+  const outputs: TOutput[] = [];
+  for (const id of selectedIds) {
+    const nativeName = idToName.get(id)!;
+    const matches = sourceOutputs.filter((output) => output.name === nativeName);
+    if (matches.length !== 1) {
+      throw new TypeError(
+        `Admitted observation output "${id}" is not an exact native source output.`,
+      );
+    }
+    outputs.push({ ...matches[0]!, name: id });
+  }
+
+  const metrics: TMetric[] = [];
+  for (const metric of publishedMetrics) {
+    const id = nameToId.get(metric.outputName);
+    if (id === undefined) continue;
+    metrics.push({ ...metric, outputName: id });
+  }
+  return deepFreeze({ outputs, metrics });
 }
 
 export function selectAdmittedObservationEvaluations(

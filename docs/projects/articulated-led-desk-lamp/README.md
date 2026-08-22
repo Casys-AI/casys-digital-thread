@@ -32,9 +32,10 @@ identities. Do not repair dl05. Do not copy CA02 values.
 
 ## Headline (not a score)
 
-Generic Behave surfaces exist in code. The RFC queue is in progress. Primary atelier,
-**2026-08-22**, local: `articulated-led-desk-lamp-al01` is now a live project at project
-r34 and Thread r4. Its approved brief r2, SysON seed, renderer-backed architecture, and
-exact PartDefinition reread are persisted. No CAD, physical branch proof, combined
-verdict, or signed lamp L5 exists. Details: [status.md](status.md) and
-[runtime-evidence.md](runtime-evidence.md).
+Generic Behave surfaces exist in code. Primary atelier, **2026-08-23**, local:
+`articulated-led-desk-lamp-al01` is a live project at project r227 and Thread r26.
+Mechanical, thermal, and electrical L3–L5 records plus one reviewed impact recross are
+persisted. G6 is a proposed shared coupling input for a future re-run, not a thermal
+result. X10 is `unavailable`. There is no whole-lamp verdict and no physical
+safety/compliance/lifetime/brightness/manufacturing/vendor claim. Details:
+[status.md](status.md) and [runtime-evidence.md](runtime-evidence.md).

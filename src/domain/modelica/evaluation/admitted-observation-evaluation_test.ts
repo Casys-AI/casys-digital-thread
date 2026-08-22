@@ -4,10 +4,14 @@ import { validThermalMethodSheetPlaceholder } from "../../../testing/modelica-th
 import {
   admittedModelicaUnitIdentityPolicy,
   deriveAdmittedObservationEvaluationMethod,
+  mapAdmittedObservationEvidenceBySourceIdentity,
   normalizeAdmittedObservationUnit,
   selectAdmittedObservationEvaluations,
   validateAdmittedObservationEvaluationMethod,
 } from "./admitted-observation-evaluation.ts";
+
+const OUTPUT_SYMBOL_ID = `3b6a${"c".repeat(60)}`;
+const NATIVE_OUTPUT_NAME = "temperature";
 
 const POLICY = {
   id: "placeholder-unit-policy",
@@ -31,6 +35,13 @@ function validMethod(): Record<string, unknown> {
       declaredUnit: "unit-pending-source",
     }],
   };
+}
+
+function identityMethod(): Record<string, unknown> {
+  const method = validMethod();
+  (method.selections as Record<string, unknown>[])[0]!.outputSymbolId =
+    OUTPUT_SYMBOL_ID;
+  return method;
 }
 
 Deno.test(
@@ -67,6 +78,84 @@ Deno.test("admitted observation method accepts exact final/max_abs selections", 
   );
   assertEquals(selected, method.selections);
 });
+
+Deno.test(
+  "admitted observation identity map keys evidence by sha-like symbol id distinct from native name",
+  () => {
+    const method = validateAdmittedObservationEvaluationMethod(identityMethod());
+    const mapped = mapAdmittedObservationEvidenceBySourceIdentity(
+      method,
+      [{ id: OUTPUT_SYMBOL_ID, kind: "variable", name: NATIVE_OUTPUT_NAME }],
+      [{ name: NATIVE_OUTPUT_NAME, unit: "unit-pending-source" }],
+      [{
+        outputName: NATIVE_OUTPUT_NAME,
+        statistic: "final",
+        unit: "unit-pending-source",
+        value: 42,
+      }],
+    );
+    assertEquals(mapped.outputs, [{
+      name: OUTPUT_SYMBOL_ID,
+      unit: "unit-pending-source",
+    }]);
+    assertEquals(mapped.metrics, [{
+      outputName: OUTPUT_SYMBOL_ID,
+      statistic: "final",
+      unit: "unit-pending-source",
+      value: 42,
+    }]);
+    assertEquals(
+      selectAdmittedObservationEvaluations(method, mapped.outputs, mapped.metrics),
+      method.selections,
+    );
+  },
+);
+
+Deno.test(
+  "admitted observation identity map refuses a native-name mismatch",
+  () => {
+    const method = validateAdmittedObservationEvaluationMethod(identityMethod());
+    assertThrows(
+      () =>
+        mapAdmittedObservationEvidenceBySourceIdentity(
+          method,
+          [{ id: OUTPUT_SYMBOL_ID, kind: "variable", name: NATIVE_OUTPUT_NAME }],
+          [{ name: "other-output", unit: "unit-pending-source" }],
+          [{
+            outputName: "other-output",
+            statistic: "final",
+            unit: "unit-pending-source",
+            value: 42,
+          }],
+        ),
+      TypeError,
+      "exact native source output",
+    );
+  },
+);
+
+Deno.test(
+  "admitted observation identity map refuses a wrong-kind source symbol",
+  () => {
+    const method = validateAdmittedObservationEvaluationMethod(identityMethod());
+    assertThrows(
+      () =>
+        mapAdmittedObservationEvidenceBySourceIdentity(
+          method,
+          [{ id: OUTPUT_SYMBOL_ID, kind: "parameter", name: NATIVE_OUTPUT_NAME }],
+          [{ name: NATIVE_OUTPUT_NAME, unit: "unit-pending-source" }],
+          [{
+            outputName: NATIVE_OUTPUT_NAME,
+            statistic: "final",
+            unit: "unit-pending-source",
+            value: 42,
+          }],
+        ),
+      TypeError,
+      "exact source-analysis variable",
+    );
+  },
+);
 
 Deno.test("admitted observation method refuses a caller equation or value", () => {
   const withEquation = validMethod();

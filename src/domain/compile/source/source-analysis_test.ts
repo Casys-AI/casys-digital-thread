@@ -117,6 +117,40 @@ Deno.test("SourceAnalysisBundle accepts Modelica structural incidence without a 
   assertEquals(bundle.unresolvedConstructs[0].kind, "external-reference");
 });
 
+Deno.test("SourceAnalysisBundle accepts circuit-only SPICE facts without a provider contract", () => {
+  const bundle = validateSourceAnalysisBundle({
+    schemaVersion: SOURCE_ANALYSIS_SCHEMA,
+    source: {
+      id: "source.spice.clamp",
+      role: "spice-circuit",
+      language: "spice",
+      fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+    },
+    analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+    policy: {
+      profile: "spice-circuit-closed-subset-v1",
+      status: "passed",
+      findings: [],
+    },
+    symbols: [
+      { id: "artifact.circuit", kind: "artifact", name: "circuit" },
+      { id: "parameter.rseries", kind: "parameter", name: "rseries" },
+      { id: "component.Rseries", kind: "component", name: "Rseries" },
+      { id: "node.nmid", kind: "variable", name: "nmid" },
+    ],
+    dependencies: [{
+      id: "dependency.rseries.Rseries",
+      kind: "static-value-flow",
+      fromSymbolId: "parameter.rseries",
+      toSymbolId: "component.Rseries",
+    }],
+    unresolvedConstructs: [],
+  });
+  assertEquals(bundle.source.role, "spice-circuit");
+  assertEquals(bundle.source.language, "spice");
+  assertEquals(bundle.symbols.some((symbol) => symbol.kind === "component"), true);
+});
+
 Deno.test("SourceAnalysisBundle fingerprint is stable under permutation of set-like collections", async () => {
   const reversed = structuredClone(MODELICA_BUNDLE) as Record<string, unknown>;
   for (const key of ["symbols", "dependencies", "unresolvedConstructs"] as const) {

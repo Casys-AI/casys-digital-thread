@@ -150,6 +150,7 @@ const TARGET_SOURCE_CONTRACT: Readonly<
     role: "modelica-model",
     language: "modelica",
   },
+  "spice-circuit-source": { role: "spice-circuit", language: "spice" },
 };
 
 const FIXED_PARAMETER_COUNT = 24;
@@ -1234,7 +1235,10 @@ function technicalSourceRole(
   value: unknown,
   path: string,
 ): TechnicalCompilationProfile["sourceRole"] {
-  if (value !== "cad-script" && value !== "modelica-model") {
+  if (
+    value !== "cad-script" && value !== "modelica-model" &&
+    value !== "spice-circuit"
+  ) {
     throw new TypeError(`${path} must be a supported technical source role.`);
   }
   return value;
@@ -1244,7 +1248,7 @@ function technicalSourceLanguage(
   value: unknown,
   path: string,
 ): TechnicalCompilationProfile["language"] {
-  if (value !== "python" && value !== "modelica") {
+  if (value !== "python" && value !== "modelica" && value !== "spice") {
     throw new TypeError(`${path} must be a supported technical source language.`);
   }
   return value;
@@ -1256,7 +1260,8 @@ function compilationTarget(
 ): TechnicalCompilationTarget {
   if (
     value !== "build123d-source" && value !== "calculix-source-candidate" &&
-    value !== "modelica-source-qualification"
+    value !== "modelica-source-qualification" &&
+    value !== "spice-circuit-source"
   ) {
     throw new TypeError(`${path} must be a supported compilation target.`);
   }

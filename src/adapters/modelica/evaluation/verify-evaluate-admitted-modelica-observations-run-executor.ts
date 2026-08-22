@@ -10,14 +10,16 @@
  * fingerprint, decision reseal, and run-input fingerprint verification.
  * Completed-WAL recovery is reachable while the project run is still
  * running or publishing. The successor consumes the admitted Modelica run
- * artifacts and method sheet already on the basis; it does not invent
- * observations or identifiers.
+ * artifacts and method sheet already on the basis. Pass/fail materializes a
+ * new Thread observation keyed by the Thread requirement metric; numeric
+ * comparison fields come from the parsed SysON oracle result.
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
 import type { AdmittedObservationEvidenceReader } from "../../../application/ports/out/modelica/evaluation/admitted-observation-evidence-reader.ts";
+import type { ThermalMethodSheetSourceCaptureReader } from "../../../application/ports/out/modelica/thermal-method-sheet-source-capture-reader.ts";
 import type { ThermalMethodSheetStore } from "../../../application/ports/out/modelica/thermal-method-sheet-store.ts";
 import {
   type CompleteRunCommand,
@@ -31,6 +33,7 @@ import {
   type AdmittedObservationSelection,
   deriveAdmittedObservationEvaluationMethod,
   fingerprintAdmittedObservationEvaluationMethod,
+  mapAdmittedObservationEvidenceBySourceIdentity,
   selectAdmittedObservationEvaluations,
 } from "../../../domain/modelica/evaluation/admitted-observation-evaluation.ts";
 import {
@@ -56,6 +59,7 @@ import type {
   EngineeringThreadEntityRef,
 } from "../../../domain/project/engineering-project.ts";
 import type {
+  ProposedThreadAction,
   RequirementEvaluation,
   ThreadArtifact,
   ThreadArtifactConsumption,
@@ -91,6 +95,7 @@ import {
   canonicalAdmittedObservationEvaluationCaptureText,
   validateAdmittedObservationEvaluationCapture,
 } from "./admitted-observation-evaluation-capture.ts";
+import type { ParsedOracleResult } from "../../shared/syson-constraint-oracle-outcome.ts";
 import {
   type AdmittedObservationOraclePair,
   callAdmittedObservationConstraintOracle,
@@ -148,6 +153,7 @@ export interface VerifyEvaluateAdmittedModelicaObservationsRunExecutorDependenci
   readonly snapshots: EvaluationThreadSnapshotStore;
   readonly sheets: ThermalMethodSheetStore;
   readonly evidence: AdmittedObservationEvidenceReader;
+  readonly sourceCaptures: ThermalMethodSheetSourceCaptureReader;
   readonly captures: AdmittedObservationEvaluationCaptureStore;
   readonly sheetCaptures: ThermalMethodSheetSealCaptureStore;
   readonly attempts: FileAdmittedObservationEvaluationAttemptStore;
@@ -300,7 +306,9 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
         capture: dispatch.capture,
         captureFingerprint,
         evaluations: dispatch.evaluations,
+        observations: dispatch.observations,
         violations: dispatch.violations,
+        proposedActions: dispatch.proposedActions,
         lineage: dispatch.lineage,
       });
       await this.dependencies.snapshots.save(successor.snapshot);
@@ -343,7 +351,9 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
   ): Promise<{
     readonly capture: AdmittedObservationEvaluationCapture;
     readonly evaluations: readonly RequirementEvaluation[];
+    readonly observations: readonly ThreadObservation[];
     readonly violations: readonly ThreadViolation[];
+    readonly proposedActions: readonly ProposedThreadAction[];
     readonly lineage: AdmittedEvaluationLineage;
   }> {
     const sheet = await this.dependencies.sheets.read(admission.sheet.fingerprint);
@@ -380,17 +390,34 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
         "The derived evaluation method is not the signed admission method.",
       );
     }
+    let source;
+    try {
+      source = await this.dependencies.sourceCaptures.read(
+        sheet.model.sourceCaptureFingerprint,
+      );
+    } catch (error) {
+      throw invalidTransition(
+        `The reopened source capture is not an exact modelica-model identity. ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    if (!source) {
+      throw invalidTransition("The exact Modelica source capture is unavailable.");
+    }
+    const mapped = mapAdmittedObservationEvidenceBySourceIdentity(
+      method,
+      source.symbols,
+      evidence.outputs,
+      evidence.metrics,
+    );
     selectAdmittedObservationEvaluations(
       method,
-      evidence.outputs,
-      evidence.metrics.map((metric) => ({
-        outputName: metric.outputName,
-        statistic: metric.statistic,
-        unit: metric.unit,
-      })),
+      mapped.outputs,
+      mapped.metrics,
     );
     const pairs = method.selections.flatMap((selection) => {
-      const pair = oraclePair(selection, evidence.metrics, snapshot);
+      const pair = oraclePair(selection, mapped.metrics, snapshot);
       return pair === undefined ? [] : [pair];
     });
     const wal = await this.dependencies.attempts.begin({
@@ -417,13 +444,19 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
       )).capture;
     }
     const sealedAt = requiredStart(run);
-    const evaluations = evaluationsFromCapture(
+    const captureFingerprint = await sha256Fingerprint(capture);
+    const captureArtifactId = evaluationCaptureArtifactId(
+      captureFingerprint.digest,
+    );
+    const { evaluations, observations } = evaluationsFromCapture(
       capture,
       pairs,
       run,
       sealedAt,
       lineage,
       method.selections,
+      captureArtifactId,
+      evaluationOperationRef(run.id),
     );
     const freshness = {
       status: "fresh" as const,
@@ -447,7 +480,24 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
         }]
         : []
     );
-    return { capture, evaluations, violations, lineage };
+    const proposedActions = violations.map((violation) => ({
+      id: `${violation.id}-review`,
+      name: `Review admitted observation evaluation violation: ${violation.name}`,
+      kind: "review" as const,
+      readiness: "ready" as const,
+      rationale: "A human review is required for a failed engineering constraint.",
+      targets: [{ kind: "artifact" as const, id: captureArtifactId }],
+      addressesViolationIds: [violation.id],
+      dependsOnActionIds: [] as const,
+    }));
+    return {
+      capture,
+      evaluations,
+      observations,
+      violations,
+      proposedActions,
+      lineage,
+    };
   }
 
   async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
@@ -486,7 +536,9 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
       capture: dispatch.capture,
       captureFingerprint,
       evaluations: dispatch.evaluations,
+      observations: dispatch.observations,
       violations: dispatch.violations,
+      proposedActions: dispatch.proposedActions,
       lineage: dispatch.lineage,
     });
     await this.#assertSavedSuccessor(successor.snapshot);
@@ -695,7 +747,7 @@ function oraclePair(
   const operator = requirement.criterion.operator;
   if (operator !== "<=" && operator !== ">=") return undefined;
   const oracleRequirement: OracleRequirement = {
-    id: requirement.id,
+    id: selection.requirementElementId,
     name: requirement.name,
     metric: requirement.criterion.metric,
     operator,
@@ -704,6 +756,7 @@ function oraclePair(
   return {
     selection,
     requirement: oracleRequirement,
+    threadRequirementId: requirement.id,
     observation: { value: metric.value, unit: metric.unit },
   };
 }
@@ -715,7 +768,12 @@ function evaluationsFromCapture(
   sealedAt: string,
   lineage: AdmittedEvaluationLineage,
   selections: readonly AdmittedObservationSelection[],
-): RequirementEvaluation[] {
+  captureArtifactId: string,
+  operation: ThreadOperationRef,
+): {
+  readonly evaluations: readonly RequirementEvaluation[];
+  readonly observations: readonly ThreadObservation[];
+} {
   const unresolvedIds = new Set(
     capture.unresolved.map((item) => item.requirementElementId),
   );
@@ -736,46 +794,175 @@ function evaluationsFromCapture(
     changedAt: sealedAt,
     invalidatedByChangeIds: [] as const,
   };
-  const fromOracle = dispatched.map((pair) => {
+  const observations: ThreadObservation[] = [];
+  const fromOracle: RequirementEvaluation[] = [];
+  for (const pair of dispatched) {
     const outcome = outcomes.get(pair.requirement.id);
+    if (outcome?.status === "pass" || outcome?.status === "fail") {
+      const observation = normalizedThreadObservation({
+        pair,
+        oracleResult: outcome,
+        captureArtifactId,
+        operation,
+        sealedAt,
+        freshness,
+      });
+      observations.push(observation);
+      fromOracle.push(requirementEvaluationFromOracle({
+        pair,
+        oracleResult: outcome,
+        observation,
+        captureArtifactId,
+        evaluator,
+        sealedAt,
+        freshness,
+      }));
+      continue;
+    }
     const status = outcome?.status ?? "unresolved";
-    return {
-      id: `${pair.requirement.id}-evaluation`,
-      name: `${pair.requirement.name} evaluation`,
-      requirementId: pair.requirement.id,
+    fromOracle.push({
+      ...threadRequirementEvaluation(pair),
       observationIds: observationIdsFor(pair.selection, lineage),
       status,
       evaluatedAt: sealedAt,
       evaluator,
-      evidenceArtifactIds: [] as string[],
-      message: status === "fail"
-        ? "SysON reported the observed value exceeds the reviewed limit."
-        : status === "pass"
-        ? "SysON reported the observed value is within the reviewed limit."
-        : status === "error"
+      evidenceArtifactIds: [captureArtifactId],
+      message: status === "error"
         ? "The oracle returned an error evaluating this limit."
         : "The oracle could not resolve this limit evaluation.",
       freshness,
+    });
+  }
+  const fromPolicy = capture.unresolved.map((item) => {
+    const pair = uniquePairForSelection(pairs, item.requirementElementId);
+    return {
+      ...threadRequirementEvaluation(pair),
+      observationIds: observationIdsFor(
+        selections.find((selection) =>
+          selection.requirementElementId === item.requirementElementId
+        ),
+        lineage,
+      ),
+      status: "unresolved" as const,
+      evaluatedAt: sealedAt,
+      evaluator,
+      evidenceArtifactIds: [captureArtifactId],
+      message:
+        "Identity unit policy left this observation unresolved. It is not a fail.",
+      freshness,
     };
   });
-  const fromPolicy = capture.unresolved.map((item) => ({
-    id: `${item.requirementElementId}-evaluation`,
-    name: `${item.requirementElementId} evaluation`,
-    requirementId: item.requirementElementId,
-    observationIds: observationIdsFor(
-      selections.find((selection) =>
-        selection.requirementElementId === item.requirementElementId
-      ),
-      lineage,
-    ),
-    status: "unresolved" as const,
-    evaluatedAt: sealedAt,
-    evaluator,
-    evidenceArtifactIds: [] as string[],
-    message: "Identity unit policy left this observation unresolved. It is not a fail.",
-    freshness,
-  }));
-  return [...fromOracle, ...fromPolicy];
+  return {
+    evaluations: [...fromOracle, ...fromPolicy],
+    observations,
+  };
+}
+
+function normalizedThreadObservation(input: {
+  readonly pair: AdmittedObservationOraclePair;
+  readonly oracleResult: Extract<ParsedOracleResult, { status: "pass" | "fail" }>;
+  readonly captureArtifactId: string;
+  readonly operation: ThreadOperationRef;
+  readonly sealedAt: string;
+  readonly freshness: ThreadObservation["freshness"];
+}): ThreadObservation {
+  return {
+    id: `${input.captureArtifactId}-${input.pair.threadRequirementId}`,
+    name: `${input.pair.requirement.name} evaluated by SysON`,
+    metric: input.pair.requirement.metric,
+    quantity: {
+      value: input.oracleResult.computedValue,
+      unit: input.oracleResult.unit,
+    },
+    source: {
+      operation: input.operation,
+      artifactIds: [input.captureArtifactId],
+      capturedAt: input.sealedAt,
+    },
+    freshness: input.freshness,
+  };
+}
+
+function requirementEvaluationFromOracle(input: {
+  readonly pair: AdmittedObservationOraclePair;
+  readonly oracleResult: Extract<ParsedOracleResult, { status: "pass" | "fail" }>;
+  readonly observation: ThreadObservation;
+  readonly captureArtifactId: string;
+  readonly evaluator: ThreadOperationRef;
+  readonly sealedAt: string;
+  readonly freshness: RequirementEvaluation["freshness"];
+}): RequirementEvaluation {
+  return {
+    ...threadRequirementEvaluation(input.pair),
+    observationIds: [input.observation.id],
+    status: input.oracleResult.status,
+    evaluatedAt: input.sealedAt,
+    evaluator: input.evaluator,
+    comparison: {
+      observationId: input.observation.id,
+      actual: {
+        value: input.oracleResult.computedValue,
+        unit: input.oracleResult.unit,
+      },
+      operator: input.pair.requirement.operator,
+      limit: {
+        value: input.oracleResult.threshold,
+        unit: input.oracleResult.unit,
+      },
+      normalizedUnit: input.oracleResult.unit,
+      margin: {
+        value: input.oracleResult.margin,
+        unit: input.oracleResult.unit,
+      },
+    },
+    evidenceArtifactIds: [input.captureArtifactId],
+    message: input.oracleResult.status === "fail"
+      ? "SysON reported the observed value exceeds the reviewed limit."
+      : "SysON reported the observed value is within the reviewed limit.",
+    freshness: input.freshness,
+  };
+}
+
+function uniquePairForSelection(
+  pairs: readonly AdmittedObservationOraclePair[],
+  requirementElementId: string,
+): AdmittedObservationOraclePair {
+  const matches = pairs.filter((pair) =>
+    pair.selection.requirementElementId === requirementElementId
+  );
+  if (matches.length !== 1) {
+    throw invalidTransition(
+      matches.length === 0
+        ? `Unresolved capture identity ${requirementElementId} has no Thread requirement pair.`
+        : `Unresolved capture identity ${requirementElementId} is ambiguous.`,
+    );
+  }
+  return matches[0]!;
+}
+
+function threadRequirementEvaluation(pair: AdmittedObservationOraclePair): {
+  readonly id: string;
+  readonly name: string;
+  readonly requirementId: string;
+} {
+  return {
+    id: `${pair.threadRequirementId}-evaluation`,
+    name: `${pair.requirement.name} evaluation`,
+    requirementId: pair.threadRequirementId,
+  };
+}
+
+function evaluationCaptureArtifactId(digest: string): string {
+  return `modelica-admitted-observation-evaluation-${digest}`;
+}
+
+function evaluationOperationRef(runId: string): ThreadOperationRef {
+  return {
+    serverId: "digital-thread",
+    tool:
+      `${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.id}@${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.version}`,
+    runId,
+  };
 }
 
 function buildSuccessor(input: {
@@ -785,18 +972,14 @@ function buildSuccessor(input: {
   readonly capture: AdmittedObservationEvaluationCapture;
   readonly captureFingerprint: ContentFingerprint;
   readonly evaluations: readonly RequirementEvaluation[];
+  readonly observations: readonly ThreadObservation[];
   readonly violations: readonly ThreadViolation[];
+  readonly proposedActions: readonly ProposedThreadAction[];
   readonly lineage: AdmittedEvaluationLineage;
 }): { readonly snapshot: ThreadSnapshot; readonly artifact: ThreadArtifact } {
   const sealedAt = requiredStart(input.run);
-  const artifactId =
-    `modelica-admitted-observation-evaluation-${input.captureFingerprint.digest}`;
-  const operationRef = {
-    serverId: "digital-thread",
-    tool:
-      `${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.id}@${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.version}`,
-    runId: input.run.id,
-  };
+  const artifactId = evaluationCaptureArtifactId(input.captureFingerprint.digest);
+  const operationRef = evaluationOperationRef(input.run.id);
   const sourceArtifacts = [
     input.lineage.methodSheet,
     input.lineage.modelicaCapture,
@@ -843,6 +1026,16 @@ function buildSuccessor(input: {
       to: { kind: "artifact" as const, id: entry.artifactId },
       rationale: "Exact bytes were reread and fingerprint-attested.",
     })),
+    ...input.observations.flatMap((observation) =>
+      observation.source.artifactIds.map((sourceArtifactId) => ({
+        id: `${observation.id}-from-${sourceArtifactId}`,
+        relation: "derived_from" as const,
+        from: { kind: "observation" as const, id: observation.id },
+        to: { kind: "artifact" as const, id: sourceArtifactId },
+        rationale:
+          "The evaluated observation is reported by the exact SysON evaluation capture.",
+      }))
+    ),
     ...evaluations.flatMap((item) => [
       {
         id: `evaluates-${item.id}`,
@@ -864,10 +1057,37 @@ function buildSuccessor(input: {
         relation: "uses" as const,
         from: { kind: "evaluation" as const, id: item.id },
         to: { kind: "observation" as const, id: observationId },
-        rationale:
-          "The evaluation uses the exact admitted Modelica observation already published on the Thread.",
+        rationale: "The evaluation uses this exact observed quantity.",
       })),
     ]),
+    ...input.violations.flatMap((item) => [
+      {
+        id: `caused-by-${item.id}`,
+        relation: "caused_by" as const,
+        from: { kind: "violation" as const, id: item.id },
+        to: { kind: "evaluation" as const, id: item.evaluationId },
+        rationale:
+          "The named violation is caused by the failing admitted observation evaluation.",
+      },
+      ...item.evidenceArtifactIds.map((evidenceArtifactId) => ({
+        id: `evidences-${item.id}-${evidenceArtifactId}`,
+        relation: "evidences" as const,
+        from: { kind: "violation" as const, id: item.id },
+        to: { kind: "artifact" as const, id: evidenceArtifactId },
+        rationale:
+          "The named violation is evidenced by the exact SysON evaluation capture.",
+      })),
+    ]),
+    ...input.proposedActions.flatMap((item) =>
+      item.addressesViolationIds.map((violationId) => ({
+        id: `addresses-${item.id}`,
+        relation: "addresses" as const,
+        from: { kind: "action" as const, id: item.id },
+        to: { kind: "violation" as const, id: violationId },
+        rationale:
+          "The proposed review addresses the named admitted observation evaluation violation.",
+      }))
+    ),
   ];
   const extension: ThreadSnapshotExtension = {
     id: `verify-evaluate-admitted-modelica-observations-${input.run.id}`,
@@ -876,12 +1096,12 @@ function buildSuccessor(input: {
     capturedAt: sealedAt,
     artifacts: [artifact],
     consumptions,
-    observations: [],
+    observations: [...input.observations],
     requirements: [],
     evaluations,
     violations: [...input.violations],
     provenance,
-    proposedActions: [],
+    proposedActions: [...input.proposedActions],
   };
   const applied = applyThreadSnapshotExtensionIfNew(
     input.basisSnapshot,

@@ -42,6 +42,9 @@ export const ISOLATED_OUTPUT_PUBLICATION_SCHEMA =
   "isolated-output-publication/1.0" as const;
 export const ISOLATED_OUTPUT_PRODUCER_GENERATION_ADVANCE_SCHEMA =
   "isolated-output-producer-generation-advance/1.0" as const;
+export const ISOLATED_CODE_EXECUTION_REJECTION_DIAGNOSTIC_SCHEMA =
+  "isolated-code-execution-rejection-diagnostic/1.0" as const;
+export const MAXIMUM_ISOLATED_EXECUTION_REJECTION_EXCERPT_CODE_UNITS = 2_048;
 
 export type IsolatedOutputProducerGeneration = 0 | 1;
 
@@ -256,6 +259,31 @@ export interface IsolatedCodeLogReceipt {
   readonly byteCount: number;
   readonly sha256: string;
   readonly truncated: boolean;
+}
+
+/**
+ * Bounded observation of one captured log stream after a rejected execution.
+ * `byteCount`, `sha256` and `truncated` describe the original captured bytes.
+ * `excerpt` is an independently capped, control-stripped readable projection.
+ */
+export interface IsolatedCodeExecutionLogObservation {
+  readonly byteCount: number;
+  readonly sha256: string;
+  readonly truncated: boolean;
+  readonly excerpt: string;
+}
+
+/**
+ * Immutable diagnostic for a known unsuccessful isolated termination.
+ * It carries no lease, path, handle, capability, inventory or output bytes.
+ */
+export interface IsolatedCodeExecutionRejectionDiagnostic {
+  readonly schemaVersion: typeof ISOLATED_CODE_EXECUTION_REJECTION_DIAGNOSTIC_SCHEMA;
+  readonly termination: IsolatedCodeTermination;
+  readonly logs: {
+    readonly stdout: IsolatedCodeExecutionLogObservation;
+    readonly stderr: IsolatedCodeExecutionLogObservation;
+  };
 }
 
 export interface IsolatedCodeOutputReceipt extends IsolatedCodeOutputDeclaration {
@@ -655,6 +683,93 @@ export function validateIsolatedCodeTermination(
     return deepFreeze({ kind, exitCode: null, signal: null });
   }
   throw new TypeError(`${path}.kind is unsupported.`);
+}
+
+export function isolatedCodeTerminationIsRejected(
+  termination: IsolatedCodeTermination,
+): boolean {
+  return termination.kind !== "exited" || termination.exitCode !== 0;
+}
+
+export async function createIsolatedCodeExecutionRejectionDiagnostic(input: {
+  readonly termination: IsolatedCodeTermination;
+  readonly logs: {
+    readonly stdout: { readonly bytes: Uint8Array; readonly truncated: boolean };
+    readonly stderr: { readonly bytes: Uint8Array; readonly truncated: boolean };
+  };
+  readonly maximumLogBytes: {
+    readonly stdout: number;
+    readonly stderr: number;
+  };
+}): Promise<IsolatedCodeExecutionRejectionDiagnostic> {
+  const termination = validateIsolatedCodeTermination(
+    input.termination,
+    "$rejection.termination",
+  );
+  if (!isolatedCodeTerminationIsRejected(termination)) {
+    throw new TypeError(
+      "$rejection.termination must describe an unsuccessful isolated execution.",
+    );
+  }
+  return deepFreeze({
+    schemaVersion: ISOLATED_CODE_EXECUTION_REJECTION_DIAGNOSTIC_SCHEMA,
+    termination,
+    logs: {
+      stdout: await createLogObservation(
+        input.logs.stdout,
+        "$rejection.logs.stdout",
+        positiveInteger(
+          input.maximumLogBytes.stdout,
+          "$rejection.maximumLogBytes.stdout",
+        ),
+      ),
+      stderr: await createLogObservation(
+        input.logs.stderr,
+        "$rejection.logs.stderr",
+        positiveInteger(
+          input.maximumLogBytes.stderr,
+          "$rejection.maximumLogBytes.stderr",
+        ),
+      ),
+    },
+  });
+}
+
+export function validateIsolatedCodeExecutionRejectionDiagnostic(
+  value: unknown,
+  path = "$rejection",
+): IsolatedCodeExecutionRejectionDiagnostic {
+  const record = exactRecord(value, ["schemaVersion", "termination", "logs"], path);
+  literalValue(
+    record.schemaVersion,
+    ISOLATED_CODE_EXECUTION_REJECTION_DIAGNOSTIC_SCHEMA,
+    `${path}.schemaVersion`,
+  );
+  const termination = validateIsolatedCodeTermination(
+    record.termination,
+    `${path}.termination`,
+  );
+  if (!isolatedCodeTerminationIsRejected(termination)) {
+    throw new TypeError(
+      `${path}.termination must describe an unsuccessful isolated execution.`,
+    );
+  }
+  const logs = exactRecord(record.logs, ["stdout", "stderr"], `${path}.logs`);
+  return deepFreeze({
+    schemaVersion: ISOLATED_CODE_EXECUTION_REJECTION_DIAGNOSTIC_SCHEMA,
+    termination,
+    logs: {
+      stdout: validateLogObservation(logs.stdout, `${path}.logs.stdout`),
+      stderr: validateLogObservation(logs.stderr, `${path}.logs.stderr`),
+    },
+  });
+}
+
+export function validateIsolatedCodeExecutionDestruction(
+  value: unknown,
+  expectedRunId: string,
+): IsolatedCodeExecutionReceipt["destruction"] {
+  return validateReceiptDestruction(value, expectedRunId);
 }
 
 export function validateContentFingerprint(
@@ -1287,6 +1402,91 @@ async function createLogReceipt(
     sha256: await fingerprintResourceBytes(bytes),
     truncated: value.truncated,
   });
+}
+
+const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+async function createLogObservation(
+  value: { readonly bytes: Uint8Array; readonly truncated: boolean },
+  path: string,
+  byteCap: number,
+): Promise<IsolatedCodeExecutionLogObservation> {
+  if (typeof value.truncated !== "boolean") {
+    throw new TypeError(`${path}.truncated must be a boolean.`);
+  }
+  const bytes = copyObservedUint8Array(value.bytes, `${path}.bytes`, byteCap);
+  return deepFreeze({
+    byteCount: bytes.byteLength,
+    sha256: await fingerprintResourceBytes(bytes),
+    truncated: value.truncated,
+    excerpt: excerptFromLogBytes(bytes),
+  });
+}
+
+function validateLogObservation(
+  value: unknown,
+  path: string,
+): IsolatedCodeExecutionLogObservation {
+  const record = exactRecord(
+    value,
+    ["byteCount", "sha256", "truncated", "excerpt"],
+    path,
+  );
+  if (typeof record.truncated !== "boolean") {
+    throw new TypeError(`${path}.truncated must be a boolean.`);
+  }
+  const byteCount = nonNegativeSafeInteger(record.byteCount, `${path}.byteCount`);
+  const sha256 = sha256Hex(record.sha256, `${path}.sha256`);
+  if (byteCount === 0 && sha256 !== EMPTY_SHA256) {
+    throw new TypeError(`${path}.sha256 does not match an empty log.`);
+  }
+  return deepFreeze({
+    byteCount,
+    sha256,
+    truncated: record.truncated,
+    excerpt: assertSanitizedExcerpt(record.excerpt, `${path}.excerpt`),
+  });
+}
+
+function excerptFromLogBytes(bytes: Uint8Array): string {
+  const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  return capExcerpt(stripTerminalControlSequences(decoded));
+}
+
+function assertSanitizedExcerpt(value: unknown, path: string): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${path} must be a string.`);
+  }
+  if (value.length > MAXIMUM_ISOLATED_EXECUTION_REJECTION_EXCERPT_CODE_UNITS) {
+    throw new TypeError(`${path} exceeds the independent excerpt cap.`);
+  }
+  if (stripTerminalControlSequences(value) !== value) {
+    throw new TypeError(`${path} contains terminal control sequences.`);
+  }
+  return value;
+}
+
+function capExcerpt(value: string): string {
+  if (value.length <= MAXIMUM_ISOLATED_EXECUTION_REJECTION_EXCERPT_CODE_UNITS) {
+    return value;
+  }
+  let sliced = value.slice(0, MAXIMUM_ISOLATED_EXECUTION_REJECTION_EXCERPT_CODE_UNITS);
+  if (
+    sliced.length > 0 &&
+    (sliced.charCodeAt(sliced.length - 1) & 0xfc00) === 0xd800
+  ) {
+    sliced = sliced.slice(0, -1);
+  }
+  return sliced;
+}
+
+function stripTerminalControlSequences(value: string): string {
+  return value
+    .replaceAll(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replaceAll(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+    .replaceAll(/\x9b[0-9;?]*[ -/]*[@-~]/g, "")
+    .replaceAll(/\x1b[@-Z\\-_]/g, "")
+    .replaceAll(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
 }
 
 /**

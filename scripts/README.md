@@ -41,6 +41,8 @@ exercise that complete local microVM path end to end.
 | `gates/build-calculix-worker-candidate.ts`        | `check:calculix-isolated-execution` (static check); direct invocation to run | image      | Build the local CalculiX worker candidate with the reviewed wrapper digest.                          |
 | `gates/verify-calculix-microsandbox-worker.ts`    | `check:calculix-isolated-execution` (static check); direct invocation to run | temp/image | Docker-isolated native CalculiX worker preflight; not a microVM vertical.                            |
 | `gates/verify-calculix-microsandbox-vertical.ts`  | `verify:calculix:microsandbox:vertical`                                      | temp       | Run the digest-pinned local microVM, broker, CAS, external validation, replay, and cleanup vertical. |
+| `gates/verify-ngspice-microsandbox-worker.ts`     | Direct invocation (`--run`)                                                  | temp/image | Docker deny-all ngspice worker preflight; not Microsandbox cache prep and not the product run.       |
+| `gates/prepare-ngspice-microsandbox.ts`           | `prepare:ngspice:microsandbox`                                               | cache      | Idempotent import of the Docker source digest into the Microsandbox cache under the runtime manifest pin. No pull, no product run. |
 
 ## probes/ — read-only diagnostic; `thread:capture-syson-inventory` writes a capture
 

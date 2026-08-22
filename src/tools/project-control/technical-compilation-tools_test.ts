@@ -368,6 +368,56 @@ Deno.test("isolated geometry seal review rejects unknown authority fields before
   assertEquals(calls, 0);
 });
 
+Deno.test("technical source capture accepts only profileId/sourceId/sourceText and spice role on references", () => {
+  const app = new CapturingApp();
+  registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
+    technicalSourceCapture: {
+      capture: () => Promise.reject(new Error("not called")),
+    },
+    technicalCompilationPreview: {
+      execute: () => Promise.reject(new Error("not called")),
+    },
+  });
+  const capture = app.tool("project_technical_source_capture");
+  const captureInput = capture.inputSchema as Record<string, unknown>;
+  assertEquals(
+    Object.keys(captureInput.properties as Record<string, unknown>).sort(),
+    ["profileId", "sourceId", "sourceText"],
+  );
+  assertEquals(captureInput.additionalProperties, false);
+  assertEquals(
+    Object.keys(captureInput.properties as Record<string, unknown>).some((key) =>
+      ["provider", "tool", "runtime", "image", "ngspice"].includes(key)
+    ),
+    false,
+  );
+  const preview = app.tool("project_technical_compilation_preview");
+  const previewInput = preview.inputSchema as Record<string, unknown>;
+  assertEquals(
+    Object.keys(previewInput.properties as Record<string, unknown>).includes(
+      "profileRequests",
+    ),
+    false,
+  );
+  const reference = (capture.outputSchema as {
+    properties: {
+      reference: {
+        properties: {
+          source: {
+            properties: { role: { enum: string[] }; language: { enum: string[] } };
+          };
+        };
+      };
+    };
+  }).properties.reference.properties.source.properties;
+  assertEquals(reference.role.enum, [
+    "cad-script",
+    "modelica-model",
+    "spice-circuit",
+  ]);
+  assertEquals(reference.language.enum, ["python", "modelica", "spice"]);
+});
+
 function assertClosedObjectSchemas(schema: Record<string, unknown>): void {
   if (schema.type === "object") {
     assertEquals(

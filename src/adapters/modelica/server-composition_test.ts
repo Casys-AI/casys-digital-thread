@@ -73,9 +73,7 @@ Deno.test("Modelica kit and admitted stay distinct; L4 evaluation requires SysON
     const qualified = await createQualifiedModelicaCapability({
       modelicaIsolatedExecution: {
         profile: {
-          imageReference: `casys/modelica-microsandbox-worker@sha256:${
-            "a".repeat(64)
-          }`,
+          imageReference: `casys/modelica-microsandbox-worker@sha256:${"a".repeat(64)}`,
           policy: POLICY,
           limits: LIMITS,
           engine: {
@@ -95,9 +93,7 @@ Deno.test("Modelica kit and admitted stay distinct; L4 evaluation requires SysON
     const admitted = await createAdmittedModelicaCapability({
       admittedModelicaExecution: {
         profile: {
-          imageReference: `casys/modelica-microsandbox-worker@sha256:${
-            "e".repeat(64)
-          }`,
+          imageReference: `casys/modelica-microsandbox-worker@sha256:${"e".repeat(64)}`,
           policy: POLICY,
           limits: LIMITS,
         },
@@ -134,8 +130,7 @@ Deno.test("Modelica kit and admitted stay distinct; L4 evaluation requires SysON
       recordedAnalysisDirectory: `${root}/analysis`,
       admissions: compilation.technicalCompilationAdmissions,
       basisResolver: compilationProject.technicalCompilationBasis,
-      technicalSourceAnalysisCaptures:
-        compilation.technicalSourceAnalysisCaptures,
+      technicalSourceAnalysisCaptures: compilation.technicalSourceAnalysisCaptures,
       thermal,
       qualified,
       admitted,
@@ -164,6 +159,7 @@ Deno.test("Modelica kit and admitted stay distinct; L4 evaluation requires SysON
       new URL("./server-composition.ts", import.meta.url),
     );
     assertEquals(source.includes("CreateConsoleServerOptions"), false);
+    assertEquals(source.includes("isolatedOutputCasObjectStore"), true);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

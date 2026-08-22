@@ -675,6 +675,49 @@ Deno.test("technical compilation admission profile requests exactly cover all so
   );
 });
 
+Deno.test("technical compilation admission round-trips spice-circuit-source", () => {
+  const candidate = structuredClone(admission());
+  candidate.sources = [{
+    id: "source.spice",
+    role: "spice-circuit",
+    language: "spice",
+    profileId: "spice-circuit-closed-subset-v1",
+    profileVersion: "1.0.0",
+    profileFingerprint: fingerprint("e"),
+    analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+    sourceFingerprint: fingerprint("7"),
+    captureFingerprint: fingerprint("8"),
+    analysisFingerprint: fingerprint("9"),
+  }];
+  candidate.bindings = [{
+    id: "binding.spice.rseries",
+    sourceId: "source.spice",
+    sourceSymbolId: "parameter.rseries",
+    sysmlElementId: "sysml.rseries",
+    sysmlElementKind: "AttributeUsage",
+    relation: "parameterizes",
+  }];
+  candidate.compilationProfileRequests = [{
+    profileId: "spice-circuit-closed-subset-v1",
+    profileVersion: "1.0.0",
+    target: "spice-circuit-source",
+    sourceIds: ["source.spice"],
+    profileFingerprint: fingerprint("1"),
+  }];
+  const encoded = encodeTechnicalCompilationAdmissionParameters(candidate);
+  assertEquals(
+    encodeTechnicalCompilationAdmissionParameters(
+      parseTechnicalCompilationAdmissionParameters(encoded),
+    ),
+    encoded,
+  );
+  assertEquals(
+    parseTechnicalCompilationAdmissionParameters(encoded)
+      .compilationProfileRequests[0]?.target,
+    "spice-circuit-source",
+  );
+});
+
 Deno.test("technical compilation admission treats colon-bearing binding tuples injectively", () => {
   const candidate = structuredClone(admission());
   const sources = candidate.sources as Array<{ id: string }>;

@@ -15,7 +15,11 @@ import type {
 } from "../../../application/ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
-import type { ExecuteIsolatedCalculixStaticProof } from "../../../application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts";
+import {
+  type ExecuteIsolatedCalculixStaticProof,
+  IsolatedCalculixRedispatchExhaustedError,
+} from "../../../application/use-cases/fea/isolated-v3/execute-isolated-calculix-static-proof.ts";
+import { IsolatedCodeExecutionRejectedError } from "../../../application/ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   assertCompletedIsolatedStaticProofProjectBinding,
   assertCompletedIsolatedStaticProofProjectReference,
@@ -305,6 +309,21 @@ function describe(cause: unknown): string {
   return text.length > 240 ? `${text.slice(0, 240)}…` : text;
 }
 
+function isolatedExecutionRejectionMessage(
+  error: IsolatedCodeExecutionRejectedError,
+): string {
+  const termination = error.diagnostic.termination;
+  const outcome = termination.kind === "exited"
+    ? `exited ${termination.exitCode}`
+    : termination.kind;
+  const excerpt = error.diagnostic.logs.stderr.excerpt.trim() ||
+    error.diagnostic.logs.stdout.excerpt.trim();
+  const text = excerpt.length === 0
+    ? `Isolated execution was rejected (${outcome}).`
+    : `Isolated execution was rejected (${outcome}): ${excerpt}`;
+  return describe(text);
+}
+
 export class VerifyRunFeaStaticProofV3RunExecutor {
   readonly #now: () => string;
 
@@ -326,6 +345,9 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     const run = requireRun(project, command.runId);
     if (run.status === "completed") {
       return await this.#reopenCompleted(project, command);
+    }
+    if (run.status === "failed") {
+      return project;
     }
 
     const prepared = await this.#prepare(project, command.runId, [
@@ -372,6 +394,9 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     if (claimedRun.status === "completed") {
       return await this.#reopenCompleted(project, command);
     }
+    if (claimedRun.status === "failed") {
+      return project;
+    }
     if (claimedRun.status !== "running" && claimedRun.status !== "publishing") {
       throw commandError(
         "invalid_transition",
@@ -397,9 +422,20 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
       return await this.#finishSnapshot(origin, command, prepared, attempt);
     }
 
-    const evidence = attempt.status === "prepared"
-      ? await this.#executeAndRecord(prepared, startedAt)
-      : await this.#readEvidence(prepared, attempt);
+    let evidence: CalculixIsolatedExecutionEvidence;
+    try {
+      evidence = attempt.status === "prepared"
+        ? await this.#executeAndRecord(prepared, startedAt)
+        : await this.#readEvidence(prepared, attempt);
+    } catch (error) {
+      if (error instanceof IsolatedCodeExecutionRejectedError) {
+        return await this.#failRejected(origin, command, error);
+      }
+      if (error instanceof IsolatedCalculixRedispatchExhaustedError) {
+        return await this.#failExhausted(origin, command, error);
+      }
+      throw error;
+    }
     attempt = await this.d.attempts.recordEvidence({
       projectId: command.projectId,
       runId: command.runId,
@@ -596,6 +632,53 @@ export class VerifyRunFeaStaticProofV3RunExecutor {
     });
     await assertThreadSnapshotLineageIntact(reopened, this.d.snapshots);
     return reopened;
+  }
+
+  async #failRejected(
+    origin: EngineeringProjectCommandOrigin,
+    command: VerifyRunFeaStaticProofV3RunExecutorCommand,
+    error: IsolatedCodeExecutionRejectedError,
+  ): Promise<EngineeringProjectSnapshot> {
+    return await this.#failClaimedRun(origin, command, {
+      summary: "Isolated CalculiX execution was rejected before Thread publication.",
+      code: "isolated_execution_rejected",
+      message: isolatedExecutionRejectionMessage(error),
+    });
+  }
+
+  async #failExhausted(
+    origin: EngineeringProjectCommandOrigin,
+    command: VerifyRunFeaStaticProofV3RunExecutorCommand,
+    error: IsolatedCalculixRedispatchExhaustedError,
+  ): Promise<EngineeringProjectSnapshot> {
+    return await this.#failClaimedRun(origin, command, {
+      summary: "Isolated CalculiX redispatch was exhausted before Thread publication.",
+      code: "isolated_redispatch_exhausted",
+      message: describe(
+        `Isolated execution producer generation ${error.producerGeneration} was unpublished and cleaned up; no third dispatch occurs.`,
+      ),
+    });
+  }
+
+  async #failClaimedRun(
+    origin: EngineeringProjectCommandOrigin,
+    command: VerifyRunFeaStaticProofV3RunExecutorCommand,
+    failure: {
+      readonly summary: string;
+      readonly code: string;
+      readonly message: string;
+    },
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await requiredProject(this.d.projects, command.projectId);
+    await this.d.commands.failRun(origin, {
+      ...command,
+      commandId: `${command.commandId}:fail`,
+      expectedRevision: project.revision,
+      summary: failure.summary,
+      code: failure.code,
+      message: failure.message,
+    });
+    return await requiredProject(this.d.projects, command.projectId);
   }
 
   async #executeAndRecord(

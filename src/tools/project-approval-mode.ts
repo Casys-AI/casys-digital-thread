@@ -2,9 +2,12 @@
  * Startup-owned approval policy for the local project command surfaces.
  *
  * `local-yolo` is a loopback human-origin opt-in. It auto-confirms the
- * positive recovery and approval gates listed below. It never auto-rejects,
- * never satisfies a human-only execution, and cannot select providers or
- * weaken execution contracts.
+ * positive gates in `YOLO_AUTO_GATES` through the same command services or
+ * registered run executor, using the persisted local-yolo human origin. It
+ * never auto-rejects, never uses an agent origin, never fabricates MCP
+ * elicitation responses, and cannot select providers or weaken executor
+ * gates. Interactive mode still elicits every gate, including
+ * `human-only-execute`.
  */
 export type ProjectApprovalMode =
   | { readonly kind: "interactive" }
@@ -27,10 +30,18 @@ export const HUMAN_CONFIRMATION_GATES = [
 
 export type HumanConfirmationGate = typeof HUMAN_CONFIRMATION_GATES[number];
 
+/**
+ * Positive local-yolo gates only. `human-only-execute` is included because
+ * the operator already opted in to autonomous positive choices: a reviewed,
+ * queued run whose required decisions are already approved may execute under
+ * the persisted human origin through the normal executor. `decision-reject`
+ * stays interactive.
+ */
 const YOLO_AUTO_GATES: readonly HumanConfirmationGate[] = [
   "brief-confirm",
   "decision-approve",
   "queued-run-cancel",
+  "human-only-execute",
 ];
 
 export const INTERACTIVE_PROJECT_APPROVAL_MODE: ProjectApprovalMode = {

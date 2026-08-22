@@ -427,7 +427,7 @@ Deno.test("technical source capture is deterministic for the same exact profile,
   });
 });
 
-Deno.test("technical source profiles accept only Python CAD and Modelica source pairs", async () => {
+Deno.test("technical source profiles accept only Python CAD, Modelica, and circuit-only SPICE pairs", async () => {
   const frontend = fixedFrontend(PYTHON_PROFILE);
   const invalidProfiles = [
     {
@@ -459,7 +459,7 @@ Deno.test("technical source profiles accept only Python CAD and Modelica source 
         } as unknown as TechnicalSourceAnalysisProfileRegistration]);
       },
       TypeError,
-      "cad-script/python or modelica-model/modelica",
+      "cad-script/python, modelica-model/modelica, or spice-circuit/spice",
     );
   }
 
@@ -483,6 +483,28 @@ Deno.test("technical source profiles accept only Python CAD and Modelica source 
     });
     assertEquals(reference.source.role, "modelica-model");
     assertEquals(reference.source.language, "modelica");
+  });
+
+  const spiceProfile: TechnicalSourceAnalysisProfile = {
+    id: "spice-circuit-closed-subset-v1",
+    version: "1.0.0",
+    role: "spice-circuit",
+    language: "spice",
+    analyzer: { id: "spice-circuit-closed-subset", version: "1.0.0" },
+    maxSourceBytes: 262_144,
+  };
+  await withHarness(async (harness) => {
+    const service = harness.service([{
+      profile: spiceProfile,
+      frontend: fixedFrontend(spiceProfile),
+    }]);
+    const reference = await service.capture({
+      profileId: spiceProfile.id,
+      sourceId: "source:spice:clamp",
+      sourceText: "Vin in 0 5\nRload in 0 1k\n",
+    });
+    assertEquals(reference.source.role, "spice-circuit");
+    assertEquals(reference.source.language, "spice");
   });
 });
 
@@ -635,3 +657,7 @@ const _ROLE_TYPE_ASSERTION: TechnicalSourceAnalysisProfile["role"] =
   "cad-script" satisfies SourceAnalysisSourceRole;
 const _LANGUAGE_TYPE_ASSERTION: TechnicalSourceAnalysisProfile["language"] =
   "python" satisfies SourceAnalysisLanguage;
+const _SPICE_ROLE_TYPE_ASSERTION: TechnicalSourceAnalysisProfile["role"] =
+  "spice-circuit" satisfies SourceAnalysisSourceRole;
+const _SPICE_LANGUAGE_TYPE_ASSERTION: TechnicalSourceAnalysisProfile["language"] =
+  "spice" satisfies SourceAnalysisLanguage;

@@ -14,11 +14,13 @@ import type {
 } from "../../../ports/in/modelica/evaluation/project-admitted-modelica-evaluation-review.ts";
 import type { ThermalMethodSheetCompilationJoin } from "../../../ports/out/compile/admission/thermal-method-sheet-compilation-join.ts";
 import type { AdmittedObservationEvidenceReader } from "../../../ports/out/modelica/evaluation/admitted-observation-evidence-reader.ts";
+import type { ThermalMethodSheetSourceCaptureReader } from "../../../ports/out/modelica/thermal-method-sheet-source-capture-reader.ts";
 import type { EngineeringProjectRevisionStore } from "../../../ports/out/engineering-project-revision-store.ts";
 import {
   admittedModelicaUnitIdentityPolicy,
   deriveAdmittedObservationEvaluationMethod,
   fingerprintAdmittedObservationEvaluationMethod,
+  mapAdmittedObservationEvidenceBySourceIdentity,
   selectAdmittedObservationEvaluations,
 } from "../../../../domain/modelica/evaluation/admitted-observation-evaluation.ts";
 import {
@@ -80,6 +82,7 @@ export interface PrepareProjectAdmittedModelicaEvaluationReviewDependencies {
   readonly snapshots: EvaluationReviewSnapshotStore;
   readonly methodSheets: ThermalMethodSheetCompilationJoin;
   readonly evidence: AdmittedObservationEvidenceReader;
+  readonly sourceCaptures: ThermalMethodSheetSourceCaptureReader;
 }
 
 export class PrepareProjectAdmittedModelicaEvaluationReview
@@ -88,6 +91,7 @@ export class PrepareProjectAdmittedModelicaEvaluationReview
   readonly #snapshots: EvaluationReviewSnapshotStore;
   readonly #methodSheets: ThermalMethodSheetCompilationJoin;
   readonly #evidence: AdmittedObservationEvidenceReader;
+  readonly #sourceCaptures: ThermalMethodSheetSourceCaptureReader;
 
   constructor(
     dependencies: PrepareProjectAdmittedModelicaEvaluationReviewDependencies,
@@ -96,6 +100,7 @@ export class PrepareProjectAdmittedModelicaEvaluationReview
     this.#snapshots = dependencies.snapshots;
     this.#methodSheets = dependencies.methodSheets;
     this.#evidence = dependencies.evidence;
+    this.#sourceCaptures = dependencies.sourceCaptures;
   }
 
   async execute(
@@ -198,14 +203,33 @@ export class PrepareProjectAdmittedModelicaEvaluationReview
     try {
       const unitPolicy = await admittedModelicaUnitIdentityPolicy();
       const method = deriveAdmittedObservationEvaluationMethod(sheet, unitPolicy);
+      let source;
+      try {
+        source = await this.#sourceCaptures.read(
+          sheet.model.sourceCaptureFingerprint,
+        );
+      } catch {
+        throw reviewError(
+          "recross_failed",
+          "The reopened source capture is not an exact modelica-model identity.",
+        );
+      }
+      if (!source) {
+        throw reviewError(
+          "recross_failed",
+          "The exact Modelica source capture is unavailable.",
+        );
+      }
+      const mapped = mapAdmittedObservationEvidenceBySourceIdentity(
+        method,
+        source.symbols,
+        evidence.outputs,
+        evidence.metrics,
+      );
       selectAdmittedObservationEvaluations(
         method,
-        evidence.outputs,
-        evidence.metrics.map((metric) => ({
-          outputName: metric.outputName,
-          statistic: metric.statistic,
-          unit: metric.unit,
-        })),
+        mapped.outputs,
+        mapped.metrics,
       );
       const sheetFingerprint = await fingerprintModelicaThermalMethodSheet(sheet);
       const methodFingerprint = await fingerprintAdmittedObservationEvaluationMethod(

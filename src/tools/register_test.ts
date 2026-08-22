@@ -21,6 +21,7 @@ import {
   approvalModeForBinding,
   createConsoleServer,
   createLocalAdmittedModelicaExecutionServerOptions,
+  createLocalAdmittedSpiceExecutionServerOptions,
   createLocalBuild123dExecutionServerOptions,
   createLocalCalculixIsolatedExecutionServerOptions,
   createLocalModelicaIsolatedExecutionServerOptions,
@@ -377,6 +378,49 @@ Deno.test("server exposes qualified Modelica review only from explicit local pro
   }
 });
 
+Deno.test("server exposes admitted SPICE review from profile and keeps the executor unavailable without runtime", async () => {
+  const temporaryDirectory = await Deno.makeTempDir({
+    prefix: "casys-spice-review-composition-",
+  });
+  try {
+    const withoutConfiguration = await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory: `${temporaryDirectory}/without/projects`,
+      recordedAnalysisDirectory: `${temporaryDirectory}/without/analysis`,
+    });
+    assertEquals(
+      withoutConfiguration.app.getToolNames().includes(
+        "project_admitted_spice_run_review",
+      ),
+      false,
+    );
+    assertStringIncludes(
+      await Deno.readTextFile("server.ts"),
+      "The server has no admitted SPICE closed-subset isolated runtime configured for this run.",
+    );
+
+    const { profile } = await createLocalAdmittedSpiceExecutionServerOptions();
+    const admittedReview = await createConsoleServer({
+      manifest: { version: 1, servers: [] },
+      runs: [],
+      logger: () => {},
+      activeProjectDirectory: `${temporaryDirectory}/admitted/projects`,
+      recordedAnalysisDirectory: `${temporaryDirectory}/admitted/analysis`,
+      admittedSpiceExecution: { profile },
+    });
+    assertEquals(
+      admittedReview.app.getToolNames().includes(
+        "project_admitted_spice_run_review",
+      ),
+      true,
+    );
+  } finally {
+    await Deno.remove(temporaryDirectory, { recursive: true });
+  }
+});
+
 Deno.test("server seals the local CalculiX profile into ROP2 but composes @3 only with runtime and SysON", async () => {
   const temporaryDirectory = await Deno.makeTempDir({
     prefix: "casys-calculix-local-composition-",
@@ -539,6 +583,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_snapshot",
     "project_admitted_modelica_evaluation_closeout_review",
     "project_admitted_modelica_evaluation_review",
+    "project_admitted_spice_evaluation_closeout_review",
+    "project_admitted_spice_evaluation_review",
     "project_agent_run_cancel",
     "project_agent_run_execute",
     "project_agent_run_plan_get",
@@ -558,6 +604,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_decision_approve",
     "project_decision_propose",
     "project_decision_reject",
+    "project_electrical_observation_method_sheet_seal_review",
     "project_evaluation_closeout_review",
     "project_fea_isolated_run_review",
     "project_fea_proof_case_capture",
@@ -607,6 +654,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_snapshot",
       "project_admitted_modelica_evaluation_closeout_review",
       "project_admitted_modelica_evaluation_review",
+      "project_admitted_spice_evaluation_closeout_review",
+      "project_admitted_spice_evaluation_review",
       "project_agent_run_cancel",
       "project_agent_run_execute",
       "project_agent_run_plan_get",
@@ -626,6 +675,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_decision_approve",
       "project_decision_propose",
       "project_decision_reject",
+      "project_electrical_observation_method_sheet_seal_review",
       "project_evaluation_closeout_review",
       "project_fea_isolated_run_review",
       "project_fea_proof_case_capture",
@@ -863,7 +913,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
           tool.name === "project_admitted_modelica_evaluation_closeout_review" ||
-          tool.name === "project_admitted_modelica_evaluation_review",
+          tool.name === "project_admitted_modelica_evaluation_review" ||
+          tool.name === "project_admitted_spice_evaluation_closeout_review" ||
+          tool.name === "project_admitted_spice_evaluation_review" ||
+          tool.name === "project_electrical_observation_method_sheet_seal_review",
       );
       assertEquals(
         annotations.idempotentHint,
@@ -902,7 +955,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_cross_domain_impact_manifest_seal_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
           tool.name === "project_admitted_modelica_evaluation_closeout_review" ||
-          tool.name === "project_admitted_modelica_evaluation_review",
+          tool.name === "project_admitted_modelica_evaluation_review" ||
+          tool.name === "project_admitted_spice_evaluation_closeout_review" ||
+          tool.name === "project_admitted_spice_evaluation_review" ||
+          tool.name === "project_electrical_observation_method_sheet_seal_review",
       );
     }
     const framingTools = tools.filter((tool) =>

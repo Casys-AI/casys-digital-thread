@@ -3,6 +3,7 @@ import { sha256Fingerprint } from "../../kernel/deterministic-json.ts";
 import { fingerprintResourceBytes } from "../source/provider-resource-reader.ts";
 import {
   createIsolatedCodeExecutionReceipt,
+  createIsolatedCodeExecutionRejectionDiagnostic,
   createIsolatedOutputPublicationRef,
   fingerprintIsolatedOutputPublicationManifest,
   ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
@@ -10,7 +11,9 @@ import {
   isolatedCodeExecutionReceiptRecord,
   type IsolatedCodeExecutionRequest,
   type IsolatedCodeRuntimeAttestation,
+  MAXIMUM_ISOLATED_EXECUTION_REJECTION_EXCERPT_CODE_UNITS,
   restoreIsolatedCodeExecutionReceipt,
+  validateIsolatedCodeExecutionRejectionDiagnostic,
   validateIsolatedCodeExecutionRequest,
   validateIsolatedCodeRuntimeAttestation,
 } from "./isolated-code-execution.ts";
@@ -344,6 +347,79 @@ Deno.test("closed receipt accepts only the exact isolated-output CAS namespace",
       }),
     TypeError,
     "must equal",
+  );
+});
+
+Deno.test("rejection diagnostic preserves log hashes and strips control sequences from excerpts", async () => {
+  const stderr = encoder.encode("\x1b[31mMeshingError: empty NSET\x1b[0m\n");
+  const diagnostic = await createIsolatedCodeExecutionRejectionDiagnostic({
+    termination: { kind: "exited", exitCode: 1, signal: null },
+    logs: {
+      stdout: { bytes: new Uint8Array(), truncated: false },
+      stderr: { bytes: stderr, truncated: false },
+    },
+    maximumLogBytes: { stdout: 1_024, stderr: 1_024 },
+  });
+  assertEquals(diagnostic.termination.exitCode, 1);
+  assertEquals(
+    diagnostic.logs.stderr.sha256,
+    await fingerprintResourceBytes(stderr),
+  );
+  assertEquals(diagnostic.logs.stderr.byteCount, stderr.byteLength);
+  assertEquals(diagnostic.logs.stderr.truncated, false);
+  assertEquals(diagnostic.logs.stderr.excerpt, "MeshingError: empty NSET\n");
+  assertEquals(diagnostic.logs.stdout.excerpt, "");
+  const reread = validateIsolatedCodeExecutionRejectionDiagnostic(diagnostic);
+  assertEquals(reread, diagnostic);
+  await assertRejects(
+    () =>
+      createIsolatedCodeExecutionRejectionDiagnostic({
+        termination: { kind: "exited", exitCode: 0, signal: null },
+        logs: {
+          stdout: { bytes: new Uint8Array(), truncated: false },
+          stderr: { bytes: new Uint8Array(), truncated: false },
+        },
+        maximumLogBytes: { stdout: 1_024, stderr: 1_024 },
+      }),
+    TypeError,
+    "unsuccessful isolated execution",
+  );
+});
+
+Deno.test("rejection diagnostic caps excerpts independently of captured log bytes", async () => {
+  const body = "x".repeat(
+    MAXIMUM_ISOLATED_EXECUTION_REJECTION_EXCERPT_CODE_UNITS + 64,
+  );
+  const diagnostic = await createIsolatedCodeExecutionRejectionDiagnostic({
+    termination: { kind: "timed-out", exitCode: null, signal: null },
+    logs: {
+      stdout: { bytes: encoder.encode(body), truncated: false },
+      stderr: { bytes: new Uint8Array(), truncated: false },
+    },
+    maximumLogBytes: { stdout: 8_192, stderr: 8_192 },
+  });
+  assertEquals(
+    diagnostic.logs.stdout.excerpt.length,
+    MAXIMUM_ISOLATED_EXECUTION_REJECTION_EXCERPT_CODE_UNITS,
+  );
+  assertEquals(
+    diagnostic.logs.stdout.byteCount,
+    encoder.encode(body).byteLength,
+  );
+  assertThrows(
+    () =>
+      validateIsolatedCodeExecutionRejectionDiagnostic({
+        ...diagnostic,
+        logs: {
+          ...diagnostic.logs,
+          stdout: {
+            ...diagnostic.logs.stdout,
+            excerpt: "\x1b[31mred\x1b[0m",
+          },
+        },
+      }),
+    TypeError,
+    "terminal control sequences",
   );
 });
 

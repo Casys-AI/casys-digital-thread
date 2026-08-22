@@ -23,7 +23,7 @@ Reader:
 | ------- | ----- | ------ | ------------- |
 | Catalog schema / keys | Exact `{schemaVersion, cases}`; each case `{id, file}` | Enforced | None |
 | Catalog ids | `^[A-Za-z0-9][A-Za-z0-9._-]*$` (no length cap; no `:`) | Enforced shape; **unbounded** length | A length cap would be a product/storage decision. FEA catalog ids are already 1–256; this page does not copy that number. |
-| Catalog paths | Same relative `*.json` confinement as FEA | Enforced | None |
+| Catalog paths | Safe relative `*.json`; canonical `catalog.json` and declared case files must be strict descendants of the canonical catalog root | Enforced | None |
 | Catalog uniqueness | Unique id and unique file; case-file `id` must match | Enforced | None |
 | Catalog entry count / raw bytes | No max | **Unbounded** | Needs a product/storage decision. Not implied by the Build123d or CalculiX profile. |
 

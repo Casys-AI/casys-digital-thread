@@ -46,6 +46,9 @@ import type {
 } from "../../domain/project/engineering-project.ts";
 import type {
   ThreadArtifact,
+  ThreadArtifactConsumption,
+  ThreadOperationRef,
+  ThreadProvenanceLink,
   ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
 import {
@@ -406,7 +409,12 @@ function buildSuccessor(input: {
   readonly captureUri: string;
 }): { readonly snapshot: ThreadSnapshot; readonly artifact: ThreadArtifact } {
   const sealedAt = requiredStart(input.run);
-  const inputArtifactIds = inputArtifactIdsFor(input.basisSnapshot, input.capture.admission);
+  const inputArtifacts = exactInputArtifacts(input.basisSnapshot, input.capture.admission);
+  const producer: ThreadOperationRef = {
+    serverId: "digital-thread",
+    tool: `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`,
+    runId: input.run.id,
+  };
   const artifact: ThreadArtifact = {
     id: `cross-domain-impact-manifest-seal-${input.captureFingerprint.digest}`,
     name: "Sealed cross-domain impact manifest",
@@ -415,36 +423,50 @@ function buildSuccessor(input: {
     fingerprint: input.captureFingerprint,
     uri: input.captureUri,
     mediaType: "application/json",
-    producer: {
-      serverId: "digital-thread",
-      tool: `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`,
-      runId: input.run.id,
-    },
-    inputArtifactIds,
+    producer,
+    inputArtifactIds: inputArtifacts.map((upstream) => upstream.id),
     freshness: {
       status: "fresh",
       changedAt: sealedAt,
       invalidatedByChangeIds: [],
     },
   };
+  const consumptions: ThreadArtifactConsumption[] = inputArtifacts.map((upstream) => ({
+    id: `verify-seal-cross-domain-impact-manifest-${input.run.id}:consume:${upstream.id}`,
+    artifactId: upstream.id,
+    consumer: producer,
+    observedFingerprint: upstream.fingerprint,
+    verifiedAt: sealedAt,
+    status: "verified",
+  }));
+  const provenance: ThreadProvenanceLink[] = [
+    ...inputArtifacts.map((upstream) => ({
+      id: `verify-seal-cross-domain-impact-manifest-${input.run.id}:derived-from:${upstream.id}`,
+      relation: "derived_from" as const,
+      from: { kind: "artifact" as const, id: artifact.id },
+      to: { kind: "artifact" as const, id: upstream.id },
+      rationale: "The sealed impact manifest recrossed this exact declared artifact identity.",
+    })),
+    ...consumptions.map((consumption) => ({
+      id: `verify-seal-cross-domain-impact-manifest-${input.run.id}:uses:${consumption.artifactId}`,
+      relation: "uses" as const,
+      from: { kind: "consumption" as const, id: consumption.id },
+      to: { kind: "artifact" as const, id: consumption.artifactId },
+      rationale: "The seal executor reread and fingerprint-attested the exact input.",
+    })),
+  ];
   const extension: ThreadSnapshotExtension = {
     id: `verify-seal-cross-domain-impact-manifest-${input.run.id}`,
     name: "Seal the reviewed cross-domain impact manifest",
     subjectId: input.basis.subjectId,
     capturedAt: sealedAt,
     artifacts: [artifact],
-    consumptions: [],
+    consumptions,
     observations: [],
     requirements: [],
     evaluations: [],
     violations: [],
-    provenance: inputArtifactIds.map((id) => ({
-      id: `verify-seal-cross-domain-impact-manifest-${input.run.id}:uses:${id}`,
-      relation: "uses" as const,
-      from: { kind: "artifact" as const, id: artifact.id },
-      to: { kind: "artifact" as const, id },
-      rationale: "The sealed impact manifest recrossed this exact declared artifact identity.",
-    })),
+    provenance,
     proposedActions: [],
   };
   const applied = applyThreadSnapshotExtensionIfNew(input.basisSnapshot, extension, {
@@ -456,25 +478,36 @@ function buildSuccessor(input: {
   return { snapshot: validateThreadSnapshot(applied.snapshot), artifact };
 }
 
-function inputArtifactIdsFor(
+function exactInputArtifacts(
   basis: ThreadSnapshot,
   admission: CrossDomainImpactManifestSealAdmission,
-): readonly string[] {
-  const ids = new Set<string>();
+): readonly ThreadArtifact[] {
+  const declared = new Map<string, ContentFingerprint[]>();
+  const add = (id: string, fingerprint: ContentFingerprint) => {
+    const fingerprints = declared.get(id);
+    if (fingerprints) fingerprints.push(fingerprint);
+    else declared.set(id, [fingerprint]);
+  };
   for (const anchor of admission.sourceAnchors) {
-    if (anchor.source.kind === "artifact") ids.add(anchor.source.id);
+    if (anchor.source.kind === "artifact") add(anchor.source.id, anchor.source.fingerprint);
   }
   for (const evidence of admission.mechanicalEvidence) {
-    ids.add(evidence.evidence.id);
-    for (const consumption of evidence.consumptions) ids.add(consumption.input.id);
+    add(evidence.evidence.id, evidence.evidence.fingerprint);
+    for (const consumption of evidence.consumptions) add(consumption.input.id, consumption.input.fingerprint);
   }
-  for (const id of ids) {
-    const matches = basis.artifacts.filter((artifact) => artifact.id === id);
-    if (matches.length !== 1) {
-      throw invalidTransition("A signed impact-manifest artifact input is not an exact basis artifact.");
-    }
-  }
-  return [...ids].sort((left, right) => left.localeCompare(right));
+  return [...declared.keys()]
+    .sort((left, right) => left.localeCompare(right))
+    .map((id) => {
+      const matches = basis.artifacts.filter((artifact) => artifact.id === id);
+      const fingerprints = declared.get(id)!;
+      if (
+        matches.length !== 1 ||
+        fingerprints.some((fingerprint) => !fingerprintsEqual(fingerprint, matches[0]!.fingerprint))
+      ) {
+        throw invalidTransition("A signed impact-manifest artifact input is not an exact basis artifact.");
+      }
+      return matches[0]!;
+    });
 }
 
 function requireShape(project: EngineeringProjectSnapshot, run: EngineeringAgentRun): void {

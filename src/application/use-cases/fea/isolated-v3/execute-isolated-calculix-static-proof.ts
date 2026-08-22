@@ -12,15 +12,18 @@ import type {
   CalculixIsolatedExecutionAttemptIdentity,
   CalculixIsolatedExecutionAttemptKey,
   CalculixIsolatedExecutionAttemptStore,
+  CalculixIsolatedProvenDestruction,
 } from "../../../ports/out/fea/isolated-v3/calculix-isolated-execution-attempt-store.ts";
 import type { CalculixIsolatedExecutionEvidenceStore } from "../../../ports/out/fea/isolated-v3/calculix-isolated-execution-evidence-store.ts";
 import type { CalculixIsolatedExecutionProfile } from "../../../ports/out/fea/isolated-v3/calculix-isolated-execution-profile.ts";
 import type { CalculixIsolatedExecutionRunLease } from "../../../ports/out/fea/isolated-v3/calculix-isolated-execution-run-lease.ts";
-import type {
-  IsolatedCodeRunner,
-  IsolatedCodeRunRecovery,
-  IsolatedOutputPublicationReader,
+import {
+  IsolatedCodeExecutionRejectedError,
+  type IsolatedCodeRunner,
+  type IsolatedCodeRunRecovery,
+  type IsolatedOutputPublicationReader,
 } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
+import { safeId } from "../../../../domain/kernel/case-validation.ts";
 import {
   CALCULIX_ISOLATED_EXECUTION_PROFILE,
   CALCULIX_ISOLATED_OUTPUT_MANIFEST,
@@ -37,6 +40,7 @@ import {
   isolatedCodeRefsEqual,
   type IsolatedOutputProducerGeneration,
   runtimeAttestationsEqual,
+  validateIsolatedCodeExecutionDestruction,
   validateIsolatedCodeExecutionReceiptRecord,
 } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
@@ -53,6 +57,36 @@ export class ExecuteIsolatedCalculixStaticProofError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ExecuteIsolatedCalculixStaticProofError";
+  }
+}
+
+/**
+ * Terminal recovery after generation 1 was consumed, unpublished, and
+ * destroyed. It carries no worker diagnostic, lease, path or handle.
+ */
+export class IsolatedCalculixRedispatchExhaustedError extends Error {
+  readonly code = "redispatch_exhausted" as const;
+  readonly executionRunId: string;
+  readonly producerGeneration = 1 as const;
+  readonly destruction: CalculixIsolatedProvenDestruction;
+
+  constructor(input: {
+    readonly executionRunId: string;
+    readonly destruction: CalculixIsolatedProvenDestruction;
+  }) {
+    super(
+      "The unpublished CalculiX redispatch generation was cleaned up; no third dispatch occurs.",
+    );
+    this.name = "IsolatedCalculixRedispatchExhaustedError";
+    this.executionRunId = safeId(input.executionRunId, "$exhaustion.executionRunId");
+    const destruction = validateIsolatedCodeExecutionDestruction(
+      input.destruction,
+      this.executionRunId,
+    );
+    if (destruction.status !== "proven") {
+      throw new TypeError("Redispatch exhaustion requires proven destruction.");
+    }
+    this.destruction = destruction;
   }
 }
 
@@ -96,6 +130,12 @@ export class ExecuteIsolatedCalculixStaticProof {
     const key = keyOf(attempt);
     if (attempt.phase === "evidence-captured") {
       return await this.#reopenEvidence(attempt, bundle);
+    }
+    if (attempt.phase === "execution-rejected") {
+      throwRejected(attempt);
+    }
+    if (attempt.phase === "redispatch-exhausted") {
+      throwExhausted(attempt);
     }
 
     const candidate = "receiptRecord" in attempt
@@ -180,8 +220,11 @@ export class ExecuteIsolatedCalculixStaticProof {
       }
       const producerGeneration = attempt.dispatch.producerGeneration;
       return Object.freeze({
-        receipt: await this.dependencies.runner.run(
-          request(identity.profile, bundle, key, producerGeneration),
+        receipt: await this.#runOrReject(
+          identity,
+          bundle,
+          key,
+          producerGeneration,
         ),
         producerGeneration,
       });
@@ -263,9 +306,11 @@ export class ExecuteIsolatedCalculixStaticProof {
           "The unpublished CalculiX redispatch cleanup was not proven; no third dispatch occurs.",
         );
       }
-      throw blocked(
-        "The unpublished CalculiX redispatch generation was cleaned up; no third dispatch occurs.",
-      );
+      const exhausted = await this.dependencies.attempts.markRedispatchExhausted({
+        ...key,
+        destruction,
+      });
+      return throwExhausted(exhausted);
     }
     if (
       attempt.phase !== "dispatching" || attempt.dispatch.dispatchCount !== 2 ||
@@ -286,11 +331,38 @@ export class ExecuteIsolatedCalculixStaticProof {
       throw blocked("The CalculiX redispatch generation was not consumed durably.");
     }
     return Object.freeze({
-      receipt: await this.dependencies.runner.run(
-        request(identity.profile, bundle, key, 1),
-      ),
+      receipt: await this.#runOrReject(identity, bundle, key, 1),
       producerGeneration: 1,
     });
+  }
+
+  async #runOrReject(
+    identity: CalculixIsolatedExecutionAttemptIdentity,
+    bundle: CalculixIsolatedInputBundle,
+    key: CalculixIsolatedExecutionAttemptKey,
+    producerGeneration: IsolatedOutputProducerGeneration,
+  ): Promise<IsolatedCodeExecutionReceipt> {
+    try {
+      return await this.dependencies.runner.run(
+        request(identity.profile, bundle, key, producerGeneration),
+      );
+    } catch (error) {
+      if (!(error instanceof IsolatedCodeExecutionRejectedError)) throw error;
+      if (
+        error.destruction.status !== "proven" ||
+        error.destruction.runId !== key.executionRunId
+      ) {
+        throw blocked(
+          "Isolated CalculiX rejection cleanup is not proven; no redispatch occurs.",
+        );
+      }
+      const rejected = await this.dependencies.attempts.markExecutionRejected({
+        ...key,
+        diagnostic: error.diagnostic,
+        destruction: error.destruction,
+      });
+      return throwRejected(rejected);
+    }
   }
 
   async #readReceipt(
@@ -437,4 +509,28 @@ function keyOf(
 
 function blocked(message: string): ExecuteIsolatedCalculixStaticProofError {
   return new ExecuteIsolatedCalculixStaticProofError(message);
+}
+
+function throwRejected(
+  attempt: CalculixIsolatedExecutionAttempt,
+): never {
+  if (attempt.phase !== "execution-rejected") {
+    throw blocked("The CalculiX rejection WAL transition was not durable.");
+  }
+  throw new IsolatedCodeExecutionRejectedError(
+    attempt.rejection.diagnostic,
+    attempt.rejection.destruction,
+  );
+}
+
+function throwExhausted(
+  attempt: CalculixIsolatedExecutionAttempt,
+): never {
+  if (attempt.phase !== "redispatch-exhausted") {
+    throw blocked("The CalculiX redispatch-exhaustion WAL transition was not durable.");
+  }
+  throw new IsolatedCalculixRedispatchExhaustedError({
+    executionRunId: attempt.executionRunId,
+    destruction: attempt.exhaustion.destruction,
+  });
 }

@@ -46,12 +46,12 @@ export const MAX_TECHNICAL_SOURCE_PROFILE_BYTES = 1024 * 1024;
 
 export type TechnicalSourceRole = Extract<
   SourceAnalysisSourceRole,
-  "cad-script" | "modelica-model"
+  "cad-script" | "modelica-model" | "spice-circuit"
 >;
 
 export type TechnicalSourceLanguage = Extract<
   SourceAnalysisLanguage,
-  "python" | "modelica"
+  "python" | "modelica" | "spice"
 >;
 
 /** Code-owned method selection. It is never accepted from the capture caller. */
@@ -687,11 +687,12 @@ export function validateTechnicalSourceAnalysisProfile(
   if (
     !(
       (role === "cad-script" && language === "python") ||
-      (role === "modelica-model" && language === "modelica")
+      (role === "modelica-model" && language === "modelica") ||
+      (role === "spice-circuit" && language === "spice")
     )
   ) {
     throw new TypeError(
-      `${path} must select cad-script/python or modelica-model/modelica; brief, plain-text, SysML, TypeScript, and CalculiX input are not executable technical-source profiles.`,
+      `${path} must select cad-script/python, modelica-model/modelica, or spice-circuit/spice; brief, plain-text, SysML, TypeScript, and CalculiX input are not executable technical-source profiles.`,
     );
   }
   return deepFreeze({
@@ -740,11 +741,12 @@ function validatePersistedProfileDescriptor(
   if (
     !(
       (role === "cad-script" && language === "python") ||
-      (role === "modelica-model" && language === "modelica")
+      (role === "modelica-model" && language === "modelica") ||
+      (role === "spice-circuit" && language === "spice")
     )
   ) {
     throw new TypeError(
-      `${path} must select cad-script/python or modelica-model/modelica.`,
+      `${path} must select cad-script/python, modelica-model/modelica, or spice-circuit/spice.`,
     );
   }
   return deepFreeze({

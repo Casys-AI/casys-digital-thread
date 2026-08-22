@@ -15,7 +15,7 @@ Truth: [impact coverage](../../reference/domains/impact/coverage.md),
 
 | Missing surface | What that means |
 | --------------- | --------------- |
-| Generic X10 rerun planner | X07/X08 fix `rerunProposals` to `none`. There is no registered thermal/electrical redispatch from impact. Independent Modelica or LED-fiche paths are not X10. ngspice is not a product run. |
+| Generic X10 rerun planner | X07/X08 fix `rerunProposals` to `none`. There is no registered thermal/electrical redispatch from impact. Independent admitted Modelica or admitted SPICE walks are not X10. |
 
 Draft capture is public: `project_cross_domain_impact_manifest_capture` with `sourceText`
 only. Pass `result.reference` as `manifestRef`. If
@@ -113,5 +113,6 @@ X11 rereads that accepted closeout; it does not create it.
 - Let the caller select fingerprints, CAS paths, provider, tool, args, or runtime.
 - X10 reruns of invalidated electrical or thermal branches.
 - Treat electrical `impact-unresolved` as an ngspice implementation gap to paper over.
+- Treat X09 `invalidated` as an automatic admitted SPICE or Modelica redispatch.
 - Conflate mechanical all-pass L5 eligibility with Modelica both-choice L5.
 - Command the Workbench.

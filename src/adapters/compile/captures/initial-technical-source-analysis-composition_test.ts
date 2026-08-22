@@ -24,6 +24,11 @@ import {
   QUALIFIED_MODELICA_MAX_SOURCE_BYTES,
   QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE,
 } from "../../modelica/source/source-analysis-composition.ts";
+import {
+  SPICE_CIRCUIT_MAX_SOURCE_BYTES,
+  SPICE_CIRCUIT_TECHNICAL_SOURCE_PROFILE,
+} from "../../electrical/spice/source-analysis-composition.ts";
+import { SpiceCircuitSourceAnalyzer } from "../../electrical/spice/circuit-source-analyzer.ts";
 
 const SOURCE_TEXT = [
   "from build123d import Box",
@@ -47,8 +52,14 @@ Deno.test("initial source-analysis registration exactly matches compilation qual
     id: QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE.id,
     version: QUALIFIED_MODELICA_TECHNICAL_SOURCE_PROFILE.version,
   });
+  const spiceCompilation = INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles
+    .find((profile) => profile.id === SPICE_CIRCUIT_TECHNICAL_SOURCE_PROFILE.id);
+  const spice = registry.requireExact({
+    id: SPICE_CIRCUIT_TECHNICAL_SOURCE_PROFILE.id,
+    version: SPICE_CIRCUIT_TECHNICAL_SOURCE_PROFILE.version,
+  });
 
-  assertEquals(INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles.length, 2);
+  assertEquals(INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles.length, 3);
   assertEquals(registration.profile, {
     id: compilation.id,
     version: compilation.version,
@@ -69,6 +80,15 @@ Deno.test("initial source-analysis registration exactly matches compilation qual
     maxSourceBytes: QUALIFIED_MODELICA_MAX_SOURCE_BYTES,
   });
   assertInstanceOf(modelica.frontend, QualifiedModelicaSourceAnalyzer);
+  assertEquals(spice.profile, {
+    id: spiceCompilation?.id,
+    version: spiceCompilation?.version,
+    role: spiceCompilation?.sourceRole,
+    language: spiceCompilation?.language,
+    analyzer: spiceCompilation?.analyzer,
+    maxSourceBytes: SPICE_CIRCUIT_MAX_SOURCE_BYTES,
+  });
+  assertInstanceOf(spice.frontend, SpiceCircuitSourceAnalyzer);
 
   assertThrows(
     () => registry.requireForCapture("modelica-unqualified"),

@@ -18,6 +18,10 @@ import {
   type TechnicalCompilationResult,
 } from "../../../domain/compile/admission/technical-compilation.ts";
 import {
+  deriveTechnicalCompilationProfileRequests,
+} from "../../../domain/compile/admission/technical-compilation-join.ts";
+import type { SourceAnalysisBundle } from "../../../domain/compile/source/source-analysis.ts";
+import {
   fingerprintSourceAnalysisBundle,
 } from "../../../domain/compile/source/source-analysis.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
@@ -182,13 +186,13 @@ Deno.test("capture-backed source reader rejects reference drift and non-exact co
   });
 });
 
-Deno.test("fixed catalogue exposes only the registered build123d and Modelica v2 frontends", async () => {
+Deno.test("fixed catalogue exposes only the registered build123d, Modelica v2 and SPICE v1 frontends", async () => {
   const provider = new FixedTechnicalCompilationProfileCatalogProvider();
   const first = await provider.get();
   const second = await provider.get();
   assertNotStrictEquals(first, second);
   assertEquals(first, INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG);
-  assertEquals(first.profiles.length, 2);
+  assertEquals(first.profiles.length, 3);
   assertEquals(first.profiles[0].target, "build123d-source");
   assertEquals(first.profiles[0].analyzer, {
     id: QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID,
@@ -202,14 +206,55 @@ Deno.test("fixed catalogue exposes only the registered build123d and Modelica v2
     version: "2.0.0",
   });
   assertEquals(first.profiles[1].requiredBindingSymbolKinds, [
-    "artifact",
     "parameter",
   ]);
+  assertEquals(first.profiles[2].target, "spice-circuit-source");
+  assertEquals(first.profiles[2].id, "spice-circuit-closed-subset-v1");
+  assertEquals(first.profiles[2].version, "1.0.0");
+  assertEquals(first.profiles[2].analyzer, {
+    id: "spice-circuit-closed-subset",
+    version: "1.0.0",
+  });
+  assertEquals(first.profiles[2].requiredBindingSymbolKinds, ["parameter"]);
   assertEquals(Object.isFrozen(first), true);
   assertEquals(Object.isFrozen(first.profiles[0]), true);
   assertThrows(
     () => new FixedTechnicalCompilationProfileCatalogProvider({ profiles: [] }),
     TypeError,
+  );
+  assertEquals(
+    deriveTechnicalCompilationProfileRequests(
+      [{
+        sourceText: "Vin in 0 5\nRload in 0 1k\n",
+        analysis: {
+          schemaVersion: "source-analysis/1.0",
+          source: {
+            id: "source.spice",
+            role: "spice-circuit",
+            language: "spice",
+            fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+          },
+          analyzer: {
+            id: "spice-circuit-closed-subset",
+            version: "1.0.0",
+          },
+          policy: {
+            profile: "spice-circuit-closed-subset-v1",
+            status: "passed",
+            findings: [],
+          },
+          symbols: [],
+          dependencies: [],
+          unresolvedConstructs: [],
+        } satisfies SourceAnalysisBundle,
+      }],
+      first,
+    ),
+    [{
+      profileId: "spice-circuit-closed-subset-v1",
+      profileVersion: "1.0.0",
+      sourceIds: ["source.spice"],
+    }],
   );
 });
 

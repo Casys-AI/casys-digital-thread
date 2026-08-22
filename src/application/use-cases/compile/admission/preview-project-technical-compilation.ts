@@ -31,6 +31,7 @@ import {
   type TechnicalCompilationProfileRequest,
   type TechnicalCompilationResult,
   type TechnicalSemanticBinding,
+  uniqueCompilationDocumentTarget,
   validateTechnicalCompilationDocument,
   validateTechnicalCompilationProfileCatalog,
 } from "../../../../domain/compile/admission/technical-compilation.ts";
@@ -104,7 +105,8 @@ export interface PreviewProjectTechnicalCompilationDependencies {
   /** Required to resolve an omitted basis to the unique current Thread tip. */
   readonly projects?: Pick<EngineeringProjectRevisionStore, "get">;
   /**
-   * Optional unique join of a sealed thermal method sheet. Absence is not a
+   * Optional unique join of a sealed thermal method sheet. Consulted only for
+   * the unique Modelica compilation source/target. Absence is not a
    * compilation failure. Ambiguity fails closed.
    */
   readonly methodSheets?: ThermalMethodSheetCompilationJoin;
@@ -315,11 +317,14 @@ export class PreviewProjectTechnicalCompilation
       );
     }
 
+    const uniqueTarget = uniqueCompilationDocumentTarget(compiled.document);
     let methodSheet;
-    try {
-      methodSheet = this.#methodSheets === undefined
-        ? undefined
-        : await this.#methodSheets.read({
+    if (
+      uniqueTarget === "modelica-source-qualification" &&
+      this.#methodSheets !== undefined
+    ) {
+      try {
+        methodSheet = await this.#methodSheets.read({
           projectId: command.projectId,
           basis: {
             kind: "thread-snapshot",
@@ -328,22 +333,23 @@ export class PreviewProjectTechnicalCompilation
             subjectId: basis.thread.subjectId,
           },
         });
-    } catch (cause) {
-      throw previewError(
-        "basis_integrity_failed",
-        "The thermal method sheet on this Thread basis is not an exact unique recross.",
-        cause,
-      );
-    }
-    if (
-      methodSheet !== undefined &&
-      (methodSheet.project.id !== command.projectId ||
-        methodSheet.subject.id !== basis.thread.subjectId)
-    ) {
-      throw previewError(
-        "basis_mismatch",
-        "The reopened thermal method sheet is foreign to the requested project revision.",
-      );
+      } catch (cause) {
+        throw previewError(
+          "basis_integrity_failed",
+          "The thermal method sheet on this Thread basis is not an exact unique recross.",
+          cause,
+        );
+      }
+      if (
+        methodSheet !== undefined &&
+        (methodSheet.project.id !== command.projectId ||
+          methodSheet.subject.id !== basis.thread.subjectId)
+      ) {
+        throw previewError(
+          "basis_mismatch",
+          "The reopened thermal method sheet is foreign to the requested project revision.",
+        );
+      }
     }
     const gaps = [
       ...assembleTechnicalCompilationJoinGaps(
@@ -356,6 +362,7 @@ export class PreviewProjectTechnicalCompilation
         joinSources,
         bindings,
         basis.sysmlAnchor.elements,
+        uniqueTarget,
       ),
     ];
 

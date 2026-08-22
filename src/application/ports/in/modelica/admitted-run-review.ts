@@ -3,8 +3,9 @@
  *
  * The public caller names only the project. A server-owned resolver selects
  * the unique current Thread tip and its unique fresh sealed compilation
- * admission before delegating to the exact command below. Runtime, isolation,
- * output, profile and source facts stay behind server-owned outward ports.
+ * admission whose compilation target/source is Modelica before delegating to
+ * the exact command below. Runtime, isolation, output, profile and source
+ * facts stay behind server-owned outward ports.
  */
 
 import type { ModelicaAdmittedRunAdmission } from "../../../../domain/modelica/admitted/run-proposal.ts";

@@ -166,8 +166,11 @@ const TECHNICAL_SOURCE_CAPTURE_REFERENCE_SCHEMA = {
       type: "object",
       properties: {
         id: TECHNICAL_ID_SCHEMA,
-        role: { type: "string", enum: ["cad-script", "modelica-model"] },
-        language: { type: "string", enum: ["python", "modelica"] },
+        role: {
+          type: "string",
+          enum: ["cad-script", "modelica-model", "spice-circuit"],
+        },
+        language: { type: "string", enum: ["python", "modelica", "spice"] },
         sha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
         byteCount: {
           type: "integer",
@@ -567,18 +570,19 @@ function technicalSourceCaptureReference(
   technicalId(source.id, `${name}.source.id`);
   const role = oneOf(
     source.role,
-    ["cad-script", "modelica-model"] as const,
+    ["cad-script", "modelica-model", "spice-circuit"] as const,
     `${name}.source.role`,
   );
   const language = oneOf(
     source.language,
-    ["python", "modelica"] as const,
+    ["python", "modelica", "spice"] as const,
     `${name}.source.language`,
   );
   if (
     !(
       (role === "cad-script" && language === "python") ||
-      (role === "modelica-model" && language === "modelica")
+      (role === "modelica-model" && language === "modelica") ||
+      (role === "spice-circuit" && language === "spice")
     )
   ) {
     throw new TypeError(`${name}.source role and language do not match`);

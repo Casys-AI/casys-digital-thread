@@ -535,6 +535,55 @@ export const ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR:
 export const ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX =
   "casys://modelica-admitted-observation-evaluation-closeout/" as const;
 
+/**
+ * Content-addressed store for `electrical-observation-method-sheet/1.0`.
+ *
+ * URI: `casys://electrical-observation-method-sheet-capture/sha256/<fp>`.
+ */
+export const ELECTRICAL_OBSERVATION_METHOD_SHEET_CAPTURE_DESCRIPTOR:
+  CaptureStoreDescriptor<"electrical-observation-method-sheet"> = {
+    kind: "electrical-observation-method-sheet",
+    directory: "state/local/electrical-observation-method-sheet-captures",
+    uriNamespace: "electrical-observation-method-sheet-capture",
+    label: "Electrical observation method sheet",
+  };
+
+export const ELECTRICAL_OBSERVATION_METHOD_SHEET_CAPTURE_URI_PREFIX =
+  "casys://electrical-observation-method-sheet-capture/" as const;
+
+/**
+ * Documentary L4 capture for admitted SPICE observation evaluation.
+ *
+ * URI: `casys://spice-admitted-observation-evaluation-capture/sha256/<fp>`.
+ */
+export const SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_DESCRIPTOR:
+  CaptureStoreDescriptor<"spice-admitted-observation-evaluation"> = {
+    kind: "spice-admitted-observation-evaluation",
+    directory: "state/local/spice-admitted-observation-evaluation-captures",
+    uriNamespace: "spice-admitted-observation-evaluation-capture",
+    label: "Admitted SPICE observation evaluation",
+  };
+
+export const SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX =
+  "casys://spice-admitted-observation-evaluation-capture/" as const;
+
+/**
+ * Human L5 closeout of an L4 admitted SPICE observation evaluation.
+ *
+ * URI: `casys://spice-admitted-observation-evaluation-closeout/sha256/<fp>`.
+ */
+export const SPICE_ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR:
+  CaptureStoreDescriptor<"spice-admitted-observation-evaluation-closeout"> = {
+    kind: "spice-admitted-observation-evaluation-closeout",
+    directory:
+      "state/local/spice-admitted-observation-evaluation-closeout-captures",
+    uriNamespace: "spice-admitted-observation-evaluation-closeout",
+    label: "Admitted SPICE observation evaluation closeout",
+  };
+
+export const SPICE_ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX =
+  "casys://spice-admitted-observation-evaluation-closeout/" as const;
+
 // ── Private helpers ──────────────────────────────────────────────────────────
 
 function sha256Digest(fingerprint: ContentFingerprint): string {

@@ -929,6 +929,20 @@ Deno.test(
       joined.sheet.outputs[0]?.requirementElementId,
       "placeholder-requirement",
     );
+    assertEquals(joined.snapshot.evaluations[0]?.requirementId, distinctId);
+    assertEquals(
+      joined.snapshot.evaluations[0]?.id,
+      `${distinctId}-evaluation`,
+    );
+    const captureResults = (joined.l4Capture as {
+      readonly response: {
+        readonly structuredContent: {
+          readonly results: readonly { readonly constraintId?: string }[];
+        };
+      };
+    }).response.structuredContent.results;
+    assertEquals(captureResults[0]?.constraintId, "placeholder-requirement");
+    assertEquals(captureResults[0]?.constraintId === distinctId, false);
     assertEquals(resolved.evaluations[0]?.requirementId, distinctId);
     assertEquals(
       resolved.evaluations[0]?.output.modelSymbolId,

@@ -24,6 +24,7 @@ import {
   type IsolatedOutputPublicationRef,
 } from "../../../../domain/compile/isolation/isolated-code-execution.ts";
 import { fingerprintResourceBytes } from "../../../../domain/compile/source/provider-resource-reader.ts";
+import { IsolatedCodeExecutionRejectedError } from "../../../ports/out/compile/isolation/isolated-code-runner.ts";
 import {
   BrokeredIsolatedCodeRunner,
   BrokeredIsolatedCodeRunnerError,
@@ -1292,6 +1293,107 @@ Deno.test("a forged CAS contract error is rebuilt without its private capability
   );
   assertEquals(scenario.cas.abortCalls, 1);
   assertEquals(scenario.cas.published.size, 0);
+});
+
+Deno.test("broker destroys then throws a sanitized rejection diagnostic without outputs", async () => {
+  const scenario = await happyScenario();
+  const stderr = encoder.encode(
+    "\x1b[31mMeshingError: Selection 'FIXED' matched no surface\x1b[0m\n",
+  );
+  scenario.backend = new FakeBackend({
+    report: {
+      runtime: RUNTIME,
+      termination: { kind: "exited", exitCode: 1, signal: null },
+      logs: {
+        stdout: { bytes: new Uint8Array(), truncated: false },
+        stderr: { bytes: stderr, truncated: false },
+      },
+    },
+    events: scenario.events,
+  });
+  let observed: unknown;
+  try {
+    await runnerFor(scenario.backend, scenario.cas).run(scenario.request);
+  } catch (error) {
+    observed = error;
+  }
+  assertEquals(observed instanceof IsolatedCodeExecutionRejectedError, true);
+  const error = observed as IsolatedCodeExecutionRejectedError;
+  assertEquals(error.code, "execution_rejected");
+  assertEquals(error.diagnostic.termination.exitCode, 1);
+  assertEquals(
+    error.diagnostic.logs.stderr.excerpt,
+    "MeshingError: Selection 'FIXED' matched no surface\n",
+  );
+  assertEquals(
+    error.diagnostic.logs.stderr.sha256,
+    await fingerprintResourceBytes(stderr),
+  );
+  assertEquals(error.destruction.status, "proven");
+  assertEquals(error.destruction.runId, scenario.request.runId);
+  assertEquals("handle" in error, false);
+  assertEquals("path" in error, false);
+  assertEquals("lease" in error, false);
+  const publicText = `${JSON.stringify(error.diagnostic)}\n${error.stack ?? ""}`;
+  assertEquals(publicText.includes("step-handle"), false);
+  assertEquals(publicText.includes("mesh-handle"), false);
+  assertEquals(scenario.backend.executeCalls, 1);
+  assertEquals(scenario.backend.destroyCalls, 1);
+  assertEquals(scenario.backend.inventoryCalls, 0);
+  assertEquals(scenario.backend.readCalls, 0);
+  assertEquals(scenario.cas.stageCalls, 0);
+  assertEquals(scenario.cas.commitCalls, 0);
+  assertEquals(scenario.cas.published.size, 0);
+});
+
+Deno.test("broker timed-out termination is a known rejection after proven destroy", async () => {
+  const scenario = await happyScenario();
+  scenario.backend = new FakeBackend({
+    report: {
+      runtime: RUNTIME,
+      termination: { kind: "timed-out", exitCode: null, signal: null },
+      logs: {
+        stdout: { bytes: new Uint8Array(), truncated: false },
+        stderr: { bytes: encoder.encode("wall clock exceeded\n"), truncated: false },
+      },
+    },
+  });
+  const error = await runnerFor(scenario.backend, scenario.cas).run(
+    scenario.request,
+  ).then(() => undefined, (failure) => failure);
+  assertEquals(error instanceof IsolatedCodeExecutionRejectedError, true);
+  assertEquals(
+    (error as IsolatedCodeExecutionRejectedError).diagnostic.termination.kind,
+    "timed-out",
+  );
+  assertEquals(scenario.backend.destroyCalls, 1);
+  assertEquals(scenario.cas.published.size, 0);
+});
+
+Deno.test("unproven destroy after a rejected execution stays infrastructure-failure", async () => {
+  const scenario = await happyScenario();
+  scenario.backend = new FakeBackend({
+    report: {
+      runtime: RUNTIME,
+      termination: { kind: "exited", exitCode: 1, signal: null },
+      logs: {
+        stdout: { bytes: new Uint8Array(), truncated: false },
+        stderr: { bytes: encoder.encode("solver failed\n"), truncated: false },
+      },
+    },
+    destroyError: new Error("PRIVATE_LEASE_PATH_/tmp/sandbox"),
+    destroyByRunIdError: new Error("PRIVATE_LEASE_PATH_/tmp/sandbox"),
+  });
+  const error = await captureCode(
+    () => runnerFor(scenario.backend, scenario.cas).run(scenario.request),
+    "infrastructure_failure",
+  );
+  assertEquals(
+    error.message,
+    "Ephemeral environment destruction was not proven; no receipt or output is released.",
+  );
+  assertEquals(error instanceof IsolatedCodeExecutionRejectedError, false);
+  assertEquals(`${error.stack ?? ""}`.includes("PRIVATE_LEASE_PATH_"), false);
 });
 
 Deno.test("broker production module imports only domain and application ports", async () => {

@@ -4,6 +4,14 @@ import type {
   ProjectAdmittedModelicaRunReviewResult,
 } from "../../../ports/in/modelica/admitted-run-review.ts";
 import type {
+  ReopenedTechnicalCompilationAdmission,
+  TechnicalCompilationAdmissionReader,
+  TechnicalCompilationAdmissionReadRequest,
+} from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import {
+  uniqueCompilationAdmissionTarget,
+} from "../../../../domain/compile/admission/technical-compilation.ts";
+import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
 } from "../../../../domain/project/engineering-project.ts";
@@ -39,12 +47,38 @@ class CapturingExactReview {
   }
 }
 
+class ClassifyingAdmissionReader implements TechnicalCompilationAdmissionReader {
+  readonly calls: TechnicalCompilationAdmissionReadRequest[] = [];
+
+  constructor(
+    private readonly byArtifactId: Readonly<
+      Record<string, ReopenedTechnicalCompilationAdmission | undefined | "throw">
+    > = {},
+    private readonly fallback: ReopenedTechnicalCompilationAdmission | undefined =
+      compilationFacts("modelica-source-qualification"),
+  ) {}
+
+  read(
+    request: TechnicalCompilationAdmissionReadRequest,
+  ): Promise<ReopenedTechnicalCompilationAdmission | undefined> {
+    this.calls.push(structuredClone(request));
+    const mapped = Object.hasOwn(this.byArtifactId, request.artifactId)
+      ? this.byArtifactId[request.artifactId]
+      : this.fallback;
+    if (mapped === "throw") {
+      return Promise.reject(new Error("admission reopen failed"));
+    }
+    return Promise.resolve(mapped);
+  }
+}
+
 Deno.test("admitted Modelica public review resolves current tip and delegates its unique fresh admission", async () => {
   const admission = admissionArtifact("a".repeat(64));
   const snapshot = threadSnapshot([admission]);
   const exactReview = new CapturingExactReview();
   let exactReads = 0;
   let freshReads = 0;
+  const admissions = new ClassifyingAdmissionReader();
   const service = new ResolveProjectAdmittedModelicaRunReview({
     projects: {
       get: () => Promise.resolve(projectSnapshot(snapshot)),
@@ -59,6 +93,7 @@ Deno.test("admitted Modelica public review resolves current tip and delegates it
         return Promise.resolve(snapshotId === snapshot.id ? snapshot : undefined);
       },
     },
+    admissions,
     exactReview,
   });
 
@@ -78,14 +113,78 @@ Deno.test("admitted Modelica public review resolves current tip and delegates it
     artifactId: admission.id,
     artifactFingerprint: admission.fingerprint,
   }]);
+  assertEquals(admissions.calls, [{
+    projectId: PROJECT_ID,
+    basis: exactReview.calls[0]!.basis,
+    artifactId: admission.id,
+    artifactFingerprint: admission.fingerprint,
+  }]);
 });
 
-Deno.test("admitted Modelica public review refuses ambiguous fresh admissions", async () => {
-  const snapshot = threadSnapshot([
-    admissionArtifact("a".repeat(64)),
-    admissionArtifact("b".repeat(64)),
-  ]);
-  const fixture = reviewFixture(snapshot);
+Deno.test(
+  "admitted Modelica public review selects the unique Modelica admission beside a fresh CAD admission",
+  async () => {
+    const cad = admissionArtifact("c".repeat(64));
+    const modelica = admissionArtifact("a".repeat(64));
+    const snapshot = threadSnapshot([cad, modelica]);
+    const admissions = new ClassifyingAdmissionReader({
+      [cad.id]: compilationFacts("build123d-source"),
+      [modelica.id]: compilationFacts("modelica-source-qualification"),
+    });
+    const exactReview = new CapturingExactReview();
+    const service = new ResolveProjectAdmittedModelicaRunReview({
+      projects: { get: () => Promise.resolve(projectSnapshot(snapshot)) },
+      snapshots: { get: () => Promise.resolve(snapshot) },
+      admissions,
+      exactReview,
+    });
+
+    await service.execute({ projectId: PROJECT_ID });
+
+    assertEquals(exactReview.calls.length, 1);
+    assertEquals(exactReview.calls[0]?.artifactId, modelica.id);
+    assertEquals(
+      exactReview.calls[0]?.artifactFingerprint,
+      modelica.fingerprint,
+    );
+    assertEquals(
+      admissions.calls.map((call) => call.artifactId).sort(),
+      [cad.id, modelica.id].sort(),
+    );
+  },
+);
+
+Deno.test(
+  "admitted Modelica public review refuses a CAD-only fresh admission as unresolved Modelica",
+  async () => {
+    const cad = admissionArtifact("c".repeat(64));
+    const snapshot = threadSnapshot([cad]);
+    const admissions = new ClassifyingAdmissionReader({
+      [cad.id]: compilationFacts("build123d-source"),
+    });
+    const fixture = reviewFixture(snapshot, admissions);
+
+    await assertResolutionError(
+      () => fixture.service.execute({ projectId: PROJECT_ID }),
+      "admission_not_found",
+    );
+    assertEquals(fixture.exactReview.calls, []);
+  },
+);
+
+Deno.test("admitted Modelica public review refuses ambiguous fresh Modelica admissions", async () => {
+  const cad = admissionArtifact("c".repeat(64));
+  const first = admissionArtifact("a".repeat(64));
+  const second = admissionArtifact("b".repeat(64));
+  const snapshot = threadSnapshot([cad, first, second]);
+  const fixture = reviewFixture(
+    snapshot,
+    new ClassifyingAdmissionReader({
+      [cad.id]: compilationFacts("build123d-source"),
+      [first.id]: compilationFacts("modelica-source-qualification"),
+      [second.id]: compilationFacts("modelica-source-qualification"),
+    }),
+  );
 
   await assertResolutionError(
     () => fixture.service.execute({ projectId: PROJECT_ID }),
@@ -93,6 +192,25 @@ Deno.test("admitted Modelica public review refuses ambiguous fresh admissions", 
   );
   assertEquals(fixture.exactReview.calls, []);
 });
+
+Deno.test(
+  "unique compilation admission target joins Modelica and CAD by target/source only",
+  () => {
+    assertEquals(
+      uniqueCompilationAdmissionTarget(
+        compilationFacts("modelica-source-qualification"),
+      ),
+      "modelica-source-qualification",
+    );
+    assertEquals(
+      uniqueCompilationAdmissionTarget(compilationFacts("build123d-source")),
+      "build123d-source",
+    );
+    const mixed = compilationFacts("modelica-source-qualification");
+    (mixed.admission.sources[0] as { language: string }).language = "python";
+    assertEquals(uniqueCompilationAdmissionTarget(mixed), undefined);
+  },
+);
 
 Deno.test("admitted Modelica public review refuses a stale admission", async () => {
   const artifact = admissionArtifact("a".repeat(64), {
@@ -183,6 +301,7 @@ Deno.test("admitted Modelica public review refuses ambiguous current Thread tips
   const service = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(project) },
     snapshots: { get: () => Promise.resolve(snapshot) },
+    admissions: unusedAdmissions(),
     exactReview,
   });
 
@@ -199,6 +318,7 @@ Deno.test("admitted Modelica public review refuses a legacy V1 project", async (
   const service = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(legacyProjectSnapshot(snapshot)) },
     snapshots: { get: () => Promise.resolve(snapshot) },
+    admissions: unusedAdmissions(),
     exactReview,
   });
 
@@ -215,6 +335,7 @@ Deno.test("admitted Modelica public review refuses missing, foreign, and corrupt
   const missing = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(undefined) },
     snapshots: { get: () => Promise.resolve(snapshot) },
+    admissions: unusedAdmissions(),
     exactReview,
   });
   await assertResolutionError(
@@ -229,6 +350,7 @@ Deno.test("admitted Modelica public review refuses missing, foreign, and corrupt
   const foreign = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(foreignProject) },
     snapshots: { get: () => Promise.resolve(snapshot) },
+    admissions: unusedAdmissions(),
     exactReview,
   });
   await assertResolutionError(
@@ -243,6 +365,7 @@ Deno.test("admitted Modelica public review refuses missing, foreign, and corrupt
   const corrupt = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(corruptProject) },
     snapshots: { get: () => Promise.resolve(snapshot) },
+    admissions: unusedAdmissions(),
     exactReview,
   });
   await assertResolutionError(
@@ -259,6 +382,7 @@ Deno.test("admitted Modelica public review refuses missing, foreign, and corrupt
   const missing = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(project) },
     snapshots: { get: () => Promise.resolve(undefined) },
+    admissions: unusedAdmissions(),
     exactReview,
   });
   await assertResolutionError(
@@ -273,6 +397,7 @@ Deno.test("admitted Modelica public review refuses missing, foreign, and corrupt
   const foreign = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(project) },
     snapshots: { get: () => Promise.resolve(foreignSnapshot) },
+    admissions: unusedAdmissions(),
     exactReview,
   });
   await assertResolutionError(
@@ -287,6 +412,7 @@ Deno.test("admitted Modelica public review refuses missing, foreign, and corrupt
   const corrupt = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(project) },
     snapshots: { get: () => Promise.resolve(corruptSnapshot) },
+    admissions: unusedAdmissions(),
     exactReview,
   });
   await assertResolutionError(
@@ -305,6 +431,7 @@ Deno.test("admitted Modelica public review propagates exact-review lineage failu
   const service = new ResolveProjectAdmittedModelicaRunReview({
     projects: { get: () => Promise.resolve(projectSnapshot(snapshot)) },
     snapshots: { get: () => Promise.resolve(snapshot) },
+    admissions: new ClassifyingAdmissionReader(),
     exactReview,
   });
 
@@ -316,7 +443,10 @@ Deno.test("admitted Modelica public review propagates exact-review lineage failu
   assertEquals(exactReview.calls.length, 1);
 });
 
-function reviewFixture(snapshot: ThreadSnapshot): {
+function reviewFixture(
+  snapshot: ThreadSnapshot,
+  admissions: TechnicalCompilationAdmissionReader = new ClassifyingAdmissionReader(),
+): {
   readonly service: ResolveProjectAdmittedModelicaRunReview;
   readonly exactReview: CapturingExactReview;
 } {
@@ -328,10 +458,58 @@ function reviewFixture(snapshot: ThreadSnapshot): {
         get: (snapshotId) =>
           Promise.resolve(snapshotId === snapshot.id ? snapshot : undefined),
       },
+      admissions,
       exactReview,
     }),
     exactReview,
   };
+}
+
+function unusedAdmissions(): TechnicalCompilationAdmissionReader {
+  return {
+    read() {
+      return Promise.reject(new Error("admission reader must not be consulted"));
+    },
+  };
+}
+
+function compilationFacts(
+  target: "modelica-source-qualification" | "build123d-source",
+): ReopenedTechnicalCompilationAdmission {
+  const contract = target === "modelica-source-qualification"
+    ? {
+      language: "modelica" as const,
+      role: "modelica-model" as const,
+      sourceRole: "modelica-model" as const,
+    }
+    : {
+      language: "python" as const,
+      role: "cad-script" as const,
+      sourceRole: "cad-script" as const,
+    };
+  return {
+    admission: {
+      sources: [{ language: contract.language, role: contract.role }],
+      compilationProfileRequests: [{ target }],
+    },
+    document: {
+      projections: [{
+        target,
+        profile: {
+          target,
+          language: contract.language,
+          sourceRole: contract.sourceRole,
+        },
+      }],
+      inputManifest: {
+        sources: [{
+          analysis: {
+            source: { language: contract.language, role: contract.role },
+          },
+        }],
+      },
+    },
+  } as unknown as ReopenedTechnicalCompilationAdmission;
 }
 
 function projectSnapshot(

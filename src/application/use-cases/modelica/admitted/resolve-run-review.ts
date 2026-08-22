@@ -3,8 +3,10 @@
  *
  * The caller names only a project. The server reopens the project's unique
  * current Thread tip, selects its unique fresh compile.seal-admission@1
- * document, then delegates those exact identities to the sealed-admission
- * validator. No caller-selected or caller-derived identity crosses this seam.
+ * document whose compilation target/source is Modelica, then delegates those
+ * exact identities to the sealed-admission validator. Classification does not
+ * cache execution bytes; the validator rereads. No caller-selected identity
+ * or compilation target crosses this seam.
  */
 
 import type {
@@ -13,6 +15,8 @@ import type {
   ProjectAdmittedModelicaRunReviewResult,
   ProjectAdmittedModelicaRunReviewUseCase,
 } from "../../../ports/in/modelica/admitted-run-review.ts";
+import type { TechnicalCompilationAdmissionReader } from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import { uniqueCompilationAdmissionTarget } from "../../../../domain/compile/admission/technical-compilation.ts";
 import {
   deepFreeze,
   exactRecord,
@@ -73,6 +77,8 @@ export interface AdmittedModelicaRunReviewSnapshotReader {
 export interface ResolveProjectAdmittedModelicaRunReviewDependencies {
   readonly projects: AdmittedModelicaRunReviewProjectReader;
   readonly snapshots: AdmittedModelicaRunReviewSnapshotReader;
+  /** Same capture-backed reader used later by the exact validator reread. */
+  readonly admissions: TechnicalCompilationAdmissionReader;
   /** Exact validator also reused by execution-time MRTR revalidation. */
   readonly exactReview: ProjectAdmittedModelicaRunReviewUseCase;
 }
@@ -88,7 +94,11 @@ export class ResolveProjectAdmittedModelicaRunReview
     const project = await this.#readProject(request.projectId);
     const basis = resolveCurrentBasis(project, request.projectId);
     const snapshot = await this.#readSnapshot(basis);
-    const artifact = selectUniqueFreshAdmission(snapshot);
+    const artifact = await this.#selectUniqueFreshModelicaAdmission(
+      snapshot,
+      request.projectId,
+      basis,
+    );
     const command = deepFreeze<ProjectAdmittedModelicaRunReviewCommand>({
       projectId: request.projectId,
       basis,
@@ -177,6 +187,64 @@ export class ResolveProjectAdmittedModelicaRunReview
     }
     return snapshot;
   }
+
+  async #selectUniqueFreshModelicaAdmission(
+    snapshot: ThreadSnapshot,
+    projectId: string,
+    basis: EngineeringThreadSnapshotBasis,
+  ): Promise<ThreadArtifact> {
+    const archived = archivedRefKeys(snapshot);
+    const canonical = snapshot.artifacts.filter((artifact) =>
+      isCanonicalFreshAdmission(artifact) &&
+      !archived.has(`artifact:${artifact.id}`)
+    );
+    const candidates: ThreadArtifact[] = [];
+    for (const artifact of canonical) {
+      if (
+        await this.#isModelicaCompilationAdmission(artifact, projectId, basis)
+      ) {
+        candidates.push(artifact);
+      }
+    }
+    if (candidates.length === 0) {
+      throw resolutionError(
+        "admission_not_found",
+        "The current Thread tip has no fresh digital-thread compile.seal-admission@1 Modelica compilation.",
+      );
+    }
+    if (candidates.length !== 1) {
+      throw resolutionError(
+        "admission_ambiguous",
+        `The current Thread tip has ${candidates.length} fresh digital-thread compile.seal-admission@1 Modelica compilations; the server will not choose one.`,
+      );
+    }
+    return candidates[0]!;
+  }
+
+  async #isModelicaCompilationAdmission(
+    artifact: ThreadArtifact,
+    projectId: string,
+    basis: EngineeringThreadSnapshotBasis,
+  ): Promise<boolean> {
+    let reopened;
+    try {
+      reopened = await this.dependencies.admissions.read({
+        projectId,
+        basis,
+        artifactId: artifact.id,
+        artifactFingerprint: artifact.fingerprint,
+      });
+    } catch {
+      return false;
+    }
+    if (!reopened) return false;
+    try {
+      return uniqueCompilationAdmissionTarget(reopened) ===
+        "modelica-source-qualification";
+    } catch {
+      return false;
+    }
+  }
 }
 
 function parseRequest(value: unknown): ProjectAdmittedModelicaRunReviewRequest {
@@ -223,27 +291,6 @@ function resolveCurrentBasis(
     );
   }
   return selected.basis;
-}
-
-function selectUniqueFreshAdmission(snapshot: ThreadSnapshot): ThreadArtifact {
-  const archived = archivedRefKeys(snapshot);
-  const candidates = snapshot.artifacts.filter((artifact) =>
-    isCanonicalFreshAdmission(artifact) &&
-    !archived.has(`artifact:${artifact.id}`)
-  );
-  if (candidates.length === 0) {
-    throw resolutionError(
-      "admission_not_found",
-      "The current Thread tip has no fresh digital-thread compile.seal-admission@1 document.",
-    );
-  }
-  if (candidates.length !== 1) {
-    throw resolutionError(
-      "admission_ambiguous",
-      `The current Thread tip has ${candidates.length} fresh digital-thread compile.seal-admission@1 documents; the server will not choose one.`,
-    );
-  }
-  return candidates[0]!;
 }
 
 function isCanonicalFreshAdmission(artifact: ThreadArtifact): boolean {

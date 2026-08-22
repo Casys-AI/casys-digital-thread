@@ -2,7 +2,9 @@
 
 import type { CalculixIsolatedExecutionProfile } from "./calculix-isolated-execution-profile.ts";
 import type {
+  IsolatedCodeExecutionReceipt,
   IsolatedCodeExecutionReceiptRecord,
+  IsolatedCodeExecutionRejectionDiagnostic,
   IsolatedOutputProducerGenerationAdvance,
 } from "../../../../../domain/compile/isolation/isolated-code-execution.ts";
 import type { CalculixIsolatedExecutionEvidence } from "../../../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
@@ -39,6 +41,11 @@ interface AttemptBase extends CalculixIsolatedExecutionAttemptKey {
   readonly identity: CalculixIsolatedExecutionAttemptIdentity;
   readonly preparedAt: string;
 }
+
+export type CalculixIsolatedProvenDestruction = Extract<
+  IsolatedCodeExecutionReceipt["destruction"],
+  { readonly status: "proven" }
+>;
 
 export type CalculixIsolatedExecutionDispatch =
   | {
@@ -78,6 +85,25 @@ export type CalculixIsolatedExecutionAttempt =
     readonly dispatch: CalculixIsolatedExecutionDispatch;
     readonly receiptRecord: IsolatedCodeExecutionReceiptRecord;
     readonly evidence: CalculixIsolatedExecutionEvidence;
+  })
+  | (AttemptBase & {
+    readonly phase: "execution-rejected";
+    readonly dispatch: CalculixIsolatedExecutionDispatch;
+    readonly rejection: {
+      readonly diagnostic: IsolatedCodeExecutionRejectionDiagnostic;
+      readonly destruction: CalculixIsolatedProvenDestruction;
+    };
+  })
+  | (AttemptBase & {
+    readonly phase: "redispatch-exhausted";
+    readonly dispatch: Extract<
+      CalculixIsolatedExecutionDispatch,
+      { readonly dispatchCount: 2 }
+    >;
+    readonly exhaustion: {
+      readonly producerGeneration: 1;
+      readonly destruction: CalculixIsolatedProvenDestruction;
+    };
   });
 
 export interface CalculixIsolatedRedispatchConsumption {
@@ -117,6 +143,17 @@ export interface CalculixIsolatedExecutionAttemptStore {
   markEvidenceCaptured(
     input: CalculixIsolatedExecutionAttemptKey & {
       readonly evidence: CalculixIsolatedExecutionEvidence;
+    },
+  ): Promise<CalculixIsolatedExecutionAttempt>;
+  markExecutionRejected(
+    input: CalculixIsolatedExecutionAttemptKey & {
+      readonly diagnostic: IsolatedCodeExecutionRejectionDiagnostic;
+      readonly destruction: CalculixIsolatedProvenDestruction;
+    },
+  ): Promise<CalculixIsolatedExecutionAttempt>;
+  markRedispatchExhausted(
+    input: CalculixIsolatedExecutionAttemptKey & {
+      readonly destruction: CalculixIsolatedProvenDestruction;
     },
   ): Promise<CalculixIsolatedExecutionAttempt>;
 }

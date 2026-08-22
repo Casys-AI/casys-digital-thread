@@ -14,9 +14,10 @@ records but never owns, rewrites, or manufactures their evidence.
 
 Its trace is a control substrate, not merely an audit log: the paired agent can use
 proven impact to observe, evaluate, propose a bounded correction, and request a
-recomputation. The human reviews and authorizes consequential changes. Isolated CalculiX `@3` and admitted Modelica `@1` are the current generic, bounded
-implementations of that route; they do not imply a generic workflow language or a
-live-run success. Historical MCP FEA `@1`/`@2` are not registered.
+recomputation. The human reviews and authorizes consequential changes. Isolated CalculiX
+`@3` and admitted Modelica `@1` are the current generic, bounded implementations of that
+route; they do not imply a generic workflow language or a live-run success. Historical
+MCP FEA `@1`/`@2` are not registered.
 
 The current creation format is schema `3.0`: the project exists from the first intent
 and its living brief evolves inside that same immutable revision stream. Older snapshots
@@ -24,23 +25,22 @@ are not a creation route for new work. Every value is JSON-compatible. Validatio
 and recursively freezes the accepted value, rejects unknown fields, and never fills in a
 missing decision or engineering input.
 
-| Open | Owns |
-| ---- | ---- |
-| Three truth boundaries | Project vs Thread vs activity |
-| Agent-published plan and reviewed operations | Registered ops including admitted Modelica |
-| Isolated FEA `@3` and Modelica microVMs | Product static proof and admitted/kit Modelica |
-| Command and authority surfaces | Who may write what |
+| Open                                         | Owns                                           |
+| -------------------------------------------- | ---------------------------------------------- |
+| Three truth boundaries                       | Project vs Thread vs activity                  |
+| Agent-published plan and reviewed operations | Registered ops including admitted Modelica     |
+| Isolated FEA `@3` and Modelica microVMs      | Product static proof and admitted/kit Modelica |
+| Command and authority surfaces               | Who may write what                             |
 
 Contents: [Three truth boundaries](#three-truth-boundaries) ·
-[Root fields](#root-fields) ·
-[Living brief in schema 3.0](#living-brief-in-schema-30) ·
+[Root fields](#root-fields) · [Living brief in schema 3.0](#living-brief-in-schema-30) ·
 [Agent-published plan](#agent-published-plan-and-reviewed-operations) ·
 [Current analysis execution](#current-analysis-execution) ·
 [V3 execution bases](#v3-execution-bases-documentary-baseline-and-syson-seed) ·
 [Exact thread references](#exact-thread-references) ·
 [Ordered phases](#ordered-phases-and-derived-status) ·
-[Work, decisions, approvals, blockers, and runs](#work-decisions-approvals-blockers-and-runs) ·
-[Command and authority surfaces](#command-and-authority-surfaces) ·
+[Work, decisions, approvals, blockers, and runs](#work-decisions-approvals-blockers-and-runs)
+· [Command and authority surfaces](#command-and-authority-surfaces) ·
 [Validation and persistence](#validation-and-persistence)
 
 ## Three truth boundaries
@@ -134,15 +134,17 @@ entry-point registry contains:
 | Sealed proof case and canonical part STEP; local isolation runtime composed   | `verify.run-fea-static-proof@3`         |
 | One server-owned local Modelica linear-ramp kit; qualification reread         | `simulate.run-qualified-modelica-kit@1` |
 | Sealed Modelica compilation admission; local isolation runtime composed       | `simulate.run-admitted-modelica@1`      |
+| Sealed SPICE compilation admission; local isolation runtime composed          | `simulate.run-admitted-spice@1`         |
 | Human inspection of an uncertain provider write                               | `record.reconcile-uncertain-writer@1`   |
 | Human-approved retirement decision; exact thread-entity targets required      | `record.archive-lineage@1`              |
 
-Lookalike pairs and grants: [lookalike traps](../agent/lookalike-traps.md).
-Admitted CAD/Modelica microVM:
+Lookalike pairs and grants: [lookalike traps](../agent/lookalike-traps.md). Admitted
+CAD/Modelica/SPICE microVM:
 [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md).
 `model.seal-architecture-sysml@1` is not `model.write-architecture@2`.
 `design.execute-build123d@1` is not canonical geometry promotion.
 `simulate.run-admitted-modelica@1` is not `simulate.run-qualified-modelica-kit@1`.
+`simulate.run-admitted-spice@1` is not mcp-spice and not the LED-driver fiche.
 `design.seal-isolated-geometry@1` is not `design.write-geometry@1` and is not FEA
 geometry. Historical MCP FEA runs are not registered.
 
@@ -286,15 +288,14 @@ thread without any provider call. Its signed MRTR proposal carries every consequ
 input in the flat `fea.proof.*` grammar: source fingerprint, case ID, digest, geometry
 and requirements artifact identities, target model element, STEP byte count, and
 material constants. The executor reopens the exact signed
-`mechanical-proof-case-source/1.0` capture — the agent never supplies a path, catalog
-id or raw compiled case bytes — recrosses the unique current Thread tip, validates the
-compiled JSON against `mechanical-proof-case/1.0`, computes `canonicalProofText` and
-its SHA-256, and fails immediately if the MRTR-signed digest diverges. It then verifies
-the geometry artifact
-by kind, fingerprint, and `geometry-capture/2.0` schema, confirms the target
-`PartDefinition` model element in that capture, re-reads the requirements-capture to
-confirm the authoritative tip matches the MRTR-signed artifact, and checks every proof
-requirement against the corresponding oracle requirement. The resulting
+`mechanical-proof-case-source/1.0` capture — the agent never supplies a path, catalog id
+or raw compiled case bytes — recrosses the unique current Thread tip, validates the
+compiled JSON against `mechanical-proof-case/1.0`, computes `canonicalProofText` and its
+SHA-256, and fails immediately if the MRTR-signed digest diverges. It then verifies the
+geometry artifact by kind, fingerprint, and `geometry-capture/2.0` schema, confirms the
+target `PartDefinition` model element in that capture, re-reads the requirements-capture
+to confirm the authoritative tip matches the MRTR-signed artifact, and checks every
+proof requirement against the corresponding oracle requirement. The resulting
 `fea-proof-case-capture/1.0` record is stored by content address; the thread extension
 receives one `document` artifact (version = `proofDigest`, the monotony-ratchet key) and
 three full `consumption + derived_from + uses` triplets for geometry, requirements, and
@@ -587,32 +588,31 @@ atomic consume semantics.
 The source dispatcher materializes generic V3 operations. The product
 `architecture.author-inspection-drone@3` and
 `model.capture-inspection-drone-part-definitions@1` identities are retired and
-unregistered.
-`baseline.from-approved-brief@1` has no provider invocation and persists its canonical
-capture before publishing the cited root snapshot. `architecture.seed-syson-model@2`
-owns only the fixed SysON project/document/root-package sequence, closed capture,
-materializer, and result validator before publishing revision 2.
-`model.write-architecture@1` and `model.write-requirements@1` each perform a closed
-SysON write/readback sequence and publish content-addressed evidence. The architecture
-writer renders the reviewed package, reusable PartDefinitions, and scoped PartUsages;
-the requirements writer renders only reviewed, server-parsed integer model thresholds.
-`design.write-geometry@1` promotes only a matching human-reviewed draft after exact hash
-and architecture checks; for v2, the manifest must cover every captured PartUsage and
-every distinct targeted PartDefinition. The provider execution occurred earlier in the
-isolated preview boundary. `record.archive-lineage@1` runs the governed retirement
-cascade with no provider call, gated by a human-approved decision sealing the exact
-thread-entity targets. `verify.seal-proof-case@1` reopens the exact signed proof-case
-source capture, recrosses the unique current Thread tip, cross-checks the MRTR-signed
-digest and every parameter against the canonical bytes,
-verifies geometry and requirements-tip links in the basis, and publishes the
-content-addressed mandate with no provider call.
+unregistered. `baseline.from-approved-brief@1` has no provider invocation and persists
+its canonical capture before publishing the cited root snapshot.
+`architecture.seed-syson-model@2` owns only the fixed SysON
+project/document/root-package sequence, closed capture, materializer, and result
+validator before publishing revision 2. `model.write-architecture@1` and
+`model.write-requirements@1` each perform a closed SysON write/readback sequence and
+publish content-addressed evidence. The architecture writer renders the reviewed
+package, reusable PartDefinitions, and scoped PartUsages; the requirements writer
+renders only reviewed, server-parsed integer model thresholds. `design.write-geometry@1`
+promotes only a matching human-reviewed draft after exact hash and architecture checks;
+for v2, the manifest must cover every captured PartUsage and every distinct targeted
+PartDefinition. The provider execution occurred earlier in the isolated preview
+boundary. `record.archive-lineage@1` runs the governed retirement cascade with no
+provider call, gated by a human-approved decision sealing the exact thread-entity
+targets. `verify.seal-proof-case@1` reopens the exact signed proof-case source capture,
+recrosses the unique current Thread tip, cross-checks the MRTR-signed digest and every
+parameter against the canonical bytes, verifies geometry and requirements-tip links in
+the basis, and publishes the content-addressed mandate with no provider call.
 `verify.run-fea-static-proof@3` is the registered isolated CalculiX run after that seal.
 Historical MCP FEA `@1`/`@2` are not registered. Domain contract:
-[isolated CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
-Retired historical `architecture.author-inspection-drone@3` was restricted to the exact
-`inspection-drone-v4` r2 basis and published r3: five typed usages and four
-qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,
-or verdict claims. Its retired read-only successor,
+[isolated CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md). Retired
+historical `architecture.author-inspection-drone@3` was restricted to the exact
+`inspection-drone-v4` r2 basis and published r3: five typed usages and four qualitative
+requirements with explicit TBDs, without CAD, physics, cost, certification, or verdict
+claims. Its retired read-only successor,
 `model.capture-inspection-drone-part-definitions@1`, completed
 `run:queue-drone-v4-product-structure-20260808` and published project revision 23's r4
 snapshot,
