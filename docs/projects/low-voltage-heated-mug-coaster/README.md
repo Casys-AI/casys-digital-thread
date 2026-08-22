@@ -6,14 +6,16 @@ Audience: both · Diátaxis: none · Kind: tracking index
 choice. This folder is documentation only.
 
 Primary atelier, **2026-08-22**, local: current `EngineeringProjectSnapshot` is
-project revision 24,
-`heated-mug-coaster-hc01:project:r24:9bba9569723386b7` (supersedes the prior r1
-snapshot). Human-sourced answer `q-demo-scope` = `behave-portability-canary`.
-Confirmed brief, documentary Thread r1, SysON seed Thread r2 (container, not
-architecture), generic single-part architecture Thread r3. No requirements,
-components, attributes, CAD, FEA, Modelica, electrical, impact, verification,
-certification, Make, or Buy. Cockpit primary focus revision 2 is projection
-selection only. Identities: [evidence.md](evidence.md).
+project revision 29,
+`heated-mug-coaster-hc01:project:r29:23da822e32f1ae06`. Human-sourced answer
+`q-demo-scope` = `behave-portability-canary`. Confirmed brief, documentary Thread r1,
+SysON seed Thread r2 (container, not architecture), generic single-part architecture
+Thread r3, and exact PartDefinition reread Thread r4. The r4 bundle contains only
+`HeatedMugCoaster`, with no usages. The exact execution retry returned the same project
+r29 / Thread r4 and did not append evidence. No requirements, components, attributes,
+CAD, FEA, Modelica, electrical, impact, verification, certification, Make, or Buy.
+Cockpit primary focus revision 4 is projection selection only. Identities:
+[evidence.md](evidence.md).
 
 ## Why this product class
 
@@ -28,7 +30,7 @@ inputs exist.
 
 | Surface | Recorded on this project? | Generic path |
 | ------- | ------------------------- | ------------ |
-| Structure and scalar requirements | Single-part architecture only: package `HeatedMugCoasterPackage`, system `HeatedMugCoaster`, no components, no attributes. Requirements unperformed | Renderer `model.write-architecture@1`; `model.write-requirements@1` not run. Not agent-authored SysML as SysON authority ([SysML coverage](../../reference/domains/sysml/coverage.md)) |
+| Structure and scalar requirements | Single-part architecture plus exact PartDefinition reread: package `HeatedMugCoasterPackage`, system `HeatedMugCoaster`, no components, usages, or attributes. Requirements unperformed | Renderer `model.write-architecture@1`; reread `model.capture-part-definitions@1`; `model.write-requirements@1` not run. Not agent-authored SysML as SysON authority ([SysML coverage](../../reference/domains/sysml/coverage.md)) |
 | Canonical geometry | No | `project_technical_source_capture` → `compile.seal-admission@1` → `project_admitted_geometry_export` → `design.write-geometry@1`. Isolated Build123d is not canonical ([CAD execution paths](../../reference/domains/cad/execution-paths.md)) |
 | Static mechanics | No | `mechanical-proof-case-source/1.0` → `verify.seal-proof-case@1` → `verify.run-fea-static-proof@3` ([FEA coverage](../../reference/domains/fea/coverage.md)) |
 | Admitted thermal | No | `modelica-closed-subset-v2` → `compile.seal-admission@1` → `simulate.run-admitted-modelica@1`. Not the kit ([Modelica coverage](../../reference/domains/modelica/coverage.md)) |
