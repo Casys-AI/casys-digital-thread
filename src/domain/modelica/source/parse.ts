@@ -65,6 +65,12 @@ export interface ModelicaExperimentNode {
   readonly stopTime: number;
   readonly interval: number;
   readonly tolerance: number;
+  /** Exact signed decimal spellings for scenario arithmetic in the authorizer. */
+  readonly literals: Readonly<{
+    readonly startTime: string;
+    readonly stopTime: string;
+    readonly interval: string;
+  }>;
   readonly span: SourceAnalysisSpan;
 }
 export interface ModelicaModelNode {
@@ -300,7 +306,10 @@ function parseExperiment(cursor: Cursor): ModelicaExperimentNode {
   cursor.expectKind("lparen", "annotation open");
   cursor.expectText("experiment");
   cursor.expectKind("lparen", "experiment open");
-  const fields = new Map<string, { value: number; span: SourceAnalysisSpan }>();
+  const fields = new Map<
+    string,
+    { value: number; literal: string; span: SourceAnalysisSpan }
+  >();
   while (cursor.peek()?.kind !== "rparen") {
     const name = cursor.identifier("experiment field");
     cursor.expectKind("equal", "experiment value");
@@ -334,6 +343,11 @@ function parseExperiment(cursor: Cursor): ModelicaExperimentNode {
     stopTime: fields.get("StopTime")!.value,
     interval: fields.get("Interval")!.value,
     tolerance: fields.get("Tolerance")!.value,
+    literals: Object.freeze({
+      startTime: fields.get("StartTime")!.literal,
+      stopTime: fields.get("StopTime")!.literal,
+      interval: fields.get("Interval")!.literal,
+    }),
     span: mergeSpan(start.span, close.span),
   });
 }
@@ -341,13 +355,18 @@ function parseExperiment(cursor: Cursor): ModelicaExperimentNode {
 function signedNumber(
   cursor: Cursor,
   label: string,
-): { value: number; span: SourceAnalysisSpan } {
-  const sign = cursor.peek()?.kind === "minus" ? (cursor.take(), -1) : 1;
+): { value: number; literal: string; span: SourceAnalysisSpan } {
+  const negative = cursor.peek()?.kind === "minus";
+  const sign = negative ? (cursor.take(), -1) : 1;
   const token = cursor.take();
   if (token.kind !== "number") {
     throw error("unexpected_token", `Modelica ${label} must be finite.`, token);
   }
-  return { value: sign * finite(token), span: token.span };
+  return {
+    value: sign * finite(token),
+    literal: `${negative ? "-" : ""}${token.text}`,
+    span: token.span,
+  };
 }
 function finite(token: ModelicaToken): number {
   const value = Number(token.text);

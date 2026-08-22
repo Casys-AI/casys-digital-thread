@@ -32,7 +32,7 @@ NUL, not UTF-8 length):
 | Outputs | 1–16 unique `output Real`; names must not collide with parameters | Enforced | None |
 | Equations | Exactly one per output; every LHS is a declared output; at least one `der` | Enforced | None |
 | Experiment duration | `> 0` and `<= 120` s | Enforced | None |
-| Experiment intervals | Exact grid of 10–2000 | Enforced | None |
+| Experiment intervals | Exact signed-decimal grid of 10–2000 | Enforced | None |
 | Tolerance | `[1e-12, 0.1]` | Enforced | None |
 | Unit strings | Non-empty ASCII, length `<= 64` | Enforced | None |
 | Tokens | No token-count check | **Physical-only** (source bytes) | Explicit token cap would be a product decision (H04); not implied by the runtime profile |

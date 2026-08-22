@@ -61,6 +61,27 @@ Deno.test("generic closed-subset v2 rejects unbound RHS and incomplete annotatio
   }
 });
 
+Deno.test("generic closed-subset v2 requires exact signed decimal experiment grids", () => {
+  const exact = authorizeModelicaClosedSubsetV2Source(
+    GENERIC_MODEL.replace(
+      "StartTime = 0, StopTime = 2, Interval = 0.1",
+      "StartTime = -0.1, StopTime = 0.2, Interval = 0.03",
+    ),
+  );
+  assertEquals(exact.scenario.numberOfIntervals, 10);
+  assertThrows(
+    () =>
+      authorizeModelicaClosedSubsetV2Source(
+        GENERIC_MODEL.replace(
+          "StartTime = 0, StopTime = 2, Interval = 0.1",
+          "StartTime = 0, StopTime = 10, Interval = 0.9999999999999999",
+        ),
+      ),
+    TypeError,
+    "exact grid intervals",
+  );
+});
+
 Deno.test("generic closed-subset v2 rejects cross-kind names and unsafe units", () => {
   assertThrows(
     () =>

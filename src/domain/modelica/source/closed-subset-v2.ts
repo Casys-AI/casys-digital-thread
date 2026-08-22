@@ -104,14 +104,15 @@ export function authorizeModelicaClosedSubsetV2Source(
   }
   const { startTime, stopTime, interval, tolerance } = model.experiment;
   const duration = stopTime - startTime;
-  const intervals = duration / interval;
-  const numberOfIntervals = Math.round(intervals);
   if (!Number.isFinite(duration) || duration <= 0 || duration > 120) {
     fail("Modelica experiment duration must be > 0 and <= 120 seconds.");
   }
+  const numberOfIntervals = exactDecimalGridIntervalCount(
+    model.experiment.literals,
+  );
   if (
     !Number.isFinite(interval) || interval <= 0 ||
-    Math.abs(intervals - numberOfIntervals) > 1e-9 ||
+    !Number.isFinite(numberOfIntervals) ||
     numberOfIntervals < 10 || numberOfIntervals > 2_000
   ) {
     fail("Modelica experiment Interval must derive 10 to 2000 exact grid intervals.");
@@ -133,6 +134,64 @@ export function authorizeModelicaClosedSubsetV2Source(
       numberOfIntervals,
     }),
   });
+}
+
+/**
+ * Return the exact count only when (stop - start) / interval is an integer.
+ * The parser preserves the signed decimal tokens so binary floating-point
+ * rounding cannot turn a non-divisible signed scenario into an admitted grid.
+ */
+function exactDecimalGridIntervalCount(
+  literals: Readonly<{
+    readonly startTime: string;
+    readonly stopTime: string;
+    readonly interval: string;
+  }>,
+): number {
+  const start = decimalRational(literals.startTime);
+  const stop = decimalRational(literals.stopTime);
+  const interval = decimalRational(literals.interval);
+  const commonScale = Math.max(start.scale, stop.scale, interval.scale);
+  const startNumerator = start.numerator * powerOfTen(commonScale - start.scale);
+  const stopNumerator = stop.numerator * powerOfTen(commonScale - stop.scale);
+  const intervalNumerator = interval.numerator *
+    powerOfTen(commonScale - interval.scale);
+  if (intervalNumerator <= 0n) return Number.NaN;
+  const durationNumerator = stopNumerator - startNumerator;
+  if (durationNumerator <= 0n || durationNumerator % intervalNumerator !== 0n) {
+    return Number.NaN;
+  }
+  return Number(durationNumerator / intervalNumerator);
+}
+
+function decimalRational(literal: string): {
+  readonly numerator: bigint;
+  readonly scale: number;
+} {
+  const match = /^(-?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/.exec(
+    literal,
+  );
+  if (match === null) fail("Modelica experiment literal is not decimal.");
+  const sign = match[1] === "-" ? -1n : 1n;
+  const whole = match[2] ?? "";
+  const fractional = match[3] ?? match[4] ?? "";
+  const exponent = Number(match[5] ?? "0");
+  if (!Number.isSafeInteger(exponent)) {
+    fail("Modelica experiment decimal exponent is not representable.");
+  }
+  const digits = `${whole}${fractional}`.replace(/^0+(?=\d)/, "");
+  const numerator = sign * BigInt(digits.length === 0 ? "0" : digits);
+  return {
+    numerator,
+    scale: fractional.length - exponent,
+  };
+}
+
+function powerOfTen(exponent: number): bigint {
+  if (!Number.isSafeInteger(exponent) || exponent < 0) {
+    fail("Modelica experiment decimal scale is not representable.");
+  }
+  return 10n ** BigInt(exponent);
 }
 
 function exactAttributes(
