@@ -113,3 +113,43 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "sensitivity-study reader rejects a catalog.json symlink that escapes the catalog root",
+  async () => {
+    const root = await Deno.makeTempDir({
+      prefix: "casys-sensitivity-study-catalog-",
+    });
+    const outside = await Deno.makeTempDir({
+      prefix: "casys-sensitivity-study-outside-",
+    });
+    try {
+      const caseId = "project-a-arm-sensitivity-v1";
+      const raw = JSON.stringify({ id: caseId, declaration: "reviewed" });
+      await Deno.writeTextFile(
+        `${outside}/catalog.json`,
+        JSON.stringify({
+          schemaVersion: "sensitivity-study-case-catalog/1.0",
+          cases: [{ id: caseId, file: "case.json" }],
+        }),
+      );
+      await Deno.writeTextFile(`${root}/case.json`, raw);
+      await Deno.symlink(`${outside}/catalog.json`, `${root}/catalog.json`);
+
+      const reader = new FileCataloguedSensitivityStudyCaseReader(root);
+      await assertRejects(
+        () => reader.list(),
+        Error,
+        "escaped the catalog root",
+      );
+      await assertRejects(
+        () => reader.read(caseId),
+        Error,
+        "escaped the catalog root",
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+      await Deno.remove(outside, { recursive: true });
+    }
+  },
+);
