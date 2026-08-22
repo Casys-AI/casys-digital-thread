@@ -1,5 +1,8 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { deterministicJson, sha256Fingerprint } from "../../kernel/deterministic-json.ts";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../kernel/deterministic-json.ts";
 import {
   materializeSysonModelSeed,
   parseSysonModelSeedCapture,
@@ -157,6 +160,35 @@ Deno.test("SysON model seed preserves exact MCP actor identities in its lineage"
   );
 });
 
+Deno.test(
+  "SysON model seed materializes a server-composed approved-brief baseline snapshot id longer than 128 characters",
+  async () => {
+    const projectId = "generic-industrial-product-with-long-stable-id";
+    const base = documentaryBaseline({ projectId });
+    assert(
+      base.id.length > 128,
+      `server-shaped baseline snapshot id must exceed 128 characters, got ${base.id.length}`,
+    );
+    assert(
+      base.id.length <= 256,
+      `server-shaped baseline snapshot id must stay within the shared safeId bound, got ${base.id.length}`,
+    );
+    assertEquals(
+      base.id,
+      `project:${projectId}:r1:approved-brief-baseline-${DOCUMENT_DIGEST}`,
+    );
+
+    const result = await materializeSysonModelSeed(seedInput(base));
+
+    assertEquals(result.capture.lineage.baseSnapshot.snapshotId, base.id);
+    assertEquals(result.snapshot.previous, {
+      snapshotId: base.id,
+      revision: 1,
+    });
+    assertEquals(result.snapshot.revision, 2);
+  },
+);
+
 function seedInput(
   base: ThreadSnapshot,
   overrides: Partial<Parameters<typeof materializeSysonModelSeed>[0]> = {},
@@ -240,17 +272,21 @@ function rootPackageGetResult() {
   };
 }
 
-function documentaryBaseline(): ThreadSnapshot {
+function documentaryBaseline(
+  options: { readonly projectId?: string } = {},
+): ThreadSnapshot {
+  const projectId = options.projectId ?? "drone-concept";
+  const subjectId = `project:${projectId}`;
   const artifactId = `approved-brief-document-${DOCUMENT_DIGEST}`;
   const changeSetId = `approved-brief-baseline-${DOCUMENT_DIGEST}`;
   const changeId = `${changeSetId}:record-document`;
   return validateThreadSnapshot({
     schemaVersion: "1.0",
-    id: `project:drone-concept:r1:${changeSetId}`,
+    id: `${subjectId}:r1:${changeSetId}`,
     revision: 1,
     generatedAt: "2026-08-02T12:00:00.000Z",
     subject: {
-      id: "project:drone-concept",
+      id: subjectId,
       name: "Drone concept",
       kind: "system",
       version: DOCUMENT_DIGEST,

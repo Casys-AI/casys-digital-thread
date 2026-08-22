@@ -1,3 +1,4 @@
+import { safeId } from "../../kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -936,16 +937,14 @@ function nonEmptyString(
 }
 
 function stableIdentifier(value: unknown, path: string): string {
-  if (
-    typeof value !== "string" ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)
-  ) {
+  try {
+    return safeId(value, path);
+  } catch {
     throw invalid(
       "invalid_input",
       `${path} must be a stable non-empty identifier containing only letters, digits, dot, underscore, colon, or hyphen.`,
     );
   }
-  return value;
 }
 
 function canonicalUtcInstant(value: unknown, path: string): string {
