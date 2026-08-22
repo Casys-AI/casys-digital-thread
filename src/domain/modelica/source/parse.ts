@@ -264,41 +264,70 @@ function parseEquation(cursor: Cursor, ordinal: number): ModelicaEquationNode {
   });
 }
 
+/**
+ * Closed-subset v2 RHS: `term (('+'|'-') term)*`, `term` = `primary (('*'|'/')
+ * primary)*`, `primary` = at most one unary `+`/`-` then number, name, or
+ * `(expression)`. No RHS AST; names are first-occurrence `Set` insertion.
+ * Parenthesis descent is an explicit heap stack so nesting is heap/loop-bound,
+ * not call-stack-bound.
+ */
 function expression(cursor: Cursor, names: Set<string>): void {
-  term(cursor, names);
-  while (cursor.peek()?.kind === "plus" || cursor.peek()?.kind === "minus") {
-    cursor.take();
-    term(cursor, names);
+  const work: Array<
+    | "expression"
+    | "expression_tail"
+    | "term"
+    | "term_tail"
+    | "primary"
+    | "close_paren"
+  > = ["expression"];
+  while (work.length > 0) {
+    switch (work.pop()!) {
+      case "expression":
+        work.push("expression_tail", "term");
+        break;
+      case "expression_tail":
+        if (cursor.peek()?.kind === "plus" || cursor.peek()?.kind === "minus") {
+          cursor.take();
+          work.push("expression_tail", "term");
+        }
+        break;
+      case "term":
+        work.push("term_tail", "primary");
+        break;
+      case "term_tail":
+        if (cursor.peek()?.kind === "star" || cursor.peek()?.kind === "slash") {
+          cursor.take();
+          work.push("term_tail", "primary");
+        }
+        break;
+      case "primary": {
+        if (cursor.peek()?.kind === "plus" || cursor.peek()?.kind === "minus") {
+          cursor.take();
+        }
+        const token = cursor.take();
+        if (token.kind === "number") {
+          finite(token);
+          break;
+        }
+        if (token.kind === "identifier") {
+          names.add(token.text);
+          break;
+        }
+        if (token.kind === "lparen") {
+          work.push("close_paren", "expression");
+          break;
+        }
+        throw error(
+          "unexpected_token",
+          "Modelica RHS expression is not closed-subset v2.",
+          token,
+        );
+      }
+      case "close_paren":
+        cursor.expectKind("rparen", "expression close");
+        break;
+    }
   }
-}
-function term(cursor: Cursor, names: Set<string>): void {
-  primary(cursor, names);
-  while (cursor.peek()?.kind === "star" || cursor.peek()?.kind === "slash") {
-    cursor.take();
-    primary(cursor, names);
-  }
-}
-function primary(cursor: Cursor, names: Set<string>): void {
-  if (cursor.peek()?.kind === "plus" || cursor.peek()?.kind === "minus") cursor.take();
-  const token = cursor.take();
-  if (token.kind === "number") {
-    finite(token);
-    return;
-  }
-  if (token.kind === "identifier") {
-    names.add(token.text);
-    return;
-  }
-  if (token.kind === "lparen") {
-    expression(cursor, names);
-    cursor.expectKind("rparen", "expression close");
-    return;
-  }
-  throw error(
-    "unexpected_token",
-    "Modelica RHS expression is not closed-subset v2.",
-    token,
-  );
 }
 
 function parseExperiment(cursor: Cursor): ModelicaExperimentNode {

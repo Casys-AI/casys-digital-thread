@@ -37,7 +37,7 @@ NUL, not UTF-8 length):
 | Tolerance | `[1e-12, 0.1]` | Enforced | None |
 | Unit strings | Non-empty ASCII, length `<= 64` | Enforced | None |
 | Tokens | No token-count check | **Physical-only** (source bytes) | Explicit token cap would be a product decision (H04); not implied by the runtime profile |
-| Expression nodes | Recursive parse, no node cap | **Physical-only** | Same |
+| Expression nodes | Iterative heap/loop parse, no node cap | **Physical-only** | Same |
 | Identifier length | Regex `^[A-Za-z_][A-Za-z0-9_]*$` only | **Physical-only** | Same |
 
 ## Isolated outputs and runtime
