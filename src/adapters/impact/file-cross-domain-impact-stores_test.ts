@@ -7,9 +7,20 @@ import {
   CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_CAPTURE_SCHEMA,
   validateCrossDomainImpactManifestSealCapture,
 } from "../../domain/impact/cross-domain-impact-manifest-seal-capture.ts";
+import {
+  CROSS_DOMAIN_IMPACT_EVALUATION_CAPTURE_SCHEMA,
+  validateCrossDomainImpactEvaluationCapture,
+} from "../../domain/impact/cross-domain-impact-evaluation-capture.ts";
+import { evaluateCrossDomainImpact } from "../../domain/impact/cross-domain-impact-evaluation.ts";
+import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
-import { validCrossDomainImpactManifest } from "../../testing/cross-domain-impact-fixtures.ts";
+import {
+  impactFingerprint,
+  validCrossDomainImpactEvaluationInput,
+  validCrossDomainImpactManifest,
+} from "../../testing/cross-domain-impact-fixtures.ts";
 import { FileCaptureStore } from "../shared/cas/file-capture-store.ts";
+import { FileCrossDomainImpactEvaluationCaptureStore } from "./file-cross-domain-impact-evaluation-capture-store.ts";
 import { FileCrossDomainImpactManifestSealCaptureStore } from "./file-cross-domain-impact-manifest-seal-capture-store.ts";
 import { FileCrossDomainImpactManifestStore } from "./file-cross-domain-impact-manifest-store.ts";
 
@@ -54,6 +65,36 @@ Deno.test("impact manifest and seal capture readers reopen only their closed con
       "{\"forged\":true}",
     );
     await assertRejects(() => manifests.read(saved.reference));
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("impact evaluation capture store preserves the exact server-reread artifact set", async () => {
+  const root = await Deno.makeTempDir({ prefix: "impact-evaluation-store-" });
+  try {
+    const raw = new FileCaptureStore({
+      kind: "cross-domain-impact-evaluation-capture" as const,
+      directory: `${root}/evaluations`,
+      uriNamespace: "cross-domain-impact-evaluation-capture",
+      label: "Test impact evaluation",
+    });
+    const captures = new FileCrossDomainImpactEvaluationCaptureStore(raw);
+    const capture = await evaluationCaptureFixture();
+    const stored = await captures.save(capture);
+    const reopened = await captures.read(stored.fingerprint);
+    assertEquals(reopened?.artifactInputs, capture.artifactInputs);
+    assertEquals(stored.uri, `casys://cross-domain-impact-evaluation-capture/sha256/${stored.fingerprint.digest}`);
+
+    const forged = structuredClone(capture) as unknown as { artifactInputs: unknown[] };
+    forged.artifactInputs = forged.artifactInputs.filter((item) =>
+      (item as { id: string }).id !== "mechanical-step-input"
+    );
+    await assertRejects(
+      () => validateCrossDomainImpactEvaluationCapture(forged),
+      TypeError,
+      "artifactInputs",
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }
@@ -108,4 +149,68 @@ async function admissionFixture(
       })),
     })),
   };
+}
+
+async function evaluationCaptureFixture() {
+  const input = await validCrossDomainImpactEvaluationInput();
+  const evaluation = await evaluateCrossDomainImpact(input);
+  const branchFacts = input.branchReadiness.map((branch) => ({
+    branchId: branch.branchId,
+    method: { reference: branch.method.reference, availability: "available" as const },
+    joins: branch.joins.map((join) => ({ reference: join.reference, currentness: "current" as const })),
+  }));
+  const mechanicalEvidence = input.mechanicalEvidence!;
+  const artifactInputs = [
+    { id: "manifest-seal-document", fingerprint: impactFingerprint("9") },
+    ...branchFacts.flatMap((branch) => [branch.method.reference, ...branch.joins.map((join) => join.reference)]),
+    mechanicalEvidence.evidence,
+    ...mechanicalEvidence.consumptions.map((item) => item.input),
+  ].sort((left, right) => `${left.id}:${left.fingerprint.digest}`.localeCompare(`${right.id}:${right.fingerprint.digest}`));
+  return await validateCrossDomainImpactEvaluationCapture({
+    schemaVersion: CROSS_DOMAIN_IMPACT_EVALUATION_CAPTURE_SCHEMA,
+    kind: "cross-domain-impact-evaluation",
+    operation: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
+    trustedRunId: "run-impact-evaluation-store",
+    evaluatedAt: input.evaluatedAt,
+    manifestSeal: {
+      artifact: { id: "manifest-seal-document", fingerprint: impactFingerprint("9") },
+      trustedRunId: "run-manifest-seal-store",
+    },
+    artifactInputs,
+    manifest: {
+      id: evaluation.manifest.id,
+      fingerprint: evaluation.manifest.fingerprint,
+      reference: impactFingerprint("8"),
+    },
+    brief: {
+      id: "brief-impact-evaluation-store",
+      revision: 2,
+      fingerprint: impactFingerprint("7"),
+      gates: evaluation.gateClaims.map((claim, index) => ({
+        gateItemId: claim.gateItemId,
+        kind: "success-criterion" as const,
+        branchId: claim.branchId,
+        role: claim.role,
+        fingerprint: impactFingerprint(String(index + 1)),
+        dependsOnItemIds: [],
+      })).sort((left, right) => left.gateItemId.localeCompare(right.gateItemId)),
+    },
+    branchFacts,
+    mechanicalFact: {
+      status: "current",
+      assertionId: input.manifest.independenceAssertions[0]!.id,
+      reviewTrigger: input.reviewTrigger,
+      evidence: mechanicalEvidence.evidence,
+      evidenceFreshness: "fresh",
+      consumptions: mechanicalEvidence.consumptions,
+    },
+    evaluation,
+    limits: {
+      providerCalls: "none",
+      solverCalls: "none",
+      gateClaimTransitions: "none",
+      workItemInvalidations: "none",
+      rerunProposals: "none",
+    },
+  });
 }

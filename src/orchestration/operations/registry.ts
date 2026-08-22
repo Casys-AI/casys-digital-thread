@@ -20,6 +20,7 @@ import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/mode
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
+import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -449,6 +450,35 @@ const OPERATIONS = [
     workItemKind: "review",
     riskClass: "consequential",
     execution: "trusted",
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * X07/X08 only rereads the exact X05 seal and records proposed literal
+   * impact states.  It is deliberately not an MRTR transition, provider run,
+   * rerun request, or Workbench command.
+   */
+  {
+    id: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id,
+    version: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Capture the sealed cross-domain impact analysis",
+    description:
+      "Reopen the one direct sealed impact-manifest document, recross every declared source anchor " +
+      "and only exact current evidence, then publish a provider-free documentary evaluation capture. " +
+      "It proposes literal branch and gate-claim states without changing any claim, work item, " +
+      "freshness record, rerun queue, or human decision.",
+    workItemKind: "review",
+    riskClass: "low",
+    execution: "trusted",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id,
+      version: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version,
+    },
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],

@@ -130,6 +130,23 @@ Deno.test("dependent branches require exact current methods and joins before inv
   ]);
 });
 
+Deno.test("an unavailable electrical method does not hide the independent thermal invalidation", async () => {
+  const input = await validCrossDomainImpactEvaluationInput();
+  const result = await evaluateCrossDomainImpact({
+    ...input,
+    branchReadiness: input.branchReadiness.map((readiness) =>
+      readiness.branchId === "electrical"
+        ? { ...readiness, method: { ...readiness.method, available: false } }
+        : readiness
+    ),
+  });
+  assertEquals(result.branches, [
+    { branchId: "electrical", status: "impact-unresolved" },
+    { branchId: "thermal", status: "invalidated" },
+    { branchId: "mechanical", status: "carried-forward" },
+  ]);
+});
+
 Deno.test("cross-domain evaluation exposes only the canonical gate claim status vocabulary", async () => {
   const result = await evaluateCrossDomainImpact(
     await validCrossDomainImpactEvaluationInput(),

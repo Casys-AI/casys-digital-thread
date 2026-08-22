@@ -58,6 +58,7 @@ import {
 } from "./src/adapters/fea/evaluation-closeout/decide-static-mechanical-evaluation-closeout-run-executor.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "./src/adapters/modelica/thermal-method-sheet/verify-seal-modelica-thermal-method-sheet-run-executor.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "./src/domain/impact/cross-domain-impact-manifest-proposal.ts";
+import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "./src/domain/impact/cross-domain-impact-evaluation-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
 import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "./src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts";
 import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/compile/source/source-analysis-frontend-registry.ts";
@@ -1073,6 +1074,10 @@ async function createProjectControl(
           {
             operation: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
             executor: impactProject.verifySealCrossDomainImpactManifest,
+          },
+          {
+            operation: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
+            executor: impactProject.analyzeEvaluateCrossDomainImpact,
           },
           {
             operation: VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,

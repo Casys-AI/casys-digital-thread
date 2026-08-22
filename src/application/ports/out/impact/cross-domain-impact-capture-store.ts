@@ -1,6 +1,7 @@
 /** Content-addressed persistence for the closed impact-manifest seal capture. */
 
 import type { CrossDomainImpactManifestSealCapture } from "../../../../domain/impact/cross-domain-impact-manifest-seal-capture.ts";
+import type { CrossDomainImpactEvaluationCapture } from "../../../../domain/impact/cross-domain-impact-evaluation-capture.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 
 export interface CrossDomainImpactManifestSealCaptureReceipt {
@@ -15,4 +16,19 @@ export interface CrossDomainImpactManifestSealCaptureStore {
   read(
     fingerprint: ContentFingerprint,
   ): Promise<CrossDomainImpactManifestSealCapture | undefined>;
+}
+
+/** Content-addressed storage for an X07/X08 documentary impact evaluation. */
+export interface CrossDomainImpactEvaluationCaptureReceipt {
+  readonly fingerprint: ContentFingerprint;
+  readonly uri: string;
+}
+
+export interface CrossDomainImpactEvaluationCaptureStore {
+  save(
+    capture: CrossDomainImpactEvaluationCapture,
+  ): Promise<CrossDomainImpactEvaluationCaptureReceipt>;
+  read(
+    fingerprint: ContentFingerprint,
+  ): Promise<CrossDomainImpactEvaluationCapture | undefined>;
 }
