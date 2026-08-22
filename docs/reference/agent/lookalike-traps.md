@@ -53,6 +53,15 @@ Product Modelica: capture (`modelica-closed-subset-v2`) → compilation preview 
 the product `.mo`. Same image family `casys/modelica-microsandbox-worker`; kit
 `ENTRYPOINT` pins one `.mo`, admitted worker runs `/input/source.mo`.
 
+## Cross-domain impact
+
+| This | Is | Is not |
+| ---- | -- | ------ |
+| `verify.seal-cross-domain-impact-manifest@1` | Provider-free seal of the closed manifest identities | An impact evaluation or a gate-claim transition |
+| `analyze.evaluate-cross-domain-impact@1` | Provider-free documentary recross that **proposes** claim statuses | A human decision, claim mutation, or rerun |
+| `decide.accept-cross-domain-impact@1` | Human-only application of those already-proposed gate-claim statuses onto existing claims | Work-item invalidation/rerun (X07 records those as `none`), X10, or X11 |
+| `project_cross_domain_impact_decision_review` | Read-only recross of the unique current evaluation capture | A Workbench command or caller-selected branch/claim |
+
 ## FEA, sensitivity, correction
 
 Domain contracts: [mechanical proof case](../domains/fea/mechanical-proof-case-v1.md)

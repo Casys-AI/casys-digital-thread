@@ -332,6 +332,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "architecture.seed-syson-model@2",
     "compile.seal-admission@1",
     "decide.accept-admitted-modelica-evaluation@1",
+    "decide.accept-cross-domain-impact@1",
     "decide.reject-admitted-modelica-evaluation@1",
     "design.apply-vector-correction@1",
     "design.execute-build123d@1",

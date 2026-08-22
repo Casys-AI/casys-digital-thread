@@ -27,6 +27,7 @@ import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
+import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-decision-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -125,12 +126,59 @@ Deno.test("cross-domain impact evaluation follows the manifest seal without an M
   assertEquals(operation.riskClass, "low");
   assertEquals(operation.execution, "trusted");
   assertEquals(operation.requiresAdditiveChange, true);
-  assertEquals(operation.requiresDependsOnOperation, VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION);
+  assertEquals(
+    operation.requiresDependsOnOperation,
+    VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
+  );
   assertEquals(operation.decisionEvidenceScope, undefined);
   assertEquals(operation.bindings, [{
     name: "approvedBrief",
     allowedSourceKinds: ["approved-brief"],
   }]);
+});
+
+Deno.test("cross-domain impact decision is human-only, additive after evaluation, and approvedBrief only", () => {
+  const operation = getRegisteredEngineeringOperation(
+    DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
+  )!;
+  assertEquals(operation.workItemKind, "review");
+  assertEquals(operation.riskClass, "consequential");
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.mustOrigin, "human");
+  assertEquals(operation.requiresAdditiveChange, true);
+  assertEquals(
+    operation.requiresDependsOnOperation,
+    ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
+  );
+  assertEquals(operation.bindings, [{
+    name: "approvedBrief",
+    allowedSourceKinds: ["approved-brief"],
+  }]);
+
+  const extras = assertThrows(
+    () =>
+      validateRegisteredEngineeringOperationInput({
+        operation: {
+          ...DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
+          bindings: [{
+            name: "providerEnvelope",
+            source: {
+              kind: "thread-entity" as const,
+              reference: {
+                snapshotId: "thread.snapshot.9",
+                snapshotRevision: 9,
+                kind: "artifact" as const,
+                id: "artifact.provider",
+              },
+            },
+          }],
+        },
+        stage: "queue",
+        basisKind: "thread-snapshot",
+      }),
+    EngineeringOperationRegistryError,
+  );
+  assertEquals(extras.code, "invalid_bindings");
 });
 
 Deno.test("historical MCP FEA and recorded Modelica versions are neither lookupable nor queueable", () => {
@@ -1024,6 +1072,7 @@ Deno.test("a human-only operation declares its origin so a human can reach it", 
     { id: "record.reconcile-uncertain-writer", version: "1" },
     DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
     DECIDE_REJECT_ADMITTED_MODELICA_EVALUATION_OPERATION,
+    DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
   ];
   for (const operation of humanOnly) {
     const registered = getRegisteredEngineeringOperation(operation)!;

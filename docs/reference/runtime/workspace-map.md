@@ -196,6 +196,16 @@ The post-MRTR seal is one fresh documentary Thread document whose capture record
 identities; it is not the later impact-evaluation capture: it creates no branch outcome,
 gate-claim transition, invalidation, proposed work item, or automatic rerun.
 
+`project_cross_domain_impact_decision_review` is the later read-only recross: the caller
+names only `projectId`. The server reopens the unique current Thread tip and unique
+`analyze.evaluate-cross-domain-impact@1` capture, then recrosses Brief V2 gates and
+existing work-item claims into canonical MRTR parameters.
+`decide.accept-cross-domain-impact@1` is the human-only decision that applies those
+already-proposed gate-claim statuses onto existing work-item claims. X07/X08 records
+`workItemInvalidations` and `rerunProposals` as `none`; this decision does not add,
+invalidate, or queue work items. It writes one documentary Thread successor and mutates
+project gate claims atomically. It queues no rerun and calls no provider.
+
 Lookalike traps for agents: [lookalike traps](../agent/lookalike-traps.md).
 
 The legacy generic geometry boundary separates preview from seal, and it separates two

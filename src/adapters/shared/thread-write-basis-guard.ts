@@ -34,6 +34,7 @@ import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
+import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-decision-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
 import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
 import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
@@ -72,6 +73,7 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION.id}@${VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION.version}`,
   `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`,
   `${ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id}@${ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version}`,
+  `${DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id}@${DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version}`,
   `${ARCHIVE_LINEAGE_OPERATION.id}@${ARCHIVE_LINEAGE_OPERATION.version}`,
   `${SYSON_MODEL_SEED_OPERATION.id}@${SYSON_MODEL_SEED_OPERATION.version}`,
   `${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.id}@${INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION.version}`,
@@ -102,6 +104,7 @@ const NON_RECONCILIABLE_THREAD_WRITE_FAILURE_CODES: ReadonlySet<string> = new Se
   "verify-seal-modelica-thermal-method-sheet-thread-write-outcome-unknown",
   "verify-evaluate-admitted-modelica-observations-thread-write-outcome-unknown",
   "decide-accept-admitted-modelica-evaluation-thread-write-outcome-unknown",
+  "decide-accept-cross-domain-impact-thread-write-outcome-unknown",
   "decide-reject-admitted-modelica-evaluation-thread-write-outcome-unknown",
   "decide-accept-evaluation-closeout-thread-write-outcome-unknown",
   "decide-reject-evaluation-closeout-thread-write-outcome-unknown",

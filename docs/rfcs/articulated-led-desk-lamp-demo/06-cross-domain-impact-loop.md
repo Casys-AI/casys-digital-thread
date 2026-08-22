@@ -101,11 +101,14 @@ empreintes qui les soutiennent.
    sans appel moteur. MRTR humaine distincte.
 2. `analyze.evaluate-cross-domain-impact@1` : reouvre le manifeste, le changement
    approuve, le brief V2, gate claims, Thread lineage et artefacts; publie un capture
-   d'impact et des propositions de work items. Il ne lance ni SPICE, ni OMC, ni CalculiX
-   et ne mutile aucun gate claim existant silencieusement.
-3. `decide.accept-cross-domain-impact@1` : action humaine qui confirme les statuts et
-   les work items proposes. Elle est obligatoire avant la modification des gateClaims ou
-   la queue de nouveaux runs.
+   d'impact et des statuts de gate-claim proposes. Le schema actuel fixe
+   `workItemInvalidations` et `rerunProposals` a `none`. Il ne lance ni SPICE, ni OMC,
+   ni CalculiX et ne mutile aucun gate claim existant silencieusement.
+3. `decide.accept-cross-domain-impact@1` : action humaine qui confirme les statuts de
+   gate-claim deja proposes par le capture X07/X08 et les applique sur les claims
+   existants. Le schema X07/X08 fixe `workItemInvalidations` et `rerunProposals` a
+   `none`; X09 n'invente, n'invalide et ne queue aucun work item. Il termine seulement
+   son propre work item de decision. Les reruns restent X10.
 
 Les noms restent a figer dans le registre une fois la revue d'API realisee. Quel que
 soit le nom final, les outils agent-facing acceptent seulement `projectId` et les
@@ -121,13 +124,14 @@ human-approved change
   -> current approved Brief V2 gate + declared dependencies
   -> exact prior branch evidence + its input consumptions
   -> impact-evaluation capture
-  -> human decision on statuses/work items
-  -> only then: one independent run path per invalidated branch
+  -> human decision on proposed gate-claim statuses
+  -> only then: one independent run path per invalidated branch (X10)
 ```
 
 Le capture contient les identites de chaque entite examinee, la rationale de chaque
-edge/assertion, l'ancien/nouveau statut des claims, les IDs de change qui causent la
-freshness, et les work items proposes. Il ne re-ecrit pas les old artifacts. Le Thread
+edge/assertion, l'ancien/nouveau statut des claims, et les IDs de change qui causent la
+freshness. Le schema X07/X08 fixe `workItemInvalidations` et `rerunProposals` a `none`;
+il ne propose pas de work items. Il ne re-ecrit pas les old artifacts. Le Thread
 successor utilise `applyThreadSnapshotExtensionIfNew` et valide que chaque
 `invalidatedByChangeIds` vise un changement present dans le snapshot.
 
@@ -143,7 +147,7 @@ successor utilise `applyThreadSnapshotExtensionIfNew` et valide que chaque
 | X06 | X05                 | MRTR grammar et descripteur operation dans `src/orchestration/operations/`; project-control review tool.                                                                     | Le caller ne peut selectionner branche/edge/artefact par JSON ni contourner MRTR.                                                  |
 | X07 | X03,X04             | Implementer l'analyse d'impact pure : graph directionnel, regles de matrice, propositions sans mutation.                                                                     | Tests couvrent exactement electrical/thermal invalidated, electrical unavailable, mechanical carried-forward et impact-unresolved. |
 | X08 | X07                 | Persist capture + extension Thread dans `src/adapters/impact/`; utiliser facts/links/consumptions existants, pas un second graph UI.                                         | Tous les artifacts/claims/changements ont provenance et freshness validables; les anciens artifacts ne disparaissent pas.          |
-| X09 | X08                 | Operation MRTR human-only de decision d'impact + changement explicite de work items/gateClaims dans les use cases project.                                                   | Aucune transition automatique; retry idempotent; mauvais basis/brief gate/claim refuses.                                           |
+| X09 | X08                 | Operation MRTR human-only de decision d'impact + application atomique des statuts de gate-claim deja proposes. X07/X08 n'emet pas de workItemInvalidations; X09 ne change pas le cycle de vie des work items hors completion de sa propre decision. | Aucune transition automatique; retry idempotent; mauvais basis/brief gate/claim refuses; pas de work item/rerun invente.           |
 | X10 | X09, RFC 04, RFC 05 | Integrer les propositions de rerun thermique et electrique vers leurs operations propres. Une verticale encore absente reste un blocker litteral du closeout.                | Aucun call OMC/ngspice lors de X07-X09; chaque rerun demande sa propre MRTR via son operation enregistree.                         |
 | X11 | X09                 | Integrer la preservation mecanique : inspecter preuve FEA, consumptions et independence assertion, publier resultat carried-forward ou unresolved.                           | Aucun CalculiX call; test adversarial ou une input FEA est remplacee => jamais carried-forward.                                    |
 | X12 | X10,X11             | Deuxieme **stop humain** : faire approuver la carte de causalite lampe, les sources de puissance/brillance, les gates brief V2 et l'assertion d'independance mecanique.      | En l'absence de ces decisions, la demo affiche/retient `impact-unresolved`; aucun statut favorable fictif.                         |

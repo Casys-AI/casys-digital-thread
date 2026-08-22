@@ -399,7 +399,10 @@ Deno.test("server seals the local CalculiX profile into ROP2 but composes @3 onl
     );
 
     const source = await Deno.readTextFile("server.ts");
-    assertStringIncludes(source, "calculixLocalProfile: calculixCapability.localProfile,");
+    assertStringIncludes(
+      source,
+      "calculixLocalProfile: calculixCapability.localProfile,",
+    );
     assertStringIncludes(source, "executor: feaProject.isolatedCalculixRun,");
     assertStringIncludes(
       source,
@@ -548,10 +551,12 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_brief_requirements_review",
     "project_change_append",
     "project_corrected_admission_review",
+    "project_cross_domain_impact_decision_review",
     "project_cross_domain_impact_manifest_seal_review",
     "project_decision_approve",
     "project_decision_propose",
     "project_decision_reject",
+    "project_evaluation_closeout_review",
     "project_fea_isolated_run_review",
     "project_fea_proof_seal_review",
     "project_isolated_geometry_seal_review",
@@ -611,10 +616,12 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_brief_requirements_review",
       "project_change_append",
       "project_corrected_admission_review",
+      "project_cross_domain_impact_decision_review",
       "project_cross_domain_impact_manifest_seal_review",
       "project_decision_approve",
       "project_decision_propose",
       "project_decision_reject",
+      "project_evaluation_closeout_review",
       "project_fea_isolated_run_review",
       "project_fea_proof_seal_review",
       "project_isolated_geometry_seal_review",
@@ -631,7 +638,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_thermal_method_sheet_seal_review",
       "project_vector_correction_review",
       "project_work_item_abandon",
-      ]);
+    ]);
     const snapshotTool = tools.find((tool) => tool.name === "console_snapshot");
     assert(snapshotTool);
     assertEquals(snapshotTool._meta, undefined);
@@ -821,7 +828,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           "project_decision_reject",
           "project_agent_run_cancel",
           "project_work_item_abandon",
-                "project_agent_run_queue",
+          "project_agent_run_queue",
         ]
           .includes(String(tool.name))
       ),
@@ -837,12 +844,14 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
+          tool.name === "project_evaluation_closeout_review" ||
           tool.name === "project_fea_proof_seal_review" ||
           tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_corrected_admission_review" ||
+          tool.name === "project_cross_domain_impact_decision_review" ||
           tool.name === "project_cross_domain_impact_manifest_seal_review" ||
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review" ||
@@ -873,12 +882,14 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_decision_reject" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
+          tool.name === "project_evaluation_closeout_review" ||
           tool.name === "project_fea_proof_seal_review" ||
           tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_corrected_admission_review" ||
+          tool.name === "project_cross_domain_impact_decision_review" ||
           tool.name === "project_cross_domain_impact_manifest_seal_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
           tool.name === "project_admitted_modelica_evaluation_review",

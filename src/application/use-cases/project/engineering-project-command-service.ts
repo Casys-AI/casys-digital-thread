@@ -47,6 +47,13 @@ import {
   requireApprovedUncertainWriterReconciliationDecision,
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
 } from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
+import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../../domain/impact/cross-domain-impact-decision-proposal.ts";
+import {
+  applyCrossDomainImpactWorkItemClaims,
+  canonicalizeCrossDomainImpactWorkItemClaims,
+  type CrossDomainImpactWorkItemClaimTransition,
+  recrossCrossDomainImpactWorkItemClaims,
+} from "../../../domain/impact/cross-domain-impact-decision.ts";
 import {
   isReservedUncertainWriterBasisReleaseDecisionId,
   uncertainWriterBasisReleaseIds,
@@ -145,6 +152,33 @@ export interface FailRunCommand extends RunCommand {
 export interface CancelQueuedRunCommand extends EngineeringProjectCommandInput {
   readonly runId: string;
   readonly rationale: string;
+}
+
+/**
+ * Human-only single-step command that completes the impact-decision run and
+ * applies the already-proposed X07/X08 gate-claim statuses onto existing
+ * claims. X07/X08 records workItemInvalidations and rerunProposals as `none`;
+ * this command does not add, invalidate, or otherwise change work-item
+ * lifecycle except completing this decision run.
+ */
+export interface AcceptCrossDomainImpactDecisionCommand
+  extends EngineeringProjectCommandInput {
+  readonly runId: string;
+  readonly summary: string;
+  readonly decisionId: string;
+  readonly resultSnapshot: EngineeringThreadSnapshotRef;
+  readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
+  readonly evaluationCapture: {
+    readonly id: string;
+    readonly fingerprint: ContentFingerprint;
+  };
+  readonly appliedGateClaims: readonly CrossDomainImpactWorkItemClaimTransition[];
+  readonly limits: {
+    readonly providerCalls: "none";
+    readonly solverCalls: "none";
+    readonly reruns: "none";
+    readonly newWorkItems: "none";
+  };
 }
 
 /**
@@ -424,6 +458,7 @@ export const ENGINEERING_PROJECT_COMMAND_POLICY = {
     "agent-run.queue",
     "agent-run.cancel",
     "agent-run.reconcile-annotation",
+    "impact-decision.accept",
     "work-item.abandon",
   ],
   agent: [
@@ -1309,6 +1344,160 @@ export class EngineeringProjectCommandService {
 
         const workItem = findWorkItem(draft, reconciliationRun.workItemId)!;
         workItem.status = "completed";
+        recomputeWorkReadiness(draft);
+      },
+    );
+  }
+
+  /**
+   * Complete the human-only impact-decision run and apply the signed gate-claim
+   * statuses onto existing work items in one project write. Other work-item
+   * lifecycle is unchanged. No work item or rerun is added.
+   */
+  acceptCrossDomainImpactDecision(
+    origin: EngineeringProjectCommandOrigin,
+    command: AcceptCrossDomainImpactDecisionCommand,
+  ): Promise<EngineeringProjectSnapshot> {
+    return this.apply(
+      origin,
+      "impact-decision.accept",
+      command,
+      async (draft, appliedAt) => {
+        nonEmpty(command.runId, "runId");
+        nonEmpty(command.summary, "summary");
+        nonEmpty(command.decisionId, "decisionId");
+        if (
+          command.limits.providerCalls !== "none" ||
+          command.limits.solverCalls !== "none" ||
+          command.limits.reruns !== "none" ||
+          command.limits.newWorkItems !== "none"
+        ) {
+          invalidInput(
+            "An impact decision cannot grant a provider, solver, rerun, or new work item.",
+          );
+        }
+        const run = findRun(draft, command.runId);
+        if (!run) notFound("agent run", command.runId);
+        const decisionWork = findWorkItem(draft, run.workItemId);
+        if (!decisionWork) notFound("work item", run.workItemId);
+        const operation = decisionWork.operation;
+        if (
+          draft.schemaVersion !== "3.0" ||
+          run.basis?.kind !== "thread-snapshot" ||
+          operation?.id !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id ||
+          operation.version !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version
+        ) {
+          invalidTransition(
+            "This command may complete only decide.accept-cross-domain-impact@1.",
+          );
+        }
+        if (run.status !== "queued") {
+          invalidTransition(
+            `Impact-decision run ${run.id} can complete only from queued; it is ${run.status}.`,
+          );
+        }
+        const decision = findDecision(draft, command.decisionId);
+        if (
+          !decision ||
+          decision.status !== "approved" ||
+          !decisionWork.decisionIds.includes(command.decisionId)
+        ) {
+          invalidTransition(
+            "The impact decision is not the exact approved MRTR bound to this run.",
+          );
+        }
+        const workItemIds = draft.workItems.map((item) => item.id);
+        const runIds = draft.agentRuns.map((item) => item.id);
+        const appliedGateClaims = canonicalizeCrossDomainImpactWorkItemClaims(
+          command.appliedGateClaims,
+        );
+        const recrossed = recrossCrossDomainImpactWorkItemClaims(
+          draft.workItems,
+          appliedGateClaims.map((item) => ({
+            gateItemId: item.gateItemId,
+            role: item.role,
+            status: item.status,
+          })),
+          { excludeWorkItemId: decisionWork.id },
+        );
+        if (deterministicJson(recrossed) !== deterministicJson(appliedGateClaims)) {
+          invalidTransition(
+            "Current work-item gate claims do not equal the signed impact-decision recross.",
+          );
+        }
+        if (
+          command.evaluationCapture.id !==
+            `cross-domain-impact-evaluation-${command.evaluationCapture.fingerprint.digest}`
+        ) {
+          invalidInput(
+            "The impact-decision evaluation capture id must derive from its digest.",
+          );
+        }
+        assertExactResultEvidence(
+          draft,
+          command.resultSnapshot,
+          command.evidenceRefs,
+        );
+        const basis = run.basis;
+        if (basis?.kind !== "thread-snapshot") {
+          invalidTransition(
+            "This command may complete only decide.accept-cross-domain-impact@1.",
+          );
+        }
+        const baseSnapshot = threadSnapshotReference(basis);
+        assertResultAdvancesBase(baseSnapshot, command.resultSnapshot);
+        if (!this.evidenceValidator) {
+          invalidInput(
+            "Completion evidence validation is unavailable; refusing to publish unverified refs.",
+          );
+        }
+        await this.evidenceValidator.validate(
+          baseSnapshot,
+          command.resultSnapshot,
+          command.evidenceRefs,
+        );
+        draft.workItems = structuredClone(
+          applyCrossDomainImpactWorkItemClaims(
+            draft.workItems,
+            appliedGateClaims,
+            { excludeWorkItemId: decisionWork.id },
+          ),
+        ) as Mutable<EngineeringWorkItem>[];
+        addThreadSnapshot(draft, command.resultSnapshot);
+        run.status = "completed";
+        run.summary = command.summary;
+        run.claimedAt = appliedAt;
+        run.claimedBy = actor(origin);
+        run.startedAt = appliedAt;
+        run.completedAt = appliedAt;
+        run.resultSnapshot = structuredClone(command.resultSnapshot);
+        run.evidenceRefs = [...structuredClone(command.evidenceRefs)];
+        run.statusHistory ??= [];
+        run.statusHistory.push(transition(
+          { commandId: command.commandId, summary: command.summary },
+          origin,
+          "completed",
+          appliedAt,
+        ));
+        const completedWork = findWorkItem(draft, run.workItemId)!;
+        completedWork.status = "completed";
+        completedWork.evidenceRefs = [...structuredClone(command.evidenceRefs)];
+        const phase = draft.phases.find((item) => item.id === completedWork.phaseId)!;
+        phase.evidenceRefs = mergeEvidence(phase.evidenceRefs, command.evidenceRefs);
+        if (
+          deterministicJson(draft.workItems.map((item) => item.id)) !==
+            deterministicJson(workItemIds) ||
+          deterministicJson(draft.agentRuns.map((item) => item.id)) !==
+            deterministicJson(runIds) ||
+          draft.agentRuns.some((item) =>
+            item.id !== run.id && item.status === "queued" &&
+            !runIds.includes(item.id)
+          )
+        ) {
+          invalidTransition(
+            "An impact decision cannot add a work item or enqueue a rerun.",
+          );
+        }
         recomputeWorkReadiness(draft);
       },
     );

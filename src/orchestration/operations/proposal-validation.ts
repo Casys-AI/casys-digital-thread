@@ -81,6 +81,10 @@ import {
   VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
 } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import {
+  DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
+  parseCrossDomainImpactDecisionParameters,
+} from "../../domain/impact/cross-domain-impact-decision-proposal.ts";
+import {
   parseAdmittedObservationEvaluationParameters,
   VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION,
 } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
@@ -197,6 +201,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION),
     (parameters) => {
       parseCrossDomainImpactManifestSealParameters(parameters);
+    },
+  ],
+  [
+    keyOf(DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION),
+    (parameters) => {
+      parseCrossDomainImpactDecisionParameters(parameters);
     },
   ],
   [

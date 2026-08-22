@@ -21,6 +21,7 @@ import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../domain/modelica/thermal-method-sheet-proposal.ts";
 import { VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
+import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../domain/impact/cross-domain-impact-decision-proposal.ts";
 import { VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION } from "../../domain/modelica/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   DECIDE_ACCEPT_ADMITTED_MODELICA_EVALUATION_OPERATION,
@@ -478,6 +479,41 @@ const OPERATIONS = [
     requiresDependsOnOperation: {
       id: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id,
       version: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version,
+    },
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Human-only application of the exact X07/X08 proposed gate-claim statuses
+   * onto existing work-item claims. X07/X08 records workItemInvalidations and
+   * rerunProposals as none; this operation does not invent, invalidate, or
+   * queue work items. It recrosses the evaluation capture, Brief V2 gates and
+   * existing claims, then mutates those claim statuses. It never infers an
+   * impact, queues a rerun, or calls a provider.
+   */
+  {
+    id: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id,
+    version: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Accept the cross-domain impact decision",
+    description:
+      "Reopen one exact provider-free impact-evaluation capture, recross the current Brief V2 " +
+      "gates and existing work-item claims, and apply only the already-proposed gate-claim statuses. " +
+      "X07/X08 does not propose work-item invalidations or reruns; this decision does not add, " +
+      "retire, or otherwise change work-item lifecycle except completing this decision run. " +
+      "Callers never supply branches, impacts, providers, tools, arguments, or work items. " +
+      "No rerun is queued and no engineering engine is called.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    mustOrigin: "human",
+    requiresAdditiveChange: true,
+    requiresDependsOnOperation: {
+      id: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id,
+      version: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version,
     },
     bindings: [{
       name: "approvedBrief",

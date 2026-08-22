@@ -12,7 +12,10 @@ Deno.test("impact-manifest review surface exposes only opaque project and manife
   const calls: unknown[] = [];
   const result = Object.freeze({
     status: "unavailable" as const,
-    diagnostics: Object.freeze([{ code: "manifest_unavailable", message: "Unavailable." }]),
+    diagnostics: Object.freeze([{
+      code: "manifest_unavailable",
+      message: "Unavailable.",
+    }]),
   });
   registerProjectCrossDomainImpactReviewTools(app as unknown as McpApp, {
     crossDomainImpactManifestSealReview: {
@@ -24,13 +27,77 @@ Deno.test("impact-manifest review surface exposes only opaque project and manife
   });
   const tool = app.tool("project_cross_domain_impact_manifest_seal_review");
   const schema = tool.inputSchema as Record<string, unknown>;
-  assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), ["manifestRef", "projectId"]);
+  assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
+    "manifestRef",
+    "projectId",
+  ]);
   assertEquals(schema.additionalProperties, false);
-  const ref = (schema.properties as Record<string, Record<string, unknown>>).manifestRef;
+  const ref =
+    (schema.properties as Record<string, Record<string, unknown>>).manifestRef;
   assertEquals(ref.additionalProperties, false);
-  const response = await app.handler(tool.name)(structuredClone(COMMAND)) as Record<string, unknown>;
+  const response = await app.handler(tool.name)(structuredClone(COMMAND)) as Record<
+    string,
+    unknown
+  >;
   assert(response.structuredContent === result);
   assertEquals(calls, [COMMAND]);
+});
+
+Deno.test("impact-decision review surface exposes only projectId", async () => {
+  const app = new CapturingApp();
+  const calls: unknown[] = [];
+  const result = Object.freeze({
+    status: "unavailable" as const,
+    diagnostics: Object.freeze([{
+      code: "evaluation_capture_unavailable",
+      message: "Unavailable.",
+    }]),
+  });
+  registerProjectCrossDomainImpactReviewTools(app as unknown as McpApp, {
+    crossDomainImpactDecisionReview: {
+      execute(value) {
+        calls.push(value);
+        return Promise.resolve(result);
+      },
+    },
+  });
+  const tool = app.tool("project_cross_domain_impact_decision_review");
+  const schema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(Object.keys(schema.properties as Record<string, unknown>), [
+    "projectId",
+  ]);
+  assertEquals(schema.additionalProperties, false);
+  const response = await app.handler(tool.name)({
+    projectId: "project.impact",
+  }) as Record<string, unknown>;
+  assert(response.structuredContent === result);
+  assertEquals(calls, [{ projectId: "project.impact" }]);
+});
+
+Deno.test("impact-decision review rejects caller-selected branch, impact, status, and work item before use case", async () => {
+  const app = new CapturingApp();
+  let calls = 0;
+  registerProjectCrossDomainImpactReviewTools(app as unknown as McpApp, {
+    crossDomainImpactDecisionReview: {
+      execute: () => {
+        calls += 1;
+        return Promise.reject(new Error("must not run"));
+      },
+    },
+  });
+  const handler = app.handler("project_cross_domain_impact_decision_review");
+  for (
+    const field of ["branch", "impact", "status", "workItemId", "provider"] as const
+  ) {
+    await assertRejects(
+      () =>
+        handler({ projectId: "project.impact", [field]: { forged: true } }) as Promise<
+          unknown
+        >,
+      TypeError,
+    );
+  }
+  assertEquals(calls, 0);
 });
 
 Deno.test("impact-manifest review rejects caller-selected branch, edge, artifact, and provider data before use case", async () => {
@@ -38,13 +105,19 @@ Deno.test("impact-manifest review rejects caller-selected branch, edge, artifact
   let calls = 0;
   registerProjectCrossDomainImpactReviewTools(app as unknown as McpApp, {
     crossDomainImpactManifestSealReview: {
-      execute: () => { calls += 1; return Promise.reject(new Error("must not run")); },
+      execute: () => {
+        calls += 1;
+        return Promise.reject(new Error("must not run"));
+      },
     },
   });
   const handler = app.handler("project_cross_domain_impact_manifest_seal_review");
   for (const field of ["branch", "edge", "artifact", "provider"] as const) {
     await assertRejects(
-      () => handler({ ...structuredClone(COMMAND), [field]: { forged: true } }) as Promise<unknown>,
+      () =>
+        handler({ ...structuredClone(COMMAND), [field]: { forged: true } }) as Promise<
+          unknown
+        >,
       TypeError,
     );
   }
@@ -54,7 +127,18 @@ Deno.test("impact-manifest review rejects caller-selected branch, edge, artifact
 class CapturingApp {
   readonly #tools = new Map<string, MCPTool>();
   readonly #handlers = new Map<string, ToolHandler>();
-  registerTool(tool: MCPTool, handler: ToolHandler): void { this.#tools.set(tool.name, tool); this.#handlers.set(tool.name, handler); }
-  tool(name: string): MCPTool { const value = this.#tools.get(name); assert(value); return value; }
-  handler(name: string): ToolHandler { const value = this.#handlers.get(name); assert(value); return value; }
+  registerTool(tool: MCPTool, handler: ToolHandler): void {
+    this.#tools.set(tool.name, tool);
+    this.#handlers.set(tool.name, handler);
+  }
+  tool(name: string): MCPTool {
+    const value = this.#tools.get(name);
+    assert(value);
+    return value;
+  }
+  handler(name: string): ToolHandler {
+    const value = this.#handlers.get(name);
+    assert(value);
+    return value;
+  }
 }

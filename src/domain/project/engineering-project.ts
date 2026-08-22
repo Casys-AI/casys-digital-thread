@@ -59,7 +59,8 @@ export type EngineeringProjectCommandName =
   | "agent-run.complete"
   | "agent-run.fail"
   | "agent-run.cancel"
-  | "agent-run.reconcile-annotation";
+  | "agent-run.reconcile-annotation"
+  | "impact-decision.accept";
 
 export interface EngineeringCommandActor {
   readonly id: string;

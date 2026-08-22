@@ -1625,6 +1625,7 @@ function validateCommandReceipt(
       "agent-run.fail",
       "agent-run.cancel",
       "agent-run.reconcile-annotation",
+      "impact-decision.accept",
     ],
     `${path}.type`,
     issues,
