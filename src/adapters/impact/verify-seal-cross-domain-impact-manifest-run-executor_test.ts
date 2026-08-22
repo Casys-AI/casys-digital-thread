@@ -226,7 +226,7 @@ function admissionFixture(basisFingerprint: ContentFingerprint): CrossDomainImpa
 
 function sourceAnchor(
   id: string,
-  changeKind: "brightness" | "electrical-power",
+  changeKind: string,
   changeId: string,
   sourceId: string,
   digest: string,

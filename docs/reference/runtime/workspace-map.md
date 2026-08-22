@@ -186,6 +186,11 @@ draft only. These operations are product-independent but deliberately bounded: t
 not provide a generic simulator, measurement source, requirement evaluator,
 manufacturing decision, or certification verdict.
 
+Causal `changeKinds` on the sealed manifest are document-defined `safeId` tokens from
+the source anchors, not a code catalog and not free prose. They are canonicalized by
+lexicographic order. Branch IDs stay the closed Behave judgement set
+`electrical|thermal|mechanical`.
+
 `project_cross_domain_impact_manifest_seal_review` is likewise read-only: its caller
 names only a project and an opaque manifest fingerprint. The server rereads the closed
 manifest, exact Thread lineage, declared mechanical evidence, and current approved Brief
@@ -272,13 +277,12 @@ Microsandbox execution contract. They remain readable and operational where conf
 no removal, replacement of historical authority, or automatic promotion from one path to
 the other is claimed.
 
-The bounded `inspection-drone-v4` path adds a separate read-only successor after its
-qualitative r3 architecture: `model.capture-inspection-drone-part-definitions@1` reads
-only the six attested SysON PartDefinitions and their five root usages from the exact
-content-addressed architecture artifact. It stores one replay-safe bundle in
-`inspection-drone-v4-part-definitions-captures` and the Workbench derives the root and
-five children only from that bundle. It neither writes SysML nor infers a CAD, physical,
-manufacturing, certification, cost, or un-attested quantity.
+`architecture.author-inspection-drone@3` and
+`model.capture-inspection-drone-part-definitions@1` are retired and unregistered.
+Generic SysML uses `model.write-architecture@1` (renderer + SysON) or
+`model.seal-architecture-sysml@1` (agent-authored closed-subset Thread document).
+PartDefinition reread is `model.capture-part-definitions@1`. Historical drone r3/r4
+captures remain documentary evidence; they are not a live projector or executor path.
 
 ## Runtime ownership
 

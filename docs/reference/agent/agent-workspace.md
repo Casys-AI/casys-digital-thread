@@ -333,8 +333,11 @@ Unknown ids/versions are indistinguishable from absent.
 | `design.apply-vector-correction@1`                  | trusted                   | none                         | Thread document of a bounded correction proposal (`grants: none`)                                                       | CAD, SysON, provider, admission, or a join of proof-run observations |
 | `record.reconcile-uncertain-writer@1`               | trusted, **human origin** | none                         | Release or inspect an uncertain write                                                                                   | Agent inspection of a provider                                       |
 | `record.archive-lineage@1`                          | trusted                   | none                         | Append-only archive change                                                                                              | SysML deletion                                                       |
-| `architecture.author-inspection-drone@3`            | trusted                   | SysON                        | Product-specific drone r3                                                                                               | A generic architecture op                                            |
-| `model.capture-inspection-drone-part-definitions@1` | trusted                   | SysON                        | Product-specific r4                                                                                                     | Generic product structure                                            |
+
+`architecture.author-inspection-drone@3` and
+`model.capture-inspection-drone-part-definitions@1` are retired and unregistered.
+Generic SysML uses `model.write-architecture@1` or the agent-authored
+`model.seal-architecture-sysml@1` closed-subset seal.
 
 ### Measured DFM (`industrialize.seal-dfm-case@1` + `industrialize.run-dfm-checks@1`)
 
@@ -490,7 +493,7 @@ adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
 | `control-plane` | `src/application/control-plane/` | Fleet ops service + `console_*` tools. No domain kernel. Not a cockpit page                          |
 
 The same split lives under
-`src/adapters/{modelica,cad,fea,compile,architecture,inspection-drone,sensitivity,make,control-plane,shared}/`
+`src/adapters/{modelica,cad,fea,compile,architecture,sensitivity,make,control-plane,shared}/`
 and
 `src/application/{ports,use-cases}/{modelica,cad,fea,compile,architecture,sensitivity}/`.
 Folder = authority; lookalikes stay in sibling directories. Control-plane adapters are

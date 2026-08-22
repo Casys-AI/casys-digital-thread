@@ -2,25 +2,25 @@
  * Shared signed-offer fixture for review and seal tests. Not product code.
  */
 
-import type { ReopenedTechnicalCompilationAdmission } from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
-import { parseFeaProofCaseCapture } from "../../../../domain/fea/seal-case/fea-proof-case-capture.ts";
-import { canonicalProofText } from "../../../../domain/fea/seal-case/fea-proof-proposal.ts";
+import type { ReopenedTechnicalCompilationAdmission } from "../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import { parseFeaProofCaseCapture } from "../domain/fea/seal-case/fea-proof-case-capture.ts";
+import { canonicalProofText } from "../domain/fea/seal-case/fea-proof-proposal.ts";
 import {
   type MechanicalProofCase,
   validateMechanicalProofCase,
-} from "../../../../domain/fea/seal-case/mechanical-proof-case.ts";
+} from "../domain/fea/seal-case/mechanical-proof-case.ts";
 import {
   compileSensitivityCatalogOfferFromAdmission,
   SENSITIVITY_CATALOG_OFFER_CAPTURE_SCHEMA,
-} from "../../../../domain/sensitivity/study/sensitivity-catalog-from-proof.ts";
-import { fingerprintTechnicalSourceText } from "../../../../domain/compile/admission/technical-compilation.ts";
+} from "../domain/sensitivity/study/sensitivity-catalog-from-proof.ts";
+import { fingerprintTechnicalSourceText } from "../domain/compile/admission/technical-compilation.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
-} from "../../../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
-import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
-import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
+} from "../domain/kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../domain/kernel/primitives.ts";
+import { validateThreadSnapshot } from "../domain/thread/thread-snapshot-validation.ts";
+import type { ThreadSnapshot } from "../domain/thread/thread-snapshot.ts";
 
 export const SIGNED_OFFER_AT = "2026-08-16T00:00:00.000Z";
 export const SIGNED_OFFER_PROJECT_ID = "desk-lamp-dl06";
@@ -314,7 +314,7 @@ async function linkedProofCase(sourceText: string): Promise<MechanicalProofCase>
     JSON.parse(
       await Deno.readTextFile(
         new URL(
-          "../../../../../config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
+          "../../config/mechanical-proof-cases/desk-lamp-dl06-arm-cantilever.json",
           import.meta.url,
         ),
       ),

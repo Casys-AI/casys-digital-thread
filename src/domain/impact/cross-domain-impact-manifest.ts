@@ -31,16 +31,19 @@ export const CROSS_DOMAIN_IMPACT_MANIFEST_SCHEMA =
   "cross-domain-impact-manifest/1.0" as const;
 
 /**
- * Reviewed causal concepts for this surface. These are intentionally distinct
- * from the Thread mutation verbs retained in source anchors below.
+ * Document-defined causal concept identifier. Validated as a `safeId` from the
+ * manifest and source anchors; not a code catalog and not free prose.
+ * Distinct from the closed Thread mutation verbs on `threadChange.kind`.
  */
-export const CROSS_DOMAIN_IMPACT_CHANGE_KINDS = [
-  "electrical-power",
-  "brightness",
-] as const;
+export type CrossDomainImpactChangeKind = string;
 
-export type CrossDomainImpactChangeKind =
-  (typeof CROSS_DOMAIN_IMPACT_CHANGE_KINDS)[number];
+/** Parse one causal change kind from manifest, seal-proposal, or evaluation data. */
+export function parseCrossDomainImpactChangeKind(
+  value: unknown,
+  path: string,
+): CrossDomainImpactChangeKind {
+  return safeId(value, path);
+}
 
 /** Existing Thread mutation vocabulary, retained as immutable anchor lineage. */
 export const CROSS_DOMAIN_IMPACT_THREAD_CHANGE_KINDS = [
@@ -720,11 +723,7 @@ function parseFingerprint(value: unknown, path: string): ContentFingerprint {
 }
 
 function parseChangeKind(value: unknown, path: string): CrossDomainImpactChangeKind {
-  const kind = nonEmptyText(value, path);
-  if (!CROSS_DOMAIN_IMPACT_CHANGE_KINDS.includes(kind as CrossDomainImpactChangeKind)) {
-    throw new TypeError(`${path} must be electrical-power or brightness.`);
-  }
-  return kind as CrossDomainImpactChangeKind;
+  return parseCrossDomainImpactChangeKind(value, path);
 }
 
 function parseBranchId(value: unknown, path: string): CrossDomainImpactBranchId {
@@ -777,8 +776,7 @@ function changeKindOrder(
   left: CrossDomainImpactChangeKind,
   right: CrossDomainImpactChangeKind,
 ): number {
-  return CROSS_DOMAIN_IMPACT_CHANGE_KINDS.indexOf(left) -
-    CROSS_DOMAIN_IMPACT_CHANGE_KINDS.indexOf(right);
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function branchOrder(left: CrossDomainImpactBranchId, right: CrossDomainImpactBranchId): number {

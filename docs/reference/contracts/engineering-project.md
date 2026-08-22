@@ -583,8 +583,10 @@ is currently process-local, so a shared signing key alone is not sufficient for
 multi-instance operation. That deployment needs a shared, durable replay store with
 atomic consume semantics.
 
-The source dispatcher materializes generic V3 operations and the reviewed
-`inspection-drone-v4` qualitative-architecture and product-structure operations.
+The source dispatcher materializes generic V3 operations. The product
+`architecture.author-inspection-drone@3` and
+`model.capture-inspection-drone-part-definitions@1` identities are retired and
+unregistered.
 `baseline.from-approved-brief@1` has no provider invocation and persists its canonical
 capture before publishing the cited root snapshot. `architecture.seed-syson-model@2`
 owns only the fixed SysON project/document/root-package sequence, closed capture,
@@ -606,11 +608,11 @@ content-addressed mandate with no provider call.
 `verify.run-fea-static-proof@3` is the registered isolated CalculiX run after that seal.
 Historical MCP FEA `@1`/`@2` are not registered. Domain contract:
 [isolated CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
-`architecture.author-inspection-drone@3` is restricted to the exact
-`inspection-drone-v4` r2 basis and has published r3: five typed usages and four
+Retired historical `architecture.author-inspection-drone@3` was restricted to the exact
+`inspection-drone-v4` r2 basis and published r3: five typed usages and four
 qualitative requirements with explicit TBDs, without CAD, physics, cost, certification,
-or verdict claims. Its read-only successor,
-`model.capture-inspection-drone-part-definitions@1`, has completed
+or verdict claims. Its retired read-only successor,
+`model.capture-inspection-drone-part-definitions@1`, completed
 `run:queue-drone-v4-product-structure-20260808` and published project revision 23's r4
 snapshot,
 `project:inspection-drone-v4:r4:capture-inspection-drone-v4-part-definitions-7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`.

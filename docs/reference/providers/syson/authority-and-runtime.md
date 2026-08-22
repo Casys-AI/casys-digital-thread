@@ -4,7 +4,7 @@ Audience: both · Diátaxis: reference · Kind: runtime contract
 
 The configured SysON provider advertises 31 tools and six provider views. Digital Thread
 does not hand that inventory to an agent. Registered operations currently compose only
-ten fixed provider tool names, with code-owned arguments and response validators.
+nine fixed provider tool names, with code-owned arguments and response validators.
 
 Authorities:
 
@@ -23,8 +23,6 @@ Authorities:
 | `model.write-sensitivity-edges@1`                   | `syson_element_insert_sysml`, `syson_constraint_extract`                                                                                                    |
 | `verify.evaluate-sensitivity-base@1`                | `syson_constraint_evaluate`                                                                                                                                 |
 | `verify.run-fea-static-proof@3`                     | `syson_constraint_evaluate` after local proof publication                                                                                                   |
-| `architecture.author-inspection-drone@3`            | product-specific insert, children, AQL and `syson_part_structure`                                                                                           |
-| `model.capture-inspection-drone-part-definitions@1` | product-specific `syson_part_structure` read                                                                                                                |
 
 The union is:
 
@@ -36,15 +34,16 @@ syson_element_children
 syson_element_insert_sysml
 syson_element_delete
 syson_query_aql
-syson_part_structure
 syson_constraint_extract
 syson_constraint_evaluate
 ```
 
-The two inspection-drone operations are a fixed product recipe, not a wider generic
-SysML surface. Historical probes may also use `syson_search`, `syson_project_list`,
-`syson_project_delete` or `syson_constraint_solve`; those scripts are not registered
-project operations.
+`architecture.author-inspection-drone@3` and
+`model.capture-inspection-drone-part-definitions@1` are retired and unregistered;
+`syson_part_structure` is no longer composed. Generic SysML uses
+`model.write-architecture@1` or `model.seal-architecture-sysml@1`. Historical probes
+may also use `syson_search`, `syson_project_list`, `syson_project_delete` or
+`syson_constraint_solve`; those scripts are not registered project operations.
 
 The shared backend MCP client is transport-generic and does not enforce a SysON
 allowlist itself. The safety boundary therefore lives in the registered dispatcher and

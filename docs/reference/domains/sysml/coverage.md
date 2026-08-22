@@ -85,6 +85,9 @@ validators, WAL/recovery and the complete configured subset are maintained in th
   neither enrichment nor a replay is a repair API.
 - Treating a source seal, SysON model, requirement capture or successful provider write
   as simulation evidence, a measurement, a compliance claim or an engineering verdict.
+- Product-specific SysML recipes. `architecture.author-inspection-drone@3` and
+  `model.capture-inspection-drone-part-definitions@1` are retired and unregistered.
+  Generic SysML uses `model.write-architecture@1` or `model.seal-architecture-sysml@1`.
 
 ## Extension candidates, not commitments
 

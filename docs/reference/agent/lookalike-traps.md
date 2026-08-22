@@ -15,8 +15,8 @@ microVM: [admitted source isolated execution](../pipeline/admitted-source-isolat
 | `model.write-architecture@1`                     | Server-rendered SysML inserted into SysON                    | An agent-authored SysML parser path                                     |
 | `model.seal-architecture-sysml@1`                | Provider-free Thread-document seal of closed-subset analysis | SysON insertion, `@2` architecture write, or `compile.seal-admission@1` |
 | `sysml-source-capture/1.0`                       | Renderer envelope for the SysON write                        | Agent-authored UTF-8 authority                                          |
-| `architecture.author-inspection-drone@3`         | Product-specific SysON insert of the reviewed V4 drone recipe | Generic `model.write-architecture@1`                                    |
-| `model.capture-inspection-drone-part-definitions@1` | Product-specific r4 read of the exact drone architecture   | Generic `model.capture-part-definitions@1`                              |
+| `architecture.author-inspection-drone@3`         | Retired product-specific SysON insert. Not registered           | Generic `model.write-architecture@1`                                    |
+| `model.capture-inspection-drone-part-definitions@1` | Retired product-specific r4 read. Not registered             | Generic `model.capture-part-definitions@1`                              |
 | `architecture-sysml-source-analysis-capture/1.0` | Agent-authored closed-subset CAS                             | A renderer manifest                                                     |
 
 ## CAD and compile
@@ -59,6 +59,7 @@ the product `.mo`. Same image family `casys/modelica-microsandbox-worker`; kit
 
 | This | Is | Is not |
 | ---- | -- | ------ |
+| Causal `changeKinds` | Document-defined `safeId` tokens from the manifest/source anchors; lexicographically canonical | A code catalog (`electrical-power`/`brightness`) or free prose |
 | `verify.seal-cross-domain-impact-manifest@1` | Provider-free seal of the closed manifest identities | An impact evaluation or a gate-claim transition |
 | `analyze.evaluate-cross-domain-impact@1` | Provider-free documentary recross that **proposes** claim statuses | A human decision, claim mutation, or rerun |
 | `decide.accept-cross-domain-impact@1` | Human-only application of those already-proposed gate-claim statuses onto existing claims | Work-item invalidation/rerun (X07 records those as `none`), X10, or X11 |

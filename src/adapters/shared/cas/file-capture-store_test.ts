@@ -6,8 +6,6 @@ import {
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
   GEOMETRY_SOURCE_CAPTURE_DESCRIPTOR,
-  INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
-  INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   syncCaptureDirectoryChain,
@@ -310,7 +308,7 @@ Deno.test(
     });
     try {
       const store = new FileCaptureStore({
-        ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
+        ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
         directory,
       });
       const text = '{"crash":"recovery"}';
@@ -342,7 +340,7 @@ Deno.test(
     });
     try {
       const descriptor = {
-        ...INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
+        ...PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
         directory,
       };
       const left = new FileCaptureStore(descriptor);

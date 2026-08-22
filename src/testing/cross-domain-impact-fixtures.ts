@@ -162,6 +162,33 @@ export function validCrossDomainImpactManifestBody() {
   };
 }
 
+/** Same closed shape with document-defined kinds that are not a code catalog. */
+export function documentDefinedCrossDomainImpactManifestBody() {
+  const body = validCrossDomainImpactManifestBody();
+  body.id = "impact-manifest-generic-1";
+  body.changeKinds = ["mass-change", "geometry-change"];
+  body.sourceAnchors[0] = {
+    ...body.sourceAnchors[0]!,
+    id: "anchor-mass-change",
+    changeKind: "mass-change",
+  };
+  body.sourceAnchors[1] = {
+    ...body.sourceAnchors[1]!,
+    id: "anchor-geometry-change",
+    changeKind: "geometry-change",
+  };
+  for (const edge of body.causalEdges) {
+    if (edge.fromAnchorId === "anchor-electrical-power") {
+      edge.fromAnchorId = "anchor-mass-change";
+    }
+  }
+  const inspected = body.independenceAssertions[0]?.inspectedSourceAnchors[0];
+  if (inspected?.sourceAnchorId === "anchor-electrical-power") {
+    inspected.sourceAnchorId = "anchor-mass-change";
+  }
+  return body;
+}
+
 export async function validCrossDomainImpactManifest(): Promise<CrossDomainImpactManifest> {
   return await createCrossDomainImpactManifest(validCrossDomainImpactManifestBody());
 }

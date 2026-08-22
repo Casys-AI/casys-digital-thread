@@ -10,7 +10,11 @@ import {
   validateCrossDomainImpactManifestSealCapture,
 } from "./cross-domain-impact-manifest-seal-capture.ts";
 import { deterministicJson, sha256Fingerprint } from "../kernel/deterministic-json.ts";
-import { validCrossDomainImpactManifest } from "../../testing/cross-domain-impact-fixtures.ts";
+import { createCrossDomainImpactManifest } from "./cross-domain-impact-manifest.ts";
+import {
+  documentDefinedCrossDomainImpactManifestBody,
+  validCrossDomainImpactManifest,
+} from "../../testing/cross-domain-impact-fixtures.ts";
 
 Deno.test("cross-domain impact manifest seal MRTR grammar is closed, canonical, and replayable", async () => {
   const admission = await admissionFixture();
@@ -62,8 +66,46 @@ Deno.test("cross-domain impact manifest seal capture retains only exact document
   }));
 });
 
+Deno.test("cross-domain impact seal proposal accepts a document-defined non-lamp change kind", async () => {
+  const admission = await admissionFixtureFrom(
+    await createCrossDomainImpactManifest(documentDefinedCrossDomainImpactManifestBody()),
+  );
+  const parsed = parseCrossDomainImpactManifestSealParameters(
+    encodeCrossDomainImpactManifestSealAdmission(admission),
+  );
+  assertEquals(
+    parsed.sourceAnchors.map((anchor) => anchor.changeKind).toSorted(),
+    ["geometry-change", "mass-change"],
+  );
+});
+
+Deno.test("cross-domain impact seal proposal rejects an empty or unsafe change kind", async () => {
+  const admission = await admissionFixture();
+  for (const changeKind of ["", " ", "mass change", "mass/change"]) {
+    const forged = {
+      ...structuredClone(admission),
+      sourceAnchors: [
+        { ...admission.sourceAnchors[0]!, changeKind },
+        ...admission.sourceAnchors.slice(1),
+      ],
+    };
+    assertThrows(
+      () =>
+        parseCrossDomainImpactManifestSealParameters(
+          encodeCrossDomainImpactManifestSealAdmission(forged),
+        ),
+      TypeError,
+    );
+  }
+});
+
 async function admissionFixture() {
-  const manifest = await validCrossDomainImpactManifest();
+  return await admissionFixtureFrom(await validCrossDomainImpactManifest());
+}
+
+async function admissionFixtureFrom(
+  manifest: Awaited<ReturnType<typeof validCrossDomainImpactManifest>>,
+) {
   const reference = await sha256Fingerprint(manifest);
   return {
     schemaVersion: CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_ADMISSION_SCHEMA,

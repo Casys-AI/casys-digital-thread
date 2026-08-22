@@ -29,8 +29,8 @@ import type {
 } from "../project/engineering-project.ts";
 import {
   CROSS_DOMAIN_IMPACT_BRANCH_IDS,
-  CROSS_DOMAIN_IMPACT_CHANGE_KINDS,
   CROSS_DOMAIN_IMPACT_THREAD_CHANGE_KINDS,
+  parseCrossDomainImpactChangeKind,
   validateCrossDomainImpactManifest,
   type CrossDomainImpactAnchorSourceKind,
   type CrossDomainImpactBranchId,
@@ -672,11 +672,7 @@ function parseFingerprint(value: unknown, path: string): ContentFingerprint {
 }
 
 function parseChangeKind(value: unknown, path: string): CrossDomainImpactChangeKind {
-  const changeKind = nonEmptyText(value, path);
-  if (!CROSS_DOMAIN_IMPACT_CHANGE_KINDS.includes(changeKind as CrossDomainImpactChangeKind)) {
-    throw new TypeError(`${path} must be electrical-power or brightness.`);
-  }
-  return changeKind as CrossDomainImpactChangeKind;
+  return parseCrossDomainImpactChangeKind(value, path);
 }
 
 function parseThreadChangeKind(

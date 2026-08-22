@@ -26,8 +26,6 @@ import {
   DFM_CASE_CAPTURE_DESCRIPTOR,
   DFM_CHECK_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
-  INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
-  INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
   PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
@@ -64,14 +62,8 @@ import { ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION } from "./src/domain
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
 import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "./src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts";
 import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/compile/source/source-analysis-frontend-registry.ts";
-import { FileInspectionDroneV4ArchitectureAttemptStore } from "./src/adapters/inspection-drone/author/file-inspection-drone-v4-architecture-attempt-store.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/project/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/project/approved-brief-baseline-run-executor.ts";
-import { InspectionDroneV4ArchitectureRunExecutor } from "./src/adapters/inspection-drone/author/inspection-drone-v4-architecture-run-executor.ts";
-import { InspectionDroneV4PartDefinitionsRunExecutor } from "./src/adapters/inspection-drone/part-definitions/inspection-drone-v4-part-definitions-run-executor.ts";
-import { FileInspectionDroneV4PartDefinitionsPublicationStore } from "./src/adapters/inspection-drone/part-definitions/file-inspection-drone-v4-part-definitions-publication-store.ts";
-import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "./src/domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
-import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "./src/domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "./src/adapters/architecture/renderer/model-write-architecture-run-executor.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "./src/domain/architecture/part-definitions/part-definitions-capture.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "./src/adapters/cad/canonical/design-write-geometry-run-executor.ts";
@@ -202,14 +194,6 @@ const DEFAULT_SYSON_MODEL_SEED_CAPTURE_DIRECTORY =
   "state/local/syson-model-seed-captures";
 const DEFAULT_SYSON_MODEL_SEED_ATTEMPT_DIRECTORY =
   "state/local/syson-model-seed-attempts";
-const DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DIRECTORY =
-  "state/local/inspection-drone-v4-architecture-captures";
-const DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_ATTEMPT_DIRECTORY =
-  "state/local/inspection-drone-v4-architecture-attempts";
-const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DIRECTORY =
-  "state/local/inspection-drone-v4-part-definitions-captures";
-const DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
-  "state/local/inspection-drone-v4-part-definitions-publications";
 const DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY = "state/local/architecture-captures";
 const DEFAULT_ARCHITECTURE_ATTEMPT_DIRECTORY = "state/local/architecture-attempts";
 const DEFAULT_PART_DEFINITIONS_CAPTURE_DIRECTORY =
@@ -408,10 +392,6 @@ export interface CreateConsoleServerOptions {
   requirementsCaptureDirectory?: string;
   /** Generic model.write-requirements@1 WAL attempt directory. */
   requirementsAttemptDirectory?: string;
-  inspectionDroneV4ArchitectureCaptureDirectory?: string;
-  inspectionDroneV4ArchitectureAttemptDirectory?: string;
-  inspectionDroneV4PartDefinitionsCaptureDirectory?: string;
-  inspectionDroneV4PartDefinitionsPublicationDirectory?: string;
   printabilityCaseCaptureDirectory?: string;
   printabilityAttemptDirectory?: string;
   printabilityObservationCaptureDirectory?: string;
@@ -833,48 +813,6 @@ async function createProjectControl(
     lease,
     liveUpdates,
   });
-  const inspectionDroneV4Architecture = sysonMcpUrl
-    ? new InspectionDroneV4ArchitectureRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      seedCaptures: architectureFoundation.sysonModelSeedCaptures,
-      captures: new FileCaptureStore({
-        ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
-        directory: options.inspectionDroneV4ArchitectureCaptureDirectory ??
-          DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DIRECTORY,
-      }),
-      attempts: new FileInspectionDroneV4ArchitectureAttemptStore(
-        options.inspectionDroneV4ArchitectureAttemptDirectory ??
-          DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_ATTEMPT_DIRECTORY,
-      ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-    })
-    : undefined;
-  const inspectionDroneV4PartDefinitions = sysonMcpUrl
-    ? new InspectionDroneV4PartDefinitionsRunExecutor({
-      projects: runtime.projects,
-      commands: runtime.commands,
-      snapshots: activeThreadSnapshots,
-      architectureCaptures: new FileCaptureStore({
-        ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
-        directory: options.inspectionDroneV4ArchitectureCaptureDirectory ??
-          DEFAULT_INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DIRECTORY,
-      }),
-      captures: new FileCaptureStore({
-        ...INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
-        directory: options.inspectionDroneV4PartDefinitionsCaptureDirectory ??
-          DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DIRECTORY,
-      }),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
-      lease,
-      publications: new FileInspectionDroneV4PartDefinitionsPublicationStore(
-        options.inspectionDroneV4PartDefinitionsPublicationDirectory ??
-          DEFAULT_INSPECTION_DRONE_V4_PART_DEFINITIONS_PUBLICATION_DIRECTORY,
-      ),
-    })
-    : undefined;
   // Generic archive-lineage requires no provider — always available.
   const genericArchiveLineage = new ArchiveLineageRunExecutor({
     projects: runtime.projects,
@@ -1126,18 +1064,6 @@ async function createProjectControl(
             executor: modelicaProject.simulateRunAdmittedModelica,
             unavailableMessage:
               "The server has no admitted Modelica closed-subset isolated runtime configured for this run.",
-          },
-          {
-            operation: INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
-            executor: inspectionDroneV4Architecture,
-            unavailableMessage:
-              "The server has no trusted inspection-drone V4 SysON architecture executor configured for this run.",
-          },
-          {
-            operation: INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
-            executor: inspectionDroneV4PartDefinitions,
-            unavailableMessage:
-              "The server has no trusted inspection-drone V4 PartDefinitions executor configured for this run.",
           },
           {
             operation: MODEL_WRITE_ARCHITECTURE_OPERATION,

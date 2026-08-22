@@ -29,6 +29,8 @@ const RETIRED_DIRECTORIES = [
   "src/contracts",
   "src/domain/modelica/recorded",
   "src/adapters/modelica/recorded",
+  "src/domain/inspection-drone",
+  "src/adapters/inspection-drone",
 ] as const;
 
 /**

@@ -6,8 +6,8 @@
  *  - A subject whose snapshot carries a generic architecture artifact
  *    (URI prefix "casys://architecture-capture/") receives its component catalog
  *    from the generic projector.
- *  - A snapshot with no matching architecture artifact returns `undefined` from
- *    both projectors; the caller must fall through to the static catalog.
+ *  - A snapshot with no matching architecture artifact returns `undefined`;
+ *    the caller must fall through to the static catalog.
  */
 
 import { assertEquals, assertExists, assertStringIncludes } from "@std/assert";

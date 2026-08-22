@@ -195,26 +195,6 @@ export const SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "SysON model-seed",
 };
 
-/** Capture of the bounded qualitative inspection-drone architecture only. */
-export const INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR:
-  CaptureStoreDescriptor<
-    "inspection-drone-v4-architecture"
-  > = {
-    kind: "inspection-drone-v4-architecture",
-    directory: "state/local/inspection-drone-v4-architecture-captures",
-    uriNamespace: "inspection-drone-v4-architecture-capture",
-    label: "Inspection-drone V4 architecture",
-  };
-
-/** Read-only documentary capture of the six reviewed drone PartDefinitions. */
-export const INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR:
-  CaptureStoreDescriptor<"inspection-drone-v4-part-definitions"> = {
-    kind: "inspection-drone-v4-part-definitions",
-    directory: "state/local/inspection-drone-v4-part-definitions-captures",
-    uriNamespace: "inspection-drone-v4-part-definitions-capture",
-    label: "Inspection-drone V4 part definitions",
-  };
-
 /**
  * Generic project-agnostic architecture capture store.
  *

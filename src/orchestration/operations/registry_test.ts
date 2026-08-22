@@ -983,6 +983,35 @@ Deno.test("reviewed operations validate only their declared current plan and que
   assertEquals(wrongBasis.code, "unsupported_basis");
 });
 
+Deno.test("retired inspection-drone operations are neither lookupable nor queueable", () => {
+  const retired = [
+    {
+      id: "architecture.author-inspection-drone",
+      version: "3",
+    },
+    {
+      id: "model.capture-inspection-drone-part-definitions",
+      version: "1",
+    },
+  ] as const;
+  for (const operation of retired) {
+    assertEquals(getRegisteredEngineeringOperation(operation), undefined);
+    const error = assertThrows(
+      () =>
+        validateRegisteredEngineeringOperationInput({
+          operation: {
+            ...operation,
+            bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+          },
+          stage: "queue",
+          basisKind: "thread-snapshot",
+        }),
+      EngineeringOperationRegistryError,
+    );
+    assertEquals(error.code, "unknown_operation");
+  }
+});
+
 Deno.test("retired CM-01 operations are neither lookupable nor queueable", () => {
   const retired = [
     {

@@ -6,7 +6,7 @@
  * "drone", …). The catalog is derived entirely from the architecture capture
  * whose URI starts with `ARCHITECTURE_CAPTURE_URI_PREFIX`. If a snapshot
  * carries no such artifact, the function returns `undefined`, which is the
- * caller's signal to try another projector (e.g., the GEN-01 bounded one).
+ * caller's signal to fall through to a static catalog.
  *
  * Output contract:
  *  - System PartDef → one `assembly` component (id = `<subjectId>:system`).

@@ -228,7 +228,7 @@ export class FileFeaSensitivityAttemptStore {
    * A synchronous solver failure is a KNOWN outcome: the provider answered
    * with an error, no capture will ever arrive. Return the slot to idle so a
    * later resume may re-dispatch, instead of leaving a dispatched slot that
-   * dead-ends every retry as unknown-outcome (observed live on dl05).
+   * dead-ends every retry as unknown-outcome.
    */
   async markSolveFailed(input: {
     readonly projectId: string;

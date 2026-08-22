@@ -15,7 +15,7 @@ import {
   SIGNED_OFFER_SUBJECT_ID,
   signedCatalogOfferFixture,
   snapshotWithAdmissionTool,
-} from "../../../application/use-cases/sensitivity/study/signed-catalog-offer-test-support.ts";
+} from "../../../testing/signed-catalog-offer-test-support.ts";
 import { parseSensitivityStudyDecisionParameters } from "../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";

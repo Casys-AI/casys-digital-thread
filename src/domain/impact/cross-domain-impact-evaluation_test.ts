@@ -6,6 +6,7 @@ import {
 } from "./cross-domain-impact-evaluation.ts";
 import { createCrossDomainImpactManifest } from "./cross-domain-impact-manifest.ts";
 import {
+  documentDefinedCrossDomainImpactManifestBody,
   impactFingerprint,
   validCrossDomainImpactEvaluationInput,
   validCrossDomainImpactManifestBody,
@@ -162,5 +163,37 @@ Deno.test("cross-domain evaluation exposes only the canonical gate claim status 
     () => validateCrossDomainImpactEvaluation(forged),
     TypeError,
     "impact-unresolved",
+  );
+});
+
+Deno.test("cross-domain evaluation recrosses a document-defined non-lamp change kind", async () => {
+  const manifest = await createCrossDomainImpactManifest(
+    documentDefinedCrossDomainImpactManifestBody(),
+  );
+  const mass = manifest.sourceAnchors.find((item) => item.id === "anchor-mass-change")!;
+  const input = await validCrossDomainImpactEvaluationInput();
+  const result = await evaluateCrossDomainImpact({
+    ...input,
+    manifest,
+    project: manifest.project,
+    subject: manifest.subject,
+    basis: manifest.basis,
+    changedSources: [{
+      sourceAnchorId: mass.id,
+      changeKind: mass.changeKind,
+      threadChange: mass.threadChange,
+      source: mass.source,
+    }],
+  });
+
+  assertEquals(result.branches, [
+    { branchId: "electrical", status: "invalidated" },
+    { branchId: "thermal", status: "invalidated" },
+    { branchId: "mechanical", status: "carried-forward" },
+  ]);
+  assertEquals(await validateCrossDomainImpactEvaluation(result), result);
+  assertEquals(
+    result.changedSources.map((item) => item.changeKind),
+    ["mass-change"],
   );
 });

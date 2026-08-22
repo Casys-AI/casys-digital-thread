@@ -13,7 +13,7 @@ import {
   SIGNED_OFFER_CASE_ID,
   SIGNED_OFFER_PROJECT_ID,
   signedCatalogOfferFixture,
-} from "./signed-catalog-offer-test-support.ts";
+} from "../../../../testing/signed-catalog-offer-test-support.ts";
 
 const AT = SIGNED_OFFER_AT;
 const PROJECT_ID = SIGNED_OFFER_PROJECT_ID;

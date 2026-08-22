@@ -167,15 +167,16 @@ retried. The r2 result records only an editable container identity, not a system
 architecture, requirement, CAD artifact, simulation, measurement, verification result,
 or compliance claim.
 
-The first reviewed continuation beyond r2 is `architecture.author-inspection-drone@3`,
-bound to `inspection-drone-v4`. It has already published r3 from its r1 documentary
-baseline and r2 SysON seed: a qualitative architecture with five typed usages and four
+The first reviewed continuation beyond r2 was the now-retired
+`architecture.author-inspection-drone@3`, bound to `inspection-drone-v4`. It published
+r3 from its r1 documentary baseline and r2 SysON seed: a qualitative architecture with
+five typed usages and four
 requirements whose unresolved points remain explicit. It establishes neither CAD,
 physical analysis, cost, compliance, certification, nor a requirement verdict. Other
 architecture, CAD, physics, cost, compliance, or verified-requirement capabilities still
 need their own reviewed executor and output contract.
 
-Its separate read-only product-structure successor,
+Its separate retired read-only product-structure successor,
 `model.capture-inspection-drone-part-definitions@1`, completed
 `run:queue-drone-v4-product-structure-20260808`. Project revision 23 now exposes r4,
 `project:inspection-drone-v4:r4:capture-inspection-drone-v4-part-definitions-7aa8c92216c3d07bde4a0b3890a9e722446abda5c4062bb5216f0d0da20651bd`,

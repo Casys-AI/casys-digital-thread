@@ -16,8 +16,6 @@ import {
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
-  INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
-  INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
@@ -40,8 +38,6 @@ import {
   OrderedExactThreadSnapshotReader,
 } from "../../src/adapters/shared/stores/engineering-thread-snapshot-resolver.ts";
 import { threadSnapshotDescendsFrom } from "../../src/adapters/shared/stores/thread-snapshot-lineage.ts";
-import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../src/domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
-import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../src/domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/architecture/renderer/architecture-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/cad/canonical/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-proposal.ts";
@@ -102,7 +98,6 @@ import {
   type ThreadComponentCatalog,
   validateThreadComponentCatalog,
 } from "../../src/domain/thread/thread-component-catalog.ts";
-import { resolveInspectionDroneV4ProductStructureCatalog } from "../../src/adapters/inspection-drone/part-definitions/inspection-drone-v4-product-structure-catalog.ts";
 import type {
   GenericArchitectureCaptureReader,
 } from "../../src/adapters/architecture/renderer/product-structure-catalog.ts";
@@ -664,8 +659,6 @@ async function resolveCurrentThreadSnapshot(
  */
 const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   SYSON_MODEL_SEED_OPERATION,
-  INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
-  INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
@@ -980,9 +973,6 @@ if (import.meta.main) {
   const liveUpdateDirectory = cliArgs["live-update-dir"] ??
     "state/local/live-thread-updates";
   const focusDirectory = cliArgs["focus-dir"] ?? "state/local/cockpit-focus";
-  const inspectionDroneV4PartDefinitionsCaptureDirectory =
-    cliArgs["inspection-drone-v4-part-definitions-capture-dir"] ??
-      "state/local/inspection-drone-v4-part-definitions-captures";
   const architectureCaptureDirectory = cliArgs["architecture-capture-dir"] ??
     ARCHITECTURE_CAPTURE_DESCRIPTOR.directory;
   const geometryCaptureDirectory = cliArgs["geometry-capture-dir"] ??
@@ -997,15 +987,6 @@ if (import.meta.main) {
   const cockpitFocus = workspaceId
     ? new FileCockpitFocusStore(focusDirectory)
     : undefined;
-  const inspectionDroneV4PartDefinitionsCaptures = new FileCaptureStore({
-    ...INSPECTION_DRONE_V4_PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
-    directory: inspectionDroneV4PartDefinitionsCaptureDirectory,
-  });
-  const inspectionDroneV4ArchitectureCaptures = new FileCaptureStore({
-    ...INSPECTION_DRONE_V4_ARCHITECTURE_CAPTURE_DESCRIPTOR,
-    directory: cliArgs["inspection-drone-v4-architecture-capture-dir"] ??
-      "state/local/inspection-drone-v4-architecture-captures",
-  });
   const archCaptures = new FileCaptureStore({
     ...ARCHITECTURE_CAPTURE_DESCRIPTOR,
     directory: architectureCaptureDirectory,
@@ -1118,13 +1099,7 @@ if (import.meta.main) {
         `config/thread-subjects/${resolvedSubjectId}.components.json`,
       ),
     componentCatalogForSnapshot: async (snapshot) =>
-      await resolveInspectionDroneV4ProductStructureCatalog(
-        snapshot,
-        {
-          architecture: inspectionDroneV4ArchitectureCaptures,
-          partDefinitions: inspectionDroneV4PartDefinitionsCaptures,
-        },
-      ) ?? await resolveSnapshotComponentCatalog(
+      await resolveSnapshotComponentCatalog(
         snapshot,
         archCaptures,
         geometryCaptures,

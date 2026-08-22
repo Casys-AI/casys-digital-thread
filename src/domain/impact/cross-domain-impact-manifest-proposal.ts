@@ -27,6 +27,7 @@ import type {
 import {
   CROSS_DOMAIN_IMPACT_BRANCH_IDS,
   CROSS_DOMAIN_IMPACT_MANIFEST_SCHEMA,
+  parseCrossDomainImpactChangeKind,
   type CrossDomainImpactBranchId,
   type CrossDomainImpactSourceAnchor,
 } from "./cross-domain-impact-manifest.ts";
@@ -444,10 +445,7 @@ function parseIdentity(value: unknown, path: string): { id: string; fingerprint:
 
 function parseSourceAnchor(value: unknown, path: string): CrossDomainImpactSourceAnchor {
   const input = exactRecord(value, ["id", "changeKind", "role", "threadChange", "source"], path);
-  const changeKind = nonEmptyText(input.changeKind, `${path}.changeKind`);
-  if (changeKind !== "electrical-power" && changeKind !== "brightness") {
-    throw new TypeError(`${path}.changeKind must use the closed impact vocabulary.`);
-  }
+  const changeKind = parseCrossDomainImpactChangeKind(input.changeKind, `${path}.changeKind`);
   literalValue(input.role, "reviewed-change-source", `${path}.role`);
   const change = exactRecord(input.threadChange, ["id", "kind", "fingerprint"], `${path}.threadChange`);
   const kind = nonEmptyText(change.kind, `${path}.threadChange.kind`);
@@ -461,7 +459,7 @@ function parseSourceAnchor(value: unknown, path: string): CrossDomainImpactSourc
   }
   return {
     id: safeId(input.id, `${path}.id`),
-    changeKind: changeKind as CrossDomainImpactSourceAnchor["changeKind"],
+    changeKind,
     role: "reviewed-change-source",
     threadChange: {
       id: safeId(change.id, `${path}.threadChange.id`),

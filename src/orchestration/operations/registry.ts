@@ -32,7 +32,6 @@ import {
   DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION,
   DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
 } from "../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
-import { listInspectionDroneV4OperationDescriptors } from "./inspection-drone-v4.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "./fea-isolated-static-proof.ts";
 import {
@@ -1115,7 +1114,6 @@ const OPERATIONS = [
       },
     ],
   },
-  ...listInspectionDroneV4OperationDescriptors(),
   // Isolated FEA @3 descriptors become reachable only with the
   // composition-root resolver/sealer and fixed executors. Their provider
   // details remain absent from this planning boundary.

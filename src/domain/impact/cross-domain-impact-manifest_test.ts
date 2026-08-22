@@ -4,6 +4,7 @@ import {
   validateCrossDomainImpactManifest,
 } from "./cross-domain-impact-manifest.ts";
 import {
+  documentDefinedCrossDomainImpactManifestBody,
   impactFingerprint,
   validCrossDomainImpactManifest,
   validCrossDomainImpactManifestBody,
@@ -14,7 +15,7 @@ Deno.test("cross-domain impact manifest accepts a closed canonical valid declara
   const reread = await validateCrossDomainImpactManifest(manifest);
 
   assertEquals(reread.schemaVersion, "cross-domain-impact-manifest/1.0");
-  assertEquals(reread.changeKinds, ["electrical-power", "brightness"]);
+  assertEquals(reread.changeKinds, ["brightness", "electrical-power"]);
   assertEquals(reread.branches.map((item) => item.id), [
     "electrical",
     "thermal",
@@ -85,15 +86,31 @@ Deno.test("cross-domain impact manifest recomputes and rejects a mismatched body
   );
 });
 
-Deno.test("cross-domain impact manifest keeps causal concepts separate from Thread mutation verbs", async () => {
-  const body = validCrossDomainImpactManifestBody();
-  body.changeKinds[0] = "modified";
+Deno.test("cross-domain impact manifest canonicalizes document-defined change kinds lexicographically", async () => {
+  const body = documentDefinedCrossDomainImpactManifestBody();
+  const manifest = await createCrossDomainImpactManifest(body);
+  const reread = await validateCrossDomainImpactManifest(manifest);
 
-  await assertRejects(
-    () => createCrossDomainImpactManifest(body),
-    TypeError,
-    "electrical-power or brightness",
+  assertEquals(reread.changeKinds, ["geometry-change", "mass-change"]);
+  assertEquals(
+    reread.sourceAnchors.map((anchor) => anchor.changeKind).toSorted(),
+    ["geometry-change", "mass-change"],
   );
+});
+
+Deno.test("cross-domain impact manifest rejects empty or unsafe causal change kinds", async () => {
+  for (const changeKind of ["", " ", "mass change", "mass/change", "-mass"]) {
+    const listed = documentDefinedCrossDomainImpactManifestBody();
+    listed.changeKinds[0] = changeKind;
+    await assertRejects(() => createCrossDomainImpactManifest(listed), TypeError);
+
+    const anchored = documentDefinedCrossDomainImpactManifestBody();
+    anchored.sourceAnchors[0] = {
+      ...anchored.sourceAnchors[0]!,
+      changeKind,
+    };
+    await assertRejects(() => createCrossDomainImpactManifest(anchored), TypeError);
+  }
 });
 
 Deno.test("cross-domain impact manifest rejects a source anchor for an undeclared semantic change kind", async () => {

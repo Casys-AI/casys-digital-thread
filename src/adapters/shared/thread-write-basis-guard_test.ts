@@ -31,8 +31,6 @@ import { SIMULATE_RUN_QUALIFIED_MODELICA_KIT_OPERATION } from "../../domain/mode
 import { SIMULATE_RUN_ADMITTED_MODELICA_OPERATION } from "../../domain/modelica/admitted/run-proposal.ts";
 import { ARCHIVE_LINEAGE_OPERATION } from "../../domain/thread/thread-retirement.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
-import { INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION } from "../../domain/inspection-drone/author/inspection-drone-v4-architecture.ts";
-import { INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION } from "../../domain/inspection-drone/part-definitions/inspection-drone-v4-part-definitions.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
@@ -214,13 +212,13 @@ Deno.test("local Modelica and CalculiX writers share the same Thread-basis exclu
   }
 });
 
-Deno.test("SysON seed and inspection writers share the technical-compilation basis exclusion", async () => {
+Deno.test("SysON seed and generic architecture writers share the technical-compilation basis exclusion", async () => {
   const current = run("admission", "queued");
   for (
     const [index, operation] of [
       SYSON_MODEL_SEED_OPERATION,
-      INSPECTION_DRONE_V4_ARCHITECTURE_OPERATION,
-      INSPECTION_DRONE_V4_PART_DEFINITIONS_OPERATION,
+      MODEL_WRITE_ARCHITECTURE_OPERATION,
+      MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
     ].entries()
   ) {
     const sibling = {
