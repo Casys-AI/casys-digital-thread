@@ -13,10 +13,15 @@ import type {
   MechanicalPreservationCloseoutReader,
 } from "../../ports/out/impact/mechanical-preservation-closeout-reader.ts";
 import {
+  GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
+  GEOMETRY_BINARY_TRACE_RATIONALE,
+} from "../../../domain/cad/canonical/geometry-bundle.ts";
+import {
   DESIGN_PREVIEW_GEOMETRY_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
 } from "../../../domain/cad/canonical/geometry-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../../domain/cad/isolated/build123d-execution-proposal.ts";
+import { createCrossDomainImpactManifest } from "../../../domain/impact/cross-domain-impact-manifest.ts";
 import { DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION } from "../../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "../../../domain/fea/seal-case/fea-proof-proposal.ts";
 import {
@@ -49,6 +54,7 @@ import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-v
 import {
   impactFingerprint,
   validCrossDomainImpactEvaluationInput,
+  validCrossDomainImpactManifestBody,
 } from "../../../testing/cross-domain-impact-fixtures.ts";
 import {
   MECHANICAL_PRESERVATION_CLOSEOUT_ACCEPT_TOOL,
@@ -74,8 +80,15 @@ const PROOF_RUN = "run-proof-seal";
 const PROOF_WORK = "work-proof-seal";
 const GEOMETRY_RUN = "run-geometry";
 const GEOMETRY_WORK = "work-geometry";
+const EXPORT_RUN = "run-build123d-export";
+const GEOMETRY_DIGEST = impactFingerprint("d").digest;
+const GEOMETRY_ID = `geometry-${GEOMETRY_DIGEST}`;
 const CLOSEOUT_FINGERPRINT = impactFingerprint("3");
 const CLOSEOUT_ID = `evaluation-closeout-${CLOSEOUT_FINGERPRINT.digest}`;
+
+function canonicalStepArtifactId(stepDigest: string) {
+  return `cad-asset-${GEOMETRY_DIGEST}-definition-0-0-${stepDigest}`;
+}
 
 Deno.test("X11 carries FEA forward only with exact current assertion, consumptions and accept closeout", async () => {
   const world = await worldFixture();
@@ -112,10 +125,12 @@ Deno.test("X11 stays impact-unresolved when a FEA input fingerprint is replaced"
   const mutated: ThreadSnapshot = {
     ...raw,
     artifacts: raw.artifacts.map((item) =>
-      item.id === "mechanical-step-input" ? { ...item, fingerprint: replaced } : item
+      item.kind === "step" ? { ...item, fingerprint: replaced } : item
     ),
     consumptions: raw.consumptions.map((item) =>
-      item.artifactId === "mechanical-step-input"
+      raw.artifacts.some((artifact) =>
+          artifact.kind === "step" && artifact.id === item.artifactId
+        )
         ? { ...item, observedFingerprint: replaced }
         : item
     ),
@@ -227,14 +242,30 @@ Deno.test("X11 stays impact-unresolved when zero or multiple accepted closeouts 
   await assertNeverCarriedForward(await preserve(none));
 });
 
-Deno.test("X11 stays impact-unresolved when the STEP producer is isolated or arbitrary rather than canonical write-geometry", async () => {
+Deno.test("X11 stays impact-unresolved when the STEP producer is isolated or preview rather than the canonical sandbox export", async () => {
   const isolated = await worldFixture();
   rebindCanonicalStepProducer(isolated, DESIGN_EXECUTE_BUILD123D_OPERATION);
   await assertNeverCarriedForward(await preserve(isolated));
 
-  const arbitrary = await worldFixture();
-  rebindCanonicalStepProducer(arbitrary, DESIGN_PREVIEW_GEOMETRY_OPERATION);
-  await assertNeverCarriedForward(await preserve(arbitrary));
+  const preview = await worldFixture();
+  rebindCanonicalStepProducer(preview, DESIGN_PREVIEW_GEOMETRY_OPERATION);
+  await assertNeverCarriedForward(await preserve(preview));
+});
+
+Deno.test("X11 stays impact-unresolved when write-geometry attaches the STEP instead of the cad-model", async () => {
+  const world = await worldFixture();
+  attachGeometryEvidence(world, stepId(world));
+  await assertNeverCarriedForward(await preserve(world));
+});
+
+Deno.test("X11 stays impact-unresolved when STEP ownership is ambiguous or tampered", async () => {
+  const ambiguous = await worldFixture();
+  addExtraStepTrace(ambiguous);
+  await assertNeverCarriedForward(await preserve(ambiguous));
+
+  const tampered = await worldFixture();
+  retargetStepTrace(tampered);
+  await assertNeverCarriedForward(await preserve(tampered));
 });
 
 Deno.test("X11 does not treat a sibling FEA evidence artifact as the closeout evaluationCapture", async () => {
@@ -267,6 +298,22 @@ Deno.test("X11 stays impact-unresolved for a nonexistent, foreign, or wrong-oper
     (item) => item.id !== CLOSEOUT_RUN,
   );
   await assertNeverCarriedForward(await preserve(missingCloseout));
+
+  const missingGeometry = await worldFixture();
+  missingGeometry.project.agentRuns = missingGeometry.project.agentRuns.filter(
+    (item) => item.id !== GEOMETRY_RUN,
+  );
+  await assertNeverCarriedForward(await preserve(missingGeometry));
+
+  const wrongGeometry = await worldFixture();
+  const geometryWork = wrongGeometry.project.workItems.find((item) =>
+    item.id === GEOMETRY_WORK
+  )!;
+  Object.assign(geometryWork.operation!, {
+    id: DESIGN_EXECUTE_BUILD123D_OPERATION.id,
+    version: DESIGN_EXECUTE_BUILD123D_OPERATION.version,
+  });
+  await assertNeverCarriedForward(await preserve(wrongGeometry));
 });
 
 Deno.test("X11 stays unresolved when X09, X08 or closeout artifact metadata or inputArtifactIds are tampered", async () => {
@@ -545,15 +592,104 @@ function rebindCanonicalStepProducer(
     validateThreadSnapshot({
       ...raw,
       artifacts: raw.artifacts.map((item) =>
-        item.kind === "step" ? { ...item, producer: { ...item.producer, tool } } : item
+        item.kind === "step"
+          ? {
+            ...item,
+            producer: {
+              serverId: "digital-thread",
+              tool,
+              runId: item.producer.runId,
+            },
+          }
+          : item
       ),
     }),
   );
+}
+
+function attachGeometryEvidence(
+  world: Awaited<ReturnType<typeof worldFixture>>,
+  artifactId: string,
+) {
   const work = world.project.workItems.find((item) => item.id === GEOMETRY_WORK)!;
-  Object.assign(work.operation!, {
-    id: operation.id,
-    version: operation.version,
+  const run = world.project.agentRuns.find((item) => item.id === GEOMETRY_RUN)!;
+  Object.assign(work, {
+    evidenceRefs: work.evidenceRefs.map((reference) => ({
+      ...reference,
+      id: artifactId,
+    })),
   });
+  Object.assign(run, {
+    evidenceRefs: run.evidenceRefs.map((reference) => ({
+      ...reference,
+      id: artifactId,
+    })),
+  });
+}
+
+function addExtraStepTrace(world: Awaited<ReturnType<typeof worldFixture>>) {
+  const raw = JSON.parse(JSON.stringify(world.head)) as ThreadSnapshot;
+  const step = raw.artifacts.find((item) => item.kind === "step")!;
+  replaceHead(
+    world,
+    validateThreadSnapshot({
+      ...raw,
+      provenance: [
+        ...raw.provenance,
+        {
+          id: `traces-${step.id}-from-decoy`,
+          relation: "traces_to",
+          from: { kind: "artifact", id: step.id },
+          to: { kind: "artifact", id: GEOMETRY_ID },
+          rationale: GEOMETRY_BINARY_TRACE_RATIONALE,
+        },
+      ],
+    }),
+  );
+}
+
+function retargetStepTrace(world: Awaited<ReturnType<typeof worldFixture>>) {
+  const raw = JSON.parse(JSON.stringify(world.head)) as ThreadSnapshot;
+  const step = raw.artifacts.find((item) => item.kind === "step")!;
+  const decoyDigest = "e".repeat(64);
+  const decoyId = `geometry-${decoyDigest}`;
+  const decoy: ThreadArtifact = {
+    id: decoyId,
+    name: "Decoy geometry capture",
+    kind: "cad-model",
+    version: decoyDigest,
+    fingerprint: { algorithm: "sha256", digest: decoyDigest },
+    uri: `casys://geometry-capture/sha256/${decoyDigest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool:
+        `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
+      runId: "run-decoy-geometry",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
+  };
+  replaceHead(
+    world,
+    validateThreadSnapshot({
+      ...raw,
+      artifacts: [...raw.artifacts, decoy],
+      provenance: raw.provenance.map((link) =>
+        link.id === `traces-${step.id}-from-${GEOMETRY_ID}`
+          ? {
+            ...link,
+            id: `traces-${step.id}-from-${decoyId}`,
+            to: { kind: "artifact" as const, id: decoyId },
+          }
+          : link
+      ),
+    }),
+  );
+}
+
+function stepId(world: Awaited<ReturnType<typeof worldFixture>>) {
+  return world.head.artifacts.find((item) => item.kind === "step")!.id;
 }
 
 function addSiblingFeaEvidence(
@@ -631,6 +767,39 @@ function tamperArtifact(
   });
 }
 
+async function preservationEvaluationInput() {
+  const body = validCrossDomainImpactManifestBody();
+  body.independenceAssertions = body.independenceAssertions.map((assertion) => ({
+    ...assertion,
+    inspectedConsumptions: assertion.inspectedConsumptions.map((item) => ({
+      ...item,
+      input: {
+        ...item.input,
+        id: canonicalStepArtifactId(item.input.fingerprint.digest),
+      },
+    })),
+  }));
+  const manifest = await createCrossDomainImpactManifest(body);
+  const input = await validCrossDomainImpactEvaluationInput();
+  return {
+    ...input,
+    manifest,
+    project: manifest.project,
+    subject: manifest.subject,
+    basis: manifest.basis,
+    mechanicalEvidence: {
+      ...input.mechanicalEvidence!,
+      consumptions: input.mechanicalEvidence!.consumptions.map((item) => ({
+        ...item,
+        input: {
+          ...item.input,
+          id: canonicalStepArtifactId(item.input.fingerprint.digest),
+        },
+      })),
+    },
+  };
+}
+
 async function worldFixture(): Promise<{
   readonly useCase: PrepareMechanicalPreservation;
   readonly project: MutableProject;
@@ -648,7 +817,7 @@ async function worldFixture(): Promise<{
     }>;
   };
 }> {
-  const evaluationInput = await validCrossDomainImpactEvaluationInput();
+  const evaluationInput = await preservationEvaluationInput();
   const evaluation = await evaluateCrossDomainImpact(evaluationInput);
   const fea = validFeaEvidence(evaluation);
   const evaluationCapture = await evaluationCaptureFixture(evaluationInput, evaluation);
@@ -737,7 +906,7 @@ async function worldFixture(): Promise<{
           canonicalStep: {
             id: fea.canonicalStep.id,
             fingerprint: fea.canonicalStep.fingerprint,
-            producerRunId: GEOMETRY_RUN,
+            producerRunId: EXPORT_RUN,
           },
           sealedProof: {
             id: fea.sealedProof.id,
@@ -941,19 +1110,19 @@ function rootSnapshot(
         freshness: fresh(),
       };
     }
-    if (input.id === "mechanical-step-input") {
+    if (input.id === fea.canonicalStep.id) {
       return {
         id: input.id,
-        name: input.id,
+        name: "Authoritative STEP",
         kind: "step" as const,
-        version: "1",
+        version: input.fingerprint.digest,
         fingerprint: input.fingerprint,
+        uri: `/api/thread/assets/${input.fingerprint.digest}.step`,
         mediaType: "model/step",
         producer: {
-          serverId: "digital-thread",
-          tool:
-            `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
-          runId: "run-geometry",
+          serverId: "build123d-sandbox",
+          tool: "build123d_export",
+          runId: EXPORT_RUN,
         },
         inputArtifactIds: [],
         freshness: fresh(),
@@ -977,6 +1146,23 @@ function rootSnapshot(
       inputArtifactIds: [],
       freshness: fresh(),
     };
+  });
+  artifacts.push({
+    id: GEOMETRY_ID,
+    name: "Canonical geometry capture",
+    kind: "cad-model",
+    version: GEOMETRY_DIGEST,
+    fingerprint: { algorithm: "sha256", digest: GEOMETRY_DIGEST },
+    uri: `casys://geometry-capture/sha256/${GEOMETRY_DIGEST}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool:
+        `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
+      runId: GEOMETRY_RUN,
+    },
+    inputArtifactIds: [],
+    freshness: fresh(),
   });
   artifacts.push({
     id: fea.sealedProof.id,
@@ -1071,6 +1257,31 @@ function rootSnapshot(
       });
     }
   }
+  const geometry = artifacts.find((artifact) => artifact.id === GEOMETRY_ID)!;
+  const step = artifacts.find((artifact) => artifact.id === fea.canonicalStep.id)!;
+  const binaryConsumptionId = `consume-${geometry.id}-by-${step.id}`;
+  consumptions.push({
+    id: binaryConsumptionId,
+    artifactId: geometry.id,
+    consumer: geometry.producer,
+    observedFingerprint: geometry.fingerprint,
+    verifiedAt: AT,
+    status: "verified",
+  });
+  provenance.push({
+    id: `traces-${step.id}-from-${geometry.id}`,
+    relation: "traces_to",
+    from: { kind: "artifact", id: step.id },
+    to: { kind: "artifact", id: geometry.id },
+    rationale: GEOMETRY_BINARY_TRACE_RATIONALE,
+  });
+  provenance.push({
+    id: `uses-${binaryConsumptionId}`,
+    relation: "uses",
+    from: { kind: "consumption", id: binaryConsumptionId },
+    to: { kind: "artifact", id: geometry.id },
+    rationale: GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
+  });
   return validateThreadSnapshot({
     schemaVersion: "1.0",
     id: "thread-preservation-r1",
@@ -1377,7 +1588,7 @@ function projectFixture(
         GEOMETRY_WORK,
         DESIGN_WRITE_GEOMETRY_OPERATION,
         r1,
-        [fea.canonicalStep.id],
+        [GEOMETRY_ID],
       ),
     ],
     agentRuns: [
@@ -1436,7 +1647,7 @@ function projectFixture(
       producerRun(FEA_RUN, FEA_WORK, r1, [fea.execution.id, fea.l4Evaluation.id]),
       producerRun(CLOSEOUT_RUN, CLOSEOUT_WORK, r1, [CLOSEOUT_ID]),
       producerRun(PROOF_RUN, PROOF_WORK, r1, [fea.sealedProof.id]),
-      producerRun(GEOMETRY_RUN, GEOMETRY_WORK, r1, [fea.canonicalStep.id]),
+      producerRun(GEOMETRY_RUN, GEOMETRY_WORK, r1, [GEOMETRY_ID]),
     ],
     decisions: [],
     approvals: [],

@@ -215,9 +215,11 @@ evidence from that assertion/X08 recross. Unrelated accepted closeouts for other
 executions do not block; zero or multiple closeouts for the same asserted evidence stay
 `impact-unresolved`. That closeout's named identities (`canonicalStep`, `sealedProof`,
 `executionEvidence`, `evaluationCapture`) select the FEA artifacts; a sibling evidence
-from the same FEA run is not an L4 substitute. Canonical STEP is recrossed only as
-`design.write-geometry@1`; an isolated or arbitrary STEP producer stays
-`impact-unresolved`. Thread consumptions are recrossed from the snapshot
+from the same FEA run is not an L4 substitute. Canonical STEP is recrossed as the
+unique cad-asset sibling owned by the cad-model attached to a completed
+`design.write-geometry@1` run; the STEP producer is the sandbox export, not that
+write-geometry evidence. An isolated, preview, arbitrary, or ambiguously owned STEP
+stays `impact-unresolved`. Thread consumptions are recrossed from the snapshot
 (`consume-<input>-by-<closeout>`), never invented from the closeout JSON. Producer runs
 are recrossed against the project ledger. `carried-forward` is legal only when there is
 no mechanical causal edge and the assertion still covers those exact FEA inputs;

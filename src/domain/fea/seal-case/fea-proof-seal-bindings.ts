@@ -159,7 +159,12 @@ export function resolveFeaProofSealThreadBindings(
   };
 }
 
-function resolveGeometryForStep(
+/**
+ * Exact Thread join from a catalogued part STEP to its owning geometry
+ * capture. `cad-asset-<digest>-definition-…` and `cad-asset-<digest>-target-…`
+ * name `geometry-<digest>`; assembly or opaque STEP ids stay absent.
+ */
+export function resolveGeometryForStep(
   snapshot: ThreadSnapshot,
   step: ThreadArtifact,
 ):

@@ -3,8 +3,9 @@
  *
  * The unique accepted closeout naming the asserted mechanical execution
  * drives FEA resolution. Thread consumptions are reread, never invented from
- * JSON. Canonical STEP is recrossed only as design.write-geometry@1. Producer
- * runs are recrossed against the EngineeringProject ledger.
+ * JSON. Canonical STEP is the cad-asset sibling owned by the cad-model
+ * attached to a completed design.write-geometry@1 run. Producer runs are
+ * recrossed against the EngineeringProject ledger.
  */
 
 import type { MechanicalPreservationCloseoutFacts } from "../../ports/out/impact/mechanical-preservation-closeout-reader.ts";
@@ -26,8 +27,13 @@ import type {
   CrossDomainImpactManifest,
   CrossDomainImpactReference,
 } from "../../../domain/impact/cross-domain-impact-manifest.ts";
+import {
+  GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
+  GEOMETRY_BINARY_TRACE_RATIONALE,
+} from "../../../domain/cad/canonical/geometry-bundle.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
 import { VERIFY_SEAL_PROOF_CASE_OPERATION } from "../../../domain/fea/seal-case/fea-proof-proposal.ts";
+import { resolveGeometryForStep } from "../../../domain/fea/seal-case/fea-proof-seal-bindings.ts";
 import { DECIDE_ACCEPT_EVALUATION_CLOSEOUT_OPERATION } from "../../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import {
   deterministicJson,
@@ -146,6 +152,55 @@ export function uniqueArtifact(
 ): ThreadArtifact | undefined {
   const matches = snapshot.artifacts.filter((artifact) => artifact.id === id);
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * Canonical STEP is the sandbox-exported cad-asset sibling of the unique
+ * cad-model attached to a completed design.write-geometry@1 run. The STEP
+ * producer is never that write-geometry run, and the STEP id is never the
+ * geometry-run evidence.
+ */
+export function recrossCanonicalGeometryStep(
+  project: EngineeringProjectSnapshot,
+  snapshot: ThreadSnapshot,
+  step: ThreadArtifact,
+  expectedProducerRunId: string,
+): boolean {
+  const archived = archivedRefKeys(snapshot);
+  const present = uniqueArtifact(snapshot, step.id);
+  if (
+    !present ||
+    !fingerprintsEqual(present.fingerprint, step.fingerprint) ||
+    archived.has(`artifact:${step.id}`) ||
+    step.freshness.status !== "fresh" ||
+    step.kind !== "step" ||
+    step.mediaType !== "model/step" ||
+    step.version !== step.fingerprint.digest ||
+    step.producer.runId !== expectedProducerRunId ||
+    step.producer.serverId !== "build123d-sandbox" ||
+    step.producer.tool !== "build123d_export" ||
+    step.inputArtifactIds.length !== 0
+  ) {
+    return false;
+  }
+  const geometry = resolveGeometryForStep(snapshot, step);
+  if (geometry.status !== "one") return false;
+  const capture = geometry.artifact;
+  if (
+    archived.has(`artifact:${capture.id}`) ||
+    capture.id !== `geometry-${capture.fingerprint.digest}` ||
+    capture.kind !== "cad-model" ||
+    capture.mediaType !== "application/json" ||
+    !recrossUniqueAttachedProducerRun(
+      project,
+      snapshot,
+      capture,
+      DESIGN_WRITE_GEOMETRY_OPERATION,
+    )
+  ) {
+    return false;
+  }
+  return recrossCanonicalStepSiblingOwnership(snapshot, step, capture);
 }
 
 export function recrossAttachedProducerRun(
@@ -387,11 +442,12 @@ export function recrossFeaFromCloseout(
     return undefined;
   }
   if (
-    canonicalStep.kind !== "step" ||
-    canonicalStep.mediaType !== "model/step" ||
-    canonicalStep.producer.runId !== facts.inputs.canonicalStep.producerRunId ||
-    canonicalStep.producer.tool !==
-      `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`
+    !recrossCanonicalGeometryStep(
+      project,
+      snapshot,
+      canonicalStep,
+      facts.inputs.canonicalStep.producerRunId,
+    )
   ) {
     return undefined;
   }
@@ -413,12 +469,6 @@ export function recrossFeaFromCloseout(
       snapshot,
       sealedProof,
       VERIFY_SEAL_PROOF_CASE_OPERATION,
-    ) ||
-    !recrossAttachedProducerRun(
-      project,
-      snapshot,
-      canonicalStep,
-      DESIGN_WRITE_GEOMETRY_OPERATION,
     )
   ) {
     return undefined;
@@ -565,6 +615,71 @@ function recrossInspectedFeaConsumptions(
     return undefined;
   }
   return recrossed;
+}
+
+function recrossUniqueAttachedProducerRun(
+  project: EngineeringProjectSnapshot,
+  current: ThreadSnapshot,
+  artifact: ThreadArtifact,
+  operation: Pick<EngineeringOperationRef, "id" | "version">,
+): boolean {
+  if (!recrossAttachedProducerRun(project, current, artifact, operation)) {
+    return false;
+  }
+  const run = project.agentRuns.find((item) => item.id === artifact.producer.runId);
+  const workItem = run
+    ? project.workItems.find((item) => item.id === run.workItemId)
+    : undefined;
+  return !!run && !!workItem &&
+    run.evidenceRefs.length === 1 &&
+    workItem.evidenceRefs.length === 1;
+}
+
+function recrossCanonicalStepSiblingOwnership(
+  snapshot: ThreadSnapshot,
+  step: ThreadArtifact,
+  geometry: ThreadArtifact,
+): boolean {
+  const traces = snapshot.provenance.filter((link) =>
+    link.relation === "traces_to" &&
+    link.from.kind === "artifact" &&
+    link.from.id === step.id &&
+    link.to.kind === "artifact"
+  );
+  if (
+    traces.length !== 1 ||
+    traces[0]!.id !== `traces-${step.id}-from-${geometry.id}` ||
+    traces[0]!.to.id !== geometry.id ||
+    traces[0]!.rationale !== GEOMETRY_BINARY_TRACE_RATIONALE
+  ) {
+    return false;
+  }
+  const consumptionId = `consume-${geometry.id}-by-${step.id}`;
+  const consumptions = snapshot.consumptions.filter((item) =>
+    item.id === consumptionId
+  );
+  if (consumptions.length !== 1) return false;
+  const consumption = consumptions[0]!;
+  if (
+    consumption.artifactId !== geometry.id ||
+    consumption.status !== "verified" ||
+    consumption.verifiedAt !== geometry.freshness.changedAt ||
+    !fingerprintsEqual(consumption.observedFingerprint, geometry.fingerprint) ||
+    deterministicJson(consumption.consumer) !==
+      deterministicJson(geometry.producer)
+  ) {
+    return false;
+  }
+  const uses = snapshot.provenance.filter((link) =>
+    link.relation === "uses" &&
+    link.from.kind === "consumption" &&
+    link.from.id === consumptionId &&
+    link.to.kind === "artifact" &&
+    link.to.id === geometry.id
+  );
+  return uses.length === 1 &&
+    uses[0]!.id === `uses-${consumptionId}` &&
+    uses[0]!.rationale === GEOMETRY_BINARY_CAPTURE_USE_RATIONALE;
 }
 
 function recrossNamedArtifact(

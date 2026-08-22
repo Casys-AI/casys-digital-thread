@@ -60,7 +60,7 @@ the product `.mo`. Same image family `casys/modelica-microsandbox-worker`; kit
 | `verify.seal-cross-domain-impact-manifest@1` | Provider-free seal of the closed manifest identities | An impact evaluation or a gate-claim transition |
 | `analyze.evaluate-cross-domain-impact@1` | Provider-free documentary recross that **proposes** claim statuses | A human decision, claim mutation, or rerun |
 | `decide.accept-cross-domain-impact@1` | Human-only application of those already-proposed gate-claim statuses onto existing claims | Work-item invalidation/rerun (X07 records those as `none`), X10, or X11 |
-| `analyze.evaluate-mechanical-preservation@1` | Provider-free recross of the exact X09 decision, X08 evaluation, independence assertion, and the unique accepted closeout that names that asserted mechanical execution. Canonical STEP is `design.write-geometry@1` only | A CalculiX rerun, X10 work-item, global unique closeout, isolated/draft STEP, thermal/electrical verdict, or implicit pass/fail |
+| `analyze.evaluate-mechanical-preservation@1` | Provider-free recross of the exact X09 decision, X08 evaluation, independence assertion, and the unique accepted closeout that names that asserted mechanical execution. Canonical STEP is the cad-asset sibling owned by the cad-model attached to a completed `design.write-geometry@1` run | A CalculiX rerun, X10 work-item, global unique closeout, isolated/draft/preview STEP, a STEP treated as write-geometry evidence, thermal/electrical verdict, or implicit pass/fail |
 | `project_cross_domain_impact_decision_review` | Read-only recross of the unique current evaluation capture | A Workbench command or caller-selected branch/claim |
 
 ## FEA, sensitivity, correction
