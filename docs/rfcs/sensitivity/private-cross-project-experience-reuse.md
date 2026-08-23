@@ -1,20 +1,18 @@
 Audience: agent · Diátaxis: none · Kind: RFC
 
-Status: active
+Status: implemented
 
 # RFC: private cross-project sensitivity experience reuse
 
-This page is an implementation brief, not the product contract and not evidence that a
-cross-project experience index, admission, lookup, or reuse receipt exists. Living truth
-remains the
+This page records the implemented exact-reuse lot. Living truth remains the
 [sensitivity domain reference](../../reference/domains/sensitivity/README.md), the
 [AnalysisGraph contract](../../reference/contracts/graph-data-model.md), the
 [source-analysis authority pipeline](../../reference/pipeline/analysis-authority-pipeline.md),
 and
 [closed-language compilation](../../explanations/product/closed-language-compilation.md).
 
-The active target is **exact reuse between projects owned by one trusted local Desktop
-installation**. The implementation must derive a project-neutral scientific experience
+The implemented target is **exact reuse between projects owned by one trusted local
+Desktop installation**. The server derives a project-neutral scientific experience
 record from verified local evidence; it must not copy a source project's raw data into
 another project.
 
@@ -53,40 +51,31 @@ identifiers, human decisions, or mutable state.
 - A reused study remains data. It is not a fresh proof, requirement verdict, correction
   authority, or copied human decision.
 
-## Current truth
+## Implemented truth
 
-A
-[`sensitivity-study-capture/1.0`](../../../src/domain/sensitivity/study/sensitivity-study-capture.ts)
-already persists the exact study case, base and stepped CAD publications, both solver
-measurements, derivatives, the trusted run, and capture time. The Thread projects the
-observed finite difference as `measured-local-sensitivity`, including base point, step,
-responses, derivative, and local validity neighborhood.
+[`analyze.run-fea-sensitivity@1`](../../../src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts)
+now performs its server-owned exact lookup and writes its reuse WAL before any CAD
+dispatch. A miss continues through the unchanged two isolated CAD executions and two
+solver calls, then admits the verified fresh result. An exact hit writes a target-local
+review, receipt, and
+[`sensitivity-study-reuse-result/1.0`](../../../src/domain/sensitivity/study/sensitivity-study-result.ts)
+and avoids exactly those four calls. No new agent operation or selector was added.
 
-That capture is not a cross-project experience record. It embeds the full
-[`sensitivity-study-case/2.0`](../../../src/domain/sensitivity/study/sensitivity-study-v2.ts),
-whose current contract carries project, subject, target, and project-bound CAD artifact
-identities. It also lacks the complete resolved compiler/method/runtime/validator
-identity needed for an exact compatibility claim across projects.
+The project-neutral closed record, separate server-private origin binding, append-only
+admission/invalidation journals, deterministic index rebuild, review, receipt, and reuse
+attempt WAL are implemented under
+[`src/adapters/sensitivity/experience/`](../../../src/adapters/sensitivity/experience/).
+Admission and every hit revalidate the frozen compiler, profile, CAD runtime, solver
+provider/lowerer/parser/validator and the exact observed pinned solver container image.
+Missing identity or unhealthy evidence is unavailable; multiple different results under
+one key are unresolved.
 
-Study creation is partly compiler-derived today. When a project has no static case JSON,
-a human opt-in may seal a
-[`sensitivity-catalog-offer/1.0`](../../../src/domain/sensitivity/study/sensitivity-catalog-from-proof.ts)
-from the project's exact proof, admitted source, and unique causal lever. The server
-then
-[compiles the study template](../../../src/domain/sensitivity/study/sensitivity-study-from-offer.ts)
-without inventing mesh, loads, metrics, or another catalogue file. This is still one
-narrow first-order mechanical path, not a generic experience admission.
-
-Every new sensitivity execution still performs two isolated CAD executions and two
-solver calls in
-[`analyze-run-fea-sensitivity-run-executor.ts`](../../../src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts).
-Its private STEP staging is same-run WAL/recovery, not a cross-run result cache. The
-vector-correction executor can reopen the exact project capture without another provider
-call, but it does not provide a cross-project index or admission.
-
-There is currently no registered experience-entry schema, local cross-project index,
-reuse review, reuse receipt, or executor branch that skips those calls. All records and
-operation names below are proposed contracts only.
+Fresh captures remain `sensitivity-study-capture/1.0`. A reuse never fabricates CAD
+evidence: downstream base evaluation, sensitivity-edge rendering, vector correction, and
+corrected-source preparation reopen the explicit scientific result union. Target
+observations are rebuilt from the reused measurements and cite only the target result.
+The target Thread contains no source capture, source MRTR, source URI, or readable
+source origin.
 
 ## Scope and non-goals
 
@@ -275,9 +264,10 @@ set from current healthy evidence plus invalidation records.
 Target-basis drift is different: it invalidates the pending review, not the source
 experience. The server recomputes the target key and compatibility on the new basis.
 
-## Proposed records — not registered
+## Implemented records — server internal
 
-These are concepts, not registered schema or operation identities:
+These are closed persisted schemas used inside the existing registered operation; none
+is a caller-selectable operation or tool:
 
 1. **Derived experience record** — the closed project-neutral scientific payload and
    server-derived compatibility key, with `installation-private` audience.
@@ -291,12 +281,12 @@ These are concepts, not registered schema or operation identities:
 5. **Reuse receipt** — target lineage, compatibility decision and versions, derived
    record/origin-binding digests, work actually avoided, and final status.
 
-Any callable path still needs an exact registered operation, closed parser/validator,
-server-owned sequence, WAL/recovery, Thread projection, and replay tests.
+The callable path remains `analyze.run-fea-sensitivity@1`. The agent supplies neither an
+experience identifier nor a compatibility key, provider, runtime, or source project.
 
-## Active implementation lot
+## Implemented lot
 
-The active lot is **exact private reuse between local projects**:
+The completed lot is **exact private reuse between local projects**:
 
 - add the missing resolved compiler/method/runtime/validator identity needed to derive a
   complete experience record from current captures;
@@ -309,8 +299,8 @@ The active lot is **exact private reuse between local projects**:
 - prove the complete privacy, compatibility, provenance, authority, and replay boundary.
 
 Compiler-family candidates across different parameter values, response models, and
-surrogates are not authorized by `Status: active`. They require a later explicit scope
-decision and measured qualification after exact reuse is demonstrated.
+surrogates remain unauthorized. They require a later explicit scope decision and
+measured qualification; this implementation is exact memoization only.
 
 ## Acceptance and stop rules
 

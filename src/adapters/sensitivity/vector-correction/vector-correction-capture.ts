@@ -13,6 +13,7 @@ import {
 import {
   exactRecord,
   literalValue,
+  nonEmptyText,
   safeId,
 } from "../../../domain/kernel/case-validation.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
@@ -117,9 +118,15 @@ export function validateVectorCorrectionCapture(
       "$vectorCorrectionCapture.studyCapture.fingerprint does not match the signed proposal.",
     );
   }
-  const expectedUri =
-    `casys://sensitivity-study-capture/sha256/${studyFingerprint.digest}`;
-  if (studyCapture.uri !== expectedUri) {
+  const acceptedUris = [
+    `casys://sensitivity-study-capture/sha256/${studyFingerprint.digest}`,
+    `casys://sensitivity-study-reuse-result/sha256/${studyFingerprint.digest}`,
+  ];
+  const studyUri = nonEmptyText(
+    studyCapture.uri,
+    "$vectorCorrectionCapture.studyCapture.uri",
+  );
+  if (!acceptedUris.includes(studyUri)) {
     throw new TypeError(
       "$vectorCorrectionCapture.studyCapture.uri must be the study-capture CAS URI.",
     );
@@ -145,7 +152,7 @@ export function validateVectorCorrectionCapture(
     studyCapture: {
       id: studyId,
       fingerprint: studyFingerprint,
-      uri: expectedUri,
+      uri: studyUri,
     },
     evaluation: { id: evaluationId },
   };

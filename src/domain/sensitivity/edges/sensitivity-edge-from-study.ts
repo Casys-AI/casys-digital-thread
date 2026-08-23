@@ -6,7 +6,7 @@
  * replay retired CM-01 evidence.
  */
 
-import type { SensitivityStudyCapture } from "../study/sensitivity-study-capture.ts";
+import type { SensitivityStudyResult } from "../study/sensitivity-study-result.ts";
 import {
   SENSITIVITY_EDGE_SCHEMA,
   type SensitivityEdge,
@@ -115,7 +115,7 @@ function capitalize(value: string): string {
  * no adapter import is needed above the application layer.
  */
 export function reconstructSensitivityEdgesFromStudyCapture(
-  capture: SensitivityStudyCapture,
+  capture: SensitivityStudyResult,
 ): readonly SensitivityEdge[] {
   return sensitivityEdgesFromStudy(
     capture.studyCase,

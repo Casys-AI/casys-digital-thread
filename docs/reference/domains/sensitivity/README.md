@@ -13,3 +13,26 @@ execution or Build123d admission.
 
 A proof-run evaluation cannot authorize `design.apply-vector-correction@1`.
 `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>` only.
+
+## Installation-private exact reuse
+
+`analyze.run-fea-sensitivity@1` owns an optional server-internal exact memoization path
+between projects in one trusted local installation. Before any sensitivity CAD dispatch,
+the server compiles the target's project-neutral scientific key from the sealed case,
+admitted source, frozen Build123d identities, and the exact observed pinned CalculiX
+runtime. Callers cannot provide an experience id, key, source project, provider, or
+runtime.
+
+An exact healthy hit publishes a target-local reuse review, receipt, observations, and
+`sensitivity-study-reuse-result/1.0`; it performs neither of the two CAD executions nor
+either solver call. The reused result contains target study facts, measurements,
+derivatives, and its receipt fingerprint, but no CAD claim or readable source origin.
+Fresh execution still publishes `sensitivity-study-capture/1.0`. Base evaluation,
+sensitivity edges, vector correction, and corrected-source preparation accept this
+closed scientific-result union without changing their existing freshness or MRTR rules.
+
+A miss, unavailable origin, target-basis drift, runtime drift, or divergent results
+fails closed to the normal registered execution path before dispatch. Review/receipt
+replay is WAL-backed. The installation-private index is reconstructible from append-only
+admission and invalidation journals; it is not an agent or Workbench surface. See the
+[implemented RFC](../../../rfcs/sensitivity/private-cross-project-experience-reuse.md).

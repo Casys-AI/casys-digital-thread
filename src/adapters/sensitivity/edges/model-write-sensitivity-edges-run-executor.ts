@@ -51,8 +51,8 @@ import {
   validateSensitivityEdgesCapture,
 } from "./sensitivity-edges-capture.ts";
 import {
-  validateSensitivityStudyCapture,
-} from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+  validateSensitivityStudyResult,
+} from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
@@ -208,7 +208,7 @@ export class ModelWriteSensitivityEdgesRunExecutor {
     }
     let studyCapture;
     try {
-      studyCapture = await validateSensitivityStudyCapture(parsedStudy);
+      studyCapture = await validateSensitivityStudyResult(parsedStudy);
     } catch (error) {
       throw invalidTransition(
         error instanceof Error

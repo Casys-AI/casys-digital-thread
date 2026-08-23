@@ -34,9 +34,9 @@ import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapsho
 import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snapshot-store.ts";
 import { reconstructSensitivityEdgesFromStudyCapture } from "../../../../domain/sensitivity/edges/sensitivity-edge-from-study.ts";
 import {
-  type SensitivityStudyCapture,
-  validateSensitivityStudyCapture,
-} from "../../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+  type SensitivityStudyResult,
+  validateSensitivityStudyResult,
+} from "../../../../domain/sensitivity/study/sensitivity-study-result.ts";
 
 export type ProjectVectorCorrectionReviewErrorCode =
   | "invalid_request"
@@ -164,7 +164,7 @@ export class PrepareProjectVectorCorrectionReview
 
   async #reopenStudyCapture(
     artifact: ThreadArtifact,
-  ): Promise<SensitivityStudyCapture> {
+  ): Promise<SensitivityStudyResult> {
     let text: string | undefined;
     try {
       text = await this.#studyCaptures.read(artifact.fingerprint);
@@ -180,7 +180,7 @@ export class PrepareProjectVectorCorrectionReview
         "The exact sensitivity-study capture is unavailable.",
       );
     }
-    return await validateSensitivityStudyCapture(JSON.parse(text));
+    return await validateSensitivityStudyResult(JSON.parse(text));
   }
 }
 

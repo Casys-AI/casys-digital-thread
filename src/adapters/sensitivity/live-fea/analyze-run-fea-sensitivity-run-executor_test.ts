@@ -27,6 +27,16 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import { computeSensitivities } from "../../../domain/sensitivity/study/sensitivity-study.ts";
+import {
+  SENSITIVITY_EXPERIENCE_AUDIENCE,
+  SENSITIVITY_EXPERIENCE_COMPATIBILITY_VERSION,
+  SENSITIVITY_EXPERIENCE_DERIVATION_PROFILE,
+  SENSITIVITY_EXPERIENCE_REUSE_RECEIPT_SCHEMA,
+  SENSITIVITY_EXPERIENCE_REUSE_REVIEW_SCHEMA,
+  SENSITIVITY_EXPERIENCE_WORK_AVOIDED,
+} from "../../../domain/sensitivity/experience/sensitivity-experience.ts";
+import { validateSensitivityStudyResult } from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import {
   FileFeaSensitivityAttemptStore,
 } from "./file-fea-sensitivity-attempt-store.ts";
@@ -37,6 +47,7 @@ import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-v
 import {
   AnalyzeRunFeaSensitivityRunExecutor,
 } from "./analyze-run-fea-sensitivity-run-executor.ts";
+import { FileSensitivityExperienceReuseAttemptStore } from "../experience/file-sensitivity-experience-reuse-attempt-store.ts";
 
 const AT = "2026-08-14T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl04";
@@ -143,6 +154,122 @@ Deno.test("a retry after WAL completion does not re-dispatch CAD or CalculiX", a
   }
 });
 
+Deno.test("experience miss is journalled before four fresh calls and admitted", async () => {
+  const fixture = await createFixture({ experienceOutcome: "miss" });
+  try {
+    await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(fixture.runner.sources.length, 2);
+    assertEquals(fixture.solver.calls, 2);
+    assertEquals(fixture.experienceStats.admissions, 1);
+    assertEquals(
+      (await fixture.reuseAttempts.read(PROJECT_ID, RUN_ID))?.status,
+      "reviewed-miss",
+    );
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("unavailable experience admission cannot fail a fresh registered run", async () => {
+  const fixture = await createFixture({
+    experienceOutcome: "miss",
+    experienceAdmissionFails: true,
+  });
+  try {
+    const project = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(project.agentRuns[0]?.status, "completed");
+    assertEquals(fixture.runner.sources.length, 2);
+    assertEquals(fixture.solver.calls, 2);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("exact experience hit avoids both CAD and both solver calls and replays", async () => {
+  const fixture = await createFixture({ experienceOutcome: "hit" });
+  try {
+    const first = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(fixture.runner.sources.length, 0);
+    assertEquals(fixture.solver.calls, 0);
+    assertEquals(fixture.experienceStats.admissions, 0);
+    const snapshot = await fixture.snapshots.getFresh(
+      first.agentRuns[0]!.resultSnapshot!.snapshotId,
+    );
+    const resultArtifact = snapshot?.artifacts.find((artifact) =>
+      artifact.uri?.startsWith("casys://sensitivity-study-reuse-result/sha256/")
+    );
+    assertEquals(resultArtifact !== undefined, true);
+    const resultText = await fixture.studyCaptures.read(resultArtifact!.fingerprint);
+    const result = await validateSensitivityStudyResult(JSON.parse(resultText!));
+    assertEquals("cad" in result, false);
+    assertEquals(result.studyCase.project.id, PROJECT_ID);
+    assertEquals(
+      snapshot?.observations.every((observation) =>
+        observation.id.endsWith(resultArtifact!.fingerprint.digest) &&
+        observation.source.artifactIds.includes(resultArtifact!.id)
+      ),
+      true,
+    );
+
+    const firstSnapshot = first.agentRuns[0]!.resultSnapshot!.snapshotId;
+    fixture.resetRunToRunningOnOriginalBasis();
+    const replay = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(replay.agentRuns[0]?.resultSnapshot?.snapshotId, firstSnapshot);
+    assertEquals(fixture.runner.sources.length, 0);
+    assertEquals(fixture.solver.calls, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("interruption before reuse receipt resumes without dispatch", async () => {
+  const fixture = await createFixture({ experienceOutcome: "hit-interrupt" });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "interrupted before receipt",
+    );
+    assertEquals(
+      (await fixture.reuseAttempts.read(PROJECT_ID, RUN_ID))?.status,
+      "reviewed-hit",
+    );
+    assertEquals(fixture.runner.sources.length, 0);
+    assertEquals(fixture.solver.calls, 0);
+    const completed = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(completed.agentRuns[0]?.status, "completed");
+    assertEquals(fixture.runner.sources.length, 0);
+    assertEquals(fixture.solver.calls, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("completed exact reuse reopens its target result before replay", async () => {
+  const fixture = await createFixture({ experienceOutcome: "hit" });
+  try {
+    const first = await fixture.executor.execute(AGENT, fixture.command);
+    const snapshot = await fixture.snapshots.getFresh(
+      first.agentRuns[0]!.resultSnapshot!.snapshotId,
+    );
+    const resultArtifact = snapshot!.artifacts.find((artifact) =>
+      artifact.uri?.startsWith("casys://sensitivity-study-reuse-result/sha256/")
+    )!;
+    await fixture.studyCaptures.save(resultArtifact.fingerprint, "{}");
+    fixture.resetRunToRunningOnOriginalBasis();
+
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "reuse result is invalid",
+    );
+    assertEquals(fixture.runner.sources.length, 0);
+    assertEquals(fixture.solver.calls, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 Deno.test("dispatched CAD without a published STEP is terminal", async () => {
   const fixture = await createFixture();
   try {
@@ -228,7 +355,11 @@ Deno.test(
   },
 );
 
-async function createFixture(options: { readonly admissionDigest?: string } = {}) {
+async function createFixture(options: {
+  readonly admissionDigest?: string;
+  readonly experienceOutcome?: "miss" | "hit" | "hit-interrupt";
+  readonly experienceAdmissionFails?: boolean;
+} = {}) {
   const directory = await Deno.makeTempDir({ prefix: "sensitivity-run-" });
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
@@ -473,6 +604,145 @@ async function createFixture(options: { readonly admissionDigest?: string } = {}
   const solver = new FakeSolver();
   const stager = new FakeStager();
   const attempts = new FileFeaSensitivityAttemptStore(`${directory}/wal`);
+  const reuseAttempts = new FileSensitivityExperienceReuseAttemptStore(
+    `${directory}/reuse-wal`,
+  );
+  const experienceStats = { admissions: 0, receiptCalls: 0 };
+  const scientificKey = {
+    algorithm: "sha256" as const,
+    digest: "9".repeat(64),
+  };
+  const recordFingerprint = {
+    algorithm: "sha256" as const,
+    digest: "7".repeat(64),
+  };
+  const originBindingFingerprint = {
+    algorithm: "sha256" as const,
+    digest: "6".repeat(64),
+  };
+  const reviewFingerprint = {
+    algorithm: "sha256" as const,
+    digest: "8".repeat(64),
+  };
+  const receiptFingerprint = {
+    algorithm: "sha256" as const,
+    digest: "5".repeat(64),
+  };
+  const baseMeasurements = [
+    { metric: "assembly_max_displacement", value: 2, unit: "mm" },
+    { metric: "assembly_max_von_mises", value: 10, unit: "MPa" },
+  ];
+  const steppedMeasurements = [
+    { metric: "assembly_max_displacement", value: 3, unit: "mm" },
+    { metric: "assembly_max_von_mises", value: 12, unit: "MPa" },
+  ];
+  const record = {
+    schemaVersion: "sensitivity-experience-record/1.0" as const,
+    audience: SENSITIVITY_EXPERIENCE_AUDIENCE,
+    scientificKey,
+    identity: {} as never,
+    result: {
+      measurements: { base: baseMeasurements, stepped: steppedMeasurements },
+      derivatives: computeSensitivities(
+        studyCase,
+        new Map(baseMeasurements.map((item) => [item.metric, item])),
+        new Map(steppedMeasurements.map((item) => [item.metric, item])),
+      ),
+    },
+  };
+  const targetBasisFingerprint = await sha256Fingerprint(basisSnapshot);
+  const review = {
+    schemaVersion: SENSITIVITY_EXPERIENCE_REUSE_REVIEW_SCHEMA,
+    audience: SENSITIVITY_EXPERIENCE_AUDIENCE,
+    target: {
+      projectId: PROJECT_ID,
+      basis: { kind: "thread-snapshot" as const, ...reviewBasis },
+      basisFingerprint: targetBasisFingerprint,
+    },
+    scientificKey,
+    derivationProfile: SENSITIVITY_EXPERIENCE_DERIVATION_PROFILE,
+    compatibilityVersion: SENSITIVITY_EXPERIENCE_COMPATIBILITY_VERSION,
+    outcome: options.experienceOutcome === "miss"
+      ? "incompatible" as const
+      : "exact" as const,
+    reasons: options.experienceOutcome === "miss"
+      ? ["scientific-key-miss" as const]
+      : ["exact-match" as const],
+    ...(options.experienceOutcome === "miss"
+      ? {}
+      : { selection: { recordFingerprint, originBindingFingerprint } }),
+    freshExecutionRequired: options.experienceOutcome === "miss",
+    reviewedAt: AT,
+  };
+  const lookup = {
+    review,
+    reviewFingerprint,
+    reviewUri:
+      `casys://sensitivity-experience-reuse-review/sha256/${reviewFingerprint.digest}`,
+    ...(options.experienceOutcome === "miss"
+      ? {}
+      : { selected: { record, origin: {} as never } }),
+  };
+  const receipt = {
+    schemaVersion: SENSITIVITY_EXPERIENCE_REUSE_RECEIPT_SCHEMA,
+    audience: SENSITIVITY_EXPERIENCE_AUDIENCE,
+    status: "reused-exact" as const,
+    target: review.target,
+    scientificKey,
+    reviewFingerprint,
+    recordFingerprint,
+    originBindingFingerprint,
+    derivationProfile: SENSITIVITY_EXPERIENCE_DERIVATION_PROFILE,
+    compatibilityVersion: SENSITIVITY_EXPERIENCE_COMPATIBILITY_VERSION,
+    sourceHealth: "valid" as const,
+    workAvoided: SENSITIVITY_EXPERIENCE_WORK_AVOIDED,
+    freshExecutionRequired: false as const,
+    issuedAt: AT,
+  };
+  const experience = options.experienceOutcome
+    ? {
+      attempts: reuseAttempts,
+      coordinator: {
+        compileTarget: () => Promise.resolve({ scientificKey, identity: {} as never }),
+        review: () => Promise.resolve(lookup as never),
+        reopenReview: () => Promise.resolve(lookup as never),
+        recordUnavailableReview: () => Promise.resolve(lookup as never),
+        createReceipt: () => {
+          experienceStats.receiptCalls += 1;
+          if (
+            options.experienceOutcome === "hit-interrupt" &&
+            experienceStats.receiptCalls === 1
+          ) {
+            return Promise.reject(
+              new EngineeringProjectCommandError(
+                "invalid_transition",
+                "interrupted before receipt",
+              ),
+            );
+          }
+          return Promise.resolve({
+            receipt,
+            receiptFingerprint,
+            receiptUri:
+              `casys://sensitivity-experience-reuse-receipt/sha256/${receiptFingerprint.digest}`,
+          });
+        },
+        reopenReceipt: () =>
+          Promise.resolve({
+            receipt,
+            receiptFingerprint,
+            receiptUri:
+              `casys://sensitivity-experience-reuse-receipt/sha256/${receiptFingerprint.digest}`,
+          }),
+        admitFresh: () => {
+          experienceStats.admissions += 1;
+          return options.experienceAdmissionFails
+            ? Promise.reject(new Error("private experience store unavailable"))
+            : Promise.resolve();
+        },
+      },
+    }
+    : undefined;
   const commands = new MemoryCommands(project);
   const planDigest = (await sha256Fingerprint({
     caseDigest,
@@ -491,6 +761,8 @@ async function createFixture(options: { readonly admissionDigest?: string } = {}
     runner,
     solver,
     attempts,
+    reuseAttempts,
+    experienceStats,
     planDigest,
     studyCaptures,
     snapshots,
@@ -557,6 +829,7 @@ async function createFixture(options: { readonly admissionDigest?: string } = {}
       stager,
       solver: solver as never,
       attempts,
+      ...(experience ? { experience } : {}),
       lease: { withLease: (_projectId, _scope, operation) => operation() },
     }),
     dispose: () => Deno.remove(directory, { recursive: true }),

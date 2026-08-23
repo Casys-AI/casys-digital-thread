@@ -62,14 +62,19 @@ import {
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   DesignApplyVectorCorrectionRunExecutor,
 } from "./vector-correction/design-apply-vector-correction-run-executor.ts";
+import { FileSensitivityExperienceRepository } from "./experience/file-sensitivity-experience-repository.ts";
+import { FileSensitivityExperienceReuseAttemptStore } from "./experience/file-sensitivity-experience-reuse-attempt-store.ts";
+import { SensitivityExperienceCoordinator } from "./experience/sensitivity-experience-coordinator.ts";
+import type { SensitivityExperienceSolverRuntimeAuthority } from "./experience/sensitivity-experience-coordinator.ts";
+import { solverRuntimeIdentityFromImageReference } from "../../domain/sensitivity/experience/sensitivity-experience.ts";
 
 export {
-  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
+  ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
+  DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
   VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
-  DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
-  COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
 };
 
 export interface SensitivityCompositionOptions {
@@ -89,8 +94,12 @@ export interface SensitivityCompositionOptions {
   readonly sysonModelSeedCaptures: FileCaptureStore<"syson-model-seed">;
   readonly build123dExecution: Build123dExecutionComposition | undefined;
   readonly calculixMcpUrl?: string;
+  readonly calculixRuntimeImage?: string;
+  readonly sensitivitySolverRuntimeAuthority?:
+    SensitivityExperienceSolverRuntimeAuthority;
   readonly sysonMcpUrl?: string;
   readonly sensitivityStepCacheDirectory: string;
+  readonly sensitivityExperienceDirectory?: string;
 }
 
 export interface SensitivityComposition {
@@ -170,31 +179,53 @@ export function createSensitivityComposition(
       lease: options.lease,
     },
   );
-  const compileCaptureCorrectedSource =
-    new CompileCaptureCorrectedSourceRunExecutor({
+  const compileCaptureCorrectedSource = new CompileCaptureCorrectedSourceRunExecutor({
+    projects: options.projects,
+    commands: options.commands,
+    snapshots: options.snapshots,
+    corrections: vectorCorrectionCaptures,
+    studyCaptures: sensitivityStudyCaptures,
+    admissions: options.admissions,
+    sourceCaptures: options.technicalSourceCapture,
+    captures: correctedSourceCaptures,
+    lease: options.lease,
+    profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+  });
+  const analyzeSealSensitivityStudy = new AnalyzeSealSensitivityStudyRunExecutor({
+    projects: options.projects,
+    commands: options.commands,
+    snapshots: options.snapshots,
+    admissions: options.admissions,
+    captures: sensitivityCaseCaptures,
+    catalogOffers: options.sensitivityCatalogOfferCaptures,
+    proofCaptures: options.feaProofCaptures,
+    catalog: catalogReader,
+    lease: options.lease,
+  });
+  const feaSensitivityAttempts = new FileFeaSensitivityAttemptStore();
+  const experienceRepository = options.calculixRuntimeImage &&
+      options.sensitivitySolverRuntimeAuthority
+    ? new FileSensitivityExperienceRepository(
+      options.sensitivityExperienceDirectory ??
+        "state/local/sensitivity-experience",
+    )
+    : undefined;
+  const experienceCoordinator = experienceRepository && options.calculixRuntimeImage &&
+      options.sensitivitySolverRuntimeAuthority
+    ? new SensitivityExperienceCoordinator({
+      repository: experienceRepository,
       projects: options.projects,
-      commands: options.commands,
       snapshots: options.snapshots,
-      corrections: vectorCorrectionCaptures,
+      caseCaptures: sensitivityCaseCaptures,
       studyCaptures: sensitivityStudyCaptures,
       admissions: options.admissions,
-      sourceCaptures: options.technicalSourceCapture,
-      captures: correctedSourceCaptures,
-      lease: options.lease,
-      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-    });
-  const analyzeSealSensitivityStudy =
-    new AnalyzeSealSensitivityStudyRunExecutor({
-      projects: options.projects,
-      commands: options.commands,
-      snapshots: options.snapshots,
-      admissions: options.admissions,
-      captures: sensitivityCaseCaptures,
-      catalogOffers: options.sensitivityCatalogOfferCaptures,
-      proofCaptures: options.feaProofCaptures,
-      catalog: catalogReader,
-      lease: options.lease,
-    });
+      executionAttempts: feaSensitivityAttempts,
+      solverRuntime: solverRuntimeIdentityFromImageReference(
+        options.calculixRuntimeImage,
+      ),
+      solverRuntimeAuthority: options.sensitivitySolverRuntimeAuthority,
+    })
+    : undefined;
   const analyzeRunFeaSensitivity =
     options.build123dExecution?.execution !== undefined &&
       options.calculixMcpUrl
@@ -220,7 +251,20 @@ export function createSensitivityComposition(
             timeoutMs: 180_000,
           }),
         ),
-        attempts: new FileFeaSensitivityAttemptStore(),
+        attempts: feaSensitivityAttempts,
+        ...(experienceCoordinator && experienceRepository
+          ? {
+            experience: {
+              coordinator: experienceCoordinator,
+              attempts: new FileSensitivityExperienceReuseAttemptStore(
+                `${
+                  options.sensitivityExperienceDirectory ??
+                    "state/local/sensitivity-experience"
+                }/reuse-attempts`,
+              ),
+            },
+          }
+          : {}),
         lease: options.lease,
       })
       : undefined;

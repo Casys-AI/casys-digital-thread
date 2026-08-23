@@ -9,7 +9,7 @@
  */
 
 import { sensitivityBaseObservationId } from "../vector-correction/vector-correction-origin.ts";
-import type { SensitivityStudyCapture } from "../study/sensitivity-study-capture.ts";
+import type { SensitivityStudyResult } from "../study/sensitivity-study-result.ts";
 import type {
   RequirementOperator,
   ThreadObservation,
@@ -81,7 +81,7 @@ export type SensitivityBaseJoin =
  * whole join — a partial evaluation set would look complete.
  */
 export function resolveSensitivityBaseJoin(input: {
-  readonly capture: SensitivityStudyCapture;
+  readonly capture: SensitivityStudyResult;
   readonly digest: string;
   readonly observations: readonly ThreadObservation[];
   readonly requirements: readonly TracedRequirement[];

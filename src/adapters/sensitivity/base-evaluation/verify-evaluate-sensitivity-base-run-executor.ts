@@ -20,9 +20,9 @@ import {
   VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
 } from "../../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
 import {
-  type SensitivityStudyCapture,
-  validateSensitivityStudyCapture,
-} from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+  type SensitivityStudyResult,
+  validateSensitivityStudyResult,
+} from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
@@ -176,7 +176,7 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
       if (!captureText) {
         throw invalidTransition("The sensitivity-study capture is not readable.");
       }
-      const studyCapture = await validateSensitivityStudyCapture(
+      const studyCapture = await validateSensitivityStudyResult(
         JSON.parse(captureText),
       );
       const digest = studyArtifact.fingerprint.digest;
@@ -356,7 +356,7 @@ function buildSuccessor(input: {
   readonly basis: EngineeringThreadSnapshotBasis;
   readonly run: EngineeringAgentRun;
   readonly studyArtifact: ThreadArtifact;
-  readonly studyCapture: SensitivityStudyCapture;
+  readonly studyCapture: SensitivityStudyResult;
   readonly pairs: readonly {
     readonly metricId: string;
     readonly requirement: ThreadSnapshot["requirements"][number];

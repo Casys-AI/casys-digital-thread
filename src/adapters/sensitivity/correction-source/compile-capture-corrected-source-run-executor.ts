@@ -21,8 +21,8 @@ import {
 import { fingerprintTechnicalSourceText } from "../../../domain/compile/admission/technical-compilation.ts";
 import { parseSensitivityCadSourceUri } from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
 import {
-  validateSensitivityStudyCapture,
-} from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+  validateSensitivityStudyResult,
+} from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import { validateVectorCorrectionCapture } from "../vector-correction/vector-correction-capture.ts";
 import {
   canonicalCorrectedSourceCaptureText,
@@ -209,7 +209,7 @@ export class CompileCaptureCorrectedSourceRunExecutor {
       if (!studyText) {
         throw invalidTransition("The sensitivity-study capture is not readable.");
       }
-      const study = await validateSensitivityStudyCapture(JSON.parse(studyText));
+      const study = await validateSensitivityStudyResult(JSON.parse(studyText));
       const cad = parseSensitivityCadSourceUri(study.studyCase.cadSource.artifactUri);
       const parentAdmission = requireArtifact(
         basisSnapshot,

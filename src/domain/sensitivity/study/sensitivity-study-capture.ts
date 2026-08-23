@@ -24,7 +24,10 @@ import {
   rejectDuplicates,
   safeId,
 } from "../../kernel/case-validation.ts";
-import { deterministicJson, sha256Fingerprint } from "../../kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 
 export const SENSITIVITY_STUDY_CAPTURE_SCHEMA =
@@ -47,8 +50,7 @@ export interface SensitivityCadPublication {
   readonly stepBytes: number;
 }
 
-export interface SensitivityStudyCapture {
-  readonly schemaVersion: typeof SENSITIVITY_STUDY_CAPTURE_SCHEMA;
+export interface SensitivityStudyScientificResult {
   readonly operation: {
     readonly id: typeof ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.id;
     readonly version: typeof ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.version;
@@ -56,16 +58,20 @@ export interface SensitivityStudyCapture {
   readonly trustedRunId: string;
   readonly caseDigest: string;
   readonly studyCase: SensitivityStudyCaseV2;
-  readonly cad: {
-    readonly base: SensitivityCadPublication;
-    readonly stepped: SensitivityCadPublication;
-  };
   readonly measurements: {
     readonly base: readonly SensitivityStudyMeasurement[];
     readonly stepped: readonly SensitivityStudyMeasurement[];
   };
   readonly derivatives: SensitivityDerivatives;
   readonly capturedAt: string;
+}
+
+export interface SensitivityStudyCapture extends SensitivityStudyScientificResult {
+  readonly schemaVersion: typeof SENSITIVITY_STUDY_CAPTURE_SCHEMA;
+  readonly cad: {
+    readonly base: SensitivityCadPublication;
+    readonly stepped: SensitivityCadPublication;
+  };
 }
 
 export async function fingerprintSensitivityStudyCapture(
@@ -93,62 +99,98 @@ export async function validateSensitivityStudyCapture(
     SENSITIVITY_STUDY_CAPTURE_SCHEMA,
     "$sensitivityStudyCapture.schemaVersion",
   );
-  const operation = exactRecord(
-    root.operation,
-    ["id", "version"],
-    "$sensitivityStudyCapture.operation",
-  );
-  literalValue(
-    operation.id,
-    ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.id,
-    "$sensitivityStudyCapture.operation.id",
-  );
-  literalValue(
-    operation.version,
-    ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.version,
-    "$sensitivityStudyCapture.operation.version",
-  );
-  const trustedRunId = safeId(
-    root.trustedRunId,
-    "$sensitivityStudyCapture.trustedRunId",
-  );
-  const caseDigest = sha256Hex(
-    root.caseDigest,
-    "$sensitivityStudyCapture.caseDigest",
-  );
-  const capturedAt = nonEmptyText(
-    root.capturedAt,
-    "$sensitivityStudyCapture.capturedAt",
-  );
-  if (Number.isNaN(Date.parse(capturedAt))) {
-    throw new TypeError("$sensitivityStudyCapture.capturedAt must be ISO-8601.");
-  }
-  const studyCase = validateSensitivityStudyCaseV2(root.studyCase);
-  const observedDigest = (await sha256Fingerprint(studyCase)).digest;
-  if (caseDigest !== observedDigest) {
-    throw new TypeError(
-      "$sensitivityStudyCapture.caseDigest does not match the case.",
-    );
-  }
+  const scientific = await validateSensitivityStudyScientificResult({
+    operation: root.operation,
+    trustedRunId: root.trustedRunId,
+    caseDigest: root.caseDigest,
+    studyCase: root.studyCase,
+    measurements: root.measurements,
+    derivatives: root.derivatives,
+    capturedAt: root.capturedAt,
+  }, "$sensitivityStudyCapture");
   const cad = exactRecord(
     root.cad,
     ["base", "stepped"],
     "$sensitivityStudyCapture.cad",
   );
+  return {
+    schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
+    ...scientific,
+    cad: {
+      base: parseCadPublication(cad.base, "$sensitivityStudyCapture.cad.base"),
+      stepped: parseCadPublication(
+        cad.stepped,
+        "$sensitivityStudyCapture.cad.stepped",
+      ),
+    },
+  };
+}
+
+/** Shared validation of only the scientific result; it creates no CAD facts. */
+export async function validateSensitivityStudyScientificResult(
+  value: unknown,
+  path = "$sensitivityStudyScientificResult",
+): Promise<SensitivityStudyScientificResult> {
+  const root = exactRecord(value, [
+    "operation",
+    "trustedRunId",
+    "caseDigest",
+    "studyCase",
+    "measurements",
+    "derivatives",
+    "capturedAt",
+  ], path);
+  const operation = exactRecord(
+    root.operation,
+    ["id", "version"],
+    `${path}.operation`,
+  );
+  literalValue(
+    operation.id,
+    ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.id,
+    `${path}.operation.id`,
+  );
+  literalValue(
+    operation.version,
+    ANALYZE_RUN_FEA_SENSITIVITY_OPERATION.version,
+    `${path}.operation.version`,
+  );
+  const trustedRunId = safeId(
+    root.trustedRunId,
+    `${path}.trustedRunId`,
+  );
+  const caseDigest = sha256Hex(
+    root.caseDigest,
+    `${path}.caseDigest`,
+  );
+  const capturedAt = nonEmptyText(
+    root.capturedAt,
+    `${path}.capturedAt`,
+  );
+  if (Number.isNaN(Date.parse(capturedAt))) {
+    throw new TypeError(`${path}.capturedAt must be ISO-8601.`);
+  }
+  const studyCase = validateSensitivityStudyCaseV2(root.studyCase);
+  const observedDigest = (await sha256Fingerprint(studyCase)).digest;
+  if (caseDigest !== observedDigest) {
+    throw new TypeError(
+      `${path}.caseDigest does not match the case.`,
+    );
+  }
   const measurementsRoot = exactRecord(
     root.measurements,
     ["base", "stepped"],
-    "$sensitivityStudyCapture.measurements",
+    `${path}.measurements`,
   );
   const base = parseMeasurements(
     measurementsRoot.base,
     studyCase,
-    "$sensitivityStudyCapture.measurements.base",
+    `${path}.measurements.base`,
   );
   const stepped = parseMeasurements(
     measurementsRoot.stepped,
     studyCase,
-    "$sensitivityStudyCapture.measurements.stepped",
+    `${path}.measurements.stepped`,
   );
   const computed = computeSensitivities(
     studyCase,
@@ -157,22 +199,14 @@ export async function validateSensitivityStudyCapture(
   );
   if (deterministicJson(root.derivatives) !== deterministicJson(computed)) {
     throw new TypeError(
-      "$sensitivityStudyCapture.derivatives do not match the sealed case and measurements.",
+      `${path}.derivatives do not match the sealed case and measurements.`,
     );
   }
   return {
-    schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
     operation: ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
     trustedRunId,
     caseDigest,
     studyCase,
-    cad: {
-      base: parseCadPublication(cad.base, "$sensitivityStudyCapture.cad.base"),
-      stepped: parseCadPublication(
-        cad.stepped,
-        "$sensitivityStudyCapture.cad.stepped",
-      ),
-    },
     measurements: { base, stepped },
     derivatives: computed,
     capturedAt,

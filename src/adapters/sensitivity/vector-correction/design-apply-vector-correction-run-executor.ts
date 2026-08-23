@@ -66,9 +66,9 @@ import {
 } from "./vector-correction-capture.ts";
 import { reconstructSensitivityEdgesFromStudyCapture } from "../../../domain/sensitivity/edges/sensitivity-edge-from-study.ts";
 import {
-  type SensitivityStudyCapture,
-  validateSensitivityStudyCapture,
-} from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+  type SensitivityStudyResult,
+  validateSensitivityStudyResult,
+} from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 
 export { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION };
 
@@ -296,7 +296,7 @@ export class DesignApplyVectorCorrectionRunExecutor {
         studyCapture: {
           id: studyArtifact.id,
           fingerprint: studyArtifact.fingerprint,
-          uri: this.#studyCaptures.uriFor(studyArtifact.fingerprint),
+          uri: studyArtifact.uri,
         },
         evaluation: { id: evaluation.id },
       });
@@ -404,7 +404,7 @@ export class DesignApplyVectorCorrectionRunExecutor {
 
   async #reopenStudyCapture(
     artifact: ThreadArtifact,
-  ): Promise<SensitivityStudyCapture> {
+  ): Promise<SensitivityStudyResult> {
     let text: string | undefined;
     try {
       text = await this.#studyCaptures.read(artifact.fingerprint);
@@ -418,7 +418,7 @@ export class DesignApplyVectorCorrectionRunExecutor {
         "The exact sensitivity-study capture is no longer content-addressably readable.",
       );
     }
-    return await validateSensitivityStudyCapture(JSON.parse(text));
+    return await validateSensitivityStudyResult(JSON.parse(text));
   }
 
   async #recordFailure(

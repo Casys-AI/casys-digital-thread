@@ -25,6 +25,10 @@ import type { EngineeringProjectSnapshot } from "../../../domain/project/enginee
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { SENSITIVITY_STUDY_CAPTURE_SCHEMA } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+import {
+  makeSensitivityStudyReuseResult,
+  SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX,
+} from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import { FileSensitivityEdgesAttemptStore } from "./file-sensitivity-edges-attempt-store.ts";
 import {
   ModelWriteSensitivityEdgesRunExecutor,
@@ -72,10 +76,27 @@ Deno.test(
 );
 
 Deno.test(
+  "model.write-sensitivity-edges@1 reopens an exact-reused scientific result",
+  async () => {
+    const fixture = await createFixture(true);
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      assertEquals(fixture.syson.inserted, [fixture.expectedSysml]);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
   "model.write-sensitivity-edges@1 rejects a study capture with extra keys",
   async () => {
     const fixture = await createFixture();
     try {
+      if (!("cad" in fixture.studyCapture)) {
+        throw new Error("fresh fixture unexpectedly returned a reused result");
+      }
       const tampered = {
         ...fixture.studyCapture,
         cad: {
@@ -197,7 +218,7 @@ function findArchitectureArtifactStillDistinct(snapshot: ThreadSnapshot): boolea
   return sensitivity.length === 1 && architecture.length === 1;
 }
 
-async function createFixture() {
+async function createFixture(reuseResult = false) {
   const directory = await Deno.makeTempDir({ prefix: "sensitivity-edges-" });
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
@@ -223,7 +244,7 @@ async function createFixture() {
     new Map(base.map((item) => [item.metric, item])),
     new Map(stepped.map((item) => [item.metric, item])),
   );
-  const studyCapture = {
+  const freshStudyCapture = {
     schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
     operation: { id: "analyze.run-fea-sensitivity", version: "1" },
     trustedRunId: "run.sensitivity",
@@ -247,6 +268,18 @@ async function createFixture() {
     derivatives,
     capturedAt: AT,
   };
+  const studyCapture = reuseResult
+    ? await makeSensitivityStudyReuseResult({
+      trustedRunId: "run.sensitivity",
+      studyCase,
+      record: { result: { measurements: { base, stepped }, derivatives } } as never,
+      reuseReceiptFingerprint: {
+        algorithm: "sha256",
+        digest: "6".repeat(64),
+      },
+      capturedAt: AT,
+    })
+    : freshStudyCapture;
   const studyFingerprint = await sha256Fingerprint(studyCapture);
   const expectedEdges = sensitivityEdgesFromStudy(
     studyCase,
@@ -292,7 +325,9 @@ async function createFixture() {
     kind: "evidence" as const,
     version: studyFingerprint.digest,
     fingerprint: studyFingerprint,
-    uri: `casys://sensitivity-study-capture/sha256/${studyFingerprint.digest}`,
+    uri: studyCapture.schemaVersion === SENSITIVITY_STUDY_CAPTURE_SCHEMA
+      ? `casys://sensitivity-study-capture/sha256/${studyFingerprint.digest}`
+      : `${SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX}${studyFingerprint.digest}`,
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",

@@ -139,7 +139,10 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./src/orchestration/operations/fea-isolated-static-proof.ts";
 import type { RunDetail } from "./src/application/control-plane/read-model/engineering-run.ts";
-import type { FleetManifest } from "./src/application/control-plane/read-model/fleet-manifest.ts";
+import type {
+  DesiredServer,
+  FleetManifest,
+} from "./src/application/control-plane/read-model/fleet-manifest.ts";
 import { registerControlPlaneTools } from "./src/tools/control-plane.ts";
 import {
   type ProjectControlToolDependencies,
@@ -194,6 +197,7 @@ import {
   createQualifiedModelicaCapability,
 } from "./src/adapters/modelica/server-composition.ts";
 import { createSensitivityComposition } from "./src/adapters/sensitivity/server-composition.ts";
+import { DockerSensitivitySolverRuntimeAuthority } from "./src/adapters/sensitivity/experience/docker-sensitivity-solver-runtime-authority.ts";
 import { createCrossDomainImpactProject } from "./src/adapters/impact/server-composition.ts";
 
 const DEFAULT_PORT = 3020;
@@ -226,6 +230,7 @@ const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempt
  */
 const DEFAULT_CANONICAL_ASSET_DIRECTORY = "state/local/thread-assets";
 const DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY = "state/local/sensitivity-step-cache";
+const DEFAULT_SENSITIVITY_EXPERIENCE_DIRECTORY = "state/local/sensitivity-experience";
 const DEFAULT_PRINTABILITY_CASE_CAPTURE_DIRECTORY =
   "state/local/printability-case-captures";
 const DEFAULT_PRINTABILITY_ATTEMPT_DIRECTORY = "state/local/printability-attempts";
@@ -491,11 +496,12 @@ export async function createConsoleServer(
   const calculix = manifest.servers.find((server) => server.id === "calculix");
   const dfm = manifest.servers.find((server) => server.id === "dfm");
   const prusaslicer = manifest.servers.find((server) => server.id === "prusaslicer");
+  const docker = options.docker ?? new DockerComposeObserver();
   const controlPlane = new ControlPlane({
     manifest,
     runs,
     probe: options.probe ?? new HttpMcpProbe(),
-    docker: options.docker ?? new DockerComposeObserver(),
+    docker,
     now: options.now,
     monotonicNow: options.monotonicNow,
     cacheTtlMs: options.cacheTtlMs,
@@ -507,6 +513,9 @@ export async function createConsoleServer(
       syson?.mcpUrl,
       build123dSandbox?.mcpUrl,
       calculix?.mcpUrl,
+      calculix?.image,
+      calculix,
+      docker,
       dfm?.mcpUrl,
       prusaslicer?.mcpUrl,
     )
@@ -583,6 +592,9 @@ async function createProjectControl(
   sysonMcpUrl?: string,
   build123dSandboxMcpUrl?: string,
   calculixMcpUrl?: string,
+  calculixRuntimeImage?: string,
+  calculixServer?: DesiredServer,
+  docker?: DockerObserver,
   dfmMcpUrl?: string,
   prusaslicerMcpUrl?: string,
 ): Promise<{
@@ -840,8 +852,13 @@ async function createProjectControl(
     sysonModelSeedCaptures: architectureFoundation.sysonModelSeedCaptures,
     build123dExecution: build123dCapability.build123dExecution,
     calculixMcpUrl,
+    calculixRuntimeImage,
+    sensitivitySolverRuntimeAuthority: calculixServer && docker
+      ? new DockerSensitivitySolverRuntimeAuthority(docker, calculixServer)
+      : undefined,
     sysonMcpUrl,
     sensitivityStepCacheDirectory: DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY,
+    sensitivityExperienceDirectory: DEFAULT_SENSITIVITY_EXPERIENCE_DIRECTORY,
   });
   const electrical = createLedDriverSourceComposition({
     recordedAnalysisDirectory,
@@ -1049,8 +1066,7 @@ async function createProjectControl(
       admittedSpiceRunReview: spiceProject.admittedSpiceRunReview,
       electricalObservationMethodSheetSealReview:
         electricalProject.electricalObservationMethodSheetSealReview,
-      admittedSpiceEvaluationReview:
-        electricalProject.admittedSpiceEvaluationReview,
+      admittedSpiceEvaluationReview: electricalProject.admittedSpiceEvaluationReview,
       admittedSpiceEvaluationCloseoutReview:
         electricalProject.admittedSpiceEvaluationCloseoutReview,
       ...composePrivateBuild123dGeometrySurfaces(

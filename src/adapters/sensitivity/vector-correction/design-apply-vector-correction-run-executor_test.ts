@@ -28,6 +28,11 @@ import {
   SENSITIVITY_STUDY_CAPTURE_SCHEMA,
   type SensitivityStudyCapture,
 } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+import {
+  makeSensitivityStudyReuseResult,
+  SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX,
+  type SensitivityStudyResult,
+} from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import { reconstructSensitivityEdgesFromStudyCapture } from "../../../domain/sensitivity/edges/sensitivity-edge-from-study.ts";
 import {
   DesignApplyVectorCorrectionRunExecutor,
@@ -85,6 +90,13 @@ Deno.test(
     );
   },
 );
+
+Deno.test("vector correction reopens an exact-reused scientific result", async () => {
+  const fixture = await createFixture({ reuseResult: true });
+  const project = await fixture.executor.execute(AGENT, fixture.command);
+  assertEquals(project.agentRuns[0]?.status, "completed");
+  assertEquals(fixture.captures.saved.length, 1);
+});
 
 Deno.test(
   "the executor refuses a human origin before any store access",
@@ -158,8 +170,9 @@ Deno.test("model.write-sensitivity-edges@1 n'est pas une dépendance de queue", 
 async function createFixture(options: {
   readonly divergeStudyBytes?: boolean;
   readonly driverCurrent?: number;
+  readonly reuseResult?: boolean;
 } = {}) {
-  const world = await buildWorld();
+  const world = await buildWorld(options.reuseResult === true);
   const assembled = assembleVectorCorrectionDecision({
     evaluation: world.snapshot.evaluations[0]!,
     requirement: world.snapshot.requirements[0],
@@ -363,7 +376,7 @@ async function createFixture(options: {
   };
 }
 
-async function buildWorld() {
+async function buildWorld(reuseResult = false) {
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
       await Deno.readTextFile(
@@ -383,7 +396,7 @@ async function buildWorld() {
     { metric: "assembly_max_displacement", value: 0.996, unit: "mm" },
     { metric: "assembly_max_von_mises", value: 8, unit: "MPa" },
   ];
-  const capture: SensitivityStudyCapture = {
+  const freshCapture: SensitivityStudyCapture = {
     schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
     operation: { id: "analyze.run-fea-sensitivity", version: "1" },
     trustedRunId: "run.sensitivity",
@@ -411,6 +424,23 @@ async function buildWorld() {
     ),
     capturedAt: AT,
   };
+  const capture: SensitivityStudyResult = reuseResult
+    ? await makeSensitivityStudyReuseResult({
+      trustedRunId: "run.sensitivity",
+      studyCase,
+      record: {
+        result: {
+          measurements: { base, stepped },
+          derivatives: freshCapture.derivatives,
+        },
+      } as never,
+      reuseReceiptFingerprint: {
+        algorithm: "sha256",
+        digest: "6".repeat(64),
+      },
+      capturedAt: AT,
+    })
+    : freshCapture;
   const fingerprint = await sha256Fingerprint(capture);
   const artifactId = `sensitivity-study-${fingerprint.digest}`;
   const observationId = `sensitivity-base-${METRIC}-${fingerprint.digest}`;
@@ -465,7 +495,9 @@ async function buildWorld() {
         kind: "evidence",
         version: fingerprint.digest,
         fingerprint,
-        uri: `casys://sensitivity-study-capture/sha256/${fingerprint.digest}`,
+        uri: capture.schemaVersion === SENSITIVITY_STUDY_CAPTURE_SCHEMA
+          ? `casys://sensitivity-study-capture/sha256/${fingerprint.digest}`
+          : `${SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX}${fingerprint.digest}`,
         mediaType: "application/json",
         producer: {
           serverId: "digital-thread",

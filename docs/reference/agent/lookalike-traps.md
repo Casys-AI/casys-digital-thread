@@ -101,7 +101,7 @@ and [CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 | `project_fea_isolated_run_review`            | Sealed proof document → `@3` bindings (`proofCase` document + STEP)                              | Binding the assembly cad-model as `geometry`                 |
 | Isolated `geometry` binding                  | Canonical part STEP (`kind: step`, `mediaType: model/step`)                                      | The sibling `cad-model`                                      |
 | `analyze.seal-sensitivity-study@1`           | Provider-free Thread-document seal of a 2.0 study case                                           | `verify.seal-proof-case@1` or a solve                        |
-| `analyze.run-fea-sensitivity@1`              | Two attested CalculiX observations, no verdict                                                   | `verify.run-fea-static-proof@1` / `@2` / `@3`                |
+| `analyze.run-fea-sensitivity@1`              | Two attested CalculiX observations, or an exact server-selected private reuse result; no verdict | Caller-selected experience/key/provider/runtime, or `verify.run-fea-static-proof@1` / `@2` / `@3` |
 | `verify.evaluate-sensitivity-base@1`         | SysON evaluations of those study-base observations                                               | A proof-run evaluation or an invented metric mapping         |
 | STEP inside a sensitivity-study capture      | Isolated solver input for that study only                                                        | Canonical geometry or a proof-run `geometry` binding         |
 | `model.write-sensitivity-edges@1`            | Server-rendered derivative PartDef inserted into SysON                                           | `model.write-architecture@1`                                 |
@@ -109,7 +109,7 @@ and [CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 | `sensitivity-study-case/2.0` `cadSource`     | Sealed compilation-admission artifact URI + sha256                                               | `recipeSource` 1.0 or a STEP artifact                        |
 | `design.apply-vector-correction@1`           | Provider-free Thread-document seal of a bounded correction proposal (`grants: none`)             | CAD write, SysON insert, provider run, or execution admission |
 | `compile.capture-corrected-source@1`         | Substitute sealed z* into the parent admission source                                            | `compile.seal-admission@1` or `design.execute-build123d@1`   |
-| Binding `studyCapture`                       | `sensitivity-study-capture/1.0`                                                                  | `sensitivity-edges-capture/1.0` or a SysON PartDef           |
+| Binding `studyCapture`                       | Fresh `sensitivity-study-capture/1.0` or target-local `sensitivity-study-reuse-result/1.0`       | Source-project capture, `sensitivity-edges-capture/1.0`, or a SysON PartDef |
 
 CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.
 

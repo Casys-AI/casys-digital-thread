@@ -10,9 +10,9 @@ import type {
 } from "../../../ports/in/sensitivity/base-evaluation/project-sensitivity-base-evaluation-review.ts";
 import { resolveSensitivityBaseJoin } from "../../../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
 import {
-  type SensitivityStudyCapture,
-  validateSensitivityStudyCapture,
-} from "../../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+  type SensitivityStudyResult,
+  validateSensitivityStudyResult,
+} from "../../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import {
   deepFreeze,
   exactRecord,
@@ -73,9 +73,9 @@ export class PrepareProjectSensitivityBaseEvaluationReview
         "Re-run analyze.run-fea-sensitivity@1 and persist the capture.",
       );
     }
-    let capture: SensitivityStudyCapture;
+    let capture: SensitivityStudyResult;
     try {
-      capture = await validateSensitivityStudyCapture(JSON.parse(text));
+      capture = await validateSensitivityStudyResult(JSON.parse(text));
     } catch {
       return unresolved(
         "capture_integrity_failed",

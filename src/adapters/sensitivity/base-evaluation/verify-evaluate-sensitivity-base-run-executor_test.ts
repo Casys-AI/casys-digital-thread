@@ -17,6 +17,11 @@ import {
   type SensitivityStudyCapture,
 } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
 import {
+  makeSensitivityStudyReuseResult,
+  SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX,
+  type SensitivityStudyResult,
+} from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
+import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
@@ -91,6 +96,13 @@ Deno.test(
   },
 );
 
+Deno.test("the base evaluator reopens an exact-reused scientific result", async () => {
+  const fixture = await createFixture({ reuseResult: true });
+  const project = await fixture.executor.execute(AGENT, fixture.command);
+  assertEquals(project.agentRuns[0]?.status, "completed");
+  assertEquals(fixture.syson.calls, 1);
+});
+
 Deno.test("an unlinked study metric fails closed before SysON is called", async () => {
   const fixture = await createFixture({ dropRequirement: true });
   await assertRejects(
@@ -114,7 +126,11 @@ Deno.test("a SysON failure after claim fails the run and writes no Thread succes
 });
 
 async function createFixture(
-  options: { readonly dropRequirement?: boolean; readonly sysonDown?: boolean } = {},
+  options: {
+    readonly dropRequirement?: boolean;
+    readonly sysonDown?: boolean;
+    readonly reuseResult?: boolean;
+  } = {},
 ) {
   const world = await buildWorld(options);
   const operation = {
@@ -265,7 +281,10 @@ async function createFixture(
   };
 }
 
-async function buildWorld(options: { readonly dropRequirement?: boolean }) {
+async function buildWorld(options: {
+  readonly dropRequirement?: boolean;
+  readonly reuseResult?: boolean;
+}) {
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
       await Deno.readTextFile(
@@ -287,7 +306,7 @@ async function buildWorld(options: { readonly dropRequirement?: boolean }) {
     value: index === 0 ? 1.1 : 5,
     unit: metric.unit,
   }));
-  const capture: SensitivityStudyCapture = {
+  const freshCapture: SensitivityStudyCapture = {
     schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
     operation: { id: "analyze.run-fea-sensitivity", version: "1" },
     trustedRunId: "run.sensitivity",
@@ -315,6 +334,23 @@ async function buildWorld(options: { readonly dropRequirement?: boolean }) {
     ),
     capturedAt: AT,
   };
+  const capture: SensitivityStudyResult = options.reuseResult
+    ? await makeSensitivityStudyReuseResult({
+      trustedRunId: "run.sensitivity",
+      studyCase,
+      record: {
+        result: {
+          measurements: { base, stepped },
+          derivatives: freshCapture.derivatives,
+        },
+      } as never,
+      reuseReceiptFingerprint: {
+        algorithm: "sha256",
+        digest: "6".repeat(64),
+      },
+      capturedAt: AT,
+    })
+    : freshCapture;
   const fingerprint = await sha256Fingerprint(capture);
   const artifactId = `sensitivity-study-${fingerprint.digest}`;
   const briefId = "artifact.brief";
@@ -408,7 +444,9 @@ async function buildWorld(options: { readonly dropRequirement?: boolean }) {
         kind: "evidence",
         version: fingerprint.digest,
         fingerprint,
-        uri: `casys://sensitivity-study-capture/sha256/${fingerprint.digest}`,
+        uri: capture.schemaVersion === SENSITIVITY_STUDY_CAPTURE_SCHEMA
+          ? `casys://sensitivity-study-capture/sha256/${fingerprint.digest}`
+          : `${SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX}${fingerprint.digest}`,
         mediaType: "application/json",
         producer: {
           serverId: "digital-thread",

@@ -230,28 +230,6 @@ function catalogChanged(path: string): Error {
   return new Error(`Catalog file identity changed during read: ${path}.`);
 }
 
-async function resolveConfined(
-  root: string,
-  relativeFile: string,
-): Promise<string | undefined> {
-  const path = `${root}/${relativeFile}`;
-  let canonical: string;
-  try {
-    canonical = await Deno.realPath(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
-    throw error;
-  }
-  if (!isStrictDescendant(root, canonical)) {
-    throw new Error(`Catalog path escaped the catalog root: ${path}.`);
-  }
-  return canonical;
-}
-
-function isStrictDescendant(root: string, path: string): boolean {
-  return path.startsWith(`${root}/`) && path.length > root.length + 1;
-}
-
 function parseManifest(raw: string, path: string): readonly CatalogEntry[] {
   let parsed: unknown;
   try {

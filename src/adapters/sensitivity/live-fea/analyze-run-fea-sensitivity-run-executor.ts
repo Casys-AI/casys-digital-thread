@@ -82,6 +82,17 @@ import {
   type SensitivityStudyCapture,
   validateSensitivityStudyCapture,
 } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+import {
+  makeSensitivityStudyReuseResult,
+  SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX,
+  validateSensitivityStudyReuseResult,
+} from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
+import {
+  sensitivityExperienceExecutionPlanDigest,
+  type SensitivityExperienceRecord,
+  type SensitivityExperienceReuseReview,
+  type SensitivityExperienceTarget,
+} from "../../../domain/sensitivity/experience/sensitivity-experience.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
@@ -102,6 +113,12 @@ import {
   assertThreadWriteBasisAvailable,
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
+import type {
+  SensitivityExperienceCoordinator,
+  SensitivityExperienceLookupResult,
+} from "../experience/sensitivity-experience-coordinator.ts";
+import type { FileSensitivityExperienceReuseAttemptStore } from "../experience/file-sensitivity-experience-reuse-attempt-store.ts";
+import type { SensitivityExperienceReuseAttempt } from "../experience/file-sensitivity-experience-reuse-attempt-store.ts";
 
 export { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION };
 
@@ -127,6 +144,27 @@ export interface AnalyzeRunFeaSensitivityRunExecutorDependencies {
   readonly stager: SolverInputStager;
   readonly solver: SensitivityStaticStructuralSolver;
   readonly attempts: FileFeaSensitivityAttemptStore;
+  readonly experience?: {
+    readonly coordinator: Pick<
+      SensitivityExperienceCoordinator,
+      | "compileTarget"
+      | "review"
+      | "reopenReview"
+      | "recordUnavailableReview"
+      | "createReceipt"
+      | "reopenReceipt"
+      | "admitFresh"
+    >;
+    readonly attempts: Pick<
+      FileSensitivityExperienceReuseAttemptStore,
+      | "read"
+      | "readForPlan"
+      | "recordReview"
+      | "replaceHitWithMiss"
+      | "recordReceipt"
+      | "complete"
+    >;
+  };
   readonly lease: EngineeringProjectRunLease;
 }
 
@@ -144,6 +182,9 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
   readonly #stager: SolverInputStager;
   readonly #solver: SensitivityStaticStructuralSolver;
   readonly #attempts: FileFeaSensitivityAttemptStore;
+  readonly #experience:
+    | AnalyzeRunFeaSensitivityRunExecutorDependencies["experience"]
+    | undefined;
   readonly #lease: EngineeringProjectRunLease;
 
   constructor(deps: AnalyzeRunFeaSensitivityRunExecutorDependencies) {
@@ -158,6 +199,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     this.#stager = deps.stager;
     this.#solver = deps.solver;
     this.#attempts = deps.attempts;
+    this.#experience = deps.experience;
     this.#lease = deps.lease;
   }
 
@@ -277,12 +319,187 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         throw invalidTransition("The sealed step did not change the admitted source.");
       }
 
-      const planDigest = (await sha256Fingerprint({
-        caseDigest: caseCapture.caseDigest,
-        cadSource: studyCase.cadSource,
-        step: studyCase.step,
-        executionProfile: BUILD123D_EXECUTION_PROFILE,
-      })).digest;
+      const profile = await this.#profiles.resolve(BUILD123D_EXECUTION_PROFILE);
+      let experienceTarget: SensitivityExperienceTarget | undefined;
+      if (this.#experience) {
+        try {
+          experienceTarget = await this.#experience.coordinator.compileTarget({
+            studyCase,
+            admission: reopened,
+            build123dProfile: profile,
+          });
+        } catch {
+          // An incomplete compiler/runtime identity disables memoization only.
+          // The already authorized registered operation continues normally.
+          experienceTarget = undefined;
+        }
+      }
+      if (this.#experience && !experienceTarget) {
+        const strandedReuse = await this.#experience.attempts.read(
+          command.projectId,
+          run.id,
+        );
+        if (strandedReuse && strandedReuse.status !== "reviewed-miss") {
+          throw invalidTransition(
+            "Sensitivity reuse identity became unavailable after an exact hit was journalled.",
+          );
+        }
+      }
+      let planDigest = experienceTarget
+        ? await sensitivityExperienceExecutionPlanDigest({
+          caseDigest: caseCapture.caseDigest,
+          cadSource: studyCase.cadSource,
+          step: studyCase.step,
+          scientificKey: experienceTarget.scientificKey,
+        })
+        : (await sha256Fingerprint({
+          caseDigest: caseCapture.caseDigest,
+          cadSource: studyCase.cadSource,
+          step: studyCase.step,
+          executionProfile: BUILD123D_EXECUTION_PROFILE,
+        })).digest;
+      const existingExecutionAttempt = await this.#attempts.read(
+        command.projectId,
+        run.id,
+      );
+      if (
+        existingExecutionAttempt?.status === "completed" &&
+        existingExecutionAttempt.snapshot
+      ) {
+        return await this.#completeFromRecordedSnapshot(
+          origin,
+          command,
+          run.id,
+          existingExecutionAttempt,
+        );
+      }
+      if (existingExecutionAttempt) {
+        if (this.#experience) {
+          const existingReuseAttempt = await this.#experience.attempts.read(
+            command.projectId,
+            run.id,
+          );
+          if (
+            existingReuseAttempt && existingReuseAttempt.status !== "reviewed-miss"
+          ) {
+            throw invalidTransition(
+              "Sensitivity reuse is forbidden after a normal execution WAL exists.",
+            );
+          }
+        }
+        if (planDigest !== existingExecutionAttempt.planDigest) {
+          // Once normal execution has a WAL, it owns recovery. A later
+          // compiler/runtime change may disable future admission, but cannot
+          // reinterpret or strand already dispatched effects.
+          experienceTarget = undefined;
+        }
+        planDigest = existingExecutionAttempt.planDigest;
+      }
+      let missReview: SensitivityExperienceLookupResult | undefined;
+      if (this.#experience && experienceTarget && !existingExecutionAttempt) {
+        let reuseAttempt: SensitivityExperienceReuseAttempt | undefined;
+        let memoizationDisabled = false;
+        try {
+          reuseAttempt = await this.#experience.attempts.readForPlan({
+            projectId: command.projectId,
+            runId: run.id,
+            planDigest,
+            scientificKey: experienceTarget.scientificKey,
+          });
+        } catch (error) {
+          const recorded = await this.#experience.attempts.read(
+            command.projectId,
+            run.id,
+          );
+          if (recorded?.status !== "reviewed-miss") throw error;
+          // A previously journalled miss remains authorization to continue the
+          // normal operation. A changed compiler identity only disables reuse
+          // and fresh admission for this recovery.
+          reuseAttempt = recorded;
+          planDigest = recorded.planDigest;
+          experienceTarget = undefined;
+          memoizationDisabled = true;
+        }
+        const reuseTarget = experienceTarget;
+        if (!memoizationDisabled && !reuseTarget) {
+          throw invalidTransition("Sensitivity experience target is unavailable.");
+        }
+        if (!memoizationDisabled && reuseAttempt?.status === "completed") {
+          return await this.#completeFromRecordedReuseSnapshot(
+            origin,
+            command,
+            run.id,
+            reuseAttempt,
+          );
+        }
+        let lookup: SensitivityExperienceLookupResult | undefined;
+        if (!memoizationDisabled && reuseAttempt?.status === "reviewed-miss") {
+          missReview = await this.#experience.coordinator.reopenReview({
+            fingerprint: reuseAttempt.reviewFingerprint,
+            projectId: command.projectId,
+            basis,
+            basisSnapshot,
+            target: reuseTarget!,
+          });
+        } else if (!memoizationDisabled && reuseAttempt) {
+          try {
+            lookup = await this.#experience.coordinator.reopenReview({
+              fingerprint: reuseAttempt.reviewFingerprint,
+              projectId: command.projectId,
+              basis,
+              basisSnapshot,
+              target: reuseTarget!,
+            });
+          } catch (error) {
+            if (reuseAttempt.status !== "reviewed-hit") throw error;
+            missReview = await this.#experience.coordinator.recordUnavailableReview({
+              projectId: command.projectId,
+              basis,
+              basisSnapshot,
+              target: reuseTarget!,
+              reviewedAt: requiredStart(run),
+            });
+            reuseAttempt = await this.#experience.attempts.replaceHitWithMiss({
+              projectId: command.projectId,
+              runId: run.id,
+              reviewFingerprint: missReview.reviewFingerprint,
+            });
+          }
+        } else if (!memoizationDisabled) {
+          lookup = await this.#experience.coordinator.review({
+            projectId: command.projectId,
+            basis,
+            basisSnapshot,
+            target: reuseTarget!,
+            reviewedAt: requiredStart(run),
+          });
+          reuseAttempt = await this.#experience.attempts.recordReview({
+            projectId: command.projectId,
+            runId: run.id,
+            planDigest,
+            scientificKey: reuseTarget!.scientificKey,
+            reviewFingerprint: lookup.reviewFingerprint,
+            hit: lookup.review.outcome === "exact",
+          });
+          if (lookup.review.outcome !== "exact") missReview = lookup;
+        }
+        if (
+          !memoizationDisabled && lookup?.review.outcome === "exact" && reuseAttempt
+        ) {
+          return await this.#completeFromExperienceReuse({
+            origin,
+            command,
+            run,
+            basis,
+            basisSnapshot,
+            caseArtifact,
+            studyCase,
+            target: reuseTarget!,
+            lookup,
+            attempt: reuseAttempt,
+          });
+        }
+      }
       const attempt = await this.#attempts.prepare({
         projectId: command.projectId,
         runId: run.id,
@@ -297,7 +514,6 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         );
       }
 
-      const profile = await this.#profiles.resolve(BUILD123D_EXECUTION_PROFILE);
       const baseCad = await this.#executeCad({
         projectId: command.projectId,
         runId: run.id,
@@ -391,6 +607,15 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         captureFingerprint,
         captureUri: this.#studyCaptures.uriFor(captureFingerprint),
         graph,
+        ...(missReview
+          ? {
+            reuseReview: {
+              review: missReview.review,
+              fingerprint: missReview.reviewFingerprint,
+              uri: missReview.reviewUri,
+            },
+          }
+          : {}),
       });
       await this.#snapshots.save(successor.snapshot);
       const readback = await this.#snapshots.getFresh(successor.snapshot.id);
@@ -401,6 +626,31 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         throw new Error(
           "Sensitivity study ThreadSnapshot was not durably readable after save.",
         );
+      }
+      if (this.#experience && experienceTarget) {
+        try {
+          await this.#experience.coordinator.admitFresh({
+            target: experienceTarget,
+            capture,
+            projectId: command.projectId,
+            basis: {
+              kind: "thread-snapshot",
+              snapshotId: successor.snapshot.id,
+              revision: successor.snapshot.revision,
+              subjectId: successor.snapshot.subject.id,
+            },
+            studyArtifact: successor.artifact,
+            caseArtifact,
+            admissionArtifact,
+            trustedRunId: run.id,
+            executionPlanDigest: planDigest,
+            admittedAt: capturedAt,
+          });
+        } catch {
+          // Experience admission is an optional derived read model. A missing
+          // runtime attestation or unavailable private store cannot invalidate
+          // the already completed registered sensitivity execution.
+        }
       }
       await this.#attempts.complete({
         projectId: command.projectId,
@@ -506,6 +756,269 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
           snapshotRevision: snapshot.revision,
           kind: "artifact",
           id: artifact.id,
+        }],
+      });
+    }
+    return await this.#requiredProject(command.projectId);
+  }
+
+  async #completeFromExperienceReuse(input: {
+    readonly origin: EngineeringProjectCommandOrigin;
+    readonly command: {
+      readonly commandId: string;
+      readonly projectId: string;
+      readonly expectedRevision: number;
+      readonly issuedAt: string;
+      readonly runId: string;
+    };
+    readonly run: EngineeringAgentRun;
+    readonly basis: EngineeringThreadSnapshotBasis;
+    readonly basisSnapshot: ThreadSnapshot;
+    readonly caseArtifact: ThreadArtifact;
+    readonly studyCase: SensitivityStudyCaseV2;
+    readonly target: SensitivityExperienceTarget;
+    readonly lookup: SensitivityExperienceLookupResult;
+    readonly attempt: SensitivityExperienceReuseAttempt;
+  }): Promise<EngineeringProjectSnapshot> {
+    if (!this.#experience || !input.lookup.selected) {
+      throw invalidTransition("Exact sensitivity reuse has no selected experience.");
+    }
+    let attempt = input.attempt;
+    const receipt = attempt.status === "receipt-recorded"
+      ? await this.#experience.coordinator.reopenReceipt(
+        attempt.receiptFingerprint,
+      )
+      : await this.#experience.coordinator.createReceipt({
+        review: input.lookup.review,
+        reviewFingerprint: input.lookup.reviewFingerprint,
+        issuedAt: requiredStart(input.run),
+      });
+    if (attempt.status === "reviewed-hit") {
+      attempt = await this.#experience.attempts.recordReceipt({
+        projectId: input.command.projectId,
+        runId: input.run.id,
+        receiptFingerprint: receipt.receiptFingerprint,
+      });
+    }
+    if (attempt.status !== "receipt-recorded") {
+      throw invalidTransition("Sensitivity reuse receipt WAL is not resumable.");
+    }
+    const result = await makeSensitivityStudyReuseResult({
+      trustedRunId: input.run.id,
+      studyCase: input.studyCase,
+      record: input.lookup.selected.record,
+      reuseReceiptFingerprint: receipt.receiptFingerprint,
+      capturedAt: requiredStart(input.run),
+    });
+    const resultFingerprint = await sha256Fingerprint(result);
+    const resultText = deterministicJson(result);
+    await this.#studyCaptures.save(resultFingerprint, resultText);
+    if (await this.#studyCaptures.read(resultFingerprint) !== resultText) {
+      throw new Error(
+        "Sensitivity reuse result was not durably readable after save.",
+      );
+    }
+    const successor = buildReuseSuccessor({
+      basisSnapshot: input.basisSnapshot,
+      basis: input.basis,
+      run: input.run,
+      caseArtifact: input.caseArtifact,
+      studyCase: input.studyCase,
+      caseDigest: result.caseDigest,
+      record: input.lookup.selected.record,
+      review: input.lookup.review,
+      reviewFingerprint: input.lookup.reviewFingerprint,
+      reviewUri: input.lookup.reviewUri,
+      receipt: receipt.receipt,
+      receiptFingerprint: receipt.receiptFingerprint,
+      receiptUri: receipt.receiptUri,
+      resultFingerprint,
+      resultUri:
+        `${SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX}${resultFingerprint.digest}`,
+    });
+    await this.#snapshots.save(successor.snapshot);
+    const readback = await this.#snapshots.getFresh(successor.snapshot.id);
+    if (
+      !readback || deterministicJson(readback) !== deterministicJson(successor.snapshot)
+    ) {
+      throw new Error(
+        "Sensitivity reuse ThreadSnapshot was not durably readable after save.",
+      );
+    }
+    await this.#experience.attempts.complete({
+      projectId: input.command.projectId,
+      runId: input.run.id,
+      snapshot: {
+        snapshotId: successor.snapshot.id,
+        revision: successor.snapshot.revision,
+        subjectId: successor.snapshot.subject.id,
+      },
+    });
+    let project = await this.#requiredProject(input.command.projectId);
+    let run = requireRun(project, input.run.id);
+    if (run.status === "running") {
+      await this.#commands.publishRun(input.origin, {
+        ...input.command,
+        commandId: `${input.command.commandId}:publish`,
+        expectedRevision: project.revision,
+        summary: "Publishing an exact private sensitivity reuse receipt.",
+      });
+    }
+    project = await this.#requiredProject(input.command.projectId);
+    run = requireRun(project, input.run.id);
+    if (run.status === "publishing") {
+      await this.#commands.completeRun(input.origin, {
+        ...input.command,
+        commandId: `${input.command.commandId}:complete`,
+        expectedRevision: project.revision,
+        summary:
+          "Published exact reused sensitivity observations without a fresh solve or verdict.",
+        resultSnapshot: snapshotRef(successor.snapshot),
+        evidenceRefs: [{
+          snapshotId: successor.snapshot.id,
+          snapshotRevision: successor.snapshot.revision,
+          kind: "artifact",
+          id: successor.resultArtifact.id,
+        }],
+      });
+    }
+    return await this.#requiredProject(input.command.projectId);
+  }
+
+  async #completeFromRecordedReuseSnapshot(
+    origin: EngineeringProjectCommandOrigin,
+    command: {
+      readonly commandId: string;
+      readonly projectId: string;
+      readonly expectedRevision: number;
+      readonly issuedAt: string;
+      readonly runId: string;
+    },
+    runId: string,
+    attempt: Extract<SensitivityExperienceReuseAttempt, { status: "completed" }>,
+  ): Promise<EngineeringProjectSnapshot> {
+    if (!this.#experience) {
+      throw invalidTransition("Sensitivity experience replay is unavailable.");
+    }
+    const snapshot = await this.#snapshots.getFresh(attempt.snapshot.snapshotId);
+    if (
+      !snapshot || snapshot.revision !== attempt.snapshot.revision ||
+      snapshot.subject.id !== attempt.snapshot.subjectId
+    ) {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse snapshot is not durably readable.",
+      );
+    }
+    const receiptArtifact = snapshot.artifacts.find((artifact) =>
+      artifact.producer.runId === runId &&
+      artifact.producer.tool === "analyze.run-fea-sensitivity@1" &&
+      artifact.uri?.startsWith(
+        "casys://sensitivity-experience-reuse-receipt/sha256/",
+      )
+    );
+    if (!receiptArtifact) {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse snapshot has no target receipt.",
+      );
+    }
+    if (
+      !fingerprintsEqual(receiptArtifact.fingerprint, attempt.receiptFingerprint) ||
+      receiptArtifact.uri !==
+        `casys://sensitivity-experience-reuse-receipt/sha256/${attempt.receiptFingerprint.digest}`
+    ) {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse receipt identity is divergent.",
+      );
+    }
+    const resultArtifact = snapshot.artifacts.find((artifact) =>
+      artifact.producer.runId === runId &&
+      artifact.producer.tool === "analyze.run-fea-sensitivity@1" &&
+      artifact.uri?.startsWith(SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX)
+    );
+    if (!resultArtifact) {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse snapshot has no target scientific result.",
+      );
+    }
+    if (
+      resultArtifact.uri !==
+        `${SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX}${resultArtifact.fingerprint.digest}`
+    ) {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse result identity is divergent.",
+      );
+    }
+    const reopenedReceipt = await this.#experience.coordinator.reopenReceipt(
+      attempt.receiptFingerprint,
+    );
+    if (
+      !fingerprintsEqual(
+        reopenedReceipt.receiptFingerprint,
+        receiptArtifact.fingerprint,
+      ) ||
+      !fingerprintsEqual(
+        reopenedReceipt.receipt.reviewFingerprint,
+        attempt.reviewFingerprint,
+      ) ||
+      !fingerprintsEqual(
+        reopenedReceipt.receipt.scientificKey,
+        attempt.scientificKey,
+      ) || reopenedReceipt.receipt.target.projectId !== command.projectId
+    ) {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse receipt is divergent.",
+      );
+    }
+    const resultText = await this.#studyCaptures.read(resultArtifact.fingerprint);
+    if (!resultText) {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse result is not durably readable.",
+      );
+    }
+    let result;
+    try {
+      result = await validateSensitivityStudyReuseResult(JSON.parse(resultText));
+    } catch {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse result is invalid.",
+      );
+    }
+    if (
+      resultText !== deterministicJson(result) || result.trustedRunId !== runId ||
+      !fingerprintsEqual(
+        result.reuseReceiptFingerprint,
+        attempt.receiptFingerprint,
+      )
+    ) {
+      throw invalidTransition(
+        "WAL-completed sensitivity reuse result is divergent.",
+      );
+    }
+    let project = await this.#requiredProject(command.projectId);
+    let run = requireRun(project, runId);
+    if (run.status === "running") {
+      await this.#commands.publishRun(origin, {
+        ...command,
+        commandId: `${command.commandId}:publish`,
+        expectedRevision: project.revision,
+        summary: "Publishing an exact private sensitivity reuse receipt.",
+      });
+    }
+    project = await this.#requiredProject(command.projectId);
+    run = requireRun(project, runId);
+    if (run.status === "publishing") {
+      await this.#commands.completeRun(origin, {
+        ...command,
+        commandId: `${command.commandId}:complete`,
+        expectedRevision: project.revision,
+        summary:
+          "Published exact reused sensitivity observations without a fresh solve or verdict.",
+        resultSnapshot: snapshotRef(snapshot),
+        evidenceRefs: [{
+          snapshotId: snapshot.id,
+          snapshotRevision: snapshot.revision,
+          kind: "artifact",
+          id: resultArtifact.id,
         }],
       });
     }
@@ -1057,6 +1570,11 @@ function buildStudySuccessor(input: {
   readonly captureFingerprint: ContentFingerprint;
   readonly captureUri: string;
   readonly graph: ReturnType<typeof buildSensitivityAnalysisGraph>;
+  readonly reuseReview?: {
+    readonly review: SensitivityExperienceReuseReview;
+    readonly fingerprint: ContentFingerprint;
+    readonly uri: string;
+  };
 }): { readonly snapshot: ThreadSnapshot; readonly artifact: ThreadArtifact } {
   const capturedAt = requiredStart(input.run);
   const artifactId = `sensitivity-study-${input.captureFingerprint.digest}`;
@@ -1078,6 +1596,24 @@ function buildStudySuccessor(input: {
     inputArtifactIds: [input.caseArtifact.id],
     freshness: { status: "fresh", changedAt: capturedAt, invalidatedByChangeIds: [] },
   };
+  const reviewArtifact: ThreadArtifact | undefined = input.reuseReview
+    ? {
+      id: `sensitivity-reuse-review-${input.reuseReview.fingerprint.digest}`,
+      name: "Private sensitivity reuse miss review",
+      kind: "document",
+      version: input.reuseReview.fingerprint.digest,
+      fingerprint: input.reuseReview.fingerprint,
+      uri: input.reuseReview.uri,
+      mediaType: "application/json",
+      producer: operationRef,
+      inputArtifactIds: [input.caseArtifact.id],
+      freshness: {
+        status: "fresh",
+        changedAt: capturedAt,
+        invalidatedByChangeIds: [],
+      },
+    }
+    : undefined;
   const observations: ThreadObservation[] = [
     ...input.capture.measurements.base.map((item) => ({
       id: `sensitivity-base-${item.metric}-${input.captureFingerprint.digest}`,
@@ -1117,7 +1653,7 @@ function buildStudySuccessor(input: {
     name: "Run the sealed FEA sensitivity study",
     subjectId: input.basis.subjectId,
     capturedAt,
-    artifacts: [artifact],
+    artifacts: [artifact, ...(reviewArtifact ? [reviewArtifact] : [])],
     consumptions: [{
       id: `consume-${input.caseArtifact.id}-by-${artifactId}`,
       artifactId: input.caseArtifact.id,
@@ -1138,6 +1674,16 @@ function buildStudySuccessor(input: {
         to: { kind: "artifact", id: input.caseArtifact.id },
         rationale: "The sensitivity run consumes the sealed study-case mandate.",
       },
+      ...(reviewArtifact
+        ? [{
+          id: `derived-from-${input.caseArtifact.id}-by-${reviewArtifact.id}`,
+          relation: "derived_from" as const,
+          from: { kind: "artifact" as const, id: reviewArtifact.id },
+          to: { kind: "artifact" as const, id: input.caseArtifact.id },
+          rationale:
+            "The server recorded a literal exact-reuse miss before normal execution.",
+        }]
+        : []),
       {
         id: `uses-consume-${input.caseArtifact.id}-by-${artifactId}`,
         relation: "uses",
@@ -1169,6 +1715,285 @@ function buildStudySuccessor(input: {
   }
   validateThreadSnapshot(applied.snapshot);
   return { snapshot: applied.snapshot, artifact };
+}
+
+function buildReuseSuccessor(input: {
+  readonly basisSnapshot: ThreadSnapshot;
+  readonly basis: EngineeringThreadSnapshotBasis;
+  readonly run: EngineeringAgentRun;
+  readonly caseArtifact: ThreadArtifact;
+  readonly studyCase: SensitivityStudyCaseV2;
+  readonly caseDigest: string;
+  readonly record: SensitivityExperienceRecord;
+  readonly review: SensitivityExperienceReuseReview;
+  readonly reviewFingerprint: ContentFingerprint;
+  readonly reviewUri: string;
+  readonly receipt: {
+    readonly scientificKey: ContentFingerprint;
+    readonly reviewFingerprint: ContentFingerprint;
+    readonly recordFingerprint: ContentFingerprint;
+    readonly originBindingFingerprint: ContentFingerprint;
+    readonly target: SensitivityExperienceReuseReview["target"];
+  };
+  readonly receiptFingerprint: ContentFingerprint;
+  readonly receiptUri: string;
+  readonly resultFingerprint: ContentFingerprint;
+  readonly resultUri: string;
+}): {
+  readonly snapshot: ThreadSnapshot;
+  readonly receiptArtifact: ThreadArtifact;
+  readonly resultArtifact: ThreadArtifact;
+} {
+  if (
+    input.review.outcome !== "exact" || !input.review.selection ||
+    !fingerprintsEqual(input.reviewFingerprint, input.receipt.reviewFingerprint) ||
+    !fingerprintsEqual(input.record.scientificKey, input.receipt.scientificKey) ||
+    !fingerprintsEqual(
+      input.review.selection.recordFingerprint,
+      input.receipt.recordFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      input.review.selection.originBindingFingerprint,
+      input.receipt.originBindingFingerprint,
+    ) ||
+    input.receipt.target.projectId !== input.review.target.projectId ||
+    deterministicJson(input.receipt.target.basis) !==
+      deterministicJson(input.basis)
+  ) {
+    throw invalidTransition("Exact sensitivity reuse receipt is divergent.");
+  }
+  const capturedAt = requiredStart(input.run);
+  const operationRef = {
+    serverId: "digital-thread",
+    tool: "analyze.run-fea-sensitivity@1",
+    runId: input.run.id,
+  };
+  const reviewArtifact: ThreadArtifact = {
+    id: `sensitivity-reuse-review-${input.reviewFingerprint.digest}`,
+    name: "Exact private sensitivity reuse review",
+    kind: "document",
+    version: input.reviewFingerprint.digest,
+    fingerprint: input.reviewFingerprint,
+    uri: input.reviewUri,
+    mediaType: "application/json",
+    producer: operationRef,
+    inputArtifactIds: [input.caseArtifact.id],
+    freshness: {
+      status: "fresh",
+      changedAt: capturedAt,
+      invalidatedByChangeIds: [],
+    },
+  };
+  const receiptArtifact: ThreadArtifact = {
+    id: `sensitivity-reuse-receipt-${input.receiptFingerprint.digest}`,
+    name: "Exact private sensitivity reuse receipt",
+    kind: "evidence",
+    version: input.receiptFingerprint.digest,
+    fingerprint: input.receiptFingerprint,
+    uri: input.receiptUri,
+    mediaType: "application/json",
+    producer: operationRef,
+    inputArtifactIds: [reviewArtifact.id],
+    freshness: {
+      status: "fresh",
+      changedAt: capturedAt,
+      invalidatedByChangeIds: [],
+    },
+  };
+  const resultArtifact: ThreadArtifact = {
+    id: `sensitivity-study-reuse-result-${input.resultFingerprint.digest}`,
+    name: "Exact reused FEA sensitivity result",
+    kind: "document",
+    version: input.resultFingerprint.digest,
+    fingerprint: input.resultFingerprint,
+    uri: input.resultUri,
+    mediaType: "application/json",
+    producer: operationRef,
+    inputArtifactIds: [input.caseArtifact.id, receiptArtifact.id],
+    freshness: {
+      status: "fresh",
+      changedAt: capturedAt,
+      invalidatedByChangeIds: [],
+    },
+  };
+  const baseMetrics = new Map(
+    input.record.result.measurements.base.map((item) => [
+      item.metric,
+      { value: item.value, unit: item.unit },
+    ]),
+  );
+  const steppedMetrics = new Map(
+    input.record.result.measurements.stepped.map((item) => [
+      item.metric,
+      { value: item.value, unit: item.unit },
+    ]),
+  );
+  const graph = buildSensitivityAnalysisGraph({
+    caseFingerprint: { algorithm: "sha256", digest: input.caseDigest },
+    sensitivityCase: input.studyCase,
+    baseMetrics,
+    steppedMetrics,
+    evidence: {
+      capture: {
+        id: resultArtifact.id,
+        fingerprint: resultArtifact.fingerprint,
+      },
+    },
+  });
+  const observations: ThreadObservation[] = [
+    ...input.record.result.measurements.base.map((item) => ({
+      id: `sensitivity-base-${item.metric}-${input.resultFingerprint.digest}`,
+      name: `${item.metric} at base (exact reuse)`,
+      metric: item.metric,
+      quantity: { value: item.value, unit: item.unit },
+      source: {
+        operation: operationRef,
+        artifactIds: [resultArtifact.id],
+        capturedAt,
+      },
+      freshness: {
+        status: "fresh" as const,
+        changedAt: capturedAt,
+        invalidatedByChangeIds: [],
+      },
+    })),
+    ...input.record.result.derivatives.derivatives.map((item) => ({
+      id: `sensitivity-d-${item.metric}-${input.resultFingerprint.digest}`,
+      name: `d(${item.metric}) (exact reuse)`,
+      metric: `d_${item.metric}`,
+      quantity: { value: item.value, unit: item.unit },
+      source: {
+        operation: operationRef,
+        artifactIds: [resultArtifact.id],
+        capturedAt,
+      },
+      freshness: {
+        status: "fresh" as const,
+        changedAt: capturedAt,
+        invalidatedByChangeIds: [],
+      },
+    })),
+  ];
+  const extension: ThreadSnapshotExtension = {
+    id: `analyze-run-fea-sensitivity-${input.run.id}`,
+    name: "Reuse one exact private FEA sensitivity experience",
+    subjectId: input.basis.subjectId,
+    capturedAt,
+    artifacts: [reviewArtifact, receiptArtifact, resultArtifact],
+    consumptions: [
+      {
+        id: `consume-${input.caseArtifact.id}-by-${input.run.id}`,
+        artifactId: input.caseArtifact.id,
+        consumer: operationRef,
+        observedFingerprint: input.caseArtifact.fingerprint,
+        verifiedAt: capturedAt,
+        status: "verified",
+      },
+      {
+        id: `consume-${reviewArtifact.id}-by-${input.run.id}`,
+        artifactId: reviewArtifact.id,
+        consumer: operationRef,
+        observedFingerprint: reviewArtifact.fingerprint,
+        verifiedAt: capturedAt,
+        status: "verified",
+      },
+      {
+        id: `consume-${receiptArtifact.id}-by-${input.run.id}`,
+        artifactId: receiptArtifact.id,
+        consumer: operationRef,
+        observedFingerprint: receiptArtifact.fingerprint,
+        verifiedAt: capturedAt,
+        status: "verified",
+      },
+    ],
+    observations,
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [
+      {
+        id: `derived-from-${input.caseArtifact.id}-by-${reviewArtifact.id}`,
+        relation: "derived_from",
+        from: { kind: "artifact", id: reviewArtifact.id },
+        to: { kind: "artifact", id: input.caseArtifact.id },
+        rationale:
+          "The server recomputed exact compatibility on the target study basis.",
+      },
+      {
+        id: `derived-from-${reviewArtifact.id}-by-${receiptArtifact.id}`,
+        relation: "derived_from",
+        from: { kind: "artifact", id: receiptArtifact.id },
+        to: { kind: "artifact", id: reviewArtifact.id },
+        rationale:
+          "The target receipt records one exact, source-healthy private reuse.",
+      },
+      {
+        id: `derived-from-${receiptArtifact.id}-by-${resultArtifact.id}`,
+        relation: "derived_from",
+        from: { kind: "artifact", id: resultArtifact.id },
+        to: { kind: "artifact", id: receiptArtifact.id },
+        rationale: "The target scientific result is bound to its exact reuse receipt.",
+      },
+      {
+        id: `derived-from-${input.caseArtifact.id}-by-${resultArtifact.id}`,
+        relation: "derived_from",
+        from: { kind: "artifact", id: resultArtifact.id },
+        to: { kind: "artifact", id: input.caseArtifact.id },
+        rationale:
+          "The target scientific result was recalculated for the target study case.",
+      },
+      {
+        id: `uses-${input.caseArtifact.id}-by-${input.run.id}`,
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: `consume-${input.caseArtifact.id}-by-${input.run.id}`,
+        },
+        to: { kind: "artifact", id: input.caseArtifact.id },
+        rationale: "The reuse review re-read the target study-case mandate.",
+      },
+      {
+        id: `uses-${reviewArtifact.id}-by-${input.run.id}`,
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: `consume-${reviewArtifact.id}-by-${input.run.id}`,
+        },
+        to: { kind: "artifact", id: reviewArtifact.id },
+        rationale: "The target receipt consumed its exact review.",
+      },
+      {
+        id: `uses-${receiptArtifact.id}-by-${input.run.id}`,
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: `consume-${receiptArtifact.id}-by-${input.run.id}`,
+        },
+        to: { kind: "artifact", id: receiptArtifact.id },
+        rationale: "The target scientific result consumed its exact receipt.",
+      },
+      ...observations.map((observation) => ({
+        id: `derived-from-${resultArtifact.id}-by-${observation.id}`,
+        relation: "derived_from" as const,
+        from: { kind: "observation" as const, id: observation.id },
+        to: { kind: "artifact" as const, id: resultArtifact.id },
+        rationale:
+          "The target observation was recalculated from the target-local reuse result.",
+      })),
+    ],
+    proposedActions: [],
+    analysisGraph: graph,
+  };
+  const applied = applyThreadSnapshotExtensionIfNew(
+    input.basisSnapshot,
+    extension,
+    { appliedAt: capturedAt },
+  );
+  if (!applied.applied) {
+    throw invalidTransition("This exact sensitivity reuse receipt is already present.");
+  }
+  validateThreadSnapshot(applied.snapshot);
+  return { snapshot: applied.snapshot, receiptArtifact, resultArtifact };
 }
 
 function sameSnapshotBasis(
