@@ -237,6 +237,9 @@ elicitation surface; Desktop still needs the host, IPC and UI integration.
 - The packaged-helper E2E proves marker removal, port closure and no owned orphan for
   the exercised graceful and repeated-signal shutdowns. Cleanup never targets a merely
   matching foreign or reconnected process.
+- A fake owned child that ignores the first `SIGKILL` proves that bounded shutdown does
+  not infer exit: `termination-unresolved` remains visible, the handle is retained for
+  retry, application stop rejects, and the native supervisor withholds explicit exit.
 - Packaging gates use current Deno tooling (`deno fmt --check`, `deno lint`,
   `deno test`, and `deno check`) with explicit permissions.
 - Proxy tests prove exact GET/HEAD/SSE paths, bounded request headers, CSP/security
@@ -259,21 +262,31 @@ elicitation surface; Desktop still needs the host, IPC and UI integration.
 
 - Lot 3's first proved distribution is macOS 14.0 or later. Linux and Windows paths are
   validated data contracts, but their native packaging/finalization is not yet shipped;
-  this distribution limit does not narrow the portable Workbench/BFF/proxy architecture.
+  macOS is the first proved distribution, not the product limit, and this distribution
+  envelope does not narrow the portable Workbench/BFF/proxy architecture.
 - Linux uses `<prefix>/casys-digital-thread/{bin,libexec}` and Windows uses
   `<prefix>\\CasysDigitalThread\\{CasysDigitalThread.exe,Helpers}` as closed future
   bundle contracts. Missing helpers, failed inspect, or identity/digest mismatch remain
   unavailable or recovery-required. Their packagers must also emit target-specific
   closed filesystem and helper-executable grants; these contracts are not packaging
   proof.
+- The current compiled relative filesystem grants cover `linux-xdg`, and the actual
+  compiled Workbench helper executes that profile in the permission E2E. The
+  `$HOME/.local/share/...` `linux-home` layout remains resolvable data but is explicitly
+  non-launchable: startup creates neither helper factory, while direct compiled-helper
+  execution proves permission denial. Neither result is a Linux package, launcher,
+  signature, or distribution proof.
 - The current package is ad-hoc signed and its nested signatures are verified locally.
   It has no Developer ID signature, hardened-runtime release gate, notarization,
   stapling, or public-release installer.
-- No-orphan is not yet a universal shutdown invariant: after EOF, `SIGTERM` and
-  `SIGKILL`, the host bounds its last status wait and returns even if child status is
-  still unresolved. The real packaged helper passed the E2E cleanup gate, but public
-  release must surface or otherwise resolve that terminal timeout rather than infer
-  child exit.
+- No terminal Workbench child state is inferred. After EOF, `SIGTERM` and `SIGKILL`, an
+  unresolved bounded status wait returns the literal `termination-unresolved` recovery
+  state, retains the owned handle, rejects application stop, and prevents explicit
+  native process exit while the supervisor retries. This closes the Workbench lifecycle
+  invariant in code; the real packaged-helper E2E remains the proof for its exercised
+  shutdown path. The older control-plane host still has its separately documented
+  bounded terminal-timeout behavior, so universal no-orphan across every Desktop
+  component is not claimed here.
 - Deno Desktop and config-file permission sets remain experimental in the pinned Deno
   `2.9.2` toolchain. Product `0.3.0` therefore proves the reviewed local package, not a
   generally supported or notarized distribution channel.

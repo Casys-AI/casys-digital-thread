@@ -36,10 +36,15 @@ proved by the current packager, not the product architecture boundary.
   closes only the child handle retained by the Desktop process; stdin EOF is the crash
   lifeline. On `SIGINT` or `SIGTERM`, Desktop drains the renderer and requests bounded
   owned-child cleanup through EOF, `SIGTERM`, then `SIGKILL` before explicitly exiting
-  the native process. The moved-bundle E2E proves marker removal, port closure, and no
-  owned orphan for the real packaged helper, including repeated signals. This is not a
-  universal no-orphan guarantee: if child status remains unresolved after the final
-  `SIGKILL` timeout, the host returns without proving the terminal child state.
+  the native process. For the Workbench, a bounded final wait that still has no terminal
+  process status is an explicit `termination-unresolved` failure: its host retains the
+  owned handle, the application exposes a retryable failed stop, and the native
+  supervisor withholds explicit process exit while retrying. A fake child proves the
+  unresolved and retry edges even when the first `SIGKILL` is ignored. The moved-bundle
+  E2E separately proves marker removal, port closure, and no owned orphan for the real
+  packaged helper, including repeated signals. This Lot 3 follow-up does not change the
+  older control-plane host's bounded terminal-timeout behavior, so it makes no universal
+  no-orphan claim across every Desktop component.
 - Control-plane readiness, engineering-provider health, and persisted evidence remain
   separate states. Providers may be `unavailable` without counts. Indexed or `demo` run
   records remain `candidate-unverified`; they are not promoted to verified Thread
@@ -101,11 +106,11 @@ launches the helpers only in the macOS distribution; later platform packagers mu
 the same portable web UI, BFF/proxy and least-privilege helper contracts under their
 native application-support roots:
 
-| Platform | Product root                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------ |
-| macOS    | `$HOME/Library/Application Support/ai.casys.digital-thread`                                      |
-| Linux    | `$XDG_DATA_HOME/ai.casys.digital-thread`, otherwise `$HOME/.local/share/ai.casys.digital-thread` |
-| Windows  | `%LOCALAPPDATA%\\ai.casys.digital-thread`; roaming config under `%APPDATA%`                      |
+| Platform | Product root                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | `$HOME/Library/Application Support/ai.casys.digital-thread`                                                                 |
+| Linux    | `$XDG_DATA_HOME/ai.casys.digital-thread`; the `$HOME/.local/share/...` fallback is layout data but currently non-launchable |
+| Windows  | `%LOCALAPPDATA%\\ai.casys.digital-thread`; roaming config under `%APPDATA%`                                                 |
 
 The matching runtime bundle-path contracts are also closed and unit-tested. Only the
 first row is produced and signature-verified by the current packager:
@@ -120,7 +125,11 @@ The Windows and Linux rows are path contracts, not claims that a native package,
 launcher, signature, or install flow has passed. Their future packagers must place the
 exact artifacts there and compile the same closed sources with target-specific
 filesystem and helper-executable grants; absent or non-conforming artifacts stay
-unavailable.
+unavailable. The current relative grant is executable for the `linux-xdg` profile and is
+exercised by the actually compiled helper. The deeper `linux-home` profile is rejected
+before either lifecycle factory because it lies outside that grant; a compiled helper
+invocation independently proves the resulting permission denial. These are
+permission-contract proofs, not Linux distribution proof.
 
 ## Commands
 

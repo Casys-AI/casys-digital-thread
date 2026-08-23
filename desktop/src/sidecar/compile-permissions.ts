@@ -9,12 +9,12 @@ export const CONTROL_PLANE_NET_ALLOWLIST = CONTROL_PLANE_LOOPBACK_PORTS
   .map((port) => `127.0.0.1:${port}`)
   .join(",");
 
-export const MACOS_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT = "./ai.casys.digital-thread";
+export const PACKAGED_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT = "./ai.casys.digital-thread";
 
 /** Baked into `deno compile`. Relative FS grants resolve against launch cwd. */
 export const CONTROL_PLANE_COMPILE_PERMISSION_FLAGS = Object.freeze([
-  `--allow-read=${MACOS_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}`,
-  `--allow-write=${MACOS_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}`,
+  `--allow-read=${PACKAGED_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}`,
+  `--allow-write=${PACKAGED_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}`,
   `--allow-net=${CONTROL_PLANE_NET_ALLOWLIST}`,
   "--deny-env",
   "--deny-run",
@@ -48,8 +48,10 @@ export function compilePermissionFlagsAreClosed(
     flags.includes("--deny-sys") &&
     flags.includes("--deny-import") &&
     readFlags.length === 1 &&
-    readFlags[0] === `--allow-read=${MACOS_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}` &&
+    readFlags[0] ===
+      `--allow-read=${PACKAGED_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}` &&
     writeFlags.length === 1 &&
-    writeFlags[0] === `--allow-write=${MACOS_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}` &&
+    writeFlags[0] ===
+      `--allow-write=${PACKAGED_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}` &&
     flags.some((flag) => flag.startsWith("--allow-net=127.0.0.1:"));
 }

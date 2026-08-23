@@ -19,6 +19,7 @@ import {
   validateComponentManifest,
 } from "../host/mod.ts";
 import { WORKBENCH_VERSION } from "../workbench/contracts.ts";
+import { packagedHelperPermissionsCoverLayout } from "./helper-permissions.ts";
 
 export interface DesktopBootstrapInput {
   readonly manifest: unknown;
@@ -45,6 +46,8 @@ export interface DesktopBootstrapFacts {
   /** True only when every host pin and the packaged sidecar declaration agree. */
   readonly controlPlaneLaunchable: boolean;
   readonly workbenchPinValid: boolean;
+  /** Current compiled helper grants cover this exact layout profile. */
+  readonly packagedHelperPermissionsCompatible: boolean;
   readonly workbenchLaunchable: boolean;
   readonly controlPlaneVersion?: string;
 }
@@ -88,11 +91,17 @@ export function inspectDesktopBootstrap(
     controlPlane?.lifecycle === "active" &&
     controlPlane.delivery === "sidecar" &&
     controlPlane.version === CONTROL_PLANE_SERVER_VERSION;
-  const controlPlaneLaunchable = runtimeMatches && layout.ok && controlPlanePinValid;
+  const packagedHelperPermissionsCompatible = layout.ok &&
+    packagedHelperPermissionsCoverLayout(
+      layout.value.controlPlaneLayoutProfile,
+    );
+  const controlPlaneLaunchable = runtimeMatches && layout.ok && controlPlanePinValid &&
+    packagedHelperPermissionsCompatible;
   const workbenchPinValid = manifest.ok &&
     workbench?.lifecycle === "active" && workbench.delivery === "sidecar" &&
     workbench.version === WORKBENCH_VERSION;
-  const workbenchLaunchable = runtimeMatches && layout.ok && workbenchPinValid;
+  const workbenchLaunchable = runtimeMatches && layout.ok && workbenchPinValid &&
+    packagedHelperPermissionsCompatible;
 
   return Object.freeze({
     manifest,
@@ -104,8 +113,9 @@ export function inspectDesktopBootstrap(
     controlPlanePinValid,
     controlPlaneLaunchable,
     workbenchPinValid,
+    packagedHelperPermissionsCompatible,
     workbenchLaunchable,
-    ...(controlPlaneLaunchable
+    ...(controlPlanePinValid
       ? { controlPlaneVersion: CONTROL_PLANE_SERVER_VERSION }
       : {}),
   });

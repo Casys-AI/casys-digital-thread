@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1.0.14";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import {
   type DesktopShutdownSignal,
   drainAndExitDesktop,
@@ -57,6 +57,29 @@ Deno.test("process exit waits for both application and server drains", async () 
     "application-stopped",
     "process-exited-0",
   ]);
+});
+
+Deno.test("process exit is withheld when owned termination is unresolved", async () => {
+  const events: string[] = [];
+  await assertRejects(
+    () =>
+      drainAndExitDesktop({
+        stopApplication: () => {
+          events.push("application-unresolved");
+          return Promise.reject(new Error("missing terminal status"));
+        },
+        shutdownServer: () => {
+          events.push("server-stopped");
+          return Promise.resolve();
+        },
+        exitProcess() {
+          events.push("process-exited");
+        },
+      }),
+    AggregateError,
+    "process exit is withheld",
+  );
+  assertEquals(events, ["application-unresolved", "server-stopped"]);
 });
 
 Deno.test("shutdown signals keep swallowing repeats until explicit cleanup", () => {

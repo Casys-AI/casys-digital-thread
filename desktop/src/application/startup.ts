@@ -113,15 +113,18 @@ export async function startDesktopApplication(
   let controller: DesktopControlPlaneController | undefined;
   let controlPlane = controlPlaneHelper.ok && facts.controlPlaneLaunchable
     ? undefined
-    : helperUnavailableProjection();
+    : facts.packagedHelperPermissionsCompatible
+    ? helperUnavailableProjection()
+    : helperPermissionUnavailableProjection();
   try {
     if (controlPlaneHelper.ok && facts.controlPlaneLaunchable) {
       controller = ports.createControlPlane(launch);
       controlPlane = await controller.start();
     }
   } catch {
-    await controller?.stop().catch(() => undefined);
-    controller = undefined;
+    if (await stopControllerAfterStartupFailure(controller)) {
+      controller = undefined;
+    }
     controlPlane = startupFailureProjection();
   }
 
@@ -130,7 +133,11 @@ export async function startDesktopApplication(
   let workbenchSession: WorkbenchSession | undefined;
   if (!workbenchHelper.ok || !facts.workbenchLaunchable || !ports.createWorkbench) {
     workbench = workbenchUnavailableProjection(
-      workbenchHelper.ok ? "configuration-unavailable" : "helper-unavailable",
+      !workbenchHelper.ok
+        ? "helper-unavailable"
+        : !facts.packagedHelperPermissionsCompatible
+        ? "permission-denied"
+        : "configuration-unavailable",
     );
   } else {
     try {
@@ -142,9 +149,14 @@ export async function startDesktopApplication(
       workbench = result.projection;
       workbenchSession = result.session;
     } catch {
-      await workbenchController?.stop().catch(() => undefined);
-      workbenchController = undefined;
-      workbench = workbenchUnavailableProjection("startup-failed", true);
+      const stopped = await stopControllerAfterStartupFailure(
+        workbenchController,
+      );
+      if (stopped) workbenchController = undefined;
+      workbench = workbenchUnavailableProjection(
+        stopped ? "startup-failed" : "termination-unresolved",
+        true,
+      );
     }
   }
   return liveApplication(
@@ -168,12 +180,52 @@ function liveApplication(
     model,
     ...(workbenchSession === undefined ? {} : { workbenchSession }),
     stop(): Promise<void> {
-      stopPromise ??= Promise.allSettled(
-        controllers.map((controller) => controller?.stop()),
-      ).then(() => undefined);
+      if (stopPromise === undefined) {
+        const gate = stopControllers(controllers);
+        stopPromise = gate;
+        void gate.catch(() => {
+          if (stopPromise === gate) stopPromise = undefined;
+        });
+      }
       return stopPromise;
     },
   });
+}
+
+async function stopControllerAfterStartupFailure(
+  controller:
+    | DesktopControlPlaneController
+    | DesktopWorkbenchController
+    | undefined,
+): Promise<boolean> {
+  if (controller === undefined) return true;
+  try {
+    await controller.stop();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function stopControllers(
+  controllers: readonly (
+    | DesktopControlPlaneController
+    | DesktopWorkbenchController
+    | undefined
+  )[],
+): Promise<void> {
+  const results = await Promise.allSettled(
+    controllers.map((controller) => controller?.stop()),
+  );
+  const failures = results
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    .map((result) => result.reason);
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures,
+      "One or more owned Desktop helpers have unresolved termination.",
+    );
+  }
 }
 
 function workbenchUnavailableProjection(
@@ -200,6 +252,16 @@ function helperUnavailableProjection(): DesktopControlPlaneProjection {
     configuration: "missing",
     lifecycle: "recovery-required",
     recoveryCode: "helper-unavailable",
+    providers: Object.freeze({ state: "unavailable" }),
+    persistedEvidence: "unavailable",
+  });
+}
+
+function helperPermissionUnavailableProjection(): DesktopControlPlaneProjection {
+  return Object.freeze({
+    configuration: "error",
+    lifecycle: "recovery-required",
+    recoveryCode: "permission-denied",
     providers: Object.freeze({ state: "unavailable" }),
     persistedEvidence: "unavailable",
   });

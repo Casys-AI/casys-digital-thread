@@ -1,4 +1,4 @@
-import { assertEquals, assertFalse } from "jsr:@std/assert@1.0.14";
+import { assertEquals, assertFalse, assertRejects } from "jsr:@std/assert@1.0.14";
 import rawManifest from "../../component-manifest.json" with { type: "json" };
 import type { DesktopControlPlaneProjection } from "../contracts/diagnostics.ts";
 import {
@@ -218,12 +218,17 @@ Deno.test("startup selects the closed Linux and Windows bundle layouts", async (
   const cases = [{
     platform: "Linux" as const,
     executablePath: "/opt/casys-digital-thread/bin/casys-digital-thread",
-    env: (name: string) => name === "HOME" ? "/home/ada" : undefined,
+    env: (name: string) =>
+      name === "XDG_DATA_HOME"
+        ? "/var/lib/casys-data"
+        : name === "HOME"
+        ? "/home/ada"
+        : undefined,
     controlPlane: "/opt/casys-digital-thread/libexec/casys-control-plane",
     workbench: "/opt/casys-digital-thread/libexec/casys-workbench",
-    launchCwd: "/home/ada",
-    layoutProfile: "linux-home",
-    relativeWorkspace: ".local/share/ai.casys.digital-thread/control-plane",
+    launchCwd: "/var/lib/casys-data",
+    layoutProfile: "linux-xdg",
+    relativeWorkspace: "ai.casys.digital-thread/control-plane",
   }, {
     platform: "Windows" as const,
     executablePath: "C:\\Program Files\\CasysDigitalThread\\CasysDigitalThread.exe",
@@ -261,6 +266,41 @@ Deno.test("startup selects the closed Linux and Windows bundle layouts", async (
     assertEquals(controlPlane?.relativeWorkspace, selected.relativeWorkspace);
     await application.stop();
   }
+});
+
+Deno.test("Linux HOME fallback is resolved but not launched outside compiled grants", async () => {
+  let factories = 0;
+  const application = await startDesktopApplication(
+    input({
+      platform: "Linux",
+      executablePath: "/opt/casys-digital-thread/bin/casys-digital-thread",
+      env: (name: string) => name === "HOME" ? "/home/ada" : undefined,
+    }),
+    {
+      createControlPlane() {
+        factories += 1;
+        return new FakeController();
+      },
+      createWorkbench() {
+        factories += 1;
+        return new FakeWorkbenchController();
+      },
+    },
+  );
+  assertEquals(factories, 0);
+  assertEquals(
+    application.model.components.find((component) =>
+      component.id === "casys-control-plane"
+    )?.state,
+    "error",
+  );
+  assertEquals(
+    application.model.components.find((component) =>
+      component.id === "workbench-projection"
+    )?.state,
+    "unavailable",
+  );
+  assertFalse(JSON.stringify(application.model).includes("/home/ada"));
 });
 
 Deno.test("startup keeps Workbench capability host-only and drains both owned helpers", async () => {
@@ -443,6 +483,63 @@ Deno.test("every shutdown caller awaits the one owned-child stop in flight", asy
   releaseStop?.();
   await Promise.all([first, second]);
   assertEquals(secondSettled, true);
+});
+
+Deno.test("failed shutdown stays observable and retries the retained controller", async () => {
+  let stopCalls = 0;
+  const application = await startDesktopApplication(input(), {
+    createControlPlane: () => new FakeController(),
+    createWorkbench: () => ({
+      start: () =>
+        Promise.resolve({
+          projection: { lifecycle: "owned-ready" as const, version: "0.3.0" },
+          session: {
+            origin: "http://127.0.0.1:5176" as const,
+            accessToken: "a".repeat(64),
+          },
+        }),
+      stop() {
+        stopCalls += 1;
+        return stopCalls === 1
+          ? Promise.reject(new Error("termination unresolved"))
+          : Promise.resolve();
+      },
+    }),
+  });
+
+  await assertRejects(
+    () => application.stop(),
+    AggregateError,
+    "unresolved termination",
+  );
+  await application.stop();
+  assertEquals(stopCalls, 2);
+});
+
+Deno.test("Workbench startup retains a controller whose cleanup is unresolved", async () => {
+  let stopCalls = 0;
+  const application = await startDesktopApplication(input(), {
+    createControlPlane: () => new FakeController(),
+    createWorkbench: () => ({
+      start: () => Promise.reject(new Error("private startup failure")),
+      stop() {
+        stopCalls += 1;
+        return stopCalls === 1
+          ? Promise.reject(new Error("termination unresolved"))
+          : Promise.resolve();
+      },
+    }),
+  });
+  assertEquals(stopCalls, 1);
+  assertEquals(
+    application.model.components.find((component) =>
+      component.id === "workbench-projection"
+    )?.evidence,
+    "The owned Workbench helper has not produced terminal process status after bounded shutdown escalation.",
+  );
+
+  await application.stop();
+  assertEquals(stopCalls, 2);
 });
 
 Deno.test("only the safe control-plane projection influences the renderer model", async () => {

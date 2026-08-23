@@ -225,6 +225,54 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name:
+    "compiled Workbench executes the Linux XDG grant and rejects the uncovered HOME fallback",
+  ignore: Deno.build.os !== "darwin",
+  async fn() {
+    const desktopRoot = decodeURIComponent(
+      new URL("../../", import.meta.url).pathname,
+    ).replace(/\/$/u, "");
+    const helper = `${desktopRoot}/dist/helpers/${WORKBENCH_HELPER_NAME}`;
+    const xdgCwd = await canonicalTempDir("casys-workbench-linux-xdg-");
+    const homeCwd = await canonicalTempDir("casys-workbench-linux-home-");
+    try {
+      await materializeClosedWorkspace(
+        xdgCwd,
+        "linux-xdg",
+        PACKAGED_CONTROL_PLANE_ASSETS,
+      );
+      const xdg = await runHelper(helper, xdgCwd, [
+        "start",
+        "--layout-profile=linux-xdg",
+        `--launch-id=${LAUNCH_ID}`,
+      ]);
+      assertEquals(xdg.success, true, decoder.decode(xdg.stderr));
+      const handshake = JSON.parse(decoder.decode(xdg.stdout).trim());
+      assertEquals(handshake.schema, WORKBENCH_HANDSHAKE_SCHEMA);
+      assertEquals(handshake.status, "ready");
+
+      await materializeClosedWorkspace(
+        homeCwd,
+        "linux-home",
+        PACKAGED_CONTROL_PLANE_ASSETS,
+      );
+      const home = await runHelper(helper, homeCwd, [
+        "start",
+        "--layout-profile=linux-home",
+        `--launch-id=${LAUNCH_ID}`,
+      ]);
+      assertEquals(home.success, false);
+      const error = decoder.decode(home.stderr);
+      assertStringIncludes(error, "Requires read access");
+      assertStringIncludes(error, ".local/share/ai.casys.digital-thread");
+    } finally {
+      await Deno.remove(xdgCwd, { recursive: true });
+      await Deno.remove(homeCwd, { recursive: true });
+    }
+  },
+});
+
 function projectFixture(): EngineeringProjectSnapshot {
   return {
     schemaVersion: "1.0",

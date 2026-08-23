@@ -4,19 +4,19 @@ import {
   CONTROL_PLANE_COMPILE_PERMISSION_FLAGS,
   CONTROL_PLANE_HELPER_NAME,
   CONTROL_PLANE_LOOPBACK_PORTS,
-  MACOS_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT,
+  PACKAGED_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT,
 } from "./compile-permissions.ts";
 
 Deno.test("compile flags bake relative cwd FS grants and exact loopback ports", () => {
   assertEquals(CONTROL_PLANE_HELPER_NAME, "casys-control-plane");
   assert(
     CONTROL_PLANE_COMPILE_PERMISSION_FLAGS.includes(
-      `--allow-read=${MACOS_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}`,
+      `--allow-read=${PACKAGED_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}`,
     ),
   );
   assert(
     CONTROL_PLANE_COMPILE_PERMISSION_FLAGS.includes(
-      `--allow-write=${MACOS_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}`,
+      `--allow-write=${PACKAGED_CONTROL_PLANE_RELATIVE_PRODUCT_ROOT}`,
     ),
   );
   assert(CONTROL_PLANE_COMPILE_PERMISSION_FLAGS.includes("--deny-env"));

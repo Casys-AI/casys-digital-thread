@@ -107,11 +107,22 @@ const cleanupSignals = installDesktopShutdownSignals(() => {
 try {
   await Promise.race([server.finished, shutdownRequested.promise]);
   if (receivedShutdownSignal) {
-    await drainAndExitDesktop({
-      stopApplication: () => application.stop(),
-      shutdownServer: () => server.shutdown(),
-      exitProcess: (code) => Deno.exit(code),
-    });
+    let serverStop: Promise<void> | undefined;
+    while (true) {
+      try {
+        await drainAndExitDesktop({
+          stopApplication: () => application.stop(),
+          shutdownServer: () => serverStop ??= server.shutdown(),
+          exitProcess: (code) => Deno.exit(code),
+        });
+        break;
+      } catch {
+        console.error(
+          "Desktop shutdown remains unresolved; retrying owned cleanup without exiting.",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
   }
 } finally {
   cleanupSignals();

@@ -117,10 +117,29 @@ Deno.test("bootstrap facts gate the sidecar on exact host and component pins", (
     actualDesktopRuntimeVersion: "2.9.2",
     actualProductVersion: rawManifest.product.version,
     platform: "Linux",
-    env: (name) => name === "HOME" ? "/home/ada" : undefined,
+    env: (name) =>
+      name === "XDG_DATA_HOME"
+        ? "/var/lib/casys-data"
+        : name === "HOME"
+        ? "/home/ada"
+        : undefined,
   });
   assertEquals(closedLinuxLayout.controlPlaneLaunchable, true);
   assertEquals(closedLinuxLayout.workbenchLaunchable, true);
+  assertEquals(closedLinuxLayout.packagedHelperPermissionsCompatible, true);
+
+  const linuxHomeFallback = inspectDesktopBootstrap({
+    manifest: rawManifest,
+    actualDenoVersion: "2.9.2",
+    actualDesktopRuntimeVersion: "2.9.2",
+    actualProductVersion: rawManifest.product.version,
+    platform: "Linux",
+    env: (name) => name === "HOME" ? "/home/ada" : undefined,
+  });
+  assertEquals(linuxHomeFallback.layout.ok, true);
+  assertEquals(linuxHomeFallback.packagedHelperPermissionsCompatible, false);
+  assertEquals(linuxHomeFallback.controlPlaneLaunchable, false);
+  assertEquals(linuxHomeFallback.workbenchLaunchable, false);
 
   const wrongProduct = structuredClone(rawManifest);
   wrongProduct.product.identifier = "io.example.other-product";

@@ -208,10 +208,14 @@ function workbenchRecoveryEvidence(
       return "The packaged Workbench declaration does not match the exact installed pin.";
     case "marker-invalid":
       return "The Workbench marker, token, and held lock do not agree.";
+    case "permission-denied":
+      return "The selected layout is outside the current packaged helper filesystem grant.";
     case "probe-failed":
       return "The private Workbench listener state is ambiguous; absence was not proven.";
     case "startup-failed":
       return "The owned Workbench helper failed before exact readiness.";
+    case "termination-unresolved":
+      return "The owned Workbench helper has not produced terminal process status after bounded shutdown escalation.";
     default:
       return "No exact Workbench lifecycle observation is available.";
   }

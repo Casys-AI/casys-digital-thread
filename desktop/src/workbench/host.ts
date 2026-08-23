@@ -44,6 +44,7 @@ export interface WorkbenchHostOptions {
 export class WorkbenchHost {
   #owned: WorkbenchOwnedHandle | undefined;
   #startGate: Promise<WorkbenchHostResult> | undefined;
+  #stopGate: Promise<void> | undefined;
 
   constructor(readonly options: WorkbenchHostOptions) {}
 
@@ -59,19 +60,22 @@ export class WorkbenchHost {
   }
 
   async stop(): Promise<void> {
+    if (this.#stopGate) return await this.#stopGate;
     const handle = this.#owned;
     if (!handle) return;
-    this.#owned = undefined;
-    handle.closeStdin();
-    const timeout = this.options.stopTimeoutMs ?? STOP_TIMEOUT_MS;
-    if (await waitForExit(handle, timeout)) return;
-    handle.kill("SIGTERM");
-    if (await waitForExit(handle, timeout)) return;
-    handle.kill("SIGKILL");
-    await waitForExit(handle, timeout);
+    const gate = this.#stopOwned(handle);
+    this.#stopGate = gate;
+    try {
+      await gate;
+    } finally {
+      if (this.#stopGate === gate) this.#stopGate = undefined;
+    }
   }
 
   async #startExclusive(): Promise<WorkbenchHostResult> {
+    if (this.#owned !== undefined) {
+      return unavailable("termination-unresolved", true);
+    }
     const inspected = await this.#inspect();
     if (!inspected) return unavailable("helper-unavailable");
     const reconnected = await this.#reconnect(inspected);
@@ -98,9 +102,12 @@ export class WorkbenchHost {
     } catch {
       return await this.#recoverReconnect() ?? unavailable("helper-unavailable", true);
     }
+    this.#owned = child;
     const handshake = await this.#handshake(child, launchId);
     if (!handshake) {
-      await stopHandle(child, this.options.stopTimeoutMs ?? STOP_TIMEOUT_MS);
+      if (!(await this.#stopRetainedAfterStartupFailure(child))) {
+        return unavailable("termination-unresolved", true);
+      }
       return await this.#recoverReconnect() ?? unavailable("startup-failed", true);
     }
     const health = await probeHealth(
@@ -112,11 +119,32 @@ export class WorkbenchHost {
       !health || health.launchId !== launchId ||
       health.configDigest !== handshake.configDigest
     ) {
-      await stopHandle(child, this.options.stopTimeoutMs ?? STOP_TIMEOUT_MS);
+      if (!(await this.#stopRetainedAfterStartupFailure(child))) {
+        return unavailable("termination-unresolved", true);
+      }
       return unavailable("startup-failed", true);
     }
-    this.#owned = child;
     return ready("owned-ready", handshake.accessToken);
+  }
+
+  async #stopOwned(handle: WorkbenchOwnedHandle): Promise<void> {
+    const terminated = await stopHandle(
+      handle,
+      this.options.stopTimeoutMs ?? STOP_TIMEOUT_MS,
+    );
+    if (!terminated) throw new WorkbenchTerminationUnresolvedError();
+    if (this.#owned === handle) this.#owned = undefined;
+  }
+
+  async #stopRetainedAfterStartupFailure(
+    handle: WorkbenchOwnedHandle,
+  ): Promise<boolean> {
+    const terminated = await stopHandle(
+      handle,
+      this.options.stopTimeoutMs ?? STOP_TIMEOUT_MS,
+    );
+    if (terminated && this.#owned === handle) this.#owned = undefined;
+    return terminated;
   }
 
   async #recoverReconnect(): Promise<WorkbenchHostResult | undefined> {
@@ -170,6 +198,16 @@ export class WorkbenchHost {
     } catch {
       return undefined;
     }
+  }
+}
+
+export class WorkbenchTerminationUnresolvedError extends Error {
+  override readonly name = "WorkbenchTerminationUnresolvedError";
+
+  constructor() {
+    super(
+      "Owned Workbench termination remains unresolved after bounded shutdown escalation.",
+    );
   }
 }
 
@@ -399,13 +437,13 @@ function unavailable(
 async function stopHandle(
   handle: WorkbenchOwnedHandle,
   timeoutMs: number,
-): Promise<void> {
+): Promise<boolean> {
   handle.closeStdin();
-  if (await waitForExit(handle, timeoutMs)) return;
+  if (await waitForExit(handle, timeoutMs)) return true;
   handle.kill("SIGTERM");
-  if (await waitForExit(handle, timeoutMs)) return;
+  if (await waitForExit(handle, timeoutMs)) return true;
   handle.kill("SIGKILL");
-  await waitForExit(handle, timeoutMs);
+  return await waitForExit(handle, timeoutMs);
 }
 
 async function waitForExit(
@@ -415,7 +453,7 @@ async function waitForExit(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      handle.status.then(() => true, () => true),
+      handle.status.then(() => true, () => false),
       new Promise<boolean>((resolve) => {
         timeout = setTimeout(() => resolve(false), timeoutMs);
       }),

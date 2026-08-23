@@ -22,16 +22,25 @@ export interface DesktopDrainPorts {
 
 /**
  * Drains every process-owned resource before terminating the Desktop process.
- * Using allSettled is deliberate: neither drain may shortcut the other, and
- * process termination remains the final edge even when cleanup reports an error.
+ * Both drains are attempted, but explicit process exit is forbidden until each
+ * drain has resolved successfully.
  */
 export async function drainAndExitDesktop(
   ports: DesktopDrainPorts,
 ): Promise<void> {
-  await Promise.allSettled([
+  const results = await Promise.allSettled([
     ports.stopApplication(),
     ports.shutdownServer(),
   ]);
+  const failures = results
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+    .map((result) => result.reason);
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures,
+      "Desktop shutdown remains unresolved; process exit is withheld.",
+    );
+  }
   ports.exitProcess(0);
 }
 

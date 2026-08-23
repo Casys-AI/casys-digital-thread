@@ -73,6 +73,8 @@ export interface DesktopWorkbenchProjection {
     | "listener-conflict"
     | "manifest-mismatch"
     | "marker-invalid"
+    | "permission-denied"
     | "probe-failed"
-    | "startup-failed";
+    | "startup-failed"
+    | "termination-unresolved";
 }

@@ -1,4 +1,9 @@
-import { assertEquals, assertFalse, assertThrows } from "jsr:@std/assert@1.0.14";
+import {
+  assertEquals,
+  assertFalse,
+  assertRejects,
+  assertThrows,
+} from "jsr:@std/assert@1.0.14";
 import type { OwnedSidecarHandle } from "../control-plane/contracts.ts";
 import {
   CONFIG_DIGEST_PATTERN,
@@ -13,6 +18,7 @@ import {
   parseWorkbenchHandshake,
   parseWorkbenchInspect,
   WorkbenchHost,
+  WorkbenchTerminationUnresolvedError,
 } from "./host.ts";
 
 const DIGEST =
@@ -102,6 +108,50 @@ Deno.test("Workbench host escalates only its retained child through SIGKILL", as
   assertEquals(world.child?.signals, ["SIGTERM", "SIGKILL"]);
 });
 
+Deno.test("Workbench host retains an owned child until terminal status is proved", async () => {
+  const world = new WorkbenchWorld("ignores-first-sigkill");
+  const host = new WorkbenchHost(world.options());
+  assertEquals((await host.start()).projection.lifecycle, "owned-ready");
+
+  await assertRejects(
+    () => host.stop(),
+    WorkbenchTerminationUnresolvedError,
+    "termination remains unresolved",
+  );
+  assertEquals(world.child?.signals, ["SIGTERM", "SIGKILL"]);
+  assertEquals((await host.start()).projection, {
+    lifecycle: "recovery-required",
+    recoveryCode: "termination-unresolved",
+  });
+  assertEquals(world.spawns, 1);
+
+  await host.stop();
+  assertEquals(world.child?.signals, [
+    "SIGTERM",
+    "SIGKILL",
+    "SIGTERM",
+    "SIGKILL",
+  ]);
+});
+
+Deno.test("Workbench startup failure surfaces and retains unresolved termination", async () => {
+  const world = new WorkbenchWorld("startup-ignores-first-sigkill");
+  const host = new WorkbenchHost(world.options());
+  assertEquals((await host.start()).projection, {
+    lifecycle: "recovery-required",
+    recoveryCode: "termination-unresolved",
+  });
+  assertEquals(world.child?.signals, ["SIGTERM", "SIGKILL"]);
+
+  await host.stop();
+  assertEquals(world.child?.signals, [
+    "SIGTERM",
+    "SIGKILL",
+    "SIGTERM",
+    "SIGKILL",
+  ]);
+});
+
 Deno.test("Workbench host parsers reject extra or incomplete capability fields", () => {
   const inspect = JSON.parse(new WorkbenchWorld().inspect()) as Record<string, unknown>;
   assertEquals(
@@ -128,7 +178,14 @@ Deno.test("Workbench host parsers reject extra or incomplete capability fields",
   assertEquals(CONFIG_DIGEST_PATTERN.test(DIGEST), true);
 });
 
-type Mode = "empty" | "reconnected" | "foreign" | "stubborn" | "ambiguous";
+type Mode =
+  | "empty"
+  | "reconnected"
+  | "foreign"
+  | "stubborn"
+  | "ignores-first-sigkill"
+  | "startup-ignores-first-sigkill"
+  | "ambiguous";
 
 class WorkbenchWorld {
   spawns = 0;
@@ -192,8 +249,11 @@ class WorkbenchWorld {
     this.spawns += 1;
     this.listening = true;
     this.child = new FakeChild(
-      `${handshakeText()}\n`,
-      this.mode === "stubborn",
+      this.mode === "startup-ignores-first-sigkill" ? "{}\n" : `${handshakeText()}\n`,
+      this.mode === "stubborn" ? 1 : this.mode === "ignores-first-sigkill" ||
+          this.mode === "startup-ignores-first-sigkill"
+        ? 2
+        : 0,
       () => {
         this.listening = false;
       },
@@ -209,10 +269,11 @@ class FakeChild implements OwnedSidecarHandle {
   readonly status: Promise<Deno.CommandStatus>;
   #resolve: ((value: Deno.CommandStatus) => void) | undefined;
   #settled = false;
+  #sigkills = 0;
 
   constructor(
     handshake: string,
-    readonly stubborn: boolean,
+    readonly requiredSigkills: number,
     readonly onExit: () => void,
   ) {
     this.stdout = new Response(handshake).body!;
@@ -223,12 +284,18 @@ class FakeChild implements OwnedSidecarHandle {
 
   closeStdin(): void {
     this.stdinClosed = true;
-    if (!this.stubborn) this.finish({ success: true, code: 0, signal: null });
+    if (this.requiredSigkills === 0) {
+      this.finish({ success: true, code: 0, signal: null });
+    }
   }
 
   kill(signo: Deno.Signal): void {
     this.signals.push(signo);
-    if (!this.stubborn || signo === "SIGKILL") {
+    if (signo === "SIGKILL") this.#sigkills += 1;
+    if (
+      this.requiredSigkills === 0 ||
+      (signo === "SIGKILL" && this.#sigkills >= this.requiredSigkills)
+    ) {
       this.finish({ success: false, code: 1, signal: signo });
     }
   }
