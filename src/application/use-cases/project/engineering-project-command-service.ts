@@ -27,6 +27,10 @@ import {
   queuedRunCancellationSummary,
 } from "../../../domain/project/engineering-project.ts";
 import { stampEngineeringActivityIdentity } from "../../../domain/project/engineering-activity.ts";
+import {
+  engineeringProjectPlanReplacementLock,
+  engineeringProjectPlanReplacementLockMessage,
+} from "../../../domain/project/engineering-project-plan-replaceability.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 import type { RegisteredRunPlanSealer } from "../../../domain/project/resolved-run-plan-sealer.ts";
 import { validateResolvedOperationPlanRef } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
@@ -2109,39 +2113,8 @@ async function reconciliationReplayFingerprints(
 }
 
 function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
-  if (
-    !draft.framing?.currentBrief ||
-    draft.framing.currentBriefApproval?.status !== "approved"
-  ) {
-    invalidTransition(
-      "A project requires a current human-approved brief before planning.",
-    );
-  }
-  if (draft.threadSnapshots.length > 0) {
-    invalidTransition(
-      "A project plan cannot be replaced after technical evidence exists; publish a new reviewed change instead.",
-    );
-  }
-  if (
-    draft.agentRuns.length > 0 || draft.approvals.length > 0 ||
-    draft.blockers.length > 0
-  ) {
-    invalidTransition(
-      "A project plan cannot be replaced after run, approval or blocker state exists.",
-    );
-  }
-  if (
-    draft.workItems.some((item) =>
-      item.status === "in-progress" || item.status === "completed" ||
-      item.status === "cancelled" || item.evidenceRefs.length > 0
-    ) ||
-    draft.phases.some((phase) => phase.evidenceRefs.length > 0) ||
-    draft.decisions.some((decision) => decision.status !== "required")
-  ) {
-    invalidTransition(
-      "A project plan cannot be replaced after work, evidence or a concrete decision proposal exists.",
-    );
-  }
+  const lock = engineeringProjectPlanReplacementLock(draft);
+  if (lock) invalidTransition(engineeringProjectPlanReplacementLockMessage(lock));
 }
 
 function assertChangeCanAppend(draft: EngineeringProjectSnapshot): void {

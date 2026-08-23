@@ -10,6 +10,8 @@ import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import { ProjectBriefCommandService } from "../../../application/use-cases/project/project-brief-command-service.ts";
+import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../../orchestration/operations/registry.ts";
 import { EngineeringProjectValidationError } from "../../../domain/project/engineering-project-validation.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 
@@ -316,6 +318,244 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "File store persists a brief-approve that changes project.objective from the canonical brief",
+  async () => {
+    await withTempDirectory(async (directory) => {
+      const store = new FileEngineeringProjectRevisionStore(directory);
+      let tick = 0;
+      const now = () =>
+        new Date(Date.parse("2026-08-03T09:00:00.000Z") + ++tick * 1000)
+          .toISOString();
+      const briefs = new ProjectBriefCommandService(store, now);
+      const started = await briefs.startProject(HUMAN, {
+        commandId: "start-objective-project",
+        projectId: "objective-project",
+        projectName: "Objective project",
+        issuedAt: "2026-08-03T09:00:00.000Z",
+        intent: "Build a reviewable engineering system.",
+        intentSource: { kind: "human", reference: "conversation:turn-1" },
+      });
+      assertEquals(
+        started.project.objective.statement,
+        "Build a reviewable engineering system.",
+      );
+      const proposed = await briefs.proposeBrief(AGENT, {
+        commandId: "propose-objective-brief",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: started.generatedAt,
+        items: liveBriefItems("Demonstrate a reviewable system safely."),
+      });
+      const approved = await briefs.approveBrief(HUMAN, {
+        commandId: "approve-objective-brief",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: proposed.generatedAt,
+        briefSnapshotId: proposed.framing!.proposedBrief!.id,
+        briefRevision: proposed.framing!.proposedBrief!.revision,
+        rationale: "The objective is the reviewed canonical brief.",
+        inputFingerprint: proposed.framing!.proposalReview!.inputFingerprint,
+      });
+      const persisted = await store.get(approved.project.id);
+      assertEquals(
+        persisted?.project.objective.statement,
+        "Demonstrate a reviewable system safely.",
+      );
+      assertEquals(persisted?.framing?.currentBriefApproval?.status, "approved");
+    });
+  },
+);
+
+Deno.test(
+  "File store allows two unexecuted plan publications and rejects replacement after a queued run",
+  async () => {
+    await withTempDirectory(async (directory) => {
+      const store = new FileEngineeringProjectRevisionStore(directory);
+      let tick = 0;
+      const now = () =>
+        new Date(Date.parse("2026-08-03T09:00:00.000Z") + ++tick * 1000)
+          .toISOString();
+      const briefs = new ProjectBriefCommandService(store, now);
+      const commands = new EngineeringProjectCommandService(
+        store,
+        undefined,
+        now,
+        { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+      );
+      const started = await briefs.startProject(HUMAN, {
+        commandId: "start-replaceable-plan",
+        projectId: "replaceable-plan",
+        projectName: "Replaceable plan",
+        issuedAt: "2026-08-03T09:00:00.000Z",
+        intent: "Build a reviewable engineering system.",
+        intentSource: { kind: "human", reference: "conversation:turn-1" },
+      });
+      const proposed = await briefs.proposeBrief(AGENT, {
+        commandId: "propose-replaceable-plan-brief",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: started.generatedAt,
+        items: liveBriefItems("Demonstrate a reviewable system safely."),
+      });
+      const approved = await briefs.approveBrief(HUMAN, {
+        commandId: "approve-replaceable-plan-brief",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: proposed.generatedAt,
+        briefSnapshotId: proposed.framing!.proposedBrief!.id,
+        briefRevision: proposed.framing!.proposedBrief!.revision,
+        rationale: "Approved for planning.",
+        inputFingerprint: proposed.framing!.proposalReview!.inputFingerprint,
+      });
+      const first = await commands.publishPlan(AGENT, {
+        commandId: "publish-plan-1",
+        projectId: approved.project.id,
+        expectedRevision: approved.revision,
+        issuedAt: approved.generatedAt,
+        startingPoint: "idea-or-spec",
+        phases: [{
+          id: "phase-baseline",
+          name: "Engineering baseline",
+          description: "First unexecuted plan.",
+        }],
+        workItems: [baselineWork("record-approved-brief")],
+        requiredDecisions: [],
+      });
+      assertEquals(first.workItems.map((item) => item.id), [
+        "record-approved-brief",
+      ]);
+      const second = await commands.publishPlan(AGENT, {
+        commandId: "publish-plan-2",
+        projectId: first.project.id,
+        expectedRevision: first.revision,
+        issuedAt: first.generatedAt,
+        startingPoint: "idea-or-spec",
+        phases: [{
+          id: "phase-baseline",
+          name: "Engineering baseline",
+          description: "Replacement unexecuted plan.",
+        }],
+        workItems: [baselineWork("record-approved-brief-revised")],
+        requiredDecisions: [],
+      });
+      assertEquals(second.workItems.map((item) => item.id), [
+        "record-approved-brief-revised",
+      ]);
+      const queued = await commands.queueRun(AGENT, {
+        commandId: "queue-lock-plan",
+        projectId: second.project.id,
+        expectedRevision: second.revision,
+        issuedAt: second.generatedAt,
+        runId: "run:lock-plan",
+        workItemId: "record-approved-brief-revised",
+        summary: "Queue the reviewed documentary baseline.",
+        basis: second.plan!.basis,
+      });
+      await assertRejects(
+        () =>
+          commands.publishPlan(AGENT, {
+            commandId: "publish-plan-after-lock",
+            projectId: queued.project.id,
+            expectedRevision: queued.revision,
+            issuedAt: queued.generatedAt,
+            startingPoint: "idea-or-spec",
+            phases: [{
+              id: "phase-baseline",
+              name: "Engineering baseline",
+              description: "Locked plan.",
+            }],
+            workItems: [baselineWork("record-approved-brief-locked")],
+            requiredDecisions: [],
+          }),
+        EngineeringProjectCommandError,
+      );
+      const forgedAt = new Date(Date.parse(queued.generatedAt) + 1000)
+        .toISOString();
+      const forgedDraft = structuredClone(queued) as Mutable<
+        EngineeringProjectSnapshot
+      >;
+      forgedDraft.id = `${queued.project.id}:r${queued.revision + 1}`;
+      forgedDraft.revision = queued.revision + 1;
+      forgedDraft.generatedAt = forgedAt;
+      forgedDraft.previous = {
+        snapshotId: queued.id,
+        revision: queued.revision,
+      };
+      forgedDraft.plan = {
+        ...queued.plan!,
+        publishedAt: forgedAt,
+        publishedBy: { id: "agent:planner", origin: "agent" },
+      };
+      forgedDraft.commandReceipts = [
+        ...(queued.commandReceipts ?? []),
+        {
+          commandId: "forged-plan-publish",
+          type: "project.plan-publish",
+          actor: { id: "agent:planner", origin: "agent" },
+          issuedAt: forgedAt,
+          appliedAt: forgedAt,
+          requestFingerprint: { algorithm: "sha256", digest: "9".repeat(64) },
+          resultingSnapshot: {
+            snapshotId: forgedDraft.id,
+            revision: forgedDraft.revision,
+          },
+        },
+      ];
+      const forged = validateEngineeringProjectSnapshot(forgedDraft);
+      await assertRejects(
+        () => store.commit(forged, queued.revision),
+        EngineeringProjectValidationError,
+        "a published plan cannot be rewritten",
+      );
+    });
+  },
+);
+
+function liveBriefItems(objective: string) {
+  return [{
+    id: "objective",
+    kind: "objective" as const,
+    statement: objective,
+    sourceRefs: [{ kind: "intent" as const, reference: "conversation:turn-1" }],
+  }, {
+    id: "mission-bounded-demonstration",
+    kind: "mission-scenario" as const,
+    statement: "Demonstrate a bounded operating scenario with traceable evidence.",
+    sourceRefs: [{ kind: "intent" as const, reference: "conversation:turn-1" }],
+  }, {
+    id: "success-reviewed-system",
+    kind: "success-criterion" as const,
+    statement: "Complete the reviewed scenario with a traceable engineering record.",
+    sourceRefs: [{ kind: "intent" as const, reference: "conversation:turn-1" }],
+    dependsOnItemIds: [],
+  }, {
+    id: "verify-traceable-record",
+    kind: "verification-activity" as const,
+    statement: "Verify the reviewed record against the declared success criterion.",
+    sourceRefs: [{ kind: "intent" as const, reference: "conversation:turn-1" }],
+    dependsOnItemIds: ["success-reviewed-system"],
+  }];
+}
+
+function baselineWork(id: string) {
+  return {
+    id,
+    phaseId: "phase-baseline",
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [] as string[],
+    decisionIds: [] as string[],
+    operation: {
+      id: "baseline.from-approved-brief",
+      version: "1",
+      bindings: [{
+        name: "approvedBrief",
+        source: { kind: "approved-brief" as const },
+      }],
+    },
+  };
+}
+
 async function assertStoreRejectsExtension(
   mutate: (draft: Mutable<EngineeringProjectSnapshot>) => void,
   message: string,
@@ -416,6 +656,7 @@ Deno.test("active project paths reject dot-segment and non-alphanumeric prefixes
 });
 
 const HUMAN = { kind: "human" as const, actorId: "store-test-human" };
+const AGENT = { kind: "agent" as const, actorId: "store-test-agent" };
 const GENERATED_AT = "2026-08-01T10:36:58.345Z";
 const OBJECTIVE = "Exercise immutable project storage without a product fixture.";
 

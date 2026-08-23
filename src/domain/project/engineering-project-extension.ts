@@ -11,6 +11,7 @@
  */
 
 import type {
+  EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringWorkItem,
@@ -19,6 +20,8 @@ import {
   EngineeringProjectValidationError,
   type EngineeringProjectValidationIssue,
 } from "./engineering-project-validation.ts";
+import { isEngineeringProjectPlanReplaceable } from "./engineering-project-plan-replaceability.ts";
+import { projectBriefObjective } from "./project-brief.ts";
 import { deterministicJson } from "../kernel/deterministic-json.ts";
 
 export function validateEngineeringProjectExtension(
@@ -68,8 +71,8 @@ export function collectEngineeringProjectExtensionIssues(
     );
   }
   if (
-    deterministicJson(next.project.objective) !==
-      deterministicJson(previous.project.objective)
+    !sameJson(next.project.objective, previous.project.objective) &&
+    !isCanonicalBriefApprovalExtension(previous, next)
   ) {
     issue(
       issues,
@@ -89,15 +92,17 @@ export function collectEngineeringProjectExtensionIssues(
       "must name the exact predecessor snapshot",
     );
   }
-  if (previous.plan !== undefined) {
-    if (deterministicJson(next.plan) !== deterministicJson(previous.plan)) {
-      issue(
-        issues,
-        "identity_mutated",
-        "$.plan",
-        "a published plan cannot be rewritten",
-      );
-    }
+  const planReplacement = isPlanPublishReplacement(previous, next);
+  if (
+    previous.plan !== undefined && !planReplacement &&
+    !sameJson(next.plan, previous.plan)
+  ) {
+    issue(
+      issues,
+      "identity_mutated",
+      "$.plan",
+      "a published plan cannot be rewritten",
+    );
   }
   if (
     previous.framing?.intent !== undefined &&
@@ -144,11 +149,14 @@ export function collectEngineeringProjectExtensionIssues(
     "approvals are append-only",
     (item) => item.id,
   );
-  collectPhaseExtensionIssues(previous, next, issues);
-  collectWorkExtensionIssues(previous, next, issues);
+  if (!planReplacement) {
+    collectPhaseExtensionIssues(previous, next, issues);
+    collectWorkExtensionIssues(previous, next, issues);
+    collectDecisionExtensionIssues(previous, next, issues);
+    collectPhaseReclassificationIssues(previous, next, issues);
+    collectPlanChangeDeltaOwnershipIssues(previous, next, issues);
+  }
   collectRunExtensionIssues(previous, next, issues);
-  collectDecisionExtensionIssues(previous, next, issues);
-  collectPhaseReclassificationIssues(previous, next, issues);
   return issues;
 }
 
@@ -323,6 +331,26 @@ function collectWorkExtensionIssues(
       `${path}.evidenceRefs`,
     );
     collectGateClaimExtensionIssues(work, successor, path, issues);
+    if (
+      isTerminalWorkStatus(work.status) && successor.status !== work.status
+    ) {
+      issue(
+        issues,
+        "work_terminal_reopened",
+        `${path}.status`,
+        "completed, cancelled or abandoned work cannot return to a nonterminal status",
+      );
+    }
+    if (work.reconciliation !== undefined) {
+      if (!sameJson(successor.reconciliation, work.reconciliation)) {
+        issue(
+          issues,
+          "reconciliation_mutated",
+          `${path}.reconciliation`,
+          "a recorded work-item reconciliation cannot be rewritten or removed",
+        );
+      }
+    }
   }
 }
 
@@ -530,6 +558,140 @@ function sameJson(left: unknown, right: unknown): boolean {
   if (left === undefined && right === undefined) return true;
   if (left === undefined || right === undefined) return false;
   return deterministicJson(left) === deterministicJson(right);
+}
+
+function appendedReceipts(
+  previous: EngineeringProjectSnapshot,
+  next: EngineeringProjectSnapshot,
+): readonly EngineeringProjectCommandReceipt[] {
+  return (next.commandReceipts ?? []).slice(previous.commandReceipts?.length ?? 0);
+}
+
+function isPlanPublishReplacement(
+  previous: EngineeringProjectSnapshot,
+  next: EngineeringProjectSnapshot,
+): boolean {
+  const appended = appendedReceipts(previous, next);
+  return appended.length === 1 &&
+    appended[0]?.type === "project.plan-publish" &&
+    isEngineeringProjectPlanReplaceable(previous) &&
+    isEngineeringProjectPlanReplaceable(next);
+}
+
+function isCanonicalBriefApprovalExtension(
+  previous: EngineeringProjectSnapshot,
+  next: EngineeringProjectSnapshot,
+): boolean {
+  const appended = appendedReceipts(previous, next);
+  const receipt = appended[0];
+  const proposal = previous.framing?.proposedBrief;
+  const pending = previous.framing?.proposalReview;
+  const currentBrief = next.framing?.currentBrief;
+  const approval = next.framing?.currentBriefApproval;
+  if (
+    appended.length !== 1 || receipt?.type !== "project.brief-approve" ||
+    !proposal || pending?.status !== "pending" || !currentBrief ||
+    approval?.status !== "approved" ||
+    next.framing?.proposedBrief !== undefined ||
+    next.framing?.proposalReview !== undefined ||
+    !sameJson(currentBrief, proposal)
+  ) {
+    return false;
+  }
+  if (
+    approval.briefSnapshotId !== pending.briefSnapshotId ||
+    approval.briefRevision !== pending.briefRevision ||
+    !sameJson(approval.inputFingerprint, pending.inputFingerprint) ||
+    approval.requestedAt !== pending.requestedAt
+  ) {
+    return false;
+  }
+  const objective = projectBriefObjective(currentBrief);
+  if (
+    next.project.objective.title !== objective ||
+    next.project.objective.statement !== objective
+  ) {
+    return false;
+  }
+  const basis = receipt.approvedBriefBasis;
+  return basis?.kind === "approved-brief" &&
+    basis.projectId === next.project.id &&
+    basis.projectSnapshotId === next.id &&
+    basis.projectRevision === next.revision &&
+    basis.briefId === currentBrief.briefId &&
+    basis.briefSnapshotId === currentBrief.id &&
+    basis.briefRevision === currentBrief.revision &&
+    sameJson(basis.approvedBriefFingerprint, approval.inputFingerprint);
+}
+
+function collectPlanChangeDeltaOwnershipIssues(
+  previous: EngineeringProjectSnapshot,
+  next: EngineeringProjectSnapshot,
+  issues: EngineeringProjectValidationIssue[],
+): void {
+  const previousCount = previous.planChanges?.length ?? 0;
+  const appended = (next.planChanges ?? []).slice(previousCount);
+  if (appended.length === 0) return;
+  const ownedPhaseIds = new Set(appended.flatMap((change) => change.phaseIds));
+  const ownedWorkIds = new Set(appended.flatMap((change) => change.workItemIds));
+  const ownedDecisionIds = new Set(
+    appended.flatMap((change) => change.decisionIds),
+  );
+  const addedPhaseIds = next.phases
+    .map((phase) => phase.id)
+    .filter((id) => previous.phases.every((phase) => phase.id !== id));
+  const addedWorkIds = next.workItems
+    .map((item) => item.id)
+    .filter((id) => previous.workItems.every((item) => item.id !== id));
+  const addedDecisionIds = next.decisions
+    .map((item) => item.id)
+    .filter((id) => previous.decisions.every((item) => item.id !== id));
+  assertExactIdSet(
+    issues,
+    ownedPhaseIds,
+    addedPhaseIds,
+    "$.planChanges",
+    "plan_change_delta_mismatch",
+    "newly added phases must be exactly the phases owned by the appended change",
+  );
+  assertExactIdSet(
+    issues,
+    ownedWorkIds,
+    addedWorkIds,
+    "$.planChanges",
+    "plan_change_delta_mismatch",
+    "newly added work items must be exactly the work owned by the appended change",
+  );
+  assertExactIdSet(
+    issues,
+    ownedDecisionIds,
+    addedDecisionIds,
+    "$.planChanges",
+    "plan_change_delta_mismatch",
+    "newly added decisions must be exactly the decisions owned by the appended change",
+  );
+}
+
+function assertExactIdSet(
+  issues: EngineeringProjectValidationIssue[],
+  owned: ReadonlySet<string>,
+  added: readonly string[],
+  path: string,
+  code: string,
+  message: string,
+): void {
+  if (
+    owned.size !== added.length || added.some((id) => !owned.has(id))
+  ) {
+    issue(issues, code, path, message);
+  }
+}
+
+function isTerminalWorkStatus(
+  status: EngineeringWorkItem["status"],
+): boolean {
+  return status === "completed" || status === "cancelled" ||
+    status === "abandoned";
 }
 
 function issue(

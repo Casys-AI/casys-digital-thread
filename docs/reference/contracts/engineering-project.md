@@ -399,7 +399,14 @@ not satisfy a reference to an older revision. Persistence of a successor also ru
 `validateEngineeringProjectExtension(previous, next)`: project identity and captured
 intent stay frozen, existing phases keep their id/name/order/description, phase
 membership and evidence are append-only, and an initial phase cannot be reclassified as
-created by a later `planChanges` entry. Work status, run lifecycle, decisions,
+created by a later `planChanges` entry. `project.objective` may change only on the exact
+`project.brief-approve` that promotes `proposedBrief` to `currentBrief`.
+`project.plan-publish` may replace an unexecuted plan only while
+`isEngineeringProjectPlanReplaceable` holds — the same predicate the command service
+uses. Completed, cancelled or abandoned work cannot return to a nonterminal status, and
+a recorded reconciliation is immutable. Newly appended `planChanges` must own exactly
+the newly added phases, work items and decisions (empty `phaseIds` remains valid when
+membership is appended onto existing phases). Work status, run lifecycle, decisions,
 approvals, and gate-claim status remain legal transitions. Dangling references (for
 example a decision left behind by abandoned work) do not hide the read-only projection:
 the `evidence` surface publishes them as `unresolvedEvidenceReferences` and the cockpit

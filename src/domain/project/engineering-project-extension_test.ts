@@ -146,6 +146,141 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "validateEngineeringProjectExtension rejects a new work item that the appended change does not own",
+  () => {
+    const previous = plannedProject();
+    const next = successorOf(previous, (draft) => {
+      draft.phases[0]!.workItemIds = [
+        ...draft.phases[0]!.workItemIds,
+        "review-geometry",
+        "orphan-work",
+      ];
+      for (const id of ["review-geometry", "orphan-work"]) {
+        draft.workItems.push({
+          id,
+          activityId: `activity:${id}`,
+          phaseId: "verification",
+          title: id,
+          description: "Appended work.",
+          kind: "verify",
+          operation: {
+            id: "verify.run-fea-static-proof",
+            version: "3",
+            bindings: [],
+          },
+          status: "planned",
+          owner: "agent",
+          dependsOnWorkItemIds: [],
+          evidenceRefs: [],
+          decisionIds: [],
+          blockerIds: [],
+        });
+      }
+      const change = {
+        id: "change:partial-ownership",
+        commandId: "partial-ownership",
+        approvedBriefBasis: plannedBasis(previous),
+        baseSnapshot: previous.threadSnapshots[0]!,
+        phaseIds: [] as string[],
+        workItemIds: ["review-geometry"],
+        decisionIds: [] as string[],
+        publishedAt: LATER,
+        publishedBy: { id: "agent:planner" as const, origin: "agent" as const },
+      };
+      draft.planChanges = [change];
+      stampChangeReceipt(draft, change.commandId);
+    });
+    assertExtensionRejected(previous, next, "plan_change_delta_mismatch");
+  },
+);
+
+Deno.test(
+  "validateEngineeringProjectExtension rejects reopening abandoned work",
+  () => {
+    const previous = successorOf(plannedProject(), (draft) => {
+      draft.workItems = draft.workItems.map((item) =>
+        item.id === "close-record" ? { ...item, status: "abandoned" } : item
+      );
+    });
+    const next = successorOf(previous, (draft) => {
+      draft.workItems = draft.workItems.map((item) =>
+        item.id === "close-record" ? { ...item, status: "planned" } : item
+      );
+    });
+    assertExtensionRejected(previous, next, "work_terminal_reopened");
+  },
+);
+
+Deno.test(
+  "validateEngineeringProjectExtension allows an unexecuted plan-publish replacement",
+  () => {
+    const previous = replaceablePlannedProject();
+    const next = successorOf(previous, (draft) => {
+      draft.plan = {
+        ...draft.plan!,
+        publishedAt: LATER,
+        publishedBy: { id: "agent:planner", origin: "agent" },
+      };
+      draft.phases = [{
+        id: "baseline",
+        name: "Engineering baseline",
+        order: 1,
+        description: "Replacement unexecuted plan.",
+        workItemIds: ["record-approved-brief"],
+        requiredDecisionIds: [],
+        evidenceRefs: [],
+      }];
+      draft.workItems = [{
+        id: "record-approved-brief",
+        activityId: "activity:record-approved-brief",
+        phaseId: "baseline",
+        title: "Establish the engineering baseline",
+        description: "Replacement baseline work.",
+        kind: "define",
+        operation: {
+          id: "baseline.from-approved-brief",
+          version: "1",
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
+        },
+        status: "planned",
+        owner: "agent",
+        dependsOnWorkItemIds: [],
+        evidenceRefs: [],
+        decisionIds: [],
+        blockerIds: [],
+      }];
+      draft.decisions = [];
+      const receipts = draft.commandReceipts ?? [];
+      receipts[receipts.length - 1] = {
+        commandId: "republish-plan",
+        type: "project.plan-publish",
+        actor: { id: "agent:planner", origin: "agent" },
+        issuedAt: LATER,
+        appliedAt: LATER,
+        requestFingerprint: { algorithm: "sha256", digest: "5".repeat(64) },
+        resultingSnapshot: { snapshotId: draft.id, revision: draft.revision },
+      };
+    });
+    assertEquals(validateEngineeringProjectExtension(previous, next).id, next.id);
+  },
+);
+
+Deno.test(
+  "validateEngineeringProjectExtension rejects removing a recorded reconciliation",
+  () => {
+    const previous = reconciledCancelledProject();
+    const next = successorOf(previous, (draft) => {
+      draft.workItems = draft.workItems.map((item) => {
+        if (item.id !== "close-record") return item;
+        const { reconciliation: _removed, ...rest } = item;
+        return rest;
+      });
+    });
+    assertExtensionRejected(previous, next, "reconciliation_mutated");
+  },
+);
+
 function assertExtensionRejected(
   previous: EngineeringProjectSnapshot,
   next: EngineeringProjectSnapshot,
@@ -189,6 +324,104 @@ function successorOf(
   ];
   mutate(next);
   return validateEngineeringProjectSnapshot(next);
+}
+
+function replaceablePlannedProject(): EngineeringProjectSnapshot {
+  const planned = structuredClone(plannedProject()) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  planned.threadSnapshots = [];
+  return validateEngineeringProjectSnapshot(planned);
+}
+
+function reconciledCancelledProject(): EngineeringProjectSnapshot {
+  return successorOf(plannedProject(), (draft) => {
+    const snapshot = draft.threadSnapshots[0]!;
+    const evidence = {
+      snapshotId: snapshot.snapshotId,
+      snapshotRevision: snapshot.revision,
+      kind: "artifact" as const,
+      id: "close-record-successor",
+    };
+    draft.workItems = draft.workItems.map((item) =>
+      item.id === "close-record"
+        ? {
+          ...item,
+          status: "cancelled" as const,
+          reconciliation: {
+            kind: "superseded-by-successor" as const,
+            reconciledAt: LATER,
+            reconciledBy: { id: "agent:planner", origin: "agent" as const },
+            failedRunId: "run:close-failed",
+            successorRunId: "run:close-successor",
+            successorRunSnapshot: structuredClone(snapshot),
+            successorEvidenceRefs: [evidence],
+            rationale: "A completed successor closed the failed attempt.",
+          },
+        }
+        : item
+    );
+    draft.workItems.push({
+      id: "close-record-v2",
+      activityId: "activity:close-record",
+      predecessorRevisionId: "close-record",
+      phaseId: "closeout",
+      title: "Close the record",
+      description: "Completed successor of the cancelled closeout.",
+      kind: "industrialize",
+      operation: {
+        id: "record.archive-lineage",
+        version: "1",
+        bindings: [],
+      },
+      status: "completed",
+      owner: "shared",
+      dependsOnWorkItemIds: ["verify-generic-input"],
+      evidenceRefs: [evidence],
+      decisionIds: [],
+      blockerIds: [],
+    });
+    draft.phases[1] = {
+      ...draft.phases[1]!,
+      workItemIds: [...draft.phases[1]!.workItemIds, "close-record-v2"],
+      evidenceRefs: [evidence],
+    };
+    const basis = {
+      kind: "thread-snapshot" as const,
+      snapshotId: snapshot.snapshotId,
+      revision: snapshot.revision,
+      subjectId: snapshot.subjectId,
+    };
+    const inputFingerprint = {
+      algorithm: "sha256" as const,
+      digest: "b".repeat(64),
+    };
+    draft.agentRuns = [{
+      id: "run:close-failed",
+      workItemId: "close-record",
+      status: "failed",
+      summary: "Failed before evidence.",
+      queuedAt: AT,
+      startedAt: AT,
+      completedAt: LATER,
+      evidenceRefs: [],
+      failure: { code: "provider_failed", message: "The run failed." },
+      basis,
+      inputFingerprint,
+    }, {
+      id: "run:close-successor",
+      workItemId: "close-record-v2",
+      status: "completed",
+      summary: "Completed successor.",
+      queuedAt: AT,
+      startedAt: AT,
+      completedAt: LATER,
+      evidenceRefs: [evidence],
+      resultSnapshot: structuredClone(snapshot),
+      basis,
+      inputFingerprint,
+    }];
+  });
 }
 
 function plannedProject(): EngineeringProjectSnapshot {
