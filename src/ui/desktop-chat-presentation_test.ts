@@ -84,6 +84,7 @@ Deno.test("small Chat surfaces use Ark modal focus management without making the
   );
 
   assertStringIncludes(source, 'useMediaQuery("(max-width: 899px)")');
+  assertStringIncludes(source, 'key={compactModal ? "modal" : "panel"}');
   assertStringIncludes(source, "modal={compactModal}");
   assertStringIncludes(source, "trapFocus={compactModal}");
   assertStringIncludes(source, "preventScroll={compactModal}");
@@ -97,4 +98,20 @@ Deno.test("small Chat surfaces use Ark modal focus management without making the
     source,
     'globalThis.addEventListener("keydown", dismiss)',
   );
+});
+
+Deno.test("responsive Chat rebuilds Ark effects and restores panel focus", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/thread/desktop-chat.tsx", import.meta.url),
+  );
+
+  assertStringIncludes(source, 'key={compactModal ? "modal" : "panel"}');
+  assertStringIncludes(
+    source,
+    "const triggerRef = useRef<HTMLButtonElement>(null)",
+  );
+  assertStringIncludes(source, "previous.open && !open");
+  assertStringIncludes(source, "!previous.compactModal");
+  assertStringIncludes(source, "triggerRef.current?.focus()");
+  assertStringIncludes(source, "ref={triggerRef}");
 });

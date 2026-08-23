@@ -1,8 +1,9 @@
 import { Dialog as ArkDialog } from "@ark-ui/react/dialog";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
-import { Button } from "../ui/button.tsx";
+import { Button, buttonVariants } from "../ui/button.tsx";
+import { cn } from "../lib/utils.ts";
 import { Notice } from "../ui/notice.tsx";
 import {
   type ChatCommandResponse,
@@ -42,6 +43,8 @@ export function DesktopChat(
   const bindings = desktopBindings();
   const nativeChatAvailable = bindings !== undefined;
   const compactModal = useMediaQuery("(max-width: 899px)");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const previousPresentationRef = useRef({ open, compactModal });
   const [snapshot, setSnapshot] = useState<ChatSnapshotDto>();
   const [selectedId, setSelectedId] = useState<string | null>();
   const [error, setError] = useState<string>();
@@ -73,6 +76,14 @@ export function DesktopChat(
   }, [bindings, projectId, selectedId]);
 
   useEffect(() => setSelectedId(undefined), [projectId]);
+
+  useEffect(() => {
+    const previous = previousPresentationRef.current;
+    previousPresentationRef.current = { open, compactModal };
+    if (previous.open && !open && !previous.compactModal) {
+      triggerRef.current?.focus();
+    }
+  }, [compactModal, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -128,7 +139,10 @@ export function DesktopChat(
     ) ?? [];
   const selected = selectedConversation(snapshot, selectedId, projectId);
   return (
+    // Zag installs modal effects only when its open state is entered. Remount
+    // when the responsive presentation changes so those effects are rebuilt.
     <ArkDialog.Root
+      key={compactModal ? "modal" : "panel"}
       open={open}
       onOpenChange={(details) => onOpenChange(details.open)}
       ids={{
@@ -150,32 +164,32 @@ export function DesktopChat(
         data-chat-runtime={nativeChatAvailable ? "native" : "browser-preview"}
         data-chat-presentation={compactModal ? "modal" : "panel"}
       >
-        <ArkDialog.Trigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="desktop-chat-toggle h-10 rounded-lg bg-background px-3 shadow-lg"
-            aria-expanded={open}
-            aria-controls="desktop-chat-panel"
-          >
-            <span>Project chat</span>
-            {!nativeChatAvailable && (
-              <Badge
-                variant="warning"
-                className="desktop-chat-availability font-mono text-[9px] uppercase tracking-[0.08em]"
-              >
-                preview
-              </Badge>
-            )}
-            {selected?.status === "running" && (
-              <Badge
-                variant="success"
-                className="desktop-chat-live font-mono text-[9px] uppercase tracking-[0.08em]"
-              >
-                live
-              </Badge>
-            )}
-          </Button>
+        <ArkDialog.Trigger
+          ref={triggerRef}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "desktop-chat-toggle h-10 rounded-lg bg-background px-3 shadow-lg",
+          )}
+          aria-expanded={open}
+          aria-controls="desktop-chat-panel"
+        >
+          <span>Project chat</span>
+          {!nativeChatAvailable && (
+            <Badge
+              variant="warning"
+              className="desktop-chat-availability font-mono text-[9px] uppercase tracking-[0.08em]"
+            >
+              preview
+            </Badge>
+          )}
+          {selected?.status === "running" && (
+            <Badge
+              variant="success"
+              className="desktop-chat-live font-mono text-[9px] uppercase tracking-[0.08em]"
+            >
+              live
+            </Badge>
+          )}
         </ArkDialog.Trigger>
         <ArkDialog.Backdrop className="desktop-chat-backdrop" />
         <ArkDialog.Positioner className="desktop-chat-positioner">

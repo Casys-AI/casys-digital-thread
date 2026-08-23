@@ -72,6 +72,22 @@ export interface CurrentProjectFocus {
   readonly proposedDecision: EngineeringDecision | undefined;
 }
 
+/** Concrete proposals that are waiting for a human MRTR decision. */
+export function pendingHumanConfirmationDecisions(
+  project: Pick<EngineeringProjectSnapshot, "decisions">,
+): readonly EngineeringDecision[] {
+  return project.decisions.filter((decision) => decision.status === "proposed");
+}
+
+/** Decisions for which the agent still owes a new concrete proposal. */
+export function agentPreparationDecisions(
+  project: Pick<EngineeringProjectSnapshot, "decisions">,
+): readonly EngineeringDecision[] {
+  return project.decisions.filter((decision) =>
+    decision.status === "required" || decision.status === "rejected"
+  );
+}
+
 /**
  * The single, factual priority for compact "agent now" surfaces. A settled
  * run is explicitly history: it is useful context between executions, never

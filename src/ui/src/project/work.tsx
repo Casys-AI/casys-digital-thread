@@ -19,6 +19,7 @@ import {
   agentRunSummary,
   buildAgentNowPresentation,
   buildProjectBrief,
+  pendingHumanConfirmationDecisions,
   projectPulseStatus,
   selectCurrentProjectFocus,
   workOwnerLabel,
@@ -50,7 +51,7 @@ export function ProjectWorkRibbon({
   const decisionBadge = decisionToReview
     ? { variant: "warning" as const, label: "Needs review" }
     : decisionBeingPrepared
-    ? { variant: "secondary" as const, label: "Pending" }
+    ? { variant: "secondary" as const, label: "Agent preparing" }
     : { variant: "success" as const, label: "Clear" };
   const blockerBadge = blocker
     ? {
@@ -208,9 +209,7 @@ export function ProjectOperations({
   onOpenWork?: () => void;
 }): JSX.Element {
   const view = buildOperationsFleetView(fleet, thread, project);
-  const pendingDecisions = project.decisions.filter(
-    (d) => d.status === "proposed" || d.status === "required",
-  );
+  const pendingDecisions = pendingHumanConfirmationDecisions(project);
   const activeRuns = project.agentRuns.filter(
     (r) => r.status === "queued" || r.status === "running",
   );
@@ -609,16 +608,17 @@ function MrtrCard({
           ? decisions.map((d) => <DecisionRow key={d.id} decision={d} />)
           : (
             <p className="text-sm text-muted-foreground">
-              No confirmation is waiting.
+              No proposed decision is waiting for human confirmation.
             </p>
           )}
         <p className="text-[11px] text-muted-foreground leading-snug pt-1">
-          Confirmation stays in the paired conversation. This read-only cockpit
-          only projects the recorded pending state.
+          Only concrete proposed decisions appear here. Confirmation stays in
+          the paired conversation; this read-only cockpit only projects the
+          recorded pending state.
         </p>
       </CardContent>
       <div className="border-t border-border bg-muted/30 px-3 py-1.5 font-mono text-[9.5px] text-muted-foreground">
-        MRTR · human-only rejection and cancellation
+        MRTR · human approval or rejection in the paired conversation
       </div>
     </Card>
   );
@@ -629,12 +629,9 @@ function DecisionRow({
 }: {
   decision: EngineeringDecision;
 }): JSX.Element {
-  const isProposed = decision.status === "proposed";
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <Badge variant={isProposed ? "warning" : "secondary"}>
-        {isProposed ? "Needs review" : "Pending"}
-      </Badge>
+      <Badge variant="warning">Needs review</Badge>
       <span className="text-sm font-medium text-foreground min-w-0">
         {decision.title}
       </span>

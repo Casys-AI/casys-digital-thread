@@ -19,9 +19,11 @@ import type { EngineeringProjectSnapshot } from "../../../domain/project/enginee
 import { buildActivityReviewRecords } from "../project/review-decision-model.ts";
 import {
   type AgentNowPresentation,
+  agentPreparationDecisions,
   agentRunSummary,
   buildAgentNowPresentation,
   buildCurrentProjectWork,
+  pendingHumanConfirmationDecisions,
 } from "../project/model.ts";
 import {
   ProjectCockpitHeader,
@@ -1681,13 +1683,13 @@ function operationsHeadline(
     project.agentRuns.filter((run) => run.status === "running").length;
   const queued = project.agentRuns.filter((run) => run.status === "queued")
     .length;
-  const confirmations =
-    project.decisions.filter((decision) =>
-      decision.status === "proposed" || decision.status === "required"
-    ).length;
+  const confirmations = pendingHumanConfirmationDecisions(project).length;
+  const preparations = agentPreparationDecisions(project).length;
   return `${running} running · ${queued} queued · ${confirmations} human confirmation${
     confirmations === 1 ? "" : "s"
-  }`;
+  } · ${preparations} agent proposal${
+    preparations === 1 ? "" : "s"
+  } in preparation`;
 }
 
 function workspaceTitle(
@@ -1725,7 +1727,7 @@ function workspaceDescription(
   if (view === "verification") {
     return "Recorded support and impact for each result.";
   }
-  return "Read-only projection of recorded runs, human confirmations, closeouts and contributing systems.";
+  return "Read-only projection of recorded runs, agent preparation, human confirmations, closeouts and contributing systems.";
 }
 
 function FactList(

@@ -42,6 +42,21 @@ Deno.test("agent run journal item names keep cancelled and failed literal", asyn
   assertEquals(helper.includes('"Cancelled"'), false);
 });
 
+Deno.test("work ribbon separates agent preparation from human review", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/work.tsx", import.meta.url),
+  );
+  const start = source.indexOf("export function ProjectWorkRibbon");
+  const end = source.indexOf("function AgentNowRibbon", start);
+  const ribbon = source.slice(start, end);
+
+  assertEquals(start >= 0 && end > start, true);
+  assertStringIncludes(ribbon, 'label: "Needs review"');
+  assertStringIncludes(ribbon, 'label: "Agent preparing"');
+  assertStringIncludes(ribbon, 'd?.status === "required"');
+  assertStringIncludes(ribbon, 'd?.status === "rejected"');
+});
+
 Deno.test("operations leads with recorded execution and human confirmations", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/work.tsx", import.meta.url),
@@ -57,6 +72,11 @@ Deno.test("operations leads with recorded execution and human confirmations", as
   assertEquals(start >= 0 && end > start, true);
   assertEquals(queue >= 0 && queue < confirmations, true);
   assertEquals(confirmations < closeout && closeout < systems, true);
+  assertStringIncludes(
+    operations,
+    "pendingHumanConfirmationDecisions(project)",
+  );
+  assertEquals(operations.includes('status === "required"'), false);
   assertStringIncludes(operations, "Technical provenance");
   assertStringIncludes(operations, "They are not runtime health checks.");
 });
@@ -126,6 +146,10 @@ Deno.test("operations page heading describes recorded state rather than fleet he
   assertStringIncludes(source, "Operations · recorded execution");
   assertStringIncludes(heading, 'run.status === "running"');
   assertStringIncludes(heading, 'run.status === "queued"');
+  assertStringIncludes(heading, "pendingHumanConfirmationDecisions(project)");
+  assertStringIncludes(heading, "agentPreparationDecisions(project)");
   assertStringIncludes(heading, "human confirmation");
+  assertStringIncludes(heading, "agent proposal");
+  assertEquals(heading.includes('status === "required"'), false);
   assertEquals(heading.includes("MCP surfaces"), false);
 });

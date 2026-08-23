@@ -5,6 +5,7 @@ import {
 } from "../testing/workbench/generic-engineering-workbench-fixture.ts";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
+  agentPreparationDecisions,
   agentRunRecordedAt,
   agentRunSummary,
   buildAgentNowPresentation,
@@ -13,6 +14,7 @@ import {
   buildProjectPath,
   groupProjectPathGatesByLane,
   phaseStatusLabel,
+  pendingHumanConfirmationDecisions,
   PROJECT_PATH_PRESENTATION_POLICY,
   projectBriefStatusLabel,
   projectPulseStatus,
@@ -66,6 +68,27 @@ Deno.test("project brief separates agent preparation from human review", () => {
   );
   assertEquals(workOwnerLabel("shared"), "Agent + human review");
   assertEquals(workOwnerLabel("human"), "Human review");
+});
+
+Deno.test("only concrete proposals wait for human confirmation", () => {
+  const seed = GENERIC_PROJECT_FIXTURE.decisions[0]!;
+  const project = {
+    decisions: [
+      { ...seed, id: "required", status: "required" as const },
+      { ...seed, id: "proposed", status: "proposed" as const },
+      { ...seed, id: "rejected", status: "rejected" as const },
+      { ...seed, id: "approved", status: "approved" as const },
+    ],
+  };
+
+  assertEquals(
+    pendingHumanConfirmationDecisions(project).map((decision) => decision.id),
+    ["proposed"],
+  );
+  assertEquals(
+    agentPreparationDecisions(project).map((decision) => decision.id),
+    ["required", "rejected"],
+  );
 });
 
 Deno.test("overview verification copy counts current criteria before retained history", () => {
