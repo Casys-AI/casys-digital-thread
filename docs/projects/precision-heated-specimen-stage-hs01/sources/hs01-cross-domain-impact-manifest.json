@@ -1,0 +1,391 @@
+{
+  "schemaVersion": "cross-domain-impact-manifest/1.0",
+  "id": "hs01-electrical-closeout-impact-r1",
+  "revision": 1,
+  "project": {
+    "id": "precision-heated-specimen-stage-hs01",
+    "fingerprint": {
+      "algorithm": "sha256",
+      "digest": "d7aff2f1b35cd058fa21af3a43ad6e4418958cb33a8df9eaf2700c20a6307c00"
+    }
+  },
+  "subject": {
+    "id": "project:precision-heated-specimen-stage-hs01",
+    "fingerprint": {
+      "algorithm": "sha256",
+      "digest": "598d681646931a3fa37ce7b12aaa2d04b6769105c0d84409f63e663f56935bc4"
+    }
+  },
+  "basis": {
+    "projectId": "precision-heated-specimen-stage-hs01",
+    "subjectId": "project:precision-heated-specimen-stage-hs01",
+    "snapshotId": "project:precision-heated-specimen-stage-hs01:r20:decide-accept-admitted-spice-evaluation-run:hs01-queue-spice-closeout-r139",
+    "revision": 20,
+    "fingerprint": {
+      "algorithm": "sha256",
+      "digest": "334a28723d31530a56a256772dd7ccc3d1b90d91372c061443cf358277ae6c66"
+    }
+  },
+  "changeKinds": [
+    "electrical-evaluation-closeout"
+  ],
+  "sourceAnchors": [
+    {
+      "id": "anchor-electrical-closeout",
+      "changeKind": "electrical-evaluation-closeout",
+      "role": "reviewed-change-source",
+      "threadChange": {
+        "id": "decide-accept-admitted-spice-evaluation-run:hs01-queue-spice-closeout-r139:created:spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+        "kind": "created",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "4dc5e976f3fce0971856c351bb327d1b8c50408c790576779c486381336033e7"
+        }
+      },
+      "source": {
+        "kind": "artifact",
+        "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+        }
+      }
+    }
+  ],
+  "branches": [
+    {
+      "id": "electrical",
+      "version": "1.0",
+      "inputs": [
+        {
+          "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          }
+        }
+      ],
+      "method": {
+        "id": "electrical-observation-method-sheet-seal-32fcc530442a8e9139b1410a260204f0c9df9c1c8a55e764b62051edc92ad8e5",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "32fcc530442a8e9139b1410a260204f0c9df9c1c8a55e764b62051edc92ad8e5"
+        }
+      },
+      "joins": [
+        {
+          "id": "spice-admitted-observation-evaluation-b16c87b276e594b73b6e59b7f72142546f60e6e3711156c620481c9de07c71f7",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "b16c87b276e594b73b6e59b7f72142546f60e6e3711156c620481c9de07c71f7"
+          }
+        }
+      ]
+    },
+    {
+      "id": "thermal",
+      "version": "1.0",
+      "inputs": [
+        {
+          "id": "modelica-admitted-result-a703437bcf0b98901f5a24d03af4179cd76409b4d5b207d9b4bdd10bf95a1461",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "a703437bcf0b98901f5a24d03af4179cd76409b4d5b207d9b4bdd10bf95a1461"
+          }
+        }
+      ],
+      "method": {
+        "id": "modelica-thermal-method-sheet-seal-ba9a0bc7c9c992306e101cf592f323d4f6f79d62f1c862773a3d49af92ba6eda",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "ba9a0bc7c9c992306e101cf592f323d4f6f79d62f1c862773a3d49af92ba6eda"
+        }
+      },
+      "joins": [
+        {
+          "id": "modelica-admitted-observation-evaluation-accfccc20a34fd58ebee16d596c930e57cda1ef87b43a325b1d3e00f25ffafbd",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "accfccc20a34fd58ebee16d596c930e57cda1ef87b43a325b1d3e00f25ffafbd"
+          }
+        }
+      ]
+    },
+    {
+      "id": "mechanical",
+      "version": "1.0",
+      "inputs": [
+        {
+          "id": "cad-asset-e92f9ee5b9d0da2571536d0a1ca9d6cecbcb4207dc9e0e6ea5132bf9d81357e9-target-0-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74"
+          }
+        }
+      ],
+      "method": {
+        "id": "fea-proof-557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8"
+        }
+      },
+      "joins": [
+        {
+          "id": "calculix-isolated-evidence-da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea"
+          }
+        },
+        {
+          "id": "evaluation-closeout-716ad51db8a3963e08ab96542037a85813c2b49d61abe59d8b99df7d28ad4f32",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "716ad51db8a3963e08ab96542037a85813c2b49d61abe59d8b99df7d28ad4f32"
+          }
+        }
+      ]
+    }
+  ],
+  "causalEdges": [
+    {
+      "id": "edge-electrical-closeout-to-electrical-branch",
+      "fromAnchorId": "anchor-electrical-closeout",
+      "to": {
+        "branchId": "electrical",
+        "inputId": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+        "inputFingerprint": {
+          "algorithm": "sha256",
+          "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+        }
+      },
+      "relation": "positive-input",
+      "assertion": {
+        "source": {
+          "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          }
+        },
+        "justification": "The newly accepted electrical closeout is itself the exact electrical branch input under review."
+      },
+      "scope": "Only the evidence-status consequence of the exact HS01 electrical L5 closeout; no electrical value or physical design changed.",
+      "evidence": [
+        {
+          "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          }
+        }
+      ]
+    }
+  ],
+  "independenceAssertions": [
+    {
+      "id": "hs01-mechanical-independent-of-electrical-closeout-r20",
+      "branchId": "mechanical",
+      "assertion": "independent",
+      "author": {
+        "kind": "human",
+        "id": "local-yolo-startup-opt-in"
+      },
+      "source": {
+        "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+        }
+      },
+      "justification": "The electrical closeout changes only accepted evidence status. The inspected CalculiX execution consumes the exact sealed proof, canonical STEP and reread solver artifacts, none of which is modified by that closeout.",
+      "inspectedSourceAnchors": [
+        {
+          "sourceAnchorId": "anchor-electrical-closeout",
+          "threadChangeFingerprint": {
+            "algorithm": "sha256",
+            "digest": "4dc5e976f3fce0971856c351bb327d1b8c50408c790576779c486381336033e7"
+          },
+          "sourceFingerprint": {
+            "algorithm": "sha256",
+            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          }
+        }
+      ],
+      "evidence": {
+        "id": "calculix-isolated-evidence-da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea",
+        "fingerprint": {
+          "algorithm": "sha256",
+          "digest": "da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea"
+        }
+      },
+      "inspectedConsumptions": [
+        {
+          "id": "calculix-isolated-input-fea-proof-557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8",
+          "input": {
+            "id": "fea-proof-557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "557b19fbd2417e7e835d19b06af3da67453a6348eca2e331f0aa3c43cf8c36f8"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-input-cad-asset-e92f9ee5b9d0da2571536d0a1ca9d6cecbcb4207dc9e0e6ea5132bf9d81357e9-target-0-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+          "input": {
+            "id": "cad-asset-e92f9ee5b9d0da2571536d0a1ca9d6cecbcb4207dc9e0e6ea5132bf9d81357e9-target-0-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-input-requirements-HeatedStagePlate-332f7d5a721a0d3c7e041cfe3838b273b17f0344b48f453359e59ea1440d89f3",
+          "input": {
+            "id": "requirements-HeatedStagePlate-332f7d5a721a0d3c7e041cfe3838b273b17f0344b48f453359e59ea1440d89f3",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "332f7d5a721a0d3c7e041cfe3838b273b17f0344b48f453359e59ea1440d89f3"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-ccx-log-3d7ec7cac5ff6abd49a5f585e6413f928507fb09be72f7a9eaa3da655ea6bf76",
+          "input": {
+            "id": "calculix-isolated-ccx-log-3d7ec7cac5ff6abd49a5f585e6413f928507fb09be72f7a9eaa3da655ea6bf76",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "3d7ec7cac5ff6abd49a5f585e6413f928507fb09be72f7a9eaa3da655ea6bf76"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-gmsh-log-d429b256ed1bf678e39580923befb41ef1d768db276451b06e3a923df4bd26c3",
+          "input": {
+            "id": "calculix-isolated-gmsh-log-d429b256ed1bf678e39580923befb41ef1d768db276451b06e3a923df4bd26c3",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "d429b256ed1bf678e39580923befb41ef1d768db276451b06e3a923df4bd26c3"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-input-step-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+          "input": {
+            "id": "calculix-isolated-input-step-5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "5aa7179c52bda583467c227e4a32e50001f080b25836cdc60b3728e51a9a1d74"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-job-dat-f0e60069a2f4ed39ed45da370fd58761317027eebab43dadf2bc2e40f35366dd",
+          "input": {
+            "id": "calculix-isolated-job-dat-f0e60069a2f4ed39ed45da370fd58761317027eebab43dadf2bc2e40f35366dd",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "f0e60069a2f4ed39ed45da370fd58761317027eebab43dadf2bc2e40f35366dd"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-job-inp-1ff61f7c690fb2371c58034cd0268ad090ab9fc88066052e51159b7fcd71519a",
+          "input": {
+            "id": "calculix-isolated-job-inp-1ff61f7c690fb2371c58034cd0268ad090ab9fc88066052e51159b7fcd71519a",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "1ff61f7c690fb2371c58034cd0268ad090ab9fc88066052e51159b7fcd71519a"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-mesh-geo-69eda7ce93993558fc80b826953f1e9e5e8fcc00d5a8b4ffc4c39f206eb3bfee",
+          "input": {
+            "id": "calculix-isolated-mesh-geo-69eda7ce93993558fc80b826953f1e9e5e8fcc00d5a8b4ffc4c39f206eb3bfee",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "69eda7ce93993558fc80b826953f1e9e5e8fcc00d5a8b4ffc4c39f206eb3bfee"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-mesh-inp-fe15e65285ff3b90dea0860eec1fe9d08658da5fc4684c00eeac8e3bc35edc07",
+          "input": {
+            "id": "calculix-isolated-mesh-inp-fe15e65285ff3b90dea0860eec1fe9d08658da5fc4684c00eeac8e3bc35edc07",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "fe15e65285ff3b90dea0860eec1fe9d08658da5fc4684c00eeac8e3bc35edc07"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-request-json-084925d20eb6ffc068025e5c45ad2de2e865e18782f5c3be3fe54220a5d8247f",
+          "input": {
+            "id": "calculix-isolated-request-json-084925d20eb6ffc068025e5c45ad2de2e865e18782f5c3be3fe54220a5d8247f",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "084925d20eb6ffc068025e5c45ad2de2e865e18782f5c3be3fe54220a5d8247f"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-result-json-003a7f7e1431e0c2d6d0b9f6b7d8f02c79ca6036ccb75c8ab636893a00fcc8eb",
+          "input": {
+            "id": "calculix-isolated-result-json-003a7f7e1431e0c2d6d0b9f6b7d8f02c79ca6036ccb75c8ab636893a00fcc8eb",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "003a7f7e1431e0c2d6d0b9f6b7d8f02c79ca6036ccb75c8ab636893a00fcc8eb"
+            }
+          }
+        },
+        {
+          "id": "calculix-isolated-cas-reread-calculix-isolated-evidence-da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea",
+          "input": {
+            "id": "calculix-isolated-evidence-da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea",
+            "fingerprint": {
+              "algorithm": "sha256",
+              "digest": "da3c9dcd319057c289a4e58118b4324725e55a93a7910deed83317d37293feea"
+            }
+          }
+        }
+      ],
+      "review": {
+        "trigger": {
+          "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+          "fingerprint": {
+            "algorithm": "sha256",
+            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          }
+        },
+        "reviewedAt": "2026-08-23T14:30:17.920Z",
+        "expiresAt": "2026-09-23T14:30:17.920Z"
+      }
+    }
+  ],
+  "gateMap": [
+    {
+      "gateItemId": "verify-electrical-heater",
+      "branchId": "electrical",
+      "role": "satisfies"
+    },
+    {
+      "gateItemId": "verify-thermal-stage",
+      "branchId": "thermal",
+      "role": "contributes-to"
+    },
+    {
+      "gateItemId": "verify-mechanical-stage",
+      "branchId": "mechanical",
+      "role": "satisfies"
+    }
+  ],
+  "limitations": [
+    "The reviewed change is an electrical evidence-status closeout, not a physical design, source value, CAD or solver-input change.",
+    "The thermal r17 evaluation remains literally unresolved and no impact operation may turn it into pass or L5.",
+    "No absent causal edge proves physical independence; only the exact human mechanical assertion is eligible for the later X11 recross.",
+    "X10 rerun planning remains unavailable and this manifest grants no provider, solver, correction or Workbench command."
+  ]
+}
