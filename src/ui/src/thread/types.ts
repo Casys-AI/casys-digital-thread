@@ -9,6 +9,10 @@ import {
   ENGINEERING_WORKBENCH_SCHEMA,
   LIVE_THREAD_OVERLAY_SCHEMA,
 } from "../../../presentation/workbench/engineering/schema.ts";
+import {
+  ENGINEERING_PATH_LANE_IDS,
+  type EngineeringPathLaneId,
+} from "../../../domain/project/engineering-path-lane.ts";
 import type {
   EngineeringDocumentaryTechnicalStart,
   EngineeringDocumentaryTechnicalStartState,
@@ -161,6 +165,8 @@ export type {
   EngineeringEvidenceWorkbenchSnapshot,
   EngineeringWorkbenchAlignment,
   EngineeringWorkbenchBaseSnapshot,
+  EngineeringWorkbenchPhaseLane,
+  EngineeringWorkbenchProjectPathProjection,
 } from "../../../presentation/workbench/engineering/evidence.ts";
 export type {
   EngineeringPlanningActivity,
@@ -233,11 +239,13 @@ function isEvidenceWorkbenchSnapshot(
       "surface",
       "project",
       "thread",
+      "projectPath",
       "alignment",
       "unresolvedEvidenceReferences",
     ]) ||
     !isEngineeringProjectSnapshot(candidate.project) ||
     !isLiveThreadWorkbenchSnapshot(candidate.thread) ||
+    !isProjectPathProjection(candidate.projectPath, candidate.project) ||
     !isWorkbenchAlignment(candidate.alignment) ||
     !isUnresolvedEvidenceReferenceList(candidate.unresolvedEvidenceReferences)
   ) {
@@ -268,6 +276,42 @@ function isEvidenceWorkbenchSnapshot(
       (alignment.currentThreadRevision === projectThreadRevision
         ? "aligned"
         : "thread-ahead");
+}
+
+function isProjectPathProjection(
+  value: unknown,
+  project: EngineeringEvidenceWorkbenchSnapshot["project"],
+): value is EngineeringEvidenceWorkbenchSnapshot["projectPath"] {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["phaseLanes"]) ||
+    !Array.isArray(value.phaseLanes)
+  ) {
+    return false;
+  }
+  const knownPhaseIds = new Set(project.phases.map((phase) => phase.id));
+  const projectedPhaseIds = new Set<string>();
+  for (const entry of value.phaseLanes) {
+    if (
+      !isRecord(entry) ||
+      !hasExactKeys(entry, ["phaseId", "lane"]) ||
+      typeof entry.phaseId !== "string" ||
+      !knownPhaseIds.has(entry.phaseId) ||
+      projectedPhaseIds.has(entry.phaseId) ||
+      !isEngineeringPathLaneId(entry.lane)
+    ) {
+      return false;
+    }
+    projectedPhaseIds.add(entry.phaseId);
+  }
+  return projectedPhaseIds.size === knownPhaseIds.size;
+}
+
+function isEngineeringPathLaneId(
+  value: unknown,
+): value is EngineeringPathLaneId {
+  return typeof value === "string" &&
+    (ENGINEERING_PATH_LANE_IDS as readonly string[]).includes(value);
 }
 
 function isUnresolvedEvidenceReferenceList(

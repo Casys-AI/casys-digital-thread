@@ -2,8 +2,8 @@
 
 Audience: both · Diátaxis: how-to · Kind: how-to
 
-Use this guide to inspect the single-shell React + Vite cockpit against the distinct truth
-surfaces it can render:
+Use this guide to inspect the single-shell React + Vite cockpit against the distinct
+truth surfaces it can render:
 
 - the project objective, living brief, phases, work, decisions and blockers declared by
   immutable active `EngineeringProjectSnapshot` revisions under
@@ -32,12 +32,12 @@ seeds, selects, or falls back to retired evidence, a checked-in baseline, the la
 thread head, or another project with the same subject.
 
 `desk-lamp-dl04` is a useful focused project: sealed geometry, requirements, and proof
-evidence. `desk-lamp-dl05` continues into sensitivity. A
-`verify.run-fea-static-proof@3` success is only a captured, reread Thread
-revision under `state/local/` (gitignored). If that revision is absent, the cockpit must
-not present historical MCP `@1`/`@2` as `@3`. Activity promotes later demo-loop documents with literal
-labels: `measured DFM`, `study-base evaluation`, `corrected source`. A missing
-card means the run was not persisted, not that it passed.
+evidence. `desk-lamp-dl05` continues into sensitivity. A `verify.run-fea-static-proof@3`
+success is only a captured, reread Thread revision under `state/local/` (gitignored). If
+that revision is absent, the cockpit must not present historical MCP `@1`/`@2` as `@3`.
+Activity promotes later demo-loop documents with literal labels: `measured DFM`,
+`study-base evaluation`, `corrected source`. A missing card means the run was not
+persisted, not that it passed.
 
 ## Start the Workbench BFF
 
@@ -123,7 +123,7 @@ The JSON document is one atomic browser read model:
 
 ```json
 {
-  "schemaVersion": "engineering-workbench/0.3",
+  "schemaVersion": "engineering-workbench/0.4",
   "surface": "evidence",
   "project": {
     "schemaVersion": "1.0",
@@ -139,6 +139,12 @@ The JSON document is one atomic browser read model:
     "schemaVersion": "thread-workbench/0.1",
     "source": "observed",
     "live": { "schemaVersion": "live-thread-overlay/1.0" }
+  },
+  "projectPath": {
+    "phaseLanes": [
+      { "phaseId": "architecture", "lane": "system-model" },
+      { "phaseId": "canonical-geometry", "lane": "geometry" }
+    ]
   },
   "alignment": {
     "status": "aligned",
@@ -191,7 +197,7 @@ The live read path is:
 curl -N http://127.0.0.1:5173/api/thread/workbench/events
 ```
 
-It emits a complete `engineering-workbench/0.3` replacement as
+It emits a complete `engineering-workbench/0.4` replacement as
 `event: workbench-snapshot`. Event IDs include the relevant immutable revision and live
 activity version, but are opaque to clients: use `Last-Event-ID` only for reconnection,
 not as a technical lineage identifier.
@@ -251,12 +257,11 @@ ordered interaction:
 8. A later reviewed change may queue `model.write-requirements@1` against that exact
    architecture. It records and re-extracts the approved integer scalar constraints
    without inventing observations, evaluations, or a verdict.
-9. Geometry remains a separate two-step decision. Capture and
-   `compile.seal-admission@1` admit parameterized CAD;
-   `project_admitted_geometry_export` creates the hash-attested draft;
-   `design.write-geometry@1` seals those exact bytes. A preview-only draft is
-   refused. Binary glTF exports are served and published as `.glb`, never as
-   JSON `.gltf`.
+9. Geometry remains a separate two-step decision. Capture and `compile.seal-admission@1`
+   admit parameterized CAD; `project_admitted_geometry_export` creates the hash-attested
+   draft; `design.write-geometry@1` seals those exact bytes. A preview-only draft is
+   refused. Binary glTF exports are served and published as `.glb`, never as JSON
+   `.gltf`.
 
 These are explicit bounded work items, not an automatic pipeline.
 
@@ -334,8 +339,8 @@ flowchart LR
 ![Execution: run journal and contributing systems. Queued is not published.](../../assets/workbench-execution-dl04.png)
 
 A first-time walkthrough of the same loop is
-[Follow the engineering loop](../../tutorials/first-engineering-loop.md). Agents that must
-not confuse write/seal/compile paths should read
+[Follow the engineering loop](../../tutorials/first-engineering-loop.md). Agents that
+must not confuse write/seal/compile paths should read
 [agent workspace](../../reference/agent/agent-workspace.md) before calling tools.
 
 - **Project** — objective, lightweight notifications, derived phase gates, current work,
@@ -411,9 +416,9 @@ It does **not** prove:
 
 ## Compare the preview paths
 
-| Command                     | Address                  | Purpose                                                      |
-| --------------------------- | ------------------------ | ------------------------------------------------------------ |
-| `deno task preview:thread`  | `http://127.0.0.1:5173/` | Vite HMR cockpit; `/api` proxies to :5175                    |
+| Command                     | Address                  | Purpose                                                        |
+| --------------------------- | ------------------------ | -------------------------------------------------------------- |
+| `deno task preview:thread`  | `http://127.0.0.1:5173/` | Vite HMR cockpit; `/api` proxies to :5175                      |
 | `deno task preview:cockpit` | `http://127.0.0.1:5175/` | Same BFF; serves built HTML + hashed JS/CSS from `dist/thread` |
 
 Provider MCP Apps remain useful for one rich tool result in another host. They are not

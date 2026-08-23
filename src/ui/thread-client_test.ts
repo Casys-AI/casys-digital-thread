@@ -254,6 +254,7 @@ Deno.test("Workbench contract accepts a planning surface only when no technical 
   ) as unknown as Record<string, unknown>;
   planning.surface = "planning";
   delete planning.thread;
+  delete planning.projectPath;
   delete planning.alignment;
   delete planning.unresolvedEvidenceReferences;
   (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [];
@@ -305,6 +306,7 @@ Deno.test("Workbench contract rejects a planning activity that carries graph or 
   ) as unknown as Record<string, unknown>;
   planning.surface = "planning";
   delete planning.thread;
+  delete planning.projectPath;
   delete planning.alignment;
   delete planning.unresolvedEvidenceReferences;
   (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [];
@@ -330,7 +332,7 @@ Deno.test("Workbench contract rejects a planning activity that carries graph or 
 Deno.test("Workbench contract keeps a documentary baseline separate from an evidence thread", () => {
   const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
-    schemaVersion: "engineering-workbench/0.3",
+    schemaVersion: "engineering-workbench/0.4",
     surface: "documentary",
     project: fixture.project,
     documentary: {
@@ -365,7 +367,7 @@ Deno.test("Workbench contract keeps a documentary baseline separate from an evid
 Deno.test("Workbench contract accepts only the closed live SysON seed sequence on documentary r1", () => {
   const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
-    schemaVersion: "engineering-workbench/0.3",
+    schemaVersion: "engineering-workbench/0.4",
     surface: "documentary",
     project: fixture.project,
     documentary: {
@@ -848,7 +850,7 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "observed" },
-          ],
+    ],
     cases: [{
       key: "mechanical-proof:case-a",
       family: "mechanical-proof",

@@ -1310,6 +1310,7 @@ export function ThreadWorkbench({
           <ProjectOverview
             project={project}
             thread={snapshot}
+            phaseLanes={workbench.projectPath.phaseLanes}
             onNavigate={changeView}
             onOpenProductFacet={changeProductFacet}
             onOpenActivity={openDecisionActivity}

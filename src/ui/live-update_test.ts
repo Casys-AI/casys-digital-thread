@@ -93,7 +93,7 @@ Deno.test("equal project revision accepts a newer thread or live sequence only",
 Deno.test("a documentary record has no live evidence overlay to compare", () => {
   const fixture = GENERIC_ENGINEERING_WORKBENCH_FIXTURE;
   const current: EngineeringDocumentaryWorkbenchSnapshot = {
-    schemaVersion: "engineering-workbench/0.3",
+    schemaVersion: "engineering-workbench/0.4",
     surface: "documentary",
     project: fixture.project,
     documentary: {
@@ -122,7 +122,7 @@ Deno.test("a documentary record has no live evidence overlay to compare", () => 
 Deno.test("a documentary record accepts a newer closed technical-start feed", () => {
   const fixture = GENERIC_ENGINEERING_WORKBENCH_FIXTURE;
   const current: EngineeringDocumentaryWorkbenchSnapshot = {
-    schemaVersion: "engineering-workbench/0.3",
+    schemaVersion: "engineering-workbench/0.4",
     surface: "documentary",
     project: fixture.project,
     documentary: {

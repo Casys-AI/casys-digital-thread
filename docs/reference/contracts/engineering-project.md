@@ -52,13 +52,17 @@ Contents: [Three truth boundaries](#three-truth-boundaries) ·
 | **Live**    | Append-only progress and result notifications used to refresh the activity feed while work is occurring                                                                                              | Canonical evidence, completion, approval, or a pass/fail verdict      |
 
 The BFF composes these boundaries for presentation. Its browser contract is an
-`engineering-workbench/0.3` object with an explicit surface: `planning` contains the
+`engineering-workbench/0.4` object with an explicit surface: `planning` contains the
 durable project plus the status of the first documentary baseline and redacted live
 milestones; `evidence` contains the project, projected `thread` (whose `live` field
-contains current activity), `alignment`, and explicit capabilities. `GET` and SSE create
-only a read model; they do not promote live events into thread evidence or project
-truth. Project mutations and bounded provider orchestration remain on the paired agent's
-MCP surface.
+contains current activity), `alignment`, and `projectPath.phaseLanes`. That last field
+classifies every exact phase into the same five columns used by the Overview thread:
+`requirements`, `system-model`, `geometry`, `physics`, and `verdicts`. The server uses
+its registered operation taxonomy, so the browser can wrap a long path without guessing
+from labels. This is presentation metadata only: it does not select a provider, change
+phase order, or imply a verdict. `GET` and SSE create only a read model; they do not
+promote live events into thread evidence or project truth. Project mutations and bounded
+provider orchestration remain on the paired agent's MCP surface.
 
 ## Root fields
 

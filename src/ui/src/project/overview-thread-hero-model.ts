@@ -4,28 +4,11 @@ import type {
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
+import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
+import { OVERVIEW_LANES, type OverviewLane } from "./overview-lanes.ts";
 
-export type OverviewLaneId =
-  | "requirements"
-  | "system-model"
-  | "geometry"
-  | "physics"
-  | "verdicts";
-
-export interface OverviewLane {
-  readonly id: OverviewLaneId;
-  readonly title: string;
-  readonly color: string;
-}
-
-/** Display lanes of mockup 2a — composition only, not a second provenance. */
-export const OVERVIEW_LANES: readonly OverviewLane[] = [
-  { id: "requirements", title: "Requirements", color: "#7c3aed" },
-  { id: "system-model", title: "System model", color: "#2563eb" },
-  { id: "geometry", title: "Geometry", color: "#0e7490" },
-  { id: "physics", title: "Physics", color: "#a16207" },
-  { id: "verdicts", title: "Verdicts", color: "#15803d" },
-];
+export type OverviewLaneId = EngineeringPathLaneId;
+export { OVERVIEW_LANES } from "./overview-lanes.ts";
 
 export const OVERVIEW_HERO_WIDTH = 1230;
 export const OVERVIEW_HERO_HEIGHT = 300;
@@ -55,16 +38,19 @@ export interface OverviewThreadHeroView {
   readonly lanes: readonly OverviewLaneColumn[];
   readonly nodes: readonly OverviewHeroNode[];
   readonly edges: readonly OverviewHeroEdge[];
+  readonly height: number;
 }
 
 const COLUMN_WIDTH = OVERVIEW_HERO_WIDTH / OVERVIEW_LANES.length;
-const MAX_PER_LANE = 4;
+const TRACKS_PER_LANE = 2;
 const NODE_TOP = 56;
 const NODE_GAP = 60;
+const NODE_BOTTOM = 44;
 
 /**
- * 2a hero: essential recorded nodes, stacked in the five mockup lanes.
- * Never invents a node, an edge, or a second organisation of the dossier.
+ * Essential recorded nodes, wrapped in the same five lanes as the Project
+ * Path. Every semantic point is retained; the two-track layout grows only as
+ * high as its busiest lane instead of silently truncating after four nodes.
  */
 export function buildOverviewThreadHero(
   thread: ThreadWorkbenchSnapshot,
@@ -86,19 +72,27 @@ export function buildOverviewThreadHero(
     const lane = overviewLaneFor(node);
     if (!lane) continue;
     const index = counts[lane];
-    if (index >= MAX_PER_LANE) continue;
     counts[lane] = index + 1;
     const column = OVERVIEW_LANES.find((item) => item.id === lane)!;
     placed.push({
       key: refKey(node.ref),
       node,
       lane,
-      x: columnCenter(lane),
-      y: NODE_TOP + index * NODE_GAP,
+      x: wrappedNodeX(lane, index),
+      y: NODE_TOP + Math.floor(index / TRACKS_PER_LANE) * NODE_GAP,
       color: column.color,
       emphasis: node.freshness === "failed" || node.freshness === "stale",
     });
   }
+
+  const rowCount = Math.max(
+    1,
+    ...Object.values(counts).map((count) => Math.ceil(count / TRACKS_PER_LANE)),
+  );
+  const height = Math.max(
+    OVERVIEW_HERO_HEIGHT,
+    NODE_TOP + (rowCount - 1) * NODE_GAP + NODE_BOTTOM,
+  );
 
   const byKey = new Map(placed.map((item) => [item.key, item]));
   const edges: OverviewHeroEdge[] = [];
@@ -125,6 +119,7 @@ export function buildOverviewThreadHero(
     })),
     nodes: placed,
     edges,
+    height,
   };
 }
 
@@ -132,39 +127,26 @@ export function overviewLaneFor(
   node: ThreadGraphNode,
 ): OverviewLaneId | undefined {
   if (node.entityKind === "requirement") return "requirements";
-  if (
-    node.entityKind === "observation" ||
-    node.entityKind === "evaluation" ||
-    node.entityKind === "violation"
-  ) {
+  if (node.entityKind === "observation") return "physics";
+  if (node.entityKind === "evaluation" || node.entityKind === "violation") {
     return "verdicts";
   }
-  if (
-    node.entityKind === "part-definition" ||
-    node.entityKind === "part-usage" ||
-    node.entityKind === "attribute-usage"
-  ) {
+  if (node.entityKind !== "artifact") return undefined;
+  const artifactKind = node.artifactKind?.toLowerCase() ?? "";
+  if (artifactKind === "sysml-model" || artifactKind.includes("sysml")) {
     return "system-model";
   }
-  if (node.entityKind !== "artifact") return undefined;
-
-  const haystack = `${node.system} ${node.artifactKind ?? ""}`.toLowerCase();
-  if (
-    /calculix|gmsh|fea|modelica|thermal|ccx|frd|mesh/.test(haystack)
-  ) {
-    return "physics";
-  }
-  if (
-    /build123d|cad|step|geometry|glb/.test(haystack)
-  ) {
+  if (/cad|step|geometry|glb/.test(artifactKind)) {
     return "geometry";
   }
-  return "system-model";
+  return undefined;
 }
 
-function columnCenter(lane: OverviewLaneId): number {
-  const index = OVERVIEW_LANES.findIndex((item) => item.id === lane);
-  return COLUMN_WIDTH * index + COLUMN_WIDTH / 2;
+function wrappedNodeX(lane: OverviewLaneId, index: number): number {
+  const laneIndex = OVERVIEW_LANES.findIndex((item) => item.id === lane);
+  const track = index % TRACKS_PER_LANE;
+  return laneIndex * COLUMN_WIDTH +
+    COLUMN_WIDTH * (track === 0 ? 0.27 : 0.73);
 }
 
 function uniqueSystems(values: readonly string[]): readonly string[] {

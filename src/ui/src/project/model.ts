@@ -13,10 +13,16 @@ import {
   isEngineeringDecisionSatisfied,
 } from "../../../domain/project/engineering-project.ts";
 import type {
+  EngineeringWorkbenchPhaseLane,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
+import {
+  ENGINEERING_PATH_LANE_IDS,
+  type EngineeringPathLaneId,
+} from "../../../domain/project/engineering-path-lane.ts";
 import { currentRequirements } from "../thread/versioned-provenance-model.ts";
+import { overviewLaneDefinition } from "./overview-lanes.ts";
 
 export interface ProjectPhaseView {
   readonly phase: EngineeringProjectPhase;
@@ -182,6 +188,76 @@ export interface ProjectPath {
   readonly pendingDecisions: readonly EngineeringDecision[];
 }
 
+export interface ProjectPathLaneGroup {
+  readonly id: EngineeringPathLaneId;
+  readonly label: string;
+  readonly color: string;
+  readonly gates: readonly ProjectPathPhaseView[];
+  readonly satisfiedGates: number;
+  readonly totalGates: number;
+  readonly completedWorkItems: number;
+  readonly totalWorkItems: number;
+  readonly approvedDecisions: number;
+  readonly requiredDecisions: number;
+  readonly evidenceCount: number;
+}
+
+/**
+ * Group exact phase records using only the server-owned five-column projection.
+ * Friendly phase names never classify a lane, and the Overview column order is
+ * stable even when a project has no recorded gate in one of the columns.
+ */
+export function groupProjectPathGatesByLane(
+  gates: readonly ProjectPathPhaseView[],
+  phaseLanes: readonly EngineeringWorkbenchPhaseLane[],
+): readonly ProjectPathLaneGroup[] {
+  const laneByPhase = new Map(
+    phaseLanes.map((entry) => [entry.phaseId, entry.lane]),
+  );
+  const grouped = new Map<EngineeringPathLaneId, ProjectPathPhaseView[]>();
+  for (const gate of gates) {
+    const lane = laneByPhase.get(gate.phase.id);
+    if (!lane) {
+      throw new Error(
+        `Project path phase ${gate.phase.id} has no server-projected lane.`,
+      );
+    }
+    const existing = grouped.get(lane);
+    if (existing) existing.push(gate);
+    else grouped.set(lane, [gate]);
+  }
+  return ENGINEERING_PATH_LANE_IDS.flatMap((id) => {
+    const laneGates = grouped.get(id);
+    if (!laneGates) return [];
+    const lane = overviewLaneDefinition(id);
+    return [{
+      id,
+      label: lane.title,
+      color: lane.color,
+      gates: laneGates,
+      satisfiedGates: laneGates.filter((gate) => gate.status === "completed").length,
+      totalGates: laneGates.length,
+      completedWorkItems: sum(laneGates, "completedWorkItems"),
+      totalWorkItems: sum(laneGates, "totalWorkItems"),
+      approvedDecisions: sum(laneGates, "approvedDecisions"),
+      requiredDecisions: sum(laneGates, "requiredDecisions"),
+      evidenceCount: sum(laneGates, "evidenceCount"),
+    }];
+  });
+}
+
+function sum(
+  gates: readonly ProjectPathPhaseView[],
+  key:
+    | "completedWorkItems"
+    | "totalWorkItems"
+    | "approvedDecisions"
+    | "requiredDecisions"
+    | "evidenceCount",
+): number {
+  return gates.reduce((total, gate) => total + gate[key], 0);
+}
+
 /**
  * Compresse le passé de l'épine : au-delà d'un seuil d'affichage, la série
  * initiale de gates satisfaites se replie en une rangée-résumé, en gardant
@@ -219,15 +295,11 @@ export function buildProjectBrief(
     .sort((left, right) => left.order - right.order)
     .map((phase): ProjectPhaseView => {
       const workItems = phase.workItemIds.flatMap((id) => {
-        const item = snapshot.workItems.find((candidate) =>
-          candidate.id === id
-        );
+        const item = snapshot.workItems.find((candidate) => candidate.id === id);
         return item ? [item] : [];
       });
       const decisions = phase.requiredDecisionIds.flatMap((id) => {
-        const decision = snapshot.decisions.find((candidate) =>
-          candidate.id === id
-        );
+        const decision = snapshot.decisions.find((candidate) => candidate.id === id);
         return decision ? [decision] : [];
       });
       return {
@@ -267,9 +339,7 @@ export function buildProjectBrief(
       decision.status === "required" || decision.status === "proposed" ||
       decision.status === "rejected"
     ),
-    openBlockers: snapshot.blockers.filter((blocker) =>
-      blocker.status === "open"
-    ),
+    openBlockers: snapshot.blockers.filter((blocker) => blocker.status === "open"),
   };
 }
 
@@ -382,9 +452,7 @@ export function buildCurrentProjectWork(
   }
 
   return {
-    nextWork: brief.nextWork.filter((item) =>
-      !historicalWorkItemIds.has(item.id)
-    ),
+    nextWork: brief.nextWork.filter((item) => !historicalWorkItemIds.has(item.id)),
     historicalWorkItemIds: [...historicalWorkItemIds].toSorted(),
     closedActionTargetIds: [...closedActionTargetIds].toSorted(),
   };
@@ -393,9 +461,7 @@ export function buildCurrentProjectWork(
 function registeredOperationKey(
   item: EngineeringWorkItem,
 ): string | undefined {
-  return item.operation
-    ? `${item.operation.id}@${item.operation.version}`
-    : undefined;
+  return item.operation ? `${item.operation.id}@${item.operation.version}` : undefined;
 }
 
 function workItemPlanOrder(
@@ -504,9 +570,7 @@ export function buildProjectPath(
     brief,
     hiddenPhaseIds,
   );
-  architectureVersions.forEach((attachment) =>
-    hiddenPhaseIds.add(attachment.phaseId)
-  );
+  architectureVersions.forEach((attachment) => hiddenPhaseIds.add(attachment.phaseId));
   const measurements = enrichmentMeasurementAttachments(
     thread,
     brief,
@@ -1092,9 +1156,7 @@ function successorWorkFromRun(
   snapshot: EngineeringProjectSnapshot,
   successorRunId: string,
 ): EngineeringWorkItem | undefined {
-  const run = snapshot.agentRuns.find((candidate) =>
-    candidate.id === successorRunId
-  );
+  const run = snapshot.agentRuns.find((candidate) => candidate.id === successorRunId);
   return run
     ? snapshot.workItems.find((candidate) => candidate.id === run.workItemId)
     : undefined;
@@ -1147,9 +1209,7 @@ function revisionAttachments(
     if (!parent) continue;
 
     const correctionReachesParent = corrections.some((correction) =>
-      correction.evidenceKeys.some((key) =>
-        consumedCorrections.includes(key)
-      ) &&
+      correction.evidenceKeys.some((key) => consumedCorrections.includes(key)) &&
       correction.parentPhaseIds.includes(parent.phase.id)
     );
     if (!correctionReachesParent) continue;
@@ -1255,10 +1315,8 @@ function projectPhaseLifecycle(
    * A failed latest run keeps its durable attention signal; an unfinished
    * lifecycle is retained history, never a promise of recomputation.
    */
-  const state = latestRun?.status === "failed"
-    ? "attention"
-    : latestLifecycleRecord &&
-        isEmptyCancelledSupersededPhase(snapshot, latestLifecycleRecord.phase)
+  const state = latestRun?.status === "failed" ? "attention" : latestLifecycleRecord &&
+      isEmptyCancelledSupersededPhase(snapshot, latestLifecycleRecord.phase)
     ? "retained"
     : latestLifecycleRecord?.status === "completed"
     ? "current"
@@ -1267,12 +1325,8 @@ function projectPhaseLifecycle(
     affectedComponentIds: [...lifecycle.affectedComponentIds].toSorted(),
     correctionCount: lifecycle.correctionEvidenceKeys.size,
     revisionAttemptCount: revisions.length,
-    ...(enrichments.length > 0
-      ? { modelEnrichmentCount: enrichments.length }
-      : {}),
-    ...(measurements.length > 0
-      ? { modelMeasurementCount: measurements.length }
-      : {}),
+    ...(enrichments.length > 0 ? { modelEnrichmentCount: enrichments.length } : {}),
+    ...(measurements.length > 0 ? { modelMeasurementCount: measurements.length } : {}),
     state,
   };
 }
@@ -1497,9 +1551,7 @@ export function agentRunSummary(
   const summary = run.summary.trim();
   if (isReadableRunSummary(summary)) return summary;
 
-  const workItem = snapshot.workItems.find((item) =>
-    item.id === run.workItemId
-  );
+  const workItem = snapshot.workItems.find((item) => item.id === run.workItemId);
   return workItem
     ? `Working on: ${workItem.title}`
     : "The agent is working on a recorded engineering task.";

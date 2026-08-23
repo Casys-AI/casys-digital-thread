@@ -25,26 +25,36 @@ Deno.test("Collapsible wraps Ark UI and is the disclosure for earlier gates", as
   );
 });
 
-Deno.test("collapsed earlier gates and compact spine keep planned completed as Badge text", async () => {
+Deno.test("earlier gates expand below the spine and follow the five thread lanes", async () => {
   const overview = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
   );
-  const collapsedStart = overview.indexOf("collapsedGates.length > 0");
-  const collapsedEnd = overview.indexOf("visiblePhases.map", collapsedStart);
-  const collapsed = overview.slice(collapsedStart, collapsedEnd);
+  const historyStart = overview.indexOf("function EarlierGatesPanel");
+  const historyEnd = overview.indexOf("function Chevron", historyStart);
+  const history = overview.slice(historyStart, historyEnd);
 
-  assertEquals(collapsedStart >= 0, true);
-  assertEquals(collapsedEnd > collapsedStart, true);
-  assertStringIncludes(collapsed, "<Badge");
+  assertEquals(historyStart >= 0, true);
+  assertEquals(historyEnd > historyStart, true);
+  assertStringIncludes(overview, "groupProjectPathGatesByLane");
+  assertStringIncludes(overview, 'data-project-path-history="lanes"');
   assertStringIncludes(
-    collapsed,
-    "variant={recordStatusVariant(item.status)}",
+    overview,
+    '<CollapsibleContent className="border-t border-border bg-muted/20',
   );
-  assertStringIncludes(collapsed, "{phaseStatusLabel(item.status)}");
   assertEquals(
-    collapsed.includes('className="sr-only"'),
+    overview.includes("collapsedGates.map"),
     false,
-    "collapsed gates must not hide phase status as sr-only",
+    "the top-level disclosure must not render a flat list of every old gate",
+  );
+  assertStringIncludes(history, "groups.map");
+  assertStringIncludes(history, "<Collapsible");
+  assertStringIncludes(history, "<Badge");
+  assertStringIncludes(history, "variant={recordStatusVariant(item.status)}");
+  assertStringIncludes(history, "{phaseStatusLabel(item.status)}");
+  assertEquals(
+    history.includes('className="sr-only"'),
+    false,
+    "expanded historical gates must not hide phase status as sr-only",
   );
 
   const compactStart = overview.indexOf("// Pas de ligne lifecycle en compact");

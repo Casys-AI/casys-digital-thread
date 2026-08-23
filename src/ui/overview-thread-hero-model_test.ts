@@ -40,7 +40,7 @@ Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids
   );
   assertEquals(
     hero.nodes.find((item) => item.node.ref.id === "OBS-STRESS-MAX")?.lane,
-    "verdicts",
+    "physics",
   );
 });
 
@@ -53,4 +53,42 @@ Deno.test("overview lane assignment skips change and action nodes", () => {
   )!;
   assertEquals(overviewLaneFor(change), undefined);
   assertEquals(overviewLaneFor(action), undefined);
+});
+
+Deno.test("overview hero wraps every recorded semantic point instead of truncating a lane", () => {
+  const thread = structuredClone(GENERIC_THREAD_FIXTURE);
+  const requirement = thread.graph.nodes.find((node) =>
+    node.entityKind === "requirement"
+  )!;
+  for (let index = 0; index < 6; index++) {
+    thread.graph.nodes.push({
+      ...requirement,
+      id: `graph:requirement:wrap-requirement-${index}`,
+      ref: { kind: "requirement", id: `wrap-requirement-${index}` },
+      entityKind: "requirement",
+      label: `Wrapped requirement ${index}`,
+    });
+    thread.graph.nodes.push({
+      ...requirement,
+      id: `graph:evaluation:wrap-${index}`,
+      ref: { kind: "evaluation", id: `wrap-${index}` },
+      entityKind: "evaluation",
+      label: `Wrapped verdict ${index}`,
+    });
+  }
+
+  const hero = buildOverviewThreadHero(thread);
+  assertEquals(
+    hero.nodes.filter((item) =>
+      item.lane === "requirements" &&
+      item.node.ref.id.startsWith("wrap-requirement-")
+    ).length,
+    6,
+  );
+  const verdicts = hero.nodes.filter((item) =>
+    item.lane === "verdicts" && item.node.ref.id.startsWith("wrap-")
+  );
+  assertEquals(verdicts.length, 6);
+  assertEquals(new Set(verdicts.map((item) => item.x)).size, 2);
+  assertEquals(new Set(verdicts.map((item) => item.y)).size >= 3, true);
 });

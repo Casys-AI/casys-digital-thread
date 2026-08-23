@@ -32,6 +32,7 @@ import {
   projectEngineeringPlanningWorkbenchSnapshot,
   projectEngineeringWorkbenchSnapshot,
 } from "../../src/adapters/thread/engineering-workbench-projector.ts";
+import { REGISTERED_ENGINEERING_OPERATION_PATH_LANE_RESOLVER } from "../../src/orchestration/operations/path-lanes.ts";
 import {
   type ExactThreadSnapshotReader,
   FileExactThreadSnapshotDirectory,
@@ -580,6 +581,7 @@ async function projectWorkbenchSnapshot(
     snapshot.revision,
     updates,
     unresolvedEvidenceReferences,
+    REGISTERED_ENGINEERING_OPERATION_PATH_LANE_RESOLVER,
   );
 }
 

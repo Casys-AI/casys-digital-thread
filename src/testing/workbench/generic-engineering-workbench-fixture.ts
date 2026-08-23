@@ -151,7 +151,7 @@ export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
 
 export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
   EngineeringEvidenceWorkbenchSnapshot = {
-    schemaVersion: "engineering-workbench/0.3",
+    schemaVersion: "engineering-workbench/0.4",
     surface: "evidence",
     project: GENERIC_PROJECT_FIXTURE,
     thread: {
@@ -161,6 +161,16 @@ export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
         version: 0,
         active: [],
       },
+    },
+    projectPath: {
+      phaseLanes: [
+        { phaseId: "define", lane: "requirements" },
+        { phaseId: "architect", lane: "system-model" },
+        { phaseId: "design", lane: "geometry" },
+        { phaseId: "simulate", lane: "physics" },
+        { phaseId: "verify", lane: "verdicts" },
+        { phaseId: "industrialize", lane: "physics" },
+      ],
     },
     alignment: {
       status: "aligned",

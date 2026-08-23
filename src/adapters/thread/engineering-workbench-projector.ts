@@ -4,6 +4,11 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
+import type { EngineeringPathLaneId } from "../../domain/project/engineering-path-lane.ts";
+import type {
+  EngineeringOperationPathLaneDeclaration,
+  EngineeringOperationPathLaneResolver,
+} from "../../application/ports/out/project/engineering-operation-path-lane-resolver.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
 import { ENGINEERING_WORKBENCH_SCHEMA } from "../../presentation/workbench/engineering/schema.ts";
 import type {
@@ -59,6 +64,7 @@ export function projectEngineeringWorkbenchSnapshot(
   liveUpdates: readonly LiveThreadUpdate[] = [],
   unresolvedEvidenceReferences:
     readonly EngineeringWorkbenchUnresolvedEvidenceReference[] = [],
+  operationPathLanes?: EngineeringOperationPathLaneResolver,
 ): EngineeringEvidenceWorkbenchSnapshot | EngineeringDocumentaryWorkbenchSnapshot {
   if (project.project.subjectId !== thread.subject.id) {
     throw new Error(
@@ -126,6 +132,7 @@ export function projectEngineeringWorkbenchSnapshot(
     surface: "evidence",
     project: structuredClone(project),
     thread: structuredClone(thread),
+    projectPath: projectPhaseLanes(project, operationPathLanes),
     alignment: {
       status: currentThreadRevision === projectThreadRevision
         ? "aligned"
@@ -140,6 +147,82 @@ export function projectEngineeringWorkbenchSnapshot(
       message: issue.message,
     })),
   };
+}
+
+function projectPhaseLanes(
+  project: EngineeringProjectSnapshot,
+  resolver: EngineeringOperationPathLaneResolver | undefined,
+): EngineeringEvidenceWorkbenchSnapshot["projectPath"] {
+  const phases = [...project.phases].sort((left, right) => left.order - right.order);
+  if (phases.length > 0 && !resolver) {
+    throw new Error(
+      "Engineering project path lanes require the registered operation lane resolver.",
+    );
+  }
+  const workItems = new Map(project.workItems.map((item) => [item.id, item]));
+  const declarations = phases.map((phase) =>
+    phase.workItemIds.flatMap((workItemId) => {
+      const operation = workItems.get(workItemId)?.operation;
+      const declaration = operation && resolver?.resolve(operation);
+      return declaration ? [declaration] : [];
+    })
+  );
+  const fixedLanes = declarations.map(uniqueFixedLane);
+
+  return {
+    phaseLanes: phases.map((phase, index) => ({
+      phaseId: phase.id,
+      lane: resolvePhaseLane(
+        phase.id,
+        declarations[index] ?? [],
+        fixedLanes.slice(index + 1),
+      ),
+    })),
+  };
+}
+
+function uniqueFixedLane(
+  declarations: readonly EngineeringOperationPathLaneDeclaration[],
+): EngineeringPathLaneId | undefined {
+  const fixed = new Set(
+    declarations.flatMap((declaration) =>
+      declaration.kind === "fixed" ? [declaration.lane] : []
+    ),
+  );
+  return fixed.size === 1 ? [...fixed][0] : undefined;
+}
+
+function resolvePhaseLane(
+  phaseId: string,
+  declarations: readonly EngineeringOperationPathLaneDeclaration[],
+  downstreamFixed: readonly (EngineeringPathLaneId | undefined)[],
+): EngineeringPathLaneId {
+  const fixed = uniqueFixedLane(declarations);
+  if (fixed) return fixed;
+
+  const contextual = declarations.filter((declaration) =>
+    declaration.kind === "contextual"
+  );
+  if (contextual.length === 0) {
+    throw new Error(
+      `Engineering project phase ${phaseId} has no unique registered path lane.`,
+    );
+  }
+
+  const nextFixed = downstreamFixed.find((candidate) => candidate !== undefined);
+  const resolved = new Set(
+    contextual.map((declaration) =>
+      nextFixed && declaration.allowedNext.includes(nextFixed)
+        ? nextFixed
+        : declaration.fallback
+    ),
+  );
+  if (resolved.size !== 1) {
+    throw new Error(
+      `Engineering project phase ${phaseId} resolves to conflicting path lanes.`,
+    );
+  }
+  return [...resolved][0]!;
 }
 
 const SYSON_MODEL_SEED_LIVE_STEPS = [

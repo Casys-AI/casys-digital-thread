@@ -3,7 +3,6 @@ import { cn } from "../lib/utils.ts";
 import type { JSX } from "react";
 import {
   buildOverviewThreadHero,
-  OVERVIEW_HERO_HEIGHT,
   OVERVIEW_HERO_WIDTH,
   type OverviewHeroNode,
 } from "./overview-thread-hero-model.ts";
@@ -43,7 +42,7 @@ export function OverviewThreadHero({
         ))}
       </div>
       <svg
-        viewBox={`0 0 ${OVERVIEW_HERO_WIDTH} ${OVERVIEW_HERO_HEIGHT}`}
+        viewBox={`0 0 ${OVERVIEW_HERO_WIDTH} ${view.height}`}
         className="block h-auto w-full bg-card"
         role="img"
         aria-label="Recorded thread across requirements, model, geometry, physics and verdicts"
@@ -52,7 +51,9 @@ export function OverviewThreadHero({
         {view.lanes.slice(1).map((column, index) => (
           <path
             key={column.lane.id}
-            d={`M ${(index + 1) * (OVERVIEW_HERO_WIDTH / 5)} 12 V 288`}
+            d={`M ${(index + 1) * (OVERVIEW_HERO_WIDTH / 5)} 12 V ${
+              view.height - 12
+            }`}
             fill="none"
             stroke="#ebedf0"
             strokeWidth="1"
@@ -80,6 +81,7 @@ function HeroNode({ item }: { item: OverviewHeroNode }): JSX.Element {
   const caption = item.node.summary;
   return (
     <g>
+      <title>{item.node.label} · {label} · {caption}</title>
       <circle
         cx={item.x}
         cy={item.y}
@@ -89,24 +91,30 @@ function HeroNode({ item }: { item: OverviewHeroNode }): JSX.Element {
         strokeWidth={item.emphasis ? 2 : 0}
       />
       <text
-        x={item.x - 24}
+        x={item.x}
         y={item.y - 16}
+        textAnchor="middle"
         fontFamily="ui-monospace, Menlo, monospace"
         fontSize="9.5"
         fontWeight={item.emphasis ? 600 : 400}
         fill={item.emphasis ? "#0e7490" : "#52525c"}
       >
-        {label.length > 22 ? `${label.slice(0, 20)}…` : label}
+        {compactNodeText(label, 15)}
       </text>
       <text
-        x={item.x - 24}
+        x={item.x}
         y={item.y + 22}
+        textAnchor="middle"
         fontFamily="ui-monospace, Menlo, monospace"
         fontSize="8.5"
         fill="#a1a1aa"
       >
-        {caption.length > 28 ? `${caption.slice(0, 26)}…` : caption}
+        {compactNodeText(caption, 17)}
       </text>
     </g>
   );
+}
+
+function compactNodeText(value: string, maxLength: number): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
 }

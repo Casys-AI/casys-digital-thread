@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Casys cockpit — Ark UI × Tailwind 4 sur Preact</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+  @theme {
+    --color-accent: #0e7490;
+    --color-accent-strong: #155e75;
+    --color-lane-req: #7c3aed;
+    --color-lane-model: #2563eb;
+    --color-lane-geom: #0e7490;
+    --color-lane-phys: #a16207;
+    --color-lane-verdict: #15803d;
+    --color-fail: #b91c1c;
+  }
+  body { font-variant-numeric: tabular-nums; }
+</style>
+<script type="importmap">{"imports":{
+  "preact": "https://esm.sh/preact@10.24.3",
+  "preact/": "https://esm.sh/preact@10.24.3/",
+  "react": "https://esm.sh/preact@10.24.3/compat",
+  "react-dom": "https://esm.sh/preact@10.24.3/compat",
+  "react-dom/client": "https://esm.sh/preact@10.24.3/compat/client",
+  "react/jsx-runtime": "https://esm.sh/preact@10.24.3/jsx-runtime"
+}}</script>
+<script src="https://unpkg.com/@babel/standalone@7.25.6/babel.min.js"></script>
+</head>
+<body class="m-0 bg-zinc-200 p-6 font-sans text-zinc-900 antialiased">
+<div id="root"></div>
+
+<script type="text/babel" data-type="module" data-presets="react">
+/* Ark UI ne publie pas de paquet Preact : @ark-ui/react + react/react-dom aliasés
+   vers preact/compat par l'importmap ci-dessus. Aucun React dans la page. */
+import * as React from 'react';
+import { createRoot } from 'react-dom/client';
+import {
+  Accordion, Collapsible, Dialog, Menu, Portal, Progress, Select, Splitter,
+  Toast, Toaster, Tooltip, TreeView, createListCollection, createTreeCollection, createToaster,
+} from 'https://esm.sh/@ark-ui/react@5.24.0?external=react,react-dom';
+
+const { useState } = React;
+const toaster = createToaster({ placement: 'bottom-end', overlap: true, gap: 10 });
+
+/* ═══ tokens de composition ═══ */
+const CARD = 'rounded-lg border border-zinc-200 bg-white shadow-xs';
+const HEAD = 'flex items-center justify-between gap-3 border-b border-zinc-200 px-3 py-2';
+const LBL = 'font-mono text-[9.5px] font-medium tracking-[.1em] text-zinc-500';
+const MONO = 'font-mono text-[10px] text-zinc-500';
+const CHIP = { pass: 'bg-lane-verdict/10 text-lane-verdict', run: 'bg-accent/12 text-accent', warn: 'bg-lane-phys/12 text-lane-phys', fail: 'bg-fail/10 text-fail', flat: 'bg-zinc-100 text-zinc-700' };
+
+const Chip = ({ tone = 'pass', children }) => (
+  <span class={'inline-flex items-center rounded-md px-1.5 py-px font-mono text-[9.5px] font-semibold tracking-[.06em] ' + CHIP[tone]}>{children}</span>
+);
+const Gap = () => (
+  <span class="inline-flex items-center rounded-md border border-dashed border-zinc-300 px-1.5 py-px font-mono text-[9.5px] font-semibold tracking-[.06em] text-lane-phys">GAP</span>
+);
+const Card = ({ class: cls = '', children }) => <section class={CARD + ' overflow-hidden ' + cls}>{children}</section>;
+const CardHead = ({ title, right }) => (
+  <div class={HEAD}><span class={LBL}>{title}</span>{right ? <span class="font-mono text-[9.5px] text-zinc-400">{right}</span> : null}</div>
+);
+const Foot = ({ children }) => <div class="flex items-center justify-between gap-3 border-t border-zinc-200 bg-zinc-50 px-3 py-1.5">{children}</div>;
+const LinkBtn = ({ children, onClick }) => (
+  <button type="button" onClick={onClick} class="text-[11.5px] font-medium text-accent hover:text-accent-strong">{children}</button>
+);
+const Stat = ({ k, v, tone = 'text-zinc-900' }) => (
+  <div class="px-3 py-1.5 not-first:border-l not-first:border-zinc-200">
+    <dt class="font-mono text-[9px] font-medium tracking-[.08em] text-zinc-500">{k}</dt>
+    <dd class={'mt-px font-mono text-[12.5px] font-medium ' + tone}>{v}</dd>
+  </div>
+);
+const PageHead = ({ eyebrow, title, children }) => (
+  <div class="flex items-end justify-between gap-6 pb-3.5">
+    <div class="min-w-0">
+      <p class="font-mono text-[10px] font-medium tracking-[.1em] uppercase text-accent">{eyebrow}</p>
+      <h1 class="mt-1 max-w-[640px] text-[19px]/tight font-semibold -tracking-[.015em] text-balance">{title}</h1>
+    </div>
+    {children}
+  </div>
+);
+const Viewport = ({ class: cls = '', children }) => (
+  <div class={'grid place-items-center bg-[repeating-linear-gradient(45deg,#f4f4f5_0_8px,#fafafa_8px_16px)] text-center font-mono text-[10px] text-zinc-400 ' + cls}>{children}</div>
+);
+
+function Hint({ label, children }) {
+  return (
+    <Tooltip.Root openDelay={120} closeDelay={60} positioning={{ placement: 'top' }}>
+      <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+      <Portal><Tooltip.Positioner>
+        <Tooltip.Content class="max-w-64 rounded-md bg-zinc-900 px-2 py-1 font-mono text-[10px] text-zinc-50 shadow-lg data-[state=closed]:opacity-0">
+          <Tooltip.Arrow class="[--arrow-size:6px] [--arrow-background:#18181b]"><Tooltip.ArrowTip /></Tooltip.Arrow>
+          {label}
+        </Tooltip.Content>
+      </Tooltip.Positioner></Portal>
+    </Tooltip.Root>
+  );
+}
+
+/* ═══ données ═══ */
+const snapshots = createListCollection({ items: [
+  { label: '@47 · courant', value: '47' }, { label: '@41', value: '41' }, { label: '@36', value: '36' },
+] });
+
+const NAV = [
+  { id: 'overview', name: 'Overview', paths: ['M2.5 6.5 8 2l5.5 4.5V13a1 1 0 0 1-1 1H9.5v-4h-3v4H3.5a1 1 0 0 1-1-1Z'] },
+  { id: 'work', name: 'Work', paths: ['M1.5 8h2.6l1.9-4.8L9 12.8 10.9 8h3.6'] },
+  { id: 'product', name: 'Product', paths: ['M8 1.5 14 5v6l-6 3.5L2 11V5Z', 'M2 5l6 3.5L14 5', 'M8 8.5v6'], kids: [
+    { id: 'structure', name: 'Structure' },
+    { id: 'requirements', name: 'Requirements', tag: '+6.4%', tagTone: 'text-lane-phys' },
+    { id: 'sourcing', name: 'Sourcing · ERP', tag: 'GAP', tagTone: 'text-lane-phys', muted: true },
+  ] },
+  { id: 'verification', name: 'Verification', paths: ['M8 1.5 13.5 3.5v4c0 3.4-2.4 5.8-5.5 7-3.1-1.2-5.5-3.6-5.5-7v-4Z', 'm5.6 7.9 1.7 1.7 3.1-3.2'] },
+  { id: 'operations', name: 'Operations', paths: ['m3 5 3 3-3 3', 'M8.5 11.5h4.5'] },
+];
+
+const gates = [
+  { id: 'frame', label: 'FRAME', count: '4/4', state: 'done' },
+  { id: 'model', label: 'SYSTEM MODEL', count: '5/5', state: 'done' },
+  { id: 'geometry', label: 'GEOMETRY', count: '6/6', state: 'done' },
+  { id: 'physics', label: 'PHYSICS', count: '2/4 ACTIVE', state: 'active' },
+  { id: 'verification', label: 'VERIFICATION', count: '0/3', state: 'todo' },
+];
+const lanes = [
+  { label: 'REQUIREMENTS', sub: 'reviewed SysML v2', color: 'text-lane-req' },
+  { label: 'SYSTEM MODEL', sub: 'mcp-syson', color: 'text-lane-model' },
+  { label: 'GEOMETRY', sub: 'mcp-build123d · STEP', color: 'text-lane-geom' },
+  { label: 'PHYSICS', sub: 'mcp-calculix · gmsh + ccx', color: 'text-lane-phys' },
+  { label: 'VERDICTS', sub: 'constraint-solver · z3', color: 'text-lane-verdict' },
+];
+const verdicts = [
+  { req: 'REQ-M-001', state: 'PASS', title: 'Total mass budget', value: '168.4 g', limit: '/ ≤ 180 g', pct: 93.6, margin: '+6.4% margin', tone: 'warn', tip: 'mass-props · build123d · OCCT exact · thr-9f2c@47' },
+  { req: 'REQ-S-002', state: 'PASS', title: 'Von Mises at 9 g', value: '141.2 MPa', limit: '/ ≤ 184', pct: 76.7, margin: '+23.3% margin', tone: 'pass', tip: 'static-9g.frd · ccx · obs-882 · units checked' },
+  { req: 'REQ-S-003', state: 'PASS', title: 'Tip deflection at 9 g', value: '0.44 mm', limit: '/ ≤ 0.50', pct: 88, margin: '+12.0% margin', tone: 'pass', tip: 'static-9g.frd · nodal max · 2nd-order tets' },
+  { req: 'REQ-M-004', state: 'RUNNING', title: 'First mode frequency', value: 'solving…', limit: '/ ≥ 120 Hz', pct: null, margin: 'ccx modal · 14:33', tone: 'run', tip: 'ccx modal lancé à 14:33 sur rev C scellée' },
+  { req: 'REQ-T-005', state: 'PASS', title: 'Steady ΔT at hover', value: '31.6 K', limit: '/ ≤ 40 K', pct: 79, margin: '+21.0% · modelica', tone: 'pass', tip: 'modelica steady-state · ΔT ambiant 25 °C' },
+];
+const feed = [
+  { t: '14:33', mark: '▸', tone: 'text-accent', text: 'Mesh + solve the static 9 g case — Gmsh 2nd-order tets, CCX static', who: 'calculix', live: true },
+  { t: '14:31', mark: '✓', tone: 'text-lane-verdict', text: 'Mass properties sealed — 168.4 g exact', who: 'build123d' },
+  { t: '14:12', mark: '✓', tone: 'text-lane-verdict', text: 'REQ-S-002 verdict PASS, +23.3% margin, units checked', who: 'solver' },
+  { t: '13:58', mark: '⧗', tone: 'text-zinc-400', text: 'Queued — evaluate modal margin REQ-M-004 on sealed rev C', who: 'agent' },
+];
+
+/* matrice de preuve 4a */
+const matrix = [
+  { req: 'REQ-M-001', title: 'Total mass budget', limit: '≤ 180 g', computed: '168.4 g', margin: '+6.4%', marginTone: 'text-lane-phys', verdict: 'PASS', tone: 'pass', evidence: 'mass-props@12 · build123d' },
+  { req: 'REQ-S-002', title: 'Von Mises stress at 9 g', limit: '≤ 184 MPa', computed: '141.2 MPa', margin: '+23.3%', marginTone: 'text-lane-verdict', verdict: 'PASS', tone: 'pass', evidence: 'static-9g.frd · calculix',
+    chain: [
+      ['SOLVER-INPUT', 'ccx-static-9g.inp', 'sha256 4f21…9e02 · gmsh tets'],
+      ['SOLVER-RESULT', 'static-9g.frd', 'σmax 141.2 MPa · persisted'],
+      ['OBSERVATION', 'obs-882 · vonMises', '141.2 MPa · units checked'],
+    ],
+    verdictCard: ['VERDICT', 'PASS · +23.3%', 'constraint-solver · z3 sat'],
+    history: [['@36', 'FAIL −2.1%', 'coarse mesh', 'text-fail'], ['@41', 'PASS +25.1%', '', 'text-lane-verdict'], ['@47', 'PASS +23.3%', 'CURRENT', 'text-lane-verdict']] },
+  { req: 'REQ-S-003', title: 'Tip deflection at 9 g', limit: '≤ 0.50 mm', computed: '0.44 mm', margin: '+12.0%', marginTone: 'text-lane-verdict', verdict: 'PASS', tone: 'pass', evidence: 'static-9g.frd · calculix' },
+  { req: 'REQ-M-004', title: 'First mode frequency', limit: '≥ 120 Hz', computed: 'solving…', margin: '—', marginTone: 'text-zinc-400', verdict: 'RUNNING', tone: 'run', evidence: 'modal-revC · ccx · 14:33' },
+  { req: 'REQ-T-005', title: 'Steady ΔT at hover', limit: '≤ 40 K', computed: '31.6 K', margin: '+21.0%', marginTone: 'text-lane-verdict', verdict: 'PASS', tone: 'pass', evidence: 'hover-thermal@3 · modelica' },
+];
+const COLS = 'grid grid-cols-[92px_minmax(0,2fr)_1fr_1fr_76px_84px_minmax(0,1.2fr)]';
+
+/* structure SysML 3b */
+const treeCollection = createTreeCollection({
+  nodeToValue: (n) => n.id, nodeToString: (n) => n.name,
+  rootNode: { id: 'ROOT', name: '', children: [
+    { id: 'bracket', name: 'AV-114 bracket', meta: 'assembly root', children: [
+      { id: '1f8e33', name: 'Base plate', meta: '1f8e33' },
+      { id: '9c41a2', name: 'Rib web — pattern B', meta: '9c41a2', children: [
+        { id: 'webThickness', name: 'webThickness = 3.2 mm', meta: 'attribute' },
+        { id: 'ribCount', name: 'ribCount = 6', meta: 'attribute' },
+      ] },
+      { id: '77b0c4', name: 'Payload boss', meta: '77b0c4' },
+      { id: 'c2d911', name: 'Fastener set M4 · qty 4', meta: 'c2d911' },
+    ] },
+  ] },
+});
+const attributes = [['payloadMass', '4.0 kg'], ['loadFactor', '9 g vertical'], ['webThickness', '3.2 mm'], ['safetyFactor', '1.5 on yield']];
+const anchored = [
+  { req: 'REQ-M-001 · Mass budget', expr: 'mass(assembly) <= 180 g → 168.4', mark: '✓', markTone: 'text-lane-verdict', chip: 'PASS', tone: 'pass' },
+  { req: 'REQ-S-003 · Tip deflection', expr: 'deflection(static9g) <= 0.50 mm → 0.44', mark: '✓', markTone: 'text-lane-verdict', chip: 'PASS', tone: 'pass' },
+  { req: 'REQ-M-004 · First mode', expr: 'firstMode(revC) >= 120 Hz → solving…', mark: '?', markTone: 'text-zinc-400', chip: 'RUN', tone: 'run' },
+];
+const partChips = ['Assembly', 'Base plate', 'Rib web', 'Payload boss', 'Fasteners ×4'];
+
+/* Work 7a */
+const ribbon = [
+  { k: 'AGENT NOW', title: 'Mesh and solve the static 9 g case', sub: 'mcp-calculix · Gmsh 2nd-order tets · CCX static', chip: 'Running', tone: 'run' },
+  { k: 'AGENT QUESTION', title: 'Geometry decision — rib pattern B', sub: 'Accept 168.4 g / σmax 141.2 MPa as the sealed rev C?', chip: 'Needs review', tone: 'warn' },
+  { k: 'OPEN BLOCKER', title: 'Clear', sub: 'No open blocker is recorded.', chip: 'Clear', tone: 'pass' },
+];
+const facts = [
+  { t: '14:33', kind: 'AGENT-RUN', kindTone: 'text-accent', dot: 'bg-accent', ring: 'border-accent/40', title: 'Static 9 g mesh + solve started', chip: 'RUNNING', tone: 'run',
+    body: 'Gmsh second-order tets on sealed rev C · CCX static, 9 g vertical + fixture constraints · mcp-calculix' },
+  { t: '14:31', kind: 'DECISION', kindTone: 'text-lane-phys', dot: 'bg-lane-phys', ring: 'border-lane-phys/35', title: 'Rib pattern B proposed as sealed geometry', chip: 'NEEDS REVIEW', tone: 'warn', composer: true },
+  { t: '14:31', kind: 'MEASURE', kindTone: 'text-accent', dot: 'bg-lane-verdict', ring: 'border-zinc-200', title: 'Mass properties sealed — 168.4 g exact', chip: 'SEALED', tone: 'pass',
+    body: 'OCCT exact mass properties on bracket-revC.step · mcp-build123d · 1 published evidence ref' },
+  { t: '14:12', kind: 'VERDICT', kindTone: 'text-lane-verdict', dot: 'bg-lane-verdict', ring: 'border-zinc-200', title: 'REQ-S-002 PASS — +23.3% margin', link: 'Lineage →',
+    body: 'vonMises(static9g) ≤ 184 MPa → 141.2 MPa · constraint-solver · units checked · z3 sat' },
+];
+
+/* Verification 4b */
+const types = [['Requirements', '#7c3aed', 12], ['SysML component view', '#2563eb', 6], ['Geometry', '#0e7490', 4], ['Solver results', '#a16207', 3], ['Observations', '#0e749099', 9], ['Verdicts', '#15803d', 12]];
+const components = [['structural · 9 g', 18], ['thermal · hover', 7], ['mass · budget', 5]];
+const versions = [
+  { tag: 'CURRENT', text: 'obs-882 @47 · 141.2 MPa', current: true },
+  { tag: 'V2', text: 'obs-771 @41 · 138.9 MPa · superseded' },
+  { tag: 'V1', text: 'obs-604 @36 · coarse mesh' },
+];
+
+/* Operations 8a */
+const fleet = [
+  { name: 'mcp-syson', sub: 'SysML v2 · :8180', note: 'last evidence 14:31\np50 240 ms · OK', dot: 'bg-lane-verdict' },
+  { name: 'mcp-build123d', sub: 'CAD as code · OCCT', note: 'last evidence 14:31\np50 1.8 s · OK', dot: 'bg-lane-verdict' },
+  { name: 'mcp-calculix', sub: 'BUSY · run-0142 solving', note: 'gmsh + ccx worker\nelapsed 03:12', busy: true, subTone: 'text-accent' },
+  { name: 'mcp-modelica', sub: 'IDLE · scenarios approved', note: 'last evidence Aug 18\nhover-thermal@3', dot: 'bg-zinc-400' },
+  { name: 'mcp-erpnext', sub: 'TO BUY · lane reserved', note: 'connected · no project\nrecords synced yet', gap: true, subTone: 'text-lane-phys' },
+];
+
+/* Briefing 6b */
+const questions = [
+  ['✓', 'What load case must the bracket survive?', '9 g vertical, quasi-static envelope, payload 4 kg'],
+  ['✓', 'Hard mass and envelope limits?', '≤ 180 g · 100×70×40 mm on the arm interface'],
+  ['✓', 'Material preference or supply constraint?', '6061-T6 stock preferred; 7075 only if mass fails'],
+  ['✓', 'What does "done" mean for this gate?', 'Computed proof: SF 1.5, mode ≥ 120 Hz — concept only'],
+  ['?', 'Exact rotor 1P frequency band?', 'Open — waiting on propulsion'],
+  ['?', 'Spray rating IP54 or IP55?', 'Open — ops to confirm wash-down procedure'],
+];
+const briefCells = [
+  ['AIMING FOR', '9 g without yield · survey mission −10…45 °C', [['ANSWER', false]]],
+  ['SUCCESS', 'SF ≥ 1.5 yield · f₁ ≥ 120 Hz · units-aware verdicts', [['ANSWER', false]]],
+  ['CONSTRAINTS', '≤ 180 g · 100×70×40 mm · IP54', [['1 OPEN', true], ['DOCUMENT', false]]],
+  ['LIMITS', 'Quasi-static covers gust · fatigue excluded · 6061-T6 default', [['ANSWER', false]]],
+];
+
+/* ═══ graphes (SVG inchangé, injecté tel quel) ═══ */
+const heroGraph = `
+<svg viewBox="0 0 1230 300" class="block h-auto w-full" role="img" aria-label="Executable thread graph: requirements through verdicts">
+  <g stroke="#e4e4e7" stroke-width="1" stroke-dasharray="2 4"><path d="M246 12 V288"/><path d="M492 12 V288"/><path d="M738 12 V288"/><path d="M984 12 V288"/></g>
+  <g stroke="#d4d4d8" stroke-width="1.2" opacity=".6" fill="none">
+    <path d="M132 60 C 240 60 280 88 358 92"/><path d="M132 120 C 240 120 280 100 358 94"/><path d="M132 180 C 240 180 290 104 358 96"/>
+    <path d="M375 108 C 375 130 375 150 375 168"/><path d="M390 95 C 480 92 540 74 608 72"/><path d="M636 86 C 640 106 634 124 626 138"/>
+    <path d="M638 84 C 680 130 760 200 806 216"/><path d="M645 74 C 740 78 800 100 866 106"/><path d="M898 110 C 970 108 1040 72 1104 66"/>
+    <path d="M898 114 C 970 120 1040 118 1104 120"/><path d="M898 118 C 970 130 1040 172 1104 176"/><path d="M622 148 C 780 158 990 74 1104 62"/>
+    <path d="M390 178 C 620 200 950 80 1104 60"/>
+  </g>
+  <g stroke="#0e7490" stroke-width="2" fill="none">
+    <path d="M132 240 C 300 244 480 236 606 232"/><path d="M640 234 C 720 236 760 232 820 230"/>
+    <path d="M852 230 C 940 230 1020 232 1096 234" stroke-dasharray="5 4"/>
+  </g>
+  <g font-family="ui-monospace,Menlo,monospace">
+    <circle cx="120" cy="60" r="7" fill="#7c3aed"/><text x="96" y="42" font-size="9.5" fill="#52525b">REQ-M-001</text><text x="96" y="80" font-size="8.5" fill="#a1a1aa">mass ≤ 180 g</text>
+    <circle cx="120" cy="120" r="7" fill="#7c3aed"/><text x="96" y="102" font-size="9.5" fill="#52525b">REQ-S-002</text><text x="96" y="140" font-size="8.5" fill="#a1a1aa">σ ≤ 184 MPa</text>
+    <circle cx="120" cy="180" r="7" fill="#7c3aed"/><text x="96" y="162" font-size="9.5" fill="#52525b">REQ-S-003</text><text x="96" y="200" font-size="8.5" fill="#a1a1aa">δ ≤ 0.50 mm</text>
+    <circle cx="120" cy="240" r="7" fill="#7c3aed" stroke="#0e7490" stroke-width="2"/><text x="96" y="222" font-size="9.5" font-weight="600" fill="#0e7490">REQ-M-004</text><text x="96" y="260" font-size="8.5" fill="#0e7490">f₁ ≥ 120 Hz</text>
+    <circle cx="375" cy="94" r="10" fill="#2563eb"/><text x="350" y="72" font-size="9.5" fill="#52525b">bracket</text><text x="350" y="118" font-size="8.5" fill="#a1a1aa">PartDefinition</text>
+    <circle cx="375" cy="180" r="7" fill="#fff" stroke="#2563eb" stroke-width="1.6"/><text x="342" y="202" font-size="8.5" fill="#a1a1aa">massBudget constraint</text>
+    <circle cx="622" cy="72" r="10" fill="#0e7490"/><text x="590" y="50" font-size="9.5" fill="#52525b">bracket-revC.step</text><text x="596" y="94" font-size="8.5" fill="#a1a1aa">sealed · exact</text>
+    <circle cx="622" cy="148" r="7" fill="#0e7490"/><text x="590" y="132" font-size="9.5" fill="#52525b">mass-props</text><text x="640" y="152" font-size="8.5" fill="#a1a1aa">168.4 g</text>
+    <circle cx="622" cy="230" r="7" fill="#0e7490" stroke="#0e7490" stroke-width="2"/><text x="588" y="214" font-size="9.5" fill="#52525b">gmsh mesh</text><text x="588" y="250" font-size="8.5" fill="#a1a1aa">2nd-order tets</text>
+    <circle cx="882" cy="112" r="9" fill="#a16207"/><text x="852" y="90" font-size="9.5" fill="#52525b">static-9g.frd</text><text x="856" y="134" font-size="8.5" fill="#a1a1aa">141.2 MPa max</text>
+    <circle cx="836" cy="230" r="9" fill="#fff" stroke="#0e7490" stroke-width="2" stroke-dasharray="4 3"/><circle cx="836" cy="230" r="14" fill="none" stroke="#0e7490" stroke-width="1" opacity=".3"/><text x="806" y="208" font-size="9.5" font-weight="600" fill="#0e7490">modal — running</text><text x="810" y="252" font-size="8.5" fill="#0e7490">ccx · started 14:33</text>
+    <circle cx="1116" cy="62" r="8" fill="#15803d"/><text x="1132" y="66" font-size="9.5" font-weight="600" fill="#15803d">PASS +6.4%</text>
+    <circle cx="1116" cy="120" r="8" fill="#15803d"/><text x="1132" y="124" font-size="9.5" font-weight="600" fill="#15803d">PASS +23.3%</text>
+    <circle cx="1116" cy="178" r="8" fill="#15803d"/><text x="1132" y="182" font-size="9.5" font-weight="600" fill="#15803d">PASS +12.0%</text>
+    <circle cx="1116" cy="234" r="8" fill="#fff" stroke="#a1a1aa" stroke-width="1.4" stroke-dasharray="3 2"/><text x="1132" y="238" font-size="9.5" fill="#a1a1aa">PENDING</text>
+  </g>
+</svg>`;
+
+const localGraph = `
+<svg viewBox="0 0 640 330" class="block h-full w-full" role="img" aria-label="Local evidence view around REQ-S-002">
+  <g stroke="#d4d4d8" stroke-width="1.2" opacity=".55" fill="none">
+    <path d="M96 96 C 150 100 180 140 224 150"/><path d="M96 210 C 150 206 180 172 224 160"/><path d="M110 262 C 190 262 240 190 250 172"/>
+  </g>
+  <g stroke="#0e7490" stroke-width="1.8" fill="none">
+    <path d="M270 155 C 330 152 350 120 396 116"/><path d="M270 158 C 340 162 380 200 424 204"/>
+    <path d="M414 114 C 470 110 500 78 546 74"/><path d="M444 206 C 490 206 512 130 548 106" opacity=".45"/>
+  </g>
+  <g font-family="ui-monospace,Menlo,monospace" font-size="9">
+    <circle cx="84" cy="94" r="7" fill="#2563eb"/><text x="60" y="76" fill="#52525b">bracket partdef</text>
+    <circle cx="84" cy="212" r="8" fill="#0e7490"/><text x="58" y="194" fill="#52525b">bracket-revC.step</text>
+    <circle cx="98" cy="262" r="6" fill="#0e7490" opacity=".8"/><text x="74" y="284" fill="#a1a1aa">gmsh mesh</text>
+    <circle cx="252" cy="158" r="11" fill="#7c3aed" stroke="#18181b" stroke-width="2"/><circle cx="252" cy="158" r="17" fill="none" stroke="#7c3aed" stroke-width="1" opacity=".35"/><text x="222" y="132" font-weight="600" fill="#18181b">REQ-S-002</text><text x="222" y="188" fill="#71717b">σ ≤ 184 MPa</text>
+    <circle cx="406" cy="115" r="7" fill="#a16207"/><text x="376" y="97" fill="#52525b">static-9g.frd</text>
+    <circle cx="434" cy="205" r="7" fill="#0e7490" opacity=".8"/><text x="404" y="230" fill="#52525b">obs-882 · 141.2 MPa</text>
+    <circle cx="558" cy="72" r="8" fill="#15803d"/><text x="530" y="52" font-weight="600" fill="#15803d">PASS +23.3%</text>
+    <circle cx="560" cy="108" r="5" fill="#a1a1aa" opacity=".5"/><text x="574" y="111" fill="#a1a1aa">…</text>
+  </g>
+</svg>`;
+
+const miniMap = `
+<svg viewBox="0 0 132 64" class="block h-auto w-full">
+  <g stroke="#e4e4e7" stroke-width=".6"><path d="M14 18 L34 26"/><path d="M14 34 L34 28"/><path d="M36 27 L58 22"/><path d="M36 29 L58 40"/><path d="M60 22 L86 18"/><path d="M60 40 L86 44"/><path d="M88 18 L112 14"/><path d="M88 44 L112 48"/><path d="M60 40 L86 30"/><path d="M14 50 L58 42"/></g>
+  <g><circle cx="13" cy="18" r="2" fill="#7c3aed"/><circle cx="13" cy="34" r="2" fill="#7c3aed"/><circle cx="13" cy="50" r="2" fill="#7c3aed"/><circle cx="35" cy="27" r="2.4" fill="#2563eb"/><circle cx="59" cy="22" r="2.4" fill="#0e7490"/><circle cx="59" cy="41" r="2" fill="#0e7490"/><circle cx="87" cy="18" r="2" fill="#a16207"/><circle cx="87" cy="44" r="2" fill="#a16207"/><circle cx="87" cy="30" r="1.6" fill="#0e7490" opacity=".7"/><circle cx="113" cy="14" r="2" fill="#15803d"/><circle cx="113" cy="30" r="2" fill="#15803d"/><circle cx="113" cy="48" r="2" fill="#a1a1aa"/></g>
+  <rect x="44" y="14" width="52" height="34" fill="rgba(14,116,144,.07)" stroke="#0e7490" stroke-width="1" stroke-dasharray="3 2" rx="2"/>
+</svg>`;
+
+/* ═══ chrome ═══ */
+function SnapshotSelect() {
+  return (
+    <Select.Root collection={snapshots} defaultValue={['47']} positioning={{ placement: 'bottom-end', gutter: 4 }}>
+      <Select.Control>
+        <Select.Trigger class="flex h-6 items-center gap-1.5 rounded-md border border-zinc-200 px-2 font-mono text-[11px] font-medium text-zinc-900 hover:bg-zinc-100 data-[state=open]:border-accent data-[state=open]:text-accent">
+          <Select.ValueText />
+          <svg viewBox="0 0 12 12" class="size-2.5 text-zinc-400"><path d="M3 5 L6 8 L9 5" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+        </Select.Trigger>
+      </Select.Control>
+      <Portal><Select.Positioner>
+        <Select.Content class="min-w-36 rounded-md border border-zinc-200 bg-white p-0.5 font-mono text-[11px] shadow-lg outline-none">
+          {snapshots.items.map((item) => (
+            <Select.Item key={item.value} item={item} class="flex h-6 cursor-default items-center gap-2 rounded-md px-1.5 text-zinc-600 data-[highlighted]:bg-zinc-100 data-[state=checked]:text-zinc-900">
+              <Select.ItemIndicator class="text-accent">✓</Select.ItemIndicator>
+              <Select.ItemText>{item.label}</Select.ItemText>
+            </Select.Item>
+          ))}
+        </Select.Content>
+      </Select.Positioner></Portal>
+    </Select.Root>
+  );
+}
+
+function ProjectMenu({ onBrief }) {
+  return (
+    <Menu.Root>
+      <Menu.Trigger class="flex size-6 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900 data-[state=open]:bg-zinc-100 data-[state=open]:text-zinc-900" aria-label="Project actions">
+        <svg viewBox="0 0 16 16" class="size-3.5"><g fill="currentColor"><circle cx="8" cy="3.5" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="8" cy="12.5" r="1.2" /></g></svg>
+      </Menu.Trigger>
+      <Portal><Menu.Positioner>
+        <Menu.Content class="min-w-48 rounded-md border border-zinc-200 bg-white p-0.5 text-[11.5px] shadow-lg outline-none">
+          <Menu.Item value="brief" onClick={onBrief} class="flex h-6.5 cursor-default items-center justify-between rounded-md px-2 text-zinc-700 data-[highlighted]:bg-zinc-100 data-[highlighted]:text-zinc-900">Framing brief<span class="font-mono text-[9.5px] text-lane-phys">rev 3</span></Menu.Item>
+          <Menu.Item value="dossier" class="flex h-6.5 cursor-default items-center rounded-md px-2 text-zinc-700 data-[highlighted]:bg-zinc-100 data-[highlighted]:text-zinc-900">Exporter le dossier de gate</Menu.Item>
+          <Menu.Separator class="my-1 h-px border-0 bg-zinc-200" />
+          <Menu.Item value="recompute" disabled class="flex h-6.5 items-center justify-between rounded-md px-2 text-zinc-400">Recompute<span class="font-mono text-[9.5px]">MRTR</span></Menu.Item>
+        </Menu.Content>
+      </Menu.Positioner></Portal>
+    </Menu.Root>
+  );
+}
+
+function ReviewDialog({ trigger }) {
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger class={trigger.class}>{trigger.label}</Dialog.Trigger>
+      <Portal>
+        <Dialog.Backdrop class="fixed inset-0 bg-zinc-950/35 data-[state=closed]:opacity-0" />
+        <Dialog.Positioner class="fixed inset-0 grid place-items-center p-6">
+          <Dialog.Content class="w-[440px] rounded-lg border border-zinc-200 bg-white p-4 shadow-2xl outline-none">
+            <Dialog.Title class="text-[13px] font-semibold">Confirmer la décision géométrie — rib pattern B</Dialog.Title>
+            <Dialog.Description class="mt-1 text-[11.5px] leading-relaxed text-zinc-500">
+              Le verdict s'appuie sur rev C scellée (168.4 g exact) et sur static-9g.frd. La confirmation est signée dans la conversation, en append-only.
+            </Dialog.Description>
+            <dl class="mt-3 grid grid-cols-3 overflow-hidden rounded-md border border-zinc-200">
+              <Stat k="MASSE" v="168.4 g" /><Stat k="σ MAX" v="141.2 MPa" /><Stat k="INTERFACES" v="4 × M4" />
+            </dl>
+            <div class="mt-4 flex justify-end gap-2">
+              <Dialog.CloseTrigger class="flex h-7 items-center rounded-md border border-zinc-200 px-3 text-[11.5px] font-medium text-zinc-600 hover:bg-zinc-100">Discuter</Dialog.CloseTrigger>
+              <Dialog.CloseTrigger class="flex h-7 items-center rounded-md bg-zinc-900 px-3 text-[11.5px] font-medium text-zinc-50 hover:bg-zinc-800"
+                onClick={() => toaster.create({ title: 'Décision enregistrée', description: 'rib pattern B · signée dans thr-9f2c@48', type: 'success' })}>Confirmer</Dialog.CloseTrigger>
+            </div>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Portal>
+    </Dialog.Root>
+  );
+}
+
+/* ═══ vues ═══ */
+function Overview() {
+  return (
+    <>
+      <PageHead eyebrow="Project objective" title="Hold a 4 kg payload through 9 g maneuvers without yield">
+        <dl class={'grid shrink-0 grid-cols-3 overflow-hidden ' + CARD}>
+          <Stat k="STATUS" v={<span class="flex items-center gap-1.5 font-sans text-[12.5px]"><i class="size-1.5 shrink-0 rounded-full bg-lane-verdict" />Active — physics</span>} />
+          <Stat k="VERDICTS" v={<span><span class="text-lane-verdict">9 PASS</span> · 2 RUN · 1 —</span>} />
+          <Stat k="SNAPSHOT" v="@47" />
+        </dl>
+      </PageHead>
+
+      <div class="mb-3 flex items-center justify-between gap-4 rounded-lg border border-lane-phys/30 bg-white px-3.5 py-2.5 shadow-xs">
+        <div class="flex min-w-0 items-center gap-2.5">
+          <i class="size-[7px] shrink-0 rounded-full bg-lane-phys" />
+          <span class="shrink-0 text-[12.5px] font-semibold">Needs your review</span>
+          <span class="truncate text-xs text-zinc-500">Geometry decision — rib pattern B · 168.4 g · σ<sub>max</sub> 141.2 MPa · four M4 interfaces held</span>
+        </div>
+        <div class="flex shrink-0 items-center gap-3">
+          <span class="font-mono text-[10px] text-zinc-500">1 WAITING · 1 PENDING</span>
+          <ReviewDialog trigger={{ label: 'Open in Activity', class: 'flex h-7 items-center rounded-md bg-zinc-900 px-3 text-xs font-medium text-zinc-50 hover:bg-zinc-800' }} />
+        </div>
+      </div>
+
+      <Card>
+        <div class="flex items-center border-b border-zinc-200 px-4 py-2.5">
+          {gates.map((g, i) => (
+            <React.Fragment key={g.id}>
+              {i > 0 && <span class={'mx-2.5 h-0.5 flex-1 rounded-full ' + (g.state === 'todo' ? 'bg-zinc-200' : 'bg-lane-verdict/35')} />}
+              <span class={'flex shrink-0 items-center gap-1.5 font-mono text-[10.5px] ' + (g.state === 'active' ? 'font-semibold text-zinc-900' : g.state === 'todo' ? 'font-medium text-zinc-400' : 'font-medium text-zinc-700')}>
+                {g.state === 'active' ? <i class="box-border size-[11px] rounded-full border-2 border-lane-verdict bg-white ring-3 ring-lane-verdict/15" />
+                  : g.state === 'todo' ? <i class="box-border size-[9px] rounded-full border border-zinc-500/40 bg-white" />
+                  : <i class="size-[9px] rounded-full bg-lane-verdict" />}
+                {g.label}<span class={g.state === 'active' ? 'text-lane-verdict' : g.state === 'todo' ? '' : 'text-zinc-400'}>{g.count}</span>
+              </span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div class="grid grid-cols-5 border-b border-zinc-100">
+          {lanes.map((l, i) => (
+            <div key={l.label} class={'px-4 pt-2 pb-1.5 ' + (i ? 'border-l border-dashed border-zinc-200' : '')}>
+              <p class={'font-mono text-[9.5px] font-semibold tracking-[.1em] ' + l.color}>{l.label}</p>
+              <p class="mt-px font-mono text-[9.5px] text-zinc-400">{l.sub}</p>
+            </div>
+          ))}
+        </div>
+        <div dangerouslySetInnerHTML={{ __html: heroGraph }} />
+      </Card>
+
+      <div class="mt-3.5 grid grid-cols-5 gap-2.5">
+        {verdicts.map((v) => {
+          const running = v.state === 'RUNNING';
+          return (
+            <div key={v.req} class={'rounded-lg px-3 py-2.5 ' + (running ? 'border border-dashed border-accent/50 bg-accent/3' : CARD)}>
+              <div class="flex items-center justify-between">
+                <span class="font-mono text-[10px] font-medium text-accent">{v.req}</span>
+                <Chip tone={running ? 'run' : 'pass'}>{v.state}</Chip>
+              </div>
+              <p class="mt-1.5 text-xs font-medium">{v.title}</p>
+              <Progress.Root value={v.pct} min={0} max={100} class="mt-0.5 block">
+                <Progress.ValueText asChild>
+                  <p class="font-mono text-xs font-medium text-zinc-700">{v.value} <span class="text-zinc-400">{v.limit}</span></p>
+                </Progress.ValueText>
+                <Progress.Track class="mt-1.5 h-1 overflow-hidden rounded-full bg-zinc-200">
+                  {v.pct === null
+                    ? <div class="h-full w-full bg-[repeating-linear-gradient(90deg,rgba(14,116,144,.35)_0_6px,transparent_6px_12px)]" />
+                    : <Progress.Range class={'h-full rounded-full ' + (v.tone === 'warn' ? 'bg-lane-phys' : 'bg-lane-verdict')} />}
+                </Progress.Track>
+              </Progress.Root>
+              <Hint label={v.tip}>
+                <button type="button" class={'mt-1.5 block w-full cursor-help text-right font-mono text-[10px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ' + (v.tone === 'warn' ? 'text-lane-phys' : v.tone === 'run' ? 'text-accent' : 'text-lane-verdict')}>{v.margin}</button>
+              </Hint>
+            </div>
+          );
+        })}
+      </div>
+
+      <div class="mt-3.5 grid grid-cols-[minmax(0,1fr)_340px] items-start gap-3.5">
+        <Card>
+          <div class={HEAD}><span class={LBL}>NOW</span><span class="flex items-center gap-1.5 font-mono text-[9.5px] text-accent"><i class="size-[5px] rounded-full bg-accent" />1 RUN LIVE</span></div>
+          <div class="py-1">
+            {feed.map((f) => (
+              <div key={f.t + f.who} class="grid grid-cols-[42px_14px_minmax(0,1fr)_auto] gap-x-2 px-3.5 py-1.5">
+                <span class="pt-px font-mono text-[10.5px] text-zinc-500">{f.t}</span>
+                <span class={'font-mono text-[10.5px] font-medium ' + f.tone}>{f.mark}</span>
+                <span class={'text-xs ' + (f.live ? 'text-zinc-900' : 'text-zinc-700')}>{f.text}</span>
+                <span class={MONO}>{f.who}</span>
+              </div>
+            ))}
+          </div>
+          <Foot><LinkBtn>Open activity →</LinkBtn></Foot>
+        </Card>
+        <Card>
+          <CardHead title="SEALED ASSEMBLY · REV C" right="STEP → GLB" />
+          <Viewport class="h-[158px]"><span>sealed-assembly-revC.glb<br />orbit viewport</span></Viewport>
+          <div class="flex justify-between border-t border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-[10px] text-zinc-500">
+            <span>168.4 g exact</span><span>4 parts</span><span>96×64×38 mm</span>
+          </div>
+        </Card>
+      </div>
+      <p class="mt-4 font-mono text-[10px] text-zinc-400">proj-av114@47 · thr-9f2c · subj-bracket-a3</p>
+    </>
+  );
+}
+
+function Work() {
+  return (
+    <>
+      <div class="mb-4 grid grid-cols-3 gap-2.5">
+        {ribbon.map((r) => (
+          <div key={r.k} class={CARD + ' px-3 py-2.5'}>
+            <p class={LBL}>{r.k}</p>
+            <p class="mt-1.5 text-[12.5px] font-medium">{r.title}</p>
+            <p class="mt-0.5 text-[11px] leading-relaxed text-zinc-500">{r.sub}</p>
+            <span class={'mt-2 inline-flex items-center rounded-md px-1.5 py-px text-[10.5px] font-medium ' + CHIP[r.tone]}>{r.chip}</span>
+          </div>
+        ))}
+      </div>
+
+      <p class={LBL + ' mb-2'}>TODAY · AUG 19 · 214 RECORDED FACTS</p>
+      <div class="grid grid-cols-[52px_minmax(0,1fr)] gap-x-3.5">
+        <div class="col-start-1 row-span-full border-r-2 border-zinc-200" />
+        <div class="col-start-2 flex flex-col gap-2.5">
+          {facts.map((f, i) => (
+            <div key={i} class={'relative rounded-lg border bg-white px-3.5 py-3 shadow-xs ' + f.ring}>
+              <span class={'absolute top-4 -left-[21px] size-[9px] rounded-full border-2 border-zinc-100 ' + f.dot} />
+              <div class="flex items-center gap-2">
+                <span class="font-mono text-[10px] text-zinc-500">{f.t}</span>
+                <span class={'font-mono text-[8.5px] font-medium tracking-[.08em] ' + f.kindTone}>{f.kind}</span>
+                <span class="text-[12.5px] font-medium">{f.title}</span>
+                {f.chip ? <span class="ml-auto"><Chip tone={f.tone}>{f.chip}</Chip></span> : null}
+                {f.link ? <span class="ml-auto"><LinkBtn>{f.link}</LinkBtn></span> : null}
+              </div>
+              {f.body ? <p class="mt-1.5 text-[11.5px] text-zinc-500">{f.body}</p> : null}
+              {f.composer ? (
+                <div class="mt-2.5 flex gap-3">
+                  <Viewport class="h-24 w-[150px] shrink-0 rounded-md border border-zinc-200 text-[8.5px]"><span>rib pattern B<br />preview STL</span></Viewport>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-[11.5px]/relaxed text-zinc-700">168.4 g exact · σ<sub>max</sub> 141.2 MPa at 9 g · four M4 interfaces held · <span class="font-mono text-[10.5px]">bracket-revC.step</span></p>
+                    <div class="mt-2.5 flex items-center gap-2">
+                      <button type="button" onClick={() => toaster.create({ title: 'Décision approuvée', description: 'rib pattern B · MRTR signé', type: 'success' })}
+                        class="flex h-7 items-center rounded-md bg-zinc-900 px-3 text-[11.5px] font-medium text-zinc-50 hover:bg-zinc-800">Approve</button>
+                      <button type="button" class="flex h-7 items-center rounded-md border border-zinc-200 px-3 text-[11.5px] font-medium text-zinc-700 hover:bg-zinc-100">Request revision</button>
+                      <input type="text" maxLength={240} placeholder="Add a bounded comment for the record…"
+                        class="h-7 flex-1 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 text-[11px] text-zinc-900 outline-none placeholder:text-zinc-400 focus-visible:border-accent" />
+                    </div>
+                    <p class="mt-1.5 font-mono text-[9.5px] text-zinc-400">MRTR — your response is signed into the record · 240 chars max</p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+      <p class="mt-4 font-mono text-[10px] text-zinc-400">SSE live · older facts load on scroll · thr-9f2c@47</p>
+    </>
+  );
+}
+
+function ProductStructure() {
+  const [part, setPart] = useState('Assembly');
+  return (
+    <>
+      <PageHead eyebrow="Product · sealed geometry" title="AV-114 payload bracket — rev C">
+        <dl class={'grid shrink-0 grid-cols-3 overflow-hidden ' + CARD}>
+          <Stat k="MASS · EXACT" v="168.4 g" /><Stat k="PARTS" v="4 · qty 7" /><Stat k="BBOX" v="96×64×38 mm" />
+        </dl>
+      </PageHead>
+
+      <Splitter.Root defaultSize={[70, 30]} panels={[{ id: 'viewer', minSize: 45 }, { id: 'rail', minSize: 22 }]} class="flex items-stretch gap-0">
+        <Splitter.Panel id="viewer" class="min-w-0">
+          <Card class="flex h-full flex-col">
+            <div class={HEAD}>
+              <div class="flex gap-1.5">
+                {partChips.map((c) => (
+                  <button key={c} type="button" onClick={() => setPart(c)}
+                    class={'flex h-6 items-center rounded-md px-2.5 text-[11px] font-medium ' + (part === c ? 'bg-zinc-900 text-zinc-50' : 'border border-zinc-200 text-zinc-700 hover:bg-zinc-100')}>{c}</button>
+                ))}
+              </div>
+              <span class="font-mono text-[9.5px] text-zinc-400">STEP → GLB · SEALED @47</span>
+            </div>
+            <Viewport class="min-h-[388px] flex-1">
+              <span>{part === 'Assembly' ? 'sealed-assembly-revC.glb' : part.toLowerCase().replace(' ', '-') + ' isolated'}<br />orbit viewport · part isolation on chip select</span>
+            </Viewport>
+            <div class="flex justify-between border-t border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-[10px] text-zinc-500">
+              <span>COM 12.8, 0.0, 9.6 mm</span><span>Ixx 2.41e5 g·mm²</span><span>6061-T6 · ρ 2.70 g/cm³</span><LinkBtn>Inspect in Activity →</LinkBtn>
+            </div>
+          </Card>
+        </Splitter.Panel>
+
+        <Splitter.ResizeTrigger id="viewer:rail" class="mx-1.5 grid w-1.5 shrink-0 place-items-center rounded-full hover:bg-zinc-200 data-[dragging]:bg-accent/15" aria-label="Redimensionner">
+          <i class="h-8 w-0.5 rounded-full bg-zinc-300 in-data-[dragging]:bg-accent" />
+        </Splitter.ResizeTrigger>
+
+        <Splitter.Panel id="rail" class="flex min-w-0 flex-col gap-3">
+          <Card>
+            <CardHead title="SYSML V2 STRUCTURE" right="5/5 VERIFIED" />
+            <TreeView.Root collection={treeCollection} defaultExpandedValue={['bracket']} defaultSelectedValue={['9c41a2']} class="py-1.5">
+              <TreeView.Tree class="text-[11.5px]">
+                {treeCollection.rootNode.children.map((node, i) => <TreeNode key={node.id} node={node} indexPath={[i]} />)}
+              </TreeView.Tree>
+            </TreeView.Root>
+          </Card>
+          <Card>
+            <CardHead title="ATTRIBUTEUSAGE · DRIVES GEOMETRY" />
+            <div class="py-1">
+              {attributes.map(([k, v]) => (
+                <div key={k} class="flex justify-between gap-2.5 px-3 py-1"><span class="text-[11px] text-zinc-700">{k}</span><span class="font-mono text-[10.5px] font-medium">{v}</span></div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <CardHead title="REQUIREMENTS & CONSTRAINTS · ANCHORED" />
+            <div class="flex flex-col gap-2 px-3 py-2.5">
+              {anchored.map((a) => (
+                <div key={a.req} class="flex items-start gap-2">
+                  <span class={'pt-px font-mono text-[11px] font-semibold ' + a.markTone}>{a.mark}</span>
+                  <span class="min-w-0 flex-1">
+                    <strong class="block text-[11.5px] font-medium">{a.req}</strong>
+                    <code class="block font-mono text-[9.5px] text-zinc-500">{a.expr}</code>
+                  </span>
+                  <Chip tone={a.tone}>{a.chip}</Chip>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <button type="button" class={CARD + ' flex items-center justify-between gap-2.5 px-3 py-2 text-left hover:bg-zinc-50'}>
+            <span class="text-[11px] text-zinc-500">Ports, connections, full diagram</span>
+            <strong class="text-[11.5px] font-medium text-accent">Open in SysON →</strong>
+          </button>
+        </Splitter.Panel>
+      </Splitter.Root>
+
+      <div class="mt-3.5 flex items-center gap-3 rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-3.5 py-2">
+        <Gap />
+        <span class="font-mono text-[10.5px] tracking-[.03em] text-zinc-500">ERPNEXT · TO BUY — 1/4 records · BOM AV-114-B not synced · lane reserved until sourcing starts</span>
+        <span class="ml-auto shrink-0"><LinkBtn>Open ERP facet →</LinkBtn></span>
+      </div>
+      <p class="mt-3.5 font-mono text-[10px] text-zinc-400">bracket-revC.step · sealed-assembly-revC.glb · thr-9f2c@47</p>
+    </>
+  );
+}
+
+function TreeNode({ node, indexPath }) {
+  const meta = <span class="ml-auto font-mono text-[9.5px] text-zinc-400">{node.meta}</span>;
+  return (
+    <TreeView.NodeProvider node={node} indexPath={indexPath}>
+      {node.children ? (
+        <TreeView.Branch class="block">
+          <TreeView.BranchControl class="flex items-center gap-2 px-3 py-1 data-[selected]:bg-accent/6">
+            <TreeView.BranchIndicator class="text-zinc-400 data-[state=open]:rotate-90">
+              <svg viewBox="0 0 12 12" class="size-2.5"><path d="M4 2.5 L8 6 L4 9.5" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
+            </TreeView.BranchIndicator>
+            <TreeView.BranchText class="text-[11.5px] font-semibold">{node.name}</TreeView.BranchText>
+            {meta}
+          </TreeView.BranchControl>
+          <TreeView.BranchContent class="ml-[22px] border-l border-zinc-200">
+            {node.children.map((child, i) => <TreeNode key={child.id} node={child} indexPath={[...indexPath, i]} />)}
+          </TreeView.BranchContent>
+        </TreeView.Branch>
+      ) : (
+        <TreeView.Item class="flex items-center gap-2 px-3 py-1 text-zinc-700 data-[selected]:bg-accent/6 data-[selected]:text-zinc-900">
+          <i class="size-1.5 shrink-0 rounded-full bg-lane-verdict" />
+          <TreeView.ItemText class="text-[11.5px]">{node.name}</TreeView.ItemText>
+          {meta}
+        </TreeView.Item>
+      )}
+    </TreeView.NodeProvider>
+  );
+}
+
+function ProductRequirements() {
+  const filters = [['ALL 12', 'bg-zinc-900 text-zinc-50'], ['PASS 9', 'border border-zinc-200 bg-white text-lane-verdict'], ['RUNNING 2', 'border border-zinc-200 bg-white text-accent'], ['UNVERIFIED 1', 'border border-zinc-200 bg-white text-zinc-500']];
+  return (
+    <>
+      <PageHead eyebrow="Product › Requirements & constraints" title="Does rev C hold every requirement it traces to?">
+        <dl class={'grid shrink-0 grid-cols-3 overflow-hidden ' + CARD}>
+          <Stat k="VERIFIED" v="9/12 PASS" tone="text-lane-verdict" /><Stat k="IN FLIGHT" v="2" tone="text-accent" /><Stat k="WORST MARGIN" v="+6.4%" tone="text-lane-phys" />
+        </dl>
+      </PageHead>
+
+      <div class="mb-3 flex items-center gap-1.5">
+        {filters.map(([l, cls]) => <span key={l} class={'flex h-6.5 items-center rounded-md px-2.5 font-mono text-[11px] font-medium ' + cls}>{l}</span>)}
+        <span class="mx-1.5 h-4.5 w-px bg-zinc-200" />
+        <span class="flex h-6.5 items-center rounded-md border border-accent/45 bg-accent/6 px-2.5 font-mono text-[11px] font-medium text-accent-strong">TO BEHAVE</span>
+        <span class="flex h-6.5 items-center rounded-md border border-dashed border-zinc-300 px-2.5 font-mono text-[11px] font-medium text-zinc-400">TO MAKE</span>
+        <span class="flex h-6.5 items-center rounded-md border border-dashed border-zinc-300 px-2.5 font-mono text-[11px] font-medium text-zinc-400">TO BUY</span>
+        <span class={MONO + ' ml-auto'}>constraint-solver · units checked · z3 sat</span>
+      </div>
+
+      <Card>
+        <div class={COLS + ' border-b border-zinc-200'}>
+          {['REQ', 'REQUIREMENT', 'LIMIT', 'COMPUTED', 'MARGIN', 'VERDICT', 'EVIDENCE'].map((h, i) => (
+            <span key={h} class={'py-1.5 font-mono text-[9px] font-medium tracking-[.08em] text-zinc-500 ' + (i === 0 ? 'pl-3.5' : i === 4 ? 'px-2 text-right' : i === 6 ? 'pr-3.5 pl-2' : 'px-2')}>{h}</span>
+          ))}
+        </div>
+        <Accordion.Root collapsible defaultValue={['REQ-S-002']}>
+          {matrix.map((r) => (
+            <Accordion.Item key={r.req} value={r.req} class="block border-b border-zinc-100 last:border-b-0 data-[state=open]:bg-accent/3">
+              <Accordion.ItemTrigger class={COLS + ' w-full items-center border-l-2 border-transparent text-left data-[state=open]:border-accent'}>
+                <span class="py-1.5 pl-3.5 font-mono text-[11px] font-medium text-accent">{r.req}</span>
+                <span class="px-2 py-1.5 text-xs">{r.title}</span>
+                <span class="px-2 py-1.5 font-mono text-[11px] text-zinc-700">{r.limit}</span>
+                <span class="px-2 py-1.5 font-mono text-[11px] font-medium">{r.computed}</span>
+                <span class={'px-2 py-1.5 text-right font-mono text-[11px] font-medium ' + r.marginTone}>{r.margin}</span>
+                <span class="px-2 py-1"><Chip tone={r.tone}>{r.verdict}</Chip></span>
+                <span class={MONO + ' py-1.5 pr-3.5 pl-2'}>{r.evidence}</span>
+              </Accordion.ItemTrigger>
+              <Accordion.ItemContent class="overflow-hidden border-l-2 border-accent">
+                {r.chain ? (
+                  <>
+                    <div class="flex items-stretch gap-2 px-3.5 pt-2.5 pb-3">
+                      {r.chain.map(([k, v, sub]) => (
+                        <React.Fragment key={k}>
+                          <div class={CARD + ' min-w-0 flex-1 px-2.5 py-2'}>
+                            <p class="font-mono text-[8.5px] font-medium tracking-[.08em] text-zinc-400">{k}</p>
+                            <p class="mt-0.5 font-mono text-[11px] font-medium">{v}</p>
+                            <p class="mt-0.5 font-mono text-[9.5px] text-zinc-500">{sub}</p>
+                          </div>
+                          <span class="self-center font-mono text-xs text-zinc-400">→</span>
+                        </React.Fragment>
+                      ))}
+                      <div class="min-w-0 flex-1 rounded-lg border border-lane-verdict/40 bg-lane-verdict/4 px-2.5 py-2">
+                        <p class="font-mono text-[8.5px] font-medium tracking-[.08em] text-lane-verdict">{r.verdictCard[0]}</p>
+                        <p class="mt-0.5 font-mono text-[11px] font-medium text-lane-verdict">{r.verdictCard[1]}</p>
+                        <p class="mt-0.5 font-mono text-[9.5px] text-zinc-500">{r.verdictCard[2]}</p>
+                      </div>
+                      <div class="flex shrink-0 flex-col justify-center gap-1.5 pl-1.5">
+                        <button type="button" class="flex h-6.5 items-center rounded-md bg-zinc-900 px-2.5 text-[11px] font-medium text-zinc-50 hover:bg-zinc-800">Open exact capture</button>
+                        <button type="button" class="flex h-6.5 items-center rounded-md border border-zinc-200 bg-white px-2.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100">Recompute</button>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2.5 px-3.5 pb-2.5">
+                      <span class="shrink-0 font-mono text-[8.5px] font-medium tracking-[.08em] text-zinc-400">VERDICT HISTORY</span>
+                      {r.history.map(([snap, res, note, tone], i) => (
+                        <React.Fragment key={snap}>
+                          {i > 0 && <span class="font-mono text-[10px] text-zinc-300">→</span>}
+                          <span class={'font-mono text-[10px] ' + (i === 2 ? 'text-zinc-900' : 'text-zinc-500')}>
+                            {snap} <span class={tone + (i === 2 ? ' font-semibold' : '')}>{res}</span>{note && note !== 'CURRENT' ? ' ' + note : ''}
+                            {note === 'CURRENT' ? <span class="ml-1"><Chip tone="pass">CURRENT</Chip></span> : null}
+                          </span>
+                        </React.Fragment>
+                      ))}
+                      <span class="ml-auto"><LinkBtn>Inspect versions in Verification →</LinkBtn></span>
+                    </div>
+                  </>
+                ) : (
+                  <p class={MONO + ' px-3.5 py-2.5'}>Chaîne d'evidence disponible après le prochain run — ce verdict provient de {r.evidence}.</p>
+                )}
+              </Accordion.ItemContent>
+            </Accordion.Item>
+          ))}
+        </Accordion.Root>
+        <div class="flex gap-6 border-t border-zinc-200 bg-zinc-50 px-3.5 py-1.5 font-mono text-[10px] tracking-[.05em] text-zinc-400">
+          <span><span class="text-zinc-500">TO MAKE</span> · printability + print estimate — lane reserved</span>
+          <span><span class="text-zinc-500">TO BUY</span> · sourcing evidence via ERP — lane reserved</span>
+          <span class="ml-auto">7 more rows · scroll</span>
+        </div>
+      </Card>
+      <p class="mt-3.5 font-mono text-[10px] text-zinc-400">verification-plan vp-av114@6 · thr-9f2c@47 · every verdict traces to persisted provider evidence</p>
+    </>
+  );
+}
+
+function ProductSourcing() {
+  return (
+    <>
+      <PageHead eyebrow="Product › Sourcing · ERP" title="Lane réservée — le sourcing n'a pas encore d'evidence">
+        <dl class={'grid shrink-0 grid-cols-3 overflow-hidden ' + CARD}>
+          <Stat k="RECORDS" v="1/4" tone="text-lane-phys" /><Stat k="BOM" v="not synced" tone="text-zinc-500" /><Stat k="LANE" v="TO BUY" tone="text-lane-phys" />
+        </dl>
+      </PageHead>
+      <Card>
+        <CardHead title="ERPNEXT · TO BUY" right="mcp-erpnext connecté" />
+        <div class="grid grid-cols-4 gap-px bg-zinc-100">
+          {[['Base plate', 'partdef-1f8e33'], ['Rib web — pattern B', 'partdef-9c41a2'], ['Payload boss', 'partdef-77b0c4'], ['Fastener set M4', 'partdef-c2d911 · qty 4']].map(([n, id], i) => (
+            <div key={n} class="bg-white px-3 py-2.5">
+              <p class="text-[12px] font-medium">{n}</p>
+              <p class={MONO + ' mt-0.5'}>{id}</p>
+              <span class="mt-2 inline-flex">{i === 3 ? <Chip tone="pass">1 RECORD</Chip> : <Gap />}</span>
+            </div>
+          ))}
+        </div>
+        <Foot>
+          <span class={MONO}>lane réservée jusqu'au démarrage du sourcing · aucune décision d'achat dans le cockpit</span>
+          <LinkBtn>Open ERP facet →</LinkBtn>
+        </Foot>
+      </Card>
+      <p class="mt-3.5 font-mono text-[10px] text-zinc-400">"to Make" et "to Buy" restent des lanes réservées · seul "to Behave" est actif</p>
+    </>
+  );
+}
+
+function Verification() {
+  const [depth, setDepth] = useState(2);
+  return (
+    <>
+      <PageHead eyebrow="Verification · evidence exploration" title="Local view — REQ-S-002 · depth 2">
+        <span class="shrink-0 font-mono text-[10px] tracking-[.04em] text-zinc-500">DOUBLE-CLIC NŒUD → LOCAL VIEW · CLIC FOND → FULL MAP</span>
+      </PageHead>
+
+      <div class="grid grid-cols-[208px_minmax(0,1fr)_312px] items-stretch gap-3.5">
+        <div class="flex flex-col gap-3">
+          <div class={CARD + ' p-3'}>
+            <p class={LBL + ' mb-2'}>DEPTH</p>
+            <div class="flex items-center gap-2.5">
+              <input type="range" min="1" max="4" value={depth} onInput={(e) => setDepth(+e.target.value)}
+                class="h-1 flex-1 appearance-none rounded-full bg-zinc-200 accent-accent" style={{ background: `linear-gradient(90deg,#0e7490 0 ${(depth - 1) / 3 * 100}%,#e4e4e7 ${(depth - 1) / 3 * 100}% 100%)` }} />
+              <span class="font-mono text-[11px] font-medium">{depth}</span>
+            </div>
+          </div>
+          <div class={CARD + ' p-3'}>
+            <p class={LBL + ' mb-1.5'}>TYPES</p>
+            <div class="flex flex-col gap-0.5">
+              {types.map(([n, c, count]) => (
+                <div key={n} class="flex items-center gap-2 rounded-md px-1 py-0.5">
+                  <i class="size-[7px] shrink-0 rounded-sm" style={{ background: c }} />
+                  <span class="flex-1 text-[11.5px]">{n}</span><span class={MONO}>{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div class={CARD + ' p-3'}>
+            <p class={LBL + ' mb-1.5'}>COMPOSANTES</p>
+            <div class="flex flex-col gap-1">
+              {components.map(([n, c]) => <div key={n} class="flex justify-between gap-2"><span class="text-[11px] text-zinc-700">{n}</span><span class={MONO}>{c}</span></div>)}
+            </div>
+          </div>
+        </div>
+
+        <Card class="flex flex-col">
+          <CardHead title="EVIDENCE GRAPH · DAGRE LR" right="origins left · verdicts right" />
+          <div class="relative min-w-0 flex-1">
+            <div class="absolute top-2.5 right-2.5 z-1 w-33 overflow-hidden rounded-md border border-zinc-200 bg-zinc-50/95 shadow-sm">
+              <div class="flex items-center justify-between px-1.5 pt-0.5">
+                <span class="font-mono text-[7.5px] font-medium tracking-[.08em] text-zinc-400">FULL MAP</span>
+                <span class="font-mono text-[7.5px] text-zinc-400">41 N · 63 E</span>
+              </div>
+              <div dangerouslySetInnerHTML={{ __html: miniMap }} />
+            </div>
+            <div class="h-full" dangerouslySetInnerHTML={{ __html: localGraph }} />
+          </div>
+          <Foot>
+            <span class={MONO}>7 nodes visible · depth {depth} · clic nœud → inspector · clic fond → full map</span>
+            <LinkBtn>Recenter →</LinkBtn>
+          </Foot>
+        </Card>
+
+        <Card class="self-start">
+          <div class={HEAD}><span class={LBL}>INSPECTOR · VERDICT</span><Chip tone="pass">PASS</Chip></div>
+          <div class="flex flex-col gap-2 px-3 py-2.5">
+            <Field k="REQUIREMENT"><p class="text-[12px] font-medium">REQ-S-002 · Von Mises stress at 9 g</p></Field>
+            <Field k="EXPRESSION"><code class="mt-0.5 block rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 font-mono text-[10px] text-zinc-700">vonMises(static9g) &lt;= 184 MPa</code></Field>
+            <div class="grid grid-cols-2 gap-2">
+              <Field k="COMPUTED"><p class="font-mono text-[12px] font-medium">141.2 MPa</p></Field>
+              <Field k="MARGIN"><p class="font-mono text-[12px] font-medium text-lane-verdict">+23.3%</p></Field>
+            </div>
+            <Field k="OBSERVATION"><p class="font-mono text-[11px] text-zinc-700">obs-882 · calculix · 14:12</p></Field>
+            <div class="border-t border-zinc-200 pt-2">
+              <div class="flex items-baseline justify-between">
+                <p class="font-mono text-[8.5px] font-medium tracking-[.08em] text-zinc-400">VERSION HISTORY</p>
+                <span class="font-mono text-[9px] text-zinc-400">one graph node</span>
+              </div>
+              <div class="mt-1.5 flex flex-col">
+                {versions.map((v) => (
+                  <button key={v.tag} type="button" class={'flex items-center gap-2 rounded-md px-2 py-1.5 text-left ' + (v.current ? 'border border-lane-verdict/35 bg-lane-verdict/4' : 'hover:bg-zinc-50')}>
+                    {v.current ? <Chip tone="pass">CURRENT</Chip> : <span class="font-mono text-[8.5px] text-zinc-400">{v.tag}</span>}
+                    <span class={'flex-1 font-mono text-[10px] ' + (v.current ? 'text-zinc-900' : 'text-zinc-500')}>{v.text}</span>
+                  </button>
+                ))}
+              </div>
+              <p class="mt-1.5 text-[9.5px]/relaxed text-zinc-400">Select a version → the graph replays that version's recorded path. Recorded transitions (2).</p>
+            </div>
+            <Field k="FINGERPRINT"><p class="font-mono text-[10px] break-all text-zinc-500">sha256 4f21c88a…9e02 · persisted</p></Field>
+            <div class="flex gap-2 pt-0.5">
+              <button type="button" class="flex h-6.5 items-center rounded-md bg-zinc-900 px-2.5 text-[11px] font-medium text-zinc-50 hover:bg-zinc-800">Open exact capture</button>
+              <button type="button" class="flex h-6.5 items-center rounded-md border border-zinc-200 px-2.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100">In Activity</button>
+            </div>
+          </div>
+        </Card>
+      </div>
+      <p class="mt-3.5 font-mono text-[10px] text-zinc-400">sigma.js exploration · clic nœud → inspector · clic fond → reset · double-clic → recentrage</p>
+    </>
+  );
+}
+const Field = ({ k, children }) => (
+  <div><p class="font-mono text-[8.5px] font-medium tracking-[.08em] text-zinc-400">{k}</p>{children}</div>
+);
+
+function Operations() {
+  return (
+    <>
+      <PageHead eyebrow="Operations · engineering fleet" title="5 MCP surfaces · 1 busy · 0 degraded">
+        <span class={MONO + ' shrink-0'}>STATELESS MCP /mcp · DOCKER COMPOSE UP 6D 4H</span>
+      </PageHead>
+      <div class="mb-3.5 grid grid-cols-5 gap-2.5">
+        {fleet.map((s) => (
+          <div key={s.name} class={'px-3 py-2.5 ' + (s.busy ? 'rounded-lg border border-accent/45 bg-accent/4' : s.gap ? 'rounded-lg border border-dashed border-zinc-300 bg-white' : CARD)}>
+            <div class="flex items-center justify-between">
+              <span class={'text-[12px] font-semibold ' + (s.gap ? 'text-zinc-500' : '')}>{s.name}</span>
+              {s.busy ? <i class="box-border size-[9px] rounded-full border-2 border-accent bg-white" /> : <i class={'size-[7px] rounded-full ' + (s.gap ? 'bg-zinc-200' : s.dot)} />}
+            </div>
+            <p class={'mt-1 font-mono text-[9.5px] ' + (s.subTone || 'text-zinc-400')}>{s.sub}</p>
+            <p class="mt-2 font-mono text-[10px] whitespace-pre-line text-zinc-500">{s.note}</p>
+          </div>
+        ))}
+      </div>
+      <div class="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] items-start gap-3">
+        <Card>
+          <div class={HEAD}><span class={LBL}>PENDING HUMAN CONFIRMATIONS · MRTR</span><span class="font-mono text-[10px] text-lane-phys">1 WAITING</span></div>
+          <div class="px-3 py-2.5">
+            <div class="flex items-center gap-2.5">
+              <span class="inline-flex items-center rounded-md bg-lane-phys/10 px-1.5 py-px text-[10.5px] font-medium text-lane-phys">Needs review</span>
+              <span class="text-[12px] font-medium">Geometry decision — rib pattern B</span>
+              <span class={MONO + ' ml-auto'}>opened 14:31</span>
+            </div>
+            <p class="mt-1.5 text-[11px]/relaxed text-zinc-500">Signed retry via <span class="font-mono text-[10px]">elicitation/create</span> in the paired conversation — the cockpit only projects the pending state.</p>
+            <div class="mt-2.5"><ReviewDialog trigger={{ label: 'Inspecter la confirmation', class: 'flex h-7 items-center rounded-md border border-zinc-200 px-3 text-[11.5px] font-medium text-zinc-700 hover:bg-zinc-100' }} /></div>
+          </div>
+          <Foot><span class={MONO}>MCP_MRTR_SIGNING_KEY set · process-local replay guard · single instance</span></Foot>
+        </Card>
+        <Card>
+          <div class={HEAD}><span class={LBL}>QUEUE</span><span class={MONO}>1 RUNNING · 1 QUEUED</span></div>
+          <div class="py-1">
+            <div class="grid grid-cols-[14px_minmax(0,1fr)_auto] gap-x-2 px-3 py-1.5">
+              <span class="font-mono text-[10px] font-medium text-accent">▸</span>
+              <span class="text-[11.5px]">Static 9 g mesh + solve</span><span class={MONO}>calculix · 03:12</span>
+            </div>
+            <div class="grid grid-cols-[14px_minmax(0,1fr)_auto] gap-x-2 px-3 py-1.5">
+              <span class="font-mono text-[10px] font-medium text-zinc-400">⧗</span>
+              <span class="text-[11.5px] text-zinc-700">Modal margin REQ-M-004</span><span class={MONO}>queued 13:58</span>
+            </div>
+          </div>
+          <Foot><LinkBtn>Run journal in Work →</LinkBtn></Foot>
+        </Card>
+      </div>
+      <p class="mt-3.5 font-mono text-[10px] text-zinc-400">docker compose · syson :8180 · workers from published images · no LLM inside any tool</p>
+    </>
+  );
+}
+
+function Briefing({ onBack }) {
+  return (
+    <div class="bg-zinc-100 px-7 py-5 pb-8">
+      <div class="flex items-end justify-between gap-6 pb-3.5">
+        <div class="min-w-0">
+          <p class="font-mono text-[10px] font-medium tracking-[.1em] uppercase text-accent">Framing · the brief follows the conversation</p>
+          <h1 class="mt-1 text-[18px]/tight font-semibold -tracking-[.015em]">6 framing questions → brief rev 3</h1>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={onBack} class="flex h-7 items-center rounded-md border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-100">← Cockpit</button>
+          <button type="button" class="flex h-7 items-center rounded-md bg-zinc-900 px-3 text-xs font-medium text-zinc-50 hover:bg-zinc-800">Respond in conversation</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-[400px_minmax(0,1fr)] items-start gap-3.5">
+        <Card>
+          <div class={HEAD}>
+            <span class={LBL}>FRAMING QUESTIONS</span>
+            <span class={MONO}><span class="text-lane-verdict">4 ANSWERED</span> · <span class="text-lane-phys">2 OPEN</span></span>
+          </div>
+          <div class="flex flex-col">
+            {questions.map(([mark, q, a]) => (
+              <div key={q} class={'flex gap-2 px-3 py-2.5 not-last:border-b not-last:border-zinc-100 ' + (mark === '?' ? 'bg-amber-100/35' : '')}>
+                <span class={'shrink-0 pt-px font-mono text-[11px] font-semibold ' + (mark === '?' ? 'text-lane-phys' : 'text-lane-verdict')}>{mark}</span>
+                <div class="min-w-0">
+                  <p class="text-[12px] font-medium">{q}</p>
+                  <p class={'mt-0.5 text-[11.5px]/relaxed ' + (mark === '?' ? 'text-lane-phys' : 'text-zinc-500')}>{a}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card>
+          <div class={HEAD}>
+            <span class={LBL}>LIVING BRIEF · REV 3</span>
+            <span class="inline-flex items-center rounded-md bg-lane-phys/10 px-1.5 py-px text-[10.5px] font-medium text-lane-phys">Unconfirmed</span>
+          </div>
+          <blockquote class="mx-3.5 mt-3 border-l-2 border-accent pl-3 text-[12.5px]/relaxed">« Hold our 4 kg sensor payload on the AV-114 arm through 9 g maneuvers — aluminum, under 180 g, clear of rotor resonance. »</blockquote>
+          <div class="grid grid-cols-2 gap-x-6 gap-y-3.5 px-3.5 pt-3.5 pb-1.5">
+            {briefCells.map(([k, v, tags]) => (
+              <div key={k}>
+                <p class={LBL + ' mb-1.5'}>{k}</p>
+                <p class="text-[12px]/relaxed text-zinc-700">
+                  {v}{' '}
+                  {tags.map(([t, open]) => (
+                    <span key={t} class={'ml-1 rounded-md border px-1 font-mono text-[8px] font-medium ' + (open ? 'border-lane-phys/30 text-lane-phys' : 'border-zinc-200 text-zinc-400')}>{t}</span>
+                  ))}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div class="mx-3.5 my-2.5 rounded-md border border-dashed border-lane-phys/40 bg-amber-100/30 px-2.5 py-2">
+            <p class="text-[11px]/relaxed text-lane-phys">Modal target stays provisional until the rotor 1P band is confirmed — the agent will not plan the modal case past this gate.</p>
+          </div>
+          <Foot><span class={MONO}>REV 3 · AWAITING CONFIRMATION</span><span class="font-mono text-[10px] text-zinc-400">confirm via MRTR in the paired conversation</span></Foot>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ shell ═══ */
+const VIEWS = {
+  overview: Overview, work: Work, structure: ProductStructure,
+  requirements: ProductRequirements, sourcing: ProductSourcing,
+  verification: Verification, operations: Operations,
+};
+
+function NavIcon({ paths, active }) {
+  return (
+    <svg viewBox="0 0 16 16" class={'size-[15px] ' + (active ? '' : 'opacity-70')} fill="none" stroke={active ? '#0e7490' : 'currentColor'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {paths.map((d) => <path key={d} d={d} />)}
+    </svg>
+  );
+}
+
+function App() {
+  const [view, setView] = useState('overview');
+  const [brief, setBrief] = useState(false);
+  const productOpen = ['structure', 'requirements', 'sourcing'].includes(view);
+  const Current = VIEWS[view];
+
+  return (
+    <div class="mx-auto w-[1400px] overflow-hidden rounded-lg border border-zinc-200 bg-white">
+      <header class="flex h-11 items-center gap-3 border-b border-zinc-200 px-4">
+        <span class="grid size-[22px] place-items-center rounded-md bg-accent text-[9.5px] font-bold text-white">DT</span>
+        <span class="text-[13px] font-semibold -tracking-[.01em]">Casys</span>
+        <span class="h-[15px] w-px bg-zinc-200" />
+        <span class="text-[13px] font-medium">AV-114 payload bracket — 9 g proof</span>
+        {brief ? <span class="inline-flex items-center rounded-md bg-lane-phys/10 px-1.5 py-px text-[11px] font-medium text-lane-phys">Framing</span> : null}
+        <div class="ml-auto flex items-center gap-4 text-[11.5px] text-zinc-500">
+          <span class="flex items-center gap-1.5"><i class="size-1.5 rounded-full bg-lane-verdict" /><strong class="font-medium text-zinc-700">Live</strong></span>
+          <span>Thread <strong class="font-mono text-[11px] font-medium text-zinc-900">thr-9f2c</strong></span>
+          <span class="flex items-center gap-1.5">Snapshot <SnapshotSelect /></span>
+          <ProjectMenu onBrief={() => setBrief(true)} />
+        </div>
+      </header>
+
+      {brief ? <Briefing onBack={() => setBrief(false)} /> : (
+        <div class="flex items-stretch">
+          <nav class="flex w-[196px] shrink-0 flex-col gap-0.5 border-r border-zinc-200 px-2.5 py-3">
+            {NAV.map((n) => {
+              const active = view === n.id || (n.kids && productOpen);
+              if (!n.kids) return (
+                <button key={n.id} type="button" onClick={() => setView(n.id)}
+                  class={'flex h-[29px] items-center gap-2.5 rounded-md px-2.5 text-[12.5px] font-medium ' + (view === n.id ? 'bg-accent/8 text-accent-strong' : 'text-zinc-500 hover:bg-zinc-100')}>
+                  <NavIcon paths={n.paths} active={view === n.id} />{n.name}
+                </button>
+              );
+              return (
+                <Collapsible.Root key={n.id} open={productOpen} onOpenChange={(e) => setView(e.open ? 'structure' : 'overview')}>
+                  <Collapsible.Trigger class={'flex h-[29px] w-full items-center gap-2.5 rounded-md px-2.5 text-[12.5px] font-medium ' + (active ? 'bg-accent/8 text-accent-strong' : 'text-zinc-500 hover:bg-zinc-100')}>
+                    <NavIcon paths={n.paths} active={active} />{n.name}
+                  </Collapsible.Trigger>
+                  <Collapsible.Content class="overflow-hidden data-[state=closed]:hidden">
+                    <div class="my-px ml-[17px] flex flex-col gap-px border-l border-zinc-200 pl-2.5">
+                      {n.kids.map((k) => (
+                        <button key={k.id} type="button" onClick={() => setView(k.id)}
+                          class={'flex h-[25px] items-center justify-between rounded-md px-2 text-[11.5px] ' + (view === k.id ? 'bg-zinc-100 font-medium text-zinc-900' : (k.muted ? 'text-zinc-400' : 'text-zinc-500') + ' hover:bg-zinc-100')}>
+                          {k.name}{k.tag ? <span class={'font-mono text-[9px] font-medium ' + k.tagTone}>{k.tag}</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </Collapsible.Content>
+                </Collapsible.Root>
+              );
+            })}
+          </nav>
+          <main class="min-w-0 flex-1 bg-zinc-100 px-6 pt-4.5 pb-7"><Current /></main>
+        </div>
+      )}
+
+      <footer class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-200 bg-zinc-50 px-4 py-2 font-mono text-[10px] text-zinc-500">
+        <span class="font-semibold tracking-[.08em] text-zinc-900">ARK UI SUR PREACT</span>
+        <span>Collapsible → sous-menu Product</span><span>TreeView → structure SysML</span><span>Splitter → viewer/rail</span>
+        <span>Accordion → ligne de matrice</span><span>Dialog → MRTR</span><span>Select · Menu · Tooltip · Progress · Toast</span>
+        <span class="ml-auto">preact 10 + preact/compat · tailwind 4 @theme · état via data-*</span>
+      </footer>
+    </div>
+  );
+}
+
+const Toasts = () => (
+  <Toaster toaster={toaster}>
+    {(toast) => (
+      <Toast.Root class="flex w-[300px] items-start gap-2.5 rounded-md border border-zinc-200 bg-white px-3 py-2.5 shadow-lg">
+        <i class="mt-1 size-1.5 shrink-0 rounded-full bg-lane-verdict" />
+        <div class="min-w-0">
+          <Toast.Title class="text-[11.5px] font-medium text-zinc-900">{toast.title}</Toast.Title>
+          <Toast.Description class="mt-0.5 font-mono text-[10px] text-zinc-500">{toast.description}</Toast.Description>
+        </div>
+        <Toast.CloseTrigger class="ml-auto font-mono text-[10.5px] font-medium text-accent">Inspect</Toast.CloseTrigger>
+      </Toast.Root>
+    )}
+  </Toaster>
+);
+
+createRoot(document.getElementById('root')).render(<React.StrictMode><App /><Toasts /></React.StrictMode>);
+</script>
+</body>
+</html>

@@ -10,7 +10,10 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
-import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
+import type {
+  EngineeringWorkbenchPhaseLane,
+  ThreadWorkbenchSnapshot,
+} from "../thread/types.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
 import {
   resolveSealedAssemblyGeometry,
@@ -65,7 +68,9 @@ import {
   buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
+  groupProjectPathGatesByLane,
   phaseStatusLabel,
+  type ProjectPathLaneGroup,
   type ProjectPathPhaseView,
   projectPathStatusLabel,
   projectStatusTone,
@@ -77,6 +82,7 @@ import {
 export interface ProjectOverviewProps {
   readonly project: EngineeringProjectSnapshot;
   readonly thread: ThreadWorkbenchSnapshot;
+  readonly phaseLanes: readonly EngineeringWorkbenchPhaseLane[];
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
   readonly onOpenProductFacet?: (facet: ProductWorkspaceFacet) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
@@ -92,6 +98,7 @@ export interface ProjectOverviewProps {
 export function ProjectOverview({
   project,
   thread,
+  phaseLanes,
   onNavigate,
   onOpenProductFacet,
   onOpenActivity,
@@ -112,6 +119,10 @@ export function ProjectOverview({
     : undefined;
   const { collapsed: collapsedGates, visible: visiblePhases } =
     splitLeadingSatisfiedGates(projectPath.phases);
+  const collapsedLanes = groupProjectPathGatesByLane(
+    collapsedGates,
+    phaseLanes,
+  );
 
   // minmax(0,1fr) : sans lui, un contenu large imposerait sa largeur
   // min-content à toute la colonne (piège grid).
@@ -214,78 +225,45 @@ export function ProjectOverview({
       <Card className="overflow-hidden">
         <section aria-labelledby="project-phase-title">
           <h3 id="project-phase-title" className="sr-only">Project path</h3>
-          {/* display:grid retire le rôle liste sous VoiceOver/Safari. */}
-          <ol
-            className="flex items-center gap-0 overflow-x-auto px-4 py-2.5 tabular-nums"
-            role="list"
-          >
-            {collapsedGates.length > 0 && (
-              <li
-                data-state="completed"
-                className="flex min-w-0 shrink-0 items-center"
-              >
-                <span
-                  aria-hidden="true"
-                  className="size-2.5 shrink-0 rounded-full bg-success"
-                />
-                <Collapsible className="group mx-2 min-w-0">
-                  <CollapsibleTrigger className="cursor-pointer font-mono text-[10.5px] font-medium uppercase tracking-wide">
+          <Collapsible>
+            {/* display:grid retire le rôle liste sous VoiceOver/Safari. */}
+            <ol
+              className="flex items-center gap-0 overflow-x-auto px-4 py-2.5 tabular-nums"
+              role="list"
+            >
+              {collapsedGates.length > 0 && (
+                <li
+                  data-state="completed"
+                  className="flex min-w-0 shrink-0 items-center"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-2.5 shrink-0 rounded-full bg-success"
+                  />
+                  <CollapsibleTrigger className="group/path-trigger mx-2 cursor-pointer font-mono text-[10.5px] font-medium uppercase tracking-wide">
                     {collapsedGates.length} earlier gates satisfied
-                    <svg
-                      aria-hidden="true"
-                      className="ml-1 inline size-3 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="m6 9 6 6 6-6"
-                      />
-                    </svg>
+                    <Chevron className="group-data-[state=open]/path-trigger:rotate-180" />
                   </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <ol className="mt-2 grid gap-1.5" role="list">
-                      {collapsedGates.map((item) => (
-                        <li
-                          key={item.phase.id}
-                          data-state={item.status}
-                          className="flex min-w-0 items-start justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <span className="text-sm">
-                              {item.phase.name}
-                            </span>
-                            <p className="font-mono text-xs tabular-nums text-muted-foreground">
-                              {phaseCounterLabel(item)}
-                            </p>
-                          </div>
-                          <Badge
-                            variant={recordStatusVariant(item.status)}
-                          >
-                            {phaseStatusLabel(item.status)}
-                          </Badge>
-                        </li>
-                      ))}
-                    </ol>
-                  </CollapsibleContent>
-                </Collapsible>
-                <span
-                  aria-hidden="true"
-                  className="mx-2.5 h-0.5 w-8 shrink-0 rounded-full bg-success/40"
+                  <span
+                    aria-hidden="true"
+                    className="mx-2.5 h-0.5 w-8 shrink-0 rounded-full bg-success/40"
+                  />
+                </li>
+              )}
+              {visiblePhases.map((item, index) => (
+                <SpinePhase
+                  key={item.phase.id}
+                  item={item}
+                  isLast={index === visiblePhases.length - 1}
                 />
-              </li>
+              ))}
+            </ol>
+            {collapsedGates.length > 0 && (
+              <CollapsibleContent className="border-t border-border bg-muted/20 px-3 py-3 md:px-4">
+                <EarlierGatesPanel groups={collapsedLanes} />
+              </CollapsibleContent>
             )}
-            {visiblePhases.map((item, index) => (
-              <SpinePhase
-                key={item.phase.id}
-                item={item}
-                isLast={index === visiblePhases.length - 1}
-              />
-            ))}
-          </ol>
+          </Collapsible>
         </section>
         <OverviewThreadHero
           thread={thread}
@@ -353,8 +331,7 @@ export function ProjectOverview({
         <button
           type="button"
           className="text-brand"
-          onClick={() =>
-            onOpenProductFacet?.("structure") ?? onNavigate("product")}
+          onClick={() => onOpenProductFacet?.("structure") ?? onNavigate("product")}
         >
           Product
         </button>
@@ -376,6 +353,105 @@ export function ProjectOverview({
         </button>
       </p>
     </main>
+  );
+}
+
+function EarlierGatesPanel(
+  { groups }: { readonly groups: readonly ProjectPathLaneGroup[] },
+): JSX.Element {
+  return (
+    <div className="grid gap-3" data-project-path-history="lanes">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className={cn("m-0", SECTION_LABEL)}>Earlier project gates</p>
+          <p className="mt-1 font-mono text-[10px] tabular-nums text-muted-foreground">
+            {laneGroupsCounterLabel(groups)}
+          </p>
+        </div>
+        <span className="font-mono text-[9.5px] uppercase tracking-wide text-muted-foreground">
+          {groups.length}/5 thread columns represented
+        </span>
+      </div>
+      <div className="grid gap-2 lg:grid-cols-2">
+        {groups.map((group, index) => (
+          <Collapsible
+            key={group.id}
+            data-lane={group.id}
+            className="overflow-hidden rounded-lg border border-border bg-background"
+          >
+            <CollapsibleTrigger className="group/lane-trigger w-full justify-between gap-3 px-3 py-2.5">
+              <span className="flex min-w-0 items-start gap-2.5">
+                <span className="pt-0.5 font-mono text-[9.5px] tabular-nums text-muted-foreground">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="mt-1 size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: group.color }}
+                />
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] font-medium">
+                    {group.label}
+                  </span>
+                  <span className="mt-0.5 block font-mono text-[9.5px] tabular-nums text-muted-foreground">
+                    {laneGroupCounterLabel(group)}
+                  </span>
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <Badge variant="success">
+                  {group.satisfiedGates}/{group.totalGates} gates
+                </Badge>
+                <Chevron className="group-data-[state=open]/lane-trigger:rotate-180" />
+              </span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="border-t border-border bg-muted/10">
+              <ol className="divide-y divide-border" role="list">
+                {group.gates.map((item) => (
+                  <li
+                    key={item.phase.id}
+                    data-state={item.status}
+                    className="flex min-w-0 items-start justify-between gap-3 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <span className="text-[13px]">{item.phase.name}</span>
+                      <p className="mt-0.5 font-mono text-[9.5px] tabular-nums text-muted-foreground">
+                        {phaseCounterLabel(item)}
+                      </p>
+                    </div>
+                    <Badge variant={recordStatusVariant(item.status)}>
+                      {phaseStatusLabel(item.status)}
+                    </Badge>
+                  </li>
+                ))}
+              </ol>
+            </CollapsibleContent>
+          </Collapsible>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Chevron({ className }: { readonly className?: string }): JSX.Element {
+  return (
+    <svg
+      aria-hidden="true"
+      className={cn(
+        "size-3 shrink-0 text-muted-foreground transition-transform",
+        className,
+      )}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m6 9 6 6 6-6"
+      />
+    </svg>
   );
 }
 
@@ -507,9 +583,7 @@ function OverviewReviewBanner({
             )}
           />
           <span className="shrink-0 text-[13px] font-semibold">
-            {nextReview
-              ? "Needs your review"
-              : "No proposal is waiting for review"}
+            {nextReview ? "Needs your review" : "No proposal is waiting for review"}
           </span>
           <span className="truncate text-xs text-muted-foreground">
             {nextReview ? nextReview.title : "Past reviews remain in Activity."}
@@ -889,9 +963,7 @@ function NowFeedRow({ entry }: {
       <span
         className={cn(
           "min-w-0 truncate text-[12px]",
-          entry.glyph === "running"
-            ? "text-foreground"
-            : "text-muted-foreground",
+          entry.glyph === "running" ? "text-foreground" : "text-muted-foreground",
         )}
       >
         {entry.description}
@@ -950,6 +1022,59 @@ function phaseCounterLabel(
       1,
       0,
       `${item.approvedDecisions}/${item.requiredDecisions} decisions`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+function laneGroupCounterLabel(
+  group: ProjectPathLaneGroup,
+): string {
+  const parts = [
+    `${group.completedWorkItems}/${group.totalWorkItems} work`,
+    `${group.evidenceCount} evidence`,
+  ];
+  if (group.requiredDecisions > 0) {
+    parts.splice(
+      1,
+      0,
+      `${group.approvedDecisions}/${group.requiredDecisions} decisions`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+function laneGroupsCounterLabel(
+  groups: readonly ProjectPathLaneGroup[],
+): string {
+  const total = groups.reduce(
+    (aggregate, group) => ({
+      gates: aggregate.gates + group.totalGates,
+      completedWorkItems: aggregate.completedWorkItems + group.completedWorkItems,
+      totalWorkItems: aggregate.totalWorkItems + group.totalWorkItems,
+      approvedDecisions: aggregate.approvedDecisions + group.approvedDecisions,
+      requiredDecisions: aggregate.requiredDecisions + group.requiredDecisions,
+      evidenceCount: aggregate.evidenceCount + group.evidenceCount,
+    }),
+    {
+      gates: 0,
+      completedWorkItems: 0,
+      totalWorkItems: 0,
+      approvedDecisions: 0,
+      requiredDecisions: 0,
+      evidenceCount: 0,
+    },
+  );
+  const parts = [
+    `${total.gates} gates`,
+    `${total.completedWorkItems}/${total.totalWorkItems} work`,
+    `${total.evidenceCount} evidence`,
+  ];
+  if (total.requiredDecisions > 0) {
+    parts.splice(
+      2,
+      0,
+      `${total.approvedDecisions}/${total.requiredDecisions} decisions`,
     );
   }
   return parts.join(" · ");
