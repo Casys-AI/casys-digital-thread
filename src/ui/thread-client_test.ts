@@ -274,6 +274,7 @@ Deno.test("Workbench contract accepts a planning surface only when no technical 
   delete planning.thread;
   delete planning.projectPath;
   delete planning.alignment;
+  delete planning.caseActivityJoins;
   delete planning.unresolvedEvidenceReferences;
   planning.project = publicPretechnicalProject(
     planning.project as typeof GENERIC_ENGINEERING_WORKBENCH_FIXTURE["project"],
@@ -329,6 +330,7 @@ Deno.test("Workbench contract rejects a planning activity that carries graph or 
   delete planning.thread;
   delete planning.projectPath;
   delete planning.alignment;
+  delete planning.caseActivityJoins;
   delete planning.unresolvedEvidenceReferences;
   planning.project = publicPretechnicalProject(
     planning.project as typeof GENERIC_ENGINEERING_WORKBENCH_FIXTURE["project"],

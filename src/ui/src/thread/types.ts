@@ -166,6 +166,7 @@ export type {
   EngineeringWorkbenchActivity,
   EngineeringWorkbenchAlignment,
   EngineeringWorkbenchBaseSnapshot,
+  EngineeringWorkbenchCaseActivityJoin,
   EngineeringWorkbenchPhaseLane,
   EngineeringWorkbenchProjectPathProjection,
 } from "../../../presentation/workbench/engineering/evidence.ts";
@@ -242,12 +243,18 @@ function isEvidenceWorkbenchSnapshot(
       "thread",
       "projectPath",
       "alignment",
+      "caseActivityJoins",
       "unresolvedEvidenceReferences",
     ]) ||
     !isEngineeringProjectSnapshot(candidate.project) ||
     !isLiveThreadWorkbenchSnapshot(candidate.thread) ||
     !isProjectPathProjection(candidate.projectPath, candidate.project) ||
     !isWorkbenchAlignment(candidate.alignment) ||
+    !isCaseActivityJoinList(
+      candidate.caseActivityJoins,
+      candidate.project,
+      candidate.thread,
+    ) ||
     !isUnresolvedEvidenceReferenceList(candidate.unresolvedEvidenceReferences)
   ) {
     return false;
@@ -349,6 +356,62 @@ function isEngineeringPathLaneId(
 ): value is EngineeringPathLaneId {
   return typeof value === "string" &&
     (ENGINEERING_PATH_LANE_IDS as readonly string[]).includes(value);
+}
+
+function isCaseActivityJoinList(
+  value: unknown,
+  project: EngineeringEvidenceWorkbenchSnapshot["project"],
+  thread: EngineeringEvidenceWorkbenchSnapshot["thread"],
+): value is EngineeringEvidenceWorkbenchSnapshot["caseActivityJoins"] {
+  if (!Array.isArray(value)) return false;
+  const knownWork = new Map(project.workItems.map((item) => [item.id, item]));
+  const knownRuns = new Map(project.agentRuns.map((run) => [run.id, run]));
+  const knownCases = new Map(
+    (thread.verificationCases?.cases ?? []).map((item) => [item.key, item]),
+  );
+  const seenKeys = new Set<string>();
+  for (const entry of value) {
+    if (
+      !isRecord(entry) ||
+      !hasExactKeys(entry, [
+        "caseKey",
+        "caseId",
+        "caseRevision",
+        "activityId",
+        "workItemId",
+        "runId",
+      ]) ||
+      typeof entry.caseKey !== "string" ||
+      typeof entry.caseId !== "string" ||
+      !Number.isSafeInteger(entry.caseRevision) ||
+      (entry.caseRevision as number) <= 0 ||
+      typeof entry.activityId !== "string" ||
+      typeof entry.workItemId !== "string" ||
+      typeof entry.runId !== "string" ||
+      seenKeys.has(entry.caseKey)
+    ) {
+      return false;
+    }
+    seenKeys.add(entry.caseKey);
+    const workItem = knownWork.get(entry.workItemId);
+    const run = knownRuns.get(entry.runId);
+    const verificationCase = knownCases.get(entry.caseKey);
+    if (
+      !workItem || workItem.activityId !== entry.activityId ||
+      !run || run.workItemId !== entry.workItemId
+    ) {
+      return false;
+    }
+    if (thread.verificationCases === undefined) return false;
+    if (
+      !verificationCase ||
+      verificationCase.id !== entry.caseId ||
+      verificationCase.revision !== entry.caseRevision
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isUnresolvedEvidenceReferenceList(

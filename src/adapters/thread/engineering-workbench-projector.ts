@@ -44,6 +44,7 @@ export type {
   EngineeringEvidenceWorkbenchSnapshot,
   EngineeringWorkbenchAlignment,
   EngineeringWorkbenchBaseSnapshot,
+  EngineeringWorkbenchCaseActivityJoin,
 } from "../../presentation/workbench/engineering/evidence.ts";
 export type {
   EngineeringPlanningActivity,
@@ -143,6 +144,7 @@ export function projectEngineeringWorkbenchSnapshot(
       projectThreadRevision,
       currentThreadRevision,
     },
+    caseActivityJoins: projectCaseActivityJoins(project, thread),
     // Project the two published fields only: a spread would leak future
     // domain-issue fields past the exact-keys browser guard.
     unresolvedEvidenceReferences: unresolvedEvidenceReferences.map((issue) => ({
@@ -150,6 +152,40 @@ export function projectEngineeringWorkbenchSnapshot(
       message: issue.message,
     })),
   };
+}
+
+function projectCaseActivityJoins(
+  project: EngineeringProjectSnapshot,
+  thread: LiveThreadWorkbenchSnapshot,
+): EngineeringEvidenceWorkbenchSnapshot["caseActivityJoins"] {
+  const cases = thread.verificationCases?.cases ?? [];
+  if (cases.length === 0) return [];
+  const runById = new Map(project.agentRuns.map((run) => [run.id, run]));
+  const workById = new Map(project.workItems.map((item) => [item.id, item]));
+  const artifactById = new Map(
+    thread.artifacts.map((artifact) => [artifact.id, artifact]),
+  );
+  return cases.flatMap((verificationCase) => {
+    const runIds = new Set(
+      verificationCase.authorityArtifactIds.flatMap((artifactId) => {
+        const runId = artifactById.get(artifactId)?.producerRunId;
+        return runId ? [runId] : [];
+      }),
+    );
+    if (runIds.size !== 1) return [];
+    const runId = [...runIds][0]!;
+    const run = runById.get(runId);
+    const workItem = run ? workById.get(run.workItemId) : undefined;
+    if (!run || !workItem) return [];
+    return [{
+      caseKey: verificationCase.key,
+      caseId: verificationCase.id,
+      caseRevision: verificationCase.revision,
+      activityId: workItem.activityId,
+      workItemId: workItem.id,
+      runId,
+    }];
+  }).toSorted((left, right) => left.caseKey.localeCompare(right.caseKey));
 }
 
 function projectPhaseLanes(

@@ -158,7 +158,8 @@ The JSON document is one atomic browser read model:
     "status": "aligned",
     "projectThreadRevision": 5,
     "currentThreadRevision": 5
-  }
+  },
+  "caseActivityJoins": []
 }
 ```
 
@@ -220,6 +221,8 @@ On the **evidence** surface, the projection must show:
 - source `observed`, not `fixture`;
 - `projectPath.activities` grouped by the persisted `activityId` and
   `predecessorRevisionId`, not by operation keys or labels;
+- `caseActivityJoins` from each typed Thread case to the Project activity that produced
+  its authority artifact, when the producer run is unique;
 - exact condensed Overview connectors through hidden documentary/evidence/result nodes,
   never an invented edge;
 - exact producer and consumed SHA-256 values for every claimed CAD handoff;

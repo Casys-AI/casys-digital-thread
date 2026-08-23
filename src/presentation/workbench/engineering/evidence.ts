@@ -14,8 +14,24 @@ export interface EngineeringEvidenceWorkbenchSnapshot
   readonly thread: LiveThreadWorkbenchSnapshot;
   readonly projectPath: EngineeringWorkbenchProjectPathProjection;
   readonly alignment: EngineeringWorkbenchAlignment;
+  /**
+   * Explicit join from a typed Thread case (id + revision) to the Project
+   * activity that produced its authority artifact. Absent producer runs stay
+   * unjoined; the case identity is never treated as a retry of another case.
+   */
+  readonly caseActivityJoins: readonly EngineeringWorkbenchCaseActivityJoin[];
   readonly unresolvedEvidenceReferences:
     readonly EngineeringWorkbenchUnresolvedEvidenceReference[];
+}
+
+/** One exact Thread case bound to one Project activity through a producer run. */
+export interface EngineeringWorkbenchCaseActivityJoin {
+  readonly caseKey: string;
+  readonly caseId: string;
+  readonly caseRevision: number;
+  readonly activityId: string;
+  readonly workItemId: string;
+  readonly runId: string;
 }
 
 /**

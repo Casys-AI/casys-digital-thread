@@ -61,10 +61,13 @@ classifies every exact phase into the same five columns used by the Overview thr
 `requirements`, `system-model`, `geometry`, `physics`, and `verdicts`.
 `projectPath.activities` lists the explicit stable activities with ordered revision IDs;
 the browser never guesses lifecycle from operation keys, phase order, labels, timestamps
-or Thread proximity. The server uses its registered operation taxonomy, so the browser
-can wrap a long path without guessing from labels. This is presentation metadata only:
-it does not select a provider, change phase order, or imply a verdict. `GET` and SSE
-create only a read model; they do not promote live events into thread evidence or
+or Thread proximity. `caseActivityJoins` names the Project activity that produced each
+typed Thread case through its unique producer run. A later FEA proof-case revision stays
+the typed mechanical series; it is not a Project retry unless that join points at an
+attempt of the same activity. The server uses its registered operation taxonomy, so the
+browser can wrap a long path without guessing from labels. This is presentation metadata
+only: it does not select a provider, change phase order, or imply a verdict. `GET` and
+SSE create only a read model; they do not promote live events into thread evidence or
 project truth. Project mutations and bounded provider orchestration remain on the paired
 agent's MCP surface.
 

@@ -257,6 +257,7 @@ export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
       projectThreadRevision: 1,
       currentThreadRevision: 1,
     },
+    caseActivityJoins: [],
     unresolvedEvidenceReferences: [],
   };
 
