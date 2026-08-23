@@ -8,10 +8,13 @@ import { FileCockpitFocusStore } from "../../../src/adapters/project/file-cockpi
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
   type CaptureStoreDescriptor,
+  DFM_CASE_CAPTURE_DESCRIPTOR,
   EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
+  PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
+  PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
@@ -36,7 +39,7 @@ import { FileByteStore } from "../../../src/adapters/shared/cas/file-byte-store.
 import { createArchitectureSysmlSourceAnalysisCaptureService } from "../../../src/adapters/architecture/agent-seal/architecture-sysml-source-analysis-composition.ts";
 import { fileArchitectureSysmlSealCaptureReader } from "../../../src/adapters/architecture/agent-seal/file-architecture-sysml-seal-capture-reader.ts";
 import type { SealedCadLeverAdmissionReader } from "../../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
-import type { VerificationCaseWorkbenchEnricherDependencies } from "../../../src/adapters/thread/verification-case-workbench-enricher.ts";
+import type { EngineeringCaseWorkbenchEnricherDependencies } from "../../../src/adapters/thread/verification-case-workbench-enricher.ts";
 import type { EvaluationCloseoutCaptureReader } from "../../../src/adapters/thread/evaluation-closeout-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../../src/adapters/thread/cockpit-fleet-projector.ts";
 import { joinWorkspace } from "../sidecar/contracts.ts";
@@ -137,11 +140,20 @@ export function createPackagedWorkbenchBff(
         : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
     },
   };
-  const verificationCaseCaptures: VerificationCaseWorkbenchEnricherDependencies = {
+  const engineeringCaseCaptures: EngineeringCaseWorkbenchEnricherDependencies = {
     mechanicalProof: captureAt(controlPlaneRoot, FEA_PROOF_CASE_CAPTURE_DESCRIPTOR),
     sensitivityStudy: new FileCaptureStore(
       rootedCapture(controlPlaneRoot, SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR),
     ),
+    printabilityCheck: captureAt(
+      controlPlaneRoot,
+      PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
+    ),
+    printEstimate: captureAt(
+      controlPlaneRoot,
+      PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
+    ),
+    dfmCheck: captureAt(controlPlaneRoot, DFM_CASE_CAPTURE_DESCRIPTOR),
   };
   const evaluationCloseoutCaptures: EvaluationCloseoutCaptureReader =
     new FileCaptureStore({
@@ -185,7 +197,7 @@ export function createPackagedWorkbenchBff(
     architectureSysmlSeals,
     architectureSysmlSources,
     technicalCompilationAdmissions,
-    verificationCaseCaptures,
+    engineeringCaseCaptures,
     evaluationCloseoutCaptures,
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),

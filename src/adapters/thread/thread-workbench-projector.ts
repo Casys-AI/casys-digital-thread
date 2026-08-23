@@ -20,6 +20,7 @@ import {
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import { ARCHITECTURE_CAPTURE_URI_PREFIX } from "../shared/cas/file-capture-store.ts";
 import { REQUIREMENTS_CAPTURE_URI_PREFIX } from "../../domain/thread/requirements-tip.ts";
+import { unavailableEngineeringCaseCatalog } from "../../presentation/workbench/thread/evidence.ts";
 import { projectEvidenceFamilyGraph } from "./evidence-family-graph.ts";
 import type { AnalysisGraph } from "../../domain/thread/analysis-graph.ts";
 import { isStudyBaseEvaluation } from "../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
@@ -124,16 +125,7 @@ export function projectThreadWorkbenchSnapshot(
       files: [],
     },
     components,
-    verificationCases: {
-      schemaVersion: "thread-verification-cases/1.0",
-      status: "unavailable",
-      coverage: [
-        { family: "mechanical-proof", status: "unavailable" },
-        { family: "sensitivity-study", status: "unavailable" },
-              ],
-      cases: [],
-      issues: [],
-    },
+    engineeringCases: unavailableEngineeringCaseCatalog(),
     graph,
     evidenceFamilyGraph,
     // `current` excludes retired entities while retaining the immutable

@@ -6,6 +6,7 @@ import type {
   ThreadGraphRef,
   ThreadRef,
 } from "../../presentation/workbench/thread/graph.ts";
+import { unavailableEngineeringCaseCatalog } from "../../presentation/workbench/thread/evidence.ts";
 import type { ThreadWorkbenchSnapshot } from "../../presentation/workbench/thread/snapshot.ts";
 
 /** Explicit product-design fixture; never presented as live engineering proof. */
@@ -82,16 +83,7 @@ export const GENERIC_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
       ],
     }],
   },
-  verificationCases: {
-    schemaVersion: "thread-verification-cases/1.0",
-    status: "unavailable",
-    coverage: [
-      { family: "mechanical-proof", status: "unavailable" },
-      { family: "sensitivity-study", status: "unavailable" },
-          ],
-    cases: [],
-    issues: [],
-  },
+  engineeringCases: unavailableEngineeringCaseCatalog(),
   graph: {
     nodes: [
       graphNode(

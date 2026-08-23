@@ -5,12 +5,38 @@ import type {
   ThreadRef,
 } from "./graph.ts";
 
-export type ThreadVerificationCaseFamily =
-  | "mechanical-proof"
-  | "sensitivity-study"
-;
+/**
+ * Typed Engineering Case families that publish exact id + revision + case
+ * digest + authority artifacts with producer run IDs.
+ *
+ * CAD admissions, isolated CAD execution, admitted Modelica and admitted
+ * SPICE are not Engineering Cases: they do not seal that id+revision case
+ * identity. Do not add them here to make the catalog look complete.
+ */
+export const ENGINEERING_CASE_FAMILIES = [
+  "mechanical-proof",
+  "sensitivity-study",
+  "printability-check",
+  "print-estimate",
+  "dfm-check",
+] as const;
 
-interface ThreadVerificationCaseBase {
+export type EngineeringCaseFamily = typeof ENGINEERING_CASE_FAMILIES[number];
+
+export const ENGINEERING_CASE_CATALOG_SCHEMA = "engineering-cases/1.0" as const;
+
+export const ENGINEERING_CASE_SCHEMA_BY_FAMILY = {
+  "mechanical-proof": "mechanical-proof-case/1.0",
+  "sensitivity-study": "sensitivity-study-case/2.0",
+  "printability-check": "printability-check-case/1.0",
+  "print-estimate": "print-estimate-case/1.0",
+  "dfm-check": "dfm-check-case/1.0",
+} as const;
+
+export type EngineeringCaseSchemaVersion =
+  typeof ENGINEERING_CASE_SCHEMA_BY_FAMILY[EngineeringCaseFamily];
+
+interface EngineeringCaseBase {
   key: string;
   id: string;
   revision: number;
@@ -19,20 +45,35 @@ interface ThreadVerificationCaseBase {
   authorityArtifactIds: string[];
 }
 
-export type ThreadVerificationCase =
-  & ThreadVerificationCaseBase
+export type EngineeringCase =
+  & EngineeringCaseBase
   & (
-    | { family: "mechanical-proof"; caseSchemaVersion: "mechanical-proof-case/1.0" }
-    | { family: "sensitivity-study"; caseSchemaVersion: "sensitivity-study-case/2.0" }
+    | {
+      family: "mechanical-proof";
+      caseSchemaVersion: "mechanical-proof-case/1.0";
+    }
+    | {
+      family: "sensitivity-study";
+      caseSchemaVersion: "sensitivity-study-case/2.0";
+    }
+    | {
+      family: "printability-check";
+      caseSchemaVersion: "printability-check-case/1.0";
+    }
+    | {
+      family: "print-estimate";
+      caseSchemaVersion: "print-estimate-case/1.0";
+    }
+    | { family: "dfm-check"; caseSchemaVersion: "dfm-check-case/1.0" }
   );
 
-export interface ThreadVerificationCaseCoverage {
-  family: ThreadVerificationCaseFamily;
+export interface EngineeringCaseCoverage {
+  family: EngineeringCaseFamily;
   status: "observed" | "unavailable";
 }
 
-export interface ThreadVerificationCaseIssue {
-  family: ThreadVerificationCaseFamily;
+export interface EngineeringCaseIssue {
+  family: EngineeringCaseFamily;
   authorityArtifactId: string;
   status: "unavailable" | "error";
   reason:
@@ -44,12 +85,25 @@ export interface ThreadVerificationCaseIssue {
 }
 
 /** Read-side catalog of exact cases found in one canonical Thread snapshot. */
-export interface ThreadVerificationCaseCatalog {
-  schemaVersion: "thread-verification-cases/1.0";
+export interface EngineeringCaseCatalog {
+  schemaVersion: typeof ENGINEERING_CASE_CATALOG_SCHEMA;
   status: "observed" | "unresolved" | "unavailable";
-  coverage: ThreadVerificationCaseCoverage[];
-  cases: ThreadVerificationCase[];
-  issues: ThreadVerificationCaseIssue[];
+  coverage: EngineeringCaseCoverage[];
+  cases: EngineeringCase[];
+  issues: EngineeringCaseIssue[];
+}
+
+export function unavailableEngineeringCaseCatalog(): EngineeringCaseCatalog {
+  return {
+    schemaVersion: ENGINEERING_CASE_CATALOG_SCHEMA,
+    status: "unavailable",
+    coverage: ENGINEERING_CASE_FAMILIES.map((family) => ({
+      family,
+      status: "unavailable" as const,
+    })),
+    cases: [],
+    issues: [],
+  };
 }
 
 export interface ThreadEvidenceFamilyGraph {

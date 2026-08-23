@@ -12,10 +12,13 @@ import { FileCockpitFocusStore } from "../../src/adapters/project/file-cockpit-f
 import type { CockpitFocusStore } from "../../src/application/ports/out/project/cockpit-focus-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  DFM_CASE_CAPTURE_DESCRIPTOR,
   EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
   FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
+  PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
+  PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
@@ -78,8 +81,8 @@ import { enrichThreadWorkbenchWithArchitectureSysmlSeals } from "../../src/adapt
 import { enrichThreadWorkbenchWithSealedCadLevers } from "../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
 import type { SealedCadLeverAdmissionReader } from "../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts";
 import {
-  enrichThreadWorkbenchWithVerificationCases,
-  type VerificationCaseWorkbenchEnricherDependencies,
+  type EngineeringCaseWorkbenchEnricherDependencies,
+  enrichThreadWorkbenchWithEngineeringCases,
 } from "../../src/adapters/thread/verification-case-workbench-enricher.ts";
 import {
   enrichThreadWorkbenchWithEvaluationCloseouts,
@@ -172,7 +175,7 @@ export interface NativeWorkbenchHandlerOptions {
    */
   technicalCompilationAdmissions?: SealedCadLeverAdmissionReader;
   /** Optional exact CAS reopen of supported sealed engineering cases. */
-  verificationCaseCaptures?: VerificationCaseWorkbenchEnricherDependencies;
+  engineeringCaseCaptures?: EngineeringCaseWorkbenchEnricherDependencies;
   /** Optional exact CAS reopen of provider-free static-mechanical L5 records. */
   evaluationCloseoutCaptures?: EvaluationCloseoutCaptureReader;
   /** Optional non-canonical activity journal projected into the same feed. */
@@ -775,19 +778,19 @@ async function projectThreadSnapshot(
       options.technicalCompilationAdmissions,
     )
     : withArchitecture;
-  const withVerificationCases = options.verificationCaseCaptures
-    ? await enrichThreadWorkbenchWithVerificationCases(
+  const withEngineeringCases = options.engineeringCaseCaptures
+    ? await enrichThreadWorkbenchWithEngineeringCases(
       withCadLevers,
-      options.verificationCaseCaptures,
+      options.engineeringCaseCaptures,
       { projectId },
     )
     : withCadLevers;
   const canonical = options.evaluationCloseoutCaptures
     ? await enrichThreadWorkbenchWithEvaluationCloseouts(
-      withVerificationCases,
+      withEngineeringCases,
       options.evaluationCloseoutCaptures,
     )
-    : withVerificationCases;
+    : withEngineeringCases;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
@@ -1067,13 +1070,20 @@ if (import.meta.main) {
         : new TextDecoder("utf-8", { fatal: true }).decode(stored.copy());
     },
   };
-  const verificationCaseCaptures: VerificationCaseWorkbenchEnricherDependencies = {
+  const engineeringCaseCaptures: EngineeringCaseWorkbenchEnricherDependencies = {
     mechanicalProof: new FileCaptureStore(
       FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
     ),
     sensitivityStudy: new FileCaptureStore(
       SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
     ),
+    printabilityCheck: new FileCaptureStore(
+      PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
+    ),
+    printEstimate: new FileCaptureStore(
+      PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
+    ),
+    dfmCheck: new FileCaptureStore(DFM_CASE_CAPTURE_DESCRIPTOR),
   };
   const evaluationCloseoutCaptures: EvaluationCloseoutCaptureReader =
     new FileCaptureStore({
@@ -1130,7 +1140,7 @@ if (import.meta.main) {
     architectureSysmlSeals,
     architectureSysmlSources,
     technicalCompilationAdmissions,
-    verificationCaseCaptures,
+    engineeringCaseCaptures,
     evaluationCloseoutCaptures,
     liveUpdates,
     assetReader: (filename) => assetReader.read(filename),

@@ -17,10 +17,13 @@ import type {
   ThreadGraphRelation,
 } from "../../presentation/workbench/thread/graph.ts";
 import type {
-  ThreadVerificationCase,
-  ThreadVerificationCaseCatalog,
-  ThreadVerificationCaseFamily,
-  ThreadVerificationCaseIssue,
+  EngineeringCase,
+  EngineeringCaseCatalog,
+  EngineeringCaseFamily,
+  EngineeringCaseIssue,
+} from "../../presentation/workbench/thread/evidence.ts";
+import {
+  ENGINEERING_CASE_CATALOG_SCHEMA,
 } from "../../presentation/workbench/thread/evidence.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
@@ -39,6 +42,27 @@ import {
 import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
+import {
+  PRINTABILITY_CASE_CAPTURE_URI_PREFIX,
+  validatePrintabilityCaseCapture,
+} from "../make/printability/printability-case-capture.ts";
+import {
+  INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
+} from "../../domain/make/printability/printability-proposal.ts";
+import {
+  PRINT_ESTIMATE_CASE_CAPTURE_URI_PREFIX,
+  validatePrintEstimateCaseCapture,
+} from "../make/print-estimate/print-estimate-case-capture.ts";
+import {
+  INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
+} from "../../domain/make/print-estimate/print-estimate-proposal.ts";
+import {
+  DFM_CASE_CAPTURE_URI_PREFIX,
+  validateDfmCaseCapture,
+} from "../make/dfm/dfm-case-capture.ts";
+import {
+  INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+} from "../../domain/make/dfm/dfm-case.ts";
 const SHA256 = /^[a-f0-9]{64}$/;
 
 const CASE_LINEAGE_RELATIONS = new Set<ThreadGraphRelation>([
@@ -52,13 +76,16 @@ const CASE_LINEAGE_RELATIONS = new Set<ThreadGraphRelation>([
   "source_of",
 ]);
 
-export interface VerificationCaseCaptureReader {
+export interface EngineeringCaseCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
 }
 
-export interface VerificationCaseWorkbenchEnricherDependencies {
-  readonly mechanicalProof?: VerificationCaseCaptureReader;
-  readonly sensitivityStudy?: VerificationCaseCaptureReader;
+export interface EngineeringCaseWorkbenchEnricherDependencies {
+  readonly mechanicalProof?: EngineeringCaseCaptureReader;
+  readonly sensitivityStudy?: EngineeringCaseCaptureReader;
+  readonly printabilityCheck?: EngineeringCaseCaptureReader;
+  readonly printEstimate?: EngineeringCaseCaptureReader;
+  readonly dfmCheck?: EngineeringCaseCaptureReader;
 }
 
 interface ExtractedCaseBase {
@@ -88,14 +115,26 @@ type ExtractedCase =
       readonly family: "sensitivity-study";
       readonly caseSchemaVersion: "sensitivity-study-case/2.0";
     }
+    | {
+      readonly family: "printability-check";
+      readonly caseSchemaVersion: "printability-check-case/1.0";
+    }
+    | {
+      readonly family: "print-estimate";
+      readonly caseSchemaVersion: "print-estimate-case/1.0";
+    }
+    | {
+      readonly family: "dfm-check";
+      readonly caseSchemaVersion: "dfm-check-case/1.0";
+    }
   );
 
 interface CaseDriver {
-  readonly family: ThreadVerificationCaseFamily;
+  readonly family: EngineeringCaseFamily;
   readonly producedBy: string;
   readonly artifactIdPrefix: string;
   readonly uriPrefix: string;
-  readonly reader?: VerificationCaseCaptureReader;
+  readonly reader?: EngineeringCaseCaptureReader;
   /** False for a detected historical schema that is visible only as an issue. */
   readonly advertiseCoverage?: boolean;
   extract(
@@ -108,31 +147,30 @@ interface CaseDriver {
  * Reopen every supported case seal, expose exact declarations, and assign
  * zero-to-many case references to their recorded downstream graph nodes.
  */
-export async function enrichThreadWorkbenchWithVerificationCases(
+export async function enrichThreadWorkbenchWithEngineeringCases(
   snapshot: ThreadWorkbenchSnapshot,
-  dependencies: VerificationCaseWorkbenchEnricherDependencies,
+  dependencies: EngineeringCaseWorkbenchEnricherDependencies,
   context: { readonly projectId: string },
 ): Promise<
   ThreadWorkbenchSnapshot & {
-    verificationCases: ThreadVerificationCaseCatalog;
+    engineeringCases: EngineeringCaseCatalog;
   }
 > {
   if (
     context.projectId.length === 0 ||
     context.projectId !== context.projectId.trim()
   ) {
-    throw new TypeError("Verification-case projectId must be non-empty exact text.");
+    throw new TypeError("Engineering-case projectId must be non-empty exact text.");
   }
   const drivers = caseDrivers(dependencies);
-  const issues: ThreadVerificationCaseIssue[] = [];
-  const casesByKey = new Map<string, ThreadVerificationCase>();
+  const issues: EngineeringCaseIssue[] = [];
+  const casesByKey = new Map<string, EngineeringCase>();
   const inputArtifactIdsByCaseKey = new Map<string, Set<string>>();
 
   for (const artifact of snapshot.artifacts) {
     const driver = drivers.find((candidate) =>
       candidate.producedBy === artifact.producedBy &&
-      (artifact.id.startsWith(candidate.artifactIdPrefix) ||
-        artifact.uri?.startsWith(`${candidate.uriPrefix}sha256/`) === true)
+      artifact.uri?.startsWith(`${candidate.uriPrefix}sha256/`) === true
     );
     if (!driver) continue;
 
@@ -253,11 +291,11 @@ export async function enrichThreadWorkbenchWithVerificationCases(
     ...snapshot.graph,
     nodes: snapshot.graph.nodes.map((node) => {
       const references = membership.get(graphNodeKey(node));
-      const { verificationCaseRefs: _stale, ...withoutStaleMembership } = node;
+      const { engineeringCaseRefs: _stale, ...withoutStaleMembership } = node;
       return references && references.size > 0
         ? {
           ...withoutStaleMembership,
-          verificationCaseRefs: [...references].sort(),
+          engineeringCaseRefs: [...references].sort(),
         }
         : withoutStaleMembership;
     }),
@@ -269,19 +307,19 @@ export async function enrichThreadWorkbenchWithVerificationCases(
       status: driver.reader ? "observed" as const : "unavailable" as const,
     }));
   const sortedIssues = [...issues].sort(compareIssues);
-  const catalog: ThreadVerificationCaseCatalog = {
-    schemaVersion: "thread-verification-cases/1.0",
+  const catalog: EngineeringCaseCatalog = {
+    schemaVersion: ENGINEERING_CASE_CATALOG_SCHEMA,
     status: catalogStatus(coverage, sortedIssues),
     coverage,
     cases,
     issues: sortedIssues,
   };
 
-  return { ...snapshot, verificationCases: catalog, graph };
+  return { ...snapshot, engineeringCases: catalog, graph };
 }
 
 function caseDrivers(
-  dependencies: VerificationCaseWorkbenchEnricherDependencies,
+  dependencies: EngineeringCaseWorkbenchEnricherDependencies,
 ): CaseDriver[] {
   return [
     {
@@ -322,10 +360,7 @@ function caseDrivers(
       producedBy:
         `${ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.id}@${ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.version}`,
       artifactIdPrefix: "sensitivity-case-",
-      uriPrefix: SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX.replace(
-        /sha256\/$/,
-        "",
-      ),
+      uriPrefix: captureUriPrefix(SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX),
       reader: dependencies.sensitivityStudy,
       extract: async (text) => {
         const capture = await validateSensitivityStudyCaseCapture(
@@ -350,7 +385,83 @@ function caseDrivers(
         };
       },
     },
+    {
+      family: "printability-check",
+      producedBy:
+        `${INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION.id}@${INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION.version}`,
+      artifactIdPrefix: "printability-case-",
+      uriPrefix: captureUriPrefix(PRINTABILITY_CASE_CAPTURE_URI_PREFIX),
+      reader: dependencies.printabilityCheck,
+      extract: async (text) => {
+        const capture = await validatePrintabilityCaseCapture(JSON.parse(text));
+        return {
+          family: "printability-check",
+          caseSchemaVersion: capture.printabilityCase.schemaVersion,
+          id: capture.printabilityCase.id,
+          revision: capture.printabilityCase.revision,
+          scope: capture.printabilityCase.scope,
+          caseDigest: capture.caseDigest,
+          projectId: capture.printabilityCase.project.id,
+          subjectId: capture.printabilityCase.project.subjectId,
+          expectedAuthorityArtifactId: `printability-case-${capture.caseDigest}`,
+          expectedAuthorityRunId: capture.trustedRunId,
+          inputArtifacts: [],
+        };
+      },
+    },
+    {
+      family: "print-estimate",
+      producedBy:
+        `${INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION.id}@${INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION.version}`,
+      artifactIdPrefix: "print-estimate-case-",
+      uriPrefix: captureUriPrefix(PRINT_ESTIMATE_CASE_CAPTURE_URI_PREFIX),
+      reader: dependencies.printEstimate,
+      extract: async (text) => {
+        const capture = await validatePrintEstimateCaseCapture(JSON.parse(text));
+        return {
+          family: "print-estimate",
+          caseSchemaVersion: capture.printEstimateCase.schemaVersion,
+          id: capture.printEstimateCase.id,
+          revision: capture.printEstimateCase.revision,
+          scope: capture.printEstimateCase.scope,
+          caseDigest: capture.caseDigest,
+          projectId: capture.printEstimateCase.project.id,
+          subjectId: capture.printEstimateCase.project.subjectId,
+          expectedAuthorityArtifactId: `print-estimate-case-${capture.caseDigest}`,
+          expectedAuthorityRunId: capture.trustedRunId,
+          inputArtifacts: [],
+        };
+      },
+    },
+    {
+      family: "dfm-check",
+      producedBy:
+        `${INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION.id}@${INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION.version}`,
+      artifactIdPrefix: "dfm-case-",
+      uriPrefix: captureUriPrefix(DFM_CASE_CAPTURE_URI_PREFIX),
+      reader: dependencies.dfmCheck,
+      extract: async (text) => {
+        const capture = await validateDfmCaseCapture(JSON.parse(text));
+        return {
+          family: "dfm-check",
+          caseSchemaVersion: capture.dfmCase.schemaVersion,
+          id: capture.dfmCase.id,
+          revision: capture.dfmCase.revision,
+          scope: capture.dfmCase.scope,
+          caseDigest: capture.caseDigest,
+          projectId: capture.dfmCase.project.id,
+          subjectId: capture.dfmCase.project.subjectId,
+          expectedAuthorityArtifactId: `dfm-case-${capture.caseDigest}`,
+          expectedAuthorityRunId: capture.trustedRunId,
+          inputArtifacts: [],
+        };
+      },
+    },
   ];
+}
+
+function captureUriPrefix(prefix: string): string {
+  return prefix.replace(/sha256\/$/, "");
 }
 
 function boundCaptureFingerprint(
@@ -375,9 +486,9 @@ function boundCaptureFingerprint(
 
 function projectCaseMemberships(
   snapshot: ThreadWorkbenchSnapshot,
-  cases: readonly ThreadVerificationCase[],
+  cases: readonly EngineeringCase[],
   inputArtifactIdsByCaseKey: ReadonlyMap<string, ReadonlySet<string>>,
-  issues: ThreadVerificationCaseIssue[],
+  issues: EngineeringCaseIssue[],
 ): ReadonlyMap<string, ReadonlySet<string>> {
   const nodeKeys = new Set(snapshot.graph.nodes.map(graphNodeKey));
   const outgoing = new Map<string, Set<string>>();
@@ -469,7 +580,7 @@ function caseInputsMatch(
 }
 
 function caseKey(
-  family: ThreadVerificationCaseFamily,
+  family: EngineeringCaseFamily,
   digest: string,
 ): string {
   if (!SHA256.test(digest)) {
@@ -479,7 +590,7 @@ function caseKey(
 }
 
 function sameDeclaration(
-  existing: ThreadVerificationCase,
+  existing: EngineeringCase,
   extracted: ExtractedCase,
 ): boolean {
   return existing.family === extracted.family &&
@@ -494,7 +605,7 @@ function projectCaseDeclaration(
   key: string,
   extracted: ExtractedCase,
   authorityArtifactId: string,
-): ThreadVerificationCase {
+): EngineeringCase {
   const common = {
     key,
     id: extracted.id,
@@ -503,18 +614,38 @@ function projectCaseDeclaration(
     caseDigest: extracted.caseDigest,
     authorityArtifactIds: [authorityArtifactId],
   };
-  if (extracted.family === "mechanical-proof") {
-    return {
-      ...common,
-      family: extracted.family,
-      caseSchemaVersion: extracted.caseSchemaVersion,
-    };
+  switch (extracted.family) {
+    case "mechanical-proof":
+      return {
+        ...common,
+        family: extracted.family,
+        caseSchemaVersion: extracted.caseSchemaVersion,
+      };
+    case "sensitivity-study":
+      return {
+        ...common,
+        family: extracted.family,
+        caseSchemaVersion: extracted.caseSchemaVersion,
+      };
+    case "printability-check":
+      return {
+        ...common,
+        family: extracted.family,
+        caseSchemaVersion: extracted.caseSchemaVersion,
+      };
+    case "print-estimate":
+      return {
+        ...common,
+        family: extracted.family,
+        caseSchemaVersion: extracted.caseSchemaVersion,
+      };
+    case "dfm-check":
+      return {
+        ...common,
+        family: extracted.family,
+        caseSchemaVersion: extracted.caseSchemaVersion,
+      };
   }
-  return {
-    ...common,
-    family: extracted.family,
-    caseSchemaVersion: extracted.caseSchemaVersion,
-  };
 }
 
 function graphNodeKey(node: ThreadGraphNode): string {
@@ -522,18 +653,18 @@ function graphNodeKey(node: ThreadGraphNode): string {
 }
 
 function issue(
-  family: ThreadVerificationCaseFamily,
+  family: EngineeringCaseFamily,
   authorityArtifactId: string,
-  status: ThreadVerificationCaseIssue["status"],
-  reason: ThreadVerificationCaseIssue["reason"],
-): ThreadVerificationCaseIssue {
+  status: EngineeringCaseIssue["status"],
+  reason: EngineeringCaseIssue["reason"],
+): EngineeringCaseIssue {
   return { family, authorityArtifactId, status, reason };
 }
 
 function catalogStatus(
-  coverage: ThreadVerificationCaseCatalog["coverage"],
-  issues: readonly ThreadVerificationCaseIssue[],
-): ThreadVerificationCaseCatalog["status"] {
+  coverage: EngineeringCaseCatalog["coverage"],
+  issues: readonly EngineeringCaseIssue[],
+): EngineeringCaseCatalog["status"] {
   if (issues.length > 0) return "unresolved";
   if (coverage.every((item) => item.status === "unavailable")) {
     return "unavailable";
@@ -544,8 +675,8 @@ function catalogStatus(
 }
 
 function compareCases(
-  left: ThreadVerificationCase,
-  right: ThreadVerificationCase,
+  left: EngineeringCase,
+  right: EngineeringCase,
 ): number {
   return left.family.localeCompare(right.family) ||
     left.id.localeCompare(right.id) ||
@@ -554,8 +685,8 @@ function compareCases(
 }
 
 function compareIssues(
-  left: ThreadVerificationCaseIssue,
-  right: ThreadVerificationCaseIssue,
+  left: EngineeringCaseIssue,
+  right: EngineeringCaseIssue,
 ): number {
   return left.family.localeCompare(right.family) ||
     left.authorityArtifactId.localeCompare(right.authorityArtifactId) ||

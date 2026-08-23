@@ -1,8 +1,8 @@
 import { assertEquals, assertStrictEquals } from "@std/assert";
 import type {
+  EngineeringCaseCatalog,
   ThreadGraph,
   ThreadGraphNode,
-  ThreadVerificationCaseCatalog,
 } from "./src/thread/types.ts";
 import {
   buildVerificationCaseLegend,
@@ -14,13 +14,16 @@ import {
 const caseA = "mechanical-proof:aaa";
 const caseB = "mechanical-proof:bbb";
 
-const catalog: ThreadVerificationCaseCatalog = {
-  schemaVersion: "thread-verification-cases/1.0",
+const catalog: EngineeringCaseCatalog = {
+  schemaVersion: "engineering-cases/1.0",
   status: "observed",
   coverage: [
     { family: "mechanical-proof", status: "observed" },
     { family: "sensitivity-study", status: "observed" },
-      ],
+    { family: "printability-check", status: "observed" },
+    { family: "print-estimate", status: "observed" },
+    { family: "dfm-check", status: "observed" },
+  ],
   cases: [
     {
       key: caseA,
@@ -48,7 +51,7 @@ const catalog: ThreadVerificationCaseCatalog = {
 
 function node(
   id: string,
-  verificationCaseRefs?: string[],
+  engineeringCaseRefs?: string[],
 ): ThreadGraphNode {
   return {
     id: `artifact:${id}`,
@@ -58,7 +61,7 @@ function node(
     system: "test",
     freshness: "fresh",
     summary: id,
-    verificationCaseRefs,
+    engineeringCaseRefs,
   };
 }
 

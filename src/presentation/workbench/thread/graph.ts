@@ -133,7 +133,7 @@ export interface ThreadGraphNode {
   activityRole?: "milestone";
   evaluationFamily?: "study-base";
   /** Exact case declarations whose recorded downstream lineage contains this node. */
-  verificationCaseRefs?: string[];
+  engineeringCaseRefs?: string[];
   selection?: ThreadRef;
 }
 

@@ -2,10 +2,10 @@ import type { ThreadArchitectureSysmlSealPresentation } from "./architecture.ts"
 import type { ThreadComponentCatalog } from "./components.ts";
 import type { ThreadFreshness, ThreadGraph } from "./graph.ts";
 import type {
+  EngineeringCaseCatalog,
   ThreadChange,
   ThreadEvidenceFamilyGraph,
   ThreadFlowStage,
-  ThreadVerificationCaseCatalog,
 } from "./evidence.ts";
 
 export interface ThreadArtifact {
@@ -154,7 +154,7 @@ export interface ThreadWorkbenchSnapshot {
   change: ThreadChange;
   components: ThreadComponentCatalog;
   /** Absent means unavailable for older 0.1 producers; never an empty catalog. */
-  verificationCases?: ThreadVerificationCaseCatalog;
+  engineeringCases?: EngineeringCaseCatalog;
   /** Absent means the BFF has no local closeout-capture reader configured. */
   evaluationCloseouts?: ThreadEvaluationCloseoutIndex;
   graph: ThreadGraph;

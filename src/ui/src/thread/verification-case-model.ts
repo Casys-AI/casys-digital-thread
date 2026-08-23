@@ -2,26 +2,27 @@
  * Pure read-model helpers for the Verification case axis.
  *
  * A case is selected by the opaque key projected by the BFF. Membership is
- * read from `verificationCaseRefs`; labels, systems and graph connectivity are
+ * read from `engineeringCaseRefs`; labels, systems and graph connectivity are
  * never used to infer it. Filtering happens before version folding and local
  * neighbourhood traversal so a node outside the selected case cannot become
  * an invisible bridge.
  */
 
 import type {
+  EngineeringCase,
+  EngineeringCaseCatalog,
   ThreadGraph,
   ThreadGraphNode,
   ThreadGraphRef,
-  ThreadVerificationCase,
-  ThreadVerificationCaseCatalog,
 } from "./types.ts";
+import { unavailableEngineeringCaseCatalog } from "../../../presentation/workbench/thread/evidence.ts";
 
 export type VerificationCaseFilter =
   | { kind: "all" }
   | { kind: "case"; caseKey: string };
 
 export interface VerificationCaseLegendItem {
-  case: ThreadVerificationCase;
+  case: EngineeringCase;
   nodeCount: number;
 }
 
@@ -30,25 +31,16 @@ export interface VerificationCaseContextReconciliation {
   resetTransientState: boolean;
 }
 
-export const UNAVAILABLE_VERIFICATION_CASE_CATALOG:
-  ThreadVerificationCaseCatalog = {
-    schemaVersion: "thread-verification-cases/1.0",
-    status: "unavailable",
-    coverage: [
-      { family: "mechanical-proof", status: "unavailable" },
-      { family: "sensitivity-study", status: "unavailable" },
-    ],
-    cases: [],
-    issues: [],
-  };
+export const UNAVAILABLE_VERIFICATION_CASE_CATALOG: EngineeringCaseCatalog =
+  unavailableEngineeringCaseCatalog();
 
 export function buildVerificationCaseLegend(
-  catalog: ThreadVerificationCaseCatalog,
+  catalog: EngineeringCaseCatalog,
   nodes: readonly ThreadGraphNode[],
 ): VerificationCaseLegendItem[] {
   const counts = new Map<string, number>();
   for (const node of nodes) {
-    for (const key of node.verificationCaseRefs ?? []) {
+    for (const key of node.engineeringCaseRefs ?? []) {
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
   }
@@ -59,7 +51,7 @@ export function buildVerificationCaseLegend(
 }
 
 export function verificationCaseFilterIsAvailable(
-  catalog: ThreadVerificationCaseCatalog,
+  catalog: EngineeringCaseCatalog,
   filter: VerificationCaseFilter,
 ): boolean {
   return filter.kind === "all" ||
@@ -72,7 +64,7 @@ export function filterGraphByVerificationCase(
 ): ThreadGraph {
   if (filter.kind === "all") return graph;
   const nodes = graph.nodes.filter((node) =>
-    node.verificationCaseRefs?.includes(filter.caseKey) ?? false
+    node.engineeringCaseRefs?.includes(filter.caseKey) ?? false
   );
   const visibleRefs = new Set(nodes.map((node) => graphRefKey(node.ref)));
   return {
@@ -91,7 +83,7 @@ export function filterGraphByVerificationCase(
  * cannot remain selected behind the filtered canvas.
  */
 export function reconcileVerificationCaseContext(
-  catalog: ThreadVerificationCaseCatalog,
+  catalog: EngineeringCaseCatalog,
   graph: ThreadGraph,
   filter: VerificationCaseFilter,
   transientRefs: readonly ThreadGraphRef[],

@@ -53,6 +53,11 @@ import type {
   ThreadRef,
 } from "../../../presentation/workbench/thread/graph.ts";
 import type {
+  EngineeringCase,
+  EngineeringCaseCatalog,
+  EngineeringCaseCoverage,
+  EngineeringCaseFamily,
+  EngineeringCaseIssue,
   ThreadChange,
   ThreadEvidenceFamily,
   ThreadEvidenceFamilyEdgeRef,
@@ -62,11 +67,11 @@ import type {
   ThreadEvidenceFamilyOmittedSelfLoop,
   ThreadEvidenceFamilyTransition,
   ThreadFlowStage,
-  ThreadVerificationCase,
-  ThreadVerificationCaseCatalog,
-  ThreadVerificationCaseCoverage,
-  ThreadVerificationCaseFamily,
-  ThreadVerificationCaseIssue,
+} from "../../../presentation/workbench/thread/evidence.ts";
+import {
+  ENGINEERING_CASE_CATALOG_SCHEMA,
+  ENGINEERING_CASE_FAMILIES,
+  ENGINEERING_CASE_SCHEMA_BY_FAMILY,
 } from "../../../presentation/workbench/thread/evidence.ts";
 import type {
   ThreadAction,
@@ -124,6 +129,11 @@ export type {
   ThreadComponentProvider,
 } from "../../../presentation/workbench/thread/components.ts";
 export type {
+  EngineeringCase,
+  EngineeringCaseCatalog,
+  EngineeringCaseCoverage,
+  EngineeringCaseFamily,
+  EngineeringCaseIssue,
   ThreadChange,
   ThreadEvidenceFamily,
   ThreadEvidenceFamilyEdgeRef,
@@ -133,11 +143,6 @@ export type {
   ThreadEvidenceFamilyOmittedSelfLoop,
   ThreadEvidenceFamilyTransition,
   ThreadFlowStage,
-  ThreadVerificationCase,
-  ThreadVerificationCaseCatalog,
-  ThreadVerificationCaseCoverage,
-  ThreadVerificationCaseFamily,
-  ThreadVerificationCaseIssue,
 } from "../../../presentation/workbench/thread/evidence.ts";
 export type {
   ThreadFreshness,
@@ -367,7 +372,7 @@ function isCaseActivityJoinList(
   const knownWork = new Map(project.workItems.map((item) => [item.id, item]));
   const knownRuns = new Map(project.agentRuns.map((run) => [run.id, run]));
   const knownCases = new Map(
-    (thread.verificationCases?.cases ?? []).map((item) => [item.key, item]),
+    (thread.engineeringCases?.cases ?? []).map((item) => [item.key, item]),
   );
   const seenKeys = new Set<string>();
   for (const entry of value) {
@@ -402,7 +407,7 @@ function isCaseActivityJoinList(
     ) {
       return false;
     }
-    if (thread.verificationCases === undefined) return false;
+    if (thread.engineeringCases === undefined) return false;
     if (
       !verificationCase ||
       verificationCase.id !== entry.caseId ||
@@ -829,7 +834,7 @@ export function isThreadWorkbenchSnapshot(
     "sourceLabel",
     "change",
     "components",
-    "verificationCases",
+    "engineeringCases",
     "evaluationCloseouts",
     "graph",
     "evidenceFamilyGraph",
@@ -861,10 +866,10 @@ export function isThreadWorkbenchSnapshot(
     candidate.flow.every(isThreadFlowStage) &&
     Array.isArray(candidate.artifacts) &&
     candidate.artifacts.every(isThreadArtifact) &&
-    (candidate.verificationCases === undefined
-      ? candidate.graph.nodes.every((node) => node.verificationCaseRefs === undefined)
-      : isThreadVerificationCaseCatalog(
-        candidate.verificationCases,
+    (candidate.engineeringCases === undefined
+      ? candidate.graph.nodes.every((node) => node.engineeringCaseRefs === undefined)
+      : isEngineeringCaseCatalog(
+        candidate.engineeringCases,
         candidate.artifacts,
         candidate.graph,
       )) &&
@@ -1793,11 +1798,11 @@ function isThreadComponentBinding(
     (binding.selection === undefined || isThreadRef(binding.selection));
 }
 
-function isThreadVerificationCaseCatalog(
+function isEngineeringCaseCatalog(
   value: unknown,
   artifactsValue: unknown,
   graphValue: unknown,
-): value is ThreadVerificationCaseCatalog {
+): value is EngineeringCaseCatalog {
   if (
     !isRecord(value) ||
     !hasExactKeys(value, [
@@ -1807,22 +1812,22 @@ function isThreadVerificationCaseCatalog(
       "cases",
       "issues",
     ]) ||
-    value.schemaVersion !== "thread-verification-cases/1.0" ||
+    value.schemaVersion !== ENGINEERING_CASE_CATALOG_SCHEMA ||
     (value.status !== "observed" && value.status !== "unresolved" &&
       value.status !== "unavailable") ||
     !Array.isArray(value.coverage) ||
-    !value.coverage.every(isThreadVerificationCaseCoverage) ||
+    !value.coverage.every(isEngineeringCaseCoverage) ||
     !hasExactVerificationCaseCoverage(value.coverage) ||
     !Array.isArray(value.cases) ||
-    !value.cases.every(isThreadVerificationCase) ||
+    !value.cases.every(isEngineeringCase) ||
     !Array.isArray(value.issues) ||
-    !value.issues.every(isThreadVerificationCaseIssue) ||
+    !value.issues.every(isEngineeringCaseIssue) ||
     !Array.isArray(artifactsValue) ||
     !isRecord(graphValue) ||
     !Array.isArray(graphValue.nodes)
   ) return false;
 
-  const catalog = value as unknown as ThreadVerificationCaseCatalog;
+  const catalog = value as unknown as EngineeringCaseCatalog;
   const artifacts = artifactsValue as unknown as ThreadArtifact[];
   const nodes = graphValue.nodes as unknown as ThreadGraphNode[];
   const artifactIds = new Set(artifacts.map((artifact) => artifact.id));
@@ -1852,13 +1857,13 @@ function isThreadVerificationCaseCatalog(
         !authorityArtifactMatchesCase(artifactsById.get(id), item) ||
         !nodes.some((node) =>
           node.ref.kind === "artifact" && node.ref.id === id &&
-          node.verificationCaseRefs?.includes(item.key)
+          node.engineeringCaseRefs?.includes(item.key)
         )
       )
     ) ||
     catalog.issues.some((item) => !artifactIds.has(item.authorityArtifactId)) ||
     nodes.some((node) =>
-      node.verificationCaseRefs?.some((key) => !knownCaseKeys.has(key)) ?? false
+      node.engineeringCaseRefs?.some((key) => !knownCaseKeys.has(key)) ?? false
     )
   ) return false;
 
@@ -1870,33 +1875,33 @@ function isThreadVerificationCaseCatalog(
   if (catalog.status === "unavailable") {
     return unavailableCoverage === catalog.coverage.length &&
       catalog.cases.length === 0 && catalog.issues.length === 0 &&
-      nodes.every((node) => node.verificationCaseRefs === undefined);
+      nodes.every((node) => node.engineeringCaseRefs === undefined);
   }
   return unavailableCoverage > 0 || catalog.issues.length > 0;
 }
 
-function isThreadVerificationCaseCoverage(
+function isEngineeringCaseCoverage(
   value: unknown,
-): value is ThreadVerificationCaseCoverage {
+): value is EngineeringCaseCoverage {
   return isRecord(value) && hasExactKeys(value, ["family", "status"]) &&
-    isThreadVerificationCaseFamily(value.family) &&
+    isEngineeringCaseFamily(value.family) &&
     (value.status === "observed" || value.status === "unavailable");
 }
 
 function hasExactVerificationCaseCoverage(
-  coverage: readonly ThreadVerificationCaseCoverage[],
+  coverage: readonly EngineeringCaseCoverage[],
 ): boolean {
   const families = coverage.map((item) => item.family);
-  return coverage.length === 2 && hasUniqueStrings(families) &&
-    families.includes("mechanical-proof") &&
-    families.includes("sensitivity-study");
+  return families.length === ENGINEERING_CASE_FAMILIES.length &&
+    hasUniqueStrings(families) &&
+    ENGINEERING_CASE_FAMILIES.every((family) => families.includes(family));
 }
 
-function isThreadVerificationCase(
+function isEngineeringCase(
   value: unknown,
-): value is ThreadVerificationCase {
+): value is EngineeringCase {
   if (!isRecord(value)) return false;
-  const candidate = value as Partial<ThreadVerificationCase>;
+  const candidate = value as Partial<EngineeringCase>;
   return hasExactKeys(value, [
     "key",
     "family",
@@ -1907,7 +1912,7 @@ function isThreadVerificationCase(
     "caseDigest",
     "authorityArtifactIds",
   ]) && typeof candidate.key === "string" && candidate.key.length > 0 &&
-    isThreadVerificationCaseFamily(candidate.family) &&
+    isEngineeringCaseFamily(candidate.family) &&
     caseSchemaMatchesFamily(
       candidate.family,
       candidate.caseSchemaVersion,
@@ -1924,15 +1929,15 @@ function isThreadVerificationCase(
     ) && hasUniqueStrings(candidate.authorityArtifactIds);
 }
 
-function isThreadVerificationCaseIssue(
+function isEngineeringCaseIssue(
   value: unknown,
-): value is ThreadVerificationCaseIssue {
+): value is EngineeringCaseIssue {
   return isRecord(value) && hasExactKeys(value, [
     "family",
     "authorityArtifactId",
     "status",
     "reason",
-  ]) && isThreadVerificationCaseFamily(value.family) &&
+  ]) && isEngineeringCaseFamily(value.family) &&
     typeof value.authorityArtifactId === "string" &&
     value.authorityArtifactId.length > 0 &&
     ((value.status === "unavailable" &&
@@ -1944,48 +1949,75 @@ function isThreadVerificationCaseIssue(
           value.reason === "case-binding-divergent")));
 }
 
-function isThreadVerificationCaseFamily(
+function isEngineeringCaseFamily(
   value: unknown,
-): value is ThreadVerificationCaseFamily {
-  return value === "mechanical-proof" || value === "sensitivity-study";
+): value is EngineeringCaseFamily {
+  return typeof value === "string" &&
+    (ENGINEERING_CASE_FAMILIES as readonly string[]).includes(value);
 }
 
 function caseSchemaMatchesFamily(
-  family: ThreadVerificationCaseFamily | undefined,
+  family: EngineeringCaseFamily | undefined,
   schemaVersion: unknown,
 ): boolean {
-  return (family === "mechanical-proof" &&
-    schemaVersion === "mechanical-proof-case/1.0") ||
-    (family === "sensitivity-study" &&
-      schemaVersion === "sensitivity-study-case/2.0");
+  return family !== undefined &&
+    schemaVersion === ENGINEERING_CASE_SCHEMA_BY_FAMILY[family];
 }
 
 function authorityArtifactMatchesCase(
   artifact: ThreadArtifact | undefined,
-  verificationCase: ThreadVerificationCase,
+  engineeringCase: EngineeringCase,
 ): boolean {
   if (
     !artifact || artifact.kind !== "document" ||
     artifact.system !== "digital-thread" ||
     artifact.producerRunId === undefined ||
-    artifact.revision !== verificationCase.caseDigest ||
+    artifact.revision !== engineeringCase.caseDigest ||
     artifact.fingerprint === undefined || artifact.uri === undefined
   ) return false;
   const fingerprint = /^sha256:([a-f0-9]{64})$/.exec(artifact.fingerprint);
   if (!fingerprint) return false;
   const captureDigest = fingerprint[1]!;
-  if (verificationCase.family === "mechanical-proof") {
-    return artifact.producedBy === "verify.seal-proof-case@1" &&
-      artifact.id === `fea-proof-${captureDigest}` &&
-      artifact.uri ===
-        `casys://fea-proof-case-capture/sha256/${captureDigest}`;
-  }
-  return verificationCase.family === "sensitivity-study" &&
-    artifact.producedBy === "analyze.seal-sensitivity-study@1" &&
-    artifact.id === `sensitivity-case-${verificationCase.caseDigest}` &&
-    artifact.uri ===
-      `casys://sensitivity-study-case-capture/sha256/${captureDigest}`;
+  const binding = ENGINEERING_CASE_AUTHORITY[engineeringCase.family];
+  return artifact.producedBy === binding.producedBy &&
+    artifact.id === binding.artifactId(captureDigest, engineeringCase.caseDigest) &&
+    artifact.uri === `${binding.uriPrefix}${captureDigest}`;
 }
+
+const ENGINEERING_CASE_AUTHORITY: Record<
+  EngineeringCaseFamily,
+  {
+    producedBy: string;
+    artifactId: (captureDigest: string, caseDigest: string) => string;
+    uriPrefix: string;
+  }
+> = {
+  "mechanical-proof": {
+    producedBy: "verify.seal-proof-case@1",
+    artifactId: (captureDigest) => `fea-proof-${captureDigest}`,
+    uriPrefix: "casys://fea-proof-case-capture/sha256/",
+  },
+  "sensitivity-study": {
+    producedBy: "analyze.seal-sensitivity-study@1",
+    artifactId: (_captureDigest, caseDigest) => `sensitivity-case-${caseDigest}`,
+    uriPrefix: "casys://sensitivity-study-case-capture/sha256/",
+  },
+  "printability-check": {
+    producedBy: "industrialize.seal-printability-case@1",
+    artifactId: (_captureDigest, caseDigest) => `printability-case-${caseDigest}`,
+    uriPrefix: "casys://printability-case-capture/sha256/",
+  },
+  "print-estimate": {
+    producedBy: "industrialize.seal-print-estimate-case@1",
+    artifactId: (_captureDigest, caseDigest) => `print-estimate-case-${caseDigest}`,
+    uriPrefix: "casys://print-estimate-case-capture/sha256/",
+  },
+  "dfm-check": {
+    producedBy: "industrialize.seal-dfm-case@1",
+    artifactId: (_captureDigest, caseDigest) => `dfm-case-${caseDigest}`,
+    uriPrefix: "casys://dfm-case-capture/sha256/",
+  },
+};
 
 function isThreadGraph(value: unknown): value is ThreadGraph {
   if (!isRecord(value)) return false;
@@ -2041,7 +2073,7 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
     "affectedComponentId",
     "activityRole",
     "evaluationFamily",
-    "verificationCaseRefs",
+    "engineeringCaseRefs",
     "selection",
   ]) && typeof node.id === "string" && node.id.length > 0 &&
     isThreadGraphRef(node.ref) &&
@@ -2062,13 +2094,13 @@ function isThreadGraphNode(value: unknown): value is ThreadGraphNode {
     (node.activityRole === undefined || node.activityRole === "milestone") &&
     (node.evaluationFamily === undefined ||
       node.evaluationFamily === "study-base") &&
-    (node.verificationCaseRefs === undefined ||
-      (Array.isArray(node.verificationCaseRefs) &&
-        node.verificationCaseRefs.length > 0 &&
-        node.verificationCaseRefs.every((key) =>
+    (node.engineeringCaseRefs === undefined ||
+      (Array.isArray(node.engineeringCaseRefs) &&
+        node.engineeringCaseRefs.length > 0 &&
+        node.engineeringCaseRefs.every((key) =>
           typeof key === "string" && key.length > 0
         ) &&
-        hasUniqueStrings(node.verificationCaseRefs))) &&
+        hasUniqueStrings(node.engineeringCaseRefs))) &&
     (node.selection === undefined || isThreadRef(node.selection));
 }
 

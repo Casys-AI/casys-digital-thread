@@ -158,7 +158,7 @@ function projectCaseActivityJoins(
   project: EngineeringProjectSnapshot,
   thread: LiveThreadWorkbenchSnapshot,
 ): EngineeringEvidenceWorkbenchSnapshot["caseActivityJoins"] {
-  const cases = thread.verificationCases?.cases ?? [];
+  const cases = thread.engineeringCases?.cases ?? [];
   if (cases.length === 0) return [];
   const runById = new Map(project.agentRuns.map((run) => [run.id, run]));
   const workById = new Map(project.workItems.map((item) => [item.id, item]));

@@ -869,14 +869,17 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
     system: "digital-thread",
     freshness: "fresh",
     summary: "Sealed proof case",
-    verificationCaseRefs: ["mechanical-proof:case-a"],
+    engineeringCaseRefs: ["mechanical-proof:case-a"],
   } as ThreadGraphNode);
-  observed.verificationCases = {
-    schemaVersion: "thread-verification-cases/1.0",
+  observed.engineeringCases = {
+    schemaVersion: "engineering-cases/1.0",
     status: "observed",
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "observed" },
+      { family: "printability-check", status: "observed" },
+      { family: "print-estimate", status: "observed" },
+      { family: "dfm-check", status: "observed" },
     ],
     cases: [{
       key: "mechanical-proof:case-a",
@@ -893,20 +896,20 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
   assertEquals(isThreadWorkbenchSnapshot(observed), true);
 
   const unknownMembership = structuredClone(observed);
-  unknownMembership.graph.nodes[0]!.verificationCaseRefs = ["missing-case"];
+  unknownMembership.graph.nodes[0]!.engineeringCaseRefs = ["missing-case"];
   assertEquals(isThreadWorkbenchSnapshot(unknownMembership), false);
 
   const malformedDigest = structuredClone(observed);
-  malformedDigest.verificationCases!.cases[0]!.caseDigest = "sha256:wrong";
+  malformedDigest.engineeringCases!.cases[0]!.caseDigest = "sha256:wrong";
   assertEquals(isThreadWorkbenchSnapshot(malformedDigest), false);
 
   const mismatchedSchema = structuredClone(observed);
-  mismatchedSchema.verificationCases!.cases[0]!.caseSchemaVersion =
+  mismatchedSchema.engineeringCases!.cases[0]!.caseSchemaVersion =
     "sensitivity-study-case/2.0" as never;
   assertEquals(isThreadWorkbenchSnapshot(mismatchedSchema), false);
 
   const wrongAuthority = structuredClone(observed);
-  wrongAuthority.verificationCases!.cases[0]!.authorityArtifactIds = [
+  wrongAuthority.engineeringCases!.cases[0]!.authorityArtifactIds = [
     "ART-FEA-018",
   ];
   assertEquals(isThreadWorkbenchSnapshot(wrongAuthority), false);
@@ -923,8 +926,8 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
   assertEquals(isThreadWorkbenchSnapshot(foreignServer), false);
 
   const unavailableFamily = structuredClone(observed);
-  unavailableFamily.verificationCases!.coverage[0]!.status = "unavailable";
-  unavailableFamily.verificationCases!.status = "unresolved";
+  unavailableFamily.engineeringCases!.coverage[0]!.status = "unavailable";
+  unavailableFamily.engineeringCases!.status = "unresolved";
   assertEquals(isThreadWorkbenchSnapshot(unavailableFamily), false);
 });
 
@@ -932,7 +935,7 @@ Deno.test("evidence Workbench recrosses a case join to every authority producer 
   const workbench = joinedCaseWorkbench();
   assertEquals(isEngineeringWorkbenchSnapshot(workbench), true);
 
-  const missingId = workbench.thread.verificationCases!.cases[0]!
+  const missingId = workbench.thread.engineeringCases!.cases[0]!
     .authorityArtifactIds[1]!;
   assertEquals(
     isEngineeringWorkbenchSnapshot({
@@ -995,12 +998,15 @@ function joinedCaseWorkbench(): EngineeringEvidenceWorkbenchSnapshot {
           proofNode(secondId, caseKey),
         ],
       },
-      verificationCases: {
-        schemaVersion: "thread-verification-cases/1.0",
+      engineeringCases: {
+        schemaVersion: "engineering-cases/1.0",
         status: "observed",
         coverage: [
           { family: "mechanical-proof", status: "observed" },
           { family: "sensitivity-study", status: "observed" },
+          { family: "printability-check", status: "observed" },
+          { family: "print-estimate", status: "observed" },
+          { family: "dfm-check", status: "observed" },
         ],
         cases: [{
           key: caseKey,
@@ -1057,18 +1063,18 @@ function proofNode(id: string, caseKey: string): ThreadGraphNode {
     system: "digital-thread",
     freshness: "fresh",
     summary: "Sealed proof case",
-    verificationCaseRefs: [caseKey],
+    engineeringCaseRefs: [caseKey],
   };
 }
 
 Deno.test("thread-workbench/0.1 keeps the case extension additive and fail-closed", () => {
   const legacy = structuredClone(GENERIC_THREAD_FIXTURE) as
     & typeof GENERIC_THREAD_FIXTURE
-    & { verificationCases?: unknown };
-  delete legacy.verificationCases;
+    & { engineeringCases?: unknown };
+  delete legacy.engineeringCases;
   assertEquals(isThreadWorkbenchSnapshot(legacy), true);
 
-  legacy.graph.nodes[0]!.verificationCaseRefs = ["hidden-case"];
+  legacy.graph.nodes[0]!.engineeringCaseRefs = ["hidden-case"];
   assertEquals(isThreadWorkbenchSnapshot(legacy), false);
 });
 

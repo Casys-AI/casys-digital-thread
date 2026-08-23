@@ -320,12 +320,15 @@ Deno.test("engineering Workbench joins a typed FEA case to its Project activity 
       dependsOn: [],
     },
   ];
-  thread.verificationCases = {
-    schemaVersion: "thread-verification-cases/1.0",
+  thread.engineeringCases = {
+    schemaVersion: "engineering-cases/1.0",
     status: "observed",
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "unavailable" },
+      { family: "printability-check", status: "unavailable" },
+      { family: "print-estimate", status: "unavailable" },
+      { family: "dfm-check", status: "unavailable" },
     ],
     cases: [{
       key: `mechanical-proof:${caseDigest}`,
@@ -416,12 +419,15 @@ Deno.test("engineering Workbench omits a case join when producer runs disagree",
       dependsOn: [],
     },
   ];
-  thread.verificationCases = {
-    schemaVersion: "thread-verification-cases/1.0",
+  thread.engineeringCases = {
+    schemaVersion: "engineering-cases/1.0",
     status: "observed",
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "unavailable" },
+      { family: "printability-check", status: "unavailable" },
+      { family: "print-estimate", status: "unavailable" },
+      { family: "dfm-check", status: "unavailable" },
     ],
     cases: [{
       key: `mechanical-proof:${caseDigest}`,
@@ -488,12 +494,15 @@ Deno.test("engineering Workbench omits a case join when an authority artifact is
       dependsOn: [],
     },
   ];
-  thread.verificationCases = {
-    schemaVersion: "thread-verification-cases/1.0",
+  thread.engineeringCases = {
+    schemaVersion: "engineering-cases/1.0",
     status: "observed",
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "unavailable" },
+      { family: "printability-check", status: "unavailable" },
+      { family: "print-estimate", status: "unavailable" },
+      { family: "dfm-check", status: "unavailable" },
     ],
     cases: [{
       key: `mechanical-proof:${caseDigest}`,
@@ -561,12 +570,15 @@ Deno.test("engineering Workbench omits a case join when an authority artifact ha
       dependsOn: [],
     },
   ];
-  thread.verificationCases = {
-    schemaVersion: "thread-verification-cases/1.0",
+  thread.engineeringCases = {
+    schemaVersion: "engineering-cases/1.0",
     status: "observed",
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "unavailable" },
+      { family: "printability-check", status: "unavailable" },
+      { family: "print-estimate", status: "unavailable" },
+      { family: "dfm-check", status: "unavailable" },
     ],
     cases: [{
       key: `mechanical-proof:${caseDigest}`,

@@ -333,7 +333,7 @@ Deno.test("native Workbench labels a dangling decision evidence reference instea
   );
 });
 
-Deno.test("native Workbench applies the verification-case read model after pure projection", async () => {
+Deno.test("native Workbench applies the engineering-case read model after pure projection", async () => {
   const r2 = genericArchitectureThreadSnapshot(2);
   const r3 = genericArchitectureThreadSnapshot(3, r2);
   const project = genericArchitectureProject("completed", r2, r3);
@@ -343,9 +343,12 @@ Deno.test("native Workbench applies the verification-case read model after pure 
     projectId: project.project.id,
     subjectId: project.project.subjectId,
     html: "unused",
-    verificationCaseCaptures: {
+    engineeringCaseCaptures: {
       mechanicalProof: { read: () => Promise.resolve(undefined) },
       sensitivityStudy: { read: () => Promise.resolve(undefined) },
+      printabilityCheck: { read: () => Promise.resolve(undefined) },
+      printEstimate: { read: () => Promise.resolve(undefined) },
+      dfmCheck: { read: () => Promise.resolve(undefined) },
     },
   });
 
@@ -356,12 +359,15 @@ Deno.test("native Workbench applies the verification-case read model after pure 
 
   assertEquals(response.status, 200);
   assertEquals(body.surface, "evidence");
-  assertEquals(body.thread.verificationCases, {
-    schemaVersion: "thread-verification-cases/1.0",
+  assertEquals(body.thread.engineeringCases, {
+    schemaVersion: "engineering-cases/1.0",
     status: "observed",
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "observed" },
+      { family: "printability-check", status: "observed" },
+      { family: "print-estimate", status: "observed" },
+      { family: "dfm-check", status: "observed" },
     ],
     cases: [],
     issues: [],

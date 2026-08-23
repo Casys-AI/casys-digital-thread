@@ -31,7 +31,31 @@ import {
   type SensitivityStudyCaseV2,
   validateSensitivityStudyCaseV2,
 } from "../../domain/sensitivity/study/sensitivity-study-v2.ts";
-import { enrichThreadWorkbenchWithVerificationCases } from "./verification-case-workbench-enricher.ts";
+import {
+  PRINTABILITY_CASE_CAPTURE_SCHEMA,
+  PRINTABILITY_CASE_CAPTURE_URI_PREFIX,
+} from "../make/printability/printability-case-capture.ts";
+import { INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION } from "../../domain/make/printability/printability-proposal.ts";
+import { validatePrintabilityCheckCase } from "../../domain/make/printability/printability-case.ts";
+import {
+  PRINT_ESTIMATE_CASE_CAPTURE_SCHEMA,
+  PRINT_ESTIMATE_CASE_CAPTURE_URI_PREFIX,
+} from "../make/print-estimate/print-estimate-case-capture.ts";
+import { INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION } from "../../domain/make/print-estimate/print-estimate-proposal.ts";
+import { validatePrintEstimateCase } from "../../domain/make/print-estimate/print-estimate-case.ts";
+import {
+  DFM_CASE_CAPTURE_SCHEMA,
+  DFM_CASE_CAPTURE_URI_PREFIX,
+} from "../make/dfm/dfm-case-capture.ts";
+import {
+  INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+  validateDfmCheckCase,
+} from "../../domain/make/dfm/dfm-case.ts";
+import { unavailableEngineeringCaseCatalog } from "../../presentation/workbench/thread/evidence.ts";
+import {
+  type EngineeringCaseWorkbenchEnricherDependencies,
+  enrichThreadWorkbenchWithEngineeringCases,
+} from "./verification-case-workbench-enricher.ts";
 
 const PROOF_CASE = validateMechanicalProofCase(JSON.parse(
   await Deno.readTextFile(
@@ -42,6 +66,20 @@ const PROOF_CASE = validateMechanicalProofCase(JSON.parse(
   ),
 ));
 const CASE_CONTEXT = { projectId: PROOF_CASE.project.id } as const;
+
+function caseReaders(
+  overrides: EngineeringCaseWorkbenchEnricherDependencies = {},
+): EngineeringCaseWorkbenchEnricherDependencies {
+  const absent = { read: () => Promise.resolve(undefined) };
+  return {
+    mechanicalProof: absent,
+    sensitivityStudy: absent,
+    printabilityCheck: absent,
+    printEstimate: absent,
+    dfmCheck: absent,
+    ...overrides,
+  };
+}
 
 Deno.test(
   "verification case enricher reopens exact seals and projects many-to-many lineage without labels",
@@ -59,32 +97,32 @@ Deno.test(
       [second.captureFingerprint, second.captureText],
     ]);
 
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
       snapshot,
-      {
+      caseReaders({
         mechanicalProof: {
           read: (fingerprint) =>
             Promise.resolve(captureByDigest.get(fingerprint.digest)),
         },
         sensitivityStudy: { read: () => Promise.resolve(undefined) },
-      },
+      }),
       CASE_CONTEXT,
     );
 
-    assertEquals(enriched.verificationCases.status, "observed");
-    assertEquals(enriched.verificationCases.issues, []);
-    assertEquals(enriched.verificationCases.cases.length, 2);
+    assertEquals(enriched.engineeringCases.status, "observed");
+    assertEquals(enriched.engineeringCases.issues, []);
+    assertEquals(enriched.engineeringCases.cases.length, 2);
     assertEquals(
-      enriched.verificationCases.cases.map((item) => item.id),
+      enriched.engineeringCases.cases.map((item) => item.id),
       [PROOF_CASE.id, `${PROOF_CASE.id}-alternate`],
     );
     assertEquals(
-      enriched.verificationCases.cases[0]?.scope,
+      enriched.engineeringCases.cases[0]?.scope,
       PROOF_CASE.scope,
       "scope remains source text and is never synthesized from a label",
     );
 
-    const caseKeys = enriched.verificationCases.cases.map((item) => item.key);
+    const caseKeys = enriched.engineeringCases.cases.map((item) => item.key);
     const sortedCaseKeys = [...caseKeys].sort();
     for (
       const ref of [
@@ -99,18 +137,18 @@ Deno.test(
       ]
     ) {
       assertEquals(
-        nodeByRef(enriched, ref)?.verificationCaseRefs,
+        nodeByRef(enriched, ref)?.engineeringCaseRefs,
         sortedCaseKeys,
         `${ref} belongs to both exact cases without a dominant case`,
       );
     }
     assertEquals(
       nodeByRef(enriched, `artifact:${first.artifact.id}`)
-        ?.verificationCaseRefs,
+        ?.engineeringCaseRefs,
       [caseKeys[0]],
     );
     assertEquals(
-      nodeByRef(enriched, "artifact:unrelated")?.verificationCaseRefs,
+      nodeByRef(enriched, "artifact:unrelated")?.engineeringCaseRefs,
       undefined,
       "an unrelated fact is never joined by component or label",
     );
@@ -169,9 +207,9 @@ Deno.test(
       edge("input_to", "artifact", authorityId, "artifact", "result"),
     );
 
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
       snapshot,
-      {
+      caseReaders({
         mechanicalProof: { read: () => Promise.resolve(undefined) },
         sensitivityStudy: {
           read: (fingerprint) =>
@@ -179,12 +217,12 @@ Deno.test(
               fingerprint.digest === captureDigest ? captureText : undefined,
             ),
         },
-      },
+      }),
       CASE_CONTEXT,
     );
 
-    assertEquals(enriched.verificationCases.status, "observed");
-    assertEquals(enriched.verificationCases.cases, [{
+    assertEquals(enriched.engineeringCases.status, "observed");
+    assertEquals(enriched.engineeringCases.cases, [{
       key: `verification-case:sensitivity-study:${caseDigest}`,
       family: "sensitivity-study",
       caseSchemaVersion: "sensitivity-study-case/2.0",
@@ -195,7 +233,7 @@ Deno.test(
       authorityArtifactIds: [authorityId],
     }]);
     assertEquals(
-      nodeByRef(enriched, "artifact:result")?.verificationCaseRefs,
+      nodeByRef(enriched, "artifact:result")?.engineeringCaseRefs,
       [`verification-case:sensitivity-study:${caseDigest}`],
     );
   },
@@ -206,25 +244,25 @@ Deno.test(
   async () => {
     const proof = await sealedProof(PROOF_CASE, "run.seal.corrupt");
     const snapshot = workbenchFor([proof]);
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
       snapshot,
-      {
+      caseReaders({
         mechanicalProof: { read: () => Promise.resolve("{") },
         sensitivityStudy: { read: () => Promise.resolve(undefined) },
-      },
+      }),
       CASE_CONTEXT,
     );
 
-    assertEquals(enriched.verificationCases.status, "unresolved");
-    assertEquals(enriched.verificationCases.cases, []);
-    assertEquals(enriched.verificationCases.issues, [{
+    assertEquals(enriched.engineeringCases.status, "unresolved");
+    assertEquals(enriched.engineeringCases.cases, []);
+    assertEquals(enriched.engineeringCases.issues, [{
       family: "mechanical-proof",
       authorityArtifactId: proof.artifact.id,
       status: "error",
       reason: "capture-invalid",
     }]);
     assertEquals(
-      enriched.graph.nodes.every((node) => node.verificationCaseRefs === undefined),
+      enriched.graph.nodes.every((node) => node.engineeringCaseRefs === undefined),
       true,
     );
   },
@@ -234,14 +272,14 @@ Deno.test(
   "verification case enricher keeps a known seal unresolved when its reader is unavailable",
   async () => {
     const proof = await sealedProof(PROOF_CASE, "run.seal.unavailable");
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
       workbenchFor([proof]),
       {},
       CASE_CONTEXT,
     );
 
-    assertEquals(enriched.verificationCases.status, "unresolved");
-    assertEquals(enriched.verificationCases.issues, [{
+    assertEquals(enriched.engineeringCases.status, "unresolved");
+    assertEquals(enriched.engineeringCases.issues, [{
       family: "mechanical-proof",
       authorityArtifactId: proof.artifact.id,
       status: "unavailable",
@@ -268,9 +306,9 @@ Deno.test(
       dependsOn: [proof.artifact.id],
     });
     let reads = 0;
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
       snapshot,
-      {
+      caseReaders({
         mechanicalProof: {
           read: () => {
             reads += 1;
@@ -278,13 +316,13 @@ Deno.test(
           },
         },
         sensitivityStudy: { read: () => Promise.resolve(undefined) },
-      },
+      }),
       CASE_CONTEXT,
     );
 
     assertEquals(reads, 1);
-    assertEquals(enriched.verificationCases.status, "observed");
-    assertEquals(enriched.verificationCases.issues, []);
+    assertEquals(enriched.engineeringCases.status, "observed");
+    assertEquals(enriched.engineeringCases.issues, []);
   },
 );
 
@@ -296,17 +334,17 @@ Deno.test(
       ...proof,
       artifact: { ...proof.artifact, id: "tampered-proof-id" },
     };
-    const enriched = await enrichThreadWorkbenchWithVerificationCases(
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
       workbenchFor([divergent]),
-      {
+      caseReaders({
         mechanicalProof: { read: () => Promise.resolve(proof.captureText) },
         sensitivityStudy: { read: () => Promise.resolve(undefined) },
-      },
+      }),
       CASE_CONTEXT,
     );
 
-    assertEquals(enriched.verificationCases.status, "unresolved");
-    assertEquals(enriched.verificationCases.issues, [{
+    assertEquals(enriched.engineeringCases.status, "unresolved");
+    assertEquals(enriched.engineeringCases.issues, [{
       family: "mechanical-proof",
       authorityArtifactId: "tampered-proof-id",
       status: "error",
@@ -352,22 +390,108 @@ Deno.test(
     ];
 
     for (const mutation of mutations) {
-      const enriched = await enrichThreadWorkbenchWithVerificationCases(
+      const enriched = await enrichThreadWorkbenchWithEngineeringCases(
         mutation.snapshot,
-        {
+        caseReaders({
           mechanicalProof: { read: () => Promise.resolve(proof.captureText) },
           sensitivityStudy: { read: () => Promise.resolve(undefined) },
-        },
+        }),
         mutation.context,
       );
-      assertEquals(enriched.verificationCases.cases, [], mutation.name);
-      assertEquals(enriched.verificationCases.issues, [{
+      assertEquals(enriched.engineeringCases.cases, [], mutation.name);
+      assertEquals(enriched.engineeringCases.issues, [{
         family: "mechanical-proof",
         authorityArtifactId: proof.artifact.id,
         status: "error",
         reason: "case-binding-divergent",
       }], mutation.name);
     }
+  },
+);
+
+Deno.test(
+  "engineering case enricher reopens printability, print-estimate and DFM seals",
+  async () => {
+    const printability = await sealedMakeCase({
+      family: "printability-check",
+      schemaVersion: PRINTABILITY_CASE_CAPTURE_SCHEMA,
+      operation: INDUSTRIALIZE_SEAL_PRINTABILITY_CASE_OPERATION,
+      caseObject: printabilityCase(),
+      caseField: "printabilityCase",
+      artifactPrefix: "printability-case",
+      uriPrefix: PRINTABILITY_CASE_CAPTURE_URI_PREFIX,
+      trustedRunId: "run.printability.seal",
+    });
+    const estimate = await sealedMakeCase({
+      family: "print-estimate",
+      schemaVersion: PRINT_ESTIMATE_CASE_CAPTURE_SCHEMA,
+      operation: INDUSTRIALIZE_SEAL_PRINT_ESTIMATE_CASE_OPERATION,
+      caseObject: printEstimateCase(),
+      caseField: "printEstimateCase",
+      artifactPrefix: "print-estimate-case",
+      uriPrefix: PRINT_ESTIMATE_CASE_CAPTURE_URI_PREFIX,
+      trustedRunId: "run.print-estimate.seal",
+    });
+    const dfm = await sealedMakeCase({
+      family: "dfm-check",
+      schemaVersion: DFM_CASE_CAPTURE_SCHEMA,
+      operation: INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+      caseObject: dfmCase(),
+      caseField: "dfmCase",
+      artifactPrefix: "dfm-case",
+      uriPrefix: DFM_CASE_CAPTURE_URI_PREFIX,
+      trustedRunId: "run.dfm.seal",
+    });
+    const snapshot = workbenchFor([]);
+    const captures = new Map([
+      [printability.captureFingerprint, printability.captureText],
+      [estimate.captureFingerprint, estimate.captureText],
+      [dfm.captureFingerprint, dfm.captureText],
+    ]);
+    for (const sealed of [printability, estimate, dfm]) {
+      snapshot.artifacts.push(sealed.artifact);
+      snapshot.graph.nodes.push(
+        graphNode(
+          "artifact",
+          sealed.artifact.id,
+          "Irrelevant presentation",
+          "digital-thread",
+        ),
+      );
+    }
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        printabilityCheck: {
+          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
+        },
+        printEstimate: {
+          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
+        },
+        dfmCheck: {
+          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
+        },
+      }),
+      CASE_CONTEXT,
+    );
+
+    assertEquals(enriched.engineeringCases.status, "observed");
+    assertEquals(enriched.engineeringCases.issues, []);
+    assertEquals(
+      enriched.engineeringCases.cases.map((item) => item.family),
+      ["dfm-check", "print-estimate", "printability-check"],
+    );
+    assertEquals(
+      enriched.engineeringCases.coverage.map((item) => item.family),
+      [
+        "mechanical-proof",
+        "sensitivity-study",
+        "printability-check",
+        "print-estimate",
+        "dfm-check",
+      ],
+    );
   },
 );
 
@@ -511,16 +635,7 @@ function workbenchFor(proofs: readonly SealedProof[]): ThreadWorkbenchSnapshot {
       systemViews: {},
       components: [],
     },
-    verificationCases: {
-      schemaVersion: "thread-verification-cases/1.0",
-      status: "unavailable",
-      coverage: [
-        { family: "mechanical-proof", status: "unavailable" },
-        { family: "sensitivity-study", status: "unavailable" },
-      ],
-      cases: [],
-      issues: [],
-    },
+    engineeringCases: unavailableEngineeringCaseCatalog(),
     graph: { nodes, edges },
     evidenceFamilyGraph: {
       schemaVersion: "thread-evidence-family-graph/1.0",
@@ -662,4 +777,160 @@ function nodeByRef(
   return snapshot.graph.nodes.find((node) =>
     `${node.ref.kind}:${node.ref.id}` === reference
   );
+}
+
+async function sealedMakeCase(input: {
+  readonly family: "printability-check" | "print-estimate" | "dfm-check";
+  readonly schemaVersion: string;
+  readonly operation: { readonly id: string; readonly version: string };
+  readonly caseObject: unknown;
+  readonly caseField: "printabilityCase" | "printEstimateCase" | "dfmCase";
+  readonly artifactPrefix: string;
+  readonly uriPrefix: string;
+  readonly trustedRunId: string;
+}): Promise<{
+  readonly captureFingerprint: string;
+  readonly captureText: string;
+  readonly artifact: ThreadArtifact;
+}> {
+  const caseDigest = (await sha256Fingerprint(input.caseObject)).digest;
+  const capture = {
+    schemaVersion: input.schemaVersion,
+    operation: input.operation,
+    trustedRunId: input.trustedRunId,
+    caseDigest,
+    canonicalCaseText: deterministicJson(input.caseObject),
+    [input.caseField]: input.caseObject,
+    sealedAt: "2026-08-20T00:00:00.000Z",
+  };
+  const captureText = deterministicJson(capture);
+  const captureFingerprint = (await sha256Fingerprint(capture)).digest;
+  return {
+    captureFingerprint,
+    captureText,
+    artifact: {
+      id: `${input.artifactPrefix}-${caseDigest}`,
+      label: "Display text must not carry identity",
+      kind: "document",
+      system: "digital-thread",
+      revision: caseDigest,
+      freshness: "fresh",
+      fingerprint: `sha256:${captureFingerprint}`,
+      uri: `${input.uriPrefix}${captureFingerprint}`,
+      producedBy: `${input.operation.id}@${input.operation.version}`,
+      producerRunId: input.trustedRunId,
+      dependsOn: [],
+    },
+  };
+}
+
+function printabilityCase() {
+  return validatePrintabilityCheckCase({
+    schemaVersion: "printability-check-case/1.0",
+    id: "generic-product-v1-support-bracket-fdm-v1",
+    revision: 2,
+    scope: "FDM printability check for the isolated support bracket.",
+    evidenceBoundary: "Observations only; not a verdict or certification.",
+    project: {
+      id: PROOF_CASE.project.id,
+      subjectId: PROOF_CASE.project.subjectId,
+    },
+    target: { componentKey: "support-bracket" },
+    thresholds: {
+      minWallThicknessMm: { value: 1.2, unit: "mm" },
+      maxOverhangAngleDeg: { value: 45.0, unit: "deg" },
+      maxUnsupportedAreaMm2: { value: 600.0, unit: "mm2" },
+    },
+    meshSizeMm: { value: 2.0, unit: "mm" },
+    buildDirection: [0, 0, 1],
+    provider: {
+      build123dTool: "build123d_export",
+      thicknessTool: "dfm_check_min_thickness",
+      overhangTool: "dfm_check_overhangs",
+    },
+    limitations: [
+      "Thresholds are provisional FDM candidate values, not confirmed manufacturer data.",
+    ],
+    provenance: {
+      status: "provisional",
+      note: "Thresholds sourced from typical FDM desktop-printer guidelines.",
+    },
+  });
+}
+
+function printEstimateCase() {
+  return validatePrintEstimateCase({
+    schemaVersion: "print-estimate-case/1.0",
+    id: "reviewed-fff-estimate-v1",
+    revision: 1,
+    scope: "FFF print-time-and-material estimate for the isolated component.",
+    evidenceBoundary: "Observations only; not a cost quote, verdict, or certification.",
+    project: {
+      id: PROOF_CASE.project.id,
+      subjectId: PROOF_CASE.project.subjectId,
+    },
+    target: { componentKey: "support-bracket" },
+    profile: {
+      repoPath: "config/print-estimate-cases/reviewed-fff-0.2-pla.ini",
+      exportName: "reviewed-fff-0.2-pla",
+      sha256: "a".repeat(64),
+      layerHeightMm: { value: 0.2, unit: "mm" },
+      nozzleDiameterMm: { value: 0.4, unit: "mm" },
+      material: "PLA",
+    },
+    provider: {
+      build123dTool: "build123d_export",
+      prusaslicerTool: "prusaslicer_estimate_fff",
+    },
+    limitations: ["Profile parameters are provisional engineering candidates."],
+    provenance: {
+      status: "provisional",
+      note: "Profile parameters are reviewed candidates, not supplier data.",
+    },
+  });
+}
+
+function dfmCase() {
+  return validateDfmCheckCase({
+    schemaVersion: "dfm-check-case/1.0",
+    id: "generic-product-v1-support-bracket-dfm-v1",
+    revision: 1,
+    scope: "Measured DFM checks for the isolated support bracket.",
+    evidenceBoundary:
+      "Measured provider verdicts against the sealed case; a fail is a named violation, not a certification.",
+    project: {
+      id: PROOF_CASE.project.id,
+      subjectId: PROOF_CASE.project.subjectId,
+    },
+    target: {
+      componentKey: "support-bracket",
+      artifactUri: "thread-artifact://generic-product-v1/geometry-step-support-bracket",
+      sha256: "a".repeat(64),
+      mediaType: "model/step",
+    },
+    buildVolumeMm: {
+      x: { value: 250, unit: "mm" },
+      y: { value: 210, unit: "mm" },
+      z: { value: 200, unit: "mm" },
+    },
+    minThicknessMm: { value: 2, unit: "mm" },
+    maxOverhangAngleDeg: { value: 45, unit: "deg" },
+    meshSizeMm: { value: 2, unit: "mm" },
+    buildDirection: [0, 0, 1],
+    zMinFilter: {
+      enabled: true,
+      planeZMm: { value: -3, unit: "mm" },
+      toleranceMm: { value: 0.1, unit: "mm" },
+    },
+    provider: {
+      envelopeTool: "dfm_check_envelope",
+      thicknessTool: "dfm_check_min_thickness",
+      overhangTool: "dfm_check_overhangs",
+    },
+    limitations: ["Measured DFM is not a certification."],
+    provenance: {
+      status: "provisional",
+      note: "Thresholds are reviewed candidates, not supplier data.",
+    },
+  });
 }

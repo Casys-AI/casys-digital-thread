@@ -733,7 +733,7 @@ export function ThreadWorkbench({
       if (selectedNode) transientRefs.push(selectedNode.ref);
     }
     const reconciliation = reconcileVerificationCaseContext(
-      workbench.thread.verificationCases ??
+      workbench.thread.engineeringCases ??
         UNAVAILABLE_VERIFICATION_CASE_CATALOG,
       evidenceRawGraphMemo,
       verificationCaseFilter,
@@ -1565,7 +1565,7 @@ export function ThreadWorkbench({
                           presentedMemberRef ?? lineageFocus,
                         )}
                         onSelectionChange={selectVerificationGraphItem}
-                        verificationCases={snapshot.verificationCases ??
+                        verificationCases={snapshot.engineeringCases ??
                           UNAVAILABLE_VERIFICATION_CASE_CATALOG}
                         verificationCaseNodes={evidenceRawGraphMemo!.nodes}
                         verificationCaseFilter={verificationCaseFilter}
