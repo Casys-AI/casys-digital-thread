@@ -81,6 +81,7 @@ is not permission to work ahead of its dependencies.
 | 08    | [DDD refactor](08-ddd-refactor-queue.md)                                     | M    | refactor    | findings from 01–07                        | Causal boundary cleanup only; no opportunistic architecture rewrite.                                              |
 | 09    | [algorithmic hardening](09-algorithmic-hardening-queue.md)                   | M    | refactor    | 08 and demonstrated failure modes          | Deterministic/correctness hardening traced to measured risks.                                                     |
 | 10    | [integration and demo closeout](10-integration-demo-closeout.md)             | S    | integration | accepted core; accepted refactor work only | Persisted-proof, replay, living-doc, demo-script and exact-scope closeout.                                        |
+| 11    | [stable engineering lifecycle](11-stable-engineering-lifecycle.md)           | E    | refactor    | observed UI lifecycle defects               | Explicit activity/revision/attempt identity from Project through the read-only Workbench.                         |
 
 Core demo lane is `01 → 02 → {03, 04, 05} → 06 → 07 → 10`. Lots 03, 04 and the
 contract-only beginning of 05 may advance independently after 02 when their paths do not
@@ -165,6 +166,7 @@ not a substitute for persisted evidence.
 | 08  | in progress (R07)     | R06 `402bc22`; R07 `a2a802d`                                                                            | isolated FEA remaining identity projections and completed-replay verification are a pure collaborator; CAS, WAL, CalculiX/SysON I/O remain adapter-owned; adapter 1137→942; focused tests: 15 pass | R08 or explicit park                       |
 | 09  | complete              | H03 `fc55d9f`; H04 grid `a2c35b8`; H04 names `a946e5e`; H04 stack safety `ebb2b88`; H05 audit 2026-08-22; H06 `d6a32b1`; H07 `ba4da10`; H08 catalog root confinement in this commit | H08 fail-closed `realPath` descendant check: `linked/case.json` directory-symlink escape rejected; absent/malformed/id-mismatch unchanged; focused reader tests: 4 pass | —                                          |
 | 10  | observed complete     | AL01 live walk through project r227 / Thread r26 plus this commit                                      | `deno task --frozen check` passed; `git diff --check` passed; Cursor Grok 4.6 xhigh Fast final read-only review: `MERGE`; GET/SSE Workbench aligned 26/26 | no human gate; X10 remains `unavailable`   |
+| 11  | in progress           | current worktree                                                                                        | Breaking activity/revision/attempt refactor authorized 2026-08-23; implementation delegated to Grok 4.6 `xhigh`                                                               | fresh post-refactor validation project     |
 
 ## Required handoff
 
