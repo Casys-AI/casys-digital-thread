@@ -37,6 +37,12 @@
   font-size: 10px;
   text-transform: uppercase;
 }
+.desktop-chat-availability {
+  color: #fde68a;
+  font: 9px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 
 .desktop-chat-panel {
   position: absolute;
@@ -110,6 +116,10 @@
   color: #0e7490;
   background: #ecfeff;
 }
+.desktop-chat .desktop-chat-rail button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
 
 .desktop-chat-new {
   margin: auto 16px;
@@ -129,6 +139,30 @@
 .desktop-chat-new > div {
   display: flex;
   gap: 7px;
+}
+
+.desktop-chat-unavailable {
+  margin: auto 16px;
+  padding: 18px;
+  border: 1px solid #d1d5db;
+  border-left: 4px solid #9ca3af;
+  background: #fff;
+}
+.desktop-chat-unavailable h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.desktop-chat-unavailable > p:not(.desktop-chat-interaction-kind) {
+  margin: 0 0 10px;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.desktop-chat-unavailable > p:last-child {
+  margin-bottom: 0;
+}
+.desktop-chat-unavailable-focus strong {
+  overflow-wrap: anywhere;
 }
 
 .desktop-chat input,

@@ -30,9 +30,10 @@ declare global {
 
 export function DesktopChat(
   { projectId }: { readonly projectId?: string },
-): JSX.Element | null {
+): JSX.Element {
   const bindings = desktopBindings();
-  const [open, setOpen] = useState(false);
+  const nativeChatAvailable = bindings !== undefined;
+  const [open, setOpen] = useState(!nativeChatAvailable);
   const [snapshot, setSnapshot] = useState<ChatSnapshotDto>();
   const [selectedId, setSelectedId] = useState<string | null>();
   const [error, setError] = useState<string>();
@@ -96,7 +97,6 @@ export function DesktopChat(
     }
   }, [bindings, refresh]);
 
-  if (!bindings) return null;
   const conversations =
     snapshot?.conversations.filter((conversation) =>
       conversation.projectId === projectId
@@ -104,27 +104,39 @@ export function DesktopChat(
   const selected = selectedConversation(snapshot, selectedId, projectId);
   return (
     <aside
-      className={`desktop-chat ${open ? "is-open" : ""}`}
+      className={`desktop-chat${open ? " is-open" : ""}${
+        nativeChatAvailable ? "" : " is-unavailable"
+      }`}
       aria-label="Project agent chat"
+      data-chat-runtime={nativeChatAvailable ? "native" : "browser-preview"}
     >
       <button
         type="button"
         className="desktop-chat-toggle"
         aria-expanded={open}
+        aria-controls="desktop-chat-panel"
         onClick={() => setOpen((value) => !value)}
       >
         <span className="desktop-chat-toggle-mark" aria-hidden="true">›_</span>
         <span>Project chat</span>
+        {!nativeChatAvailable && (
+          <span className="desktop-chat-availability">preview</span>
+        )}
         {selected?.status === "running" && (
           <span className="desktop-chat-live">live</span>
         )}
       </button>
       {open && (
-        <div className="desktop-chat-panel">
+        <div
+          className="desktop-chat-panel"
+          id="desktop-chat-panel"
+          role="region"
+          aria-labelledby="desktop-chat-title"
+        >
           <header className="desktop-chat-head">
             <div>
               <p className="desktop-chat-eyebrow">Casys agent console</p>
-              <h2>One project. One conversation.</h2>
+              <h2 id="desktop-chat-title">One project. One conversation.</h2>
             </div>
             <button
               type="button"
@@ -138,8 +150,11 @@ export function DesktopChat(
             conversations={conversations}
             selectedId={selected?.id}
             onSelect={setSelectedId}
+            interactive={nativeChatAvailable}
           />
-          {selected
+          {!nativeChatAvailable
+            ? <BrowserPreviewUnavailable projectId={projectId} />
+            : selected
             ? (
               <Conversation
                 conversation={selected}
@@ -147,7 +162,13 @@ export function DesktopChat(
                 command={command}
               />
             )
-            : <NewConversation projectId={projectId} busy={busy} command={command} />}
+            : (
+              <NewConversation
+                projectId={projectId}
+                busy={busy}
+                command={command}
+              />
+            )}
           {error && <p className="desktop-chat-error" role="alert">{error}</p>}
           <footer className="desktop-chat-foot">
             Transcript history is separate from authoritative Thread/CAS evidence.
@@ -162,16 +183,19 @@ function ConversationRail({
   conversations,
   selectedId,
   onSelect,
+  interactive,
 }: {
   readonly conversations: readonly ChatConversationDto[];
   readonly selectedId?: string;
   readonly onSelect: (id: string | null) => void;
+  readonly interactive: boolean;
 }): JSX.Element {
   return (
     <nav className="desktop-chat-rail" aria-label="Chat conversations">
       <button
         type="button"
         className={!selectedId ? "is-selected" : ""}
+        disabled={!interactive}
         onClick={() => onSelect(null)}
       >
         + New
@@ -181,6 +205,7 @@ function ConversationRail({
           type="button"
           key={conversation.id}
           className={conversation.id === selectedId ? "is-selected" : ""}
+          disabled={!interactive}
           onClick={() => onSelect(conversation.id)}
           title={`${conversation.projectId} · ${conversation.status}`}
         >
@@ -188,6 +213,29 @@ function ConversationRail({
         </button>
       ))}
     </nav>
+  );
+}
+
+function BrowserPreviewUnavailable(
+  { projectId }: { readonly projectId?: string },
+): JSX.Element {
+  return (
+    <section className="desktop-chat-unavailable" role="status">
+      <p className="desktop-chat-interaction-kind">
+        Browser preview · non-native
+      </p>
+      <h3>Native Chat is unavailable here</h3>
+      <p>
+        This Workbench preview does not expose the Deno Desktop binding. No
+        conversation is loaded and no command can be sent from this panel.
+      </p>
+      {projectId && (
+        <p className="desktop-chat-unavailable-focus">
+          Projected project <strong>{projectId}</strong>
+        </p>
+      )}
+      <p>Open the dashboard in the packaged Desktop app to use project chat.</p>
+    </section>
   );
 }
 
