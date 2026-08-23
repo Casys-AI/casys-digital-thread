@@ -278,6 +278,7 @@ Deno.test("Product structure is geometry-first with a compact SysML rail", async
   assertStringIncludes(source, "Product · sealed geometry");
   assertStringIncludes(source, "StructurePartChips");
   assertStringIncludes(source, "SysmlRail");
+  assertStringIncludes(source, "disabled={!available}");
   assertStringIncludes(source, "ProductSourcingCoverageLine");
   assertStringIncludes(source, "sealedAssemblyGlbAsset");
   assertStringIncludes(source, "GltfAssetCanvas");
@@ -293,6 +294,11 @@ Deno.test("Product structure is geometry-first with a compact SysML rail", async
   assertEquals(source.includes("partOccurrenceCount).padStart"), false);
   assertEquals(source.includes("Review published geometry"), false);
   assertEquals(source.includes("per-part GLB"), false);
+  assertEquals(source.includes("Catalog-bound meshes"), false);
+  assertEquals(
+    source.includes("if (inspect) onBindingSelect(inspect)"),
+    false,
+  );
 });
 
 Deno.test("the shared GLB viewer stays on a light surface", async () => {

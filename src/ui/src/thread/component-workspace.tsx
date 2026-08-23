@@ -71,6 +71,15 @@ export function ComponentWorkspace({
   const components = snapshot.components.components;
   const cadCoverage = cadSurfaceCoverage(snapshot);
   const sealedAssembly = resolveSealedAssemblyGeometry(snapshot);
+  const cadComponentIds = useMemo(
+    () =>
+      new Set(
+        components.flatMap((component) =>
+          resolveCadSurface(snapshot, component) ? [component.id] : []
+        ),
+      ),
+    [components, snapshot],
+  );
   const structure = productStructureAvailability(snapshot);
   const selected =
     components.find((component) => component.id === selectedComponentId) ??
@@ -192,18 +201,13 @@ export function ComponentWorkspace({
               <StructurePartChips
                 components={components}
                 selectedId={selected.id}
+                availableIds={cadComponentIds}
                 sealLabel={sealedAssembly
                   ? sealedAssembly.assemblyFormats.join(" · ") + " · SEALED"
                   : undefined}
                 onSelect={(component) => {
                   onComponentSelect(component);
                   onProviderChange("build123d");
-                  const cad = resolveCadSurface(snapshot, component);
-                  const assemblyInspect = component.kind === "assembly"
-                    ? sealedAssembly?.inspectionBinding
-                    : undefined;
-                  const inspect = cad?.inspectionBinding ?? assemblyInspect;
-                  if (inspect) onBindingSelect(inspect);
                 }}
               />
               <div
@@ -213,7 +217,6 @@ export function ComponentWorkspace({
                 <CadGeometry
                   snapshot={snapshot}
                   selected={selected}
-                  onSelect={onComponentSelect}
                   onInspect={onBindingSelect}
                 />
               </div>
@@ -274,11 +277,13 @@ export function ComponentWorkspace({
 function StructurePartChips({
   components,
   selectedId,
+  availableIds,
   sealLabel,
   onSelect,
 }: {
   components: readonly ThreadComponent[];
   selectedId: string;
+  availableIds: ReadonlySet<string>;
   sealLabel?: string;
   onSelect: (component: ThreadComponent) => void;
 }): JSX.Element {
@@ -288,18 +293,25 @@ function StructurePartChips({
       aria-label="Catalog components"
     >
       <div className="flex flex-1 flex-wrap gap-1.5">
-        {components.map((component) => (
-          <Button
-            key={component.id}
-            size="sm"
-            variant={component.id === selectedId ? "default" : "outline"}
-            aria-pressed={component.id === selectedId}
-            className="h-7 px-2.5"
-            onClick={() => onSelect(component)}
-          >
-            {component.label}
-          </Button>
-        ))}
+        {components.map((component) => {
+          const available = availableIds.has(component.id);
+          return (
+            <Button
+              key={component.id}
+              size="sm"
+              variant={component.id === selectedId && available
+                ? "default"
+                : "outline"}
+              aria-pressed={component.id === selectedId}
+              className="h-7 px-2.5"
+              disabled={!available}
+              title={available ? undefined : "No exact CAD geometry linked"}
+              onClick={() => onSelect(component)}
+            >
+              {component.label}
+            </Button>
+          );
+        })}
       </div>
       {sealLabel && (
         <span className="shrink-0 font-mono text-[9.5px] text-muted-foreground">
@@ -492,10 +504,9 @@ function sysonTerminology(
   };
 }
 
-function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
+function CadGeometry({ snapshot, selected, onInspect }: {
   snapshot: ThreadWorkbenchSnapshot;
   selected: ThreadComponent;
-  onSelect: (component: ThreadComponent) => void;
   onInspect: (binding: ThreadComponentBinding) => void;
 }): JSX.Element {
   const binding = bindingFor(selected, "build123d");
@@ -521,10 +532,6 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
     : undefined;
   const geometryBlocker = sealedAssemblyGeometryBlocker(snapshot);
   const meshStatus = resolveCadMeshStatus(snapshot, selected);
-  const available = snapshot.components.components.flatMap((component) => {
-    const candidate = resolveCadSurface(snapshot, component);
-    return candidate?.preview ? [component] : [];
-  });
   return (
     <section className="flex flex-col gap-4" aria-label="build123d geometry">
       {geometryBlocker && (
@@ -649,25 +656,6 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
                   : "This revision contains neither a catalog-bound assembly mesh nor a generic sealed assembly result."}
               </p>
             </div>
-            {available.length > 0 && (
-              <div className="flex flex-col items-center gap-2">
-                <small className="text-xs font-medium text-muted-foreground">
-                  Catalog-bound meshes
-                </small>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {available.map((component) => (
-                    <Button
-                      key={component.id}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onSelect(component)}
-                    >
-                      {component.label} →
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
       {surface && selected.kind !== "assembly" && (
