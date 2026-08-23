@@ -360,7 +360,9 @@ async function createFixture(options: {
   readonly experienceOutcome?: "miss" | "hit" | "hit-interrupt";
   readonly experienceAdmissionFails?: boolean;
 } = {}) {
-  const directory = await Deno.makeTempDir({ prefix: "sensitivity-run-" });
+  const directory = await Deno.realPath(
+    await Deno.makeTempDir({ prefix: "sensitivity-run-" }),
+  );
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
       await Deno.readTextFile(

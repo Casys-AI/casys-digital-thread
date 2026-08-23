@@ -34,6 +34,7 @@ import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapsho
 import type { ThreadSnapshotStore } from "../../../../domain/thread/thread-snapshot-store.ts";
 import { reconstructSensitivityEdgesFromStudyCapture } from "../../../../domain/sensitivity/edges/sensitivity-edge-from-study.ts";
 import {
+  isSensitivityStudyResultArtifactId,
   type SensitivityStudyResult,
   validateSensitivityStudyResult,
 } from "../../../../domain/sensitivity/study/sensitivity-study-result.ts";
@@ -257,7 +258,7 @@ function requireStudyArtifact(
     throw new TypeError("The study capture is absent, stale, or ambiguous.");
   }
   const artifact = matches[0]!;
-  if (artifact.id !== `sensitivity-study-${artifact.fingerprint.digest}`) {
+  if (!isSensitivityStudyResultArtifactId(artifact.id, artifact.fingerprint)) {
     throw new TypeError(
       "The study capture artifact id must derive from its fingerprint.",
     );

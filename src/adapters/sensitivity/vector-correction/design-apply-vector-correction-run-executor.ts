@@ -66,6 +66,7 @@ import {
 } from "./vector-correction-capture.ts";
 import { reconstructSensitivityEdgesFromStudyCapture } from "../../../domain/sensitivity/edges/sensitivity-edge-from-study.ts";
 import {
+  isSensitivityStudyResultArtifactId,
   type SensitivityStudyResult,
   validateSensitivityStudyResult,
 } from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
@@ -526,7 +527,7 @@ function requireBoundStudyArtifact(
       "The bound studyCapture id does not match the signed studyCapture.artifactId.",
     );
   }
-  if (artifact.id !== `sensitivity-study-${artifact.fingerprint.digest}`) {
+  if (!isSensitivityStudyResultArtifactId(artifact.id, artifact.fingerprint)) {
     throw invalidTransition(
       "The study capture artifact id must derive from its fingerprint.",
     );

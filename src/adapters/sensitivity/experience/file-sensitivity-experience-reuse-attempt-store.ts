@@ -1,5 +1,7 @@
 /** WAL for lookup/review/receipt before any sensitivity CAD dispatch. */
 
+import { join, parse, resolve } from "node:path";
+
 import {
   exactRecord,
   literalValue,
@@ -69,9 +71,11 @@ export class FileSensitivityExperienceReuseAttemptStore {
     if (!await this.#ensureDirectory(false)) return undefined;
     const path = await this.#path(projectId, runId);
     try {
-      return parseAttempt(
+      const attempt = parseAttempt(
         JSON.parse(await readRegularFile(path)),
       );
+      assertAttemptIdentity(attempt, projectId, runId);
+      return attempt;
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return undefined;
       throw error;
@@ -152,7 +156,7 @@ export class FileSensitivityExperienceReuseAttemptStore {
     if (current.status !== "reviewed-hit") {
       throw new Error("A sensitivity reuse miss cannot record a receipt.");
     }
-    return await this.#replace(current, {
+    return await this.#replace(input, current, {
       ...current,
       status: "receipt-recorded",
       receiptFingerprint: parseFingerprint(
@@ -174,7 +178,7 @@ export class FileSensitivityExperienceReuseAttemptStore {
         "Sensitivity reuse cannot become a miss after receipt publication.",
       );
     }
-    return await this.#replace(current, {
+    return await this.#replace(input, current, {
       ...current,
       status: "reviewed-miss",
       reviewFingerprint: parseFingerprint(
@@ -199,21 +203,29 @@ export class FileSensitivityExperienceReuseAttemptStore {
       throw new Error("Sensitivity reuse cannot complete before its receipt.");
     }
     const snapshot = parseSnapshot(input.snapshot);
-    return await this.#replace(current, { ...current, status: "completed", snapshot });
+    return await this.#replace(input, current, {
+      ...current,
+      status: "completed",
+      snapshot,
+    });
   }
 
   async #required(projectId: string, runId: string) {
     const current = await this.read(projectId, runId);
     if (!current) throw new Error("Sensitivity experience reuse WAL is absent.");
+    assertAttemptIdentity(current, projectId, runId);
     return current;
   }
 
   async #replace(
+    requested: { readonly projectId: string; readonly runId: string },
     current: SensitivityExperienceReuseAttempt,
     next: SensitivityExperienceReuseAttempt,
   ): Promise<SensitivityExperienceReuseAttempt> {
+    assertAttemptIdentity(current, requested.projectId, requested.runId);
+    assertAttemptIdentity(next, requested.projectId, requested.runId);
     await this.#ensureDirectory(false);
-    const path = await this.#path(current.projectId, current.runId);
+    const path = await this.#path(requested.projectId, requested.runId);
     await assertRegularFile(path);
     await replaceAttemptFileDurably(
       path,
@@ -225,26 +237,32 @@ export class FileSensitivityExperienceReuseAttemptStore {
   }
 
   async #path(projectId: string, runId: string): Promise<string> {
+    if (!this.#canonicalDirectory) {
+      throw new Error("Sensitivity experience reuse WAL directory is not confined.");
+    }
     const identity = await sha256Fingerprint({
       schemaVersion: "sensitivity-experience-reuse-attempt-key/1.0",
       projectId,
       runId,
     });
-    return `${this.directory.replace(/\/$/, "")}/${identity.digest}.json`;
+    return `${this.#canonicalDirectory}/${identity.digest}.json`;
   }
 
   async #ensureDirectory(create: boolean): Promise<boolean> {
-    if (create) await Deno.mkdir(this.directory, { recursive: true });
-    let info: Deno.FileInfo;
-    try {
-      info = await Deno.lstat(this.directory);
-    } catch (error) {
-      if (!create && error instanceof Deno.errors.NotFound) return false;
-      throw error;
+    let present = await assertDirectoryChainHasNoSymlink(this.directory);
+    if (!present) {
+      if (!create) return false;
+      await Deno.mkdir(this.directory, { recursive: true });
+      present = await assertDirectoryChainHasNoSymlink(this.directory);
+      if (!present) {
+        throw new Error(
+          `Sensitivity experience reuse WAL directory was not created: ${this.directory}.`,
+        );
+      }
     }
     const canonicalDirectory = await Deno.realPath(this.directory);
     if (
-      info.isSymlink || !info.isDirectory ||
+      canonicalDirectory !== resolve(this.directory) ||
       (this.#canonicalDirectory !== undefined &&
         canonicalDirectory !== this.#canonicalDirectory)
     ) {
@@ -255,6 +273,34 @@ export class FileSensitivityExperienceReuseAttemptStore {
     this.#canonicalDirectory ??= canonicalDirectory;
     return true;
   }
+}
+
+async function assertDirectoryChainHasNoSymlink(path: string): Promise<boolean> {
+  const absolute = resolve(path);
+  const parsed = parse(absolute);
+  let cursor = parsed.root;
+  let missing = false;
+  for (const component of absolute.slice(parsed.root.length).split("/")) {
+    if (component === "") continue;
+    cursor = join(cursor, component);
+    if (missing) continue;
+    let info: Deno.FileInfo;
+    try {
+      info = await Deno.lstat(cursor);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) {
+        missing = true;
+        continue;
+      }
+      throw error;
+    }
+    if (info.isSymlink || !info.isDirectory) {
+      throw new Error(
+        `Sensitivity experience reuse WAL has a symlinked or non-directory ancestor: ${cursor}.`,
+      );
+    }
+  }
+  return !missing;
 }
 
 async function readRegularFile(path: string): Promise<string> {
@@ -335,6 +381,18 @@ function parseAttempt(value: unknown): SensitivityExperienceReuseAttempt {
     receiptFingerprint,
     snapshot: parseSnapshot(root.snapshot),
   };
+}
+
+function assertAttemptIdentity(
+  attempt: Pick<SensitivityExperienceReuseAttempt, "projectId" | "runId">,
+  projectId: string,
+  runId: string,
+): void {
+  if (attempt.projectId !== projectId || attempt.runId !== runId) {
+    throw new Error(
+      "Sensitivity experience reuse WAL identity is divergent from the requested tuple.",
+    );
+  }
 }
 
 function parseSnapshot(value: unknown): {

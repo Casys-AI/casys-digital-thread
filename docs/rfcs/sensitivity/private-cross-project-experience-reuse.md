@@ -67,8 +67,10 @@ attempt WAL are implemented under
 [`src/adapters/sensitivity/experience/`](../../../src/adapters/sensitivity/experience/).
 Admission and every hit revalidate the frozen compiler, profile, CAD runtime, solver
 provider/lowerer/parser/validator and the exact observed pinned solver container image.
-Missing identity or unhealthy evidence is unavailable; multiple different results under
-one key are unresolved.
+The source project's current intact Thread tip must descend from the exact source
+snapshot bound at admission, and every bound artifact must still be fresh. Missing
+identity, lineage, freshness, or unhealthy evidence is `unavailable`; multiple different
+results under one key are `unresolved`.
 
 Fresh captures remain `sensitivity-study-capture/1.0`. A reuse never fabricates CAD
 evidence: downstream base evaluation, sensitivity-edge rendering, vector correction, and
@@ -76,6 +78,11 @@ corrected-source preparation reopen the explicit scientific result union. Target
 observations are rebuilt from the reused measurements and cite only the target result.
 The target Thread contains no source capture, source MRTR, source URI, or readable
 source origin.
+
+The pre-dispatch reuse WAL is recovery state, not evidence. Its directory and complete
+ancestor chain must remain real directories, every record must recross the requested
+project/run tuple, and a transplanted, malformed, symlinked, or divergent entry fails
+closed before it can select a read or rewrite destination.
 
 ## Scope and non-goals
 
@@ -197,7 +204,9 @@ CAD/solver calls when:
 
 - the target compiler derives a complete scientific key;
 - exactly one healthy installation-private entry has the same key;
-- the origin binding and its source evidence are reread and still valid;
+- the origin binding and its source evidence are reread and still valid and fresh;
+- the source project's current intact Thread tip descends from the exact source snapshot
+  named by that binding;
 - the active operation permits reuse for that freshness class; and
 - no invalidation or ambiguity exists.
 
@@ -216,6 +225,12 @@ If any predicate fails, the lookup returns a literal miss and the normal registe
 execution path continues. A lookup never silently upgrades a reused study to a fresh
 proof or human decision.
 
+Operationally, an `exact` review is the only hit. `incompatible` with
+`scientific-key-miss` is a normal exact-match miss; `unavailable` means the server could
+not prove required index, provenance, lineage, freshness, or health; `unresolved` means
+selection was ambiguous, including divergent results under one key. Every non-`exact`
+outcome requires the normal fresh execution path.
+
 ## Authority, audience, and isolation
 
 - The **server** admits derived records, builds the installation-private index, computes
@@ -233,7 +248,8 @@ proof or human decision.
 All experience storage and lookup stay inside one trusted local installation. There is
 no network fetch, upload, export, registry lookup, peer discovery, or cross-user read
 path. Loopback is a deployment boundary, not multi-user authentication; this RFC makes
-no team or tenant-isolation claim.
+no team or tenant-isolation claim. There is no team-sharing or marketplace surface in
+this lot.
 
 Generic logs, telemetry, ACP taps, and Workbench payloads must not contain derived study
 values, source-origin bindings, raw project data, or stable cross-project identifiers

@@ -30,6 +30,7 @@ import {
 } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
 import {
   makeSensitivityStudyReuseResult,
+  SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX,
   SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX,
   type SensitivityStudyResult,
 } from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
@@ -442,7 +443,9 @@ async function buildWorld(reuseResult = false) {
     })
     : freshCapture;
   const fingerprint = await sha256Fingerprint(capture);
-  const artifactId = `sensitivity-study-${fingerprint.digest}`;
+  const artifactId = reuseResult
+    ? `${SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX}${fingerprint.digest}`
+    : `sensitivity-study-${fingerprint.digest}`;
   const observationId = `sensitivity-base-${METRIC}-${fingerprint.digest}`;
   const evaluationId = "eval:disp";
   const requirementId = "req:disp";

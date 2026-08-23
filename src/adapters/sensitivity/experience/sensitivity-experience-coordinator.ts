@@ -41,7 +41,10 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
-import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
+import {
+  assertThreadSnapshotLineageIntact,
+  threadSnapshotDescendsFrom,
+} from "../../shared/stores/thread-snapshot-lineage.ts";
 import { validateSensitivityStudyCaseCapture } from "../study/sensitivity-study-case-capture.ts";
 import type {
   FeaSensitivityAttempt,
@@ -407,6 +410,13 @@ export class SensitivityExperienceCoordinator {
         currentSnapshot,
         this.dependencies.snapshots,
       );
+      if (
+        !await threadSnapshotDescendsFrom(
+          currentSnapshot,
+          sourceSnapshot,
+          this.dependencies.snapshots,
+        )
+      ) return undefined;
       const studyArtifact = requireHealthyArtifact(
         sourceSnapshot,
         origin.source.studyArtifact,

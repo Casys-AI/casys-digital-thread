@@ -97,6 +97,19 @@ Deno.test("vector-correction MRTR parameters round-trip exact identities and sca
   );
 });
 
+Deno.test("vector-correction MRTR accepts the exact reused-result artifact id", () => {
+  const decision = computedDecision();
+  const reused = {
+    ...decision,
+    studyCapture: {
+      ...decision.studyCapture,
+      artifactId: `sensitivity-study-reuse-result-${DIGEST}`,
+    },
+  };
+  const parameters = encodeVectorCorrectionDecisionParameters(reused);
+  assertEquals(parseVectorCorrectionDecisionParameters(parameters), reused);
+});
+
 Deno.test("vector-correction grammar rejects a study artifact id that does not derive from its sha256", () => {
   const decision = computedDecision();
   assertThrows(() =>

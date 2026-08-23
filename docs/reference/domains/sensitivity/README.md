@@ -31,8 +31,16 @@ Fresh execution still publishes `sensitivity-study-capture/1.0`. Base evaluation
 sensitivity edges, vector correction, and corrected-source preparation accept this
 closed scientific-result union without changing their existing freshness or MRTR rules.
 
-A miss, unavailable origin, target-basis drift, runtime drift, or divergent results
-fails closed to the normal registered execution path before dispatch. Review/receipt
-replay is WAL-backed. The installation-private index is reconstructible from append-only
-admission and invalidation journals; it is not an agent or Workbench surface. See the
+An `exact` review is the only hit. A scientific-key miss is `incompatible`; provenance,
+lineage, freshness, runtime, or index that cannot be proven is `unavailable`; divergent
+results under one key are `unresolved`. Before a hit, the server proves that the source
+project's current intact Thread tip descends from the exact admitted source snapshot and
+rereads every bound artifact as fresh. Every non-`exact` outcome fails closed to the
+normal registered execution path.
+
+Review/receipt replay is WAL-backed. The WAL rejects symlinked directory ancestors and
+records transplanted between project/run tuples before selecting any rewrite path. The
+installation-private index is reconstructible from append-only admission and
+invalidation journals; it is not an agent or Workbench surface. Nothing is shared with a
+team, another installation, a registry, or a marketplace. See the
 [implemented RFC](../../../rfcs/sensitivity/private-cross-project-experience-reuse.md).

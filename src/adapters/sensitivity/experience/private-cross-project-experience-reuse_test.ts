@@ -149,6 +149,38 @@ Deno.test("origin health and target basis are revalidated on every review", asyn
   }
 });
 
+Deno.test("an intact current branch that does not descend from the source is unavailable", async () => {
+  const harness = await createHarness();
+  try {
+    const source = await harness.addSource("source-project", 0);
+    const distinctBranch = validateThreadSnapshot({
+      ...source.snapshot,
+      id: "snapshot-source-project-distinct-branch",
+    });
+    harness.snapshots.set(distinctBranch.id, distinctBranch);
+    harness.projects.set("source-project", {
+      threadSnapshots: [{
+        snapshotId: distinctBranch.id,
+        revision: distinctBranch.revision,
+        subjectId: distinctBranch.subject.id,
+      }],
+    });
+
+    const target = await harness.target("target-project");
+    const lookup = await harness.coordinator.review({
+      projectId: "target-project",
+      basis: harness.targetBasis,
+      basisSnapshot: harness.targetSnapshot,
+      target,
+      reviewedAt: AT,
+    });
+    assertEquals(lookup.review.outcome, "unavailable");
+    assertEquals(lookup.review.reasons, ["source-unhealthy"]);
+  } finally {
+    await harness.dispose();
+  }
+});
+
 Deno.test("same key with divergent healthy results is unresolved", async () => {
   const harness = await createHarness();
   try {
@@ -273,6 +305,8 @@ async function createHarness() {
     admission,
     targetSnapshot,
     targetBasis,
+    snapshots,
+    projects,
     studyCaptures,
     target: async (projectId: string) =>
       await coordinator.compileTarget({
@@ -408,7 +442,7 @@ async function createHarness() {
         admittedAt: AT,
       });
       const saved = await repository.saveExperience(record, origin);
-      return { ...saved, studyArtifact };
+      return { ...saved, studyArtifact, snapshot };
     },
     dispose: () => Deno.remove(root, { recursive: true }),
   };

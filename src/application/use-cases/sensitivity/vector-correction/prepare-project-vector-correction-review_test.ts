@@ -18,6 +18,12 @@ import {
   SENSITIVITY_STUDY_CAPTURE_SCHEMA,
   type SensitivityStudyCapture,
 } from "../../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+import {
+  makeSensitivityStudyReuseResult,
+  SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX,
+  SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX,
+  type SensitivityStudyResult,
+} from "../../../../domain/sensitivity/study/sensitivity-study-result.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl04";
@@ -32,6 +38,18 @@ Deno.test("the review tool does not persist any Thread artefact", async () => {
   parseVectorCorrectionDecisionParameters(result.decisionParameters);
   assertEquals(fixture.snapshots.saves, 0);
   assertEquals(fixture.captures.saves, 0);
+});
+
+Deno.test("vector-correction review signs the exact reused-result artifact id", async () => {
+  const fixture = await harness({ reuseResult: true });
+  const result = await fixture.service.execute(fixture.command);
+  assertEquals(result.status, "ready-for-review");
+  if (result.status !== "ready-for-review") return;
+  const signed = parseVectorCorrectionDecisionParameters(result.decisionParameters);
+  assertEquals(
+    signed.studyCapture.artifactId,
+    `${SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX}${signed.studyCapture.fingerprint.digest}`,
+  );
 });
 
 Deno.test("une évaluation UNLINKED à la study capture ne produit aucun decisionParameters", async () => {
@@ -54,7 +72,12 @@ Deno.test("vector-correction review rejects a missing study capture", async () =
   );
 });
 
-async function harness(options: { readonly unlinkEvaluation?: boolean } = {}) {
+async function harness(
+  options: {
+    readonly unlinkEvaluation?: boolean;
+    readonly reuseResult?: boolean;
+  } = {},
+) {
   const built = await buildStudyWorld(options);
   const snapshots = new MemorySnapshots(built.snapshot);
   const captures = new MemoryStudyCaptures(built.fingerprint, built.captureText);
@@ -80,7 +103,12 @@ async function harness(options: { readonly unlinkEvaluation?: boolean } = {}) {
   };
 }
 
-async function buildStudyWorld(options: { readonly unlinkEvaluation?: boolean } = {}) {
+async function buildStudyWorld(
+  options: {
+    readonly unlinkEvaluation?: boolean;
+    readonly reuseResult?: boolean;
+  } = {},
+) {
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
       await Deno.readTextFile(
@@ -100,7 +128,7 @@ async function buildStudyWorld(options: { readonly unlinkEvaluation?: boolean } 
     { metric: "assembly_max_displacement", value: 0.996, unit: "mm" },
     { metric: "assembly_max_von_mises", value: 8, unit: "MPa" },
   ];
-  const capture: SensitivityStudyCapture = {
+  const freshCapture: SensitivityStudyCapture = {
     schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
     operation: { id: "analyze.run-fea-sensitivity", version: "1" },
     trustedRunId: "run.sensitivity",
@@ -128,8 +156,27 @@ async function buildStudyWorld(options: { readonly unlinkEvaluation?: boolean } 
     ),
     capturedAt: AT,
   };
+  const capture: SensitivityStudyResult = options.reuseResult
+    ? await makeSensitivityStudyReuseResult({
+      trustedRunId: "run.sensitivity",
+      studyCase,
+      record: {
+        result: {
+          measurements: { base, stepped },
+          derivatives: freshCapture.derivatives,
+        },
+      } as never,
+      reuseReceiptFingerprint: {
+        algorithm: "sha256",
+        digest: "6".repeat(64),
+      },
+      capturedAt: AT,
+    })
+    : freshCapture;
   const fingerprint = await sha256Fingerprint(capture);
-  const artifactId = `sensitivity-study-${fingerprint.digest}`;
+  const artifactId = options.reuseResult
+    ? `${SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX}${fingerprint.digest}`
+    : `sensitivity-study-${fingerprint.digest}`;
   const observationId = `sensitivity-base-${METRIC}-${fingerprint.digest}`;
   const citedObservationId = options.unlinkEvaluation ? "obs:proof" : observationId;
   const evaluationId = "eval:disp";
@@ -180,10 +227,12 @@ async function buildStudyWorld(options: { readonly unlinkEvaluation?: boolean } 
       {
         id: artifactId,
         name: "Sensitivity study",
-        kind: "evidence",
+        kind: options.reuseResult ? "document" : "evidence",
         version: fingerprint.digest,
         fingerprint,
-        uri: `casys://sensitivity-study-capture/sha256/${fingerprint.digest}`,
+        uri: options.reuseResult
+          ? `${SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX}${fingerprint.digest}`
+          : `casys://sensitivity-study-capture/sha256/${fingerprint.digest}`,
         mediaType: "application/json",
         producer: {
           serverId: "digital-thread",

@@ -20,6 +20,7 @@ import {
   CORRECTION_PROPOSAL_SCHEMA,
   type CorrectionProposal,
 } from "./propose-vector-correction.ts";
+import { isSensitivityStudyResultArtifactId } from "../study/sensitivity-study-result.ts";
 
 export const DESIGN_APPLY_VECTOR_CORRECTION_OPERATION = Object.freeze(
   {
@@ -246,7 +247,7 @@ export function validateVectorCorrectionDecisionParameters(
     `${path}.studyCapture.fingerprint`,
   );
   const artifactId = safeId(studyCapture.artifactId, `${path}.studyCapture.artifactId`);
-  if (artifactId !== `sensitivity-study-${fingerprint.digest}`) {
+  if (!isSensitivityStudyResultArtifactId(artifactId, fingerprint)) {
     throw new TypeError(
       `${path}.studyCapture.artifactId must be derived from its exact fingerprint.`,
     );

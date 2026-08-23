@@ -20,6 +20,9 @@ export const SENSITIVITY_STUDY_REUSE_RESULT_SCHEMA =
   "sensitivity-study-reuse-result/1.0" as const;
 export const SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX =
   "casys://sensitivity-study-reuse-result/sha256/" as const;
+export const SENSITIVITY_STUDY_FRESH_ARTIFACT_ID_PREFIX = "sensitivity-study-" as const;
+export const SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX =
+  "sensitivity-study-reuse-result-" as const;
 
 export interface SensitivityStudyReuseResult {
   readonly schemaVersion: typeof SENSITIVITY_STUDY_REUSE_RESULT_SCHEMA;
@@ -39,6 +42,17 @@ export interface SensitivityStudyReuseResult {
 export type SensitivityStudyResult =
   | SensitivityStudyCapture
   | SensitivityStudyReuseResult;
+
+/** Closed Thread identity union for fresh captures and target-local reuse results. */
+export function isSensitivityStudyResultArtifactId(
+  artifactId: string,
+  fingerprint: ContentFingerprint,
+): boolean {
+  return artifactId ===
+      `${SENSITIVITY_STUDY_FRESH_ARTIFACT_ID_PREFIX}${fingerprint.digest}` ||
+    artifactId ===
+      `${SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX}${fingerprint.digest}`;
+}
 
 export async function makeSensitivityStudyReuseResult(input: {
   readonly trustedRunId: string;
