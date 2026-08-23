@@ -41,3 +41,91 @@ Deno.test("agent run journal item names keep cancelled and failed literal", asyn
   assertEquals(helper.includes('"Failed"'), false);
   assertEquals(helper.includes('"Cancelled"'), false);
 });
+
+Deno.test("operations leads with recorded execution and human confirmations", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/work.tsx", import.meta.url),
+  );
+  const start = source.indexOf("export function ProjectOperations");
+  const end = source.indexOf("/** Read-only L5 evidence card", start);
+  const operations = source.slice(start, end);
+
+  const queue = operations.indexOf("<QueueCard");
+  const confirmations = operations.indexOf("<MrtrCard");
+  const closeout = operations.indexOf("<EvaluationCloseoutCard");
+  const systems = operations.indexOf("<ContributingSystemsCard");
+  assertEquals(start >= 0 && end > start, true);
+  assertEquals(queue >= 0 && queue < confirmations, true);
+  assertEquals(confirmations < closeout && closeout < systems, true);
+  assertStringIncludes(operations, "Technical provenance");
+  assertStringIncludes(operations, "They are not runtime health checks.");
+});
+
+Deno.test("operations systems expose literal recorded state without row commands", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/work.tsx", import.meta.url),
+  );
+  const start = source.indexOf("function ContributingSystemsCard");
+  const end = source.indexOf("// MRTR card", start);
+  const systems = source.slice(start, end);
+
+  assertEquals(start >= 0 && end > start, true);
+  for (
+    const label of [
+      "Requirement",
+      "Recorded state",
+      "Last evidence",
+      "Required",
+      "Optional",
+      "Not declared",
+      "No project record",
+      "Fresh",
+      "Running",
+      "Failed",
+      "Stale",
+    ]
+  ) {
+    assertStringIncludes(systems, label);
+  }
+  assertEquals(systems.includes("onClick"), false);
+  assertEquals(systems.includes("<button"), false);
+  assertEquals(systems.includes("<a "), false);
+  assertEquals(systems.includes("p50"), false);
+  assertEquals(systems.includes("uptime"), false);
+});
+
+Deno.test("operations closeout keeps exact evidence identifiers behind details", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/work.tsx", import.meta.url),
+  );
+  const start = source.indexOf("function EvaluationCloseoutCard");
+  const end = source.indexOf("// Contributing systems", start);
+  const closeout = source.slice(start, end);
+
+  assertEquals(start >= 0 && end > start, true);
+  assertStringIncludes(closeout, "<details");
+  assertStringIncludes(
+    closeout,
+    "Review criteria, proof boundaries and evidence identifiers",
+  );
+  assertStringIncludes(closeout, "card.evidence.canonicalStep.id");
+  assertStringIncludes(closeout, "card.evidence.sealedProof.id");
+  assertStringIncludes(closeout, "card.evidence.executionEvidence.id");
+  assertStringIncludes(closeout, "card.evidence.evaluationCapture.id");
+});
+
+Deno.test("operations page heading describes recorded state rather than fleet health", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/thread/workbench.tsx", import.meta.url),
+  );
+  const start = source.indexOf("function operationsHeadline");
+  const end = source.indexOf("function workspaceTitle", start);
+  const heading = source.slice(start, end);
+
+  assertEquals(start >= 0 && end > start, true);
+  assertStringIncludes(source, "Operations · recorded execution");
+  assertStringIncludes(heading, 'run.status === "running"');
+  assertStringIncludes(heading, 'run.status === "queued"');
+  assertStringIncludes(heading, "human confirmation");
+  assertEquals(heading.includes("MCP surfaces"), false);
+});

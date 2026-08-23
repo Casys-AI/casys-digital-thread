@@ -1,9 +1,9 @@
 import { createRoot } from "react-dom/client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { HttpCockpitFleetClient, HttpThreadWorkbenchClient } from "./client.ts";
 import { ThreadWorkbench } from "./workbench.tsx";
-import { DesktopChat } from "./desktop-chat.tsx";
+import { DesktopChat, desktopChatRuntimeAvailable } from "./desktop-chat.tsx";
 import "../styles.css";
 
 const root = document.querySelector<HTMLElement>("#native-preview");
@@ -27,11 +27,31 @@ const fleetClient = new HttpCockpitFleetClient(
  */
 function NativeCockpit(): JSX.Element {
   const [projectId, setProjectId] = useState<string>();
+  const [chatOpen, setChatOpen] = useState(false);
+  useEffect(() => {
+    // Browser preview reveals the honest unavailable state after Ark has mounted
+    // its content refs. Native Desktop keeps Chat closed until the operator asks.
+    if (!desktopChatRuntimeAvailable()) setChatOpen(true);
+  }, []);
   const focusProject = useCallback((next: string | undefined) => {
     setProjectId(next);
   }, []);
   return (
-    <div className="native-preview-shell">
+    <div
+      className="native-preview-shell"
+      data-chat-open={chatOpen ? "true" : "false"}
+    >
+      <a
+        className="skip-link"
+        href="#project-workspace-panel"
+        onClick={(event) => {
+          event.preventDefault();
+          globalThis.document?.getElementById("project-workspace-panel")
+            ?.focus();
+        }}
+      >
+        Skip to project workspace
+      </a>
       {/* Chaque vue possède son propre <main> : le harnais reste un div. */}
       <div className="native-preview-content">
         <ThreadWorkbench
@@ -40,7 +60,11 @@ function NativeCockpit(): JSX.Element {
           onProjectFocus={focusProject}
         />
       </div>
-      <DesktopChat projectId={projectId} />
+      <DesktopChat
+        projectId={projectId}
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+      />
     </div>
   );
 }

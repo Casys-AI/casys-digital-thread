@@ -57,23 +57,19 @@ Deno.test("earlier gates expand below the spine and follow the five thread lanes
     "expanded historical gates must not hide phase status as sr-only",
   );
 
-  const compactStart = overview.indexOf("// Pas de ligne lifecycle en compact");
-  const compactEnd = overview.indexOf("function NowPanel", compactStart);
-  const compact = overview.slice(compactStart, compactEnd);
-  assertEquals(compactStart >= 0, true);
   // Le bandeau n'écrit plus le statut sous chaque gate — répété huit fois il
   // cassait la ligne. Il doit rester dans le nom accessible de l'étape, et
   // l'état doit se distinguer par la FORME du nœud, pas par la seule couleur.
   const spineStart = overview.indexOf("function SpinePhase(");
-  const spine = overview.slice(
-    spineStart,
-    overview.indexOf("function ", spineStart + 10),
-  );
+  const spineEnd = overview.indexOf("function ", spineStart + 10);
+  const spine = overview.slice(spineStart, spineEnd);
+  assertEquals(spineStart >= 0, true);
+  assertEquals(spineEnd > spineStart, true);
   assertStringIncludes(spine, "phaseStatusLabel(item.status)");
   assertStringIncludes(spine, "aria-label=");
   assertStringIncludes(overview, "border-2 border-success bg-background");
   assertEquals(
-    compact.includes('className="sr-only"'),
+    spine.includes('className="sr-only"'),
     false,
     "compact spine phases must not hide planned as sr-only",
   );

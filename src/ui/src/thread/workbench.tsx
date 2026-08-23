@@ -47,7 +47,6 @@ import { productSourcingCoverage } from "../project/product-requirements-model.t
 import { ProductSourcingLane } from "../project/product-sourcing.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
 import { PlanningWorkbench } from "../project/planning-workbench.tsx";
-import { buildOperationsFleetView } from "../project/operations-fleet-model.ts";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
 import {
   type CockpitFleetClient,
@@ -88,7 +87,10 @@ import {
   type PartAnchorageResolution,
 } from "./part-anchorage-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
-import { ToolInspectorPanel, type WorkbenchToolIdentity } from "./tool-inspectors.tsx";
+import {
+  ToolInspectorPanel,
+  type WorkbenchToolIdentity,
+} from "./tool-inspectors.tsx";
 import {
   graphNodeForSelection,
   resolveToolInspectorTarget,
@@ -348,7 +350,8 @@ export function ThreadWorkbench({
       } else {
         const thread = next.thread;
         setSelectedComponentId(thread.components.components[0]?.id);
-        const liveNode = activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
+        const liveNode =
+          activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
         const initialSelection: ThreadRef = liveNode?.selection ??
           (thread.violations[0]
             ? { kind: "violation", id: thread.violations[0].id }
@@ -788,7 +791,9 @@ export function ThreadWorkbench({
     // Le fragment suit l'espace ouvert : recharger, revenir en arriere ou
     // partager le lien ramene au meme endroit du cockpit.
     pushWorkspaceHash(
-      next === "product" ? productFacetHash(activeProductFacet) : projectViewHash(next),
+      next === "product"
+        ? productFacetHash(activeProductFacet)
+        : projectViewHash(next),
     );
   };
 
@@ -1010,6 +1015,24 @@ export function ThreadWorkbench({
     }
   };
 
+  const selectActivityNode = (
+    node: ThreadGraphNode,
+    origin: "feed" | "lineage",
+  ) => {
+    if (
+      origin === "feed" && lineageFocus?.kind === node.ref.kind &&
+      lineageFocus.id === node.ref.id
+    ) {
+      setLineageFocus(undefined);
+      setGraphSelection(undefined);
+      return;
+    }
+    selectGraphNode(node, {
+      pauseLive: true,
+      inspect: false,
+    });
+  };
+
   const selectPresentedVersion = (node: ThreadGraphNode) => {
     ignoreStageResetUntilRef.current = performance.now() + 1_500;
     setPresentedVersionRef(node.ref);
@@ -1180,7 +1203,8 @@ export function ThreadWorkbench({
             <>
               <Tabs
                 value={drawerMode}
-                onValueChange={(mode) => setDrawerMode(mode as "tool" | "record")}
+                onValueChange={(mode) =>
+                  setDrawerMode(mode as "tool" | "record")}
               >
                 <TabsList aria-label="Inspector mode" className="w-full">
                   <TabsTrigger value="tool" className="flex-1">
@@ -1224,8 +1248,8 @@ export function ThreadWorkbench({
                 )
                 : (
                   <EmptyNotice>
-                    This graph entity has no richer record projection. Use the tool
-                    context to inspect its recorded neighbours.
+                    This graph entity has no richer record projection. Use the
+                    tool context to inspect its recorded neighbours.
                   </EmptyNotice>
                 )}
             </>
@@ -1279,8 +1303,9 @@ export function ThreadWorkbench({
           </strong>
           <span>
             The technical thread is at revision{" "}
-            {workbench.alignment.currentThreadRevision}, while project decisions remain
-            anchored to revision {workbench.alignment.projectThreadRevision}.
+            {workbench.alignment.currentThreadRevision}, while project decisions
+            remain anchored to revision{" "}
+            {workbench.alignment.projectThreadRevision}.
           </span>
         </Notice>
       )}
@@ -1294,9 +1319,10 @@ export function ThreadWorkbench({
               : "references do"} not resolve in this thread revision
           </strong>
           <span>
-            These project records cite thread entities or snapshots that the exact
-            revision cannot resolve (usually residues of abandoned work). The rest of
-            this page resolved. {workbench.unresolvedEvidenceReferences
+            These project records cite thread entities or snapshots that the
+            exact revision cannot resolve (usually residues of abandoned work).
+            The rest of this page resolved.{" "}
+            {workbench.unresolvedEvidenceReferences
               .map((issue) => issue.path)
               .join(", ")}
           </span>
@@ -1319,9 +1345,10 @@ export function ThreadWorkbench({
           />
         )
         : (
-          <section
+          <main
             className={`thread-flow-section project-workspace-page is-${activeView}`}
             id="project-workspace-panel"
+            tabIndex={-1}
             aria-labelledby="thread-flow-title"
           >
             <div className="mb-3 flex items-end justify-between gap-4 max-md:flex-col max-md:items-start">
@@ -1342,7 +1369,7 @@ export function ThreadWorkbench({
                     : activeView === "operations"
                     // Ce qu'on vient lire ici, c'est « combien de surfaces,
                     // dans quel état » — pas le mot « flotte ».
-                    ? operationsHeadline(fleet, snapshot, project)
+                    ? operationsHeadline(project)
                     : workspaceTitle(activeView, activeProductFacet)}
                 </h3>
                 <p className="text-sm text-muted-foreground">
@@ -1413,8 +1440,7 @@ export function ThreadWorkbench({
                         }
                       }}
                       onFollowLiveChange={changeFollowLive}
-                      onSelectNode={(node) =>
-                        selectGraphNode(node, { pauseLive: true })}
+                      onSelectNode={selectActivityNode}
                       onSelectEdge={(edge) => {
                         setGraphSelection({
                           kind: "edge",
@@ -1616,7 +1642,7 @@ export function ThreadWorkbench({
               </div>
               {activeView === "verification" && inspector}
             </div>
-          </section>
+          </main>
         )}
     </div>
   );
@@ -1644,17 +1670,24 @@ function workspaceEyebrow(
     return `Product · ${productFacetLabel(productFacet).toLowerCase()}`;
   }
   if (view === "verification") return "Verification · evidence exploration";
-  return "Operations · engineering fleet";
+  return "Operations · recorded execution";
 }
 
-/** Titre chiffré d'Operations : la flotte déclarée et ce qu'elle fait. */
+/** Recorded run and human-attention state; never provider liveness. */
 function operationsHeadline(
-  fleet: CockpitFleetProjection | undefined,
-  thread: ThreadWorkbenchSnapshot,
   project: EngineeringProjectSnapshot,
 ): string {
-  const view = buildOperationsFleetView(fleet, thread, project);
-  return `${view.summary.declared} MCP surfaces · ${view.summary.running} running · ${view.summary.observed} with recorded evidence`;
+  const running =
+    project.agentRuns.filter((run) => run.status === "running").length;
+  const queued = project.agentRuns.filter((run) => run.status === "queued")
+    .length;
+  const confirmations =
+    project.decisions.filter((decision) =>
+      decision.status === "proposed" || decision.status === "required"
+    ).length;
+  return `${running} running · ${queued} queued · ${confirmations} human confirmation${
+    confirmations === 1 ? "" : "s"
+  }`;
 }
 
 function workspaceTitle(
@@ -1692,7 +1725,7 @@ function workspaceDescription(
   if (view === "verification") {
     return "Recorded support and impact for each result.";
   }
-  return "Declared MCP surfaces, pending confirmations and the run queue.";
+  return "Read-only projection of recorded runs, human confirmations, closeouts and contributing systems.";
 }
 
 function FactList(
@@ -1743,7 +1776,9 @@ function MetricTiles(
 }
 
 function Mono({ children }: { children: ReactNode }): JSX.Element {
-  return <code className="font-mono text-xs text-muted-foreground">{children}</code>;
+  return (
+    <code className="font-mono text-xs text-muted-foreground">{children}</code>
+  );
 }
 
 function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
@@ -1801,11 +1836,12 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "asserted-by",
         label: "Asserted by",
-        value: `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
-          edge.analysis.assertedBy.version
-            ? ` @ ${edge.analysis.assertedBy.version}`
-            : ""
-        }`,
+        value:
+          `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
+            edge.analysis.assertedBy.version
+              ? ` @ ${edge.analysis.assertedBy.version}`
+              : ""
+          }`,
       },
       {
         id: "analysis-scope",
@@ -1894,9 +1930,10 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
         {!edge.attestation && edge.analysis
           ? (
             <Notice title="Qualified analysis assertion" tone="info">
-              This semantic relation is backed by the exact evidence listed above and is
-              classified as{" "}
-              {edge.analysis.epistemicBasis}. It does not grant execution authority.
+              This semantic relation is backed by the exact evidence listed
+              above and is classified as{" "}
+              {edge.analysis.epistemicBasis}. It does not grant execution
+              authority.
             </Notice>
           )
           : !edge.attestation && (
@@ -1950,7 +1987,9 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
     return <ChangeInspector snapshot={snapshot} />;
   }
   if (selection.kind === "artifact") {
-    const artifact = snapshot.artifacts.find((item) => item.id === selection.id);
+    const artifact = snapshot.artifacts.find((item) =>
+      item.id === selection.id
+    );
     return artifact
       ? (
         <ArtifactInspector
@@ -1962,7 +2001,9 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Artifact not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "observation") {
-    const observation = snapshot.observations.find((item) => item.id === selection.id);
+    const observation = snapshot.observations.find((item) =>
+      item.id === selection.id
+    );
     return observation
       ? (
         <ObservationInspector
@@ -1974,7 +2015,9 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Observation not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "requirement") {
-    const requirement = snapshot.requirements.find((item) => item.id === selection.id);
+    const requirement = snapshot.requirements.find((item) =>
+      item.id === selection.id
+    );
     return requirement
       ? (
         <RequirementInspector
@@ -1985,7 +2028,9 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       )
       : <EmptyNotice>Requirement not present in this snapshot.</EmptyNotice>;
   }
-  const violation = snapshot.violations.find((item) => item.id === selection.id);
+  const violation = snapshot.violations.find((item) =>
+    item.id === selection.id
+  );
   return violation
     ? (
       <ViolationInspector
@@ -2073,8 +2118,8 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
       <FactList items={artifactFacts(artifact)} />
       {artifact.freshness === "stale" && (
         <Notice title="Evidence invalidated" tone="warning">
-          This result predates a dependency. It remains available for provenance but
-          cannot support a current verdict.
+          This result predates a dependency. It remains available for provenance
+          but cannot support a current verdict.
         </Notice>
       )}
       {artifact.attestation && (
@@ -2082,7 +2127,9 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
           title={artifact.attestation.status === "verified"
             ? "Producer / consumer hash verified"
             : "Producer / consumer hash mismatch"}
-          tone={artifact.attestation.status === "verified" ? "success" : "danger"}
+          tone={artifact.attestation.status === "verified"
+            ? "success"
+            : "danger"}
         >
           {artifact.attestation.status === "verified"
             ? "The consumer used the exact fingerprint emitted by its upstream producer."
@@ -2398,7 +2445,9 @@ function summaryMetrics(
       label: "Evidence currency",
       value: artifacts.length,
       unit: `current${
-        historicalArtifactCount > 0 ? ` · ${historicalArtifactCount} historical` : ""
+        historicalArtifactCount > 0
+          ? ` · ${historicalArtifactCount} historical`
+          : ""
       }`,
       detail: stale > 0
         ? `${fresh} fresh · ${stale} current stale`
@@ -2412,7 +2461,9 @@ function summaryMetrics(
       unit: noCriterion ? "modelled" : "passing",
       detail: noCriterion
         ? "No model-owned criterion"
-        : `${failed} failed · ${requirements.length - passed - failed} unresolved` +
+        : `${failed} failed · ${
+          requirements.length - passed - failed
+        } unresolved` +
           (historicalRequirementCount > 0
             ? ` · ${historicalRequirementCount} prior version${
               historicalRequirementCount === 1 ? "" : "s"
@@ -2427,7 +2478,11 @@ function summaryMetrics(
       unit: "open",
       detail: snapshot.violations[0]?.id ??
         (noCriterion ? "verdict unavailable" : "no active violation"),
-      tone: snapshot.violations.length ? "danger" : noCriterion ? "warning" : "success",
+      tone: snapshot.violations.length
+        ? "danger"
+        : noCriterion
+        ? "warning"
+        : "success",
     },
   ];
 }

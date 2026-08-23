@@ -222,34 +222,9 @@ export function ProjectOperations({
   ).length;
 
   return (
-    <div className="flex flex-col gap-3.5">
-      {
-        /* Le titre porte les chiffres de la flotte : « combien, dans quel
-          état » est ce qu'on vient lire ici, pas le mot « flotte ». */
-      }
-      {/* Fleet cards */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
-        {view.cards.map((card) => (
-          <FleetServerCard
-            key={card.id}
-            card={card}
-          />
-        ))}
-      </div>
-      {view.declaredIdle.length > 0 && (
-        <p className="font-mono text-[10px] text-muted-foreground">
-          {"declared · no project records — "}
-          {view.declaredIdle.join(", ")}
-        </p>
-      )}
-
-      {thread.evaluationCloseouts && (
-        <EvaluationCloseoutCard index={thread.evaluationCloseouts} />
-      )}
-
-      {/* MRTR + Queue */}
-      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <MrtrCard decisions={pendingDecisions} />
+    <div className="flex flex-col gap-4">
+      {/* Recorded execution and human attention come before implementation surfaces. */}
+      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <QueueCard
           runs={activeRuns}
           runningCount={runningCount}
@@ -257,7 +232,14 @@ export function ProjectOperations({
           onOpenWork={onOpenWork}
           project={project}
         />
+        <MrtrCard decisions={pendingDecisions} />
       </div>
+
+      {thread.evaluationCloseouts && (
+        <EvaluationCloseoutCard index={thread.evaluationCloseouts} />
+      )}
+
+      <ContributingSystemsCard view={view} />
 
       <RunTimelineCard project={project} />
 
@@ -326,11 +308,20 @@ export function ProjectOperations({
         </div>
       </details>
 
-      {/* Page footer */}
-      <p className="font-mono text-[10px] text-muted-foreground">
-        declared fleet · config/mcp-fleet.json · no
-        {" LLM inside any tool"}
-      </p>
+      <details className={cn("overflow-hidden", CARD_SURFACE)}>
+        <summary className="cursor-pointer px-4 py-3 text-xs font-medium text-muted-foreground select-none">
+          Technical provenance
+        </summary>
+        <div className="space-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <p className="font-mono text-[10px]">
+            declared fleet · config/mcp-fleet.json · no LLM inside any tool
+          </p>
+          <p>
+            Surface states are derived from recorded Thread stages and evidence
+            timestamps. They are not runtime health checks.
+          </p>
+        </div>
+      </details>
     </div>
   );
 }
@@ -348,26 +339,40 @@ function EvaluationCloseoutCard({
     : index.status === "historical" || index.status === "unresolved"
     ? "warning"
     : "secondary";
+  const passingCriteria =
+    card?.criteria.filter((criterion) => criterion.status === "pass").length ??
+      0;
   return (
-    <Card className="overflow-hidden" data-closeout-family="static-mechanical">
+    <Card
+      className="overflow-hidden"
+      data-closeout-family="static-mechanical"
+      aria-labelledby="operations-closeout-title"
+    >
       <CardHeader className="flex-row items-center justify-between gap-3 border-b border-border px-3 py-2">
-        <span className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground">
+        <h4
+          id="operations-closeout-title"
+          className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
+        >
           STATIC-MECHANICAL L5 CLOSEOUT
-        </span>
+        </h4>
         <Badge variant={variant}>{sentenceLabel(index.status)}</Badge>
       </CardHeader>
       <CardContent className="px-3 py-3">
         {!card
           ? (
             <p className="text-sm text-muted-foreground">
-              No human static-mechanical closeout is recorded on this Thread.
-              L4 evidence, including a pass, is not L5.
+              No human static-mechanical closeout is recorded on this Thread. L4
+              evidence, including a pass, is not L5.
             </p>
           )
           : (
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={card.humanDisposition === "accept" ? "success" : "warning"}>
+                <Badge
+                  variant={card.humanDisposition === "accept"
+                    ? "success"
+                    : "warning"}
+                >
                   Human {card.humanDisposition}
                 </Badge>
                 <span className="font-mono text-[10px] text-muted-foreground">
@@ -375,37 +380,62 @@ function EvaluationCloseoutCard({
                     ? "all declared L4 criteria pass"
                     : "accept not eligible"}
                 </span>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {passingCriteria}/{card.criteria.length}{" "}
+                  declared L4 criteria pass
+                </span>
                 {card.humanDisposition === "reject" && (
                   <span className="font-mono text-[10px] text-muted-foreground">
                     disposition · {card.rejectionDisposition}
                   </span>
                 )}
               </div>
-              <ul className="space-y-1.5">
-                {card.criteria.map((criterion) => (
-                  <li
-                    key={criterion.evaluationId}
-                    className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs"
-                  >
-                    <Badge variant={criterion.status === "pass" ? "success" : criterion.status === "fail" ? "destructive" : "warning"}>
-                      {criterion.status}
-                    </Badge>
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {criterion.proofCriterionId} → {criterion.evaluationId}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs text-muted-foreground leading-snug">
-                Proof boundary · {card.proofLimitations.proofScope}. Evidence
-                boundary · {card.proofLimitations.evidenceBoundary}.
-              </p>
-              <p className="font-mono text-[10px] text-muted-foreground break-all">
-                basis {card.basis.snapshotId}@{card.basis.revision} · STEP {card.evidence.canonicalStep.id} · proof {card.evidence.sealedProof.id} · execution {card.evidence.executionEvidence.id} · L4 {card.evidence.evaluationCapture.id}
-              </p>
               <p className="text-[11px] text-muted-foreground">
-                Read-only record: no engine, SysON, CAD, correction, or MCP command is available here.
+                Read-only record: no engine, SysON, CAD, correction, or MCP
+                command is available here.
               </p>
+              <details className="rounded-md border border-border bg-muted/20">
+                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted-foreground select-none">
+                  Review criteria, proof boundaries and evidence identifiers
+                </summary>
+                <div className="space-y-2.5 border-t border-border px-3 py-3">
+                  <ul className="space-y-1.5">
+                    {card.criteria.map((criterion) => (
+                      <li
+                        key={criterion.evaluationId}
+                        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs"
+                      >
+                        <Badge
+                          variant={criterion.status === "pass"
+                            ? "success"
+                            : criterion.status === "fail"
+                            ? "destructive"
+                            : "warning"}
+                        >
+                          {criterion.status}
+                        </Badge>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {criterion.proofCriterionId} →{" "}
+                          {criterion.evaluationId}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-muted-foreground leading-snug">
+                    Proof boundary ·{" "}
+                    {card.proofLimitations.proofScope}. Evidence boundary ·{" "}
+                    {card.proofLimitations.evidenceBoundary}.
+                  </p>
+                  <p className="font-mono text-[10px] text-muted-foreground break-all">
+                    basis {card.basis.snapshotId}@{card.basis.revision} · STEP
+                    {" "}
+                    {card.evidence.canonicalStep.id} · proof{" "}
+                    {card.evidence.sealedProof.id} · execution{" "}
+                    {card.evidence.executionEvidence.id} · L4{" "}
+                    {card.evidence.evaluationCapture.id}
+                  </p>
+                </div>
+              </details>
             </div>
           )}
       </CardContent>
@@ -414,76 +444,137 @@ function EvaluationCloseoutCard({
 }
 
 // ---------------------------------------------------------------------------
-// Fleet server card
+// Contributing systems
 // ---------------------------------------------------------------------------
 
-function FleetServerCard({
-  card,
+function ContributingSystemsCard({
+  view,
 }: {
-  card: FleetCardView;
+  view: ReturnType<typeof buildOperationsFleetView>;
 }): JSX.Element {
-  const isRunning = card.state === "running";
-  const hasEvidence = card.lastEvidenceAt !== undefined;
+  const summary = view.source === "declared-fleet"
+    ? `${view.summary.declared} declared · ${view.summary.observed} with recorded evidence`
+    : `${view.summary.observed} observed · declared manifest unavailable`;
   return (
-    <article
-      data-state={card.state}
-      className={cn(
-        "rounded-lg p-2.5",
-        isRunning
-          ? "border border-brand/40 bg-brand/5"
-          : hasEvidence
-          ? "border border-border bg-card shadow-sm"
-          : "border border-dashed border-border bg-card",
-      )}
+    <Card
+      className="overflow-hidden"
+      aria-labelledby="operations-systems-title"
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-foreground leading-none">
-          {card.displayName}
+      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-4 py-3">
+        <h4
+          id="operations-systems-title"
+          className={SECTION_LABEL}
+        >
+          Contributing engineering systems
+        </h4>
+        <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+          {summary}
         </span>
-        <StatusDot freshness={card.freshness} />
+      </CardHeader>
+      {view.cards.length > 0
+        ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse text-left">
+              <caption className="sr-only">
+                Declared or observed engineering systems and their recorded
+                project state
+              </caption>
+              <thead className="bg-muted/30">
+                <tr className="border-b border-border">
+                  {[
+                    "Surface",
+                    "Role",
+                    "Requirement",
+                    "Recorded state",
+                    "Last evidence",
+                    "Stages",
+                  ].map((label) => (
+                    <th
+                      key={label}
+                      scope="col"
+                      className="px-4 py-2 font-mono text-[9.5px] font-medium uppercase tracking-[.08em] text-muted-foreground"
+                    >
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {view.cards.map((card) => (
+                  <tr key={card.id} data-state={card.state}>
+                    <td className="px-4 py-3 align-top">
+                      <p className="text-sm font-semibold text-foreground">
+                        {card.displayName}
+                      </p>
+                      {card.id !== card.displayName && (
+                        <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                          {card.id}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground align-top">
+                      {card.role || "Recorded system"}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <Badge variant="secondary">
+                        {fleetRequirementLabel(card)}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <Badge variant={fleetStateVariant(card)}>
+                        {fleetStateLabel(card)}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[10px] text-muted-foreground tabular-nums align-top">
+                      {card.lastEvidenceAt
+                        ? formatDateTime(card.lastEvidenceAt)
+                        : "Not recorded"}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-[10px] text-muted-foreground tabular-nums align-top">
+                      {card.stageCount}{" "}
+                      {card.stageCount === 1 ? "stage" : "stages"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+        : (
+          <CardContent className="px-4 py-5">
+            <p className="text-sm text-muted-foreground">
+              No contributing engineering system is recorded.
+            </p>
+          </CardContent>
+        )}
+      <div className="border-t border-border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+        {view.source === "declared-fleet"
+          ? "Declared surfaces with no project record remain visible. Recorded state is not runtime health."
+          : "Declared fleet manifest unavailable. Showing only systems observed in recorded Thread stages."}
       </div>
-      {card.role && (
-        <p className="mt-1 font-mono text-[9.5px] text-muted-foreground">
-          {card.role}
-        </p>
-      )}
-      <p className="mt-1.5 font-mono text-[10px] text-muted-foreground tabular-nums">
-        {hasEvidence
-          ? `last evidence ${formatDateTime(card.lastEvidenceAt!)}`
-          : "no recorded evidence"}
-      </p>
-      <p className="mt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
-        <span>{card.stageCount}</span>
-        {card.stageCount === 1 ? " stage" : " stages"}
-      </p>
-    </article>
+    </Card>
   );
 }
 
-function StatusDot({
-  freshness,
-}: {
-  freshness: FleetCardView["freshness"];
-}): JSX.Element {
-  if (freshness === "running") {
-    return (
-      <i
-        aria-label="running"
-        className="size-2.5 shrink-0 rounded-full border-2 border-brand bg-transparent"
-      />
-    );
-  }
-  return (
-    <i
-      aria-label={freshness}
-      className={cn(
-        "size-2 shrink-0 rounded-full",
-        freshness === "fresh" && "bg-success",
-        freshness === "stale" && "bg-warning",
-        freshness === "failed" && "bg-destructive",
-      )}
-    />
-  );
+function fleetRequirementLabel(card: FleetCardView): string {
+  if (card.required === undefined) return "Not declared";
+  return card.required ? "Required" : "Optional";
+}
+
+function fleetStateLabel(card: FleetCardView): string {
+  if (card.freshness === undefined) return "No project record";
+  if (card.freshness === "fresh") return "Fresh";
+  if (card.freshness === "running") return "Running";
+  if (card.freshness === "failed") return "Failed";
+  return "Stale";
+}
+
+function fleetStateVariant(card: FleetCardView): BadgeVariant {
+  if (card.freshness === "fresh") return "success";
+  if (card.freshness === "running") return "info";
+  if (card.freshness === "failed") return "destructive";
+  if (card.freshness === "stale") return "warning";
+  return "secondary";
 }
 
 // ---------------------------------------------------------------------------
@@ -496,11 +587,17 @@ function MrtrCard({
   decisions: readonly EngineeringDecision[];
 }): JSX.Element {
   return (
-    <Card className="overflow-hidden">
+    <Card
+      className="overflow-hidden"
+      aria-labelledby="operations-confirmations-title"
+    >
       <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
-        <span className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground">
-          PENDING HUMAN CONFIRMATIONS · MRTR
-        </span>
+        <h4
+          id="operations-confirmations-title"
+          className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
+        >
+          HUMAN CONFIRMATIONS · MRTR
+        </h4>
         {decisions.length > 0 && (
           <span className="shrink-0 font-mono text-[10px] text-warning">
             {decisions.length} {decisions.length === 1 ? "WAITING" : "WAITING"}
@@ -516,10 +613,8 @@ function MrtrCard({
             </p>
           )}
         <p className="text-[11px] text-muted-foreground leading-snug pt-1">
-          Signed retry via{" "}
-          <span className="font-mono text-[10px]">elicitation</span>{" "}
-          in the paired conversation — the cockpit only projects the pending
-          state.
+          Confirmation stays in the paired conversation. This read-only cockpit
+          only projects the recorded pending state.
         </p>
       </CardContent>
       <div className="border-t border-border bg-muted/30 px-3 py-1.5 font-mono text-[9.5px] text-muted-foreground">
@@ -568,11 +663,17 @@ function QueueCard({
   project: EngineeringProjectSnapshot;
 }): JSX.Element {
   return (
-    <Card className="overflow-hidden flex flex-col">
+    <Card
+      className="overflow-hidden flex flex-col"
+      aria-labelledby="operations-queue-title"
+    >
       <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
-        <span className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground">
-          QUEUE
-        </span>
+        <h4
+          id="operations-queue-title"
+          className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
+        >
+          EXECUTION NOW · QUEUE
+        </h4>
         <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
           {runningCount} {runningCount === 1 ? "RUNNING" : "RUNNING"}·
           {queuedCount} {queuedCount === 1 ? "QUEUED" : "QUEUED"}
@@ -599,7 +700,7 @@ function QueueCard({
           onClick={() => onOpenWork?.()}
           className="font-medium text-sm text-brand hover:underline cursor-pointer bg-transparent border-0 p-0"
         >
-          Run journal in Work →
+          Open recorded activity in Work →
         </button>
       </div>
     </Card>

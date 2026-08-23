@@ -14,6 +14,7 @@ import type {
   EngineeringWorkbenchActivity,
   EngineeringWorkbenchCaseActivityJoin,
   EngineeringWorkbenchPhaseLane,
+  ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
 import { GltfAssetCanvas } from "../thread/gltf-asset-canvas.tsx";
@@ -91,7 +92,7 @@ export interface ProjectOverviewProps {
   readonly onOpenProductFacet?: (facet: ProductWorkspaceFacet) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
   readonly onOpenDeepLink?: (target: ProjectDeepLinkTarget) => void;
-  readonly onOpenEvidence?: (reference: EngineeringThreadEntityRef) => void;
+  readonly onOpenEvidence?: (reference: ThreadGraphRef) => void;
 }
 
 /**
@@ -134,6 +135,20 @@ export function ProjectOverview({
     collapsedGates,
     phaseLanes,
   );
+  const openProductFacet = (facet: ProductWorkspaceFacet) => {
+    if (onOpenProductFacet) {
+      onOpenProductFacet(facet);
+      return;
+    }
+    onNavigate("product");
+  };
+  const openOverviewEvidence = (reference: ThreadGraphRef) => {
+    if (onOpenEvidence) {
+      onOpenEvidence(reference);
+      return;
+    }
+    onNavigate("verification");
+  };
 
   // minmax(0,1fr) : sans lui, un contenu large imposerait sa largeur
   // min-content à toute la colonne (piège grid).
@@ -141,6 +156,7 @@ export function ProjectOverview({
     <main
       className="overview-2a grid grid-cols-[minmax(0,1fr)] gap-3"
       id="project-workspace-panel"
+      tabIndex={-1}
     >
       <section
         className="flex flex-col items-start justify-between gap-6 pb-3 md:flex-row md:items-end"
@@ -278,14 +294,13 @@ export function ProjectOverview({
         </section>
         <OverviewThreadHero
           thread={thread}
-          onOpenEvidence={() => onNavigate("verification")}
+          onOpenEvidence={openOverviewEvidence}
         />
       </Card>
 
       <OverviewVerdictTiles
         thread={thread}
-        onOpenRequirements={() =>
-          onOpenProductFacet?.("requirements") ?? onNavigate("product")}
+        onOpenRequirements={() => openProductFacet("requirements")}
       />
 
       <div
@@ -342,7 +357,7 @@ export function ProjectOverview({
         <button
           type="button"
           className="text-brand"
-          onClick={() => onOpenProductFacet?.("structure") ?? onNavigate("product")}
+          onClick={() => openProductFacet("structure")}
         >
           Product
         </button>
@@ -598,7 +613,9 @@ function OverviewReviewBanner({
             )}
           />
           <span className="shrink-0 text-[13px] font-semibold">
-            {nextReview ? "Needs your review" : "No proposal is waiting for review"}
+            {nextReview
+              ? "Needs your review"
+              : "No proposal is waiting for review"}
           </span>
           <span className="truncate text-xs text-muted-foreground">
             {nextReview ? nextReview.title : "Past reviews remain in Activity."}
@@ -978,7 +995,9 @@ function NowFeedRow({ entry }: {
       <span
         className={cn(
           "min-w-0 truncate text-[12px]",
-          entry.glyph === "running" ? "text-foreground" : "text-muted-foreground",
+          entry.glyph === "running"
+            ? "text-foreground"
+            : "text-muted-foreground",
         )}
       >
         {entry.description}
@@ -1065,7 +1084,8 @@ function laneGroupsCounterLabel(
   const total = groups.reduce(
     (aggregate, group) => ({
       gates: aggregate.gates + group.totalGates,
-      completedWorkItems: aggregate.completedWorkItems + group.completedWorkItems,
+      completedWorkItems: aggregate.completedWorkItems +
+        group.completedWorkItems,
       totalWorkItems: aggregate.totalWorkItems + group.totalWorkItems,
       approvedDecisions: aggregate.approvedDecisions + group.approvedDecisions,
       requiredDecisions: aggregate.requiredDecisions + group.requiredDecisions,

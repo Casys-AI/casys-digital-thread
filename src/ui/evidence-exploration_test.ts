@@ -52,9 +52,19 @@ Deno.test("Verification keeps its inspector and depth control in the three-colum
   );
 
   assertStringIncludes(source, "neighborDepth");
-  assertStringIncludes(source, 'aria-label="Neighbor depth"');
+  assertStringIncludes(
+    source,
+    'projection.isFiltered ? "Depth" : "Next local depth"',
+  );
+  assertStringIncludes(source, '? "Neighbor depth"');
+  assertStringIncludes(source, ': "Next local depth"');
   assertStringIncludes(source, 'type="range"');
-  assertStringIncludes(source, "Radius for the next local view");
+  assertStringIncludes(source, "Applied to the next local view");
+  assertStringIncludes(source, "labelSize: 11");
+  assertStringIncludes(source, "labelGridCellSize: compact ? 10 : 108");
+  assertStringIncludes(source, "labelDensity: compact ? 1 : 0.06");
+  assertStringIncludes(source, "stagePadding: compact ? 30 : 40");
+  assertStringIncludes(source, "Accessible evidence table");
   assertStringIncludes(
     workbench,
     'activeView === "verification" ? "is-verification"',

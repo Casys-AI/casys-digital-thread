@@ -1,21 +1,35 @@
-import { LANE_LABEL } from "../ui/cockpit.tsx";
+import { LANE_LABEL, SECTION_LABEL } from "../ui/cockpit.tsx";
 import { cn } from "../lib/utils.ts";
 import type { JSX } from "react";
+import { useState } from "react";
 import {
   buildOverviewThreadHero,
   OVERVIEW_HERO_WIDTH,
+  OVERVIEW_LANES,
   type OverviewHeroNode,
 } from "./overview-thread-hero-model.ts";
-import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
+import type {
+  ThreadGraphRef,
+  ThreadWorkbenchSnapshot,
+} from "../thread/types.ts";
+import { Badge } from "../ui/badge.tsx";
+import { Button } from "../ui/button.tsx";
+
+const OVERVIEW_SELECTION_ID = "overview-thread-selection";
 
 export function OverviewThreadHero({
   thread,
   onOpenEvidence,
 }: {
   readonly thread: ThreadWorkbenchSnapshot;
-  readonly onOpenEvidence: () => void;
+  readonly onOpenEvidence: (reference: ThreadGraphRef) => void;
 }): JSX.Element {
   const view = buildOverviewThreadHero(thread);
+  const [selectedKey, setSelectedKey] = useState<string>();
+  const selected = view.nodes.find((item) => item.key === selectedKey);
+  const toggleSelection = (item: OverviewHeroNode) => {
+    setSelectedKey((current) => nextOverviewHeroSelection(current, item.key));
+  };
   return (
     <div>
       <div
@@ -44,9 +58,8 @@ export function OverviewThreadHero({
       <svg
         viewBox={`0 0 ${OVERVIEW_HERO_WIDTH} ${view.height}`}
         className="block h-auto w-full bg-card"
-        role="img"
+        role="group"
         aria-label="Recorded thread across requirements, model, geometry, physics and verdicts"
-        onClick={onOpenEvidence}
       >
         {view.lanes.slice(1).map((column, index) => (
           <path
@@ -70,18 +83,75 @@ export function OverviewThreadHero({
             opacity={edge.emphasis ? 1 : 0.6}
           />
         ))}
-        {view.nodes.map((item) => <HeroNode key={item.key} item={item} />)}
+        {view.nodes.map((item) => (
+          <HeroNode
+            key={item.key}
+            item={item}
+            selected={item.key === selectedKey}
+            onToggle={() => toggleSelection(item)}
+          />
+        ))}
       </svg>
+      {selected && (
+        <OverviewNodePanel
+          item={selected}
+          onOpenEvidence={() => onOpenEvidence(selected.node.ref)}
+        />
+      )}
     </div>
   );
 }
 
-function HeroNode({ item }: { item: OverviewHeroNode }): JSX.Element {
+function nextOverviewHeroSelection(
+  current: string | undefined,
+  requested: string,
+): string | undefined {
+  return current === requested ? undefined : requested;
+}
+
+function HeroNode({
+  item,
+  selected,
+  onToggle,
+}: {
+  item: OverviewHeroNode;
+  selected: boolean;
+  onToggle: () => void;
+}): JSX.Element {
   const label = item.node.ref.id;
   const caption = item.node.summary;
   return (
-    <g>
+    <g
+      role="button"
+      tabIndex={0}
+      aria-label={`Inspect ${item.node.label} locally`}
+      aria-controls={selected ? OVERVIEW_SELECTION_ID : undefined}
+      aria-expanded={selected}
+      className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onToggle();
+      }}
+    >
       <title>{item.node.label} · {label} · {caption}</title>
+      <circle
+        cx={item.x}
+        cy={item.y}
+        r="20"
+        fill="transparent"
+      />
+      {selected && (
+        <circle
+          cx={item.x}
+          cy={item.y}
+          r="13"
+          fill="none"
+          className="stroke-brand"
+          strokeWidth="1.5"
+        />
+      )}
       <circle
         cx={item.x}
         cy={item.y}
@@ -107,12 +177,74 @@ function HeroNode({ item }: { item: OverviewHeroNode }): JSX.Element {
         textAnchor="middle"
         fontFamily="ui-monospace, Menlo, monospace"
         fontSize="8.5"
-        fill="#a1a1aa"
+        fill="var(--thread-muted)"
       >
         {compactNodeText(caption, 17)}
       </text>
     </g>
   );
+}
+
+function OverviewNodePanel({
+  item,
+  onOpenEvidence,
+}: {
+  item: OverviewHeroNode;
+  onOpenEvidence: () => void;
+}): JSX.Element {
+  const node = item.node;
+  const laneLabel =
+    OVERVIEW_LANES.find((lane) => lane.id === item.lane)?.title ??
+      item.lane;
+  return (
+    <section
+      id={OVERVIEW_SELECTION_ID}
+      aria-label={`Selected thread record: ${node.label}`}
+      aria-live="polite"
+      className="grid gap-3 border-t border-border bg-muted/20 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className={cn("m-0", SECTION_LABEL)}>
+            Local record · {laneLabel}
+          </p>
+          <Badge variant={freshnessBadgeVariant(node.freshness)}>
+            {node.freshness}
+          </Badge>
+        </div>
+        <h4 className="mt-1 text-[13px] font-semibold">{node.label}</h4>
+        <p className="mt-0.5 text-xs text-muted-foreground">{node.summary}</p>
+        <p className="mt-1 font-mono text-[9.5px] text-muted-foreground">
+          {node.ref.id} · {node.artifactKind ?? node.entityKind} ·{" "}
+          {node.system ||
+            "none recorded"}
+          {node.recordedAt && (
+            <>
+              {" · "}
+              <time dateTime={node.recordedAt}>{node.recordedAt}</time>
+            </>
+          )}
+        </p>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="justify-self-start md:justify-self-end"
+        onClick={onOpenEvidence}
+      >
+        Open in Verification →
+      </Button>
+    </section>
+  );
+}
+
+function freshnessBadgeVariant(
+  freshness: OverviewHeroNode["node"]["freshness"],
+): "success" | "warning" | "info" | "destructive" {
+  if (freshness === "failed") return "destructive";
+  if (freshness === "stale") return "warning";
+  if (freshness === "running") return "info";
+  return "success";
 }
 
 function compactNodeText(value: string, maxLength: number): string {

@@ -3,9 +3,9 @@ import { useMemo } from "react";
 import { cn } from "../lib/utils.ts";
 import { ActivityReviewFeedCard } from "../project/control-center.tsx";
 import {
+  type ActivityReviewStatus,
   activityReviewStatus,
   activityReviewStatusLabel,
-  type ActivityReviewStatus,
   type ProjectReviewRecord,
 } from "../project/review-decision-model.ts";
 import { Badge } from "../ui/badge.tsx";
@@ -412,33 +412,9 @@ export function ThreadFeed({
                       >
                         {currency}
                       </span>
-                      {isVerdictNode(node) && onOpenEvidenceAnchored
-                        ? (
-                          <span
-                            role="link"
-                            tabIndex={0}
-                            className="cursor-pointer text-xs font-medium text-brand"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onOpenEvidenceAnchored(node.ref);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter" && event.key !== " ") {
-                                return;
-                              }
-                              event.preventDefault();
-                              event.stopPropagation();
-                              onOpenEvidenceAnchored(node.ref);
-                            }}
-                          >
-                            Lineage →
-                          </span>
-                        )
-                        : (
-                          <span className="text-xs text-muted-foreground">
-                            {lineageCount} linked
-                          </span>
-                        )}
+                      <span className="text-xs text-muted-foreground">
+                        {lineageCount} linked
+                      </span>
                     </span>
                   </button>
 
@@ -706,11 +682,6 @@ function freshnessClass(freshness: string): string {
     return "font-medium text-warning";
   }
   return "text-muted-foreground";
-}
-
-/** A recorded verdict offers its lineage instead of a link counter. */
-function isVerdictNode(node: ThreadGraphNode): boolean {
-  return node.entityKind === "evaluation" || node.entityKind === "violation";
 }
 
 /**

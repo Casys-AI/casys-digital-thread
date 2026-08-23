@@ -93,7 +93,11 @@ export function PlanningWorkbench({
         metaValue={formatTime(project.generatedAt)}
       />
 
-      <main className="grid gap-4" id="project-workspace-panel">
+      <main
+        className="grid gap-4"
+        id="project-workspace-panel"
+        tabIndex={-1}
+      >
         <section
           className="flex flex-col gap-4 border-b border-border pb-4 md:flex-row md:items-start md:justify-between"
           aria-labelledby="project-objective-title"

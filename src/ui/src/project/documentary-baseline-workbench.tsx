@@ -69,7 +69,11 @@ export function DocumentaryBaselineWorkbench({
 
       {activeView === "overview"
         ? (
-          <main className="grid gap-4" id="project-workspace-panel">
+          <main
+            className="grid gap-4"
+            id="project-workspace-panel"
+            tabIndex={-1}
+          >
             <section
               className="flex flex-col gap-4 border-b border-border pb-4 md:flex-row md:items-start md:justify-between"
               aria-labelledby="project-objective-title"
@@ -405,9 +409,10 @@ function DocumentaryWorkspace({
 }): JSX.Element {
   const copy = documentaryWorkspaceCopy(activeView);
   return (
-    <section
+    <main
       className="grid gap-4"
       id="project-workspace-panel"
+      tabIndex={-1}
       aria-labelledby="documentary-workspace-title"
     >
       <div>
@@ -447,7 +452,7 @@ function DocumentaryWorkspace({
             detail={copy.unavailableDetail}
           />
         )}
-    </section>
+    </main>
   );
 }
 

@@ -5,6 +5,7 @@ const STYLE_FILES = [
   "05-tool-drawer.css",
   "06-component-workspace.css",
   "17-saas-shell.css",
+  "18-desktop-chat.css",
 ] as const;
 
 Deno.test("the application keeps native controls light under the cockpit theme remaps", async () => {
@@ -52,6 +53,18 @@ Deno.test("cockpit style families cannot reintroduce dark surface backgrounds", 
   }
 
   assertEquals(declarations, []);
+});
+
+Deno.test("Project Chat cannot carry a private literal colour palette", async () => {
+  const styles = await Deno.readTextFile(
+    new URL("./src/styles/18-desktop-chat.css", import.meta.url),
+  );
+
+  assertEquals(styles.match(/#[0-9a-f]{3,8}\b/gi), null);
+  assertEquals(styles.match(/rgba?\(/gi), null);
+  assertStringIncludes(styles, "var(--ui-background)");
+  assertStringIncludes(styles, "var(--ui-border)");
+  assertStringIncludes(styles, "var(--ui-brand)");
 });
 
 Deno.test("retired mcp-view card selectors cannot come back", async () => {

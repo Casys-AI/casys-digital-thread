@@ -3,7 +3,10 @@ import { Fragment, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import type { ThreadWorkbenchSnapshot } from "../thread/types.ts";
 import { Accordion } from "@ark-ui/react/accordion";
-import { compactEmbeddedFingerprints } from "../thread/compact-identifier-model.ts";
+import {
+  compactEmbeddedFingerprints,
+  compactTechnicalIdentifier,
+} from "../thread/compact-identifier-model.ts";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
@@ -19,7 +22,7 @@ import {
 } from "./product-requirements-model.ts";
 
 const MATRIX_GRID =
-  "grid-cols-[92px_minmax(0,2fr)_minmax(0,1.3fr)_minmax(0,1fr)_76px_84px_minmax(0,1.3fr)]";
+  "grid-cols-[204px_minmax(230px,2fr)_minmax(170px,1.3fr)_minmax(140px,1fr)_84px_90px_minmax(180px,1.3fr)]";
 
 export function ProductRequirementsMatrix({
   thread,
@@ -96,66 +99,68 @@ export function ProductRequirementsMatrix({
         </span>
       </div>
 
-      <div className={cn("overflow-hidden shadow-sm", CARD_SURFACE)}>
-        <div
-          className={cn(
-            "grid font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground",
-            MATRIX_GRID,
-          )}
-        >
-          <span className="border-b border-border px-3.5 py-2">
-            REQ
-          </span>
-          <span className="border-b border-border px-2 py-2">
-            REQUIREMENT
-          </span>
-          <span className="border-b border-border px-2 py-2">
-            LIMIT
-          </span>
-          <span className="border-b border-border px-2 py-2">
-            COMPUTED
-          </span>
-          <span className="border-b border-border px-2 py-2 text-right">
-            MARGIN
-          </span>
-          <span className="border-b border-border px-2 py-2">
-            VERDICT
-          </span>
-          <span className="border-b border-border px-3.5 py-2 pl-2">
-            EVIDENCE
-          </span>
-        </div>
-        {rows.length === 0
-          ? (
-            <p className="px-3.5 py-6 text-sm text-muted-foreground">
-              No current modelled requirements match this filter.
-            </p>
-          )
-          : (
-            <Accordion.Root
-              collapsible
-              value={openId === undefined ? [] : [openId]}
-              onValueChange={(details) => setOpenId(details.value[0])}
-            >
-              {rows.map((row) => (
-                <RequirementRow
-                  key={row.id}
-                  row={row}
-                  open={openId === row.id}
-                  onOpenVerification={onOpenVerification}
-                />
-              ))}
-            </Accordion.Root>
-          )}
-        <div className="flex flex-col gap-0.5 border-t border-border bg-muted/40 px-3.5 py-2">
-          <span className="font-mono text-[10px] tracking-[0.05em] text-muted-foreground">
-            <span className="text-foreground/70">TO MAKE</span>
-            {" · printability + print estimate — lane reserved"}
-          </span>
-          <span className="font-mono text-[10px] tracking-[0.05em] text-muted-foreground">
-            <span className="text-foreground/70">TO BUY</span>
-            {" · sourcing evidence via ERP — lane reserved"}
-          </span>
+      <div className={cn("overflow-x-auto shadow-sm", CARD_SURFACE)}>
+        <div className="min-w-[1120px]">
+          <div
+            className={cn(
+              "grid font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground",
+              MATRIX_GRID,
+            )}
+          >
+            <span className="border-b border-border px-3.5 py-2">
+              REQ
+            </span>
+            <span className="border-b border-border px-2 py-2">
+              REQUIREMENT
+            </span>
+            <span className="border-b border-border px-2 py-2">
+              LIMIT
+            </span>
+            <span className="border-b border-border px-2 py-2">
+              COMPUTED
+            </span>
+            <span className="border-b border-border px-2 py-2 text-right">
+              MARGIN
+            </span>
+            <span className="border-b border-border px-2 py-2">
+              VERDICT
+            </span>
+            <span className="border-b border-border px-3.5 py-2 pl-2">
+              EVIDENCE
+            </span>
+          </div>
+          {rows.length === 0
+            ? (
+              <p className="px-3.5 py-6 text-sm text-muted-foreground">
+                No current modelled requirements match this filter.
+              </p>
+            )
+            : (
+              <Accordion.Root
+                collapsible
+                value={openId === undefined ? [] : [openId]}
+                onValueChange={(details) => setOpenId(details.value[0])}
+              >
+                {rows.map((row) => (
+                  <RequirementRow
+                    key={row.id}
+                    row={row}
+                    open={openId === row.id}
+                    onOpenVerification={onOpenVerification}
+                  />
+                ))}
+              </Accordion.Root>
+            )}
+          <div className="flex flex-col gap-0.5 border-t border-border bg-muted/40 px-3.5 py-2">
+            <span className="font-mono text-[10px] tracking-[0.05em] text-muted-foreground">
+              <span className="text-foreground/70">TO MAKE</span>
+              {" · printability + print estimate — lane reserved"}
+            </span>
+            <span className="font-mono text-[10px] tracking-[0.05em] text-muted-foreground">
+              <span className="text-foreground/70">TO BUY</span>
+              {" · sourcing evidence via ERP — lane reserved"}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -181,12 +186,16 @@ function RequirementRow({
     >
       <Accordion.ItemTrigger
         className={cn(
-          "grid w-full items-center text-left tabular-nums",
+          "grid w-full items-center text-left tabular-nums transition-colors hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
           MATRIX_GRID,
         )}
       >
-        <span className="truncate px-3.5 py-2 font-mono text-[11px] font-medium text-brand">
-          {row.id}
+        <span className="flex min-w-0 items-center gap-1.5 px-3.5 py-2 font-mono text-[10px] font-medium text-brand">
+          <RequirementChevron open={open} />
+          <span className="truncate" title={row.id} aria-hidden="true">
+            {compactTechnicalIdentifier(row.id)}
+          </span>
+          <span className="sr-only">Requirement identifier: {row.id}</span>
         </span>
         <span className="flex flex-col gap-0.5 px-2 py-2">
           <span className="truncate text-xs">{row.label}</span>
@@ -257,6 +266,28 @@ function RequirementRow({
         )}
       </Accordion.ItemContent>
     </Accordion.Item>
+  );
+}
+
+function RequirementChevron({ open }: { readonly open: boolean }): JSX.Element {
+  return (
+    <svg
+      aria-hidden="true"
+      className={cn(
+        "size-3 shrink-0 text-muted-foreground transition-transform",
+        open && "rotate-90",
+      )}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m9 18 6-6-6-6"
+      />
+    </svg>
   );
 }
 

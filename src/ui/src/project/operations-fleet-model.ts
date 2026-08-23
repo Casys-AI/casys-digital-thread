@@ -4,8 +4,8 @@
  * No latency, no uptime, no elapsed time — none of those fields exist in
  * the data. The model joins declared fleet servers (from config/mcp-fleet.json
  * via the BFF) with systems actually observed in the thread snapshot.
- * A declared server without recorded evidence is listed as `declaredIdle`,
- * never as a healthy card.
+ * A declared server without recorded evidence remains an explicit unrecorded
+ * row. It is never presented as healthy or down.
  */
 
 import type {
@@ -22,15 +22,17 @@ export type FleetFreshness =
   | "running"
   | "failed";
 
-/** Derived visual state of a fleet card — no latency, no uptime. */
-export type FleetCardState = "running" | "ok" | "attention";
+/** Derived visual state of a fleet row — no latency, no uptime. */
+export type FleetCardState = "running" | "ok" | "attention" | "unrecorded";
 
 export interface FleetCardView {
   readonly id: string;
   readonly displayName: string;
   readonly role: string;
-  readonly required: boolean;
-  readonly freshness: FleetFreshness;
+  /** Undefined when no declared fleet manifest is available. */
+  readonly required: boolean | undefined;
+  /** Undefined means that this declared surface has no project record. */
+  readonly freshness: FleetFreshness | undefined;
   readonly state: FleetCardState;
   /** ISO string of the most recent graph-node `recordedAt` for this system. */
   readonly lastEvidenceAt: string | undefined;
@@ -48,6 +50,7 @@ export interface OperationsFleetView {
   /** Display names of declared servers with no observed thread evidence. */
   readonly declaredIdle: readonly string[];
   readonly summary: OperationsFleetSummary;
+  readonly source: "declared-fleet" | "thread-observed-only";
 }
 
 // Internal mutable accumulator while scanning thread data.
@@ -67,8 +70,9 @@ interface ObservedSystem {
  * lowercased thread system label, or vice versa — the same "includes"
  * heuristic as `providerMark` in feed.tsx.
  *
- * When `fleet` is absent the function falls back to cards built solely from
- * observed systems (label as displayName, empty role, required = false).
+ * When `fleet` is absent the function falls back to rows built solely from
+ * observed systems. Their requirement state stays unknown; it is never
+ * invented as optional.
  */
 export function buildOperationsFleetView(
   fleet: CockpitFleetProjection | undefined,
@@ -83,7 +87,7 @@ export function buildOperationsFleetView(
         id: obs.id,
         displayName: obs.label,
         role: "",
-        required: false,
+        required: undefined,
         freshness: obs.freshness,
         state: freshnessToState(obs.freshness),
         lastEvidenceAt: obs.lastEvidenceAt,
@@ -94,8 +98,9 @@ export function buildOperationsFleetView(
     return {
       cards,
       declaredIdle: [],
+      source: "thread-observed-only",
       summary: {
-        declared: cards.length,
+        declared: 0,
         observed: cards.length,
         running,
       },
@@ -114,6 +119,16 @@ export function buildOperationsFleetView(
     const obs = findObservedMatch(observed, server, declaredKeys);
     if (obs === undefined) {
       declaredIdle.push(server.displayName);
+      cards.push({
+        id: server.id,
+        displayName: server.displayName,
+        role: server.role,
+        required: server.required,
+        freshness: undefined,
+        state: "unrecorded",
+        lastEvidenceAt: undefined,
+        stageCount: 0,
+      });
       continue;
     }
     cards.push({
@@ -128,13 +143,16 @@ export function buildOperationsFleetView(
     });
   }
 
+  const observedCount =
+    cards.filter((card) => card.freshness !== undefined).length;
   const running = cards.filter((c) => c.state === "running").length;
   return {
     cards,
     declaredIdle,
+    source: "declared-fleet",
     summary: {
       declared: fleet.servers.length,
-      observed: cards.length,
+      observed: observedCount,
       running,
     },
   };
