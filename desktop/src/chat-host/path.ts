@@ -5,6 +5,7 @@ import { type ChatHostTarget, resolveTargetArtifacts } from "./target.ts";
 const RECOVERY =
   "Install a signed application bundle for this target. Do not use an ambient Node, acpx, adapter, or checkout fallback.";
 export const PACKAGED_CHAT_HOST_NAME = "casys-chat-host" as const;
+const MACOS_FINAL_RUNTIME_NAME = "casys-desktop-runtime";
 
 export function resolvePackagedChatHost(
   executablePath: string,
@@ -60,11 +61,11 @@ export function resolveChatHostExecutable(
     const productRoot = executablePath.slice(0, -"/bin/casys-digital-thread".length);
     return `${productRoot}/libexec/${PACKAGED_CHAT_HOST_NAME}`;
   }
-  const suffix = "/CasysDigitalThread.app/Contents/MacOS/Casys Digital Thread";
+  const suffix = `/CasysDigitalThread.app/Contents/MacOS/${MACOS_FINAL_RUNTIME_NAME}`;
   if (!executablePath.endsWith(suffix)) return undefined;
   const appRoot = executablePath.slice(
     0,
-    -"/Contents/MacOS/Casys Digital Thread".length,
+    -`/Contents/MacOS/${MACOS_FINAL_RUNTIME_NAME}`.length,
   );
   return `${appRoot}/Contents/Helpers/${PACKAGED_CHAT_HOST_NAME}`;
 }

@@ -1,9 +1,13 @@
 import { assertEquals } from "jsr:@std/assert@1.0.14";
+import { MACOS_RUNTIME_EXECUTABLE_NAME } from "../build/macos-launcher.ts";
 import { resolveChatHostExecutable, resolvePackagedChatHost } from "./path.ts";
 
-Deno.test("packaged Chat Host resolves the implemented macOS target", () => {
+const FINAL_MACOS_EXECUTABLE =
+  `/Applications/CasysDigitalThread.app/Contents/MacOS/${MACOS_RUNTIME_EXECUTABLE_NAME}`;
+
+Deno.test("packaged Chat Host resolves the final macOS Deno.execPath runtime", () => {
   const result = resolvePackagedChatHost(
-    "/Applications/CasysDigitalThread.app/Contents/MacOS/Casys Digital Thread",
+    FINAL_MACOS_EXECUTABLE,
     "darwin-arm64",
   );
   assertEquals(result.ok, true);
@@ -27,7 +31,7 @@ Deno.test("unimplemented Linux and Windows packages fail closed before path fall
 Deno.test("package layout resolution has explicit macOS, Linux, and Windows seams", () => {
   assertEquals(
     resolveChatHostExecutable(
-      "/Applications/CasysDigitalThread.app/Contents/MacOS/Casys Digital Thread",
+      FINAL_MACOS_EXECUTABLE,
       "darwin-arm64",
     ),
     "/Applications/CasysDigitalThread.app/Contents/Helpers/casys-chat-host",
@@ -51,7 +55,15 @@ Deno.test("package layout resolution has explicit macOS, Linux, and Windows seam
 Deno.test("package layout rejects lookalike product executables", () => {
   const lookalikes = [
     [
-      "/Applications/Casys.app/Contents/MacOS/Casys Digital Thread",
+      "/Applications/CasysDigitalThread.app/Contents/MacOS/Casys Digital Thread",
+      "darwin-arm64",
+    ],
+    [
+      "/Applications/CasysDigitalThread.app/Contents/MacOS/laufey_webview",
+      "darwin-arm64",
+    ],
+    [
+      "/Applications/Casys.app/Contents/MacOS/casys-desktop-runtime",
       "darwin-arm64",
     ],
     ["/opt/other/bin/casys-digital-thread", "linux-x64"],

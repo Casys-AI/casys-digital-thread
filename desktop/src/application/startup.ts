@@ -116,6 +116,7 @@ export async function startDesktopApplication(
   });
 
   let controller: DesktopControlPlaneController | undefined;
+  let controlPlaneLive = false;
   let controlPlane = controlPlaneHelper.ok && facts.controlPlaneLaunchable
     ? undefined
     : facts.packagedHelperPermissionsCompatible
@@ -125,6 +126,10 @@ export async function startDesktopApplication(
     if (controlPlaneHelper.ok && facts.controlPlaneLaunchable) {
       controller = ports.createControlPlane(launch);
       controlPlane = await controller.start();
+      controlPlaneLive = isLiveControlPlaneProjection(
+        controlPlane,
+        facts.controlPlaneVersion,
+      );
     }
   } catch {
     if (await stopControllerAfterStartupFailure(controller)) {
@@ -167,8 +172,7 @@ export async function startDesktopApplication(
   return liveApplication(
     bootstrapDesktopShellFromFacts(facts, controlPlane, workbench),
     [controller, workbenchController],
-    controller !== undefined && facts.controlPlaneLaunchable &&
-      facts.chatHostPinValid,
+    controlPlaneLive && facts.chatHostPinValid,
     workbenchSession,
   );
 }
@@ -199,6 +203,16 @@ function liveApplication(
       return stopPromise;
     },
   });
+}
+
+function isLiveControlPlaneProjection(
+  projection: DesktopControlPlaneProjection,
+  expectedVersion: string,
+): boolean {
+  return projection.configuration === "verified" &&
+    (projection.lifecycle === "owned-ready" ||
+      projection.lifecycle === "reconnected-ready") &&
+    projection.controlPlaneVersion === expectedVersion;
 }
 
 async function stopControllerAfterStartupFailure(

@@ -7,6 +7,7 @@ import {
   installDesktopWindowClose,
 } from "./src/application/shutdown.ts";
 import { startDesktopApplication } from "./src/application/startup.ts";
+import { createWorkbenchProjectFocusAuthority } from "./src/application/workbench-project-focus.ts";
 import { registerDesktopChatBindings } from "./src/chat/bindings.ts";
 import { createExternalUrlOpener } from "./src/chat/external-url.ts";
 import { startPackagedChatHost } from "./src/chat-host/startup.ts";
@@ -101,6 +102,9 @@ registerDesktopChatBindings(
   browserWindow,
   chatHost,
   createExternalUrlOpener(platform),
+  application.workbenchSession === undefined
+    ? undefined
+    : createWorkbenchProjectFocusAuthority(application.workbenchSession),
 );
 
 let server: Deno.HttpServer;

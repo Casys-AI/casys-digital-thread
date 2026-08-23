@@ -217,6 +217,27 @@ Deno.test("startup passes only the nested helper and validated finite layout", a
   assertEquals(controller.stops, 1);
 });
 
+Deno.test("non-live control-plane projections never authorize Chat Host spawn", async () => {
+  const projections: readonly DesktopControlPlaneProjection[] = [{
+    ...readyProjection(),
+    lifecycle: "recovery-required",
+    recoveryCode: "foreign-listener",
+  }, {
+    ...readyProjection(),
+    configuration: "error",
+  }, {
+    ...readyProjection(),
+    controlPlaneVersion: "0.2.1",
+  }];
+  for (const projection of projections) {
+    const application = await startDesktopApplication(input(), {
+      createControlPlane: () => new FakeController(projection),
+    });
+    assertFalse(application.chatHostLaunchable);
+    await application.stop();
+  }
+});
+
 Deno.test("startup selects the closed Linux and Windows bundle layouts", async () => {
   const cases = [{
     platform: "Linux" as const,

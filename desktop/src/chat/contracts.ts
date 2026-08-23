@@ -205,10 +205,7 @@ export function parseChatCommandRequest(value: unknown): ChatCommandRequest {
   const command = text(input.command, "command", 64);
 
   if (command === "conversation.create") {
-    const projectId = text(input.projectId, "projectId", 128);
-    if (!PROJECT_ID.test(projectId)) {
-      throw new TypeError("projectId must be an explicit Casys project identifier");
-    }
+    const projectId = parseCasysProjectId(input.projectId);
     const title = optionalText(input.title, "title", 120);
     return Object.freeze({
       protocol: DESKTOP_CHAT_PROTOCOL,
@@ -275,6 +272,15 @@ export function parseChatCommandRequest(value: unknown): ChatCommandRequest {
     });
   }
   throw new TypeError("chat command is not supported");
+}
+
+/** Shared closed project identity contract for renderer commands and host focus. */
+export function parseCasysProjectId(value: unknown): string {
+  const projectId = text(value, "projectId", 128);
+  if (!PROJECT_ID.test(projectId)) {
+    throw new TypeError("projectId must be an explicit Casys project identifier");
+  }
+  return projectId;
 }
 
 export function parseDesktopChatBindingCommandRequest(
