@@ -406,9 +406,17 @@ function isCaseActivityJoinList(
     if (
       !verificationCase ||
       verificationCase.id !== entry.caseId ||
-      verificationCase.revision !== entry.caseRevision
+      verificationCase.revision !== entry.caseRevision ||
+      verificationCase.authorityArtifactIds.length === 0
     ) {
       return false;
+    }
+    const artifactsById = new Map(
+      thread.artifacts.map((artifact) => [artifact.id, artifact]),
+    );
+    for (const artifactId of verificationCase.authorityArtifactIds) {
+      const artifact = artifactsById.get(artifactId);
+      if (!artifact || artifact.producerRunId !== entry.runId) return false;
     }
   }
   return true;

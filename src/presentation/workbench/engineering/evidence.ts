@@ -16,8 +16,9 @@ export interface EngineeringEvidenceWorkbenchSnapshot
   readonly alignment: EngineeringWorkbenchAlignment;
   /**
    * Explicit join from a typed Thread case (id + revision) to the Project
-   * activity that produced its authority artifact. Absent producer runs stay
-   * unjoined; the case identity is never treated as a retry of another case.
+   * activity that produced its authority artifact. Every authority artifact
+   * must exist, carry a producer run, and name the same exact run; that run,
+   * work item and activity must be known. Otherwise the case stays unjoined.
    */
   readonly caseActivityJoins: readonly EngineeringWorkbenchCaseActivityJoin[];
   readonly unresolvedEvidenceReferences:

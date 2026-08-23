@@ -6,6 +6,7 @@ import {
 import { GENERIC_ENGINEERING_WORKBENCH_FIXTURE } from "../testing/workbench/generic-engineering-workbench-fixture.ts";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
+  type EngineeringEvidenceWorkbenchSnapshot,
   isEngineeringWorkbenchSnapshot,
   isThreadWorkbenchSnapshot,
   type ThreadArtifact,
@@ -926,6 +927,139 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
   unavailableFamily.verificationCases!.status = "unresolved";
   assertEquals(isThreadWorkbenchSnapshot(unavailableFamily), false);
 });
+
+Deno.test("evidence Workbench recrosses a case join to every authority producer run", () => {
+  const workbench = joinedCaseWorkbench();
+  assertEquals(isEngineeringWorkbenchSnapshot(workbench), true);
+
+  const missingId = workbench.thread.verificationCases!.cases[0]!
+    .authorityArtifactIds[1]!;
+  assertEquals(
+    isEngineeringWorkbenchSnapshot({
+      ...workbench,
+      thread: {
+        ...workbench.thread,
+        artifacts: workbench.thread.artifacts.filter((artifact) =>
+          artifact.id !== missingId
+        ),
+        graph: {
+          ...workbench.thread.graph,
+          nodes: workbench.thread.graph.nodes.filter((node) =>
+            node.ref.id !== missingId
+          ),
+        },
+      },
+    }),
+    false,
+  );
+
+  assertEquals(
+    isEngineeringWorkbenchSnapshot({
+      ...workbench,
+      thread: {
+        ...workbench.thread,
+        artifacts: workbench.thread.artifacts.map((artifact) =>
+          artifact.id === missingId
+            ? { ...artifact, producerRunId: "run:fea-other" }
+            : artifact
+        ),
+      },
+    }),
+    false,
+  );
+});
+
+function joinedCaseWorkbench(): EngineeringEvidenceWorkbenchSnapshot {
+  const caseDigest = "a".repeat(64);
+  const firstCapture = "c".repeat(64);
+  const secondCapture = "d".repeat(64);
+  const firstId = `fea-proof-${firstCapture}`;
+  const secondId = `fea-proof-${secondCapture}`;
+  const caseKey = `mechanical-proof:${caseDigest}`;
+  const runId = "agent-run-mechanical-fixture";
+  const workbench = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
+  return {
+    ...workbench,
+    thread: {
+      ...workbench.thread,
+      artifacts: [
+        ...workbench.thread.artifacts,
+        proofArtifact(firstId, firstCapture, caseDigest, runId),
+        proofArtifact(secondId, secondCapture, caseDigest, runId),
+      ],
+      graph: {
+        ...workbench.thread.graph,
+        nodes: [
+          ...workbench.thread.graph.nodes,
+          proofNode(firstId, caseKey),
+          proofNode(secondId, caseKey),
+        ],
+      },
+      verificationCases: {
+        schemaVersion: "thread-verification-cases/1.0",
+        status: "observed",
+        coverage: [
+          { family: "mechanical-proof", status: "observed" },
+          { family: "sensitivity-study", status: "observed" },
+        ],
+        cases: [{
+          key: caseKey,
+          family: "mechanical-proof",
+          caseSchemaVersion: "mechanical-proof-case/1.0",
+          id: "arm-cantilever",
+          revision: 2,
+          scope: "Recorded structural proof case",
+          caseDigest,
+          authorityArtifactIds: [firstId, secondId],
+        }],
+        issues: [],
+      },
+    },
+    caseActivityJoins: [{
+      caseKey,
+      caseId: "arm-cantilever",
+      caseRevision: 2,
+      activityId: "activity:work-simulate",
+      workItemId: "work-simulate",
+      runId,
+    }],
+  };
+}
+
+function proofArtifact(
+  id: string,
+  captureDigest: string,
+  caseDigest: string,
+  producerRunId: string,
+): ThreadArtifact {
+  return {
+    id,
+    label: "Sealed proof case",
+    kind: "document",
+    system: "digital-thread",
+    revision: caseDigest,
+    freshness: "fresh",
+    fingerprint: `sha256:${captureDigest}`,
+    uri: `casys://fea-proof-case-capture/sha256/${captureDigest}`,
+    producedBy: "verify.seal-proof-case@1",
+    producerRunId,
+    dependsOn: [],
+  };
+}
+
+function proofNode(id: string, caseKey: string): ThreadGraphNode {
+  return {
+    id: `artifact:${id}`,
+    ref: { kind: "artifact", id },
+    entityKind: "artifact",
+    artifactKind: "document",
+    label: "Sealed proof case",
+    system: "digital-thread",
+    freshness: "fresh",
+    summary: "Sealed proof case",
+    verificationCaseRefs: [caseKey],
+  };
+}
 
 Deno.test("thread-workbench/0.1 keeps the case extension additive and fail-closed", () => {
   const legacy = structuredClone(GENERIC_THREAD_FIXTURE) as

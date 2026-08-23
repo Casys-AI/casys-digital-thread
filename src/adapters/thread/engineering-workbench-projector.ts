@@ -166,17 +166,14 @@ function projectCaseActivityJoins(
     thread.artifacts.map((artifact) => [artifact.id, artifact]),
   );
   return cases.flatMap((verificationCase) => {
-    const runIds = new Set(
-      verificationCase.authorityArtifactIds.flatMap((artifactId) => {
-        const runId = artifactById.get(artifactId)?.producerRunId;
-        return runId ? [runId] : [];
-      }),
+    const runId = uniqueAuthorityProducerRunId(
+      verificationCase.authorityArtifactIds,
+      artifactById,
     );
-    if (runIds.size !== 1) return [];
-    const runId = [...runIds][0]!;
+    if (runId === undefined) return [];
     const run = runById.get(runId);
     const workItem = run ? workById.get(run.workItemId) : undefined;
-    if (!run || !workItem) return [];
+    if (!run || !workItem?.activityId) return [];
     return [{
       caseKey: verificationCase.key,
       caseId: verificationCase.id,
@@ -186,6 +183,24 @@ function projectCaseActivityJoins(
       runId,
     }];
   }).toSorted((left, right) => left.caseKey.localeCompare(right.caseKey));
+}
+
+function uniqueAuthorityProducerRunId(
+  authorityArtifactIds: readonly string[],
+  artifactById: ReadonlyMap<
+    string,
+    LiveThreadWorkbenchSnapshot["artifacts"][number]
+  >,
+): string | undefined {
+  if (authorityArtifactIds.length === 0) return undefined;
+  let runId: string | undefined;
+  for (const artifactId of authorityArtifactIds) {
+    const producerRunId = artifactById.get(artifactId)?.producerRunId;
+    if (!producerRunId) return undefined;
+    if (runId === undefined) runId = producerRunId;
+    else if (producerRunId !== runId) return undefined;
+  }
+  return runId;
 }
 
 function projectPhaseLanes(

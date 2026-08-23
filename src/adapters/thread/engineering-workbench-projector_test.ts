@@ -458,6 +458,154 @@ Deno.test("engineering Workbench omits a case join when producer runs disagree",
   assertEquals(result.caseActivityJoins, []);
 });
 
+Deno.test("engineering Workbench omits a case join when an authority artifact is missing", () => {
+  const thread = threadFixture();
+  const work = projectWork("work-fea", "fea", "verify.run-fea-static-proof@3");
+  const project: EngineeringProjectSnapshot = {
+    ...projectFixture(thread.subject.id, thread.id),
+    phases: [projectPhase("fea", 1, work.id)],
+    workItems: [work],
+    agentRuns: [{
+      id: "run:fea-a",
+      workItemId: work.id,
+      status: "completed",
+      summary: "Seal.",
+      queuedAt: "2026-08-01T12:00:00.000Z",
+      evidenceRefs: [],
+    }],
+  };
+  const caseDigest = "c".repeat(64);
+  thread.artifacts = [
+    ...thread.artifacts,
+    {
+      id: "fea-proof-a",
+      label: "Proof A",
+      kind: "document",
+      system: "casys-digital-thread",
+      revision: caseDigest,
+      freshness: "fresh",
+      producerRunId: "run:fea-a",
+      dependsOn: [],
+    },
+  ];
+  thread.verificationCases = {
+    schemaVersion: "thread-verification-cases/1.0",
+    status: "observed",
+    coverage: [
+      { family: "mechanical-proof", status: "observed" },
+      { family: "sensitivity-study", status: "unavailable" },
+    ],
+    cases: [{
+      key: `mechanical-proof:${caseDigest}`,
+      family: "mechanical-proof",
+      caseSchemaVersion: "mechanical-proof-case/1.0",
+      id: "arm-cantilever",
+      revision: 1,
+      scope: "Arm cantilever",
+      caseDigest,
+      authorityArtifactIds: ["fea-proof-a", "fea-proof-missing"],
+    }],
+    issues: [],
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(
+    project,
+    thread,
+    1,
+    [],
+    [],
+    feaResolver(),
+  );
+  if (result.surface !== "evidence") {
+    throw new Error("Expected observed proof to use the evidence surface.");
+  }
+  assertEquals(result.caseActivityJoins, []);
+});
+
+Deno.test("engineering Workbench omits a case join when an authority artifact has no producer run", () => {
+  const thread = threadFixture();
+  const work = projectWork("work-fea", "fea", "verify.run-fea-static-proof@3");
+  const project: EngineeringProjectSnapshot = {
+    ...projectFixture(thread.subject.id, thread.id),
+    phases: [projectPhase("fea", 1, work.id)],
+    workItems: [work],
+    agentRuns: [{
+      id: "run:fea-a",
+      workItemId: work.id,
+      status: "completed",
+      summary: "Seal.",
+      queuedAt: "2026-08-01T12:00:00.000Z",
+      evidenceRefs: [],
+    }],
+  };
+  const caseDigest = "d".repeat(64);
+  thread.artifacts = [
+    ...thread.artifacts,
+    {
+      id: "fea-proof-a",
+      label: "Proof A",
+      kind: "document",
+      system: "casys-digital-thread",
+      revision: caseDigest,
+      freshness: "fresh",
+      producerRunId: "run:fea-a",
+      dependsOn: [],
+    },
+    {
+      id: "fea-proof-b",
+      label: "Proof B",
+      kind: "document",
+      system: "casys-digital-thread",
+      revision: caseDigest,
+      freshness: "fresh",
+      dependsOn: [],
+    },
+  ];
+  thread.verificationCases = {
+    schemaVersion: "thread-verification-cases/1.0",
+    status: "observed",
+    coverage: [
+      { family: "mechanical-proof", status: "observed" },
+      { family: "sensitivity-study", status: "unavailable" },
+    ],
+    cases: [{
+      key: `mechanical-proof:${caseDigest}`,
+      family: "mechanical-proof",
+      caseSchemaVersion: "mechanical-proof-case/1.0",
+      id: "arm-cantilever",
+      revision: 1,
+      scope: "Arm cantilever",
+      caseDigest,
+      authorityArtifactIds: ["fea-proof-a", "fea-proof-b"],
+    }],
+    issues: [],
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(
+    project,
+    thread,
+    1,
+    [],
+    [],
+    feaResolver(),
+  );
+  if (result.surface !== "evidence") {
+    throw new Error("Expected observed proof to use the evidence surface.");
+  }
+  assertEquals(result.caseActivityJoins, []);
+});
+
+function feaResolver(): EngineeringOperationPathLaneResolver {
+  return {
+    resolve(operation) {
+      if (operation.id === "verify.run-fea-static-proof") {
+        return { kind: "fixed", lane: "physics" };
+      }
+      return undefined;
+    },
+  };
+}
+
 Deno.test("engineering Workbench labels a dangling evidence reference instead of hiding the projection", () => {
   const thread = threadFixture();
   const project = projectFixture(thread.subject.id, thread.id);
