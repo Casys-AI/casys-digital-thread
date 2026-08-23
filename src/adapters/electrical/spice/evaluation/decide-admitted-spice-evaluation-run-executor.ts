@@ -830,7 +830,7 @@ function requireShape(
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const operation = closeoutOperationOf(workItem?.operation);
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
+    run.basis?.kind !== "thread-snapshot" ||
     !workItem || !operation ||
     workItem.operation?.bindings.length !== 1 ||
     workItem.operation.bindings[0]?.name !== "approvedBrief" ||

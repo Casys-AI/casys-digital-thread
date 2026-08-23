@@ -161,6 +161,7 @@ async function sealedCompleted() {
     phases: [{ id: PHASE_ID, evidenceRefs: refs }],
     workItems: [{
       id: WORK_ID,
+      activityId: `activity:${WORK_ID}`,
       phaseId: PHASE_ID,
       status: "completed",
       evidenceRefs: refs,

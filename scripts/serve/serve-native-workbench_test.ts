@@ -834,7 +834,7 @@ function projectFixture(
   subjectId: string,
 ): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: `${projectId}:r1`,
     revision: 1,
     generatedAt: "2026-08-03T12:00:00.000Z",
@@ -871,18 +871,84 @@ function genericArchitectureProject(
     revision: snapshot.revision,
     subjectId: snapshot.subject.id,
   });
+  const generatedAt = "2026-08-08T05:00:00.000Z";
+  const briefFingerprint = {
+    algorithm: "sha256" as const,
+    digest: "e".repeat(64),
+  };
+  const approvedBriefBasis = {
+    kind: "approved-brief" as const,
+    projectId: "generic-architecture-project",
+    projectSnapshotId: "generic-architecture-project:r1",
+    projectRevision: 2,
+    briefId: "generic-architecture-project:brief",
+    briefSnapshotId: "generic-architecture-project:brief:r1:fixture",
+    briefRevision: 1,
+    approvedBriefFingerprint: briefFingerprint,
+  };
+  const runBasis = {
+    kind: "thread-snapshot" as const,
+    ...reference(r2),
+  };
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: "generic-architecture-project:r1",
-    revision: 1,
-    generatedAt: "2026-08-08T05:00:00.000Z",
+    revision: 2,
+    generatedAt,
+    previous: {
+      snapshotId: "generic-architecture-project:r0-start",
+      revision: 1,
+    },
     project: {
       id: "generic-architecture-project",
       name: "Generic architecture project",
       subjectId: r2.subject.id,
       objective: {
-        title: "Generic architecture",
+        title: "Keep the approved generic architecture traceable.",
         statement: "Keep the approved generic architecture traceable.",
+      },
+    },
+    framing: {
+      intent: {
+        statement: "Keep the approved generic architecture traceable.",
+        source: { kind: "human", reference: "paired-conversation" },
+        capturedAt: generatedAt,
+        capturedBy: { id: "human:owner", origin: "human" },
+      },
+      questions: [],
+      answers: [],
+      currentBrief: {
+        briefId: "generic-architecture-project:brief",
+        id: "generic-architecture-project:brief:r1:fixture",
+        revision: 1,
+        items: [{
+          id: "objective",
+          kind: "objective",
+          statement: "Keep the approved generic architecture traceable.",
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }, {
+          id: "mission",
+          kind: "mission-scenario",
+          statement: "Keep the approved generic architecture traceable.",
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }, {
+          id: "success",
+          kind: "success-criterion",
+          statement: "The architecture remains bound to exact evidence.",
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }],
+        proposedAt: generatedAt,
+        proposedBy: { id: "agent:planner", origin: "agent" },
+      },
+      currentBriefApproval: {
+        briefSnapshotId: "generic-architecture-project:brief:r1:fixture",
+        briefRevision: 1,
+        status: "approved",
+        inputFingerprint: briefFingerprint,
+        requestedAt: generatedAt,
+        decidedAt: generatedAt,
+        decidedBy: { id: "human:owner", origin: "human" },
+        rationale: "Confirmed in the paired conversation.",
       },
     },
     threadSnapshots: completed ? [reference(r2), reference(r3)] : [reference(r2)],
@@ -897,11 +963,16 @@ function genericArchitectureProject(
     }],
     workItems: [{
       id: "author-generic-architecture",
+      activityId: "activity:author-generic-architecture",
       phaseId: "architecture",
       title: "Author generic architecture",
       description: "Run the registered generic architecture operation.",
       kind: "architect",
-      operation: { ...MODEL_WRITE_ARCHITECTURE_OPERATION, bindings: [] },
+      operation: {
+        id: MODEL_WRITE_ARCHITECTURE_OPERATION.id,
+        version: MODEL_WRITE_ARCHITECTURE_OPERATION.version,
+        bindings: [],
+      },
       status: completed ? "completed" : "in-progress",
       owner: "agent",
       dependsOnWorkItemIds: [],
@@ -915,6 +986,8 @@ function genericArchitectureProject(
       status,
       summary: "Author the approved generic architecture.",
       queuedAt: "2026-08-08T04:45:00.000Z",
+      basis: runBasis,
+      inputFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
       ...(status === "queued" ? {} : {
         startedAt: "2026-08-08T04:46:00.000Z",
         claimedAt: "2026-08-08T04:46:00.000Z",
@@ -940,6 +1013,30 @@ function genericArchitectureProject(
     decisions: [],
     approvals: [],
     blockers: [],
+    commandReceipts: [{
+      commandId: "start-generic-architecture",
+      type: "project.start",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: generatedAt,
+      appliedAt: generatedAt,
+      requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+      resultingSnapshot: {
+        snapshotId: "generic-architecture-project:r0-start",
+        revision: 1,
+      },
+    }, {
+      commandId: "approve-generic-architecture-brief",
+      type: "project.brief-approve",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: generatedAt,
+      appliedAt: generatedAt,
+      requestFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+      resultingSnapshot: {
+        snapshotId: "generic-architecture-project:r1",
+        revision: 2,
+      },
+      approvedBriefBasis,
+    }],
   };
 }
 

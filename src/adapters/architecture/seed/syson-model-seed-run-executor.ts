@@ -496,7 +496,7 @@ export class SysonModelSeedRunExecutor {
       approvedBriefBasis.projectRevision,
     );
     if (
-      !approvedProject || approvedProject.schemaVersion !== "3.0" ||
+      !approvedProject || approvedProject.schemaVersion !== "4.0" ||
       approvedProject.id !== approvedBriefBasis.projectSnapshotId
     ) {
       throw invalidSeedLineage(
@@ -775,7 +775,7 @@ function requireSysonModelSeedShape(
 ): EngineeringWorkItem {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
+    run.basis?.kind !== "thread-snapshot" ||
     !workItem || workItem.operation?.id !== SYSON_MODEL_SEED_OPERATION.id ||
     workItem.operation.version !== SYSON_MODEL_SEED_OPERATION.version ||
     workItem.operation.bindings.length !== 1 ||

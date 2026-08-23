@@ -118,6 +118,7 @@ Deno.test("project_snapshot omits join when no Thread store is wired", async () 
 function joinProject(): EngineeringProjectSnapshot {
   const work: EngineeringWorkItem = {
     id: "wi-fea",
+    activityId: "activity:wi-fea",
     phaseId: "phase-fea",
     title: "Run recorded FEA",
     description: "Recorded CalculiX static proof.",
@@ -156,7 +157,7 @@ function joinProject(): EngineeringProjectSnapshot {
     },
   };
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "p:r1",
     revision: 1,
     generatedAt: AT,

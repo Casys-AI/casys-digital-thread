@@ -1,14 +1,14 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "4.0",
   "id": "engineering-project-generic-test-system-r1",
-  "revision": 1,
+  "revision": 2,
   "generatedAt": "2026-08-01T10:36:58.345Z",
   "project": {
     "id": "generic-test-system",
     "name": "Generic Test System",
     "subjectId": "generic-test-system",
     "objective": {
-      "title": "Build a traceable generic system definition",
+      "title": "Manage the generic test system from its system architecture through design, simulation, verification, and industrialization evidence without treating unreviewed assumptions as requirements.",
       "statement": "Manage the generic test system from its system architecture through design, simulation, verification, and industrialization evidence without treating unreviewed assumptions as requirements."
     }
   },
@@ -143,7 +143,8 @@
         }
       ],
       "decisionIds": [],
-      "blockerIds": []
+      "blockerIds": [],
+      "activityId": "activity:capture-system-model"
     },
     {
       "id": "establish-product-architecture",
@@ -165,7 +166,8 @@
         }
       ],
       "decisionIds": [],
-      "blockerIds": []
+      "blockerIds": [],
+      "activityId": "activity:establish-product-architecture"
     },
     {
       "id": "build-current-cad",
@@ -187,7 +189,8 @@
         }
       ],
       "decisionIds": [],
-      "blockerIds": []
+      "blockerIds": [],
+      "activityId": "activity:build-current-cad"
     },
     {
       "id": "observe-modelica-run",
@@ -209,7 +212,8 @@
         }
       ],
       "decisionIds": [],
-      "blockerIds": []
+      "blockerIds": [],
+      "activityId": "activity:observe-modelica-run"
     },
     {
       "id": "verify-current-mechanical-design",
@@ -228,7 +232,8 @@
       ],
       "blockerIds": [
         "missing-reviewed-mechanical-proof-case"
-      ]
+      ],
+      "activityId": "activity:verify-current-mechanical-design"
     },
     {
       "id": "observe-erp-definition",
@@ -250,7 +255,8 @@
         }
       ],
       "decisionIds": [],
-      "blockerIds": []
+      "blockerIds": [],
+      "activityId": "activity:observe-erp-definition"
     }
   ],
   "agentRuns": [],
@@ -295,6 +301,138 @@
       "decisionIds": [
         "review-mechanical-proof-case"
       ]
+    }
+  ],
+  "previous": {
+    "snapshotId": "engineering-project-generic-test-system-r0-start",
+    "revision": 1
+  },
+  "framing": {
+    "intent": {
+      "statement": "Manage the generic test system from its system architecture through design, simulation, verification, and industrialization evidence without treating unreviewed assumptions as requirements.",
+      "source": {
+        "kind": "human",
+        "reference": "paired-conversation"
+      },
+      "capturedAt": "2026-08-01T10:36:58.345Z",
+      "capturedBy": {
+        "id": "human:owner",
+        "origin": "human"
+      }
+    },
+    "questions": [],
+    "answers": [],
+    "currentBrief": {
+      "briefId": "generic-test-system:brief",
+      "id": "generic-test-system:brief:r1:fixture",
+      "revision": 1,
+      "items": [
+        {
+          "id": "objective",
+          "kind": "objective",
+          "statement": "Manage the generic test system from its system architecture through design, simulation, verification, and industrialization evidence without treating unreviewed assumptions as requirements.",
+          "sourceRefs": [
+            {
+              "kind": "intent",
+              "reference": "paired-conversation"
+            }
+          ]
+        },
+        {
+          "id": "mission",
+          "kind": "mission-scenario",
+          "statement": "Review the generic test system against recorded evidence.",
+          "sourceRefs": [
+            {
+              "kind": "intent",
+              "reference": "paired-conversation"
+            }
+          ]
+        },
+        {
+          "id": "success",
+          "kind": "success-criterion",
+          "statement": "Every declared work item is bound to exact evidence or an explicit open decision.",
+          "sourceRefs": [
+            {
+              "kind": "intent",
+              "reference": "paired-conversation"
+            }
+          ]
+        }
+      ],
+      "proposedAt": "2026-08-01T10:36:58.345Z",
+      "proposedBy": {
+        "id": "agent:planner",
+        "origin": "agent"
+      }
+    },
+    "currentBriefApproval": {
+      "briefSnapshotId": "generic-test-system:brief:r1:fixture",
+      "briefRevision": 1,
+      "status": "approved",
+      "inputFingerprint": {
+        "algorithm": "sha256",
+        "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "requestedAt": "2026-08-01T10:36:58.345Z",
+      "decidedAt": "2026-08-01T10:36:58.345Z",
+      "decidedBy": {
+        "id": "human:owner",
+        "origin": "human"
+      },
+      "rationale": "Confirmed in the paired conversation."
+    }
+  },
+  "commandReceipts": [
+    {
+      "commandId": "start-generic-test-system",
+      "type": "project.start",
+      "actor": {
+        "id": "human:owner",
+        "origin": "human"
+      },
+      "issuedAt": "2026-08-01T10:36:58.345Z",
+      "appliedAt": "2026-08-01T10:36:58.345Z",
+      "requestFingerprint": {
+        "algorithm": "sha256",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "resultingSnapshot": {
+        "snapshotId": "engineering-project-generic-test-system-r0-start",
+        "revision": 1
+      }
+    },
+    {
+      "commandId": "approve-generic-brief",
+      "type": "project.brief-approve",
+      "actor": {
+        "id": "human:owner",
+        "origin": "human"
+      },
+      "issuedAt": "2026-08-01T10:36:58.345Z",
+      "appliedAt": "2026-08-01T10:36:58.345Z",
+      "requestFingerprint": {
+        "algorithm": "sha256",
+        "digest": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "resultingSnapshot": {
+        "snapshotId": "engineering-project-generic-test-system-r1",
+        "revision": 2
+      },
+      "approvedBriefBasis": {
+        "kind": "approved-brief",
+        "projectId": "generic-test-system",
+        "projectSnapshotId": "engineering-project-generic-test-system-r1",
+        "projectRevision": 2,
+        "briefId": "generic-test-system:brief",
+        "briefSnapshotId": "generic-test-system:brief:r1:fixture",
+        "briefRevision": 1,
+        "approvedBriefFingerprint": {
+          "algorithm": "sha256",
+          "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      }
     }
   ]
 }

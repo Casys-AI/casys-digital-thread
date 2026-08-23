@@ -20,7 +20,7 @@ function makeProject(
   opts: { id?: string; runs?: Array<{ id: string }> } = {},
 ): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "rev-1",
     revision: 1,
     generatedAt: "2026-01-01T00:00:00.000Z",

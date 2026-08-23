@@ -1067,7 +1067,7 @@ async function executorHarness(
     }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project.ramp:r1",
     revision: 1,
     generatedAt: EXECUTION_AT,
@@ -1089,6 +1089,7 @@ async function executorHarness(
     }],
     workItems: [{
       id: "work.spice.admitted",
+      activityId: "activity:work.spice.admitted",
       phaseId: "phase.simulate",
       title: "Run admitted SPICE",
       description: "Run the sealed source.",

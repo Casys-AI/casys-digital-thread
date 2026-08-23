@@ -427,7 +427,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project.motor:r1",
     revision: 1,
     generatedAt: AT,
@@ -449,6 +449,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     }],
     workItems: [{
       id: "work.modelica.qualified",
+      activityId: "activity:work.modelica.qualified",
       phaseId: "phase.simulate",
       title: "Run qualified Modelica",
       description: "Run the fixed local kit.",

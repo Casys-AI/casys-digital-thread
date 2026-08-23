@@ -123,10 +123,10 @@ The JSON document is one atomic browser read model:
 
 ```json
 {
-  "schemaVersion": "engineering-workbench/0.4",
+  "schemaVersion": "engineering-workbench/0.5",
   "surface": "evidence",
   "project": {
-    "schemaVersion": "1.0",
+    "schemaVersion": "4.0",
     "project": { "id": "desk-lamp-dl04" },
     "phases": [],
     "workItems": [],
@@ -144,6 +144,14 @@ The JSON document is one atomic browser read model:
     "phaseLanes": [
       { "phaseId": "architecture", "lane": "system-model" },
       { "phaseId": "canonical-geometry", "lane": "geometry" }
+    ],
+    "activities": [
+      {
+        "id": "activity:establish-product-architecture",
+        "lane": "system-model",
+        "rootRevisionId": "establish-product-architecture",
+        "revisionIds": ["establish-product-architecture"]
+      }
     ]
   },
   "alignment": {
@@ -164,11 +172,11 @@ validated project and technical projection. `alignment.status` is:
   The cockpit shows the descendant evidence and names the lag; it never promotes a
   parallel branch or pretends that existing decisions were made against the newer state.
 
-A V3 project created from first intent returns `"surface": "planning"` until its first
-documentary baseline exists. That variant contains the living brief, durable project
-path, and `planning.technicalBaseline.status: "not-created"`; it has no `thread` or
-`alignment` field and returns `X-Casys-Data-Source: engineering-project-plan`. The BFF
-does not use the current subject head as a substitute for that missing baseline.
+A schema 4.0 project created from first intent returns `"surface": "planning"` until its
+first documentary baseline exists. That variant contains the living brief, durable
+project path, and `planning.technicalBaseline.status: "not-created"`; it has no `thread`
+or `alignment` field and returns `X-Casys-Data-Source: engineering-project-plan`. The
+BFF does not use the current subject head as a substitute for that missing baseline.
 
 After `baseline.from-approved-brief@1` has completed, it instead returns
 `"surface": "documentary"`. That surface contains one immutable record of the exact
@@ -197,7 +205,7 @@ The live read path is:
 curl -N http://127.0.0.1:5173/api/thread/workbench/events
 ```
 
-It emits a complete `engineering-workbench/0.4` replacement as
+It emits a complete `engineering-workbench/0.5` replacement as
 `event: workbench-snapshot`. Event IDs include the relevant immutable revision and live
 activity version, but are opaque to clients: use `Last-Event-ID` only for reconnection,
 not as a technical lineage identifier.
@@ -210,6 +218,10 @@ Reconnecting with `Last-Event-ID` replays no tool call.
 On the **evidence** surface, the projection must show:
 
 - source `observed`, not `fixture`;
+- `projectPath.activities` grouped by the persisted `activityId` and
+  `predecessorRevisionId`, not by operation keys or labels;
+- exact condensed Overview connectors through hidden documentary/evidence/result nodes,
+  never an invented edge;
 - exact producer and consumed SHA-256 values for every claimed CAD handoff;
 - the canonical whole-machine STEP after an explicit build run is attached;
 - provider branches only after their explicit runs are published;

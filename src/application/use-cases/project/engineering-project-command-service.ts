@@ -26,6 +26,7 @@ import {
   type EngineeringWorkOwner,
   queuedRunCancellationSummary,
 } from "../../../domain/project/engineering-project.ts";
+import { stampEngineeringActivityIdentity } from "../../../domain/project/engineering-activity.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 import type { RegisteredRunPlanSealer } from "../../../domain/project/resolved-run-plan-sealer.ts";
 import { validateResolvedOperationPlanRef } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
@@ -124,9 +125,9 @@ export interface QueueRunCommand extends EngineeringProjectCommandInput {
   readonly runId: string;
   readonly workItemId: string;
   readonly summary: string;
-  /** V1-only queue anchor; V3 rejects this field. */
+  /** Historical V1 field. The current schema rejects it rather than queuing. */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
-  /** V3-only queue anchor; V1 rejects this field. */
+  /** Exact execution anchor. Callers of the MCP tool never choose this. */
   readonly basis?: EngineeringBasisRef;
 }
 
@@ -299,6 +300,11 @@ export interface PlannedEngineeringWorkItem {
   readonly dependsOnWorkItemIds: readonly string[];
   readonly decisionIds: readonly string[];
   readonly operation: EngineeringOperationRef;
+  /**
+   * Names an existing or same-batch predecessor revision. Omit to start a
+   * stable activity. Callers never supply activityId.
+   */
+  readonly predecessorRevisionId?: string;
   /** Optional because a work item may legitimately make no gate claim. */
   readonly gateClaims?: readonly EngineeringGateClaim[];
 }
@@ -602,6 +608,7 @@ export class EngineeringProjectCommandService {
           };
         });
         assertPlanDependenciesAreAcyclic(resolvedWorkItems);
+        const activityIdentity = stampDeclaredActivityIdentity([], resolvedWorkItems);
 
         const decisions = command.requiredDecisions.map((decision) => ({
           id: decision.id,
@@ -615,6 +622,7 @@ export class EngineeringProjectCommandService {
         }));
         const workItems = resolvedWorkItems.map((item) => ({
           id: item.id,
+          ...activityIdentity.get(item.id)!,
           phaseId: item.phaseId,
           title: item.title,
           description: item.description,
@@ -770,6 +778,10 @@ export class EngineeringProjectCommandService {
           ...draft.workItems,
           ...resolvedWorkItems,
         ]);
+        const activityIdentity = stampDeclaredActivityIdentity(
+          draft.workItems,
+          resolvedWorkItems,
+        );
 
         const decisions = command.requiredDecisions.map((decision) => ({
           id: decision.id,
@@ -783,6 +795,7 @@ export class EngineeringProjectCommandService {
         }));
         const workItems = resolvedWorkItems.map((item) => ({
           id: item.id,
+          ...activityIdentity.get(item.id)!,
           phaseId: item.phaseId,
           title: item.title,
           description: item.description,
@@ -936,24 +949,15 @@ export class EngineeringProjectCommandService {
           inputFingerprint: structuredClone(decision.inputFingerprint),
         };
       });
-      const queued = draft.schemaVersion !== "1.0"
-        ? await queueV3Run(
-          draft,
-          command,
-          workItem,
-          decisionBindings,
-          appliedAt,
-          origin,
-          this.planning,
-        )
-        : await queueV1Run(
-          draft,
-          command,
-          workItem,
-          decisionBindings,
-          appliedAt,
-          origin,
-        );
+      const queued = await queueV3Run(
+        draft,
+        command,
+        workItem,
+        decisionBindings,
+        appliedAt,
+        origin,
+        this.planning,
+      );
       draft.agentRuns.push(queued);
       workItem.status = "in-progress";
     });
@@ -1015,7 +1019,7 @@ export class EngineeringProjectCommandService {
       "completed",
       async (run, appliedAt, draft) => {
         assertExactResultEvidence(draft, command.resultSnapshot, command.evidenceRefs);
-        if (draft.schemaVersion !== "1.0") {
+        {
           const basis = run.basis;
           if (!basis) {
             invalidInput(
@@ -1051,23 +1055,6 @@ export class EngineeringProjectCommandService {
               command.evidenceRefs,
             );
           }
-        } else {
-          if (!run.baseSnapshot) {
-            invalidInput(
-              `Agent run ${run.id} has no exact base snapshot; completion is unsafe.`,
-            );
-          }
-          assertResultAdvancesBase(run.baseSnapshot, command.resultSnapshot);
-          if (!this.evidenceValidator) {
-            invalidInput(
-              "Completion evidence validation is unavailable; refusing to publish unverified refs.",
-            );
-          }
-          await this.evidenceValidator.validate(
-            run.baseSnapshot,
-            command.resultSnapshot,
-            command.evidenceRefs,
-          );
         }
         addThreadSnapshot(draft, command.resultSnapshot);
         run.completedAt = appliedAt;
@@ -1404,7 +1391,6 @@ export class EngineeringProjectCommandService {
         if (!decisionWork) notFound("work item", run.workItemId);
         const operation = decisionWork.operation;
         if (
-          draft.schemaVersion !== "3.0" ||
           run.basis?.kind !== "thread-snapshot" ||
           operation?.id !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id ||
           operation.version !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version
@@ -1656,6 +1642,11 @@ export class EngineeringProjectCommandService {
           );
         }
         const successorWork = findWorkItem(draft, successor.workItemId)!;
+        if (successorWork.activityId !== failedWork.activityId) {
+          invalidInput(
+            `Successor work item ${successorWork.id} is not in the same stable activity as ${failedWork.id}.`,
+          );
+        }
         if (
           successorWork.status !== "completed" ||
           !sameEvidenceReferences(
@@ -2089,9 +2080,8 @@ async function reconciliationReplayFingerprints(
 
 function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
   if (
-    draft.schemaVersion === "3.0" &&
-    (!draft.framing?.currentBrief ||
-      draft.framing.currentBriefApproval?.status !== "approved")
+    !draft.framing?.currentBrief ||
+    draft.framing.currentBriefApproval?.status !== "approved"
   ) {
     invalidTransition(
       "A project requires a current human-approved brief before planning.",
@@ -2152,15 +2142,9 @@ function assertChangeCanAppend(draft: EngineeringProjectSnapshot): void {
 function assertPlanningProject(
   draft: EngineeringProjectSnapshot,
 ): void {
-  if (draft.schemaVersion === "1.0") {
-    invalidTransition(
-      "V1 project history is read-only for planning; start a new project from intent instead.",
-    );
-  }
   if (
-    draft.schemaVersion === "3.0" &&
-    (!draft.framing?.currentBrief ||
-      draft.framing.currentBriefApproval?.status !== "approved")
+    !draft.framing?.currentBrief ||
+    draft.framing.currentBriefApproval?.status !== "approved"
   ) {
     invalidTransition(
       "A project plan requires a current human-approved project brief.",
@@ -2171,47 +2155,6 @@ function assertPlanningProject(
 interface ApprovedDecisionBinding {
   readonly id: string;
   readonly inputFingerprint: ContentFingerprint;
-}
-
-async function queueV1Run(
-  draft: EngineeringProjectSnapshot,
-  command: QueueRunCommand,
-  workItem: EngineeringWorkItem,
-  approvedDecisions: readonly ApprovedDecisionBinding[],
-  appliedAt: string,
-  origin: EngineeringProjectCommandOrigin,
-): Promise<Mutable<EngineeringAgentRun>> {
-  if (command.basis !== undefined) {
-    invalidInput("V1 runs cannot accept a V3 execution basis.");
-  }
-  // V1 plans are immutable history, never a compatibility route into the V3
-  // first-baseline executor.
-  if (draft.plan) {
-    invalidTransition(
-      "A V1 plan is historical-only and cannot be queued for V3 execution.",
-    );
-  }
-  const baseSnapshot = command.baseSnapshot;
-  if (!baseSnapshot) {
-    invalidInput("A V1 run requires an exact baseSnapshot.");
-  }
-  assertDeclaredSnapshot(draft, baseSnapshot);
-  const inputFingerprint = await sha256Fingerprint({
-    workItemId: workItem.id,
-    baseSnapshot,
-    decisionBindings: approvedDecisions,
-  });
-  return {
-    id: command.runId,
-    workItemId: workItem.id,
-    status: "queued",
-    summary: command.summary,
-    queuedAt: appliedAt,
-    baseSnapshot: structuredClone(baseSnapshot),
-    inputFingerprint,
-    evidenceRefs: [],
-    statusHistory: [transition(command, origin, "queued", appliedAt)],
-  };
 }
 
 async function queueV3Run(
@@ -2565,6 +2508,19 @@ function validatePlannedChange(
     }
     uniquePlanIds(item.dependsOnWorkItemIds, `workItems[${index}] dependency`);
     uniquePlanIds(item.decisionIds, `workItems[${index}] decision`);
+    if (item.predecessorRevisionId !== undefined) {
+      nonEmpty(
+        item.predecessorRevisionId,
+        `workItems[${index}].predecessorRevisionId`,
+      );
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(item, "activityId")
+    ) {
+      invalidInput(
+        `workItems[${index}].activityId is server-stamped and cannot be supplied.`,
+      );
+    }
   }
   assertPlannedDecisionScopesAreUnambiguous(command.workItems);
   for (const [index, decision] of command.requiredDecisions.entries()) {
@@ -2733,7 +2689,7 @@ export function approvedBriefBasisForProject(
   const brief = framing?.currentBrief;
   const review = framing?.currentBriefApproval;
   if (
-    project.schemaVersion !== "3.0" || !brief || !review ||
+    !brief || !review ||
     review.status !== "approved" || !review.decidedAt ||
     review.decidedBy?.origin !== "human" ||
     review.briefSnapshotId !== brief.id ||
@@ -2797,7 +2753,6 @@ function assertPlanBindingsResolve(
   for (const binding of bindings) {
     if (binding.source.kind === "approved-brief") {
       if (
-        project.schemaVersion !== "3.0" ||
         !project.framing?.currentBrief ||
         project.framing.currentBriefApproval?.status !== "approved"
       ) {
@@ -2947,6 +2902,22 @@ function assertEveryPhaseHasWork(
       invalidInput(`Project phase ${phase.id} must contain at least one work item.`);
     }
   }
+}
+
+function stampDeclaredActivityIdentity(
+  existing: readonly EngineeringWorkItem[],
+  declared: readonly PlannedEngineeringWorkItem[],
+): ReadonlyMap<
+  string,
+  { readonly activityId: string; readonly predecessorRevisionId?: string }
+> {
+  const { stamped, issues } = stampEngineeringActivityIdentity(
+    existing,
+    declared,
+  );
+  const first = issues[0];
+  if (first) invalidInput(first.message);
+  return stamped;
 }
 
 function uniquePlanIds(values: readonly string[], label: string): void {

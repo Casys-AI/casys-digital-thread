@@ -114,7 +114,7 @@ function projectWithTamperedManifestSealAttachment(head: ThreadSnapshot): unknow
     bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
   };
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project-impact-selection-r2",
     revision: 2,
     generatedAt: AT,
@@ -136,6 +136,7 @@ function projectWithTamperedManifestSealAttachment(head: ThreadSnapshot): unknow
     }],
     workItems: [{
       id: "work-manifest-seal",
+      activityId: "activity:work-manifest-seal",
       phaseId: "phase-impact-selection",
       title: "Seal manifest",
       description: "Seal manifest",

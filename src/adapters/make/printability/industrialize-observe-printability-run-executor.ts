@@ -696,7 +696,7 @@ function requireShape(
   );
   const geometryBinding = operation?.bindings.find((item) => item.name === "geometry");
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     operation?.id !== INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION.id ||
     operation.version !== INDUSTRIALIZE_OBSERVE_PRINTABILITY_OPERATION.version ||

@@ -88,10 +88,7 @@ import {
   type PartAnchorageResolution,
 } from "./part-anchorage-model.ts";
 import { ComponentWorkspace } from "./component-workspace.tsx";
-import {
-  ToolInspectorPanel,
-  type WorkbenchToolIdentity,
-} from "./tool-inspectors.tsx";
+import { ToolInspectorPanel, type WorkbenchToolIdentity } from "./tool-inspectors.tsx";
 import {
   graphNodeForSelection,
   resolveToolInspectorTarget,
@@ -351,8 +348,7 @@ export function ThreadWorkbench({
       } else {
         const thread = next.thread;
         setSelectedComponentId(thread.components.components[0]?.id);
-        const liveNode =
-          activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
+        const liveNode = activityFeedNodes(thread.graph.nodes, thread.graph.edges)[0];
         const initialSelection: ThreadRef = liveNode?.selection ??
           (thread.violations[0]
             ? { kind: "violation", id: thread.violations[0].id }
@@ -792,9 +788,7 @@ export function ThreadWorkbench({
     // Le fragment suit l'espace ouvert : recharger, revenir en arriere ou
     // partager le lien ramene au meme endroit du cockpit.
     pushWorkspaceHash(
-      next === "product"
-        ? productFacetHash(activeProductFacet)
-        : projectViewHash(next),
+      next === "product" ? productFacetHash(activeProductFacet) : projectViewHash(next),
     );
   };
 
@@ -1186,8 +1180,7 @@ export function ThreadWorkbench({
             <>
               <Tabs
                 value={drawerMode}
-                onValueChange={(mode) =>
-                  setDrawerMode(mode as "tool" | "record")}
+                onValueChange={(mode) => setDrawerMode(mode as "tool" | "record")}
               >
                 <TabsList aria-label="Inspector mode" className="w-full">
                   <TabsTrigger value="tool" className="flex-1">
@@ -1231,8 +1224,8 @@ export function ThreadWorkbench({
                 )
                 : (
                   <EmptyNotice>
-                    This graph entity has no richer record projection. Use the
-                    tool context to inspect its recorded neighbours.
+                    This graph entity has no richer record projection. Use the tool
+                    context to inspect its recorded neighbours.
                   </EmptyNotice>
                 )}
             </>
@@ -1286,9 +1279,8 @@ export function ThreadWorkbench({
           </strong>
           <span>
             The technical thread is at revision{" "}
-            {workbench.alignment.currentThreadRevision}, while project decisions
-            remain anchored to revision{" "}
-            {workbench.alignment.projectThreadRevision}.
+            {workbench.alignment.currentThreadRevision}, while project decisions remain
+            anchored to revision {workbench.alignment.projectThreadRevision}.
           </span>
         </Notice>
       )}
@@ -1302,10 +1294,9 @@ export function ThreadWorkbench({
               : "references do"} not resolve in this thread revision
           </strong>
           <span>
-            These project records cite thread entities or snapshots that the
-            exact revision cannot resolve (usually residues of abandoned work).
-            The rest of this page resolved.{" "}
-            {workbench.unresolvedEvidenceReferences
+            These project records cite thread entities or snapshots that the exact
+            revision cannot resolve (usually residues of abandoned work). The rest of
+            this page resolved. {workbench.unresolvedEvidenceReferences
               .map((issue) => issue.path)
               .join(", ")}
           </span>
@@ -1318,6 +1309,7 @@ export function ThreadWorkbench({
             project={project}
             thread={snapshot}
             phaseLanes={workbench.projectPath.phaseLanes}
+            activities={workbench.projectPath.activities}
             onNavigate={changeView}
             onOpenProductFacet={changeProductFacet}
             onOpenActivity={openDecisionActivity}
@@ -1750,9 +1742,7 @@ function MetricTiles(
 }
 
 function Mono({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <code className="font-mono text-xs text-muted-foreground">{children}</code>
-  );
+  return <code className="font-mono text-xs text-muted-foreground">{children}</code>;
 }
 
 function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
@@ -1810,12 +1800,11 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "asserted-by",
         label: "Asserted by",
-        value:
-          `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
-            edge.analysis.assertedBy.version
-              ? ` @ ${edge.analysis.assertedBy.version}`
-              : ""
-          }`,
+        value: `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
+          edge.analysis.assertedBy.version
+            ? ` @ ${edge.analysis.assertedBy.version}`
+            : ""
+        }`,
       },
       {
         id: "analysis-scope",
@@ -1904,10 +1893,9 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
         {!edge.attestation && edge.analysis
           ? (
             <Notice title="Qualified analysis assertion" tone="info">
-              This semantic relation is backed by the exact evidence listed
-              above and is classified as{" "}
-              {edge.analysis.epistemicBasis}. It does not grant execution
-              authority.
+              This semantic relation is backed by the exact evidence listed above and is
+              classified as{" "}
+              {edge.analysis.epistemicBasis}. It does not grant execution authority.
             </Notice>
           )
           : !edge.attestation && (
@@ -1961,9 +1949,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
     return <ChangeInspector snapshot={snapshot} />;
   }
   if (selection.kind === "artifact") {
-    const artifact = snapshot.artifacts.find((item) =>
-      item.id === selection.id
-    );
+    const artifact = snapshot.artifacts.find((item) => item.id === selection.id);
     return artifact
       ? (
         <ArtifactInspector
@@ -1975,9 +1961,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Artifact not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "observation") {
-    const observation = snapshot.observations.find((item) =>
-      item.id === selection.id
-    );
+    const observation = snapshot.observations.find((item) => item.id === selection.id);
     return observation
       ? (
         <ObservationInspector
@@ -1989,9 +1973,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       : <EmptyNotice>Observation not present in this snapshot.</EmptyNotice>;
   }
   if (selection.kind === "requirement") {
-    const requirement = snapshot.requirements.find((item) =>
-      item.id === selection.id
-    );
+    const requirement = snapshot.requirements.find((item) => item.id === selection.id);
     return requirement
       ? (
         <RequirementInspector
@@ -2002,9 +1984,7 @@ function SelectionInspector({ snapshot, selection, onSelect }: {
       )
       : <EmptyNotice>Requirement not present in this snapshot.</EmptyNotice>;
   }
-  const violation = snapshot.violations.find((item) =>
-    item.id === selection.id
-  );
+  const violation = snapshot.violations.find((item) => item.id === selection.id);
   return violation
     ? (
       <ViolationInspector
@@ -2092,8 +2072,8 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
       <FactList items={artifactFacts(artifact)} />
       {artifact.freshness === "stale" && (
         <Notice title="Evidence invalidated" tone="warning">
-          This result predates a dependency. It remains available for provenance
-          but cannot support a current verdict.
+          This result predates a dependency. It remains available for provenance but
+          cannot support a current verdict.
         </Notice>
       )}
       {artifact.attestation && (
@@ -2101,9 +2081,7 @@ function ArtifactInspector({ snapshot, artifact, onSelect }: {
           title={artifact.attestation.status === "verified"
             ? "Producer / consumer hash verified"
             : "Producer / consumer hash mismatch"}
-          tone={artifact.attestation.status === "verified"
-            ? "success"
-            : "danger"}
+          tone={artifact.attestation.status === "verified" ? "success" : "danger"}
         >
           {artifact.attestation.status === "verified"
             ? "The consumer used the exact fingerprint emitted by its upstream producer."
@@ -2419,9 +2397,7 @@ function summaryMetrics(
       label: "Evidence currency",
       value: artifacts.length,
       unit: `current${
-        historicalArtifactCount > 0
-          ? ` · ${historicalArtifactCount} historical`
-          : ""
+        historicalArtifactCount > 0 ? ` · ${historicalArtifactCount} historical` : ""
       }`,
       detail: stale > 0
         ? `${fresh} fresh · ${stale} current stale`
@@ -2435,9 +2411,7 @@ function summaryMetrics(
       unit: noCriterion ? "modelled" : "passing",
       detail: noCriterion
         ? "No model-owned criterion"
-        : `${failed} failed · ${
-          requirements.length - passed - failed
-        } unresolved` +
+        : `${failed} failed · ${requirements.length - passed - failed} unresolved` +
           (historicalRequirementCount > 0
             ? ` · ${historicalRequirementCount} prior version${
               historicalRequirementCount === 1 ? "" : "s"
@@ -2452,11 +2426,7 @@ function summaryMetrics(
       unit: "open",
       detail: snapshot.violations[0]?.id ??
         (noCriterion ? "verdict unavailable" : "no active violation"),
-      tone: snapshot.violations.length
-        ? "danger"
-        : noCriterion
-        ? "warning"
-        : "success",
+      tone: snapshot.violations.length ? "danger" : noCriterion ? "warning" : "success",
     },
   ];
 }

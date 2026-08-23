@@ -163,6 +163,7 @@ export type {
 } from "../../../presentation/workbench/engineering/documentary.ts";
 export type {
   EngineeringEvidenceWorkbenchSnapshot,
+  EngineeringWorkbenchActivity,
   EngineeringWorkbenchAlignment,
   EngineeringWorkbenchBaseSnapshot,
   EngineeringWorkbenchPhaseLane,
@@ -284,12 +285,14 @@ function isProjectPathProjection(
 ): value is EngineeringEvidenceWorkbenchSnapshot["projectPath"] {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ["phaseLanes"]) ||
-    !Array.isArray(value.phaseLanes)
+    !hasExactKeys(value, ["phaseLanes", "activities"]) ||
+    !Array.isArray(value.phaseLanes) ||
+    !Array.isArray(value.activities)
   ) {
     return false;
   }
   const knownPhaseIds = new Set(project.phases.map((phase) => phase.id));
+  const knownWorkItemIds = new Set(project.workItems.map((item) => item.id));
   const projectedPhaseIds = new Set<string>();
   for (const entry of value.phaseLanes) {
     if (
@@ -304,7 +307,41 @@ function isProjectPathProjection(
     }
     projectedPhaseIds.add(entry.phaseId);
   }
-  return projectedPhaseIds.size === knownPhaseIds.size;
+  if (projectedPhaseIds.size !== knownPhaseIds.size) return false;
+  const projectedActivityIds = new Set<string>();
+  const projectedRevisionIds = new Set<string>();
+  for (const activity of value.activities) {
+    if (
+      !isRecord(activity) ||
+      !hasExactKeys(activity, [
+        "id",
+        "lane",
+        "rootRevisionId",
+        "revisionIds",
+      ]) ||
+      typeof activity.id !== "string" ||
+      projectedActivityIds.has(activity.id) ||
+      !isEngineeringPathLaneId(activity.lane) ||
+      typeof activity.rootRevisionId !== "string" ||
+      !knownWorkItemIds.has(activity.rootRevisionId) ||
+      !Array.isArray(activity.revisionIds) ||
+      activity.revisionIds[0] !== activity.rootRevisionId
+    ) {
+      return false;
+    }
+    projectedActivityIds.add(activity.id);
+    for (const revisionId of activity.revisionIds) {
+      if (
+        typeof revisionId !== "string" ||
+        !knownWorkItemIds.has(revisionId) ||
+        projectedRevisionIds.has(revisionId)
+      ) {
+        return false;
+      }
+      projectedRevisionIds.add(revisionId);
+    }
+  }
+  return projectedRevisionIds.size === knownWorkItemIds.size;
 }
 
 function isEngineeringPathLaneId(
@@ -754,9 +791,7 @@ export function isThreadWorkbenchSnapshot(
     Array.isArray(candidate.artifacts) &&
     candidate.artifacts.every(isThreadArtifact) &&
     (candidate.verificationCases === undefined
-      ? candidate.graph.nodes.every((node) =>
-        node.verificationCaseRefs === undefined
-      )
+      ? candidate.graph.nodes.every((node) => node.verificationCaseRefs === undefined)
       : isThreadVerificationCaseCatalog(
         candidate.verificationCases,
         candidate.artifacts,
@@ -782,26 +817,31 @@ function isThreadEvaluationCloseoutIndex(
   value: unknown,
   snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts" | "previous">,
 ): value is ThreadEvaluationCloseoutIndex {
-  if (!isRecord(value) || !hasExactKeys(value, [
-    "schemaVersion",
-    "family",
-    "status",
-    "cards",
-  ])) return false;
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "schemaVersion",
+      "family",
+      "status",
+      "cards",
+    ])
+  ) return false;
   if (
     value.schemaVersion !== "thread-evaluation-closeouts/1.0" ||
     value.family !== "static-mechanical" ||
     (value.status !== "not-recorded" && value.status !== "current" &&
       value.status !== "historical" && value.status !== "unresolved" &&
       value.status !== "unavailable") ||
-    !Array.isArray(value.cards) || !value.cards.every((card) =>
-      isThreadEvaluationCloseoutCard(card, snapshot)
-    )
+    !Array.isArray(value.cards) ||
+    !value.cards.every((card) => isThreadEvaluationCloseoutCard(card, snapshot))
   ) return false;
   const cards = value.cards as ThreadEvaluationCloseoutCard[];
   if (value.status === "not-recorded") return cards.length === 0;
-  if (value.status === "current") return cards.some((card) => card.status === "current");
-  if (value.status === "historical") return cards.length > 0 && cards.every((card) => card.status === "historical");
+  if (value.status === "current") {
+    return cards.some((card) => card.status === "current");
+  }
+  if (value.status === "historical") {
+    return cards.length > 0 && cards.every((card) => card.status === "historical");
+  }
   return true;
 }
 
@@ -809,18 +849,20 @@ function isThreadEvaluationCloseoutCard(
   value: unknown,
   snapshot: Pick<ThreadWorkbenchSnapshot, "artifacts" | "previous">,
 ): value is ThreadEvaluationCloseoutCard {
-  if (!isRecord(value) || !hasExactKeys(value, [
-    "artifactId",
-    "captureFingerprint",
-    "basis",
-    "humanDisposition",
-    "rejectionDisposition",
-    "acceptanceEligibility",
-    "status",
-    "criteria",
-    "proofLimitations",
-    "evidence",
-  ])) return false;
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "artifactId",
+      "captureFingerprint",
+      "basis",
+      "humanDisposition",
+      "rejectionDisposition",
+      "acceptanceEligibility",
+      "status",
+      "criteria",
+      "proofLimitations",
+      "evidence",
+    ])
+  ) return false;
   if (
     typeof value.artifactId !== "string" || value.artifactId.length === 0 ||
     typeof value.captureFingerprint !== "string" ||
@@ -830,8 +872,10 @@ function isThreadEvaluationCloseoutCard(
     (value.rejectionDisposition !== "none" &&
       value.rejectionDisposition !== "mechanical-review-required") ||
     typeof value.acceptanceEligibility !== "boolean" ||
-    (value.status !== "current" && value.status !== "historical" && value.status !== "unresolved") ||
-    !Array.isArray(value.criteria) || !value.criteria.every(isThreadEvaluationCloseoutCriterion) ||
+    (value.status !== "current" && value.status !== "historical" &&
+      value.status !== "unresolved") ||
+    !Array.isArray(value.criteria) ||
+    !value.criteria.every(isThreadEvaluationCloseoutCriterion) ||
     !isThreadEvaluationCloseoutProofLimitations(value.proofLimitations) ||
     !isRecord(value.evidence) || !hasExactKeys(value.evidence, [
       "canonicalStep",
@@ -847,10 +891,13 @@ function isThreadEvaluationCloseoutCard(
   const criteria = value.criteria as ThreadEvaluationCloseoutCriterion[];
   if (
     criteria.length === 0 ||
-    new Set(criteria.map((criterion) => criterion.proofCriterionId)).size !== criteria.length ||
-    new Set(criteria.map((criterion) => criterion.evaluationId)).size !== criteria.length ||
+    new Set(criteria.map((criterion) => criterion.proofCriterionId)).size !==
+      criteria.length ||
+    new Set(criteria.map((criterion) => criterion.evaluationId)).size !==
+      criteria.length ||
     (value.humanDisposition === "accept" &&
-      (!value.acceptanceEligibility || criteria.some((criterion) => criterion.status !== "pass"))) ||
+      (!value.acceptanceEligibility ||
+        criteria.some((criterion) => criterion.status !== "pass"))) ||
     (value.status === "current" &&
       (!snapshot.previous ||
         snapshot.previous.snapshotId !== value.basis.snapshotId ||
@@ -863,10 +910,12 @@ function isThreadEvaluationCloseoutCard(
 function isThreadEvaluationCloseoutBasis(
   value: unknown,
 ): value is ThreadEvaluationCloseoutBasis {
-  return isRecord(value) && hasExactKeys(value, ["snapshotId", "revision", "fingerprint"]) &&
+  return isRecord(value) &&
+    hasExactKeys(value, ["snapshotId", "revision", "fingerprint"]) &&
     typeof value.snapshotId === "string" && value.snapshotId.length > 0 &&
     isPositiveSafeInteger(value.revision) &&
-    typeof value.fingerprint === "string" && /^sha256:[a-f0-9]{64}$/.test(value.fingerprint);
+    typeof value.fingerprint === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value.fingerprint);
 }
 
 function isThreadEvaluationCloseoutCriterion(
@@ -877,7 +926,8 @@ function isThreadEvaluationCloseoutCriterion(
     "evaluationId",
     "status",
     "evidenceArtifactId",
-  ]) && typeof value.proofCriterionId === "string" && value.proofCriterionId.length > 0 &&
+  ]) && typeof value.proofCriterionId === "string" &&
+    value.proofCriterionId.length > 0 &&
     typeof value.evaluationId === "string" && value.evaluationId.length > 0 &&
     (value.status === "pass" || value.status === "fail" ||
       value.status === "unresolved" || value.status === "error") &&
@@ -893,7 +943,8 @@ function isThreadEvaluationCloseoutEvidenceRef(
     "producerRunId",
     "freshness",
   ]) && typeof value.id === "string" && value.id.length > 0 &&
-    typeof value.fingerprint === "string" && /^sha256:[a-f0-9]{64}$/.test(value.fingerprint) &&
+    typeof value.fingerprint === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value.fingerprint) &&
     typeof value.producerRunId === "string" && value.producerRunId.length > 0 &&
     (value.freshness === "fresh" || value.freshness === "stale" ||
       value.freshness === "unavailable");
@@ -902,11 +953,12 @@ function isThreadEvaluationCloseoutEvidenceRef(
 function isThreadEvaluationCloseoutProofLimitations(
   value: unknown,
 ): value is ThreadEvaluationCloseoutProofLimitations {
-  if (!isRecord(value) || !hasExactKeys(value, [
-    "proofScope",
-    "evidenceBoundary",
-    "cadEngineeringBoundary",
-  ]) || typeof value.proofScope !== "string" || value.proofScope.length === 0 ||
+  if (
+    !isRecord(value) || !hasExactKeys(value, [
+      "proofScope",
+      "evidenceBoundary",
+      "cadEngineeringBoundary",
+    ]) || typeof value.proofScope !== "string" || value.proofScope.length === 0 ||
     typeof value.evidenceBoundary !== "string" || value.evidenceBoundary.length === 0 ||
     !isRecord(value.cadEngineeringBoundary) ||
     !hasExactKeys(value.cadEngineeringBoundary, [
@@ -914,10 +966,12 @@ function isThreadEvaluationCloseoutProofLimitations(
       "editableCad",
       "manufacturability",
       "limitations",
-    ])) return false;
+    ])
+  ) return false;
   const boundary = value.cadEngineeringBoundary;
-  return (boundary.designIntent === "preserved" || boundary.designIntent === "partial" ||
-      boundary.designIntent === "lost") &&
+  return (boundary.designIntent === "preserved" ||
+    boundary.designIntent === "partial" ||
+    boundary.designIntent === "lost") &&
     (boundary.editableCad === "native" || boundary.editableCad === "reconstructed" ||
       boundary.editableCad === "absent") &&
     boundary.manufacturability === "not-established" &&
@@ -1714,9 +1768,7 @@ function isThreadVerificationCaseCatalog(
     `${item.family}:${item.caseDigest}`
   );
   if (!hasUniqueStrings(exactCaseIdentities)) return false;
-  const authorityIds = catalog.cases.flatMap((item) =>
-    item.authorityArtifactIds
-  );
+  const authorityIds = catalog.cases.flatMap((item) => item.authorityArtifactIds);
   if (!hasUniqueStrings(authorityIds)) return false;
   const coverageByFamily = new Map(
     catalog.coverage.map((item) => [item.family, item.status]),

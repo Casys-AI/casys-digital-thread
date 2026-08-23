@@ -583,7 +583,7 @@ function projectState(
   projectId = PROJECT_ID,
 ): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: `${projectId}:r12`,
     revision: 12,
     generatedAt: AT,

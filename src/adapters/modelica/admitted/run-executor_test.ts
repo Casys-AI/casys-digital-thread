@@ -1174,7 +1174,7 @@ async function executorHarness(
     }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: options.initialStatus === "running" ? "project.ramp:r2" : "project.ramp:r1",
     revision: options.initialStatus === "running" ? 2 : 1,
     generatedAt: EXECUTION_AT,
@@ -1196,6 +1196,7 @@ async function executorHarness(
     }],
     workItems: [{
       id: "work.modelica.admitted",
+      activityId: "activity:work.modelica.admitted",
       phaseId: "phase.simulate",
       title: "Run admitted Modelica",
       description: "Run the sealed source.",

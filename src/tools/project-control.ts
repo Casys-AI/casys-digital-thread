@@ -463,6 +463,7 @@ const projectPlanPublishTool: MCPTool = {
             type: "array",
             items: { type: "string", minLength: 1 },
           },
+          predecessorRevisionId: { type: "string", minLength: 1 },
           operation: OPERATION_REF_SCHEMA,
           gateClaims: { type: "array", items: GATE_CLAIM_SCHEMA },
         },
@@ -533,6 +534,7 @@ const projectChangeAppendTool: MCPTool = {
             type: "array",
             items: { type: "string", minLength: 1 },
           },
+          predecessorRevisionId: { type: "string", minLength: 1 },
           operation: OPERATION_REF_SCHEMA,
           gateClaims: { type: "array", items: GATE_CLAIM_SCHEMA },
         },
@@ -1350,11 +1352,6 @@ function requiredQueueWorkItem(
   project: EngineeringProjectSnapshot,
   workItemId: string,
 ) {
-  if (project.schemaVersion === "1.0") {
-    throw new TypeError(
-      "project_agent_run_queue does not execute historical V1 work.",
-    );
-  }
   const workItem = project.workItems.find((candidate) => candidate.id === workItemId);
   if (!workItem || !workItem.operation) {
     throw new TypeError(

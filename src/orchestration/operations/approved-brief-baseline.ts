@@ -225,7 +225,7 @@ function verifyExactApprovedBriefPlan(
   project: EngineeringProjectSnapshot,
   approvedProject: EngineeringProjectSnapshot,
 ): ApprovedBriefBaselineProjectDefinition["workItem"] {
-  if (project.schemaVersion !== "3.0" || approvedProject.schemaVersion !== "3.0") {
+  if (approvedProject.schemaVersion !== "4.0") {
     invalid("invalid_input", "Approved-brief baseline requires a V3 project.");
   }
   if (project.threadSnapshots.length > 0) {

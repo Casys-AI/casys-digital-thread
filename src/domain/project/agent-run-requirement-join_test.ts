@@ -8,6 +8,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "./engineering-project.ts";
+import { engineeringActivityIdFromRootRevision } from "./engineering-activity.ts";
 import {
   type AgentRunJoinThreadSnapshot,
   assembleAgentRunRequirementJoins,
@@ -427,7 +428,7 @@ function projectWith(
   work: EngineeringWorkItem,
 ): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "p:r1",
     revision: 1,
     generatedAt: AT,
@@ -454,8 +455,8 @@ function projectWith(
 function feaWork(
   overrides: Partial<EngineeringWorkItem> = {},
 ): EngineeringWorkItem {
+  const id = overrides.id ?? "wi-fea";
   return {
-    id: "wi-fea",
     phaseId: "phase-fea",
     title: "Run recorded FEA",
     description: "Recorded CalculiX static proof.",
@@ -468,6 +469,8 @@ function feaWork(
     decisionIds: [],
     blockerIds: [],
     ...overrides,
+    id,
+    activityId: engineeringActivityIdFromRootRevision(id),
   };
 }
 

@@ -202,7 +202,7 @@ function decisionProjectFixture(): EngineeringProjectSnapshot {
   const generatedAt = "2026-08-14T00:00:00.000Z";
   const workItemId = "review-local-yolo-card";
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: `${DECISION_PROJECT_ID}:project:r1`,
     revision: 1,
     generatedAt,
@@ -231,6 +231,7 @@ function decisionProjectFixture(): EngineeringProjectSnapshot {
     }],
     workItems: [{
       id: workItemId,
+      activityId: `activity:${workItemId}`,
       phaseId: "review",
       title: "Review the local material card",
       description: "Record a human-reviewable material decision.",

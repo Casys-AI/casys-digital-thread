@@ -7,7 +7,7 @@ import { GENERIC_THREAD_FIXTURE } from "./generic-thread-workbench-fixture.ts";
 
 /** Labelled UI fallback. It demonstrates project control, never production truth. */
 export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
-  schemaVersion: "1.0",
+  schemaVersion: "4.0",
   id: "project-snapshot-generic-fixture",
   revision: 1,
   generatedAt: GENERIC_THREAD_FIXTURE.generatedAt,
@@ -19,6 +19,41 @@ export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
       title: "Build a verifiable generic-product demonstrator",
       statement:
         "Connect system intent, product geometry, simulation evidence and industrial records so every engineering decision can be reviewed against exact inputs.",
+    },
+  },
+  framing: {
+    intent: {
+      statement:
+        "Connect system intent, product geometry, simulation evidence and industrial records so every engineering decision can be reviewed against exact inputs.",
+      source: { kind: "human", reference: "paired-conversation" },
+      capturedAt: GENERIC_THREAD_FIXTURE.generatedAt,
+      capturedBy: { id: "human:owner", origin: "human" },
+    },
+    questions: [],
+    answers: [],
+    currentBrief: {
+      briefId: "project-generic-fixture:brief",
+      id: "project-generic-fixture:brief:r1:fixture",
+      revision: 1,
+      items: [{
+        id: "objective",
+        kind: "objective",
+        statement:
+          "Connect system intent, product geometry, simulation evidence and industrial records so every engineering decision can be reviewed against exact inputs.",
+        sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+      }],
+      proposedAt: GENERIC_THREAD_FIXTURE.generatedAt,
+      proposedBy: { id: "agent:planner", origin: "agent" },
+    },
+    currentBriefApproval: {
+      briefSnapshotId: "project-generic-fixture:brief:r1:fixture",
+      briefRevision: 1,
+      status: "approved",
+      inputFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+      requestedAt: GENERIC_THREAD_FIXTURE.generatedAt,
+      decidedAt: GENERIC_THREAD_FIXTURE.generatedAt,
+      decidedBy: { id: "human:owner", origin: "human" },
+      rationale: "Confirmed in the paired conversation.",
     },
   },
   threadSnapshots: [{
@@ -115,6 +150,13 @@ export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
     summary: "Mechanical verification is waiting for reviewed analysis inputs.",
     queuedAt: "2026-08-01T08:40:00.000Z",
     startedAt: "2026-08-01T08:40:03.000Z",
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: GENERIC_THREAD_FIXTURE.id,
+      revision: 1,
+      subjectId: GENERIC_THREAD_FIXTURE.subject.id,
+    },
+    inputFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
     evidenceRefs: [],
   }],
   decisions: [{
@@ -151,7 +193,7 @@ export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
 
 export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
   EngineeringEvidenceWorkbenchSnapshot = {
-    schemaVersion: "engineering-workbench/0.4",
+    schemaVersion: "engineering-workbench/0.5",
     surface: "evidence",
     project: GENERIC_PROJECT_FIXTURE,
     thread: {
@@ -170,6 +212,44 @@ export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
         { phaseId: "simulate", lane: "physics" },
         { phaseId: "verify", lane: "verdicts" },
         { phaseId: "industrialize", lane: "physics" },
+      ],
+      activities: [
+        {
+          id: "activity:work-define",
+          lane: "requirements",
+          rootRevisionId: "work-define",
+          revisionIds: ["work-define"],
+        },
+        {
+          id: "activity:work-architect",
+          lane: "system-model",
+          rootRevisionId: "work-architect",
+          revisionIds: ["work-architect"],
+        },
+        {
+          id: "activity:work-design",
+          lane: "geometry",
+          rootRevisionId: "work-design",
+          revisionIds: ["work-design"],
+        },
+        {
+          id: "activity:work-simulate",
+          lane: "physics",
+          rootRevisionId: "work-simulate",
+          revisionIds: ["work-simulate"],
+        },
+        {
+          id: "activity:work-verify",
+          lane: "verdicts",
+          rootRevisionId: "work-verify",
+          revisionIds: ["work-verify"],
+        },
+        {
+          id: "activity:work-industrialize",
+          lane: "physics",
+          rootRevisionId: "work-industrialize",
+          revisionIds: ["work-industrialize"],
+        },
       ],
     },
     alignment: {
@@ -218,6 +298,7 @@ function work(
 ): EngineeringProjectSnapshot["workItems"][number] {
   return {
     id,
+    activityId: `activity:${id}`,
     phaseId,
     title,
     description: title,

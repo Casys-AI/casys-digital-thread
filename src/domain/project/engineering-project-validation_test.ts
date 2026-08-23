@@ -123,19 +123,22 @@ Deno.test("blocker-mediated decision scope has one global work-item owner", asyn
 Deno.test("ordinary receipt issuedAt remains client audit metadata", async () => {
   const project = await projectJson();
   const previousSnapshotId = project.id;
-  project.id = "engineering-project-generic-test-system-r2";
-  project.revision = 2;
-  project.previous = { snapshotId: previousSnapshotId, revision: 1 };
+  project.id = "engineering-project-generic-test-system-r3";
+  project.revision = 3;
+  project.previous = { snapshotId: previousSnapshotId, revision: 2 };
   project.generatedAt = "2026-08-02T06:04:27.475Z";
-  project.commandReceipts = [{
-    commandId: "client-clock-ahead-of-server-application",
-    type: "agent-run.progress",
-    actor: { id: "agent-worker-3", origin: "agent" },
-    issuedAt: "2026-08-02T06:05:00.000Z",
-    appliedAt: "2026-08-02T06:04:27.475Z",
-    requestFingerprint: fingerprint("d"),
-    resultingSnapshot: { snapshotId: project.id, revision: 2 },
-  }];
+  project.commandReceipts = [
+    ...project.commandReceipts ?? [],
+    {
+      commandId: "client-clock-ahead-of-server-application",
+      type: "agent-run.progress",
+      actor: { id: "agent-worker-3", origin: "agent" },
+      issuedAt: "2026-08-02T06:05:00.000Z",
+      appliedAt: "2026-08-02T06:04:27.475Z",
+      requestFingerprint: fingerprint("d"),
+      resultingSnapshot: { snapshotId: project.id, revision: 3 },
+    },
+  ];
 
   assertEquals(
     collectEngineeringProjectIssues(project).some((issue) =>
@@ -168,13 +171,20 @@ Deno.test("a cancelled run has exactly one queued transition and one human cance
   workItem.blockerIds = [];
   const queuedAt = "2026-08-01T10:37:00.000Z";
   const cancelledAt = "2026-08-01T10:37:01.000Z";
+  exact.generatedAt = cancelledAt;
+  const thread = exact.threadSnapshots[0]!;
   exact.agentRuns = [{
     id: "run:queued-cancellation",
     workItemId: workItem.id,
     status: "cancelled",
     summary: "Cancelled before agent claim: reviewed record.",
     queuedAt,
-    baseSnapshot: structuredClone(exact.threadSnapshots[0]),
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: thread.snapshotId,
+      revision: thread.revision,
+      subjectId: thread.subjectId,
+    },
     inputFingerprint: fingerprint("a"),
     evidenceRefs: [],
     cancellation: {

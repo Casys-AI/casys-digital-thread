@@ -21,7 +21,7 @@ Deno.test("FileEngineeringProjectStore loads a validated project manifest read-o
 
     const project = await store.get();
 
-    assertEquals(project?.schemaVersion, "1.0");
+    assertEquals(project?.schemaVersion, "4.0");
     assertEquals(project?.project.id, "generic-project");
     assertEquals(project?.project.subjectId, "generic-subject");
     assertEquals("save" in store, false);
@@ -72,7 +72,7 @@ class StubFileIo implements EngineeringProjectFileIo {
 Deno.test("FileEngineeringProjectRevisionStore writes deterministic immutable revisions", async () => {
   await withTempDirectory(async (directory) => {
     const store = new FileEngineeringProjectRevisionStore(directory);
-    const initial = projectFixture();
+    const initial = intentProjectFixture();
     await store.createInitial(initial);
 
     const raw = await Deno.readTextFile(
@@ -80,7 +80,8 @@ Deno.test("FileEngineeringProjectRevisionStore writes deterministic immutable re
     );
     assertEquals(raw, `${deterministicJson(initial)}\n`);
     assertEquals(
-      (await store.contentFingerprint(initial.project.id, 1))?.digest.length,
+      (await store.contentFingerprint(initial.project.id, initial.revision))
+        ?.digest.length,
       64,
     );
     assertEquals((await store.get(initial.project.id))?.id, initial.id);
@@ -89,10 +90,9 @@ Deno.test("FileEngineeringProjectRevisionStore writes deterministic immutable re
 
 Deno.test("cross-process createNew CAS admits only one command at the same expected revision", async () => {
   await withTempDirectory(async (directory) => {
-    const initial = projectFixture();
     const firstStore = new FileEngineeringProjectRevisionStore(directory);
     const secondStore = new FileEngineeringProjectRevisionStore(directory);
-    await firstStore.createInitial(initial);
+    const initial = await seedReviewableProject(firstStore);
     const first = commandService(firstStore, "2026-08-01T11:00:01.000Z");
     const second = commandService(secondStore, "2026-08-01T11:00:02.000Z");
 
@@ -115,17 +115,19 @@ Deno.test("cross-process createNew CAS admits only one command at the same expec
     assertEquals(rejection.reason instanceof EngineeringProjectCommandError, true);
     assertEquals(rejection.reason.code, "stale_revision");
     const current = await firstStore.get(initial.project.id);
-    assertEquals(current?.revision, 2);
-    assertEquals(current?.commandReceipts?.length, 1);
+    assertEquals(current?.revision, initial.revision + 1);
+    assertEquals(
+      current?.commandReceipts?.length,
+      (initial.commandReceipts?.length ?? 0) + 1,
+    );
   });
 });
 
 Deno.test("same command id racing across stores is idempotent", async () => {
   await withTempDirectory(async (directory) => {
-    const initial = projectFixture();
     const firstStore = new FileEngineeringProjectRevisionStore(directory);
     const secondStore = new FileEngineeringProjectRevisionStore(directory);
-    await firstStore.createInitial(initial);
+    const initial = await seedReviewableProject(firstStore);
     const command = proposalCommand(
       initial,
       "same-command",
@@ -143,14 +145,17 @@ Deno.test("same command id racing across stores is idempotent", async () => {
     ]);
 
     assertEquals(left.id, right.id);
-    assertEquals((await firstStore.get(initial.project.id))?.revision, 2);
+    assertEquals(
+      (await firstStore.get(initial.project.id))?.revision,
+      initial.revision + 1,
+    );
   });
 });
 
 Deno.test("highest claimed corrupt revision fails closed instead of falling back", async () => {
   await withTempDirectory(async (directory) => {
     const store = new FileEngineeringProjectRevisionStore(directory);
-    const initial = projectFixture();
+    const initial = intentProjectFixture();
     await store.createInitial(initial);
     await Deno.writeTextFile(
       `${directory}/${encodeURIComponent(initial.project.id)}/0000000002.json`,
@@ -169,7 +174,7 @@ Deno.test("active project paths reject dot-segment and non-alphanumeric prefixes
     await assertRejects(() => store.get(".hidden"), TypeError);
     await assertRejects(() => store.get("-option"), TypeError);
 
-    const unsafe = structuredClone(projectFixture()) as Mutable<
+    const unsafe = structuredClone(intentProjectFixture()) as Mutable<
       EngineeringProjectSnapshot
     >;
     unsafe.project.id = "..";
@@ -178,20 +183,138 @@ Deno.test("active project paths reject dot-segment and non-alphanumeric prefixes
 });
 
 const HUMAN = { kind: "human" as const, actorId: "store-test-human" };
+const GENERATED_AT = "2026-08-01T10:36:58.345Z";
+const OBJECTIVE = "Exercise immutable project storage without a product fixture.";
 
-function projectFixture(): EngineeringProjectSnapshot {
+function intentProjectFixture(): EngineeringProjectSnapshot {
   return validateEngineeringProjectSnapshot({
-    schemaVersion: "1.0",
-    id: "engineering-project-generic-r1",
+    schemaVersion: "4.0",
+    id: "engineering-project-generic-r0-start",
     revision: 1,
-    generatedAt: "2026-08-01T10:36:58.345Z",
+    generatedAt: GENERATED_AT,
     project: {
       id: "generic-project",
       name: "Generic project",
       subjectId: "generic-subject",
       objective: {
-        title: "Verify a generic engineering input",
+        title: OBJECTIVE,
+        statement: OBJECTIVE,
+      },
+    },
+    framing: {
+      intent: {
+        statement: OBJECTIVE,
+        source: { kind: "human", reference: "paired-conversation" },
+        capturedAt: GENERATED_AT,
+        capturedBy: { id: "human:owner", origin: "human" },
+      },
+      questions: [],
+      answers: [],
+    },
+    threadSnapshots: [],
+    phases: [],
+    workItems: [],
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+    commandReceipts: [{
+      commandId: "start-generic-project",
+      type: "project.start",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: GENERATED_AT,
+      appliedAt: GENERATED_AT,
+      requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+      resultingSnapshot: {
+        snapshotId: "engineering-project-generic-r0-start",
+        revision: 1,
+      },
+    }],
+  });
+}
+
+async function seedReviewableProject(
+  store: FileEngineeringProjectRevisionStore,
+): Promise<EngineeringProjectSnapshot> {
+  await store.createInitial(intentProjectFixture());
+  return await store.commit(projectFixture(), 1);
+}
+
+function projectFixture(): EngineeringProjectSnapshot {
+  const generatedAt = "2026-08-01T10:36:58.345Z";
+  const briefFingerprint = {
+    algorithm: "sha256" as const,
+    digest: "e".repeat(64),
+  };
+  const approvedBriefBasis = {
+    kind: "approved-brief" as const,
+    projectId: "generic-project",
+    projectSnapshotId: "engineering-project-generic-r1",
+    projectRevision: 2,
+    briefId: "generic-project:brief",
+    briefSnapshotId: "generic-project:brief:r1:fixture",
+    briefRevision: 1,
+    approvedBriefFingerprint: briefFingerprint,
+  };
+  return validateEngineeringProjectSnapshot({
+    schemaVersion: "4.0",
+    id: "engineering-project-generic-r1",
+    revision: 2,
+    generatedAt,
+    previous: {
+      snapshotId: "engineering-project-generic-r0-start",
+      revision: 1,
+    },
+    project: {
+      id: "generic-project",
+      name: "Generic project",
+      subjectId: "generic-subject",
+      objective: {
+        title: "Exercise immutable project storage without a product fixture.",
         statement: "Exercise immutable project storage without a product fixture.",
+      },
+    },
+    framing: {
+      intent: {
+        statement: "Exercise immutable project storage without a product fixture.",
+        source: { kind: "human", reference: "paired-conversation" },
+        capturedAt: generatedAt,
+        capturedBy: { id: "human:owner", origin: "human" },
+      },
+      questions: [],
+      answers: [],
+      currentBrief: {
+        briefId: "generic-project:brief",
+        id: "generic-project:brief:r1:fixture",
+        revision: 1,
+        items: [{
+          id: "objective",
+          kind: "objective",
+          statement: "Exercise immutable project storage without a product fixture.",
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }, {
+          id: "mission",
+          kind: "mission-scenario",
+          statement: "Persist and reread an exact project revision.",
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }, {
+          id: "success",
+          kind: "success-criterion",
+          statement: "The stored revision validates and round-trips unchanged.",
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }],
+        proposedAt: generatedAt,
+        proposedBy: { id: "agent:planner", origin: "agent" },
+      },
+      currentBriefApproval: {
+        briefSnapshotId: "generic-project:brief:r1:fixture",
+        briefRevision: 1,
+        status: "approved",
+        inputFingerprint: briefFingerprint,
+        requestedAt: generatedAt,
+        decidedAt: generatedAt,
+        decidedBy: { id: "human:owner", origin: "human" },
+        rationale: "Confirmed in the paired conversation.",
       },
     },
     threadSnapshots: [{
@@ -210,6 +333,7 @@ function projectFixture(): EngineeringProjectSnapshot {
     }],
     workItems: [{
       id: "verify-generic-input",
+      activityId: "activity:verify-generic-input",
       phaseId: "verification",
       title: "Verify the generic input",
       description: "Wait for the exact input decision before execution.",
@@ -228,12 +352,36 @@ function projectFixture(): EngineeringProjectSnapshot {
       title: "Review the generic input",
       question: "Which exact input should govern the generic verification?",
       status: "required",
-      requestedAt: "2026-08-01T10:36:58.345Z",
+      requestedAt: generatedAt,
       inputEvidenceRefs: [],
       approvalIds: [],
     }],
     approvals: [],
     blockers: [],
+    commandReceipts: [{
+      commandId: "start-generic-project",
+      type: "project.start",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: generatedAt,
+      appliedAt: generatedAt,
+      requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+      resultingSnapshot: {
+        snapshotId: "engineering-project-generic-r0-start",
+        revision: 1,
+      },
+    }, {
+      commandId: "approve-generic-brief",
+      type: "project.brief-approve",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: generatedAt,
+      appliedAt: generatedAt,
+      requestFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+      resultingSnapshot: {
+        snapshotId: "engineering-project-generic-r1",
+        revision: 2,
+      },
+      approvedBriefBasis,
+    }],
   });
 }
 

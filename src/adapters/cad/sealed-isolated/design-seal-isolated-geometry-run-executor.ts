@@ -856,7 +856,7 @@ function requireShape(
   const operation = workItem?.operation;
   const binding = operation?.bindings[0];
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
+    run.basis?.kind !== "thread-snapshot" ||
     !workItem ||
     operation?.id !== DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.id ||
     operation.version !== DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION.version ||

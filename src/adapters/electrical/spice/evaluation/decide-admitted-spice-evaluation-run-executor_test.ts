@@ -240,6 +240,7 @@ async function executeFixture(options: {
     ],
     workItems: [{
       id: WORK_ID,
+      activityId: `activity:${WORK_ID}`,
       phaseId: "phase.review",
       title: "Close out evaluation",
       description: summary,

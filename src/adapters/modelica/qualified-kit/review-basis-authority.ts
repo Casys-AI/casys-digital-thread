@@ -30,7 +30,7 @@ export class ProjectThreadModelicaQualifiedKitReviewBasisAuthority
     const project = await this.dependencies.projects.get(request.projectId);
     if (!project) return undefined;
     if (
-      project.schemaVersion !== "3.0" || project.id !== request.projectId ||
+      project.id !== request.projectId ||
       project.project.subjectId !== request.basis.subjectId
     ) {
       throw new TypeError("The qualified Modelica project identity is foreign.");

@@ -117,7 +117,7 @@ async function executorFixture(): Promise<{
     bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
   };
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project-impact-evaluation-r1",
     revision: 1,
     generatedAt: AT,
@@ -139,6 +139,7 @@ async function executorFixture(): Promise<{
     }],
     workItems: [{
       id: WORK,
+      activityId: `activity:${WORK}`,
       phaseId: "phase-impact-evaluation",
       title: "Evaluate impact",
       description: "Capture provider-free impact evaluation",

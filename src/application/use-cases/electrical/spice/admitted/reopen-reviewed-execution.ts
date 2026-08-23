@@ -132,7 +132,7 @@ export function requireAdmittedSpiceExecutionShape(
   const operation = workItem?.operation;
   const binding = operation?.bindings[0];
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
+    run.basis?.kind !== "thread-snapshot" ||
     run.baseSnapshot !== undefined || run.resolvedOperationPlan !== undefined ||
     !workItem || operation?.id !== SIMULATE_RUN_ADMITTED_SPICE_OPERATION.id ||
     operation.version !== SIMULATE_RUN_ADMITTED_SPICE_OPERATION.version ||

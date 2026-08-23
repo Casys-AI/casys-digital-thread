@@ -111,7 +111,7 @@ async function executorFixture(): Promise<{
     bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
   };
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project-mechanical-preservation-r1",
     revision: 1,
     generatedAt: AT,
@@ -133,6 +133,7 @@ async function executorFixture(): Promise<{
     }],
     workItems: [{
       id: WORK,
+      activityId: `activity:${WORK}`,
       phaseId: "phase-mechanical-preservation",
       title: "Preserve mechanics",
       description: "Capture provider-free mechanical preservation",

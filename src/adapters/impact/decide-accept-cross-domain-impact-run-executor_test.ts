@@ -409,7 +409,7 @@ async function executorFixture(): Promise<{
     approvedDecisions: [{ id: DECISION, inputFingerprint }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project-impact-decision-r1",
     revision: 1,
     generatedAt: AT,
@@ -446,6 +446,7 @@ async function executorFixture(): Promise<{
     workItems: [
       {
         id: EVAL_WORK,
+        activityId: `activity:${EVAL_WORK}`,
         phaseId: "phase-impact-decision",
         title: "Evaluate impact",
         description: "Capture impact evaluation",
@@ -466,6 +467,7 @@ async function executorFixture(): Promise<{
       ...workItems,
       {
         id: WORK,
+        activityId: `activity:${WORK}`,
         phaseId: "phase-impact-decision",
         title: "Decide impact",
         description: "Accept exact impact",
@@ -825,6 +827,7 @@ function workItem(
 ) {
   return {
     id,
+    activityId: `activity:${id}`,
     phaseId: "phase-impact-decision",
     title: id,
     description: id,

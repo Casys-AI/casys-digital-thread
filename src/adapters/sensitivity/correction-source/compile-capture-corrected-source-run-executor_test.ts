@@ -399,7 +399,7 @@ async function createFixture(
     evidenceRefs,
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     revision: 1,
     generatedAt: AT,
     project: {
@@ -420,6 +420,7 @@ async function createFixture(
     }],
     workItems: [{
       id: WORK_ID,
+      activityId: `activity:${WORK_ID}`,
       phaseId: "phase.design",
       title: "Capture corrected source",
       description: "Substitute z*.",

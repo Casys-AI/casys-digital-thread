@@ -809,6 +809,7 @@ function projectSnapshot(
     published = false,
   ) => ({
     id,
+    activityId: `activity:${id}`,
     phaseId: id,
     title: id,
     description: id,
@@ -856,7 +857,7 @@ function projectSnapshot(
     },
   });
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project:r1",
     revision: 1,
     generatedAt: "2026-08-03T00:00:00.000Z",

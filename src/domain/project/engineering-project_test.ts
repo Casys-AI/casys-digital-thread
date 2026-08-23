@@ -6,6 +6,7 @@ import {
   type EngineeringWorkItem,
   type EngineeringWorkItemRunSuccessorReconciliation,
 } from "./engineering-project.ts";
+import { engineeringActivityIdFromRootRevision } from "./engineering-activity.ts";
 
 Deno.test(
   "same-phase successor evidence still completes a cancelled-and-reconciled phase",
@@ -77,7 +78,7 @@ function reconcileSnapshot(
       phase("phase-seed-2", 2, ["wi-seed-2"], [evidence]),
     ];
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project-seed",
     revision: 1,
     generatedAt: "2026-08-18T06:58:30.000Z",
@@ -127,6 +128,7 @@ function workItem(spec: {
 }): EngineeringWorkItem {
   return {
     id: spec.id,
+    activityId: engineeringActivityIdFromRootRevision(spec.id),
     phaseId: spec.phaseId,
     title: spec.id,
     description: spec.id,

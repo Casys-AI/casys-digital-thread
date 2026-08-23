@@ -29,7 +29,7 @@ Deno.test("engineering Workbench composes project intent and observed proof with
     currentThreadRevision: 1,
   });
   assertEquals(result.unresolvedEvidenceReferences, []);
-  assertEquals(result.projectPath, { phaseLanes: [] });
+  assertEquals(result.projectPath, { phaseLanes: [], activities: [] });
 });
 
 Deno.test("engineering Workbench classifies contextual phases from exact downstream operations", () => {
@@ -90,6 +90,103 @@ Deno.test("engineering Workbench classifies contextual phases from exact downstr
     { phaseId: "target", lane: "physics" },
     { phaseId: "orphan", lane: "system-model" },
   ]);
+  assertEquals(result.projectPath.activities.map((item) => item.id), [
+    "activity:work-admission",
+    "activity:work-orphan",
+    "activity:work-requirements",
+    "activity:work-target",
+  ]);
+});
+
+Deno.test("engineering Workbench projects two same-operation roots as distinct activities", () => {
+  const thread = threadFixture();
+  const base = projectFixture(thread.subject.id, thread.id);
+  const project: EngineeringProjectSnapshot = {
+    ...base,
+    phases: [
+      projectPhase("cad-a", 1, "work-cad-a"),
+      projectPhase("cad-b", 2, "work-cad-b"),
+    ],
+    workItems: [
+      projectWork("work-cad-a", "cad-a", "geometry@1"),
+      projectWork("work-cad-b", "cad-b", "geometry@1"),
+    ],
+  };
+  const resolver: EngineeringOperationPathLaneResolver = {
+    resolve(operation) {
+      if (operation.id === "geometry") return { kind: "fixed", lane: "geometry" };
+      return undefined;
+    },
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(
+    project,
+    thread,
+    1,
+    [],
+    [],
+    resolver,
+  );
+  if (result.surface !== "evidence") {
+    throw new Error("Expected observed proof to use the evidence surface.");
+  }
+  assertEquals(result.projectPath.activities, [
+    {
+      id: "activity:work-cad-a",
+      lane: "geometry",
+      rootRevisionId: "work-cad-a",
+      revisionIds: ["work-cad-a"],
+    },
+    {
+      id: "activity:work-cad-b",
+      lane: "geometry",
+      rootRevisionId: "work-cad-b",
+      revisionIds: ["work-cad-b"],
+    },
+  ]);
+});
+
+Deno.test("engineering Workbench keeps an explicit successor in one activity", () => {
+  const thread = threadFixture();
+  const base = projectFixture(thread.subject.id, thread.id);
+  const root = projectWork("work-cad", "cad", "geometry@1");
+  const successor = {
+    ...projectWork("work-cad-v2", "cad-v2", "geometry@2"),
+    activityId: root.activityId,
+    predecessorRevisionId: root.id,
+  };
+  const project: EngineeringProjectSnapshot = {
+    ...base,
+    phases: [
+      projectPhase("cad", 1, "work-cad"),
+      projectPhase("cad-v2", 2, "work-cad-v2"),
+    ],
+    workItems: [successor, root],
+  };
+  const resolver: EngineeringOperationPathLaneResolver = {
+    resolve(operation) {
+      if (operation.id === "geometry") return { kind: "fixed", lane: "geometry" };
+      return undefined;
+    },
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(
+    project,
+    thread,
+    1,
+    [],
+    [],
+    resolver,
+  );
+  if (result.surface !== "evidence") {
+    throw new Error("Expected observed proof to use the evidence surface.");
+  }
+  assertEquals(result.projectPath.activities, [{
+    id: root.activityId,
+    lane: "geometry",
+    rootRevisionId: "work-cad",
+    revisionIds: ["work-cad", "work-cad-v2"],
+  }]);
 });
 
 Deno.test("engineering Workbench labels a dangling evidence reference instead of hiding the projection", () => {
@@ -165,7 +262,7 @@ function projectFixture(
   revision = 1,
 ): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: `project-snapshot-r${revision}`,
     revision,
     generatedAt: "2026-08-01T12:00:00.000Z",
@@ -219,6 +316,7 @@ function projectWork(
   const [operationId, version] = operationKey?.split("@") ?? [];
   return {
     id,
+    activityId: `activity:${id}`,
     phaseId,
     title: "Exact registered work",
     description: "Exact registered work.",

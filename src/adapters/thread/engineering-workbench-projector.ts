@@ -4,6 +4,9 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
+import {
+  collectEngineeringActivities,
+} from "../../domain/project/engineering-activity.ts";
 import type { EngineeringPathLaneId } from "../../domain/project/engineering-path-lane.ts";
 import type {
   EngineeringOperationPathLaneDeclaration,
@@ -168,16 +171,42 @@ function projectPhaseLanes(
     })
   );
   const fixedLanes = declarations.map(uniqueFixedLane);
+  const phaseLanes = phases.map((phase, index) => ({
+    phaseId: phase.id,
+    lane: resolvePhaseLane(
+      phase.id,
+      declarations[index] ?? [],
+      fixedLanes.slice(index + 1),
+    ),
+  }));
+  const laneByPhase = new Map(
+    phaseLanes.map((entry) => [entry.phaseId, entry.lane]),
+  );
 
   return {
-    phaseLanes: phases.map((phase, index) => ({
-      phaseId: phase.id,
-      lane: resolvePhaseLane(
-        phase.id,
-        declarations[index] ?? [],
-        fixedLanes.slice(index + 1),
-      ),
-    })),
+    phaseLanes,
+    activities: collectEngineeringActivities(project.workItems).map(
+      (activity) => {
+        const root = workItems.get(activity.rootRevisionId);
+        const operation = root?.operation;
+        const declaration = operation && resolver?.resolve(operation);
+        const lane = declaration?.kind === "fixed"
+          ? declaration.lane
+          : laneByPhase.get(root?.phaseId ?? "") ??
+            (declaration?.kind === "contextual" ? declaration.fallback : undefined);
+        if (!lane) {
+          throw new Error(
+            `Engineering activity ${activity.id} has no unique registered path lane.`,
+          );
+        }
+        return {
+          id: activity.id,
+          lane,
+          rootRevisionId: activity.rootRevisionId,
+          revisionIds: activity.revisionIds,
+        };
+      },
+    ),
   };
 }
 
@@ -395,7 +424,7 @@ function isDocumentaryBaseline(
   currentThreadRevision: number,
 ): boolean {
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     project.threadSnapshots.length !== 1 ||
     currentThreadRevision !== 1 ||
     thread.source !== "observed" ||

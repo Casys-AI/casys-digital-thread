@@ -144,6 +144,7 @@ function workItem(
 ): EngineeringWorkItem {
   return {
     id,
+    activityId: `activity:${id}`,
     phaseId: "phase-proof",
     title: id,
     description: id,

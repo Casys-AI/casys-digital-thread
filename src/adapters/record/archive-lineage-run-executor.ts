@@ -510,7 +510,7 @@ function requireShape(
     (b) => b.source.kind === "thread-entity",
   ) ?? false;
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     !workItem ||
     operation?.id !== ARCHIVE_LINEAGE_OP.id ||

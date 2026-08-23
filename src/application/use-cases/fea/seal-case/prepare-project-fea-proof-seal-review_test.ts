@@ -633,7 +633,7 @@ class MemoryProjects {
 
 function projectState(snapshot: ThreadSnapshot): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: `${PROJECT_ID}:r12`,
     revision: 12,
     generatedAt: AT,

@@ -194,7 +194,7 @@ async function createFixture(options: {
     approvedDecisions: [{ id: DECISION_ID, inputFingerprint: decisionFingerprint }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: `${PROJECT_ID}:r1`,
     revision: 1,
     generatedAt: AT,
@@ -216,6 +216,7 @@ async function createFixture(options: {
     }],
     workItems: [{
       id: WORK_ID,
+      activityId: `activity:${WORK_ID}`,
       phaseId: "phase.industrialize",
       title: "Seal print-estimate case",
       description: "Seal the reviewed case.",

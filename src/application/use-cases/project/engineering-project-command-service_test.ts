@@ -13,6 +13,7 @@ import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectCompletionEvidenceValidator,
+  type EngineeringProjectPlanningDependencies,
   type EngineeringProjectReconciliationOperationPolicy,
   type QueueRunCommand,
 } from "./engineering-project-command-service.ts";
@@ -234,13 +235,14 @@ Deno.test(
       .evidenceRefs;
 
     // Queue a new run for the work item and immediately cancel it before any claim.
-    const queued = await service.queueRun(AGENT, {
-      ...context("queue-r2b-pre-claim-cancel", base.revision),
-      runId: "run:mechanical-r2b-pre-claim",
-      workItemId: "verify-current-mechanical-design",
-      summary: "Second attempt that will be cancelled before any claim.",
-      baseSnapshot: base.threadSnapshots[0]!,
-    });
+    const queued = await service.queueRun(
+      AGENT,
+      queueRunCommand("queue-r2b-pre-claim-cancel", base, {
+        runId: "run:mechanical-r2b-pre-claim",
+        workItemId: "verify-current-mechanical-design",
+        summary: "Second attempt that will be cancelled before any claim.",
+      }),
+    );
     const withCancelled = await service.cancelQueuedRun(HUMAN, {
       ...context("cancel-r2b-pre-claim", queued.revision),
       runId: "run:mechanical-r2b-pre-claim",
@@ -506,11 +508,44 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "direct reconciliation rejects a successor from a different activity",
+  async () => {
+    const base = structuredClone(await reconciliableProject()) as Mutable<
+      EngineeringProjectSnapshot
+    >;
+    const successorWork = base.workItems.find((item) =>
+      item.id === "verify-current-mechanical-design-r3"
+    )!;
+    successorWork.activityId = "activity:verify-current-mechanical-design-r3";
+    delete successorWork.predecessorRevisionId;
+    const project = validateEngineeringProjectSnapshot(base);
+    const store = new MemoryRevisionStore(project);
+    const service = serviceFor(store);
+    const evidence = findWorkItem(project, "verify-current-mechanical-design-r3")
+      .evidenceRefs;
+
+    await assertCommandError(
+      () =>
+        service.reconcileWorkItemWithSuccessor(AGENT, {
+          ...context("reject-cross-activity", project.revision),
+          failedWorkItemId: "verify-current-mechanical-design",
+          failedRunId: "run:mechanical-r2-failed",
+          successorRunId: "run:mechanical-r3-completed",
+          successorRunSnapshot: project.threadSnapshots.at(-1)!,
+          successorEvidenceRefs: evidence,
+          rationale: "Should be rejected: a different stable activity.",
+        }),
+      "invalid_input",
+    );
+  },
+);
+
 Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent", async () => {
   const store = await memoryStore();
   const service = serviceFor(store);
   const command = {
-    ...context("propose-criterion", 1),
+    ...context("propose-criterion", (await store.get(PROJECT_ID))!.revision),
     issuedAt: "2026-08-01T18:59:00+08:00",
     decisionId: "review-mechanical-proof-case",
     proposal: proposal("criterion"),
@@ -520,22 +555,31 @@ Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent",
   const proposed = await service.proposeDecision(HUMAN, command);
   const decision = findDecision(proposed, command.decisionId);
 
-  assertEquals(proposed.revision, 2);
+  assertEquals(proposed.revision, command.expectedRevision + 1);
   assertEquals(decision.status, "proposed");
   assertEquals(decision.proposal?.proposedAt, "2026-08-01T11:00:01.000Z");
   assertEquals(decision.proposal?.proposedBy, { id: HUMAN.actorId, origin: "human" });
   assertEquals(decision.proposal?.parameters[0].value, "criterion");
   assertEquals(decision.inputFingerprint?.digest.length, 64);
   assertEquals(proposed.approvals[0].status, "pending");
-  assertEquals(proposed.commandReceipts?.[0].appliedAt, "2026-08-01T11:00:01.000Z");
-  assertEquals(proposed.commandReceipts?.[0].issuedAt, "2026-08-01T10:59:00.000Z");
+  assertEquals(
+    proposed.commandReceipts?.at(-1)?.appliedAt,
+    "2026-08-01T11:00:01.000Z",
+  );
+  assertEquals(
+    proposed.commandReceipts?.at(-1)?.issuedAt,
+    "2026-08-01T10:59:00.000Z",
+  );
 
   const replay = await service.proposeDecision(HUMAN, {
     ...command,
     issuedAt: "2026-08-01T10:59:00.000Z",
   });
   assertEquals(replay.id, proposed.id);
-  assertEquals((await store.get(PROJECT_ID))?.revision, 2);
+  assertEquals(
+    (await store.get(PROJECT_ID))?.revision,
+    command.expectedRevision + 1,
+  );
 
   await assertCommandError(
     () =>
@@ -550,10 +594,24 @@ Deno.test("proposal is typed, server-timestamped, fingerprinted and idempotent",
 Deno.test("stale revision and approval scope mismatch fail without mutation", async () => {
   const store = await memoryStore();
   const service = serviceFor(store);
-  const proposed = await propose(service, store, "review-mechanical-proof-case", 1, 1);
+  const startRevision = (await store.get(PROJECT_ID))!.revision;
+  const proposed = await propose(
+    service,
+    store,
+    "review-mechanical-proof-case",
+    startRevision,
+    1,
+  );
 
   await assertCommandError(
-    () => propose(service, store, "review-mechanical-proof-case", 1, 2),
+    () =>
+      propose(
+        service,
+        store,
+        "review-mechanical-proof-case",
+        startRevision,
+        2,
+      ),
     "stale_revision",
   );
   await assertCommandError(
@@ -576,7 +634,7 @@ Deno.test("rejected proposal can be replaced without rewriting historical approv
     service,
     store,
     "review-mechanical-proof-case",
-    1,
+    (await store.get(PROJECT_ID))!.revision,
     1,
   );
   const firstDecision = findDecision(project, "review-mechanical-proof-case");
@@ -720,13 +778,14 @@ Deno.test("browser cannot claim and a second agent cannot hijack a claimed run",
   const store = await memoryStore();
   const service = serviceFor(store);
   const project = await approveAll(service, store);
-  const queued = await service.queueRun(AGENT, {
-    ...context("queue-verification", project.revision),
-    runId: "verify-run-1",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue reviewed verification inputs.",
-    baseSnapshot: baseSnapshot(project),
-  });
+  const queued = await service.queueRun(
+    AGENT,
+    queueRunCommand("queue-verification", project, {
+      runId: "verify-run-1",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue reviewed verification inputs.",
+    }),
+  );
 
   assertEquals(queued.agentRuns[0].status, "queued");
   assertEquals(
@@ -753,13 +812,14 @@ Deno.test("browser cannot claim and a second agent cannot hijack a claimed run",
   );
   await assertCommandError(
     () =>
-      service.queueRun(AGENT, {
-        ...context("agent-self-queue", queued.revision),
-        runId: "verify-run-2",
-        workItemId: "verify-current-mechanical-design",
-        summary: "A second run cannot duplicate active work.",
-        baseSnapshot: baseSnapshot(queued),
-      }),
+      service.queueRun(
+        AGENT,
+        queueRunCommand("agent-self-queue", queued, {
+          runId: "verify-run-2",
+          workItemId: "verify-current-mechanical-design",
+          summary: "A second run cannot duplicate active work.",
+        }),
+      ),
     "invalid_transition",
   );
   const claimed = await service.claimRun(AGENT, {
@@ -793,13 +853,14 @@ Deno.test("a bound queue receipt seals the initial queued transition actor and t
   const store = await memoryStore();
   const service = serviceFor(store);
   const approved = await approveAll(service, store);
-  const queued = await service.queueRun(AGENT, {
-    ...context("queue-receipt-transition-seal", approved.revision),
-    runId: "verify-run-queue-receipt-transition-seal",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue reviewed verification inputs for receipt sealing.",
-    baseSnapshot: baseSnapshot(approved),
-  });
+  const queued = await service.queueRun(
+    AGENT,
+    queueRunCommand("queue-receipt-transition-seal", approved, {
+      runId: "verify-run-queue-receipt-transition-seal",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue reviewed verification inputs for receipt sealing.",
+    }),
+  );
 
   const forgedActor = structuredClone(queued) as Mutable<
     EngineeringProjectSnapshot
@@ -829,13 +890,14 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
   const store = await memoryStore();
   const service = serviceFor(store);
   const approved = await approveAll(service, store);
-  const queued = await service.queueRun(AGENT, {
-    ...context("queue-cancellable-verification", approved.revision),
-    runId: "verify-run-cancellable",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue reviewed verification inputs.",
-    baseSnapshot: baseSnapshot(approved),
-  });
+  const queued = await service.queueRun(
+    AGENT,
+    queueRunCommand("queue-cancellable-verification", approved, {
+      runId: "verify-run-cancellable",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue reviewed verification inputs.",
+    }),
+  );
   const command = {
     ...context("human-cancel-queued-verification", queued.revision),
     runId: "verify-run-cancellable",
@@ -859,11 +921,11 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
   await assertCommandError(
     () =>
       service.queueRun(AGENT, {
-        ...context("queue-caller-supplied-binding", queued.revision),
-        runId: "verify-run-caller-supplied-binding",
-        workItemId: "verify-current-mechanical-design",
-        summary: "Queue a forged server-owned target.",
-        baseSnapshot: baseSnapshot(queued),
+        ...queueRunCommand("queue-caller-supplied-binding", queued, {
+          runId: "verify-run-caller-supplied-binding",
+          workItemId: "verify-current-mechanical-design",
+          summary: "Queue a forged server-owned target.",
+        }),
         queuedRun: {
           runId: "forged-run-id",
           workItemId: "forged-work-item-id",
@@ -1031,13 +1093,14 @@ Deno.test("only a human can append-only cancel an unclaimed queued run", async (
     "invalid_input",
   );
 
-  const retried = await service.queueRun(AGENT, {
-    ...context("queue-cancellable-retry-for-binding-swap", cancelled.revision),
-    runId: "verify-run-cancellable-retry",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue the replacement verified work after cancellation.",
-    baseSnapshot: baseSnapshot(cancelled),
-  });
+  const retried = await service.queueRun(
+    AGENT,
+    queueRunCommand("queue-cancellable-retry-for-binding-swap", cancelled, {
+      runId: "verify-run-cancellable-retry",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue the replacement verified work after cancellation.",
+    }),
+  );
   const swappedQueuedReceiptBindings = structuredClone(retried) as Mutable<
     EngineeringProjectSnapshot
   >;
@@ -1058,26 +1121,28 @@ Deno.test("a cancelled queued run remains valid history after a completed retry"
   const validator = new RecordingEvidenceValidator();
   const service = serviceFor(store, validator);
   let project = await approveAll(service, store);
-  project = await service.queueRun(AGENT, {
-    ...context("queue-before-human-cancellation", project.revision),
-    runId: "verify-run-cancelled-before-start",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue the reviewed verification inputs.",
-    baseSnapshot: baseSnapshot(project),
-  });
+  project = await service.queueRun(
+    AGENT,
+    queueRunCommand("queue-before-human-cancellation", project, {
+      runId: "verify-run-cancelled-before-start",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue the reviewed verification inputs.",
+    }),
+  );
   project = await service.cancelQueuedRun(HUMAN, {
     ...context("human-cancel-before-retry", project.revision),
     runId: "verify-run-cancelled-before-start",
     rationale: "The queue entry was retired before a worker claimed it.",
   });
 
-  project = await service.queueRun(AGENT, {
-    ...context("queue-verification-retry", project.revision),
-    runId: "verify-run-retry-after-cancellation",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue the replacement reviewed verification inputs.",
-    baseSnapshot: baseSnapshot(project),
-  });
+  project = await service.queueRun(
+    AGENT,
+    queueRunCommand("queue-verification-retry", project, {
+      runId: "verify-run-retry-after-cancellation",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue the replacement reviewed verification inputs.",
+    }),
+  );
   project = await service.claimRun(AGENT, {
     ...context("claim-verification-retry", project.revision),
     runId: "verify-run-retry-after-cancellation",
@@ -1118,13 +1183,14 @@ Deno.test("agent lifecycle completes only after publishing exact externally vali
   const validator = new RecordingEvidenceValidator();
   const service = serviceFor(store, validator);
   let project = await approveAll(service, store);
-  project = await service.queueRun(HUMAN, {
-    ...context("queue-exact-run", project.revision),
-    runId: "verify-run-exact",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue exact verification.",
-    baseSnapshot: baseSnapshot(project),
-  });
+  project = await service.queueRun(
+    HUMAN,
+    queueRunCommand("queue-exact-run", project, {
+      runId: "verify-run-exact",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue exact verification.",
+    }),
+  );
   project = await service.claimRun(AGENT, {
     ...context("claim-exact-run", project.revision),
     runId: "verify-run-exact",
@@ -1164,13 +1230,14 @@ Deno.test("completion fails closed without exact evidence validation", async () 
   const store = await memoryStore();
   const service = serviceFor(store);
   let project = await approveAll(service, store);
-  project = await service.queueRun(HUMAN, {
-    ...context("queue-no-validator", project.revision),
-    runId: "verify-run-exact",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue exact verification.",
-    baseSnapshot: baseSnapshot(project),
-  });
+  project = await service.queueRun(
+    HUMAN,
+    queueRunCommand("queue-no-validator", project, {
+      runId: "verify-run-exact",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue exact verification.",
+    }),
+  );
   project = await service.claimRun(AGENT, {
     ...context("claim-no-validator", project.revision),
     runId: "verify-run-exact",
@@ -1194,13 +1261,14 @@ Deno.test("completion refuses a result that does not advance the exact run base"
   const validator = new RecordingEvidenceValidator();
   const service = serviceFor(store, validator);
   let project = await approveAll(service, store);
-  project = await service.queueRun(HUMAN, {
-    ...context("queue-non-advancing", project.revision),
-    runId: "verify-run-exact",
-    workItemId: "verify-current-mechanical-design",
-    summary: "Queue exact verification.",
-    baseSnapshot: baseSnapshot(project),
-  });
+  project = await service.queueRun(
+    HUMAN,
+    queueRunCommand("queue-non-advancing", project, {
+      runId: "verify-run-exact",
+      workItemId: "verify-current-mechanical-design",
+      summary: "Queue exact verification.",
+    }),
+  );
   project = await service.claimRun(AGENT, {
     ...context("claim-non-advancing", project.revision),
     runId: "verify-run-exact",
@@ -1211,8 +1279,12 @@ Deno.test("completion refuses a result that does not advance the exact run base"
     runId: "verify-run-exact",
     summary: "Publishing outputs.",
   });
-  const runBase = project.agentRuns.find((run) => run.id === "verify-run-exact")!
-    .baseSnapshot!;
+  const runBasis = project.agentRuns.find((run) => run.id === "verify-run-exact")!
+    .basis;
+  if (!runBasis || runBasis.kind !== "thread-snapshot") {
+    throw new Error("queued run lost its thread-snapshot basis");
+  }
+  const runBase = runBasis;
   const completion = completionCommand(project);
 
   await assertCommandError(
@@ -1272,7 +1344,7 @@ function serviceFor(
     validator,
     () =>
       new Date(Date.parse("2026-08-01T11:00:00.000Z") + ++tick * 1_000).toISOString(),
-    undefined,
+    lifecyclePlanning(),
     undefined,
     {
       validate(successorRunSnapshot, successorSnapshot) {
@@ -1299,9 +1371,20 @@ function serviceFor(
 }
 
 async function projectFixture(): Promise<EngineeringProjectSnapshot> {
-  return validateEngineeringProjectSnapshot(
-    JSON.parse(await Deno.readTextFile(CONFIG)),
+  const project = JSON.parse(await Deno.readTextFile(CONFIG)) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  const verify = project.workItems.find((item) =>
+    item.id === "verify-current-mechanical-design"
   );
+  if (verify && verify.operation === undefined) {
+    verify.operation = {
+      id: "verify.lifecycle-fixture",
+      version: "1",
+      bindings: [],
+    };
+  }
+  return validateEngineeringProjectSnapshot(project);
 }
 
 async function reconciliableProject(): Promise<EngineeringProjectSnapshot> {
@@ -1318,6 +1401,8 @@ async function reconciliableProject(): Promise<EngineeringProjectSnapshot> {
   );
   const successor = {
     id: "verify-current-mechanical-design-r3",
+    activityId: failedWork.activityId,
+    predecessorRevisionId: failedWork.id,
     phaseId: verification.id,
     title: "Verify the current mechanical design through R3",
     description:
@@ -1329,6 +1414,9 @@ async function reconciliableProject(): Promise<EngineeringProjectSnapshot> {
     evidenceRefs: successorEvidence,
     decisionIds: [],
     blockerIds: [],
+    ...(failedWork.operation
+      ? { operation: structuredClone(failedWork.operation) }
+      : {}),
   };
   failedWork.status = "ready";
   failedWork.decisionIds = [];
@@ -1353,7 +1441,7 @@ async function reconciliableProject(): Promise<EngineeringProjectSnapshot> {
       completedAt: "2026-08-01T10:00:02.000Z",
       claimedAt: "2026-08-01T10:00:01.000Z",
       claimedBy: { id: AGENT.actorId, origin: AGENT.kind },
-      baseSnapshot: snapshot,
+      basis: { kind: "thread-snapshot" as const, ...snapshot },
       inputFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
       evidenceRefs: [],
       failure: {
@@ -1371,7 +1459,7 @@ async function reconciliableProject(): Promise<EngineeringProjectSnapshot> {
       completedAt: "2026-08-01T10:00:05.000Z",
       claimedAt: "2026-08-01T10:00:04.000Z",
       claimedBy: { id: AGENT.actorId, origin: AGENT.kind },
-      baseSnapshot: snapshot,
+      basis: { kind: "thread-snapshot" as const, ...snapshot },
       inputFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
       resultSnapshot: snapshot,
       evidenceRefs: successorEvidence,
@@ -1390,6 +1478,48 @@ function context(commandId: string, expectedRevision: number) {
     projectId: PROJECT_ID,
     expectedRevision,
     issuedAt: "2026-08-01T10:59:00.000Z",
+  };
+}
+
+function lifecyclePlanning(): EngineeringProjectPlanningDependencies {
+  return {
+    operations: {
+      validate(input) {
+        return {
+          operation: {
+            id: input.operation.id,
+            version: input.operation.version,
+            startingPoint: "existing-product",
+            title: "Lifecycle fixture operation",
+            description:
+              "Test-only trusted @1 operation so command-service lifecycle tests can queue schema 4.0 runs.",
+            workItemKind: "verify",
+            execution: "trusted",
+          },
+          bindings: input.operation.bindings,
+        };
+      },
+    },
+  };
+}
+
+function threadSnapshotBasis(project: EngineeringProjectSnapshot) {
+  return { kind: "thread-snapshot" as const, ...baseSnapshot(project) };
+}
+
+function queueRunCommand(
+  commandId: string,
+  project: EngineeringProjectSnapshot,
+  fields: {
+    readonly runId: string;
+    readonly workItemId: string;
+    readonly summary: string;
+  },
+): QueueRunCommand {
+  return {
+    ...context(commandId, project.revision),
+    ...fields,
+    basis: threadSnapshotBasis(project),
   };
 }
 
@@ -1544,8 +1674,12 @@ Deno.test(
     // (the global invariant checks every run basis against threadSnapshots), so
     // the snapshot is stored unvalidated on purpose: this exercises the service's
     // own defense-in-depth lineage guard, not the upstream validator.
-    (successorRun as Mutable<typeof successorRun>).baseSnapshot = {
-      ...successorRun.baseSnapshot!,
+    const successorBasis = successorRun.basis;
+    if (!successorBasis || successorBasis.kind !== "thread-snapshot") {
+      throw new Error("fixture lost its thread-snapshot basis");
+    }
+    (successorRun as Mutable<typeof successorRun>).basis = {
+      ...successorBasis,
       snapshotId: "thread-foreign-project-head",
     };
     const store = new MemoryRevisionStore(base as EngineeringProjectSnapshot);
@@ -1753,7 +1887,7 @@ async function reconcileAnnotationProject(
     ],
   };
   const inputFingerprint = await sha256Fingerprint({
-    baseSnapshot: head,
+    basis: { kind: "thread-snapshot", ...head },
     inputEvidenceRefs: [],
     proposal: { summary: proposal.summary, parameters: proposal.parameters },
   });
@@ -1788,6 +1922,7 @@ async function reconcileAnnotationProject(
   // Add a human-owned reconciliation work item to the same phase.
   const reconcileItem = {
     id: "reconcile-uncertain-writer",
+    activityId: "activity:reconcile-uncertain-writer",
     phaseId: "verification",
     title: "Reconcile the uncertain writer outcome",
     description:
@@ -1821,7 +1956,7 @@ async function reconcileAnnotationProject(
       completedAt: "2026-08-01T10:00:02.000Z",
       claimedAt: "2026-08-01T10:00:01.000Z",
       claimedBy: { id: AGENT.actorId, origin: AGENT.kind },
-      baseSnapshot: head,
+      basis: { kind: "thread-snapshot", ...head },
       inputFingerprint,
       evidenceRefs: [],
       failure: {
@@ -1836,7 +1971,7 @@ async function reconcileAnnotationProject(
       status: "queued",
       summary: "Pending human reconciliation.",
       queuedAt: "2026-08-01T10:00:03.000Z",
-      baseSnapshot: head,
+      basis: { kind: "thread-snapshot", ...head },
       inputFingerprint,
       evidenceRefs: [],
     },

@@ -235,7 +235,7 @@ function replaySnapshot(): EngineeringProjectSnapshot {
     providerInspectionAttestation: "Provider history shows the write.",
   };
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project:r9:immutable-receipt",
     revision: 9,
     generatedAt: "2026-08-10T00:00:10.000Z",
@@ -249,6 +249,7 @@ function replaySnapshot(): EngineeringProjectSnapshot {
     phases: [],
     workItems: [{
       id: "work:failed",
+      activityId: "activity:work:failed",
       phaseId: "phase",
       title: "Failed writer",
       description: "Writer with a terminal uncertain result.",
@@ -262,6 +263,7 @@ function replaySnapshot(): EngineeringProjectSnapshot {
       blockerIds: [],
     }, {
       id: "work:reconcile",
+      activityId: "activity:work:reconcile",
       phaseId: "phase",
       title: "Reconcile writer",
       description: "Human reconciliation.",

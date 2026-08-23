@@ -992,7 +992,7 @@ function requireShape(
   const caseBinding = operation?.bindings.find((item) => item.name === "dfmCase");
   const geometryBinding = operation?.bindings.find((item) => item.name === "geometry");
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     operation?.id !== INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.id ||
     operation.version !== INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.version ||

@@ -721,7 +721,7 @@ export async function createAdmittedModelicaCloseoutEvidenceFixture(
   };
   const objective = "Close out the exact L4 evaluation.";
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: `${projectId}:r2`,
     revision: 2,
     previous: { snapshotId: `${projectId}:r1`, revision: 1 },
@@ -765,6 +765,7 @@ export async function createAdmittedModelicaCloseoutEvidenceFixture(
     workItems: attachProducerRun
       ? [{
         id: CLOSEOUT_REVIEW_L4_WORK_ID,
+        activityId: `activity:${CLOSEOUT_REVIEW_L4_WORK_ID}`,
         phaseId: "phase.verify",
         title: "Evaluate observations",
         description: "Evaluate admitted Modelica observations.",

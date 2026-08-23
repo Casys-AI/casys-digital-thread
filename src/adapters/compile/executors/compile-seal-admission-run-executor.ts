@@ -932,7 +932,7 @@ function requireShape(
   const operation = workItem?.operation;
   const binding = operation?.bindings[0];
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
+    run.basis?.kind !== "thread-snapshot" ||
     !workItem || operation?.id !== COMPILE_SEAL_ADMISSION_OPERATION.id ||
     operation.version !== COMPILE_SEAL_ADMISSION_OPERATION.version ||
     operation.bindings.length !== 1 || binding?.name !== "sysmlModel" ||

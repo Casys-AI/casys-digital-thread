@@ -170,7 +170,7 @@ async function createFixture(
     evidenceRefs,
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     revision: 1,
     generatedAt: AT,
     project: {
@@ -191,6 +191,7 @@ async function createFixture(
     }],
     workItems: [{
       id: WORK_ID,
+      activityId: `activity:${WORK_ID}`,
       phaseId: "phase.verify",
       title: "Evaluate study-base",
       description: "Join observations to requirements.",
@@ -379,7 +380,7 @@ async function buildWorld(options: {
     ? requirements.slice(0, 1)
     : requirements;
   const snapshot = validateThreadSnapshot({
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: "snapshot.evaluate.r1",
     revision: 1,
     generatedAt: AT,

@@ -480,7 +480,7 @@ function requireShape(
     item.name === "correctionProposal"
   );
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     operation?.id !== COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.id ||
     operation.version !== COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.version ||

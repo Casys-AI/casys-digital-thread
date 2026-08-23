@@ -723,7 +723,7 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
   };
   const objective = "Close out the exact L4 evaluation.";
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: `${projectId}:r2`,
     revision: 2,
     previous: { snapshotId: `${projectId}:r1`, revision: 1 },
@@ -771,6 +771,7 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
       ...(attachL3Run
         ? [{
           id: SPICE_CLOSEOUT_L3_WORK_ID,
+          activityId: `activity:${SPICE_CLOSEOUT_L3_WORK_ID}`,
           phaseId: "phase.verify",
           title: "Run admitted SPICE",
           description: "Execute admitted SPICE.",
@@ -792,6 +793,7 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
       ...(attachProducerRun
         ? [{
           id: SPICE_CLOSEOUT_L4_WORK_ID,
+          activityId: `activity:${SPICE_CLOSEOUT_L4_WORK_ID}`,
           phaseId: "phase.verify",
           title: "Evaluate observations",
           description: "Evaluate admitted SPICE observations.",

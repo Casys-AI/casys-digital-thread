@@ -19,11 +19,12 @@ recomputation. The human reviews and authorizes consequential changes. Isolated 
 route; they do not imply a generic workflow language or a live-run success. Historical
 MCP FEA `@1`/`@2` are not registered.
 
-The current creation format is schema `3.0`: the project exists from the first intent
-and its living brief evolves inside that same immutable revision stream. Older snapshots
-are not a creation route for new work. Every value is JSON-compatible. Validation clones
-and recursively freezes the accepted value, rejects unknown fields, and never fills in a
-missing decision or engineering input.
+The current creation format is schema `4.0`: the project exists from the first intent,
+its living brief evolves inside that same immutable revision stream, and every work item
+is one revision of a server-stamped activity. Older snapshots are not a creation or load
+route for new work. Every value is JSON-compatible. Validation clones and recursively
+freezes the accepted value, rejects unknown fields, and never fills in a missing
+decision, engineering input, or activity identity.
 
 | Open                                         | Owns                                           |
 | -------------------------------------------- | ---------------------------------------------- |
@@ -33,7 +34,7 @@ missing decision or engineering input.
 | Command and authority surfaces               | Who may write what                             |
 
 Contents: [Three truth boundaries](#three-truth-boundaries) ·
-[Root fields](#root-fields) · [Living brief in schema 3.0](#living-brief-in-schema-30) ·
+[Root fields](#root-fields) · [Living brief in schema 4.0](#living-brief-in-schema-40) ·
 [Agent-published plan](#agent-published-plan-and-reviewed-operations) ·
 [Current analysis execution](#current-analysis-execution) ·
 [V3 execution bases](#v3-execution-bases-documentary-baseline-and-syson-seed) ·
@@ -52,17 +53,20 @@ Contents: [Three truth boundaries](#three-truth-boundaries) ·
 | **Live**    | Append-only progress and result notifications used to refresh the activity feed while work is occurring                                                                                              | Canonical evidence, completion, approval, or a pass/fail verdict      |
 
 The BFF composes these boundaries for presentation. Its browser contract is an
-`engineering-workbench/0.4` object with an explicit surface: `planning` contains the
+`engineering-workbench/0.5` object with an explicit surface: `planning` contains the
 durable project plus the status of the first documentary baseline and redacted live
 milestones; `evidence` contains the project, projected `thread` (whose `live` field
-contains current activity), `alignment`, and `projectPath.phaseLanes`. That last field
+contains current activity), `alignment`, and `projectPath`. `projectPath.phaseLanes`
 classifies every exact phase into the same five columns used by the Overview thread:
-`requirements`, `system-model`, `geometry`, `physics`, and `verdicts`. The server uses
-its registered operation taxonomy, so the browser can wrap a long path without guessing
-from labels. This is presentation metadata only: it does not select a provider, change
-phase order, or imply a verdict. `GET` and SSE create only a read model; they do not
-promote live events into thread evidence or project truth. Project mutations and bounded
-provider orchestration remain on the paired agent's MCP surface.
+`requirements`, `system-model`, `geometry`, `physics`, and `verdicts`.
+`projectPath.activities` lists the explicit stable activities with ordered revision IDs;
+the browser never guesses lifecycle from operation keys, phase order, labels, timestamps
+or Thread proximity. The server uses its registered operation taxonomy, so the browser
+can wrap a long path without guessing from labels. This is presentation metadata only:
+it does not select a provider, change phase order, or imply a verdict. `GET` and SSE
+create only a read model; they do not promote live events into thread evidence or
+project truth. Project mutations and bounded provider orchestration remain on the paired
+agent's MCP surface.
 
 ## Root fields
 
@@ -72,11 +76,11 @@ provider orchestration remain on the paired agent's MCP surface.
 | `previous`        | Required after revision 1 and always lower than the current revision                                |
 | `generatedAt`     | ISO 8601 UTC materialization timestamp                                                              |
 | `project`         | Stable project ID, display name, thread subject ID, and explicit objective                          |
-| `framing`         | V3 intent, questions, sourced answers, proposed brief and exact approved canonical brief            |
+| `framing`         | Schema 4.0 intent, questions, sourced answers, proposed brief and exact approved canonical brief    |
 | `plan`            | Optional agent-published path grounded in the exact approved canonical brief for V3                 |
 | `threadSnapshots` | Exact declared `ThreadSnapshot` revisions; empty before the first documentary baseline is published |
 | `phases`          | Ordered project phases; phase status is deliberately absent                                         |
-| `workItems`       | Human, agent, or shared work and its explicit lifecycle state                                       |
+| `workItems`       | Human, agent, or shared work: one immutable revision of a server-stamped activity                   |
 | `agentRuns`       | Observable execution lifecycle and exact produced evidence                                          |
 | `decisions`       | Questions or proposals requiring project authority                                                  |
 | `approvals`       | Auditable responses bound to the exact inputs approved                                              |
@@ -86,7 +90,7 @@ provider orchestration remain on the paired agent's MCP surface.
 The project revision and the referenced thread revision are independent counters. For
 example, project snapshot revision 1 may cite thread snapshot revision 5.
 
-## Living brief in schema 3.0
+## Living brief in schema 4.0
 
 Revision 1 is created by `project_start` from the reported plain-language intent. The
 same project then records adaptive questions, sourced answers, immutable brief
@@ -426,13 +430,26 @@ phase states. It is also a projection and is never persisted in the project snap
 
 ### Work items
 
-Every work item belongs to exactly one phase and declares:
+Every work item belongs to exactly one phase and is one immutable **revision** of a
+stable **activity**:
 
+- `activityId` is server-stamped. A root revision receives `activity:<rootRevisionId>`;
+  a successor inherits the predecessor's identity. Callers never supply or re-parent it.
+- `predecessorRevisionId` names an existing same-activity revision when this work
+  continues that activity. Omit it to start a new activity. Self, missing, cyclic and
+  cross-activity predecessors are rejected.
+- an `EngineeringAgentRun` is one **attempt** of that revision. Retrying unchanged
+  reviewed input queues another run on the same work item; a changed operation, binding
+  or method is a new revision only when the command names the predecessor.
 - a kind such as `define`, `architect`, `design`, `simulate`, `verify`, or
   `industrialize`;
 - an owner: `human`, `agent`, or `shared`;
 - acyclic dependencies on other work items;
 - evidence, decision, and blocker references.
+
+Two independent activities that share an operation stay distinct. Reconciliation can
+close only work in the same activity; it does not turn a failed attempt into a
+successful one. Array order, titles and timestamps never create a lifecycle link.
 
 An optional `operation` is a reviewed, versioned capability reference, never a raw tool
 call or agent-authored workflow. It is present on work created by `project_plan_publish`

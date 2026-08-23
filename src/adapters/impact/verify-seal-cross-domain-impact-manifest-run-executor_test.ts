@@ -182,7 +182,7 @@ async function executorFixture(): Promise<{
     approvedDecisions: [{ id: DECISION, inputFingerprint: decisionFingerprint }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project.impact.r1",
     revision: 1,
     generatedAt: AT,

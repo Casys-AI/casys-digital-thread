@@ -874,7 +874,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project.box:r1",
     revision: 1,
     generatedAt: AT,
@@ -896,6 +896,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     }],
     workItems: [{
       id: "work.execute.box",
+      activityId: "activity:work.execute.box",
       phaseId: "phase.execute",
       title: "Execute Build123d",
       description: "Execute reviewed source.",

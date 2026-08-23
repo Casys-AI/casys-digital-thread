@@ -1278,6 +1278,7 @@ async function resolvedPlanInspectionFixture(): Promise<{
   const runId = "run:inspect-fea-plan";
   const workItem = {
     id: "verify-fea-isolated",
+    activityId: "activity:verify-fea-isolated",
     phaseId: "verification",
     title: "Isolated CalculiX static proof",
     description: "One test-only isolated FEA operation.",
@@ -1489,7 +1490,7 @@ function projectSnapshot(
   } = {},
 ): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "chat-first-project:project:r4",
     revision: 4,
     generatedAt: "2026-08-03T12:00:00.000Z",
@@ -1518,6 +1519,7 @@ function projectSnapshot(
     phases: [],
     workItems: [{
       id: "establish-baseline",
+      activityId: "activity:establish-baseline",
       phaseId: "baseline",
       title: "Establish the engineering baseline",
       description: "Create the first bounded baseline.",
@@ -1630,6 +1632,7 @@ function basisReleaseSnapshot(): EngineeringProjectSnapshot {
   const text = uncertainWriterBasisReleaseText("run:failed-writer");
   const failedWork = {
     id: "work:failed-writer",
+    activityId: "activity:work:failed-writer",
     phaseId: "architecture",
     title: "Failed writer",
     description: "Terminal uncertain architecture writer.",

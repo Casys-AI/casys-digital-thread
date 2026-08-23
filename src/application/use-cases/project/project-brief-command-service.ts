@@ -163,7 +163,7 @@ export class ProjectBriefCommandService {
       requestFingerprint,
     );
     const initial = validateEngineeringProjectSnapshot({
-      schemaVersion: "3.0",
+      schemaVersion: "4.0",
       id: snapshotId,
       revision: 1,
       generatedAt: appliedAt,
@@ -598,7 +598,7 @@ function approvedBriefBasisForReceipt(
   const brief = framing?.currentBrief;
   const approval = framing?.currentBriefApproval;
   if (
-    project.schemaVersion !== "3.0" || !brief || !approval ||
+    !brief || !approval ||
     approval.status !== "approved"
   ) {
     invalidTransition(
@@ -636,7 +636,7 @@ async function briefReviewFingerprint(
 function requireV3Framing(
   project: EngineeringProjectSnapshot,
 ): Mutable<NonNullable<EngineeringProjectSnapshot["framing"]>> {
-  if (project.schemaVersion !== "3.0" || !project.framing) {
+  if (!project.framing) {
     invalidTransition(
       "Living project-brief commands require a V3 project created from intent.",
     );

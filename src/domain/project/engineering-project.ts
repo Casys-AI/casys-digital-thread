@@ -13,11 +13,13 @@ import type { ResolvedOperationPlanRef } from "../compile/rop/resolved-operation
  */
 
 /**
- * V1 remains an immutable history format. New projects are V3: they exist
- * from first intent, own their living brief, anchor the documentary baseline to
- * its exact human-approved revision, then anchor later runs to ThreadSnapshots.
+ * Current project aggregate format. A project exists from first intent, owns
+ * its living brief, and records an explicit activity/revision/attempt
+ * lifecycle. Older local snapshots are not a creation or load route.
  */
-export type EngineeringProjectSchemaVersion = "1.0" | "3.0";
+export const ENGINEERING_PROJECT_SCHEMA_VERSION = "4.0" as const;
+export type EngineeringProjectSchemaVersion =
+  typeof ENGINEERING_PROJECT_SCHEMA_VERSION;
 
 export interface EngineeringProjectPreviousSnapshot {
   readonly snapshotId: string;
@@ -300,6 +302,16 @@ export interface EngineeringGateClaim {
 
 export interface EngineeringWorkItem {
   readonly id: string;
+  /**
+   * Stable activity identity. Server-stamped from the root revision id;
+   * successors inherit it from the named predecessor. Callers never choose it.
+   */
+  readonly activityId: string;
+  /**
+   * Existing predecessor revision (work-item id) in the same activity.
+   * Absent on the root revision that starts the activity.
+   */
+  readonly predecessorRevisionId?: string;
   readonly phaseId: string;
   readonly title: string;
   readonly description: string;
@@ -347,11 +359,11 @@ export interface EngineeringAgentRun {
   readonly completedAt?: IsoDateTime;
   readonly claimedAt?: IsoDateTime;
   readonly claimedBy?: EngineeringCommandActor;
-  /** V3 execution anchor. V3 runs must use this field and never `baseSnapshot`. */
+  /** Exact execution anchor. A `latest` alias is never accepted. */
   readonly basis?: EngineeringBasisRef;
   /**
-   * V1-only exact thread state. It remains readable for immutable historical
-   * projects and is deliberately not a fallback for V3 execution.
+   * Historical V1 field. The current schema rejects it rather than treating it
+   * as an execution basis.
    */
   readonly baseSnapshot?: EngineeringThreadSnapshotRef;
   readonly inputFingerprint?: ContentFingerprint;

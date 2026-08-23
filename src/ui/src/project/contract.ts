@@ -77,8 +77,8 @@ export function isEngineeringProjectSnapshot(
 ): value is EngineeringProjectSnapshot {
   return isEngineeringProjectSnapshotShape(
     value,
-    (item, schemaVersion, project) =>
-      hasValidAgentRunInputAnchor(item, schemaVersion, project) &&
+    (item, _schemaVersion, project) =>
+      hasValidAgentRunInputAnchor(item, project) &&
       (item.claimedBy === undefined || isCommandActor(item.claimedBy)) &&
       (item.waitingForDecisionIds === undefined ||
         isStringArray(item.waitingForDecisionIds)) &&
@@ -158,6 +158,9 @@ function isEngineeringProjectSnapshotShape(
       value.workItems,
       (item) =>
         isRecord(item) && typeof item.id === "string" &&
+        typeof item.activityId === "string" &&
+        (item.predecessorRevisionId === undefined ||
+          typeof item.predecessorRevisionId === "string") &&
         typeof item.phaseId === "string" && typeof item.title === "string" &&
         typeof item.description === "string" &&
         WORK_ITEM_STATUSES.includes(item.status as EngineeringWorkItemStatus) &&
@@ -220,7 +223,7 @@ function isEngineeringProjectSnapshotShape(
 function isEngineeringProjectSchemaVersion(
   value: unknown,
 ): value is EngineeringProjectSchemaVersion {
-  return value === "1.0" || value === "3.0";
+  return value === "4.0";
 }
 
 /**
@@ -232,7 +235,7 @@ function hasValidProjectProvenance(
   schemaVersion: EngineeringProjectSchemaVersion,
 ): boolean {
   const plan = project.plan;
-  if (schemaVersion === "3.0") {
+  if (schemaVersion === "4.0") {
     if (!isProjectFraming(project.framing, project)) {
       return false;
     }
@@ -735,18 +738,13 @@ function hasValidInputAnchor(value: Record<string, unknown>): boolean {
 }
 
 /**
- * Agent-run execution bindings are schema-discriminated: V1 retains the
- * historic baseSnapshot pair, while V3 must name a typed basis instead.
+ * Agent-run execution bindings name a typed basis. Historical `baseSnapshot`
+ * is rejected rather than treated as an execution anchor.
  */
 function hasValidAgentRunInputAnchor(
   value: Record<string, unknown>,
-  schemaVersion: EngineeringProjectSchemaVersion,
   project: Record<string, unknown>,
 ): boolean {
-  if (schemaVersion === "1.0") {
-    return value.basis === undefined && hasValidInputAnchor(value);
-  }
-
   if (
     value.baseSnapshot !== undefined || value.basis === undefined ||
     value.inputFingerprint === undefined ||

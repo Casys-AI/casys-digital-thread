@@ -1172,7 +1172,7 @@ function requireExecutionShape(
   const operation = workItem?.operation;
   const binding = operation?.bindings[0];
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
+    run.basis?.kind !== "thread-snapshot" ||
     !workItem || operation?.id !== DESIGN_EXECUTE_BUILD123D_OPERATION.id ||
     operation.version !== DESIGN_EXECUTE_BUILD123D_OPERATION.version ||
     operation.bindings.length !== 1 || binding?.name !== "compilationAdmission" ||

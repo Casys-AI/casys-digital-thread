@@ -22,6 +22,19 @@ import {
   workOwnerLabel,
 } from "./src/project/model.ts";
 import { isEngineeringProjectSnapshot } from "./src/project/contract.ts";
+import { collectEngineeringActivities } from "../domain/project/engineering-activity.ts";
+
+function collectActivityIds(
+  project: {
+    readonly workItems: readonly {
+      readonly id: string;
+      readonly activityId: string;
+      readonly predecessorRevisionId?: string;
+    }[];
+  },
+): string[] {
+  return collectEngineeringActivities(project.workItems).map((item) => item.id);
+}
 
 Deno.test("project brief derives factual gates and operator attention", () => {
   const brief = buildProjectBrief(GENERIC_PROJECT_FIXTURE);
@@ -110,47 +123,22 @@ Deno.test("overview verification copy counts current criteria before retained hi
   );
 });
 
-Deno.test("Project Path keeps a component correction and failed retry below its macro evidence stages", () => {
+Deno.test("Project Path groups explicit activity revisions instead of guessing from operations", () => {
   const { project, thread } = correctionPathFixture();
   const path = buildProjectPath(project, thread);
 
-  assertEquals(PROJECT_PATH_PRESENTATION_POLICY.version, "project-path/1.0");
+  assertEquals(PROJECT_PATH_PRESENTATION_POLICY.version, "project-path/2.0");
   assertEquals(
-    path.phases.map((item) => item.phase.id),
-    ["cad", "verification"],
+    path.activities.map((item) => item.id).toSorted(),
+    collectActivityIds(project),
   );
-  assertEquals(path.completedPhases, 2);
-  assertEquals(path.status, "completed");
-  assertEquals(path.phases[0]?.lifecycle, {
-    affectedComponentIds: ["component:drip-tray"],
-    correctionCount: 1,
-    revisionAttemptCount: 1,
-    state: "current",
-  });
-  assertEquals(path.phases[1]?.status, "completed");
-  assertEquals(path.phases[1]?.lifecycle, {
-    affectedComponentIds: ["component:drip-tray"],
-    correctionCount: 1,
-    revisionAttemptCount: 2,
-    state: "current",
-  });
-
-  // Raw r10-style additions must never become top-level Project Path cards.
   assertEquals(
-    path.phases.some((item) =>
-      item.phase.id === "generic-v3-drip-tray-height-correction" ||
-      item.phase.id === "generic-v3-drip-tray-height-30-cad" ||
-      item.phase.id === "generic-v3-drip-tray-height-30-mechanical" ||
-      item.phase.id === "generic-v3-drip-tray-height-30-mechanical-r3-retry"
-    ),
-    false,
+    path.activities.every((item) => item.revisions.length >= 1),
+    true,
   );
 });
 
-Deno.test("Project Path reads an unfinished lifecycle as retained history, never as live recomputation", () => {
-  // Gate states are durable readings of the versioned record: the phase's own
-  // work counters already say 0/1 and "What the agent is doing" owns the
-  // in-flight story, so no gate may promise that evidence is being recomputed.
+Deno.test("Project Path keeps failed and ready revisions visible inside their activity", () => {
   const { project, thread } = correctionPathFixture();
   const mutable = structuredClone(project);
   const retry = mutable.workItems.find((item) => item.id === "mechanical-v3");
@@ -158,16 +146,12 @@ Deno.test("Project Path reads an unfinished lifecycle as retained history, never
   (retry as unknown as { status: string }).status = "ready";
 
   const path = buildProjectPath(mutable, thread);
-  const mechanical = path.phases.find((item) => item.phase.id === "verification");
-  assertEquals(mechanical?.lifecycle?.state, "retained");
-  for (const item of path.phases) {
-    if (!item.lifecycle) continue;
-    assertEquals(
-      ["current", "attention", "retained"].includes(item.lifecycle.state),
-      true,
-      `gate ${item.phase.id} leaked a non-durable lifecycle state`,
-    );
-  }
+  assertEquals(
+    path.activities.some((activity) =>
+      activity.revisions.some((revision) => revision.id === "mechanical-v3")
+    ),
+    true,
+  );
 });
 
 Deno.test("Project Path folds a model enrichment under the phase that owns the enriched model", () => {
@@ -185,6 +169,7 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
   });
   const sysmlWork = (id: string, phaseId: string, evidenceId: string) => ({
     id,
+    activityId: `activity:${id}`,
     phaseId,
     title: id,
     description: id,
@@ -270,25 +255,17 @@ Deno.test("Project Path folds a model enrichment under the phase that owns the e
   const path = buildProjectPath(enriched, enrichedThread);
 
   assertEquals(
-    path.phases.some((item) => item.phase.id === "anchoring"),
-    false,
-    "the anchoring phase must fold under the model owner, not stay a gate",
+    path.activities.some((item) =>
+      item.revisions.some((revision) => revision.id === "anchoring-work")
+    ),
+    true,
   );
   assertEquals(
-    path.phases.some((item) => item.phase.id === "measurement"),
-    false,
-    "a measurement feeding a folded enrichment folds with it — it is " +
-      "instrumentation of the model, not an engineering gate",
+    path.activities.some((item) =>
+      item.revisions.some((revision) => revision.id === "measurement-work")
+    ),
+    true,
   );
-  const architecture = path.phases.find((item) => item.phase.id === "architecture");
-  assertEquals(architecture?.lifecycle, {
-    affectedComponentIds: [],
-    correctionCount: 0,
-    revisionAttemptCount: 0,
-    modelEnrichmentCount: 1,
-    modelMeasurementCount: 1,
-    state: "current",
-  });
 });
 
 Deno.test("Project Path wraps a later architecture-capture tip under the original architecture gate", () => {
@@ -303,6 +280,7 @@ Deno.test("Project Path wraps a later architecture-capture tip under the origina
   });
   const work = (id: string, phaseId: string, evidenceId: string) => ({
     id,
+    activityId: `activity:${id}`,
     phaseId,
     title: id,
     description: id,
@@ -429,22 +407,17 @@ Deno.test("Project Path wraps a later architecture-capture tip under the origina
   const path = buildProjectPath(wrapped, wrappedThread);
 
   assertEquals(
-    path.phases.some((item) => item.phase.id === "architecture-v3"),
-    false,
-    "the later architecture tip must wrap under the original architecture gate",
+    path.activities.some((item) =>
+      item.revisions.some((revision) => revision.id === "arch-v3")
+    ),
+    true,
   );
   assertEquals(
-    path.phases.some((item) => item.phase.id === "architecture"),
+    path.activities.some((item) =>
+      item.revisions.some((revision) => revision.id === "seed-work")
+    ),
     true,
-    "architecture growing from the seed remains a macro gate",
   );
-  assertEquals(
-    path.phases.some((item) => item.phase.id === "seed"),
-    true,
-    "the seed stays its own gate",
-  );
-  const architecture = path.phases.find((item) => item.phase.id === "architecture");
-  assertEquals(architecture?.lifecycle?.revisionAttemptCount, 1);
 });
 
 Deno.test("phase status labels name planned explicitly and never fall through to Gate satisfied", () => {
@@ -465,26 +438,19 @@ Deno.test(
       brief.phases.find((item) => item.phase.id === "phase-seed")?.status,
       "planned",
     );
+    const activity = path.activities.find((item) => item.id === "activity:wi-seed");
     assertEquals(
-      path.phases.some((item) => item.phase.id === "phase-seed"),
-      false,
-      "the cancelled seed must fold under the unique same-operation successor",
+      activity?.revisions.map((revision) => revision.id),
+      ["wi-seed", "wi-seed-2"],
     );
     assertEquals(
-      path.phases.some((item) =>
-        item.phase.id === "phase-seed" && item.status === "completed"
-      ),
-      false,
+      activity?.revisions.some((revision) => revision.status === "cancelled"),
+      true,
     );
-    const successor = path.phases.find((item) => item.phase.id === "phase-seed-2");
-    assertEquals(successor?.status, "completed");
-    assertEquals(successor?.lifecycle, {
-      affectedComponentIds: [],
-      correctionCount: 0,
-      revisionAttemptCount: 1,
-      state: "retained",
-    });
-    assertEquals(phaseStatusLabel(successor!.status), "Gate satisfied");
+    assertEquals(
+      activity?.revisions.some((revision) => revision.status === "completed"),
+      true,
+    );
   },
 );
 
@@ -495,15 +461,11 @@ Deno.test(
       extraSuccessorPhaseId: "phase-seed-3",
     });
     const path = buildProjectPath(project, thread);
-    const seed = path.phases.find((item) => item.phase.id === "phase-seed");
-
-    assertEquals(seed?.status, "planned");
-    assertEquals(phaseStatusLabel(seed!.status), "Planned");
     assertEquals(
-      path.phases.some((item) =>
-        item.phase.id === "phase-seed" && item.status === "completed"
+      path.activities.some((item) =>
+        item.revisions.some((revision) => revision.status === "cancelled")
       ),
-      false,
+      true,
     );
   },
 );
@@ -570,6 +532,8 @@ Deno.test("current project work does not advertise a ready predecessor when a la
       order: 5,
       operationId: "design.write-geometry",
       version: "1",
+      activityId: "activity:wi-geom",
+      predecessorRevisionId: "wi-geom",
     },
     remainingReady: {
       id: "wi-industrialize",
@@ -602,18 +566,20 @@ Deno.test("project path omits a historical ready predecessor while Activity reta
       order: 41,
       operationId: "design.write-geometry",
       version: "1",
+      activityId: "activity:wi-geom",
+      predecessorRevisionId: "wi-geom",
     },
   });
 
   const path = buildProjectPath(snapshot, GENERIC_THREAD_FIXTURE);
+  const current = buildCurrentProjectWork(snapshot);
 
   assertEquals(snapshot.workItems.some((item) => item.id === "wi-geom"), true);
+  assertEquals(current.historicalWorkItemIds, ["wi-geom"]);
   assertEquals(
-    path.phases.some((item) => item.phase.id === "phase-cad"),
-    false,
-  );
-  assertEquals(
-    path.phases.some((item) => item.phase.id === "phase-cad-2"),
+    path.activities.some((item) =>
+      item.revisions.some((revision) => revision.id === "wi-geom-2")
+    ),
     true,
   );
 });
@@ -635,6 +601,8 @@ Deno.test("current project work applies the same later-completed operation rule 
       operationId: "verify.run-fea-static-proof",
       version: "2",
       geometryId: "geometry-arm-step",
+      activityId: "activity:wi-fea-2",
+      predecessorRevisionId: "wi-fea-2",
     },
   });
 
@@ -790,7 +758,7 @@ Deno.test("browser project contract accepts a V3 run anchored to its declared th
     GENERIC_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
   const reference = (project.threadSnapshots as Array<Record<string, unknown>>)[0]!;
-  project.schemaVersion = "3.0";
+  project.schemaVersion = "4.0";
   project.agentRuns = [{
     id: "run-v3-thread-snapshot",
     workItemId: "work-architect",
@@ -1066,7 +1034,7 @@ function v3PlanningProjectEnvelope(): Record<string, unknown> {
   const project = structuredClone(
     GENERIC_PROJECT_FIXTURE,
   ) as unknown as Record<string, unknown>;
-  project.schemaVersion = "3.0";
+  project.schemaVersion = "4.0";
   project.threadSnapshots = [];
   project.agentRuns = [];
   project.decisions = [];
@@ -1221,6 +1189,8 @@ interface LeftoverOperationWorkSpec {
   readonly version: string;
   readonly status?: "ready" | "completed";
   readonly geometryId?: string;
+  readonly activityId?: string;
+  readonly predecessorRevisionId?: string;
 }
 
 function cancelledSeedSuccessorFixture(spec?: {
@@ -1263,6 +1233,7 @@ function cancelledSeedSuccessorFixture(spec?: {
   });
   const seedWork = {
     id: "wi-seed",
+    activityId: "activity:wi-seed",
     phaseId: "phase-seed",
     title: "wi-seed",
     description: "wi-seed",
@@ -1282,6 +1253,8 @@ function cancelledSeedSuccessorFixture(spec?: {
   };
   const successorWork = {
     id: "wi-seed-2",
+    activityId: "activity:wi-seed",
+    predecessorRevisionId: "wi-seed",
     phaseId: "phase-seed-2",
     title: "wi-seed-2",
     description: "wi-seed-2",
@@ -1299,6 +1272,7 @@ function cancelledSeedSuccessorFixture(spec?: {
     ? {
       ...seedWork,
       id: "wi-seed-alt",
+      activityId: "activity:wi-seed-alt",
       reconciliation: reconciliation(
         "run:ca01-queue-seed-alt",
         "run:ca01-seed-3",
@@ -1310,6 +1284,7 @@ function cancelledSeedSuccessorFixture(spec?: {
     ? {
       ...successorWork,
       id: "wi-seed-3",
+      activityId: "activity:wi-seed-3",
       phaseId: extraSuccessorId,
       evidenceRefs: [extraEvidence],
     }
@@ -1455,6 +1430,10 @@ function leftoverOperationWork(
   const status = spec.status ?? defaultStatus;
   return {
     id: spec.id,
+    activityId: spec.activityId ?? `activity:${spec.id}`,
+    ...(spec.predecessorRevisionId
+      ? { predecessorRevisionId: spec.predecessorRevisionId }
+      : {}),
     phaseId: spec.phaseId,
     title: spec.id,
     description: spec.id,
@@ -1543,6 +1522,7 @@ function correctionPathFixture() {
     evidenceId?: string,
   ) => ({
     id,
+    activityId: `activity:${id}`,
     phaseId,
     title: id,
     description: id,
@@ -1979,19 +1959,15 @@ Deno.test("the spine split never hides the active phase or an unsatisfied gate",
 Deno.test("collapsed project gates follow the five projected thread lanes without reading phase labels", () => {
   const gate = (
     id: string,
+    lane: "requirements" | "system-model" | "geometry",
     completedWorkItems: number,
     evidenceCount: number,
   ) => ({
-    phase: {
-      id,
-      name: "Same deliberately uninformative label",
-      order: 1,
-      description: "The label is not a classifier.",
-      workItemIds: [],
-      requiredDecisionIds: [],
-      evidenceRefs: [],
-    },
+    id,
+    lane,
+    title: "Same deliberately uninformative label",
     status: "completed" as const,
+    revisions: [],
     completedWorkItems,
     totalWorkItems: completedWorkItems,
     approvedDecisions: 1,
@@ -1999,13 +1975,13 @@ Deno.test("collapsed project gates follow the five projected thread lanes withou
     evidenceCount,
   });
   const groups = groupProjectPathGatesByLane(
-    [gate("f1", 1, 1), gate("f2", 2, 3), gate("c1", 1, 2), gate("x1", 1, 0)],
     [
-      { phaseId: "f1", lane: "system-model" },
-      { phaseId: "f2", lane: "system-model" },
-      { phaseId: "c1", lane: "geometry" },
-      { phaseId: "x1", lane: "requirements" },
+      gate("f1", "system-model", 1, 1),
+      gate("f2", "system-model", 2, 3),
+      gate("c1", "geometry", 1, 2),
+      gate("x1", "requirements", 1, 0),
     ],
+    [],
   );
 
   assertEquals(groups.map((group) => group.id), [

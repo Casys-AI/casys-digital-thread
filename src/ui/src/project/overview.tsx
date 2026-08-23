@@ -11,6 +11,7 @@ import type {
   EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import type {
+  EngineeringWorkbenchActivity,
   EngineeringWorkbenchPhaseLane,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
@@ -70,8 +71,8 @@ import {
   buildProjectPath,
   groupProjectPathGatesByLane,
   phaseStatusLabel,
+  type ProjectPathActivityView,
   type ProjectPathLaneGroup,
-  type ProjectPathPhaseView,
   projectPathStatusLabel,
   projectStatusTone,
   selectCurrentProjectFocus,
@@ -83,6 +84,7 @@ export interface ProjectOverviewProps {
   readonly project: EngineeringProjectSnapshot;
   readonly thread: ThreadWorkbenchSnapshot;
   readonly phaseLanes: readonly EngineeringWorkbenchPhaseLane[];
+  readonly activities: readonly EngineeringWorkbenchActivity[];
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
   readonly onOpenProductFacet?: (facet: ProductWorkspaceFacet) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
@@ -99,6 +101,7 @@ export function ProjectOverview({
   project,
   thread,
   phaseLanes,
+  activities,
   onNavigate,
   onOpenProductFacet,
   onOpenActivity,
@@ -107,7 +110,7 @@ export function ProjectOverview({
 }: ProjectOverviewProps): JSX.Element {
   const brief = buildProjectBrief(project);
   const currentWork = buildCurrentProjectWork(project);
-  const projectPath = buildProjectPath(project, thread);
+  const projectPath = buildProjectPath(project, thread, activities);
   const requirementMatrix = buildRequirementMatrix(thread);
   const currentFocus = selectCurrentProjectFocus(project);
   const openBlocker = brief.openBlockers[0];
@@ -118,7 +121,7 @@ export function ProjectOverview({
     ? sealedAssemblyGlbAsset(sealedAssembly)
     : undefined;
   const { collapsed: collapsedGates, visible: visiblePhases } =
-    splitLeadingSatisfiedGates(projectPath.phases);
+    splitLeadingSatisfiedGates(projectPath.activities);
   const collapsedLanes = groupProjectPathGatesByLane(
     collapsedGates,
     phaseLanes,
@@ -252,7 +255,7 @@ export function ProjectOverview({
               )}
               {visiblePhases.map((item, index) => (
                 <SpinePhase
-                  key={item.phase.id}
+                  key={item.id}
                   item={item}
                   isLast={index === visiblePhases.length - 1}
                 />
@@ -409,12 +412,12 @@ function EarlierGatesPanel(
               <ol className="divide-y divide-border" role="list">
                 {group.gates.map((item) => (
                   <li
-                    key={item.phase.id}
+                    key={item.id}
                     data-state={item.status}
                     className="flex min-w-0 items-start justify-between gap-3 px-3 py-2.5"
                   >
                     <div className="min-w-0">
-                      <span className="text-[13px]">{item.phase.name}</span>
+                      <span className="text-[13px]">{item.title}</span>
                       <p className="mt-0.5 font-mono text-[9.5px] tabular-nums text-muted-foreground">
                         {phaseCounterLabel(item)}
                       </p>
@@ -463,14 +466,14 @@ function Chevron({ className }: { readonly className?: string }): JSX.Element {
  * réclame une review.
  */
 function SpinePhase(
-  { item, isLast }: { item: ProjectPathPhaseView; isLast: boolean },
+  { item, isLast }: { item: ProjectPathActivityView; isLast: boolean },
 ): JSX.Element {
   const open = item.status === "active" || item.status === "blocked";
   return (
     <li
       data-state={item.status}
       aria-current={item.status === "active" ? "step" : undefined}
-      aria-label={`${item.phase.name} — ${item.completedWorkItems}/${item.totalWorkItems} ${
+      aria-label={`${item.title} — ${item.completedWorkItems}/${item.totalWorkItems} ${
         phaseStatusLabel(item.status)
       }`}
       className="flex min-w-0 flex-1 items-center"
@@ -491,37 +494,31 @@ function SpinePhase(
                 phaseStatusTextClass(item.status),
               )}
             >
-              {item.phase.name}{" "}
+              {item.title}{" "}
               <span className="text-success">
                 {item.completedWorkItems}/{item.totalWorkItems}{" "}
                 {phaseStatusLabel(item.status)}
               </span>
             </span>
-            {item.lifecycle && (
-              <p
-                className="m-0 font-mono text-[9px] text-muted-foreground"
-                data-state={item.lifecycle.state}
-              >
-                {item.lifecycle.affectedComponentIds.length > 0
-                  ? "Component"
-                  : "Lifecycle"}
-                {" · "}
-                {projectPhaseLifecycleLabel(item.lifecycle)}
-              </p>
-            )}
+            <ol className="m-0 list-none p-0 font-mono text-[9px] text-muted-foreground">
+              {item.revisions.map((revision) => (
+                <li key={revision.id}>
+                  {revision.title} · {revision.status}
+                  {revision.attempts.map((attempt) => (
+                    <span key={attempt.id}>
+                      {" · "}
+                      {attempt.status}
+                    </span>
+                  ))}
+                </li>
+              ))}
+            </ol>
           </div>
         )
-        // Pas de ligne lifecycle en compact : un état en attention n'arrive
-        // jamais ici, le remap de lifecycleEffectivePhaseStatus le fait
-        // passer en `blocked`, donc la phase s'ouvre.
         : (
-          // Le bandeau ne répète plus le statut sous chaque gate : aligné huit
-          // fois, « Gate satisfied » cassait la ligne sans rien apprendre.
-          // L'état se lit à la FORME du nœud — plein, anneau, ou vide — et le
-          // mot reste dans le nom accessible de l'étape, pas en décor.
           <div className="mx-1.5 flex min-w-0 items-baseline gap-1.5">
             <span className="truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-              {item.phase.name}
+              {item.title}
             </span>
             <span
               className={cn(
@@ -1011,7 +1008,7 @@ function sentenceLabel(value: string): string {
 }
 
 function phaseCounterLabel(
-  item: ReturnType<typeof buildProjectPath>["phases"][number],
+  item: ProjectPathActivityView,
 ): string {
   const parts = [
     `${item.completedWorkItems}/${item.totalWorkItems} work`,
@@ -1078,25 +1075,6 @@ function laneGroupsCounterLabel(
     );
   }
   return parts.join(" · ");
-}
-
-function projectPhaseLifecycleLabel(
-  lifecycle: NonNullable<
-    ReturnType<typeof buildProjectPath>["phases"][number]["lifecycle"]
-  >,
-): string {
-  const componentCount = lifecycle.affectedComponentIds.length;
-  const enrichmentCount = lifecycle.modelEnrichmentCount ?? 0;
-  const subject = componentCount > 0
-    ? `${componentCount} component${componentCount === 1 ? "" : "s"}`
-    : enrichmentCount > 0 && lifecycle.correctionCount === 0
-    ? `${enrichmentCount} model enrichment${enrichmentCount === 1 ? "" : "s"}`
-    : `${lifecycle.correctionCount} evidence update${
-      lifecycle.correctionCount === 1 ? "" : "s"
-    }`;
-  if (lifecycle.state === "current") return `${subject} updated`;
-  if (lifecycle.state === "attention") return `${subject} needs review`;
-  return `${subject} retained`;
 }
 
 function formatShortTime(value: string): string {

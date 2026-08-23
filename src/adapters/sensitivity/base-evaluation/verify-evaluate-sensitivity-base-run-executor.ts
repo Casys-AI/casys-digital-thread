@@ -591,7 +591,7 @@ function requireShape(
   const operation = workItem?.operation;
   const binding = operation?.bindings.find((item) => item.name === "studyCapture");
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     operation?.id !== VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION.id ||
     operation.version !== VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION.version ||

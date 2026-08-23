@@ -248,6 +248,24 @@ Deno.test("evidence Workbench rejects incoherent revisions and malformed live ov
   assertEquals(isEngineeringWorkbenchSnapshot(crossSubject), false);
 });
 
+function publicPretechnicalProject(
+  project: typeof GENERIC_ENGINEERING_WORKBENCH_FIXTURE["project"],
+) {
+  return {
+    ...project,
+    agentRuns: project.agentRuns.map((run) => ({
+      id: run.id,
+      workItemId: run.workItemId,
+      status: run.status,
+      summary: run.summary,
+      queuedAt: run.queuedAt,
+      ...(run.startedAt ? { startedAt: run.startedAt } : {}),
+      ...(run.completedAt ? { completedAt: run.completedAt } : {}),
+      evidenceRefs: [],
+    })),
+  };
+}
+
 Deno.test("Workbench contract accepts a planning surface only when no technical baseline is declared", () => {
   const planning = structuredClone(
     GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
@@ -257,6 +275,9 @@ Deno.test("Workbench contract accepts a planning surface only when no technical 
   delete planning.projectPath;
   delete planning.alignment;
   delete planning.unresolvedEvidenceReferences;
+  planning.project = publicPretechnicalProject(
+    planning.project as typeof GENERIC_ENGINEERING_WORKBENCH_FIXTURE["project"],
+  );
   (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [];
   planning.planning = {
     technicalBaseline: {
@@ -309,6 +330,9 @@ Deno.test("Workbench contract rejects a planning activity that carries graph or 
   delete planning.projectPath;
   delete planning.alignment;
   delete planning.unresolvedEvidenceReferences;
+  planning.project = publicPretechnicalProject(
+    planning.project as typeof GENERIC_ENGINEERING_WORKBENCH_FIXTURE["project"],
+  );
   (planning.project as { threadSnapshots: unknown[] }).threadSnapshots = [];
   planning.planning = {
     technicalBaseline: {
@@ -332,9 +356,9 @@ Deno.test("Workbench contract rejects a planning activity that carries graph or 
 Deno.test("Workbench contract keeps a documentary baseline separate from an evidence thread", () => {
   const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
-    schemaVersion: "engineering-workbench/0.4",
+    schemaVersion: "engineering-workbench/0.5",
     surface: "documentary",
-    project: fixture.project,
+    project: publicPretechnicalProject(fixture.project),
     documentary: {
       status: "recorded",
       message: "One durable pre-technical record is available.",
@@ -367,9 +391,9 @@ Deno.test("Workbench contract keeps a documentary baseline separate from an evid
 Deno.test("Workbench contract accepts only the closed live SysON seed sequence on documentary r1", () => {
   const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
-    schemaVersion: "engineering-workbench/0.4",
+    schemaVersion: "engineering-workbench/0.5",
     surface: "documentary",
-    project: fixture.project,
+    project: publicPretechnicalProject(fixture.project),
     documentary: {
       status: "recorded",
       message: "One durable pre-technical record is available.",

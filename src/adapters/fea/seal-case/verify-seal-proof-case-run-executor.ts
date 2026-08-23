@@ -1456,7 +1456,7 @@ function requireShape(
     (b) => b.name === "approvedBrief" && b.source.kind === "approved-brief",
   );
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     !workItem ||
     operation?.id !== SEAL_OP.id ||

@@ -13,6 +13,8 @@ import type {
   EngineeringThreadSnapshotRef,
   EngineeringWorkItem,
 } from "./engineering-project.ts";
+import { ENGINEERING_PROJECT_SCHEMA_VERSION } from "./engineering-project.ts";
+import { collectEngineeringActivityLifecycleIssues } from "./engineering-activity.ts";
 import { queuedRunCancellationSummary } from "./engineering-project.ts";
 import {
   sameResolvedOperationPlanRef,
@@ -233,8 +235,13 @@ function engineeringProjectSchemaVersion(
   path: string,
   issues: EngineeringProjectValidationIssue[],
 ): EngineeringProjectSchemaVersion | undefined {
-  if (value === "1.0" || value === "3.0") return value;
-  issue(issues, "invalid_enum", path, "must be 1.0 or 3.0");
+  if (value === ENGINEERING_PROJECT_SCHEMA_VERSION) return value;
+  issue(
+    issues,
+    "invalid_enum",
+    path,
+    `must be ${ENGINEERING_PROJECT_SCHEMA_VERSION}`,
+  );
   return undefined;
 }
 
@@ -707,7 +714,7 @@ function validateProjectPlan(
     `${path}.startingPoint`,
     issues,
   );
-  if (schemaVersion === "3.0") {
+  if (schemaVersion === ENGINEERING_PROJECT_SCHEMA_VERSION) {
     validateApprovedBriefBasis(input.basis, `${path}.basis`, issues);
   }
   isoDateTime(input.publishedAt, `${path}.publishedAt`, issues);
@@ -900,6 +907,7 @@ function validateWorkItem(
     path,
     [
       "id",
+      "activityId",
       "phaseId",
       "title",
       "description",
@@ -911,11 +919,19 @@ function validateWorkItem(
       "decisionIds",
       "blockerIds",
     ],
-    ["operation", "gateClaims", "reconciliation"],
+    ["predecessorRevisionId", "operation", "gateClaims", "reconciliation"],
     issues,
   );
   if (!input) return;
   nonEmptyString(input.id, `${path}.id`, issues);
+  nonEmptyString(input.activityId, `${path}.activityId`, issues);
+  if (input.predecessorRevisionId !== undefined) {
+    nonEmptyString(
+      input.predecessorRevisionId,
+      `${path}.predecessorRevisionId`,
+      issues,
+    );
+  }
   nonEmptyString(input.phaseId, `${path}.phaseId`, issues);
   nonEmptyString(input.title, `${path}.title`, issues);
   nonEmptyString(input.description, `${path}.description`, issues);
@@ -1781,25 +1797,12 @@ function validateRunExecutionBinding(
   const hasBase = input.baseSnapshot !== undefined;
   const hasFingerprint = input.inputFingerprint !== undefined;
 
-  if (schemaVersion === "1.0") {
-    if (hasBasis) {
-      issue(
-        issues,
-        "schema_version_mismatch",
-        `${path}.basis`,
-        "is a V3 execution field and cannot appear in a V1 run",
-      );
-    }
-    validateExecutionBinding(input, path, issues);
-    return;
-  }
-
   if (hasBase) {
     issue(
       issues,
       "schema_version_mismatch",
       `${path}.baseSnapshot`,
-      "is a V1 execution field and cannot appear in a V3 run",
+      "is a retired execution field and cannot appear in a current-schema run",
     );
   }
   if (!hasBasis || !hasFingerprint) {
@@ -1807,7 +1810,7 @@ function validateRunExecutionBinding(
       issues,
       "incomplete_execution_binding",
       path,
-      "a V3 run requires both basis and inputFingerprint",
+      "a current-schema run requires both basis and inputFingerprint",
     );
   }
   if (hasBasis) validateEngineeringBasis(input.basis, `${path}.basis`, issues);
@@ -1917,7 +1920,7 @@ function validateInvariants(
     "$.threadSnapshots",
     issues,
   );
-  const createdByCommand = project.schemaVersion === "3.0";
+  const createdByCommand = true;
   const expectedCommandReceiptCount = createdByCommand
     ? project.revision
     : Math.max(0, project.revision - 1);
@@ -1939,6 +1942,16 @@ function validateInvariants(
   );
   requireUnique(project.phases, (item) => item.id, "$.phases", issues);
   requireUnique(project.workItems, (item) => item.id, "$.workItems", issues);
+  collectEngineeringActivityLifecycleIssues(project.workItems).forEach(
+    (lifecycleIssue) => {
+      issue(
+        issues,
+        lifecycleIssue.code,
+        lifecycleIssue.path,
+        lifecycleIssue.message,
+      );
+    },
+  );
   requireUnique(project.agentRuns, (item) => item.id, "$.agentRuns", issues);
   requireUnique(project.decisions, (item) => item.id, "$.decisions", issues);
   requireUnique(project.approvals, (item) => item.id, "$.approvals", issues);
@@ -1950,48 +1963,29 @@ function validateInvariants(
     issues,
   );
 
+  if (!project.framing) {
+    issue(
+      issues,
+      "missing_reference",
+      "$.framing",
+      "a current project owns its living brief from the first revision",
+    );
+  } else {
+    validateProjectFramingInvariants(project, project.framing, issues);
+  }
   if (
-    project.threadSnapshots.length === 0 && project.schemaVersion !== "3.0"
+    project.revision === 1 && (
+      project.threadSnapshots.length > 0 || project.phases.length > 0 ||
+      project.workItems.length > 0 || project.agentRuns.length > 0 ||
+      project.decisions.length > 0 || project.approvals.length > 0 ||
+      project.blockers.length > 0 || project.plan !== undefined
+    )
   ) {
     issue(
       issues,
-      "missing_thread_snapshot",
-      "$.threadSnapshots",
-      "must declare at least one exact ThreadSnapshot revision",
-    );
-  }
-  if (project.schemaVersion === "3.0") {
-    if (!project.framing) {
-      issue(
-        issues,
-        "missing_reference",
-        "$.framing",
-        "a V3 project owns its living brief from the first revision",
-      );
-    } else {
-      validateProjectFramingInvariants(project, project.framing, issues);
-    }
-    if (
-      project.revision === 1 && (
-        project.threadSnapshots.length > 0 || project.phases.length > 0 ||
-        project.workItems.length > 0 || project.agentRuns.length > 0 ||
-        project.decisions.length > 0 || project.approvals.length > 0 ||
-        project.blockers.length > 0 || project.plan !== undefined
-      )
-    ) {
-      issue(
-        issues,
-        "project_start_scope",
-        "$",
-        "an initial V3 project contains intent only and cannot fabricate planning or technical state",
-      );
-    }
-  } else if (project.framing) {
-    issue(
-      issues,
-      "schema_version_mismatch",
-      "$.framing",
-      "living project framing belongs only to V3 projects",
+      "project_start_scope",
+      "$",
+      "an initial project contains intent only and cannot fabricate planning or technical state",
     );
   }
   validatePlanInvariants(project, issues);
@@ -2524,6 +2518,16 @@ function validateWorkItemReconciliationInvariant(
   const successorWork = successor
     ? project.workItems.find((work) => work.id === successor.workItemId)
     : undefined;
+  if (
+    successorWork && successorWork.activityId !== item.activityId
+  ) {
+    issue(
+      issues,
+      "cross_activity_predecessor",
+      `${path}.reconciliation.successorRunId`,
+      "reconciliation can close only work in the same stable activity",
+    );
+  }
   if (
     !successor || successor.workItemId === item.id ||
     successor.status !== "completed" || !successor.resultSnapshot ||
@@ -3096,7 +3100,7 @@ function validatePlanInvariants(
   const plan = project.plan;
   const path = "$.plan";
   if (!plan) return;
-  if (project.schemaVersion === "3.0") {
+  if (project.schemaVersion === ENGINEERING_PROJECT_SCHEMA_VERSION) {
     if (plan.basis.kind !== "approved-brief") {
       issue(
         issues,
@@ -3195,7 +3199,7 @@ function validatePlanChangeInvariants(
   );
   changes.forEach((change, index) => {
     const path = `$.planChanges[${index}]`;
-    if (project.schemaVersion === "3.0") {
+    if (project.schemaVersion === ENGINEERING_PROJECT_SCHEMA_VERSION) {
       if (!change.approvedBriefBasis) {
         issue(
           issues,
@@ -3351,7 +3355,7 @@ function validateRunBasisInvariant(
   project: EngineeringProjectSnapshot,
   issues: EngineeringProjectValidationIssue[],
 ): void {
-  if (project.schemaVersion === "1.0") return;
+  if (project.schemaVersion !== ENGINEERING_PROJECT_SCHEMA_VERSION) return;
   const path = `$.agentRuns[${index}]`;
   const basis = run.basis;
   if (!basis) return;
@@ -4328,7 +4332,7 @@ function validateCommandReceiptInvariant(
     );
   }
   if (
-    project.schemaVersion === "3.0" &&
+    project.schemaVersion === ENGINEERING_PROJECT_SCHEMA_VERSION &&
     receipt.type === "project.brief-approve" &&
     receipt.approvedBriefBasis === undefined
   ) {
@@ -4382,7 +4386,7 @@ function validateCommandReceiptInvariant(
       }
     }
   }
-  const firstCommandRevision = project.schemaVersion === "3.0" ? 1 : 2;
+  const firstCommandRevision = 1;
   if (
     receipt.resultingSnapshot.revision < firstCommandRevision ||
     receipt.resultingSnapshot.revision > project.revision
@@ -4413,7 +4417,7 @@ function validateCommandReceiptInvariant(
       `must equal command revision ${index + firstCommandRevision}`,
     );
   }
-  const isProjectStart = project.schemaVersion === "3.0" && index === 0;
+  const isProjectStart = index === 0;
   if (isProjectStart && receipt.type !== "project.start") {
     issue(
       issues,

@@ -754,7 +754,7 @@ function requireCloseoutShape(
   const work = project.workItems.find((item) => item.id === run.workItemId);
   const operation = closeoutOperationOf(work?.operation);
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" || !work ||
+    run.basis?.kind !== "thread-snapshot" || !work ||
     !operation || work.operation?.bindings.length !== 1 ||
     work.operation.bindings[0]?.name !== "approvedBrief" ||
     work.operation.bindings[0].source.kind !== "approved-brief"

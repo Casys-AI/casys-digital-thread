@@ -248,7 +248,7 @@ Deno.test("a project exists from first intent and framing stays inside it", asyn
 
   const project = await service.startProject(AGENT, command);
 
-  assertEquals(project.schemaVersion, "3.0");
+  assertEquals(project.schemaVersion, "4.0");
   assertEquals(project.revision, 1);
   assertEquals(project.project.id, PROJECT_ID);
   assertEquals(project.framing?.intent.statement, command.intent.trim());
@@ -537,6 +537,111 @@ Deno.test("an agent cannot preempt the server-reserved uncertain-writer release 
   assertEquals((await store.get(PROJECT_ID))?.revision, approved.revision);
 });
 
+Deno.test("publishPlan rejects a caller-supplied activityId", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+  );
+  const plan = baselinePlanCommand("reject-caller-activity", approved.revision);
+  (plan.workItems[0] as { activityId?: string }).activityId = "activity:forged";
+
+  await assertCommandError(
+    () => commands.publishPlan(AGENT, plan),
+    "invalid_input",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, approved.revision);
+});
+
+Deno.test("appendChange inherits activity identity from an explicit predecessor", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    { validateInitial: () => Promise.resolve() },
+  );
+  let project = await commands.publishPlan(
+    AGENT,
+    baselinePlanCommand("publish-baseline-for-activity", approved.revision),
+  );
+  const baselineWorkItemId = "record-approved-brief";
+  const runId = "run:baseline-for-activity";
+  project = await commands.queueRun(AGENT, {
+    ...context("queue-baseline-for-activity", project.revision),
+    runId,
+    workItemId: baselineWorkItemId,
+    summary: "Queue the exact approved documentary baseline.",
+    basis: project.plan!.basis,
+  });
+  project = await commands.claimRun(AGENT, {
+    ...context("claim-baseline-for-activity", project.revision),
+    runId,
+    summary: "Claim the exact approved documentary baseline.",
+  });
+  project = await commands.publishRun(AGENT, {
+    ...context("publish-run-for-activity", project.revision),
+    runId,
+    summary: "Publish the exact approved documentary baseline.",
+  });
+  const baselineSnapshot = {
+    snapshotId: "project-v3:documentary-baseline:r1",
+    revision: 1,
+    subjectId: project.project.subjectId,
+  };
+  project = await commands.completeRun(AGENT, {
+    ...context("complete-baseline-for-activity", project.revision),
+    runId,
+    summary: "Complete the exact approved documentary baseline.",
+    resultSnapshot: baselineSnapshot,
+    evidenceRefs: [{
+      snapshotId: baselineSnapshot.snapshotId,
+      snapshotRevision: baselineSnapshot.revision,
+      kind: "artifact",
+      id: "approved-brief-baseline",
+    }],
+  });
+
+  const changed = await commands.appendChange(AGENT, {
+    ...context("append-seed-successor", project.revision),
+    baseSnapshot: baselineSnapshot,
+    phases: [{
+      id: "phase-architecture",
+      name: "Architecture",
+      description: "Create the bounded reviewed system structure.",
+    }],
+    workItems: [{
+      id: "seed-syson-successor",
+      phaseId: "phase-architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: [baselineWorkItemId],
+      decisionIds: [],
+      predecessorRevisionId: baselineWorkItemId,
+      operation: {
+        id: "architecture.seed-syson-model",
+        version: "2",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" },
+        }],
+      },
+    }],
+    requiredDecisions: [],
+  });
+  const successor = changed.workItems.find((item) =>
+    item.id === "seed-syson-successor"
+  );
+  assertEquals(successor?.activityId, "activity:record-approved-brief");
+  assertEquals(successor?.predecessorRevisionId, baselineWorkItemId);
+});
+
 Deno.test("publishPlan refuses one MRTR decision shared by two work items before persistence", async () => {
   const store = new MemoryProjectStore();
   const briefs = serviceFor(store);
@@ -772,6 +877,11 @@ Deno.test("the initial engineering plan is bound to the exact approved in-projec
     approved.framing?.currentBrief?.id,
   );
   assertEquals(planned.workItems[0]?.status, "ready");
+  assertEquals(
+    planned.workItems[0]?.activityId,
+    "activity:record-approved-brief",
+  );
+  assertEquals(planned.workItems[0]?.predecessorRevisionId, undefined);
 
   const exactBasis = planned.plan.basis;
   const tamperedBases: readonly EngineeringApprovedBriefBasis[] = [{
@@ -854,7 +964,7 @@ Deno.test("a V3 cancellation seals its legacy unbound queue receipt", async () =
     basis: planned.plan!.basis,
   });
   const queueReceipt = queued.commandReceipts?.at(-1);
-  assertEquals(queued.schemaVersion, "3.0");
+  assertEquals(queued.schemaVersion, "4.0");
   assertEquals(queueReceipt?.type, "agent-run.queue");
   assertEquals(queueReceipt?.queuedRun, {
     runId: "run:legacy-v3-queue",

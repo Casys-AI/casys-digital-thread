@@ -538,7 +538,7 @@ function requireApprovedBriefBaselineShape(
   run: EngineeringAgentRun,
 ): EngineeringWorkItem {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
-  const current = project.schemaVersion === "3.0" &&
+  const current = project.schemaVersion === "4.0" &&
     run.basis?.kind === "approved-brief" &&
     workItem?.operation?.id === APPROVED_BRIEF_BASELINE_OPERATION.id &&
     workItem.operation.version === APPROVED_BRIEF_BASELINE_OPERATION.version;

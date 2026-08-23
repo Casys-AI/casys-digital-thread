@@ -681,7 +681,7 @@ function run(
 
 function project(runs: readonly EngineeringAgentRun[]): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project:r8",
     revision: 8,
     generatedAt: "2026-08-09T00:00:00.000Z",
@@ -709,6 +709,7 @@ function project(runs: readonly EngineeringAgentRun[]): EngineeringProjectSnapsh
       const name = candidate.id.slice("run:".length) as OperationName;
       return {
         id: candidate.workItemId,
+        activityId: `activity:${candidate.workItemId}`,
         phaseId: "phase",
         title: name,
         description: `${name} work`,
@@ -918,6 +919,7 @@ async function reconciledProject(
     })),
     workItems: [...value.workItems, {
       id: reconciliationWorkItemId,
+      activityId: `activity:${reconciliationWorkItemId}`,
       phaseId: "phase",
       title: "Reconcile uncertain writer",
       description: "Record the exact inspected provider outcome.",

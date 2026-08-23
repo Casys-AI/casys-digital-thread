@@ -836,6 +836,7 @@ async function calculixFixture(
   const history = {
     workItem: {
       id: "seal-work-fea",
+      activityId: "activity:seal-work-fea",
       phaseId: "seal-phase-fea",
       title: "Seal FEA proof",
       description: "Seal the exact reviewed FEA proof case.",
@@ -1071,6 +1072,7 @@ async function planInput(options: {
   };
   const workItem = {
     id: options.workItemId,
+    activityId: `activity:${options.workItemId}`,
     phaseId: "phase-1",
     title: options.workItemId,
     description: `Run ${options.operationId}.`,
@@ -1108,7 +1110,7 @@ async function planInput(options: {
     baseSnapshot: basis,
   };
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project-snapshot-1",
     revision: 3,
     generatedAt: AT,

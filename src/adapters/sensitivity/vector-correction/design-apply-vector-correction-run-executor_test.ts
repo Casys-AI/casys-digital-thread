@@ -258,7 +258,7 @@ async function createFixture(options: {
     approvedDecisions: [{ id: DECISION_ID, inputFingerprint: decisionFingerprint }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: `${PROJECT_ID}:r1`,
     revision: 1,
     generatedAt: AT,
@@ -280,6 +280,7 @@ async function createFixture(options: {
     }],
     workItems: [{
       id: WORK_ID,
+      activityId: `activity:${WORK_ID}`,
       phaseId: "phase.design",
       title: "Seal vector correction",
       description: "Seal the reviewed correction.",
@@ -451,7 +452,7 @@ async function buildWorld(reuseResult = false) {
   const requirementId = "req:disp";
   const briefId = "artifact.brief";
   const snapshot = validateThreadSnapshot({
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: "snapshot.vector.r1",
     revision: 1,
     generatedAt: AT,

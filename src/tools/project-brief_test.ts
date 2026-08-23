@@ -67,7 +67,7 @@ Deno.test("project MCP framing uses one project identity from intent through app
       intentSource: { kind: "human", reference: "conversation:turn-1" },
     });
     let project = result.structuredContent as Record<string, unknown>;
-    assertEquals(project.schemaVersion, "3.0");
+    assertEquals(project.schemaVersion, "4.0");
     assertEquals(project.revision, 1);
 
     result = await client.tool("project_brief_propose", {

@@ -1567,7 +1567,7 @@ function projectFixture(
     bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
   };
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project-preservation-r1",
     revision: 3,
     generatedAt: AT,
@@ -1615,6 +1615,7 @@ function projectFixture(
     workItems: [
       {
         id: EVAL_WORK,
+        activityId: `activity:${EVAL_WORK}`,
         phaseId: "phase-preservation",
         title: "Evaluate",
         description: "Evaluate",
@@ -1634,6 +1635,7 @@ function projectFixture(
       },
       {
         id: DECISION_WORK,
+        activityId: `activity:${DECISION_WORK}`,
         phaseId: "phase-preservation",
         title: "Decide",
         description: "Decide",
@@ -1818,6 +1820,7 @@ function workItem(
 ) {
   return {
     id,
+    activityId: `activity:${id}`,
     phaseId: "phase-preservation",
     title: id,
     description: id,

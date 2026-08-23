@@ -2235,7 +2235,7 @@ function requireShape(
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const operation = workItem?.operation;
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     !workItem ||
     operation?.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||

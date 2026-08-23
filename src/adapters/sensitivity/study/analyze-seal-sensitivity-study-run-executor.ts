@@ -745,7 +745,7 @@ function requireShape(
       binding.name === "approvedBrief" && binding.source.kind === "approved-brief",
   );
   if (
-    project.schemaVersion !== "3.0" ||
+    project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     !workItem ||
     operation?.id !== ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.id ||

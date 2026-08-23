@@ -514,7 +514,7 @@ function requireShape(project: EngineeringProjectSnapshot, run: EngineeringAgent
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const operation = workItem?.operation;
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" || !workItem ||
+    run.basis?.kind !== "thread-snapshot" || !workItem ||
     operation?.id !== VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id ||
     operation.version !== VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version ||
     operation.bindings.length !== 1 || operation.bindings[0]?.name !== "approvedBrief" ||

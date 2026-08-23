@@ -537,7 +537,7 @@ function requireShape(
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const operation = workItem?.operation;
   if (
-    project.schemaVersion !== "3.0" || run.basis?.kind !== "thread-snapshot" ||
+    run.basis?.kind !== "thread-snapshot" ||
     !workItem ||
     operation?.id !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id ||
     operation.version !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version ||

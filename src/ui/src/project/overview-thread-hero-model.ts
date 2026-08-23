@@ -6,6 +6,7 @@ import type {
 } from "../thread/types.ts";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
 import { OVERVIEW_LANES, type OverviewLane } from "./overview-lanes.ts";
+import { condenseEdgesThroughHiddenNodes } from "./overview-condensed-edges.ts";
 
 export type OverviewLaneId = EngineeringPathLaneId;
 export { OVERVIEW_LANES } from "./overview-lanes.ts";
@@ -95,14 +96,18 @@ export function buildOverviewThreadHero(
   );
 
   const byKey = new Map(placed.map((item) => [item.key, item]));
+  const condensed = condenseEdgesThroughHiddenNodes(
+    new Set(placed.map((item) => item.key)),
+    thread.graph.edges,
+  );
   const edges: OverviewHeroEdge[] = [];
-  for (const edge of essential.edges) {
+  for (const edge of condensed) {
     const from = byKey.get(refKey(edge.from));
     const to = byKey.get(refKey(edge.to));
     if (!from || !to) continue;
     const midX = (from.x + to.x) / 2;
     edges.push({
-      key: edge.id,
+      key: edge.key,
       d: `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`,
       emphasis: from.emphasis || to.emphasis,
     });
@@ -112,9 +117,7 @@ export function buildOverviewThreadHero(
     lanes: OVERVIEW_LANES.map((lane) => ({
       lane,
       systems: uniqueSystems(
-        placed.filter((item) => item.lane === lane.id).map((item) =>
-          item.node.system
-        ),
+        placed.filter((item) => item.lane === lane.id).map((item) => item.node.system),
       ),
     })),
     nodes: placed,

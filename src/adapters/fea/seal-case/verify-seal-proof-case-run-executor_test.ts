@@ -175,7 +175,7 @@ Deno.test(
       projects: {
         get: () =>
           Promise.resolve({
-            schemaVersion: "3.0",
+            schemaVersion: "4.0",
             revision: 1,
             project: { id: PROJECT_ID, subjectId: SUBJECT_ID },
             agentRuns: [{
@@ -192,6 +192,7 @@ Deno.test(
             }],
             workItems: [{
               id: "seal-item",
+              activityId: "activity:seal-item",
               phaseId: "seal-phase",
               title: "Seal FEA proof case",
               description: "Seal the reviewed mechanical proof case.",

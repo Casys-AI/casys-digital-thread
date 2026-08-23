@@ -137,7 +137,7 @@ Deno.test("registered run executor refuses ambiguous additional registrations", 
 
 function projectFixture(operationId: string, operationVersion: string) {
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project@2",
     revision: 2,
     generatedAt: "2026-08-02T12:00:00.000Z",
@@ -151,6 +151,7 @@ function projectFixture(operationId: string, operationVersion: string) {
     phases: [],
     workItems: [{
       id: "work",
+      activityId: "activity:work",
       phaseId: "phase",
       title: "Work",
       description: "Work",

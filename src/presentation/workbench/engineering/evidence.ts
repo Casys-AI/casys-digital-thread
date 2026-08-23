@@ -25,6 +25,15 @@ export interface EngineeringEvidenceWorkbenchSnapshot
  */
 export interface EngineeringWorkbenchProjectPathProjection {
   readonly phaseLanes: readonly EngineeringWorkbenchPhaseLane[];
+  readonly activities: readonly EngineeringWorkbenchActivity[];
+}
+
+/** Server-projected stable activity with ordered revisions. */
+export interface EngineeringWorkbenchActivity {
+  readonly id: string;
+  readonly lane: EngineeringPathLaneId;
+  readonly rootRevisionId: string;
+  readonly revisionIds: readonly string[];
 }
 
 export interface EngineeringWorkbenchPhaseLane {

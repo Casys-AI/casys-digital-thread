@@ -466,7 +466,7 @@ Deno.test("Build123d execution registration stays unavailable until the explicit
   const project = neutralProjectFixture() as unknown as EngineeringProjectSnapshot;
   const withOperation = {
     ...project,
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     workItems: [{
       ...project.workItems[0]!,
       status: "in-progress",
@@ -1143,7 +1143,7 @@ function neutralProjectFixture(): EngineeringProjectSnapshot {
   const decisionId = "review-neutral-material-card";
   const blockerId = "missing-neutral-material-review";
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: `${NEUTRAL_PROJECT_ID}:project:r1`,
     revision: 1,
     generatedAt,
@@ -1173,6 +1173,7 @@ function neutralProjectFixture(): EngineeringProjectSnapshot {
     }],
     workItems: [{
       id: workItemId,
+      activityId: `activity:${workItemId}`,
       phaseId,
       title: "Review the neutral material card",
       description: "Record a human-reviewable material decision.",

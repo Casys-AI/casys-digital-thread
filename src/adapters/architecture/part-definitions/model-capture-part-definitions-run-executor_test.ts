@@ -944,7 +944,7 @@ function projectState(
   architectureId: string,
 ): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: PROJECT_ID,
     revision: 1,
     generatedAt: TIME,
@@ -962,6 +962,7 @@ function projectState(
     phases: [],
     workItems: [{
       id: "capture-part-definitions",
+      activityId: "activity:capture-part-definitions",
       phaseId: "structure",
       title: "Capture PartDefinitions",
       description: "Re-read sealed PartDefinitions.",

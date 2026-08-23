@@ -190,7 +190,7 @@ Deno.test("recover successor preview refuses an unknown successor run", async ()
 
 function orphanProject(): EngineeringProjectSnapshot {
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     revision: 30,
     project: { id: "cantilever-arm-ca01", subjectId: "cantilever-arm-ca01" },
     phases: [{
@@ -228,6 +228,7 @@ function workItem(
 ) {
   return {
     id,
+    activityId: `activity:${id}`,
     status,
     evidenceRefs,
     operation: { id: "architecture.seed-syson-model", version: "2" },

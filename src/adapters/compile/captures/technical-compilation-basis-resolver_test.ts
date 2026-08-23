@@ -776,7 +776,7 @@ function projectSnapshot(
 ): EngineeringProjectSnapshot {
   const snapshot = snapshots.at(-1)!;
   return validateEngineeringProjectSnapshot({
-    schemaVersion: "1.0",
+    schemaVersion: "4.0",
     id: "basis-test:project:r1",
     revision: 1,
     generatedAt: snapshot.generatedAt,

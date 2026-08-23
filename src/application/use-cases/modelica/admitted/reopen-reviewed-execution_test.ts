@@ -243,7 +243,7 @@ async function reviewedProject(
     }],
   });
   return {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     workItems: [{
       id: "work.modelica.admitted",
       decisionIds: ["decision.modelica.admitted"],

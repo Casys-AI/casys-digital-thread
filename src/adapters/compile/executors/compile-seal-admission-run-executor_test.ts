@@ -1063,7 +1063,7 @@ async function buildExecuteFixture(
     }],
   });
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: "project.compile-seal:r1",
     revision: 1,
     generatedAt: EXEC_AT,
@@ -1085,6 +1085,7 @@ async function buildExecuteFixture(
     }],
     workItems: [{
       id: EXEC_WORK_ID,
+      activityId: `activity:${EXEC_WORK_ID}`,
       phaseId: "phase.compile",
       title: "Seal compilation",
       description: "Seal exact reviewed compilation.",

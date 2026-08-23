@@ -239,7 +239,7 @@ async function harness(options: { includeEvidence?: boolean } = {}) {
   });
   const objective = "Evaluate admitted Modelica observations.";
   const project = {
-    schemaVersion: "3.0",
+    schemaVersion: "4.0",
     id: `${PROJECT_ID}:r2`,
     revision: 2,
     previous: { snapshotId: `${PROJECT_ID}:r1`, revision: 1 },

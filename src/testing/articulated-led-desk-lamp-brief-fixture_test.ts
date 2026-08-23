@@ -26,7 +26,7 @@ Deno.test(
 
     assertEquals(project.project.id, ARTICULATED_LED_DESK_LAMP_FIXTURE_PROJECT_ID);
     assertEquals(project.project.id === "desk-lamp-dl05", false);
-    assertEquals(project.schemaVersion, "3.0");
+    assertEquals(project.schemaVersion, "4.0");
     assertEquals(project.framing?.intent.statement, ARTICULATED_LED_DESK_LAMP_INTENT);
     assertEquals(engineeringProjectFramingStatus(project.framing!), "awaiting-review");
     assertEquals(project.framing?.currentBrief, undefined);

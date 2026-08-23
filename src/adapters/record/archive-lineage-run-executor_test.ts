@@ -99,7 +99,7 @@ Deno.test(
       projects: {
         get: () =>
           Promise.resolve({
-            schemaVersion: "3.0",
+            schemaVersion: "4.0",
             project: { id: PROJECT_ID, subjectId: `project:${PROJECT_ID}` },
             agentRuns: [{
               id: "run:archive-lineage",

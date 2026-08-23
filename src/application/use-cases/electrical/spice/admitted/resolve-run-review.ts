@@ -134,7 +134,7 @@ export class ResolveProjectAdmittedSpiceRunReview
       );
     }
     if (
-      project.schemaVersion !== "3.0" ||
+      project.schemaVersion !== "4.0" ||
       project.project.id !== projectId
     ) {
       throw resolutionError(
