@@ -618,6 +618,105 @@ Deno.test("project_change_append anchors an append-only change to the exact curr
   assertEquals(calls.length, 1);
 });
 
+Deno.test(
+  "project_change_append forwards empty phases for existing-phase membership",
+  async () => {
+    const head = {
+      snapshotId: "chat-first-thread:r1",
+      revision: 1,
+      subjectId: "chat-first-subject",
+    };
+    const snapshot = projectSnapshot({ threadSnapshots: [head] });
+    const app = new CapturingApp();
+    const calls: Array<{ origin: unknown; command: Record<string, unknown> }> = [];
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      dependencies(snapshot, {
+        appendChange: (origin, command) => {
+          calls.push({
+            origin,
+            command: command as unknown as Record<string, unknown>,
+          });
+          return Promise.resolve(snapshot);
+        },
+      }),
+    );
+
+    const change = {
+      ...COMMON,
+      commandId: "chat-change-append-existing-phase",
+      baseSnapshot: head,
+      phases: [],
+      workItems: [{
+        id: "seed-syson-model",
+        phaseId: "baseline",
+        owner: "agent",
+        dependsOnWorkItemIds: ["establish-baseline"],
+        decisionIds: [],
+        operation: {
+          id: "architecture.seed-syson-model",
+          version: "1",
+          bindings: [{
+            name: "approvedBrief",
+            source: { kind: "approved-brief" },
+          }],
+        },
+      }],
+      requiredDecisions: [],
+    };
+    const result = await app.handler("project_change_append")(
+      change,
+      clientContext(),
+    ) as Record<string, unknown>;
+
+    assertStringIncludes(result.content as string, "adds only reviewed work");
+    assertEquals(calls, [{
+      origin: { kind: "agent", actorId: "mcp:paired-chat@1" },
+      command: {
+        ...change,
+        baseSnapshot: head,
+      },
+    }]);
+  },
+);
+
+Deno.test("project_plan_publish still rejects an empty phases array", async () => {
+  const app = new CapturingApp();
+  registerProjectControlTools(
+    app as unknown as McpApp,
+    dependencies(projectSnapshot()),
+  );
+
+  await assertRejects(
+    async () => {
+      await app.handler("project_plan_publish")({
+        ...COMMON,
+        commandId: "chat-plan-publish-empty-phases",
+        startingPoint: "idea-or-spec",
+        phases: [],
+        workItems: [{
+          id: "establish-baseline",
+          phaseId: "baseline",
+          owner: "agent",
+          dependsOnWorkItemIds: [],
+          decisionIds: [],
+          operation: {
+            id: "baseline.from-approved-brief",
+            version: "1",
+            bindings: [{
+              name: "approvedBrief",
+              source: { kind: "approved-brief" },
+            }],
+          },
+        }],
+        requiredDecisions: [],
+      }, clientContext());
+    },
+    TypeError,
+    "phases must be a non-empty array",
+  );
+});
+
 Deno.test("project decision approval and rejection require a verified human elicitation retry", async () => {
   const snapshot = projectSnapshot({ withDecision: true });
   const app = new CapturingApp();

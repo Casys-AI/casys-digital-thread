@@ -234,7 +234,7 @@ export function registerProjectControlTools(
     const snapshot = await dependencies.commands.appendChange(agentOrigin(context), {
       ...common,
       baseSnapshot,
-      phases: planPhases(args.phases),
+      phases: planPhases(args.phases, { allowEmpty: true }),
       workItems: planWorkItems(args.workItems),
       requiredDecisions: planDecisions(args.requiredDecisions),
     });
@@ -1719,12 +1719,15 @@ function planStartingPoint(value: unknown): EngineeringProjectStartingPoint {
   );
 }
 
-function planPhases(value: unknown): Array<{
+function planPhases(
+  value: unknown,
+  options: { allowEmpty?: boolean } = {},
+): Array<{
   id: string;
   name: string;
   description: string;
 }> {
-  if (!Array.isArray(value) || value.length === 0) {
+  if (!Array.isArray(value) || (value.length === 0 && !options.allowEmpty)) {
     throw new TypeError("phases must be a non-empty array");
   }
   return value.map((item, index) => {
