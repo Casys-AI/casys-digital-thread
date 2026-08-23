@@ -635,6 +635,78 @@ Deno.test("a sealed v2 review resolves four exact PartDefinition STEP assets", (
   );
 });
 
+Deno.test("a sealed target PartDefinition review resolves its exact STEP and primary GLB", () => {
+  const base = projectSnapshot({ publishedGeometry: true });
+  const geometryDecision = base.decisions.find((decision) =>
+    decision.id === "decision-geometry"
+  )!;
+  const stepDigest = HEX_C;
+  const glbDigest = HEX_D;
+  const thread = threadWithEvidence("geometry-artifact");
+  const targetThread = {
+    ...thread,
+    artifacts: [
+      ...thread.artifacts,
+      {
+        id: "target-step",
+        label: "Target STEP",
+        kind: "step" as const,
+        system: "build123d-sandbox",
+        revision: stepDigest,
+        freshness: "fresh" as const,
+        fingerprint: `sha256:${stepDigest}`,
+        uri: `/api/thread/assets/${stepDigest}.step`,
+        dependsOn: [],
+      },
+      {
+        id: "target-glb",
+        label: "Target GLB",
+        kind: "cad-model" as const,
+        system: "build123d-sandbox",
+        revision: glbDigest,
+        freshness: "fresh" as const,
+        fingerprint: `sha256:${glbDigest}`,
+        uri: `/api/thread/assets/${glbDigest}.glb`,
+        dependsOn: [],
+      },
+    ],
+  } as ThreadWorkbenchSnapshot;
+  const record = buildProjectReviewRecords({
+    ...base,
+    decisions: base.decisions.map((decision) =>
+      decision.id === geometryDecision.id
+        ? {
+          ...geometryDecision,
+          proposal: {
+            ...geometryDecision.proposal!,
+            parameters: targetPartGeometryParameters(stepDigest, glbDigest),
+          },
+        }
+        : decision
+    ),
+  }, targetThread).find((candidate) => candidate.id === "geometry")!;
+
+  if (record.preview.kind !== "geometry") {
+    throw new Error("expected geometry preview");
+  }
+  assertEquals(record.preview.assetAuthority, "sealed");
+  assertEquals(
+    record.preview.assetPath,
+    `/api/thread/assets/${glbDigest}.glb`,
+  );
+  assertEquals(
+    record.preview.partAssets.map((asset) => asset.path),
+    [
+      `/api/thread/assets/${stepDigest}.step`,
+      `/api/thread/assets/${glbDigest}.glb`,
+    ],
+  );
+  assertEquals(
+    record.preview.partAssets.every((asset) => asset.authority === "sealed"),
+    true,
+  );
+});
+
 Deno.test("a sealed v2 review exposes exact GLB paths without replacing authoritative STEP assets", () => {
   const base = projectSnapshot({ publishedGeometry: true });
   const geometryDecision = base.decisions.find((decision) =>
@@ -888,6 +960,29 @@ function geometryParameters() {
     "geometry.manifest.assemblyFiles.0.fingerprint": HEX_A,
     "geometry.manifest.components.count": 0,
     "geometry.manifest.partMeshes.count": 0,
+  }).map(([key, value]) => ({ key, label: key, value }));
+}
+
+function targetPartGeometryParameters(stepDigest: string, glbDigest: string) {
+  return Object.entries({
+    "geometry.draft.digest": HEX_F,
+    "geometry.manifest.schemaVersion": "geometry-part-manifest/1.0",
+    "geometry.manifest.architectureBasis.snapshotId": "thread:r6",
+    "geometry.manifest.architectureBasis.revision": 6,
+    "geometry.manifest.architectureBasis.artifactFingerprint": HEX_B,
+    "geometry.manifest.predecessor.present": false,
+    "geometry.manifest.unitSystem": "mm",
+    "geometry.manifest.exportFormats": "step,gltf",
+    "geometry.manifest.target.partDefinitionElementId": "partdef:arm",
+    "geometry.manifest.target.label": "Lamp arm",
+    "geometry.manifest.target.scriptHash": HEX_A,
+    "geometry.manifest.target.files.count": 2,
+    "geometry.manifest.target.files.0.format": "step",
+    "geometry.manifest.target.files.0.name": "lamp-arm",
+    "geometry.manifest.target.files.0.fingerprint": stepDigest,
+    "geometry.manifest.target.files.1.format": "gltf",
+    "geometry.manifest.target.files.1.name": "lamp-arm",
+    "geometry.manifest.target.files.1.fingerprint": glbDigest,
   }).map(([key, value]) => ({ key, label: key, value }));
 }
 

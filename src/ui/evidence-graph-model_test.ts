@@ -234,13 +234,9 @@ Deno.test("component assignment survives analyze.* folding — stub preserves th
   );
 
   // A stub connecting A→C must exist.
-  assertEquals(model.stubs.length >= 1, true);
-  const stub = model.stubs.find(
-    (s) =>
-      s.from.id === "A" && s.to.id === "C" ||
-      s.from.id === "C" && s.to.id === "A",
-  );
-  assertNotEquals(stub, undefined, "stub A↔C must exist");
+  assertEquals(model.stubs.length, 1);
+  assertEquals(model.stubs[0]?.from.id, "A");
+  assertEquals(model.stubs[0]?.to.id, "C");
 });
 
 Deno.test("folding never emits a stub whose endpoints are the same node", () => {
@@ -352,12 +348,14 @@ Deno.test("superseded versions are folded before analyze instrument folding", ()
   assertEquals(visibleIds.includes("I"), false);
 
   // Stub from Proof-R2 to R.
-  const stub = model.stubs.find(
-    (s) =>
-      (s.from.id === "proof-r2" && s.to.id === "R") ||
-      (s.from.id === "R" && s.to.id === "proof-r2"),
+  const stub = model.stubs.find((s) =>
+    s.from.id === "proof-r2" && s.to.id === "R"
   );
-  assertNotEquals(stub, undefined, "stub proof-r2↔R must exist");
+  assertNotEquals(stub, undefined, "stub proof-r2→R must exist");
+  assertEquals(
+    model.stubs.some((s) => s.from.id === "R" && s.to.id === "proof-r2"),
+    false,
+  );
 });
 
 Deno.test("a supplied versioned projection preserves the exact rendered edge object", () => {

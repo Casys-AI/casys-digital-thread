@@ -682,7 +682,14 @@ function geometryReviewPartAssets(
   view: GeometryDecisionValid,
   sealed: boolean,
 ): readonly GeometryReviewPartAsset[] {
-  return view.partDefinitions.flatMap((definition) =>
+  const definitions = view.targetPart
+    ? [{
+      elementId: view.targetPart.partDefinitionElementId,
+      label: view.targetPart.label,
+      files: view.targetPart.files,
+    }]
+    : view.partDefinitions;
+  return definitions.flatMap((definition) =>
     definition.files.map((file) => ({
       partDefinitionElementId: definition.elementId,
       label: definition.label,
@@ -712,9 +719,10 @@ function sealedGeometryAssetPath(
   thread: ThreadWorkbenchSnapshot | undefined,
   view: GeometryDecisionValid,
 ): string | undefined {
-  const primary = view.assemblyFiles.find((file) => file.format === "gltf") ??
-    view.assemblyFiles.find((file) => file.format === "stl") ??
-    view.assemblyFiles[0];
+  const files = view.targetPart?.files ?? view.assemblyFiles;
+  const primary = files.find((file) => file.format === "gltf") ??
+    files.find((file) => file.format === "stl") ??
+    files[0];
   if (!primary || !thread) return undefined;
   return sealedGeometryFilePath(thread, primary);
 }

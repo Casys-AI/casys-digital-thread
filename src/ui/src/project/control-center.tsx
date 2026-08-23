@@ -723,6 +723,12 @@ function GeometryDecisionDetails(
     ) => [definition.elementId, definition]),
   );
   const partDefinitionIds = new Set(definitionById.keys());
+  const targetAssets = view.targetPart
+    ? partAssets.filter((asset) =>
+      asset.partDefinitionElementId ===
+        view.targetPart?.partDefinitionElementId
+    )
+    : [];
   const previewablePartGlbs = partAssets.filter((asset) =>
     partDefinitionIds.has(asset.partDefinitionElementId) &&
     asset.format === "gltf" && asset.path !== undefined && asset.path.length > 0
@@ -759,6 +765,39 @@ function GeometryDecisionDetails(
               ).join(" · ")}
             </dd>
           </dl>
+          <div className="divide-y divide-border border-t border-border">
+            {targetAssets.map((asset) => (
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 py-2"
+                key={`${asset.digest}:${asset.format}`}
+              >
+                <span className="font-mono text-xs text-muted-foreground">
+                  {asset.format.toUpperCase()} · {shortDigest(asset.digest)}
+                </span>
+                {asset.path
+                  ? (
+                    <a
+                      className="text-sm font-medium text-brand hover:underline"
+                      href={asset.path}
+                      download={`${asset.name}.${
+                        asset.format === "gltf" ? "glb" : asset.format
+                      }`}
+                    >
+                      {mode === "sealed"
+                        ? "Download sealed file"
+                        : mode === "draft"
+                        ? "Download proposal file"
+                        : "Download reviewed proposal"}
+                    </a>
+                  )
+                  : (
+                    <small className="text-xs text-muted-foreground">
+                      Exact file unavailable in this projection
+                    </small>
+                  )}
+              </div>
+            ))}
+          </div>
         </section>
       )}
       {view.schemaVersion === "geometry-manifest/2.0" && (

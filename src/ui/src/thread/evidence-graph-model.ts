@@ -310,7 +310,12 @@ export function buildEvidenceGraphModel(
       // `to` is an instrument: emit a stub for each visible node reachable
       // through `to` within the full graph.
       const toNode = nodeByRefKey(afterVersioning.nodes, toKey);
-      const downstream = visibleNeighboursOf(toKey, fullGraph, visibleRefKeys);
+      const downstream = visibleNeighboursOf(
+        toKey,
+        fullGraph,
+        visibleRefKeys,
+        "downstream",
+      );
       for (const targetKey of downstream) {
         if (targetKey === fromKey) continue;
         const target = nodeByRefKey(afterVersioning.nodes, targetKey) ??
@@ -334,7 +339,12 @@ export function buildEvidenceGraphModel(
     if (instrumentRefKeys.has(fromKey) && toVisible) {
       // `from` is an instrument: emit a stub from each visible upstream node.
       const fromNode = nodeByRefKey(afterVersioning.nodes, fromKey);
-      const upstream = visibleNeighboursOf(fromKey, fullGraph, visibleRefKeys);
+      const upstream = visibleNeighboursOf(
+        fromKey,
+        fullGraph,
+        visibleRefKeys,
+        "upstream",
+      );
       for (const sourceKey of upstream) {
         if (sourceKey === toKey) continue;
         const source = nodeByRefKey(afterVersioning.nodes, sourceKey) ??
@@ -506,29 +516,34 @@ function nodeByRefKey(
 }
 
 /**
- * Returns visible neighbour keys of `key` in the full undirected graph,
- * including transitive visible nodes (stops at first visible hop from key).
- * Used to find what a folded instrument node bridges.
+ * Returns the first visible nodes reachable from `key` through folded nodes
+ * in one causal direction. Direction matters: treating a directed evidence
+ * graph as undirected can manufacture reverse stubs and cycles that were
+ * never recorded in the Thread.
  */
 function visibleNeighboursOf(
   key: string,
   graph: MultiDirectedGraph<ThreadGraphNode, ThreadGraphEdge>,
   visibleRefKeys: Set<string>,
+  direction: "downstream" | "upstream",
 ): Set<string> {
   const result = new Set<string>();
   const visited = new Set<string>([key]);
   const queue = [key];
   while (queue.length > 0) {
     const current = queue.shift()!;
-    graph.forEachNeighbor(current, (neighbour) => {
-      if (visited.has(neighbour)) return;
+    const neighbours = direction === "downstream"
+      ? graph.outNeighbors(current)
+      : graph.inNeighbors(current);
+    for (const neighbour of neighbours) {
+      if (visited.has(neighbour)) continue;
       visited.add(neighbour);
       if (visibleRefKeys.has(neighbour)) {
         result.add(neighbour);
-        return; // stop at first visible hop
+        continue; // stop at first visible hop
       }
       queue.push(neighbour); // continue through invisible nodes
-    });
+    }
   }
   return result;
 }

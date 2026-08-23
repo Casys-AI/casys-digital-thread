@@ -595,6 +595,37 @@ Deno.test("current project work does not advertise a ready predecessor when a la
   assertEquals(current.closedActionTargetIds, []);
 });
 
+Deno.test("project path omits a historical ready predecessor while Activity retains it", () => {
+  const snapshot = leftoverReadyPredecessorFixture({
+    predecessor: {
+      id: "wi-geom",
+      phaseId: "phase-cad",
+      order: 40,
+      operationId: "design.write-geometry",
+      version: "1",
+    },
+    successor: {
+      id: "wi-geom-2",
+      phaseId: "phase-cad-2",
+      order: 41,
+      operationId: "design.write-geometry",
+      version: "1",
+    },
+  });
+
+  const path = buildProjectPath(snapshot, GENERIC_THREAD_FIXTURE);
+
+  assertEquals(snapshot.workItems.some((item) => item.id === "wi-geom"), true);
+  assertEquals(
+    path.phases.some((item) => item.phase.id === "phase-cad"),
+    false,
+  );
+  assertEquals(
+    path.phases.some((item) => item.phase.id === "phase-cad-2"),
+    true,
+  );
+});
+
 Deno.test("current project work applies the same later-completed operation rule to a leftover FEA @2 predecessor", () => {
   const snapshot = leftoverReadyPredecessorFixture({
     predecessor: {

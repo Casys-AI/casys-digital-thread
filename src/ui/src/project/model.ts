@@ -113,6 +113,11 @@ export interface CurrentProjectWork {
  * architecture-capture tip in the same BFF evidence family wraps under the
  * phase that owns the historical member.
  *
+ * A ready, evidence-free phase is also absent from this navigational path
+ * when every work item it owns is a historical predecessor already closed by
+ * a later evidenced completion of the exact same registered operation. The
+ * immutable phase and work item remain available in Activity.
+ *
  * A cancelled-before-claim seed whose only work is superseded-by-successor and
  * whose own evidenceRefs are empty is not a satisfied gate. When a unique later
  * phase owns that successor evidence at the same registered operation
@@ -477,6 +482,10 @@ export function buildProjectPath(
     ) => [attachment.phaseId, attachment.parentPhaseId]),
   );
   const supersededSeeds = cancelledSupersededSeedAttachments(snapshot, brief);
+  const historicalWorkItemIds = new Set(
+    buildCurrentProjectWork(snapshot).historicalWorkItemIds,
+  );
+  const workItemById = new Map(snapshot.workItems.map((item) => [item.id, item]));
   const hiddenPhaseIds = new Set([
     ...corrections.map((attachment) => attachment.phaseId),
     ...revisions.map((attachment) => attachment.phaseId),
@@ -563,7 +572,13 @@ export function buildProjectPath(
   }
 
   const phases = brief.phases
-    .filter((item) => !hiddenPhaseIds.has(item.phase.id))
+    .filter((item) =>
+      !hiddenPhaseIds.has(item.phase.id) &&
+      !(item.phase.workItemIds.length > 0 &&
+        item.phase.workItemIds.every((id) =>
+          historicalWorkItemIds.has(id) && workItemById.get(id)?.status === "ready"
+        ))
+    )
     .map((item): ProjectPathPhaseView => {
       const lifecycle = lifecycles.get(item.phase.id);
       const lifecycleView = lifecycle

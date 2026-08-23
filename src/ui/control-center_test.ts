@@ -27,6 +27,8 @@ Deno.test("Decision Center hands review previews to the chronological Activity f
   assertStringIncludes(source, "Requirements proposal · target");
   assertStringIncludes(source, "GltfAssetCanvas");
   assertStringIncludes(source, "isDuplicateSealedGlbCopy");
+  assertStringIncludes(source, "const targetAssets = view.targetPart");
+  assertStringIncludes(source, "{targetAssets.map((asset) => (");
   assertStringIncludes(source, "Sealed result · exact recorded bytes");
   assertStringIncludes(source, "Validated proposal · result pending");
   assertStringIncludes(source, "Draft · geometry proposal");
