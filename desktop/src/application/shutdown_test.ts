@@ -138,7 +138,7 @@ Deno.test("an unsupported signal does not prevent the supported listener", () =>
   assertEquals(shutdowns, 1);
 });
 
-Deno.test("native close is prevented until drain succeeds and can retry", async () => {
+Deno.test("native close is prevented until drain succeeds and can retry", () => {
   let listener: ((event: { preventDefault(): void }) => void) | undefined;
   let closeCalls = 0;
   let requests = 0;
