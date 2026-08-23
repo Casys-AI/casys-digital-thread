@@ -24,6 +24,11 @@ import {
   uncertainWriterBasisReleaseText,
 } from "../domain/record/uncertain-writer-basis-release.ts";
 import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
+import {
+  collectEngineeringActivities,
+  stampEngineeringActivityIdentity,
+} from "../domain/project/engineering-activity.ts";
+import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../domain/electrical/spice/admitted/run-proposal.ts";
 
 const FINGERPRINT = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 
@@ -676,6 +681,234 @@ Deno.test(
         ...change,
         baseSnapshot: head,
       },
+    }]);
+  },
+);
+
+Deno.test(
+  "project_plan_publish and project_change_append share predecessorRevisionId on planned work",
+  () => {
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      dependencies(projectSnapshot()),
+    );
+    const publishItems = workItemSchema(
+      app.tool("project_plan_publish").inputSchema,
+    );
+    const appendItems = workItemSchema(
+      app.tool("project_change_append").inputSchema,
+    );
+    assertEquals(publishItems, appendItems);
+    assertEquals(
+      (publishItems.properties as Record<string, unknown>).predecessorRevisionId,
+      { type: "string", minLength: 1 },
+    );
+    assertEquals(
+      (publishItems.required as string[]).includes("predecessorRevisionId"),
+      false,
+    );
+  },
+);
+
+Deno.test(
+  "project_change_append forwards the exact predecessorRevisionId unchanged",
+  async () => {
+    const head = {
+      snapshotId: "chat-first-thread:r1",
+      revision: 1,
+      subjectId: "chat-first-subject",
+    };
+    const snapshot = projectSnapshot({ threadSnapshots: [head] });
+    const app = new CapturingApp();
+    const calls: Array<{ origin: unknown; command: Record<string, unknown> }> = [];
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      dependencies(snapshot, {
+        appendChange: (origin, command) => {
+          calls.push({
+            origin,
+            command: command as unknown as Record<string, unknown>,
+          });
+          return Promise.resolve(snapshot);
+        },
+      }),
+    );
+
+    const change = {
+      ...COMMON,
+      commandId: "chat-change-append-predecessor",
+      baseSnapshot: head,
+      phases: [],
+      workItems: [{
+        id: "wi-spice-r18b",
+        phaseId: "baseline",
+        owner: "agent",
+        dependsOnWorkItemIds: ["establish-baseline"],
+        decisionIds: [],
+        predecessorRevisionId: "establish-baseline",
+        operation: spiceAdmissionOperation(head),
+      }],
+      requiredDecisions: [],
+    };
+    await app.handler("project_change_append")(change, clientContext());
+
+    assertEquals(
+      (calls[0]!.command.workItems as Array<Record<string, unknown>>)[0],
+      change.workItems[0],
+    );
+  },
+);
+
+Deno.test(
+  "project_change_append rejects empty or non-string predecessorRevisionId",
+  async () => {
+    const head = {
+      snapshotId: "chat-first-thread:r1",
+      revision: 1,
+      subjectId: "chat-first-subject",
+    };
+    const snapshot = projectSnapshot({ threadSnapshots: [head] });
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      dependencies(snapshot, {
+        appendChange: () => Promise.resolve(snapshot),
+      }),
+    );
+    const valid = {
+      id: "wi-spice-r18b",
+      phaseId: "baseline",
+      owner: "agent",
+      dependsOnWorkItemIds: ["establish-baseline"],
+      decisionIds: [],
+      operation: spiceAdmissionOperation(head),
+    };
+
+    await assertRejects(
+      async () => {
+        await app.handler("project_change_append")({
+          ...COMMON,
+          commandId: "chat-change-append-empty-predecessor",
+          baseSnapshot: head,
+          phases: [],
+          workItems: [{ ...valid, predecessorRevisionId: "" }],
+          requiredDecisions: [],
+        }, clientContext());
+      },
+      TypeError,
+      "workItems[0].predecessorRevisionId must be a non-empty string",
+    );
+    await assertRejects(
+      async () => {
+        await app.handler("project_change_append")({
+          ...COMMON,
+          commandId: "chat-change-append-blank-predecessor",
+          baseSnapshot: head,
+          phases: [],
+          workItems: [{ ...valid, predecessorRevisionId: "   " }],
+          requiredDecisions: [],
+        }, clientContext());
+      },
+      TypeError,
+      "workItems[0].predecessorRevisionId must be a non-empty string",
+    );
+    await assertRejects(
+      async () => {
+        await app.handler("project_change_append")({
+          ...COMMON,
+          commandId: "chat-change-append-numeric-predecessor",
+          baseSnapshot: head,
+          phases: [],
+          workItems: [{ ...valid, predecessorRevisionId: 18 }],
+          requiredDecisions: [],
+        }, clientContext());
+      },
+      TypeError,
+      "workItems[0].predecessorRevisionId must be a non-empty string",
+    );
+  },
+);
+
+Deno.test(
+  "decoded SPICE successor revisions remain one activity after command-service stamping",
+  async () => {
+    const head = {
+      snapshotId: "chat-first-thread:r1",
+      revision: 1,
+      subjectId: "chat-first-subject",
+    };
+    const snapshot = projectSnapshot({ threadSnapshots: [head] });
+    const app = new CapturingApp();
+    let decodedWorkItems: readonly {
+      readonly id: string;
+      readonly predecessorRevisionId?: string;
+    }[] = [];
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      dependencies(snapshot, {
+        appendChange: (_origin, command) => {
+          decodedWorkItems = command.workItems;
+          return Promise.resolve(snapshot);
+        },
+      }),
+    );
+
+    const spice = spiceAdmissionOperation(head);
+    await app.handler("project_change_append")({
+      ...COMMON,
+      commandId: "chat-change-append-spice-revisions",
+      baseSnapshot: head,
+      phases: [{
+        id: "physics-spice",
+        name: "Admitted SPICE",
+        description: "Circuit-only admitted SPICE execution.",
+      }],
+      workItems: [{
+        id: "wi-spice-r18",
+        phaseId: "physics-spice",
+        owner: "agent",
+        dependsOnWorkItemIds: ["establish-baseline"],
+        decisionIds: [],
+        operation: spice,
+      }, {
+        id: "wi-spice-r18b",
+        phaseId: "physics-spice",
+        owner: "agent",
+        dependsOnWorkItemIds: ["establish-baseline"],
+        decisionIds: [],
+        predecessorRevisionId: "wi-spice-r18",
+        operation: spice,
+      }],
+      requiredDecisions: [],
+    }, clientContext());
+
+    assertEquals(
+      decodedWorkItems.map((item) => ({
+        id: item.id,
+        predecessorRevisionId: item.predecessorRevisionId,
+      })),
+      [
+        { id: "wi-spice-r18", predecessorRevisionId: undefined },
+        { id: "wi-spice-r18b", predecessorRevisionId: "wi-spice-r18" },
+      ],
+    );
+
+    const { stamped, issues } = stampEngineeringActivityIdentity(
+      snapshot.workItems,
+      decodedWorkItems,
+    );
+    assertEquals(issues, []);
+    const activities = collectEngineeringActivities(
+      decodedWorkItems.map((item) => ({
+        id: item.id,
+        ...stamped.get(item.id)!,
+      })),
+    );
+    assertEquals(activities, [{
+      id: "activity:wi-spice-r18",
+      rootRevisionId: "wi-spice-r18",
+      revisionIds: ["wi-spice-r18", "wi-spice-r18b"],
     }]);
   },
 );
@@ -1580,6 +1813,36 @@ async function resolvedPlanInspectionFixture(): Promise<{
     }],
   } as unknown as EngineeringProjectSnapshot;
   return { current, queueBasis, plan, ref, runId };
+}
+
+function workItemSchema(inputSchema: MCPTool["inputSchema"]): Record<string, unknown> {
+  const properties = (inputSchema as Record<string, unknown>).properties as Record<
+    string,
+    unknown
+  >;
+  const workItems = properties.workItems as Record<string, unknown>;
+  return workItems.items as Record<string, unknown>;
+}
+
+function spiceAdmissionOperation(
+  head: { snapshotId: string; revision: number },
+) {
+  return {
+    id: SIMULATE_RUN_ADMITTED_SPICE_OPERATION.id,
+    version: SIMULATE_RUN_ADMITTED_SPICE_OPERATION.version,
+    bindings: [{
+      name: "compilationAdmission",
+      source: {
+        kind: "thread-entity" as const,
+        reference: {
+          snapshotId: head.snapshotId,
+          snapshotRevision: head.revision,
+          kind: "artifact" as const,
+          id: "spice-admission",
+        },
+      },
+    }],
+  };
 }
 
 function projectSnapshot(

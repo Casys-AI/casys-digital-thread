@@ -423,6 +423,40 @@ const projectSnapshotTool: MCPTool = {
   annotations: READ_ONLY_ANNOTATIONS,
 };
 
+/**
+ * Shared planned-work-item contract for `project_plan_publish` and
+ * `project_change_append`. A successor may name an exact predecessor revision;
+ * callers never supply `activityId`. The decoder must accept the same keys.
+ */
+const PLANNED_WORK_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    id: { type: "string", minLength: 1 },
+    phaseId: { type: "string", minLength: 1 },
+    owner: { type: "string", enum: ["human", "agent", "shared"] },
+    dependsOnWorkItemIds: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+    },
+    decisionIds: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+    },
+    predecessorRevisionId: { type: "string", minLength: 1 },
+    operation: OPERATION_REF_SCHEMA,
+    gateClaims: { type: "array", items: GATE_CLAIM_SCHEMA },
+  },
+  required: [
+    "id",
+    "phaseId",
+    "owner",
+    "dependsOnWorkItemIds",
+    "decisionIds",
+    "operation",
+  ],
+  additionalProperties: false,
+};
+
 const projectPlanPublishTool: MCPTool = {
   name: "project_plan_publish",
   description:
@@ -449,34 +483,7 @@ const projectPlanPublishTool: MCPTool = {
     workItems: {
       type: "array",
       minItems: 1,
-      items: {
-        type: "object",
-        properties: {
-          id: { type: "string", minLength: 1 },
-          phaseId: { type: "string", minLength: 1 },
-          owner: { type: "string", enum: ["human", "agent", "shared"] },
-          dependsOnWorkItemIds: {
-            type: "array",
-            items: { type: "string", minLength: 1 },
-          },
-          decisionIds: {
-            type: "array",
-            items: { type: "string", minLength: 1 },
-          },
-          predecessorRevisionId: { type: "string", minLength: 1 },
-          operation: OPERATION_REF_SCHEMA,
-          gateClaims: { type: "array", items: GATE_CLAIM_SCHEMA },
-        },
-        required: [
-          "id",
-          "phaseId",
-          "owner",
-          "dependsOnWorkItemIds",
-          "decisionIds",
-          "operation",
-        ],
-        additionalProperties: false,
-      },
+      items: PLANNED_WORK_ITEM_SCHEMA,
     },
     requiredDecisions: {
       type: "array",
@@ -519,34 +526,7 @@ const projectChangeAppendTool: MCPTool = {
     workItems: {
       type: "array",
       minItems: 1,
-      items: {
-        type: "object",
-        properties: {
-          id: { type: "string", minLength: 1 },
-          phaseId: { type: "string", minLength: 1 },
-          owner: { type: "string", enum: ["human", "agent", "shared"] },
-          dependsOnWorkItemIds: {
-            type: "array",
-            items: { type: "string", minLength: 1 },
-          },
-          decisionIds: {
-            type: "array",
-            items: { type: "string", minLength: 1 },
-          },
-          predecessorRevisionId: { type: "string", minLength: 1 },
-          operation: OPERATION_REF_SCHEMA,
-          gateClaims: { type: "array", items: GATE_CLAIM_SCHEMA },
-        },
-        required: [
-          "id",
-          "phaseId",
-          "owner",
-          "dependsOnWorkItemIds",
-          "decisionIds",
-          "operation",
-        ],
-        additionalProperties: false,
-      },
+      items: PLANNED_WORK_ITEM_SCHEMA,
     },
     requiredDecisions: {
       type: "array",
@@ -1749,6 +1729,7 @@ function planWorkItems(value: unknown): Array<{
   dependsOnWorkItemIds: string[];
   decisionIds: string[];
   operation: EngineeringOperationRef;
+  predecessorRevisionId?: string;
   gateClaims?: EngineeringGateClaim[];
 }> {
   if (!Array.isArray(value) || value.length === 0) {
@@ -1767,7 +1748,7 @@ function planWorkItems(value: unknown): Array<{
         "decisionIds",
         "operation",
       ],
-      ["gateClaims"],
+      ["gateClaims", "predecessorRevisionId"],
       path,
     );
     const planned: {
@@ -1777,6 +1758,7 @@ function planWorkItems(value: unknown): Array<{
       dependsOnWorkItemIds: string[];
       decisionIds: string[];
       operation: EngineeringOperationRef;
+      predecessorRevisionId?: string;
       gateClaims?: EngineeringGateClaim[];
     } = {
       id: requiredString(record.id, `${path}.id`),
@@ -1793,6 +1775,12 @@ function planWorkItems(value: unknown): Array<{
       decisionIds: stringList(record.decisionIds, `${path}.decisionIds`),
       operation: planOperation(record.operation, `${path}.operation`),
     };
+    if (record.predecessorRevisionId !== undefined) {
+      planned.predecessorRevisionId = requiredString(
+        record.predecessorRevisionId,
+        `${path}.predecessorRevisionId`,
+      );
+    }
     if (record.gateClaims !== undefined) {
       planned.gateClaims = gateClaims(record.gateClaims, `${path}.gateClaims`);
     }
