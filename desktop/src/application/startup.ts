@@ -65,8 +65,9 @@ export interface StartedDesktopApplication {
 
 /**
  * Validates every host fact before the lifecycle factory can run. The only
- * executable accepted afterward is the nested helper in the current macOS app
- * bundle; there is no checkout or general-runtime fallback.
+ * executable accepted afterward is the helper derived from the selected closed
+ * macOS, Linux, or Windows bundle layout. Missing or non-conforming artifacts fail
+ * later inspect/start without a checkout or general-runtime fallback.
  */
 export async function startDesktopApplication(
   input: DesktopStartupInput,
@@ -90,8 +91,12 @@ export async function startDesktopApplication(
     );
   }
 
-  const controlPlaneHelper = resolvePackagedControlPlaneHelper(input.executablePath);
-  const workbenchHelper = resolvePackagedWorkbenchHelper(input.executablePath);
+  const helperResolution = {
+    platform: facts.platform,
+    executablePath: input.executablePath,
+  } as const;
+  const controlPlaneHelper = resolvePackagedControlPlaneHelper(helperResolution);
+  const workbenchHelper = resolvePackagedWorkbenchHelper(helperResolution);
 
   const layout = facts.layout.value;
   const launch: DesktopControlPlaneLaunch = Object.freeze({

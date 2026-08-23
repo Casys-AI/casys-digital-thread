@@ -1,6 +1,7 @@
 import { readBoundedHandshakeText } from "../control-plane/parse.ts";
 import { wrapOwnedSidecarHandle } from "../control-plane/spawn.ts";
 import type { SpawnableChild } from "../control-plane/spawn.ts";
+import type { ControlPlaneLayoutProfile } from "../sidecar/contracts.ts";
 import {
   CONFIG_DIGEST_PATTERN,
   type DesktopWorkbenchProjection,
@@ -175,6 +176,7 @@ export class WorkbenchHost {
 export function createDenoWorkbenchHost(
   helperPath: string,
   cwd: string,
+  layoutProfile: ControlPlaneLayoutProfile,
 ): WorkbenchHost {
   const command = (args: readonly string[], stdout: "piped" | "null") =>
     new Deno.Command(helperPath, {
@@ -191,13 +193,20 @@ export function createDenoWorkbenchHost(
       fetch: globalThis.fetch.bind(globalThis),
       createLaunchId: () => crypto.randomUUID(),
       async runInspect() {
-        const output = await command(["inspect"], "piped").output();
+        const output = await command([
+          "inspect",
+          `--layout-profile=${layoutProfile}`,
+        ], "piped").output();
         if (!output.success) throw new Error("Workbench inspect failed.");
         return new TextDecoder().decode(output.stdout);
       },
       spawn(launchId) {
         const child = command(
-          ["start", `--launch-id=${launchId}`],
+          [
+            "start",
+            `--layout-profile=${layoutProfile}`,
+            `--launch-id=${launchId}`,
+          ],
           "piped",
         ).spawn() as SpawnableChild;
         return wrapOwnedSidecarHandle(child);

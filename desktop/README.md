@@ -17,11 +17,17 @@ proved by the current packager, not the product architecture boundary.
   plane server `0.2.0` are exact pins. The WebView engine remains OS-owned and is
   labelled that way in the manifest.
 - Before any helper process is considered, Desktop validates the embedded manifest,
-  observed Deno/Desktop/product versions, macOS application-support layout, product
-  identifier, and the exact `active` + `sidecar` control-plane declaration.
-- Production resolves only `Contents/Helpers/casys-control-plane` and
-  `Contents/Helpers/casys-workbench` beside the executable returned by
-  `Deno.execPath()`. There is no checkout helper, PATH lookup, or Deno CLI fallback.
+  observed Deno/Desktop/product versions, the selected finite platform
+  application-support layout, product identifier, and the exact `active` + `sidecar`
+  declarations.
+- Runtime resolves helpers from `Deno.execPath()` plus one closed bundle layout selected
+  by `DesktopPlatform`. There is no checkout helper, PATH lookup, ambiguous layout, or
+  Deno CLI fallback. A missing helper or an inspect identity/digest mismatch remains a
+  fail-closed startup result.
+- Desktop passes the already validated layout profile through each helper's closed CLI
+  grammar. The Workbench derives the existing control-plane and sibling lifecycle roots
+  from that profile with native separators; neither renderer nor helper chooses a
+  project root.
 - The helper's read-only `inspect` mode supplies the exact embedded-asset digest,
   configuration state, lock, and marker. Desktop then either reconnects to an exact
   identity or starts one helper and waits for its bounded readiness handshake.
@@ -59,8 +65,8 @@ private Workbench BFF on `127.0.0.1:5176`. It receives no filesystem, FFI, or ge
 subprocess permission; runtime remote imports are denied.
 
 The separately compiled helper receives read/write access only to the product root
-below, resolved against the validated `$HOME/Library/Application Support` launch
-directory:
+below. In the currently proved macOS distribution it is resolved against the validated
+`$HOME/Library/Application Support` launch directory:
 
 ```text
 ai.casys.digital-thread
@@ -100,6 +106,21 @@ native application-support roots:
 | macOS    | `$HOME/Library/Application Support/ai.casys.digital-thread`                                      |
 | Linux    | `$XDG_DATA_HOME/ai.casys.digital-thread`, otherwise `$HOME/.local/share/ai.casys.digital-thread` |
 | Windows  | `%LOCALAPPDATA%\\ai.casys.digital-thread`; roaming config under `%APPDATA%`                      |
+
+The matching runtime bundle-path contracts are also closed and unit-tested. Only the
+first row is produced and signature-verified by the current packager:
+
+| Platform | Executable contract                                      | Helper contract                                       | Distribution proof |
+| -------- | -------------------------------------------------------- | ----------------------------------------------------- | ------------------ |
+| macOS    | `<root>.app/Contents/MacOS/<executable>`                 | `<root>.app/Contents/Helpers/<helper>`                | proved             |
+| Linux    | `<prefix>/casys-digital-thread/bin/casys-digital-thread` | `<prefix>/casys-digital-thread/libexec/<helper>`      | not shipped        |
+| Windows  | `<prefix>\\CasysDigitalThread\\CasysDigitalThread.exe`   | `<prefix>\\CasysDigitalThread\\Helpers\\<helper>.exe` | not shipped        |
+
+The Windows and Linux rows are path contracts, not claims that a native package,
+launcher, signature, or install flow has passed. Their future packagers must place the
+exact artifacts there and compile the same closed sources with target-specific
+filesystem and helper-executable grants; absent or non-conforming artifacts stay
+unavailable.
 
 ## Commands
 

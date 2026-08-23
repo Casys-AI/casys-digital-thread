@@ -214,6 +214,55 @@ Deno.test("startup passes only the nested helper and validated finite layout", a
   assertEquals(controller.stops, 1);
 });
 
+Deno.test("startup selects the closed Linux and Windows bundle layouts", async () => {
+  const cases = [{
+    platform: "Linux" as const,
+    executablePath: "/opt/casys-digital-thread/bin/casys-digital-thread",
+    env: (name: string) => name === "HOME" ? "/home/ada" : undefined,
+    controlPlane: "/opt/casys-digital-thread/libexec/casys-control-plane",
+    workbench: "/opt/casys-digital-thread/libexec/casys-workbench",
+    launchCwd: "/home/ada",
+    layoutProfile: "linux-home",
+    relativeWorkspace: ".local/share/ai.casys.digital-thread/control-plane",
+  }, {
+    platform: "Windows" as const,
+    executablePath: "C:\\Program Files\\CasysDigitalThread\\CasysDigitalThread.exe",
+    env: (name: string) =>
+      name === "APPDATA"
+        ? "C:\\Users\\ada\\AppData\\Roaming"
+        : name === "LOCALAPPDATA"
+        ? "C:\\Users\\ada\\AppData\\Local"
+        : undefined,
+    controlPlane:
+      "C:\\Program Files\\CasysDigitalThread\\Helpers\\casys-control-plane.exe",
+    workbench: "C:\\Program Files\\CasysDigitalThread\\Helpers\\casys-workbench.exe",
+    launchCwd: "C:\\Users\\ada\\AppData\\Local",
+    layoutProfile: "windows-local-appdata",
+    relativeWorkspace: "ai.casys.digital-thread\\control-plane",
+  }];
+  for (const selected of cases) {
+    let controlPlane: DesktopControlPlaneLaunch | undefined;
+    let workbench: DesktopControlPlaneLaunch | undefined;
+    const application = await startDesktopApplication(input(selected), {
+      createControlPlane(launch) {
+        controlPlane = launch;
+        return new FakeController();
+      },
+      createWorkbench(launch) {
+        workbench = launch;
+        return new FakeWorkbenchController();
+      },
+    });
+    assertEquals(controlPlane?.helperPath, selected.controlPlane);
+    assertEquals(workbench?.helperPath, selected.workbench);
+    assertEquals(controlPlane?.platform, selected.platform);
+    assertEquals(controlPlane?.launchCwd, selected.launchCwd);
+    assertEquals(controlPlane?.layoutProfile, selected.layoutProfile);
+    assertEquals(controlPlane?.relativeWorkspace, selected.relativeWorkspace);
+    await application.stop();
+  }
+});
+
 Deno.test("startup keeps Workbench capability host-only and drains both owned helpers", async () => {
   const controlPlane = new FakeController();
   const workbench = new FakeWorkbenchController();
@@ -292,6 +341,54 @@ Deno.test("missing packaged helper fabricates neither a version nor provider cou
   );
   assertEquals(providers?.state, "unavailable");
   assertFalse(providers?.evidence.includes("0/0") ?? true);
+});
+
+Deno.test("a non-conforming executable path fails closed on every platform", async () => {
+  const cases = [{
+    platform: "macOS" as const,
+    executablePath: "/opt/homebrew/bin/deno",
+    env: (name: string) => name === "HOME" ? "/Users/ada" : undefined,
+  }, {
+    platform: "Linux" as const,
+    executablePath: "/usr/bin/deno",
+    env: (name: string) => name === "HOME" ? "/home/ada" : undefined,
+  }, {
+    platform: "Windows" as const,
+    executablePath: "C:\\Deno\\deno.exe",
+    env: (name: string) =>
+      name === "APPDATA"
+        ? "C:\\Users\\ada\\AppData\\Roaming"
+        : name === "LOCALAPPDATA"
+        ? "C:\\Users\\ada\\AppData\\Local"
+        : undefined,
+  }];
+  for (const selected of cases) {
+    let factories = 0;
+    const application = await startDesktopApplication(input(selected), {
+      createControlPlane() {
+        factories += 1;
+        return new FakeController();
+      },
+      createWorkbench() {
+        factories += 1;
+        return new FakeWorkbenchController();
+      },
+    });
+    assertEquals(factories, 0);
+    assertEquals(
+      application.model.components.find((component) =>
+        component.id === "casys-control-plane"
+      )?.state,
+      "error",
+    );
+    assertEquals(
+      application.model.components.find((component) =>
+        component.id === "workbench-projection"
+      )?.state,
+      "unavailable",
+    );
+    await application.stop();
+  }
 });
 
 Deno.test("a startup exception stops only the controller that retained its child", async () => {

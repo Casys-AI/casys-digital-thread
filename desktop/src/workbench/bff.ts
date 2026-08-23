@@ -39,6 +39,7 @@ import type { SealedCadLeverAdmissionReader } from "../../../src/adapters/thread
 import type { VerificationCaseWorkbenchEnricherDependencies } from "../../../src/adapters/thread/verification-case-workbench-enricher.ts";
 import type { EvaluationCloseoutCaptureReader } from "../../../src/adapters/thread/evaluation-closeout-workbench-enricher.ts";
 import { readDeclaredCockpitFleet } from "../../../src/adapters/thread/cockpit-fleet-projector.ts";
+import { joinWorkspace } from "../sidecar/contracts.ts";
 import { WORKBENCH_ACCESS_HEADER, WORKBENCH_WORKSPACE_ID } from "./contracts.ts";
 
 const ACTIVE_PROJECT_DIRECTORY = "state/local/engineering-projects";
@@ -96,17 +97,20 @@ export function createPackagedWorkbenchBff(
         analysisCaptures: sourceAnalysisCaptures,
       }),
   };
-  const architectureSysmlDirectory = `${recordedAnalysisDirectory}/architecture-sysml`;
+  const architectureSysmlDirectory = rooted(
+    recordedAnalysisDirectory,
+    "architecture-sysml",
+  );
   const architectureSysmlSources = createArchitectureSysmlSourceAnalysisCaptureService({
     sourceCaptures: new FileByteStore({
       kind: "architecture-sysml-source",
-      directory: `${architectureSysmlDirectory}/sources`,
+      directory: rooted(architectureSysmlDirectory, "sources"),
       uriNamespace: "architecture-sysml-source",
       label: "Captured architecture SysML source",
     }),
     analysisCaptures: new FileByteStore({
       kind: "architecture-sysml-source-analysis",
-      directory: `${architectureSysmlDirectory}/analyses`,
+      directory: rooted(architectureSysmlDirectory, "analyses"),
       uriNamespace: "architecture-sysml-source-analysis",
       label: "Captured architecture SysML analysis",
     }),
@@ -114,14 +118,14 @@ export function createPackagedWorkbenchBff(
   const architectureSysmlSeals = fileArchitectureSysmlSealCaptureReader(
     new FileByteStore({
       kind: "architecture-sysml-seal-capture",
-      directory: `${architectureSysmlDirectory}/seals`,
+      directory: rooted(architectureSysmlDirectory, "seals"),
       uriNamespace: "architecture-sysml-seal-capture",
       label: "Sealed architecture SysML analysis",
     }),
   );
   const technicalCompilationSealBytes = new FileByteStore({
     kind: "technical-compilation-admission-capture",
-    directory: `${recordedAnalysisDirectory}/technical-compilation/seals`,
+    directory: rooted(recordedAnalysisDirectory, "technical-compilation/seals"),
     uriNamespace: "technical-compilation-admission-capture",
     label: "Sealed technical compilation admission",
   });
@@ -142,7 +146,10 @@ export function createPackagedWorkbenchBff(
   const evaluationCloseoutCaptures: EvaluationCloseoutCaptureReader =
     new FileCaptureStore({
       ...EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR,
-      directory: `${recordedAnalysisDirectory}/calculix/evaluation-closeout-captures`,
+      directory: rooted(
+        recordedAnalysisDirectory,
+        "calculix/evaluation-closeout-captures",
+      ),
       syncBoundary: recordedAnalysisDirectory,
     });
   const assetReader = new OrderedEngineeringAssetReader([
@@ -150,8 +157,8 @@ export function createPackagedWorkbenchBff(
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
   ]);
   const liveUpdates = new FileLiveThreadUpdateStore(liveUpdateDirectory);
-  const uiDirectory = decodeURIComponent(
-    new URL("../../../src/ui/dist/thread", import.meta.url).pathname,
+  const uiDirectory = fileUrlPath(
+    new URL("../../../src/ui/dist/thread", import.meta.url),
   );
   const native = createNativeWorkbenchHandler({
     store,
@@ -159,7 +166,7 @@ export function createPackagedWorkbenchBff(
     cockpitFocus: focus,
     workspaceId: WORKBENCH_WORKSPACE_ID,
     projectSnapshots,
-    htmlPath: `${uiDirectory}/native-workbench.html`,
+    htmlPath: rooted(uiDirectory, "native-workbench.html"),
     uiAssetDirectory: uiDirectory,
     componentCatalogForSubject: async (subjectId) =>
       await readOptionalComponentCatalog(
@@ -277,7 +284,21 @@ function rootedCapture<Kind extends string>(
 }
 
 function rooted(controlPlaneRoot: string, relative: string): string {
-  return `${controlPlaneRoot.replace(/\/$/, "")}/${relative.replace(/^\.\//, "")}`;
+  const separator = controlPlaneRoot.includes("\\") &&
+      !controlPlaneRoot.includes("/")
+    ? "\\"
+    : "/";
+  return joinWorkspace(
+    controlPlaneRoot,
+    relative.replace(/^\.\//, "").replace(/[\\/]+/gu, separator),
+  );
+}
+
+function fileUrlPath(url: URL): string {
+  const pathname = decodeURIComponent(url.pathname);
+  return /^\/[A-Za-z]:\//u.test(pathname)
+    ? pathname.slice(1).replace(/\//gu, "\\")
+    : pathname;
 }
 
 async function readOptionalComponentCatalog(path: string) {

@@ -73,6 +73,26 @@ Deno.test("Workbench host does not spawn when listener absence is ambiguous", as
   });
 });
 
+Deno.test("Workbench host keeps an absent packaged artifact unavailable without spawning", async () => {
+  let spawns = 0;
+  const result = await new WorkbenchHost({
+    ports: {
+      fetch: () => Promise.reject(new Error("must not probe")),
+      createLaunchId: () => LAUNCH_ID,
+      runInspect: () => Promise.reject(new Deno.errors.NotFound("missing helper")),
+      spawn: () => {
+        spawns += 1;
+        throw new Error("must not spawn");
+      },
+    },
+  }).start();
+  assertEquals(spawns, 0);
+  assertEquals(result.projection, {
+    lifecycle: "unavailable",
+    recoveryCode: "helper-unavailable",
+  });
+});
+
 Deno.test("Workbench host escalates only its retained child through SIGKILL", async () => {
   const world = new WorkbenchWorld("stubborn");
   const host = new WorkbenchHost(world.options());

@@ -15,7 +15,9 @@ The product architecture is OS-independent: the Preact/Vite Workbench, Deno BFF,
 GET/HEAD/SSE proxy contract and closed helper lifecycle do not assume Darwin. macOS is
 the first distribution proved by the current packager and signing pipeline, not the
 boundary of the product. Windows and Linux layouts remain explicit, tested data
-contracts for later native packagers.
+contracts for later native packagers. The runtime selects one closed bundle layout from
+`DesktopPlatform`; it never infers a platform from path text or falls back to a
+checkout.
 
 ## Implemented now — product 0.3.0
 
@@ -153,12 +155,14 @@ local user/installation and makes no multi-user claim.
 ```text
 open Desktop
   -> validate manifest, runtime pins and the selected finite platform layout
-  -> resolve only Contents/Helpers/casys-control-plane from Deno.execPath()
+  -> resolve the exact platform bundle contract from Deno.execPath()
+  -> derive only that bundle's control-plane and Workbench helper paths
+  -> pass the already validated fixed layout profile to both helper CLIs
   -> helper inspect of embedded digest, configuration, lock and marker
   -> reconnect to one exact identity or start one owned helper
   -> verify health, server identity and lifecycle handshake
   -> observe provider/evidence status without inventing availability
-  -> resolve and inspect Contents/Helpers/casys-workbench independently
+  -> inspect the Workbench helper independently
   -> reconnect to an exact Workbench identity or start one owned helper
   -> retain its private session capability in the host only
   -> serve the Workbench root through the exact GET/HEAD/SSE proxy
@@ -241,6 +245,9 @@ elicitation surface; Desktop still needs the host, IPC and UI integration.
 - The compiled Workbench E2E reopens one existing project while the control plane and
   providers are offline, exposes the no-focus catalog without a default, follows the
   later durable focus, emits SSE, then proves token/marker removal and port closure.
+- Unit and startup tests cover the exact macOS, Linux, and Windows bundle-path contracts
+  plus root, traversal, mixed-separator, cross-platform and ambiguous-layout rejection.
+  Only the macOS package itself has been built and signature-verified.
 
 ## Acceptance deferred with Lot 4
 
@@ -253,6 +260,12 @@ elicitation surface; Desktop still needs the host, IPC and UI integration.
 - Lot 3's first proved distribution is macOS 14.0 or later. Linux and Windows paths are
   validated data contracts, but their native packaging/finalization is not yet shipped;
   this distribution limit does not narrow the portable Workbench/BFF/proxy architecture.
+- Linux uses `<prefix>/casys-digital-thread/{bin,libexec}` and Windows uses
+  `<prefix>\\CasysDigitalThread\\{CasysDigitalThread.exe,Helpers}` as closed future
+  bundle contracts. Missing helpers, failed inspect, or identity/digest mismatch remain
+  unavailable or recovery-required. Their packagers must also emit target-specific
+  closed filesystem and helper-executable grants; these contracts are not packaging
+  proof.
 - The current package is ad-hoc signed and its nested signatures are verified locally.
   It has no Developer ID signature, hardened-runtime release gate, notarization,
   stapling, or public-release installer.

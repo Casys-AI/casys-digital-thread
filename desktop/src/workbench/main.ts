@@ -33,7 +33,7 @@ export async function runWorkbenchHelper(
   launchCwd = Deno.cwd(),
 ): Promise<void> {
   const cli = parseWorkbenchCli(args);
-  const paths = workbenchRuntimePaths(launchCwd);
+  const paths = workbenchRuntimePaths(launchCwd, cli.layoutProfile);
   if (cli.mode === "inspect") {
     console.log(JSON.stringify(await inspectDocument(paths)));
     return;

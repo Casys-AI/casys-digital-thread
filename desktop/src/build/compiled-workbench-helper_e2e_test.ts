@@ -48,7 +48,11 @@ Deno.test({
     await projectStore.createInitial(projectFixture());
 
     const child = new Deno.Command(helper, {
-      args: ["start", `--launch-id=${LAUNCH_ID}`],
+      args: [
+        "start",
+        "--layout-profile=macos-application-support",
+        `--launch-id=${LAUNCH_ID}`,
+      ],
       cwd: launchCwd,
       stdin: "piped",
       stdout: "piped",
@@ -170,7 +174,10 @@ Deno.test({
       const status = await statusPromise;
       assertEquals(status.success, true, await stderrPromise);
 
-      const inspect = await runHelper(helper, launchCwd, ["inspect"]);
+      const inspect = await runHelper(helper, launchCwd, [
+        "inspect",
+        "--layout-profile=macos-application-support",
+      ]);
       assertEquals(inspect.success, true, decoder.decode(inspect.stderr));
       const document = JSON.parse(decoder.decode(inspect.stdout));
       assertEquals(document.schema, WORKBENCH_INSPECT_SCHEMA);

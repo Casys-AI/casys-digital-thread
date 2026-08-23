@@ -70,7 +70,11 @@ const application = await startDesktopApplication({
     };
   },
   createWorkbench(launch) {
-    const host = createDenoWorkbenchHost(launch.helperPath, launch.launchCwd);
+    const host = createDenoWorkbenchHost(
+      launch.helperPath,
+      launch.launchCwd,
+      launch.layoutProfile,
+    );
     return {
       start: () => host.start(),
       stop: () => host.stop(),

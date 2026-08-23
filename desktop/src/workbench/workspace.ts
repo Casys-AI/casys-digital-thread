@@ -1,10 +1,14 @@
 import { parseDesktopRuntime } from "../sidecar/workspace.ts";
 import {
+  closedWorkspaceRoot,
+  CONTROL_PLANE_RELATIVE_WORKSPACES,
+  type ControlPlaneLayoutProfile,
+  joinWorkspace,
+} from "../sidecar/contracts.ts";
+import {
   CONFIG_DIGEST_PATTERN,
-  WORKBENCH_CONTROL_PLANE_RELATIVE_ROOT,
   WORKBENCH_LOCK_RELATIVE_PATH,
   WORKBENCH_MARKER_RELATIVE_PATH,
-  WORKBENCH_RUNTIME_RELATIVE_ROOT,
   WORKBENCH_TOKEN_RELATIVE_PATH,
 } from "./contracts.ts";
 
@@ -16,16 +20,22 @@ export interface WorkbenchRuntimePaths {
   readonly lockPath: string;
 }
 
-export function workbenchRuntimePaths(launchCwd: string): WorkbenchRuntimePaths {
-  assertLaunchCwd(launchCwd);
-  const root = launchCwd.replace(/\/+$/, "");
-  const runtimeRoot = `${root}/${WORKBENCH_RUNTIME_RELATIVE_ROOT}`;
+export function workbenchRuntimePaths(
+  launchCwd: string,
+  layoutProfile: ControlPlaneLayoutProfile,
+): WorkbenchRuntimePaths {
+  const controlPlaneRoot = closedWorkspaceRoot(launchCwd, layoutProfile);
+  const productRelativeRoot = parentRelativePath(
+    CONTROL_PLANE_RELATIVE_WORKSPACES[layoutProfile],
+  );
+  const productRoot = joinWorkspace(launchCwd, productRelativeRoot);
+  const runtimeRoot = joinWorkspace(productRoot, "workbench-runtime");
   return Object.freeze({
-    controlPlaneRoot: `${root}/${WORKBENCH_CONTROL_PLANE_RELATIVE_ROOT}`,
+    controlPlaneRoot,
     runtimeRoot,
-    markerPath: `${runtimeRoot}/${WORKBENCH_MARKER_RELATIVE_PATH}`,
-    tokenPath: `${runtimeRoot}/${WORKBENCH_TOKEN_RELATIVE_PATH}`,
-    lockPath: `${runtimeRoot}/${WORKBENCH_LOCK_RELATIVE_PATH}`,
+    markerPath: joinWorkspace(runtimeRoot, WORKBENCH_MARKER_RELATIVE_PATH),
+    tokenPath: joinWorkspace(runtimeRoot, WORKBENCH_TOKEN_RELATIVE_PATH),
+    lockPath: joinWorkspace(runtimeRoot, WORKBENCH_LOCK_RELATIVE_PATH),
   });
 }
 
@@ -33,7 +43,10 @@ export async function readWorkbenchConfigurationDigest(
   paths: WorkbenchRuntimePaths,
 ): Promise<string | undefined> {
   await assertExactDirectory(paths.controlPlaneRoot);
-  const runtimePath = `${paths.controlPlaneRoot}/config/desktop-runtime.json`;
+  const runtimePath = joinWorkspace(
+    paths.controlPlaneRoot,
+    "config/desktop-runtime.json",
+  );
   await assertExactFile(runtimePath);
   const { configDigest } = parseDesktopRuntime(
     await Deno.readTextFile(runtimePath),
@@ -76,17 +89,17 @@ export async function assertExactFile(path: string): Promise<void> {
   }
 }
 
-function assertLaunchCwd(launchCwd: string): void {
-  if (
-    launchCwd.trim() !== launchCwd || !launchCwd.startsWith("/") ||
-    /^\/+$/u.test(launchCwd) || launchCwd.split("/").includes("..")
-  ) {
-    throw new TypeError(
-      "Workbench launch cwd must be an absolute, non-root support directory.",
-    );
+function parentRelativePath(path: string): string {
+  const index = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (index <= 0 || path.slice(index + 1) !== "control-plane") {
+    throw new TypeError("Workbench requires the registered control-plane workspace.");
   }
+  return path.slice(0, index);
 }
 
 function normalize(path: string): string {
-  return path.replace(/\/+$/, "");
+  const normalized = path.replace(/[\\/]+$/u, "").replace(/\\/gu, "/");
+  return /^[A-Za-z]:\//u.test(normalized) || normalized.startsWith("//")
+    ? normalized.toLowerCase()
+    : normalized;
 }

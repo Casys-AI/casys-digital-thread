@@ -88,13 +88,11 @@ export function inspectDesktopBootstrap(
     controlPlane?.lifecycle === "active" &&
     controlPlane.delivery === "sidecar" &&
     controlPlane.version === CONTROL_PLANE_SERVER_VERSION;
-  const controlPlaneLaunchable = input.platform === "macOS" && runtimeMatches &&
-    layout.ok && controlPlanePinValid;
+  const controlPlaneLaunchable = runtimeMatches && layout.ok && controlPlanePinValid;
   const workbenchPinValid = manifest.ok &&
     workbench?.lifecycle === "active" && workbench.delivery === "sidecar" &&
     workbench.version === WORKBENCH_VERSION;
-  const workbenchLaunchable = input.platform === "macOS" && runtimeMatches &&
-    layout.ok && workbenchPinValid;
+  const workbenchLaunchable = runtimeMatches && layout.ok && workbenchPinValid;
 
   return Object.freeze({
     manifest,

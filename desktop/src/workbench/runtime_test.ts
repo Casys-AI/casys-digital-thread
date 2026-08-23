@@ -16,7 +16,7 @@ Deno.test("Workbench runtime publishes a private exact capability and deletes on
   const cwd = await Deno.realPath(
     await Deno.makeTempDir({ prefix: "casys-workbench-runtime-" }),
   );
-  const paths = workbenchRuntimePaths(cwd);
+  const paths = workbenchRuntimePaths(cwd, "macos-application-support");
   await Deno.mkdir(`${cwd}/ai.casys.digital-thread`);
   await prepareWorkbenchRuntime(paths);
   await publishWorkbenchRuntime(paths, {

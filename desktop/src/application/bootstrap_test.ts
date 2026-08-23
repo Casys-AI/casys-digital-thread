@@ -111,7 +111,7 @@ Deno.test("bootstrap facts gate the sidecar on exact host and component pins", (
   assertEquals(wrongPin.controlPlaneLaunchable, false);
   assertEquals(wrongPin.controlPlanePinValid, false);
 
-  const unsupportedPackage = inspectDesktopBootstrap({
+  const closedLinuxLayout = inspectDesktopBootstrap({
     manifest: rawManifest,
     actualDenoVersion: "2.9.2",
     actualDesktopRuntimeVersion: "2.9.2",
@@ -119,7 +119,8 @@ Deno.test("bootstrap facts gate the sidecar on exact host and component pins", (
     platform: "Linux",
     env: (name) => name === "HOME" ? "/home/ada" : undefined,
   });
-  assertEquals(unsupportedPackage.controlPlaneLaunchable, false);
+  assertEquals(closedLinuxLayout.controlPlaneLaunchable, true);
+  assertEquals(closedLinuxLayout.workbenchLaunchable, true);
 
   const wrongProduct = structuredClone(rawManifest);
   wrongProduct.product.identifier = "io.example.other-product";
