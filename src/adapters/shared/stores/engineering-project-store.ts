@@ -3,6 +3,7 @@ import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
 } from "../../../application/ports/out/engineering-project-revision-store.ts";
+import { validateEngineeringProjectExtension } from "../../../domain/project/engineering-project-extension.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 import {
   deterministicJson,
@@ -165,6 +166,7 @@ export class FileEngineeringProjectRevisionStore
         "Engineering project commit does not extend the exact current revision.",
       );
     }
+    validateEngineeringProjectExtension(current, validated);
     await this.writeExclusive(validated);
     return structuredClone(validated);
   }

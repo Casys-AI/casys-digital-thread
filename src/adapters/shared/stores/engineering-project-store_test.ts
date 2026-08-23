@@ -10,6 +10,7 @@ import {
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import { EngineeringProjectValidationError } from "../../../domain/project/engineering-project-validation.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
 
 Deno.test("FileEngineeringProjectStore loads a validated project manifest read-only", async () => {
@@ -166,6 +167,238 @@ Deno.test("highest claimed corrupt revision fails closed instead of falling back
     await assertRejects(() => store.get(initial.project.id), SyntaxError);
   });
 });
+
+Deno.test("FileEngineeringProjectRevisionStore accepts a legal project extension", async () => {
+  await withTempDirectory(async (directory) => {
+    const store = new FileEngineeringProjectRevisionStore(directory);
+    const current = await seedReviewableProject(store);
+    const next = successorOf(current, () => {});
+    const committed = await store.commit(next, current.revision);
+    assertEquals(committed.revision, current.revision + 1);
+    assertEquals(committed.phases[0]?.name, current.phases[0]?.name);
+  });
+});
+
+Deno.test("FileEngineeringProjectRevisionStore rejects renaming an existing phase", async () => {
+  await assertStoreRejectsExtension(
+    (draft) => {
+      draft.phases[0]!.name = "Renamed verification";
+    },
+    "an existing phase cannot be renamed",
+  );
+});
+
+Deno.test("FileEngineeringProjectRevisionStore rejects reordering existing phases", async () => {
+  await withTempDirectory(async (directory) => {
+    const store = new FileEngineeringProjectRevisionStore(directory);
+    await store.createInitial(intentProjectFixture());
+    const current = await store.commit(twoPhaseProjectFixture(), 1);
+    const next = successorOf(current, (draft) => {
+      const [first, second] = draft.phases;
+      draft.phases = [
+        { ...second!, order: 1 },
+        { ...first!, order: 2 },
+      ];
+    });
+    await assertRejects(
+      () => store.commit(next, current.revision),
+      EngineeringProjectValidationError,
+      "existing phases must remain a prefix of the next revision",
+    );
+  });
+});
+
+Deno.test("FileEngineeringProjectRevisionStore rejects rewriting an existing phase description", async () => {
+  await assertStoreRejectsExtension(
+    (draft) => {
+      draft.phases[0]!.description = "Rewritten description.";
+    },
+    "an existing phase description cannot be rewritten",
+  );
+});
+
+Deno.test("FileEngineeringProjectRevisionStore rejects removing a phase member", async () => {
+  await withTempDirectory(async (directory) => {
+    const store = new FileEngineeringProjectRevisionStore(directory);
+    await store.createInitial(intentProjectFixture());
+    const current = await store.commit(twoPhaseProjectFixture(), 1);
+    const next = successorOf(current, (draft) => {
+      draft.phases[1]!.workItemIds = [];
+      draft.workItems = draft.workItems.filter((item) => item.id !== "close-record");
+    });
+    await assertRejects(
+      () => store.commit(next, current.revision),
+      EngineeringProjectValidationError,
+      "phase work-item membership is append-only",
+    );
+  });
+});
+
+Deno.test(
+  "FileEngineeringProjectRevisionStore rejects reclassifying an initial phase as change-created",
+  async () => {
+    await withTempDirectory(async (directory) => {
+      const store = new FileEngineeringProjectRevisionStore(directory);
+      await store.createInitial(intentProjectFixture());
+      const current = await store.commit(twoPhaseProjectFixture(), 1);
+      const planned = successorOf(current, (draft) => {
+        draft.plan = {
+          startingPoint: "idea-or-spec",
+          basis: structuredClone(current.commandReceipts![1]!.approvedBriefBasis!),
+          publishedAt: "2026-08-01T12:00:00.000Z",
+          publishedBy: { id: "agent:planner", origin: "agent" },
+        };
+        const receipts = draft.commandReceipts ?? [];
+        receipts[receipts.length - 1] = {
+          commandId: "publish-generic-plan",
+          type: "project.plan-publish",
+          actor: { id: "agent:planner", origin: "agent" },
+          issuedAt: "2026-08-01T12:00:00.000Z",
+          appliedAt: "2026-08-01T12:00:00.000Z",
+          requestFingerprint: { algorithm: "sha256", digest: "3".repeat(64) },
+          resultingSnapshot: { snapshotId: draft.id, revision: draft.revision },
+        };
+      });
+      const published = await store.commit(planned, current.revision);
+      const reclassified = successorOf(published, (draft) => {
+        draft.phases[0]!.workItemIds = [
+          ...draft.phases[0]!.workItemIds,
+          "review-geometry",
+        ];
+        draft.workItems.push({
+          id: "review-geometry",
+          activityId: "activity:review-geometry",
+          phaseId: "verification",
+          title: "Review the geometry",
+          description: "Appended onto the existing verification phase.",
+          kind: "verify",
+          operation: {
+            id: "verify.run-fea-static-proof",
+            version: "3",
+            bindings: [],
+          },
+          status: "planned",
+          owner: "agent",
+          dependsOnWorkItemIds: [],
+          evidenceRefs: [],
+          decisionIds: [],
+          blockerIds: [],
+        });
+        draft.planChanges = [{
+          id: "change:reclassify-verification",
+          commandId: "reclassify-verification",
+          approvedBriefBasis: structuredClone(draft.plan!.basis),
+          baseSnapshot: structuredClone(draft.threadSnapshots[0]!),
+          phaseIds: ["verification"],
+          workItemIds: ["review-geometry"],
+          decisionIds: [],
+          publishedAt: "2026-08-01T13:00:00.000Z",
+          publishedBy: { id: "agent:planner", origin: "agent" },
+        }];
+        const receipts = draft.commandReceipts ?? [];
+        receipts[receipts.length - 1] = {
+          commandId: "reclassify-verification",
+          type: "project.change-append",
+          actor: { id: "agent:planner", origin: "agent" },
+          issuedAt: "2026-08-01T13:00:00.000Z",
+          appliedAt: "2026-08-01T13:00:00.000Z",
+          requestFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
+          resultingSnapshot: { snapshotId: draft.id, revision: draft.revision },
+        };
+        draft.generatedAt = "2026-08-01T13:00:00.000Z";
+      });
+      await assertRejects(
+        () => store.commit(reclassified, published.revision),
+        EngineeringProjectValidationError,
+        "an existing phase cannot be reclassified as created by a later change",
+      );
+    });
+  },
+);
+
+async function assertStoreRejectsExtension(
+  mutate: (draft: Mutable<EngineeringProjectSnapshot>) => void,
+  message: string,
+): Promise<void> {
+  await withTempDirectory(async (directory) => {
+    const store = new FileEngineeringProjectRevisionStore(directory);
+    const current = await seedReviewableProject(store);
+    const next = successorOf(current, mutate);
+    await assertRejects(
+      () => store.commit(next, current.revision),
+      EngineeringProjectValidationError,
+      message,
+    );
+  });
+}
+
+function successorOf(
+  previous: EngineeringProjectSnapshot,
+  mutate: (draft: Mutable<EngineeringProjectSnapshot>) => void,
+): EngineeringProjectSnapshot {
+  const next = structuredClone(previous) as Mutable<EngineeringProjectSnapshot>;
+  next.id = `${previous.project.id}:r${previous.revision + 1}`;
+  next.revision = previous.revision + 1;
+  next.generatedAt = "2026-08-01T12:00:00.000Z";
+  next.previous = { snapshotId: previous.id, revision: previous.revision };
+  next.commandReceipts = [
+    ...(previous.commandReceipts ?? []),
+    {
+      commandId: `extension-${next.revision}`,
+      type: "decision.propose",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: next.generatedAt,
+      appliedAt: next.generatedAt,
+      requestFingerprint: { algorithm: "sha256", digest: "2".repeat(64) },
+      resultingSnapshot: { snapshotId: next.id, revision: next.revision },
+    },
+  ];
+  mutate(next);
+  return validateEngineeringProjectSnapshot(next);
+}
+
+function twoPhaseProjectFixture(): EngineeringProjectSnapshot {
+  const extra = structuredClone(projectFixture()) as Mutable<
+    EngineeringProjectSnapshot
+  >;
+  extra.workItems[0] = {
+    ...extra.workItems[0]!,
+    operation: {
+      id: "verify.lifecycle-fixture",
+      version: "1",
+      bindings: [],
+    },
+  };
+  extra.phases.push({
+    id: "closeout",
+    name: "Closeout",
+    order: 2,
+    description: "Close the manufacturing record.",
+    workItemIds: ["close-record"],
+    requiredDecisionIds: [],
+    evidenceRefs: [],
+  });
+  extra.workItems.push({
+    id: "close-record",
+    activityId: "activity:close-record",
+    phaseId: "closeout",
+    title: "Close the record",
+    description: "Keep a second phase so order mutations are observable.",
+    kind: "industrialize",
+    operation: {
+      id: "record.archive-lineage",
+      version: "1",
+      bindings: [],
+    },
+    status: "planned",
+    owner: "shared",
+    dependsOnWorkItemIds: ["verify-generic-input"],
+    evidenceRefs: [],
+    decisionIds: [],
+    blockerIds: [],
+  });
+  return validateEngineeringProjectSnapshot(extra);
+}
 
 Deno.test("active project paths reject dot-segment and non-alphanumeric prefixes", async () => {
   await withTempDirectory(async (directory) => {

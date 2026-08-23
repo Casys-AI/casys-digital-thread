@@ -395,9 +395,14 @@ revision. At the BFF boundary, structural validation stays fail-fast
 (`validateEngineeringProjectSnapshot`) while
 `collectEngineeringProjectThreadReferenceIssues(project, snapshots)` resolves each
 reference against the supplied canonical `ThreadSnapshot`s; a newer local snapshot does
-not satisfy a reference to an older revision. Dangling references (for example a
-decision left behind by abandoned work) do not hide the read-only projection: the
-`evidence` surface publishes them as `unresolvedEvidenceReferences` and the cockpit
+not satisfy a reference to an older revision. Persistence of a successor also runs
+`validateEngineeringProjectExtension(previous, next)`: project identity and captured
+intent stay frozen, existing phases keep their id/name/order/description, phase
+membership and evidence are append-only, and an initial phase cannot be reclassified as
+created by a later `planChanges` entry. Work status, run lifecycle, decisions,
+approvals, and gate-claim status remain legal transitions. Dangling references (for
+example a decision left behind by abandoned work) do not hide the read-only projection:
+the `evidence` surface publishes them as `unresolvedEvidenceReferences` and the cockpit
 labels them. The `documentary` surface carries no such field by design — it exists only
 for the single-artifact brief baseline, before any evidence reference can dangle.
 
