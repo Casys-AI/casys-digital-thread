@@ -66,6 +66,25 @@ export function collectEngineeringActivities(
 }
 
 /**
+ * Explicit tips of one activity. A revision is a leaf when no other given
+ * revision names it as predecessor. Several successors stay several leaves;
+ * array order never invents a current winner.
+ */
+export function leafRevisionIdsForActivity(
+  revisions: readonly EngineeringActivityRevisionRecord[],
+): readonly string[] {
+  const predecessorIds = new Set(
+    revisions.flatMap((item) =>
+      item.predecessorRevisionId === undefined ? [] : [item.predecessorRevisionId]
+    ),
+  );
+  return revisions
+    .filter((item) => !predecessorIds.has(item.id))
+    .map((item) => item.id)
+    .toSorted((left, right) => left.localeCompare(right));
+}
+
+/**
  * Stamp server-owned activity identity for newly declared revisions.
  * Callers may name a predecessor; they cannot choose or re-parent activity IDs.
  */

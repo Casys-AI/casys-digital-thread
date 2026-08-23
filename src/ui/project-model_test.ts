@@ -5,6 +5,11 @@ import {
 } from "../testing/workbench/generic-engineering-workbench-fixture.ts";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
+  activityAttemptCount,
+  activityCounterLabel,
+  activityHasLifecycleHistory,
+  activityLifecycleSummary,
+  activityShowsRevisionAttemptList,
   agentPreparationDecisions,
   agentRunRecordedAt,
   agentRunSummary,
@@ -13,6 +18,8 @@ import {
   buildProjectBrief,
   buildProjectPath,
   groupProjectPathGatesByLane,
+  laneGroupCounterLabel,
+  laneGroupsCounterLabel,
   phaseStatusLabel,
   pendingHumanConfirmationDecisions,
   PROJECT_PATH_PRESENTATION_POLICY,
@@ -607,6 +614,58 @@ Deno.test("admitted SPICE revisions in the Physics lane wrap as one activity wit
   );
 });
 
+Deno.test("linked SPICE revisions count as one Physics gate instead of 1/2 work", () => {
+  const { project, thread, activities } = spicePhysicsLinkedRevisionsFixture();
+  const path = buildProjectPath(project, thread, activities);
+  const groups = groupProjectPathGatesByLane(path.activities, []);
+
+  assertEquals(path.activities.length, 1);
+  const activity = path.activities[0]!;
+  assertEquals(activity.revisions.length, 2);
+  assertEquals(activityAttemptCount(activity), 2);
+  assertEquals(activityHasLifecycleHistory(activity), true);
+  assertEquals(activityShowsRevisionAttemptList(activity), true);
+  assertEquals(Object.hasOwn(activity, "completedWorkItems"), false);
+  assertEquals(Object.hasOwn(activity, "totalWorkItems"), false);
+  assertEquals(
+    activityCounterLabel(activity),
+    "2 revisions · 2 attempts · 0 evidence",
+  );
+  assertEquals(activityCounterLabel(activity).includes("work"), false);
+  assertEquals(activityCounterLabel(activity).includes("1/2"), false);
+
+  const simple = { ...activity, revisions: [activity.revisions[0]!] };
+  assertEquals(activityAttemptCount(simple), 1);
+  assertEquals(activityHasLifecycleHistory(simple), false);
+  assertEquals(activityShowsRevisionAttemptList(simple), false);
+  assertEquals(activityLifecycleSummary(simple), "1 revision · 1 attempt");
+
+  const retried = {
+    ...activity,
+    revisions: [{
+      ...activity.revisions[0]!,
+      attempts: [
+        activity.revisions[0]!.attempts[0]!,
+        activity.revisions[1]!.attempts[0]!,
+      ],
+    }],
+  };
+  assertEquals(activityHasLifecycleHistory(retried), true);
+  assertEquals(activityShowsRevisionAttemptList(retried), true);
+  assertEquals(activityLifecycleSummary(retried), "1 revision · 2 attempts");
+
+  assertEquals(groups.map((group) => group.id), ["physics"]);
+  const physics = groups[0]!;
+  assertEquals(physics.satisfiedGates, 1);
+  assertEquals(physics.totalGates, 1);
+  assertEquals(Object.hasOwn(physics, "completedWorkItems"), false);
+  assertEquals(Object.hasOwn(physics, "totalWorkItems"), false);
+  assertEquals(laneGroupCounterLabel(physics), "1/1 gates · 0 evidence");
+  assertEquals(laneGroupsCounterLabel(groups), "1/1 gates · 0 evidence");
+  assertEquals(laneGroupCounterLabel(physics).includes("work"), false);
+  assertEquals(laneGroupsCounterLabel(groups).includes("work"), false);
+});
+
 Deno.test("AL01 leftover SPICE work without an explicit predecessor is not backfilled from labels or timestamps", () => {
   const { project, thread, activities } = al01UnlinkedSpiceFixture();
   const path = buildProjectPath(project, thread, activities);
@@ -732,6 +791,91 @@ Deno.test("project path omits a historical ready predecessor while Activity reta
     path.activities.some((item) =>
       item.revisions.some((revision) => revision.id === "wi-geom-2")
     ),
+    true,
+  );
+});
+
+Deno.test("same activity r1 completed then explicit r2 ready stays planned and is not collapsed", () => {
+  const first = leftoverOperationWork({
+    id: "wi-r1",
+    phaseId: "phase-r1",
+    order: 1,
+    operationId: "design.write-geometry",
+    version: "1",
+    status: "completed",
+    activityId: "activity:wi-r1",
+  }, "completed");
+  const second = leftoverOperationWork({
+    id: "wi-r2",
+    phaseId: "phase-r2",
+    order: 2,
+    operationId: "design.write-geometry",
+    version: "1",
+    status: "ready",
+    activityId: "activity:wi-r1",
+    predecessorRevisionId: "wi-r1",
+  }, "ready");
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
+  const snapshot = {
+    ...base,
+    phases: [{
+      id: "phase-r1",
+      name: "phase-r1",
+      order: 1,
+      description: "phase-r1",
+      workItemIds: [first.id],
+      requiredDecisionIds: [],
+      evidenceRefs: first.evidenceRefs,
+    }, {
+      id: "phase-r2",
+      name: "phase-r2",
+      order: 2,
+      description: "phase-r2",
+      workItemIds: [second.id],
+      requiredDecisionIds: [],
+      evidenceRefs: second.evidenceRefs,
+    }],
+    workItems: [first, second],
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  };
+
+  const path = buildProjectPath(snapshot, GENERIC_THREAD_FIXTURE);
+  assertEquals(path.activities.length, 1);
+  const activity = path.activities[0]!;
+  assertEquals(activity.id, "activity:wi-r1");
+  assertEquals(activity.revisions.map((revision) => revision.id), [
+    "wi-r1",
+    "wi-r2",
+  ]);
+  assertEquals(activity.revisions[1]?.predecessorRevisionId, "wi-r1");
+  assertEquals(activity.revisions.map((revision) => revision.status), [
+    "completed",
+    "ready",
+  ]);
+  assertEquals(activity.status, "planned");
+  assertEquals(path.status, "planned");
+
+  const padded = [
+    ...Array.from({ length: 5 }, (_, index) => ({
+      id: `before-${index}`,
+      status: "completed" as const,
+    })),
+    activity,
+    ...Array.from({ length: 5 }, (_, index) => ({
+      id: `after-${index}`,
+      status: "completed" as const,
+    })),
+  ];
+  const split = splitLeadingSatisfiedGates(padded);
+  assertEquals(
+    split.collapsed.some((item) => item.id === activity.id),
+    false,
+  );
+  assertEquals(
+    split.visible.some((item) => item.id === activity.id),
     true,
   );
 });
@@ -2226,7 +2370,6 @@ Deno.test("collapsed project gates follow the five projected thread lanes withou
   const gate = (
     id: string,
     lane: "requirements" | "system-model" | "geometry",
-    completedWorkItems: number,
     evidenceCount: number,
   ) => ({
     id,
@@ -2234,18 +2377,16 @@ Deno.test("collapsed project gates follow the five projected thread lanes withou
     title: "Same deliberately uninformative label",
     status: "completed" as const,
     revisions: [],
-    completedWorkItems,
-    totalWorkItems: completedWorkItems,
     approvedDecisions: 1,
     requiredDecisions: 1,
     evidenceCount,
   });
   const groups = groupProjectPathGatesByLane(
     [
-      gate("f1", "system-model", 1, 1),
-      gate("f2", "system-model", 2, 3),
-      gate("c1", "geometry", 1, 2),
-      gate("x1", "requirements", 1, 0),
+      gate("f1", "system-model", 1),
+      gate("f2", "system-model", 3),
+      gate("c1", "geometry", 2),
+      gate("x1", "requirements", 0),
     ],
     [],
   );
@@ -2262,8 +2403,6 @@ Deno.test("collapsed project gates follow the five projected thread lanes withou
     gates: groups[1]!.gates,
     satisfiedGates: 2,
     totalGates: 2,
-    completedWorkItems: 3,
-    totalWorkItems: 3,
     approvedDecisions: 2,
     requiredDecisions: 2,
     evidenceCount: 4,

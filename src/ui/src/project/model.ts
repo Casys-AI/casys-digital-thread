@@ -14,6 +14,7 @@ import {
 import {
   attemptIdsForRevision,
   collectEngineeringActivities,
+  leafRevisionIdsForActivity,
 } from "../../../domain/project/engineering-activity.ts";
 import type {
   EngineeringWorkbenchActivity,
@@ -152,8 +153,6 @@ export interface ProjectPathActivityView {
   readonly title: string;
   readonly status: EngineeringPhaseStatus;
   readonly revisions: readonly ProjectPathRevisionView[];
-  readonly completedWorkItems: number;
-  readonly totalWorkItems: number;
   readonly approvedDecisions: number;
   readonly requiredDecisions: number;
   readonly evidenceCount: number;
@@ -173,8 +172,6 @@ export interface ProjectPathLaneGroup {
   readonly gates: readonly ProjectPathActivityView[];
   readonly satisfiedGates: number;
   readonly totalGates: number;
-  readonly completedWorkItems: number;
-  readonly totalWorkItems: number;
   readonly approvedDecisions: number;
   readonly requiredDecisions: number;
   readonly evidenceCount: number;
@@ -206,8 +203,6 @@ export function groupProjectPathGatesByLane(
       gates: laneGates,
       satisfiedGates: laneGates.filter((gate) => gate.status === "completed").length,
       totalGates: laneGates.length,
-      completedWorkItems: sum(laneGates, "completedWorkItems"),
-      totalWorkItems: sum(laneGates, "totalWorkItems"),
       approvedDecisions: sum(laneGates, "approvedDecisions"),
       requiredDecisions: sum(laneGates, "requiredDecisions"),
       evidenceCount: sum(laneGates, "evidenceCount"),
@@ -217,14 +212,117 @@ export function groupProjectPathGatesByLane(
 
 function sum(
   gates: readonly ProjectPathActivityView[],
-  key:
-    | "completedWorkItems"
-    | "totalWorkItems"
-    | "approvedDecisions"
-    | "requiredDecisions"
-    | "evidenceCount",
+  key: "approvedDecisions" | "requiredDecisions" | "evidenceCount",
 ): number {
   return gates.reduce((total, gate) => total + gate[key], 0);
+}
+
+export function activityAttemptCount(
+  activity: Pick<ProjectPathActivityView, "revisions">,
+): number {
+  return activity.revisions.reduce(
+    (total, revision) => total + revision.attempts.length,
+    0,
+  );
+}
+
+export function activityHasLifecycleHistory(
+  activity: Pick<ProjectPathActivityView, "revisions">,
+): boolean {
+  const revisions = activity.revisions.length;
+  return revisions > 1 || activityAttemptCount(activity) > revisions;
+}
+
+export function activityShowsRevisionAttemptList(
+  activity: ProjectPathActivityView,
+): boolean {
+  if (activity.status === "active" || activity.status === "blocked") {
+    return true;
+  }
+  const hasJoinedCase = activity.revisions.some((revision) =>
+    revision.attempts.some((attempt) => attempt.cases.length > 0)
+  );
+  return hasJoinedCase || activityHasLifecycleHistory(activity);
+}
+
+function countedNoun(count: number, singular: string): string {
+  return `${count} ${count === 1 ? singular : `${singular}s`}`;
+}
+
+export function activityLifecycleSummary(
+  activity: Pick<ProjectPathActivityView, "revisions">,
+): string {
+  const revisions = countedNoun(activity.revisions.length, "revision");
+  const attempts = countedNoun(activityAttemptCount(activity), "attempt");
+  return `${revisions} · ${attempts}`;
+}
+
+export function activityCounterLabel(
+  activity: ProjectPathActivityView,
+): string {
+  const parts = [
+    countedNoun(activity.revisions.length, "revision"),
+    countedNoun(activityAttemptCount(activity), "attempt"),
+    `${activity.evidenceCount} evidence`,
+  ];
+  if (activity.requiredDecisions > 0) {
+    parts.splice(
+      2,
+      0,
+      `${activity.approvedDecisions}/${activity.requiredDecisions} decisions`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+export function laneGroupCounterLabel(
+  group: ProjectPathLaneGroup,
+): string {
+  const parts = [
+    `${group.satisfiedGates}/${group.totalGates} gates`,
+    `${group.evidenceCount} evidence`,
+  ];
+  if (group.requiredDecisions > 0) {
+    parts.splice(
+      1,
+      0,
+      `${group.approvedDecisions}/${group.requiredDecisions} decisions`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+export function laneGroupsCounterLabel(
+  groups: readonly ProjectPathLaneGroup[],
+): string {
+  const total = groups.reduce(
+    (aggregate, group) => ({
+      satisfiedGates: aggregate.satisfiedGates + group.satisfiedGates,
+      gates: aggregate.gates + group.totalGates,
+      approvedDecisions: aggregate.approvedDecisions + group.approvedDecisions,
+      requiredDecisions: aggregate.requiredDecisions + group.requiredDecisions,
+      evidenceCount: aggregate.evidenceCount + group.evidenceCount,
+    }),
+    {
+      satisfiedGates: 0,
+      gates: 0,
+      approvedDecisions: 0,
+      requiredDecisions: 0,
+      evidenceCount: 0,
+    },
+  );
+  const parts = [
+    `${total.satisfiedGates}/${total.gates} gates`,
+    `${total.evidenceCount} evidence`,
+  ];
+  if (total.requiredDecisions > 0) {
+    parts.splice(
+      1,
+      0,
+      `${total.approvedDecisions}/${total.requiredDecisions} decisions`,
+    );
+  }
+  return parts.join(" · ");
 }
 
 /**
@@ -504,24 +602,7 @@ export function buildProjectPath(
         : [];
     });
     const root = workById.get(projected.rootRevisionId);
-    const statuses = revisions.map((revision) => revision.status);
-    const runs = revisions.flatMap((revision) =>
-      revision.attempts.map((attempt) => attempt.run)
-    );
-    const status: EngineeringPhaseStatus = runs.some((run) =>
-        run.status === "queued" || run.status === "running" ||
-        run.status === "waiting-for-decision" || run.status === "publishing"
-      )
-      ? "active"
-      : statuses.some((value) =>
-          value === "waiting-for-decision"
-        )
-      ? "active"
-      : statuses.some((value) => value === "completed")
-      ? "completed"
-      : "planned";
-    const completedWorkItems =
-      revisions.filter((revision) => revision.status === "completed").length;
+    const status = deriveProjectPathActivityStatus(revisions, projected.id);
     const evidenceCount = revisions.reduce(
       (total, revision) =>
         total + (workById.get(revision.id)?.evidenceRefs.length ?? 0),
@@ -539,8 +620,6 @@ export function buildProjectPath(
       title: root?.title ?? projected.id,
       status,
       revisions,
-      completedWorkItems,
-      totalWorkItems: revisions.length,
       approvedDecisions: decisions.filter((decision) =>
         isEngineeringDecisionSatisfied(snapshot, decision)
       ).length,
@@ -562,6 +641,48 @@ export function buildProjectPath(
       .length,
     pendingDecisions,
   };
+}
+
+function deriveProjectPathActivityStatus(
+  revisions: readonly ProjectPathRevisionView[],
+  activityId: string,
+): EngineeringPhaseStatus {
+  const runs = revisions.flatMap((revision) =>
+    revision.attempts.map((attempt) => attempt.run)
+  );
+  if (
+    runs.some((run) =>
+      run.status === "queued" || run.status === "running" ||
+      run.status === "waiting-for-decision" || run.status === "publishing"
+    )
+  ) {
+    return "active";
+  }
+  if (
+    revisions.some((revision) =>
+      revision.status === "waiting-for-decision" ||
+      revision.status === "in-progress"
+    )
+  ) {
+    return "active";
+  }
+  const leafIds = new Set(
+    leafRevisionIdsForActivity(revisions.map((revision) => ({
+      id: revision.id,
+      activityId,
+      ...(revision.predecessorRevisionId
+        ? { predecessorRevisionId: revision.predecessorRevisionId }
+        : {}),
+    }))),
+  );
+  const leaves = revisions.filter((revision) => leafIds.has(revision.id));
+  if (
+    leaves.length > 0 &&
+    leaves.every((revision) => revision.status === "completed")
+  ) {
+    return "completed";
+  }
+  return "planned";
 }
 
 function projectPathRevision(

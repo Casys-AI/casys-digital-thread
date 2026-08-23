@@ -4,6 +4,7 @@ import {
   collectEngineeringActivities,
   collectEngineeringActivityLifecycleIssues,
   engineeringActivityIdFromRootRevision,
+  leafRevisionIdsForActivity,
   stampEngineeringActivityIdentity,
 } from "./engineering-activity.ts";
 
@@ -135,6 +136,37 @@ Deno.test("an operation-version successor stays one activity with explicit branc
     "wi-geom-branch-b",
     "wi-geom-v2",
   ]);
+});
+
+Deno.test("leaf revisions are the explicit branch tips and shuffling does not invent a winner", () => {
+  const rootId = engineeringActivityIdFromRootRevision("wi-geom");
+  const root = { id: "wi-geom", activityId: rootId };
+  const v2 = {
+    id: "wi-geom-v2",
+    activityId: rootId,
+    predecessorRevisionId: "wi-geom",
+  };
+  const branchA = {
+    id: "wi-geom-branch-a",
+    activityId: rootId,
+    predecessorRevisionId: "wi-geom",
+  };
+  const branchB = {
+    id: "wi-geom-branch-b",
+    activityId: rootId,
+    predecessorRevisionId: "wi-geom",
+  };
+
+  assertEquals(leafRevisionIdsForActivity([root]), ["wi-geom"]);
+  assertEquals(leafRevisionIdsForActivity([v2, root]), ["wi-geom-v2"]);
+  assertEquals(
+    leafRevisionIdsForActivity([branchB, v2, root, branchA]),
+    ["wi-geom-branch-a", "wi-geom-branch-b", "wi-geom-v2"],
+  );
+  assertEquals(
+    leafRevisionIdsForActivity([root, branchA, branchB, v2]),
+    leafRevisionIdsForActivity([branchB, v2, root, branchA]),
+  );
 });
 
 Deno.test("attempts stay bound to one revision and sort independently of array order", () => {

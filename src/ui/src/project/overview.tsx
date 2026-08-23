@@ -67,11 +67,17 @@ import {
   currentProjectReview,
 } from "./review-decision-model.ts";
 import {
+  activityCounterLabel,
+  activityHasLifecycleHistory,
+  activityLifecycleSummary,
+  activityShowsRevisionAttemptList,
   agentRunRecordedAt,
   buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
   groupProjectPathGatesByLane,
+  laneGroupCounterLabel,
+  laneGroupsCounterLabel,
   phaseStatusLabel,
   type ProjectPathActivityView,
   type ProjectPathLaneGroup,
@@ -442,8 +448,11 @@ function EarlierGatesPanel(
                     <div className="min-w-0">
                       <span className="text-[13px]">{item.title}</span>
                       <p className="mt-0.5 font-mono text-[9.5px] tabular-nums text-muted-foreground">
-                        {phaseCounterLabel(item)}
+                        {activityCounterLabel(item)}
                       </p>
+                      {activityShowsRevisionAttemptList(item) && (
+                        <ActivityRevisionAttemptList item={item} />
+                      )}
                     </div>
                     <Badge variant={recordStatusVariant(item.status)}>
                       {phaseStatusLabel(item.status)}
@@ -496,11 +505,12 @@ function SpinePhase(
   );
   const open = item.status === "active" || item.status === "blocked" ||
     hasJoinedCases;
+  const lifecycle = activityLifecycleSummary(item);
   return (
     <li
       data-state={item.status}
       aria-current={item.status === "active" ? "step" : undefined}
-      aria-label={`${item.title} — ${item.completedWorkItems}/${item.totalWorkItems} ${
+      aria-label={`${item.title} — ${lifecycle} ${
         phaseStatusLabel(item.status)
       }`}
       className="flex min-w-0 flex-1 items-center"
@@ -523,29 +533,29 @@ function SpinePhase(
             >
               {item.title}{" "}
               <span className="text-success">
-                {item.completedWorkItems}/{item.totalWorkItems}{" "}
-                {phaseStatusLabel(item.status)}
+                {lifecycle} {phaseStatusLabel(item.status)}
               </span>
             </span>
-            <ol className="m-0 list-none p-0 font-mono text-[9px] text-muted-foreground">
-              {item.revisions.map((revision) => (
-                <li key={revision.id}>
-                  {revision.title} · {revision.status}
-                  {revision.attempts.map((attempt) => (
-                    <span key={attempt.run.id}>
-                      {" · "}
-                      {attempt.run.status}
-                      {attempt.cases.map((engineeringCase) => (
-                        <span key={engineeringCase.caseKey}>
-                          {" · "}
-                          {engineeringCase.caseId}@{engineeringCase.caseRevision}
-                        </span>
-                      ))}
-                    </span>
-                  ))}
-                </li>
-              ))}
-            </ol>
+            <ActivityRevisionAttemptList item={item} />
+          </div>
+        )
+        : activityHasLifecycleHistory(item)
+        ? (
+          <div className="mx-1.5 min-w-0">
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <span className="truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
+                {item.title}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 font-mono text-[10.5px] font-medium tabular-nums",
+                  phaseStatusTextClass(item.status),
+                )}
+              >
+                {lifecycle}
+              </span>
+            </div>
+            <ActivityRevisionAttemptList item={item} />
           </div>
         )
         : (
@@ -559,7 +569,7 @@ function SpinePhase(
                 phaseStatusTextClass(item.status),
               )}
             >
-              {item.completedWorkItems}/{item.totalWorkItems}
+              {lifecycle}
             </span>
           </div>
         )}
@@ -573,6 +583,32 @@ function SpinePhase(
         />
       )}
     </li>
+  );
+}
+
+function ActivityRevisionAttemptList(
+  { item }: { item: ProjectPathActivityView },
+): JSX.Element {
+  return (
+    <ol className="m-0 list-none p-0 font-mono text-[9px] text-muted-foreground">
+      {item.revisions.map((revision) => (
+        <li key={revision.id}>
+          {revision.title} · {revision.status}
+          {revision.attempts.map((attempt) => (
+            <span key={attempt.run.id}>
+              {" · "}
+              {attempt.run.status}
+              {attempt.cases.map((engineeringCase) => (
+                <span key={engineeringCase.caseKey}>
+                  {" · "}
+                  {engineeringCase.caseId}@{engineeringCase.caseRevision}
+                </span>
+              ))}
+            </span>
+          ))}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -1042,77 +1078,6 @@ function phaseStatusTextClass(status: EngineeringPhaseStatus): string {
 function sentenceLabel(value: string): string {
   const label = value.replaceAll("-", " ");
   return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
-}
-
-function phaseCounterLabel(
-  item: ProjectPathActivityView,
-): string {
-  const parts = [
-    `${item.completedWorkItems}/${item.totalWorkItems} work`,
-    `${item.evidenceCount} evidence`,
-  ];
-  if (item.requiredDecisions > 0) {
-    parts.splice(
-      1,
-      0,
-      `${item.approvedDecisions}/${item.requiredDecisions} decisions`,
-    );
-  }
-  return parts.join(" · ");
-}
-
-function laneGroupCounterLabel(
-  group: ProjectPathLaneGroup,
-): string {
-  const parts = [
-    `${group.completedWorkItems}/${group.totalWorkItems} work`,
-    `${group.evidenceCount} evidence`,
-  ];
-  if (group.requiredDecisions > 0) {
-    parts.splice(
-      1,
-      0,
-      `${group.approvedDecisions}/${group.requiredDecisions} decisions`,
-    );
-  }
-  return parts.join(" · ");
-}
-
-function laneGroupsCounterLabel(
-  groups: readonly ProjectPathLaneGroup[],
-): string {
-  const total = groups.reduce(
-    (aggregate, group) => ({
-      gates: aggregate.gates + group.totalGates,
-      completedWorkItems: aggregate.completedWorkItems +
-        group.completedWorkItems,
-      totalWorkItems: aggregate.totalWorkItems + group.totalWorkItems,
-      approvedDecisions: aggregate.approvedDecisions + group.approvedDecisions,
-      requiredDecisions: aggregate.requiredDecisions + group.requiredDecisions,
-      evidenceCount: aggregate.evidenceCount + group.evidenceCount,
-    }),
-    {
-      gates: 0,
-      completedWorkItems: 0,
-      totalWorkItems: 0,
-      approvedDecisions: 0,
-      requiredDecisions: 0,
-      evidenceCount: 0,
-    },
-  );
-  const parts = [
-    `${total.gates} gates`,
-    `${total.completedWorkItems}/${total.totalWorkItems} work`,
-    `${total.evidenceCount} evidence`,
-  ];
-  if (total.requiredDecisions > 0) {
-    parts.splice(
-      2,
-      0,
-      `${total.approvedDecisions}/${total.requiredDecisions} decisions`,
-    );
-  }
-  return parts.join(" · ");
 }
 
 function formatShortTime(value: string): string {
