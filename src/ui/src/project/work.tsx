@@ -15,6 +15,7 @@ import { buildRunTimeline, waitShare } from "./run-timeline-model.ts";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import { Card, CardContent, CardHeader } from "../ui/card.tsx";
 import {
+  agentPreparationDecisions,
   agentRunRecordedAt,
   agentRunSummary,
   buildAgentNowPresentation,
@@ -210,6 +211,7 @@ export function ProjectOperations({
 }): JSX.Element {
   const view = buildOperationsFleetView(fleet, thread, project);
   const pendingDecisions = pendingHumanConfirmationDecisions(project);
+  const preparationDecisions = agentPreparationDecisions(project);
   const activeRuns = project.agentRuns.filter(
     (r) => r.status === "queued" || r.status === "running",
   );
@@ -231,7 +233,10 @@ export function ProjectOperations({
           onOpenWork={onOpenWork}
           project={project}
         />
-        <MrtrCard decisions={pendingDecisions} />
+        <div className="flex flex-col gap-3">
+          <MrtrCard decisions={pendingDecisions} />
+          <AgentPreparationCard decisions={preparationDecisions} />
+        </div>
       </div>
 
       {thread.evaluationCloseouts && (
@@ -574,6 +579,77 @@ function fleetStateVariant(card: FleetCardView): BadgeVariant {
   if (card.freshness === "failed") return "destructive";
   if (card.freshness === "stale") return "warning";
   return "secondary";
+}
+
+// ---------------------------------------------------------------------------
+// Agent preparation (not an MRTR decision)
+// ---------------------------------------------------------------------------
+
+function AgentPreparationCard({
+  decisions,
+}: {
+  decisions: readonly EngineeringDecision[];
+}): JSX.Element {
+  return (
+    <Card
+      className="overflow-hidden"
+      aria-labelledby="operations-preparation-title"
+    >
+      <CardHeader className="flex-row items-center justify-between gap-4 border-b border-border px-3 py-2">
+        <h4
+          id="operations-preparation-title"
+          className="font-mono text-[9.5px] tracking-[.1em] text-muted-foreground"
+        >
+          AGENT PROPOSAL PREPARATION
+        </h4>
+        {decisions.length > 0 && (
+          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+            {decisions.length} {decisions.length === 1 ? "RECORD" : "RECORDS"}
+          </span>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-2 px-3 py-2.5">
+        {decisions.length > 0
+          ? decisions.map((decision) => (
+            <PreparationRow key={decision.id} decision={decision} />
+          ))
+          : (
+            <p className="text-sm text-muted-foreground">
+              No proposal preparation is recorded.
+            </p>
+          )}
+        <p className="pt-1 text-[11px] leading-snug text-muted-foreground">
+          Required and rejected records are not concrete decisions for human
+          confirmation. Only a later <strong>proposed</strong>{" "}
+          decision enters the MRTR card above.
+        </p>
+      </CardContent>
+      <div className="border-t border-border bg-muted/30 px-3 py-1.5 font-mono text-[9.5px] text-muted-foreground">
+        Agent preparation · paired conversation
+      </div>
+    </Card>
+  );
+}
+
+function PreparationRow({
+  decision,
+}: {
+  decision: EngineeringDecision;
+}): JSX.Element {
+  const label = decision.status === "rejected"
+    ? "Revision requested"
+    : "Agent preparing";
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge variant="secondary">{label}</Badge>
+      <span className="min-w-0 text-sm font-medium text-foreground">
+        {decision.title}
+      </span>
+      <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+        {formatDateTime(decision.requestedAt)}
+      </span>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

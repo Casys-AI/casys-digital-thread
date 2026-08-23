@@ -10,7 +10,6 @@
 import {
   deepFreeze,
   exactRecord,
-  finite,
   nonEmptyText,
   positiveInteger,
   rejectDuplicates,
@@ -1108,25 +1107,6 @@ function providerRequestId(
       `${path} must match the exact ${provider} request_id contract.`,
     );
   }
-  return result;
-}
-
-function boundedPositiveInteger(
-  value: unknown,
-  maximum: number,
-  path: string,
-  provider: string,
-): number {
-  const result = positiveInteger(value, path);
-  if (result > maximum) {
-    throw new TypeError(`${path} must not exceed ${maximum} for ${provider}.`);
-  }
-  return result;
-}
-
-function nonNegativeFinite(value: unknown, path: string): number {
-  const result = finite(value, path);
-  if (result < 0) throw new TypeError(`${path} must be greater than or equal to zero.`);
   return result;
 }
 

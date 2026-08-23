@@ -46,14 +46,20 @@ function NativeCockpit(): JSX.Element {
         href="#project-workspace-panel"
         onClick={(event) => {
           event.preventDefault();
-          globalThis.document?.getElementById("project-workspace-panel")
-            ?.focus();
+          const workspace = globalThis.document?.getElementById(
+            "project-workspace-panel",
+          ) ?? globalThis.document?.getElementById("native-preview-content");
+          workspace?.focus();
         }}
       >
         Skip to project workspace
       </a>
       {/* Chaque vue possède son propre <main> : le harnais reste un div. */}
-      <div className="native-preview-content">
+      <div
+        id="native-preview-content"
+        className="native-preview-content"
+        tabIndex={-1}
+      >
         <ThreadWorkbench
           client={client}
           fleetClient={fleetClient}

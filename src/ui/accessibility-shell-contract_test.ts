@@ -44,7 +44,10 @@ Deno.test("every project view exposes one focusable main landmark and a working 
 
   assertStringIncludes(preview, 'className="skip-link"');
   assertStringIncludes(preview, 'href="#project-workspace-panel"');
-  assertStringIncludes(preview, 'getElementById("project-workspace-panel")');
+  assertStringIncludes(preview, '"project-workspace-panel",');
+  assertStringIncludes(preview, 'getElementById("native-preview-content")');
+  assertStringIncludes(preview, 'id="native-preview-content"');
+  assertStringIncludes(preview, "tabIndex={-1}");
   assertStringIncludes(preview, "?.focus()");
 
   assertEquals(occurrences(overview, /<main\b/g), 1);

@@ -76,9 +76,25 @@ Deno.test("operations leads with recorded execution and human confirmations", as
     operations,
     "pendingHumanConfirmationDecisions(project)",
   );
+  assertStringIncludes(operations, "agentPreparationDecisions(project)");
   assertEquals(operations.includes('status === "required"'), false);
   assertStringIncludes(operations, "Technical provenance");
   assertStringIncludes(operations, "They are not runtime health checks.");
+});
+
+Deno.test("operations keeps agent preparation outside concrete proposed MRTR decisions", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/work.tsx", import.meta.url),
+  );
+  const preparationStart = source.indexOf("function AgentPreparationCard");
+  const preparationEnd = source.indexOf("// MRTR card", preparationStart);
+  const preparation = source.slice(preparationStart, preparationEnd);
+
+  assertEquals(preparationStart >= 0 && preparationEnd > preparationStart, true);
+  assertStringIncludes(preparation, "AGENT PROPOSAL PREPARATION");
+  assertStringIncludes(preparation, 'decision.status === "rejected"');
+  assertStringIncludes(preparation, "Only a later <strong>proposed</strong>");
+  assertStringIncludes(preparation, "the MRTR card above");
 });
 
 Deno.test("operations systems expose literal recorded state without row commands", async () => {
