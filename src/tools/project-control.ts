@@ -500,12 +500,11 @@ const projectPlanPublishTool: MCPTool = {
 const projectChangeAppendTool: MCPTool = {
   name: "project_change_append",
   description:
-    "Append the next bounded, reviewed engineering change after an existing exact ThreadSnapshot. The supplied baseSnapshot must exactly equal the project's current declared thread head; each work item must cite a reviewed registered operation and state-reference bindings. architecture.seed-syson-model@2 must list the unique baseline.from-approved-brief@1 work item in dependsOnWorkItemIds. This never revises an existing phase, work item, decision, run or evidence record; it never calls a provider, approves a decision, queues work, or creates technical evidence. It cannot pre-plan later work whose basis does not yet exist.",
+    "Append the next bounded, reviewed engineering change after an existing exact ThreadSnapshot. The supplied baseSnapshot must exactly equal the project's current declared thread head; each work item must cite a reviewed registered operation and state-reference bindings. architecture.seed-syson-model@2 must list the unique baseline.from-approved-brief@1 work item in dependsOnWorkItemIds. New work may join a newly declared phase or append membership onto an existing phase. This never replaces an existing phase, work item, decision, run or evidence record; it never calls a provider, approves a decision, queues work, or creates technical evidence. It cannot pre-plan later work whose basis does not yet exist.",
   inputSchema: mutationSchema({
     baseSnapshot: THREAD_SNAPSHOT_REF_SCHEMA,
     phases: {
       type: "array",
-      minItems: 1,
       items: {
         type: "object",
         properties: {

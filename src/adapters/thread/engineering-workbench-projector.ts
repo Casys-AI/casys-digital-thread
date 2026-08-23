@@ -213,12 +213,18 @@ function projectPhaseLanes(
 function uniqueFixedLane(
   declarations: readonly EngineeringOperationPathLaneDeclaration[],
 ): EngineeringPathLaneId | undefined {
-  const fixed = new Set(
+  const fixed = fixedPathLanes(declarations);
+  return fixed.size === 1 ? [...fixed][0] : undefined;
+}
+
+function fixedPathLanes(
+  declarations: readonly EngineeringOperationPathLaneDeclaration[],
+): ReadonlySet<EngineeringPathLaneId> {
+  return new Set(
     declarations.flatMap((declaration) =>
       declaration.kind === "fixed" ? [declaration.lane] : []
     ),
   );
-  return fixed.size === 1 ? [...fixed][0] : undefined;
 }
 
 function resolvePhaseLane(
@@ -232,6 +238,14 @@ function resolvePhaseLane(
   const contextual = declarations.filter((declaration) =>
     declaration.kind === "contextual"
   );
+  const mixedFixed = fixedPathLanes(declarations);
+  // A scheduling phase may hold several activities. phaseLanes is not activity
+  // identity: when several fixed lanes coexist and none is contextual, keep
+  // the contract total with the lexicographically first registered lane.
+  // Overview still places each activity in its own registered lane.
+  if (mixedFixed.size > 1 && contextual.length === 0) {
+    return [...mixedFixed].toSorted()[0]!;
+  }
   if (contextual.length === 0) {
     throw new Error(
       `Engineering project phase ${phaseId} has no unique registered path lane.`,

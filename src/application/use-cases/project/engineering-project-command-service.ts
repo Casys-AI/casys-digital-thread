@@ -274,8 +274,9 @@ export interface PublishProjectPlanCommand extends EngineeringProjectCommandInpu
 /**
  * An additive, agent-authored change after the initial baseline exists.
  * Existing phases, work, decisions, runs and ThreadSnapshot references are
- * never supplied by the caller and are therefore never replaced by this
- * command.
+ * never replaced. New work may join a newly declared phase or append
+ * membership onto an existing phase; that is an immutable extension, not a
+ * rewrite of the earlier phase record.
  */
 export interface AppendProjectChangeCommand extends EngineeringProjectCommandInput {
   /** Exact current project ThreadSnapshot that this bounded change extends. */
@@ -728,7 +729,8 @@ export class EngineeringProjectCommandService {
           "decision",
         );
 
-        const phaseIds = new Set(command.phases.map((phase) => phase.id));
+        const newPhaseIds = new Set(command.phases.map((phase) => phase.id));
+        const knownPhaseIds = new Set([...existingPhaseIds, ...newPhaseIds]);
         const allWorkItemIds = new Set([
           ...existingWorkItemIds,
           ...command.workItems.map((item) => item.id),
@@ -739,6 +741,13 @@ export class EngineeringProjectCommandService {
         const decisionsById = new Map(
           command.requiredDecisions.map((decision) => [decision.id, decision]),
         );
+        for (const [index, decision] of command.requiredDecisions.entries()) {
+          if (!knownPhaseIds.has(decision.phaseId)) {
+            invalidInput(
+              `requiredDecisions[${index}].phaseId must reference an existing project phase or a newly declared phase.`,
+            );
+          }
+        }
         const resolvedWorkItems = command.workItems.map((item) => {
           const resolved = resolvePlanOperation(planning.operations, item.operation);
           if (resolved.operation.startingPoint !== startingPoint) {
@@ -749,7 +758,7 @@ export class EngineeringProjectCommandService {
           assertPlanBindingsResolve(draft, resolved.bindings);
           assertChangeWorkItemReferences(
             item,
-            phaseIds,
+            knownPhaseIds,
             allWorkItemIds,
             decisionIds,
             decisionsById,
@@ -839,7 +848,28 @@ export class EngineeringProjectCommandService {
           publishedBy: actor(origin),
         };
 
-        draft.phases = [...draft.phases, ...phases];
+        draft.phases = [
+          ...draft.phases.map((phase) => {
+            const addedWorkIds = workItems
+              .filter((item) => item.phaseId === phase.id)
+              .map((item) => item.id);
+            const addedDecisionIds = decisions
+              .filter((item) => item.phaseId === phase.id)
+              .map((item) => item.id);
+            if (addedWorkIds.length === 0 && addedDecisionIds.length === 0) {
+              return phase;
+            }
+            return {
+              ...phase,
+              workItemIds: [...phase.workItemIds, ...addedWorkIds],
+              requiredDecisionIds: [
+                ...phase.requiredDecisionIds,
+                ...addedDecisionIds,
+              ],
+            };
+          }),
+          ...phases,
+        ];
         draft.workItems = [...draft.workItems, ...workItems];
         draft.decisions = [...draft.decisions, ...decisions];
         draft.planChanges = [...(draft.planChanges ?? []), change];
@@ -2443,7 +2473,7 @@ function validatePlanCommand(command: PublishProjectPlanCommand): void {
 
 function validateChangeCommand(command: AppendProjectChangeCommand): void {
   assertThreadSnapshotBasisInput({ kind: "thread-snapshot", ...command.baseSnapshot });
-  validatePlannedChange(command);
+  validatePlannedChange(command, { allowEmptyPhases: true });
 }
 
 function assertCurrentThreadSnapshotHead(
@@ -2477,8 +2507,12 @@ function validatePlannedChange(
     PublishProjectPlanCommand,
     "phases" | "workItems" | "requiredDecisions"
   >,
+  options: { readonly allowEmptyPhases?: boolean } = {},
 ): void {
-  if (!Array.isArray(command.phases) || command.phases.length === 0) {
+  if (!Array.isArray(command.phases)) {
+    invalidInput("phases must be an array.");
+  }
+  if (!options.allowEmptyPhases && command.phases.length === 0) {
     invalidInput("phases must contain at least one declared project phase.");
   }
   if (!Array.isArray(command.workItems) || command.workItems.length === 0) {
@@ -2838,9 +2872,9 @@ function assertPlanWorkItemReferences(
 }
 
 /**
- * A change may depend on completed historical work, but can only own phases
- * and decisions introduced by that same append command. This keeps prior
- * phase membership and review scope immutable.
+ * A change may depend on completed historical work and may append work onto
+ * an existing phase. New decisions remain owned by this command so prior
+ * review scope stays immutable.
  */
 function assertChangeWorkItemReferences(
   item: PlannedEngineeringWorkItem,
@@ -2851,7 +2885,7 @@ function assertChangeWorkItemReferences(
 ): void {
   if (!phaseIds.has(item.phaseId)) {
     invalidInput(
-      `Project-change work item ${item.id} must reference a newly declared phase.`,
+      `Project-change work item ${item.id} must reference an existing project phase or a newly declared phase.`,
     );
   }
   for (const dependencyId of item.dependsOnWorkItemIds) {

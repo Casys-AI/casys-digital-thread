@@ -3187,6 +3187,20 @@ function validatePlanChangeInvariants(
   const phaseIds = new Set<string>();
   const workItemIds = new Set<string>();
   const decisionIds = new Set<string>();
+  const phaseCreatedAt = new Map<string, number>();
+  changes.forEach((change, index) => {
+    for (const phaseId of change.phaseIds) {
+      if (!phaseCreatedAt.has(phaseId)) phaseCreatedAt.set(phaseId, index);
+    }
+  });
+  const initialPhaseIds = new Set(
+    project.phases
+      .map((phase) => phase.id)
+      .filter((phaseId) => !phaseCreatedAt.has(phaseId)),
+  );
+  const phaseExistsBefore = (phaseId: string, changeIndex: number): boolean =>
+    initialPhaseIds.has(phaseId) ||
+    ((phaseCreatedAt.get(phaseId) ?? Number.POSITIVE_INFINITY) < changeIndex);
   const phaseById = new Map(project.phases.map((phase) => [phase.id, phase]));
   const workById = new Map(project.workItems.map((item) => [item.id, item]));
   const decisionById = new Map(
@@ -3245,12 +3259,12 @@ function validatePlanChangeInvariants(
         "must name one exact ThreadSnapshot declared by this project",
       );
     }
-    if (change.phaseIds.length === 0 || change.workItemIds.length === 0) {
+    if (change.workItemIds.length === 0) {
       issue(
         issues,
         "missing_plan_content",
         path,
-        "must append at least one phase and one work item",
+        "must append at least one work item",
       );
     }
     uniqueStrings(change.phaseIds, `${path}.phaseIds`, issues);
@@ -3293,12 +3307,28 @@ function validatePlanChangeInvariants(
           `${path}.workItemIds[${workItemIndex}]`,
           "must reference a declared project work item",
         );
-      } else if (!change.phaseIds.includes(workItem.phaseId)) {
+      } else if (
+        !change.phaseIds.includes(workItem.phaseId) &&
+        !phaseExistsBefore(workItem.phaseId, index)
+      ) {
         issue(
           issues,
           "missing_reference",
           `${path}.workItemIds[${workItemIndex}]`,
-          "must belong to one phase appended by the same project change",
+          "must belong to an existing phase or a phase created by this change",
+        );
+      }
+    });
+    change.phaseIds.forEach((phaseId, phaseIndex) => {
+      const hasWork = change.workItemIds.some((workItemId) =>
+        workById.get(workItemId)?.phaseId === phaseId
+      );
+      if (!hasWork) {
+        issue(
+          issues,
+          "missing_plan_content",
+          `${path}.phaseIds[${phaseIndex}]`,
+          "a newly declared phase must contain at least one work item from this change",
         );
       }
     });
@@ -3320,12 +3350,15 @@ function validatePlanChangeInvariants(
           `${path}.decisionIds[${decisionIndex}]`,
           "must reference a declared project decision",
         );
-      } else if (!change.phaseIds.includes(decision.phaseId)) {
+      } else if (
+        !change.phaseIds.includes(decision.phaseId) &&
+        !phaseExistsBefore(decision.phaseId, index)
+      ) {
         issue(
           issues,
           "missing_reference",
           `${path}.decisionIds[${decisionIndex}]`,
-          "must belong to one phase appended by the same project change",
+          "must belong to an existing phase or a phase created by this change",
         );
       }
     });

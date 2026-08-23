@@ -642,6 +642,199 @@ Deno.test("appendChange inherits activity identity from an explicit predecessor"
   assertEquals(successor?.predecessorRevisionId, baselineWorkItemId);
 });
 
+Deno.test("appendChange can add a successor revision onto an existing phase", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    { validateInitial: () => Promise.resolve() },
+  );
+  let project = await commands.publishPlan(
+    AGENT,
+    baselinePlanCommand("publish-baseline-for-phase-extend", approved.revision),
+  );
+  const baselineWorkItemId = "record-approved-brief";
+  const runId = "run:baseline-for-phase-extend";
+  project = await commands.queueRun(AGENT, {
+    ...context("queue-baseline-for-phase-extend", project.revision),
+    runId,
+    workItemId: baselineWorkItemId,
+    summary: "Queue the exact approved documentary baseline.",
+    basis: project.plan!.basis,
+  });
+  project = await commands.claimRun(AGENT, {
+    ...context("claim-baseline-for-phase-extend", project.revision),
+    runId,
+    summary: "Claim the exact approved documentary baseline.",
+  });
+  project = await commands.publishRun(AGENT, {
+    ...context("publish-run-for-phase-extend", project.revision),
+    runId,
+    summary: "Publish the exact approved documentary baseline.",
+  });
+  const baselineSnapshot = {
+    snapshotId: "project-v3:documentary-baseline:r1",
+    revision: 1,
+    subjectId: project.project.subjectId,
+  };
+  project = await commands.completeRun(AGENT, {
+    ...context("complete-baseline-for-phase-extend", project.revision),
+    runId,
+    summary: "Complete the exact approved documentary baseline.",
+    resultSnapshot: baselineSnapshot,
+    evidenceRefs: [{
+      snapshotId: baselineSnapshot.snapshotId,
+      snapshotRevision: baselineSnapshot.revision,
+      kind: "artifact",
+      id: "approved-brief-baseline",
+    }],
+  });
+  const seedOperation = {
+    id: "architecture.seed-syson-model",
+    version: "2",
+    bindings: [{
+      name: "approvedBrief",
+      source: { kind: "approved-brief" as const },
+    }],
+  };
+  project = await commands.appendChange(AGENT, {
+    ...context("append-seed-root", project.revision),
+    baseSnapshot: baselineSnapshot,
+    phases: [{
+      id: "phase-architecture",
+      name: "Architecture",
+      description: "Create the bounded reviewed system structure.",
+    }],
+    workItems: [{
+      id: "seed-syson-root",
+      phaseId: "phase-architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: [baselineWorkItemId],
+      decisionIds: [],
+      operation: seedOperation,
+    }],
+    requiredDecisions: [],
+  });
+
+  const extended = await commands.appendChange(AGENT, {
+    ...context("append-seed-successor-same-phase", project.revision),
+    baseSnapshot: baselineSnapshot,
+    phases: [],
+    workItems: [{
+      id: "seed-syson-successor-same-phase",
+      phaseId: "phase-architecture",
+      owner: "agent",
+      dependsOnWorkItemIds: [baselineWorkItemId],
+      decisionIds: [],
+      predecessorRevisionId: "seed-syson-root",
+      operation: seedOperation,
+    }],
+    requiredDecisions: [],
+  });
+  const architecture = extended.phases.find((phase) =>
+    phase.id === "phase-architecture"
+  );
+  const successor = extended.workItems.find((item) =>
+    item.id === "seed-syson-successor-same-phase"
+  );
+  const change = extended.planChanges?.at(-1);
+  assertEquals(extended.phases.map((phase) => phase.id), [
+    "phase-baseline",
+    "phase-architecture",
+  ]);
+  assertEquals(architecture?.workItemIds, [
+    "seed-syson-root",
+    "seed-syson-successor-same-phase",
+  ]);
+  assertEquals(successor?.activityId, "activity:seed-syson-root");
+  assertEquals(successor?.predecessorRevisionId, "seed-syson-root");
+  assertEquals(change?.phaseIds, []);
+  assertEquals(change?.workItemIds, ["seed-syson-successor-same-phase"]);
+});
+
+Deno.test("appendChange rejects a work item that names an unknown phase", async () => {
+  const store = new MemoryProjectStore();
+  const briefs = serviceFor(store);
+  const approved = await approvedProject(briefs);
+  const commands = new EngineeringProjectCommandService(
+    store,
+    undefined,
+    () => "2026-08-03T09:00:00.000Z",
+    { operations: REGISTERED_ENGINEERING_OPERATION_REGISTRY },
+    { validateInitial: () => Promise.resolve() },
+  );
+  let project = await commands.publishPlan(
+    AGENT,
+    baselinePlanCommand("publish-baseline-for-unknown-phase", approved.revision),
+  );
+  const runId = "run:baseline-for-unknown-phase";
+  project = await commands.queueRun(AGENT, {
+    ...context("queue-baseline-for-unknown-phase", project.revision),
+    runId,
+    workItemId: "record-approved-brief",
+    summary: "Queue the exact approved documentary baseline.",
+    basis: project.plan!.basis,
+  });
+  project = await commands.claimRun(AGENT, {
+    ...context("claim-baseline-for-unknown-phase", project.revision),
+    runId,
+    summary: "Claim the exact approved documentary baseline.",
+  });
+  project = await commands.publishRun(AGENT, {
+    ...context("publish-run-for-unknown-phase", project.revision),
+    runId,
+    summary: "Publish the exact approved documentary baseline.",
+  });
+  const baselineSnapshot = {
+    snapshotId: "project-v3:documentary-baseline:r1",
+    revision: 1,
+    subjectId: project.project.subjectId,
+  };
+  project = await commands.completeRun(AGENT, {
+    ...context("complete-baseline-for-unknown-phase", project.revision),
+    runId,
+    summary: "Complete the exact approved documentary baseline.",
+    resultSnapshot: baselineSnapshot,
+    evidenceRefs: [{
+      snapshotId: baselineSnapshot.snapshotId,
+      snapshotRevision: baselineSnapshot.revision,
+      kind: "artifact",
+      id: "approved-brief-baseline",
+    }],
+  });
+
+  await assertCommandError(
+    () =>
+      commands.appendChange(AGENT, {
+        ...context("reject-unknown-phase", project.revision),
+        baseSnapshot: baselineSnapshot,
+        phases: [],
+        workItems: [{
+          id: "seed-missing-phase",
+          phaseId: "phase-does-not-exist",
+          owner: "agent",
+          dependsOnWorkItemIds: ["record-approved-brief"],
+          decisionIds: [],
+          operation: {
+            id: "architecture.seed-syson-model",
+            version: "2",
+            bindings: [{
+              name: "approvedBrief",
+              source: { kind: "approved-brief" },
+            }],
+          },
+        }],
+        requiredDecisions: [],
+      }),
+    "invalid_input",
+  );
+  assertEquals((await store.get(PROJECT_ID))?.revision, project.revision);
+});
+
 Deno.test("publishPlan refuses one MRTR decision shared by two work items before persistence", async () => {
   const store = new MemoryProjectStore();
   const briefs = serviceFor(store);

@@ -114,12 +114,14 @@ invocation, run authorization, or technical result.
 approved brief is the planning source. Once the documentary baseline has completed, an
 agent uses `project_change_append` to publish the next bounded change. The command
 carries an exact current `baseSnapshot`; every change also retains the exact
-`approvedBriefBasis` that authorized it. It can append only new phases, work items, and
-required decisions. It preserves the initial plan and all prior phases, work, decisions,
-approvals, runs, evidence, and thread references in the next immutable project revision.
-This is not a plan replacement and it cannot amend or erase project truth. The change
-anchors are planning provenance; later runs still use their distinct, server-derived
-exact `basis`.
+`approvedBriefBasis` that authorized it. It appends new work items and required
+decisions. A work item may join a newly declared phase or append membership onto an
+existing phase in the next immutable snapshot; existing phase, work, decision, run and
+evidence records are never replaced. `planChanges[].phaseIds` lists only phases created
+by that change and may be empty. A successor revision names `predecessorRevisionId`
+explicitly; the server never infers one from a shared phase or operation. This is not a
+plan replacement and it cannot amend or erase project truth. The change anchors are
+planning provenance; later runs still use their distinct, server-derived exact `basis`.
 
 Each work item created by either command has an `operation` reference with an exact ID,
 version, and state-reference bindings. The code-owned registry accepts only its reviewed

@@ -189,6 +189,102 @@ Deno.test("engineering Workbench keeps an explicit successor in one activity", (
   }]);
 });
 
+Deno.test("engineering Workbench keeps same-phase successors in one activity", () => {
+  const thread = threadFixture();
+  const base = projectFixture(thread.subject.id, thread.id);
+  const root = projectWork("work-cad", "cad", "geometry@1");
+  const successor = {
+    ...projectWork("work-cad-v2", "cad", "geometry@2"),
+    activityId: root.activityId,
+    predecessorRevisionId: root.id,
+  };
+  const project: EngineeringProjectSnapshot = {
+    ...base,
+    phases: [projectPhase("cad", 1, "work-cad", "work-cad-v2")],
+    workItems: [successor, root],
+  };
+  const resolver: EngineeringOperationPathLaneResolver = {
+    resolve(operation) {
+      if (operation.id === "geometry") return { kind: "fixed", lane: "geometry" };
+      return undefined;
+    },
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(
+    project,
+    thread,
+    1,
+    [],
+    [],
+    resolver,
+  );
+  if (result.surface !== "evidence") {
+    throw new Error("Expected observed proof to use the evidence surface.");
+  }
+  assertEquals(result.projectPath.phaseLanes, [{
+    phaseId: "cad",
+    lane: "geometry",
+  }]);
+  assertEquals(result.projectPath.activities, [{
+    id: root.activityId,
+    lane: "geometry",
+    rootRevisionId: "work-cad",
+    revisionIds: ["work-cad", "work-cad-v2"],
+  }]);
+});
+
+Deno.test("engineering Workbench keeps mixed-lane scheduling phases total without merging activities", () => {
+  const thread = threadFixture();
+  const base = projectFixture(thread.subject.id, thread.id);
+  const project: EngineeringProjectSnapshot = {
+    ...base,
+    phases: [projectPhase("shared", 1, "work-cad", "work-arch")],
+    workItems: [
+      projectWork("work-cad", "shared", "geometry@1"),
+      projectWork("work-arch", "shared", "architecture@1"),
+    ],
+  };
+  const resolver: EngineeringOperationPathLaneResolver = {
+    resolve(operation) {
+      if (operation.id === "geometry") return { kind: "fixed", lane: "geometry" };
+      if (operation.id === "architecture") {
+        return { kind: "fixed", lane: "system-model" };
+      }
+      return undefined;
+    },
+  };
+
+  const result = projectEngineeringWorkbenchSnapshot(
+    project,
+    thread,
+    1,
+    [],
+    [],
+    resolver,
+  );
+  if (result.surface !== "evidence") {
+    throw new Error("Expected observed proof to use the evidence surface.");
+  }
+  assertEquals(result.projectPath.phaseLanes, [{
+    phaseId: "shared",
+    lane: "geometry",
+  }]);
+  assertEquals(result.projectPath.activities, [
+    {
+      id: "activity:work-arch",
+      lane: "system-model",
+      rootRevisionId: "work-arch",
+      revisionIds: ["work-arch"],
+    },
+    {
+      id: "activity:work-cad",
+      lane: "geometry",
+      rootRevisionId: "work-cad",
+      revisionIds: ["work-cad"],
+    },
+  ]);
+});
+
 Deno.test("engineering Workbench labels a dangling evidence reference instead of hiding the projection", () => {
   const thread = threadFixture();
   const project = projectFixture(thread.subject.id, thread.id);
@@ -295,14 +391,14 @@ function planningProjectFixture(): EngineeringProjectSnapshot {
 function projectPhase(
   id: string,
   order: number,
-  workItemId: string,
+  ...workItemIds: string[]
 ): EngineeringProjectSnapshot["phases"][number] {
   return {
     id,
     name: "Deliberately non-classifying phase label",
     order,
     description: "Classification comes from the exact operation only.",
-    workItemIds: [workItemId],
+    workItemIds,
     requiredDecisionIds: [],
     evidenceRefs: [],
   };
