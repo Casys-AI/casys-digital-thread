@@ -69,4 +69,7 @@ Each target STEP asset uses the deterministic capture-scoped identity
 may coexist. A successor archives only the exact prior target capture and its target
 files; an active V2 bundle that covers that target is a fail-closed conflict, never a
 partial V2 archive. Product projection therefore does not infer complete assembly
-coverage from this evidence.
+coverage from this evidence. It may nevertheless attach the target STEP and reviewed GLB
+to every Product occurrence whose SysON `part-definition` binding has the exact signed
+element ID. That remains a PartDefinition surface only: the projector creates no assembly,
+occurrence, placement, or complete-product coverage claim.

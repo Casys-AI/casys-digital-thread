@@ -373,6 +373,80 @@ Deno.test("exact digital-thread bindings link a PartDefinition STEP without inve
   );
 });
 
+Deno.test("a targeted PartDefinition capture resolves its exact STEP and GLB without an assembly claim", () => {
+  const snapshot = minimalSnapshot();
+  const captureDigest = "3".repeat(64);
+  const stepDigest = "4".repeat(64);
+  const glbDigest = "5".repeat(64);
+  const capture = projectedGeometryCapture(captureDigest);
+  const step = projectedTargetGeometryBinary(
+    captureDigest,
+    stepDigest,
+    "step",
+    "step",
+    0,
+  );
+  const glb = projectedTargetGeometryBinary(
+    captureDigest,
+    glbDigest,
+    "cad-model",
+    "glb",
+    1,
+  );
+  snapshot.artifacts.push(capture, step, glb);
+  snapshot.graph.edges.push(
+    projectedTrace(capture.id, step.id),
+    projectedTrace(capture.id, glb.id),
+  );
+  snapshot.components.components = [{
+    id: "usage-arm",
+    label: "Arm",
+    kind: "part",
+    quantity: 1,
+    bindings: [{
+      provider: "syson",
+      kind: "part-definition",
+      id: "definition-arm",
+      label: "Arm",
+      evidenceArtifactId: "architecture-arm",
+      status: "verified",
+    }, {
+      provider: "digital-thread",
+      kind: "artifact",
+      id: step.id,
+      label: "Authoritative STEP: Arm",
+      evidenceArtifactId: capture.id,
+      status: "verified",
+      selection: { kind: "artifact", id: capture.id },
+    }],
+    preview: {
+      provider: "build123d",
+      artifactId: glb.id,
+      mediaType: "model/gltf-binary",
+      url: glb.uri!,
+      sha256: glbDigest,
+    },
+  }];
+
+  const surface = resolveCadSurface(
+    snapshot,
+    snapshot.components.components[0]!,
+  );
+
+  assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
+  assertEquals(surface?.scope, "part");
+  assertEquals(surface?.representation, "authoritative-step");
+  assertEquals(surface?.authoritativeArtifact.id, step.id);
+  assertEquals(surface?.presentationArtifact?.id, glb.id);
+  assertEquals(surface?.preview?.url, glb.uri);
+  assertEquals(cadSurfaceCoverage(snapshot), {
+    assemblySurfaces: 0,
+    partSurfaces: 1,
+    totalComponents: 1,
+  });
+  assertEquals(sealedAssemblyGeometryBlocker(snapshot), undefined);
+});
+
 Deno.test("exact v2 PartDefinition mapping resolves one reusable GLB viewer per selected part", () => {
   const snapshot = minimalSnapshot();
   const captureDigest = "7".repeat(64);
@@ -596,7 +670,7 @@ Deno.test("v2 geometry fails closed on discontinuous server-owned file indexes",
   assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
   assertEquals(
     sealedAssemblyGeometryBlocker(snapshot)?.startsWith(
-      "The active geometry capture does not project a complete",
+      "The active geometry capture does not project an exactly linked",
     ),
     true,
   );
@@ -841,7 +915,7 @@ Deno.test("an incomplete active geometry projection is a motivated blocker", () 
   assertEquals(resolveSealedAssemblyGeometry(snapshot), undefined);
   assertEquals(
     sealedAssemblyGeometryBlocker(snapshot),
-    "The active geometry capture does not project a complete, exactly linked assembly STEP and asset set. Product will not infer a result from labels or timestamps.",
+    "The active geometry capture does not project an exactly linked assembly or targeted PartDefinition STEP and asset set. Product will not infer a result from labels or timestamps.",
   );
 });
 
@@ -1511,6 +1585,26 @@ function projectedV2GeometryBinary(
   return {
     id: `cad-asset-${captureDigest}-${identitySegment}-${assetDigest}`,
     label: `${extension.toUpperCase()} geometry asset`,
+    kind,
+    system: "build123d-sandbox",
+    revision: assetDigest,
+    freshness: "fresh",
+    fingerprint: `sha256:${assetDigest}`,
+    uri: `/api/thread/assets/${assetDigest}.${extension}`,
+    dependsOn: [],
+  };
+}
+
+function projectedTargetGeometryBinary(
+  captureDigest: string,
+  assetDigest: string,
+  kind: string,
+  extension: string,
+  fileIndex: number,
+): ThreadArtifact {
+  return {
+    id: `cad-asset-${captureDigest}-target-${fileIndex}-${assetDigest}`,
+    label: `${extension.toUpperCase()} targeted geometry asset`,
     kind,
     system: "build123d-sandbox",
     revision: assetDigest,

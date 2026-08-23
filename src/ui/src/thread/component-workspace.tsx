@@ -533,7 +533,7 @@ function CadGeometry({ snapshot, selected, onSelect, onInspect }: {
           role="alert"
         >
           <strong className="block font-semibold">
-            Assembly result unavailable
+            Geometry result unavailable
           </strong>
           <p className="mt-1">{geometryBlocker}</p>
         </div>
@@ -1219,14 +1219,14 @@ function cadCoverageLabel(
     return "1 sealed assembly · no independent part geometry";
   }
   const assembly = coverage.assemblySurfaces === 0
-    ? "no assembly mesh"
-    : `${coverage.assemblySurfaces} assembly mesh${
-      coverage.assemblySurfaces === 1 ? "" : "es"
+    ? "no assembly geometry"
+    : `${coverage.assemblySurfaces} assembly geometr${
+      coverage.assemblySurfaces === 1 ? "y" : "ies"
     }`;
   const parts = coverage.partSurfaces === 0
-    ? "no part meshes"
-    : `${coverage.partSurfaces} part mesh${
-      coverage.partSurfaces === 1 ? "" : "es"
+    ? "no PartDefinition geometry"
+    : `${coverage.partSurfaces} PartDefinition geometr${
+      coverage.partSurfaces === 1 ? "y" : "ies"
     }`;
   return `${assembly} · ${parts}`;
 }

@@ -5401,25 +5401,77 @@ Deno.test("target PartDefinition seal reopens one admitted draft, promotes deter
         }`,
       );
     }
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      queued.fixture.archCaptures,
+      queued.fixture.geoCaptures,
+    );
+    assertExists(catalog);
+    assertStringIncludes(catalog.rationale, "active targeted geometry capture set");
+    const targetComponents = catalog.components.filter((component) =>
+      component.bindings.some((binding) =>
+        binding.provider === "syson" && binding.kind === "part-definition" &&
+        binding.id === queued.manifest.target.partDefinitionElementId
+      )
+    );
+    assertEquals(targetComponents.length, 2);
+    const stepIndex = queued.manifest.target.files!.findIndex((file) =>
+      file.format === "step"
+    );
+    const glbIndex = queued.manifest.target.files!.findIndex((file) =>
+      file.format === "gltf"
+    );
+    const targetStep = queued.manifest.target.files![stepIndex]!;
+    const targetGlb = queued.manifest.target.files![glbIndex]!;
+    const expectedTargetBinding = {
+      provider: "digital-thread" as const,
+      kind: "artifact" as const,
+      id:
+        `cad-asset-${primary.fingerprint.digest}-target-${stepIndex}-${targetStep.fingerprint.digest}`,
+      label: `Authoritative STEP: ${queued.manifest.target.label}`,
+      evidenceArtifactId: primary.id,
+    };
+    assertEquals(
+      targetComponents.map((component) =>
+        component.bindings.find((binding) =>
+        binding.provider === "digital-thread" && binding.kind === "artifact"
+        )
+      ),
+      [expectedTargetBinding, expectedTargetBinding],
+    );
+    const expectedTargetPreview = {
+      provider: "build123d",
+      artifactId:
+        `cad-asset-${primary.fingerprint.digest}-target-${glbIndex}-${targetGlb.fingerprint.digest}`,
+      mediaType: "model/gltf-binary",
+      url: `/api/thread/assets/${targetGlb.fingerprint.digest}.glb`,
+      sha256: targetGlb.fingerprint.digest,
+    } as const;
+    assertEquals(
+      targetComponents.map((component) => component.preview),
+      [expectedTargetPreview, expectedTargetPreview],
+    );
+    assertStringIncludes(catalog.rationale, "no assembly");
     const targetOnly = {
       ...snapshot,
       artifacts: snapshot.artifacts.filter((artifact) =>
         artifact.kind !== "cad-model" || artifact.id === primary.id
       ),
     } as ThreadSnapshot;
-    const catalog = await resolveGenericProductStructureCatalog(
+    const incompleteCatalog = await resolveGenericProductStructureCatalog(
       targetOnly,
       queued.fixture.archCaptures,
       queued.fixture.geoCaptures,
     );
-    assertExists(catalog);
+    assertExists(incompleteCatalog);
     assertEquals(
-      catalog.components.flatMap((component) => component.bindings).filter((binding) =>
-        binding.provider === "digital-thread" && binding.kind === "artifact"
-      ).length,
+      incompleteCatalog.components.flatMap((component) => component.bindings)
+        .filter((binding) =>
+          binding.provider === "digital-thread" && binding.kind === "artifact"
+        ).length,
       0,
     );
-    assertStringIncludes(catalog.rationale, "targeted PartDefinition capture");
+    assertStringIncludes(incompleteCatalog.rationale, "missing or ambiguous");
     await executor.execute(AGENT, command);
     assertEquals(queued.providerCalls.value, 1);
     assertEquals(queued.fixture.admissions.calls.length, 4);
@@ -5689,6 +5741,23 @@ Deno.test("same-target target seals supersede only their own files while differe
     )) {
       assertEquals(archived.has(`artifact:${artifact.id}`), false);
     }
+    const catalog = await resolveGenericProductStructureCatalog(
+      snapshot,
+      successorQueued.fixture.archCaptures,
+      successorQueued.fixture.geoCaptures,
+    );
+    assertExists(catalog);
+    const targetBindings = catalog.components.flatMap((component) =>
+      component.bindings.filter((binding) =>
+        binding.provider === "digital-thread" && binding.kind === "artifact"
+      )
+    );
+    assertEquals(targetBindings.length, 4);
+    assertEquals(
+      new Set(targetBindings.map((binding) => binding.evidenceArtifactId)).size,
+      2,
+    );
+    assertStringIncludes(catalog.rationale, "active targeted geometry capture set");
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }

@@ -51,8 +51,10 @@ Target capture succession is scoped to the exact PartDefinition element ID: diff
 targets coexist, while a same-target successor archives only the previous target capture
 and its `cad-asset-<captureDigest>-target-<fileIndex>-<fileDigest>` files. An active V2
 bundle covering the requested target is a fail-closed conflict; the sealer never partially
-archives a V2 assembly family. The product catalog consequently does not project a target
-capture as an assembly. FEA source admission accepts its STEP only when the proof target
+archives a V2 assembly family. The Product catalog maps a verified target capture only to
+occurrences carrying the exact signed SysON PartDefinition identity, with STEP authoritative
+and GLB presentational; it never projects that target as an assembly. FEA source admission
+accepts its STEP only when the proof target
 equals that captured PartDefinition and the target artifact's kind, media type, digest and
 byte count are exact; a `cad-model` capture is never proof geometry.
 

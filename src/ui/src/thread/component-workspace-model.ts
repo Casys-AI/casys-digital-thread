@@ -185,45 +185,54 @@ function resolveAuthoritativeStepSurface(
   snapshot: ThreadWorkbenchSnapshot,
   component: ThreadComponent,
 ): CadSurfaceResolution | undefined {
-  const sealed = resolveSealedAssemblyGeometry(snapshot);
-  if (!sealed) return undefined;
-  const captureDigest = geometryCaptureDigest(sealed.captureArtifact);
-  if (!captureDigest) return undefined;
-
   const candidates = component.bindings.flatMap((binding) => {
     if (
       binding.provider !== "digital-thread" || binding.kind !== "artifact" ||
-      binding.status !== "verified" ||
-      binding.evidenceArtifactId !== sealed.captureArtifact.id
+      binding.status !== "verified"
     ) return [];
+    const captureArtifact = snapshot.artifacts.find((candidate) =>
+      candidate.id === binding.evidenceArtifactId &&
+      geometryCaptureDigest(candidate) !== undefined
+    );
+    if (!captureArtifact) return [];
+    const captureDigest = geometryCaptureDigest(captureArtifact)!;
     const artifact = snapshot.artifacts.find((candidate) =>
       candidate.id === binding.id
     );
     if (!artifact || artifact.system !== "build123d-sandbox") return [];
     const record = classifyGeometryBinary(artifact, captureDigest);
-    const exactScope = component.kind === "assembly"
+    const exactScope = record?.scope === "target"
+      ? component.kind === "part"
+      : component.kind === "assembly"
       ? record?.scope === "assembly"
       : record?.scope === "definition";
     if (
-      record?.generation !== "v2" || record.format !== "STEP" || !exactScope
+      !record || record.generation === "legacy" || record.format !== "STEP" ||
+      !exactScope ||
+      (record.generation === "v2" &&
+        resolveSealedAssemblyGeometry(snapshot)?.captureArtifact.id !==
+          captureArtifact.id)
     ) return [];
     const traced = snapshot.graph.edges.filter((edge) =>
       edge.relation === "traces_to" && edge.from.kind === "artifact" &&
-      edge.from.id === sealed.captureArtifact.id &&
+      edge.from.id === captureArtifact.id &&
       edge.to.kind === "artifact" && edge.to.id === artifact.id
     );
-    return traced.length === 1 ? [{ binding, artifact, record }] : [];
+    return traced.length === 1
+      ? [{ binding, artifact, record, captureArtifact, captureDigest }]
+      : [];
   });
   if (candidates.length !== 1) return undefined;
   const resolved = candidates[0]!;
   const presentation = component.kind === "part" &&
-      resolved.record.scope === "definition"
+      (resolved.record.scope === "definition" ||
+        resolved.record.scope === "target")
     ? resolveExactPartDefinitionGlb(
       snapshot,
       component.preview,
-      sealed.captureArtifact,
-      captureDigest,
-      resolved.record.definitionIndex,
+      resolved.captureArtifact,
+      resolved.captureDigest,
+      resolved.record,
     )
     : undefined;
   return {
@@ -255,7 +264,10 @@ function resolveExactPartDefinitionGlb(
   preview: ThreadComponentPreview | undefined,
   captureArtifact: ThreadArtifact,
   captureDigest: string,
-  definitionIndex: number,
+  authoritativeRecord: Extract<
+    GeometryBinaryRecord,
+    { readonly scope: "definition" | "target" }
+  >,
 ):
   | {
     readonly artifact: ThreadArtifact;
@@ -278,9 +290,13 @@ function resolveExactPartDefinitionGlb(
     fingerprintDigest(artifact.fingerprint) !== preview.sha256
   ) return undefined;
   const record = classifyGeometryBinary(artifact, captureDigest);
+  const sameTarget = authoritativeRecord.scope === "target"
+    ? record?.scope === "target"
+    : record?.scope === "definition" &&
+      record.definitionIndex === authoritativeRecord.definitionIndex;
   if (
-    record?.generation !== "v2" || record.scope !== "definition" ||
-    record.definitionIndex !== definitionIndex || record.format !== "GLB"
+    !record || record.generation === "legacy" || !sameTarget ||
+    record.format !== "GLB"
   ) return undefined;
   const traces = snapshot.graph.edges.filter((edge) =>
     edge.relation === "traces_to" && edge.from.kind === "artifact" &&
@@ -527,12 +543,17 @@ export function sealedAssemblyGeometryBlocker(
     geometryCaptureDigest(artifact) !== undefined
   );
   if (captures.length === 0) return undefined;
+  if (
+    resolveSealedAssemblyGeometry(snapshot) !== undefined ||
+    snapshot.components.components.some((component) => {
+      const surface = resolveAuthoritativeStepSurface(snapshot, component);
+      return surface?.scope === "part";
+    })
+  ) return undefined;
   if (!selectActiveGeometryCapture(snapshot, captures)) {
     return "Multiple active geometry captures are present without one exact supersession tip. Product cannot choose an authoritative assembly result.";
   }
-  return resolveSealedAssemblyGeometry(snapshot) === undefined
-    ? "The active geometry capture does not project a complete, exactly linked assembly STEP and asset set. Product will not infer a result from labels or timestamps."
-    : undefined;
+  return "The active geometry capture does not project an exactly linked assembly or targeted PartDefinition STEP and asset set. Product will not infer a result from labels or timestamps.";
 }
 
 function isBuild123dArtifact(artifact: ThreadArtifact): boolean {
@@ -613,7 +634,7 @@ function reachesTip(
 type GeometryBinaryRecord =
   & {
     readonly artifact: ThreadArtifact;
-    readonly generation: "legacy" | "v2";
+    readonly generation: "legacy" | "v2" | "target";
     readonly format: string;
   }
   & (
@@ -627,6 +648,11 @@ type GeometryBinaryRecord =
       readonly generation: "legacy";
     }
     | { readonly scope: "legacy-part-mesh" }
+    | {
+      readonly scope: "target";
+      readonly fileIndex: number;
+      readonly generation: "target";
+    }
     | {
       readonly scope: "definition";
       readonly definitionIndex: number;
@@ -681,6 +707,23 @@ function classifyGeometryBinary(
       scope: "definition",
       definitionIndex: Number(definitionV2[1]),
       fileIndex: Number(definitionV2[2]),
+      format,
+    };
+  }
+  const target = artifact.id.match(
+    new RegExp(
+      `^cad-asset-${captureDigest}-target-(\\d+)-(${assetDigest})$`,
+    ),
+  );
+  if (target) {
+    if (!artifactKindMatchesFormat(artifact, format, "definition")) {
+      return undefined;
+    }
+    return {
+      artifact,
+      generation: "target",
+      scope: "target",
+      fileIndex: Number(target[1]),
       format,
     };
   }

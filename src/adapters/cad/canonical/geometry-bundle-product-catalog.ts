@@ -30,6 +30,15 @@ import {
   parseGeometryBundleDecisionParameters,
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
 import {
+  encodeGeometryPartDecisionParameters,
+  type GeometryPartManifest,
+  parseGeometryPartDecisionParameters,
+} from "../../../domain/cad/canonical/geometry-part-manifest.ts";
+import {
+  parseGeometryPartDraftAdmission,
+  requireNamedCadLeverInDraftScript,
+} from "../../../domain/cad/canonical/geometry-draft-admission.ts";
+import {
   type ThreadComponentBinding,
   type ThreadComponentCatalog,
   type ThreadComponentPreview,
@@ -57,8 +66,7 @@ export interface GenericGeometryCaptureReader {
 type GeometrySelection =
   | { readonly kind: "absent" }
   | { readonly kind: "retired" }
-  | { readonly kind: "ambiguous" }
-  | { readonly kind: "one"; readonly artifact: ThreadArtifact };
+  | { readonly kind: "active"; readonly artifacts: readonly ThreadArtifact[] };
 
 interface VerifiedGeometryBundle {
   readonly primary: ThreadArtifact;
@@ -66,6 +74,13 @@ interface VerifiedGeometryBundle {
   readonly stepByDefinitionId: ReadonlyMap<string, ThreadArtifact>;
   readonly glbByDefinitionId: ReadonlyMap<string, ThreadArtifact>;
   readonly assemblyStep: ThreadArtifact;
+}
+
+interface VerifiedTargetGeometry {
+  readonly primary: ThreadArtifact;
+  readonly manifest: GeometryPartManifest;
+  readonly step: ThreadArtifact;
+  readonly glb?: ThreadArtifact;
 }
 
 class GeometryBundleProjectionError extends Error {
@@ -100,33 +115,51 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
       "The sealed geometry family is explicitly archived; no current PartDefinition CAD binding is claimed.",
     );
   }
-  if (selected.kind === "ambiguous") {
-    return withoutCad(
-      architectureCatalog,
-      "Geometry evidence has multiple active capture tips; PartDefinition CAD mapping requires manual lineage review.",
-    );
-  }
-
   try {
-    const result = await verifyGeometryCapture(
-      snapshot,
-      architectureCatalog,
-      selected.artifact,
-      captures,
+    const results = await Promise.all(selected.artifacts.map((artifact) =>
+      verifyGeometryCapture(
+        snapshot,
+        architectureCatalog,
+        artifact,
+        captures,
+      )
+    ));
+    const targets = results.flatMap((result) =>
+      result.kind === "targeted" ? [result.target] : []
     );
-    if (result.kind === "legacy") {
+    const bundles = results.flatMap((result) =>
+      result.kind === "bundle" ? [result.bundle] : []
+    );
+    const legacyCount = results.filter((result) => result.kind === "legacy").length;
+    const targetIds = new Set(
+      targets.map((target) => target.manifest.target.partDefinitionElementId),
+    );
+    if (
+      targetIds.size !== targets.length || bundles.length > 1 || legacyCount > 1 ||
+      (bundles.length > 0 && targets.length > 0) ||
+      (bundles.length > 0 && legacyCount > 0)
+    ) {
+      return withoutCad(
+        architectureCatalog,
+        "Geometry evidence has conflicting active capture tips; PartDefinition CAD mapping requires manual lineage review.",
+      );
+    }
+    if (targets.length > 0) {
+      return attachExactTargetCadBindings(architectureCatalog, targets);
+    }
+    if (bundles[0]) {
+      return attachExactCadBindings(architectureCatalog, bundles[0]);
+    }
+    if (legacyCount === 1) {
       return withoutCad(
         architectureCatalog,
         "The active geometry capture is an assembly-only seal; it contains no independent PartDefinition STEP mapping.",
       );
     }
-    if (result.kind === "targeted") {
-      return withoutCad(
-        architectureCatalog,
-        "A targeted PartDefinition capture has no assembly, occurrence, or placement claim; Product does not infer complete assembly CAD coverage.",
-      );
-    }
-    return attachExactCadBindings(architectureCatalog, result.bundle);
+    return withoutCad(
+      architectureCatalog,
+      "No verifiable active geometry capture result is available.",
+    );
   } catch (error) {
     const reason = error instanceof GeometryBundleProjectionError
       ? error.reason
@@ -144,9 +177,7 @@ function selectGeometryCapture(snapshot: ThreadSnapshot): GeometrySelection {
   const archived = archivedRefKeys(snapshot);
   const active = all.filter((artifact) => !archived.has(`artifact:${artifact.id}`));
   if (active.length === 0) return { kind: "retired" };
-  return active.length === 1
-    ? { kind: "one", artifact: active[0]! }
-    : { kind: "ambiguous" };
+  return { kind: "active", artifacts: active };
 }
 
 async function verifyGeometryCapture(
@@ -156,7 +187,7 @@ async function verifyGeometryCapture(
   captures: GenericGeometryCaptureReader,
 ): Promise<
   | { readonly kind: "legacy" }
-  | { readonly kind: "targeted" }
+  | { readonly kind: "targeted"; readonly target: VerifiedTargetGeometry }
   | { readonly kind: "bundle"; readonly bundle: VerifiedGeometryBundle }
 > {
   const text = await captures.read(primary.fingerprint);
@@ -200,10 +231,17 @@ async function verifyGeometryCapture(
   const sealedAt = canonicalInstant(capture.sealedAt, "sealedAt");
   assertExactPrimary(primary, trustedRunId, sealedAt);
 
-  // A target capture is deliberately not parsed through the bundle projector:
-  // a single PartDefinition proves no assembly, occurrence, or placement.
   if (schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
-    return { kind: "targeted" };
+    return {
+      kind: "targeted",
+      target: await verifyTargetGeometryCapture(
+        snapshot,
+        catalog,
+        primary,
+        capture,
+        sealedAt,
+      ),
+    };
   }
 
   if (
@@ -288,6 +326,204 @@ function normalizeCompletedManifest(
   }
 }
 
+function normalizeCompletedTargetManifest(
+  value: unknown,
+  draftDigest: string,
+): GeometryPartManifest {
+  try {
+    const manifest = value as GeometryPartManifest;
+    const encoded = encodeGeometryPartDecisionParameters(draftDigest, manifest);
+    const normalized = parseGeometryPartDecisionParameters(
+      new Map(encoded.map((parameter) => [parameter.key, parameter.value])),
+    );
+    if (deterministicJson(normalized.manifest) !== deterministicJson(value)) {
+      fail("The targeted geometry manifest is not an exact canonical record.");
+    }
+    return normalized.manifest;
+  } catch (error) {
+    if (error instanceof GeometryBundleProjectionError) throw error;
+    fail("The targeted geometry manifest is structurally invalid.");
+  }
+}
+
+async function verifyTargetGeometryCapture(
+  snapshot: ThreadSnapshot,
+  catalog: ThreadComponentCatalog,
+  primary: ThreadArtifact,
+  capture: Record<string, unknown>,
+  sealedAt: string,
+): Promise<VerifiedTargetGeometry> {
+  assertOnlyKeys(capture, [
+    "schemaVersion",
+    "operation",
+    "trustedRunId",
+    "draftDigest",
+    "manifest",
+    "architectureBasis",
+    "previewProducer",
+    "sourceScript",
+    "sourceAnalysis",
+    "sealedAt",
+  ], "targeted geometry capture");
+  const draftDigest = digest(capture.draftDigest, "draftDigest");
+  const manifest = normalizeCompletedTargetManifest(
+    capture.manifest,
+    draftDigest,
+  );
+  const previewProducer = exactPreviewProducer(capture.previewProducer);
+  const architectureArtifact = exactArchitectureArtifact(snapshot, catalog);
+  assertArchitectureBasis(
+    capture.architectureBasis,
+    manifest,
+    architectureArtifact,
+  );
+  assertExactPrimaryInputs(
+    snapshot,
+    primary,
+    architectureArtifact,
+    manifest,
+    sealedAt,
+  );
+
+  const source = exactObject(capture.sourceScript, [
+    "partDefinitionElementId",
+    "label",
+    "script",
+    "scriptHash",
+    "admission",
+    "authoritativeStep",
+  ], "sourceScript");
+  const sourceId = nonEmpty(
+    source.partDefinitionElementId,
+    "sourceScript.partDefinitionElementId",
+  );
+  const sourceLabel = nonEmpty(source.label, "sourceScript.label");
+  const script = nonEmpty(source.script, "sourceScript.script");
+  const scriptHash = exactFingerprint(source.scriptHash, "sourceScript.scriptHash");
+  let admission: ReturnType<typeof parseGeometryPartDraftAdmission>;
+  try {
+    admission = parseGeometryPartDraftAdmission(
+      source.admission,
+      "$geometryPartCapture.sourceScript.admission",
+    );
+    requireNamedCadLeverInDraftScript(
+      script,
+      "$geometryPartCapture.sourceScript.script",
+    );
+  } catch {
+    fail("The targeted geometry source admission is invalid.");
+  }
+  if (
+    sourceId !== manifest.target.partDefinitionElementId ||
+    sourceLabel !== manifest.target.label ||
+    !fingerprintsEqual(scriptHash, manifest.target.scriptHash) ||
+    !fingerprintsEqual(admission.sourceFingerprint, scriptHash) ||
+    admission.target.partDefinitionElementId !== sourceId ||
+    admission.target.label !== sourceLabel ||
+    !fingerprintsEqual(await textFingerprint(script), scriptHash)
+  ) {
+    fail("The targeted geometry source identity or hash is not exact.");
+  }
+
+  const stepRecord = exactObject(
+    source.authoritativeStep,
+    ["fileIndex", "fingerprint", "bytes"],
+    "sourceScript.authoritativeStep",
+  );
+  if (
+    typeof stepRecord.fileIndex !== "number" ||
+    !Number.isSafeInteger(stepRecord.fileIndex) || stepRecord.fileIndex < 0 ||
+    typeof stepRecord.bytes !== "number" ||
+    !Number.isSafeInteger(stepRecord.bytes) || stepRecord.bytes <= 0
+  ) {
+    fail("The targeted authoritative STEP index or byte count is invalid.");
+  }
+  const signedStep = manifest.target.files?.[stepRecord.fileIndex];
+  if (
+    !signedStep || signedStep.format !== "step" ||
+    !fingerprintsEqual(
+      exactFingerprint(
+        stepRecord.fingerprint,
+        "sourceScript.authoritativeStep.fingerprint",
+      ),
+      signedStep.fingerprint,
+    )
+  ) {
+    fail("The targeted authoritative STEP is not the signed STEP file.");
+  }
+
+  const analysis = sourceAnalysisReference(capture.sourceAnalysis, "sourceAnalysis");
+  const expectedSourceId = (await textFingerprint(sourceId)).digest;
+  if (
+    analysis.selector.kind !== "part-definition" ||
+    analysis.selector.elementId !== sourceId ||
+    analysis.sourceId !== `cad-part-definition:${expectedSourceId}` ||
+    !fingerprintsEqual(analysis.sourceFingerprint, scriptHash)
+  ) {
+    fail("The targeted geometry source-analysis identity is not exact.");
+  }
+
+  const files = manifest.target.files ?? [];
+  const artifacts = files.map((file, fileIndex) =>
+    requireExactBinary(
+      snapshot,
+      primary,
+      file,
+      `cad-asset-${primary.fingerprint.digest}-target-${fileIndex}-${file.fingerprint.digest}`,
+      `${file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()}: ${manifest.target.label}`,
+      previewProducer,
+      sealedAt,
+      "part-definition",
+    )
+  );
+  assertExactTargetFamily(snapshot, primary, artifacts);
+  const step = artifacts.filter((artifact) => artifact.kind === "step");
+  if (step.length !== 1) {
+    fail("The targeted geometry does not have one exact authoritative STEP.");
+  }
+  const glb = artifacts.filter((artifact) => artifact.uri?.endsWith(".glb"));
+  if (glb.length > 1) {
+    fail("The targeted geometry has ambiguous GLB presentation assets.");
+  }
+  return {
+    primary,
+    manifest,
+    step: step[0]!,
+    ...(glb[0] ? { glb: glb[0] } : {}),
+  };
+}
+
+function assertExactTargetFamily(
+  snapshot: ThreadSnapshot,
+  primary: ThreadArtifact,
+  artifacts: readonly ThreadArtifact[],
+): void {
+  const expected = new Set([primary.id, ...artifacts.map((artifact) => artifact.id)]);
+  const archived = archivedRefKeys(snapshot);
+  const tracedIds = new Set(
+    snapshot.provenance.filter((link) =>
+      link.relation === "traces_to" && link.from.kind === "artifact" &&
+      link.to.kind === "artifact" && link.to.id === primary.id
+    ).map((link) => link.from.id),
+  );
+  const activeFamily = snapshot.artifacts.filter((artifact) =>
+    !archived.has(`artifact:${artifact.id}`) &&
+    (artifact.id === primary.id ||
+      artifact.id.startsWith(`cad-asset-${primary.fingerprint.digest}-`) ||
+      tracedIds.has(artifact.id))
+  );
+  const actual = new Set(activeFamily.map((artifact) => artifact.id));
+  if (
+    activeFamily.length !== expected.size || actual.size !== expected.size ||
+    [...expected].some((id) => !actual.has(id)) ||
+    [...actual].some((id) => !expected.has(id))
+  ) {
+    fail(
+      "The targeted geometry binary family is incomplete or contains an unreviewed extra artifact.",
+    );
+  }
+}
+
 function exactArchitectureArtifact(
   snapshot: ThreadSnapshot,
   catalog: ThreadComponentCatalog,
@@ -311,7 +547,8 @@ function exactArchitectureArtifact(
 
 function assertArchitectureBasis(
   value: unknown,
-  manifest: GeometryBundleManifest,
+  manifest: Pick<GeometryBundleManifest, "architectureBasis"> |
+    Pick<GeometryPartManifest, "architectureBasis">,
   artifact: ThreadArtifact,
 ): void {
   const basis = exactObject(
@@ -592,7 +829,9 @@ function assertExactPrimaryInputs(
   snapshot: ThreadSnapshot,
   primary: ThreadArtifact,
   architecture: ThreadArtifact,
-  manifest: GeometryBundleManifest,
+  manifest:
+    | Pick<GeometryBundleManifest, "predecessor">
+    | Pick<GeometryPartManifest, "predecessor">,
   sealedAt: string,
 ): void {
   const expected = [
@@ -909,7 +1148,7 @@ function requireExactBinary(
   snapshot: ThreadSnapshot,
   primary: ThreadArtifact,
   file: {
-    readonly format: GeometryBundleExportFormat;
+    readonly format: GeometryBundleExportFormat | "step" | "gltf" | "stl";
     readonly fingerprint: ContentFingerprint;
   },
   id: string,
@@ -1028,6 +1267,73 @@ function assertManifestMatchesCatalog(
       );
     }
   }
+}
+
+function attachExactTargetCadBindings(
+  catalog: ThreadComponentCatalog,
+  targets: readonly VerifiedTargetGeometry[],
+): ThreadComponentCatalog {
+  const targetByDefinitionId = new Map(
+    targets.map((target) => [
+      target.manifest.target.partDefinitionElementId,
+      target,
+    ]),
+  );
+  if (targetByDefinitionId.size !== targets.length) {
+    fail("Several active targeted captures name the same PartDefinition.");
+  }
+  const matchedTargetIds = new Set<string>();
+  const components = catalog.components.map((component) => {
+    const definitions = component.bindings.filter((binding) =>
+      binding.provider === "syson" && binding.kind === "part-definition"
+    );
+    const matching = definitions.flatMap((definition) => {
+      const target = targetByDefinitionId.get(definition.id);
+      return target ? [{ definition, target }] : [];
+    });
+    if (matching.length === 0) return component;
+    const { definition, target } = matching[0]!;
+    if (
+      matching.length !== 1 || definition.label !== target.manifest.target.label ||
+      component.bindings.some((binding) =>
+        binding.provider === "digital-thread" && binding.kind === "artifact"
+      )
+    ) {
+      fail(
+        `PartDefinition ${target.manifest.target.partDefinitionElementId} has an ambiguous Product catalog binding.`,
+      );
+    }
+    matchedTargetIds.add(target.manifest.target.partDefinitionElementId);
+    return {
+      ...component,
+      bindings: [
+        ...component.bindings,
+        cadBinding(
+          target.step,
+          `Authoritative STEP: ${target.manifest.target.label}`,
+          target.primary.id,
+        ),
+      ],
+      ...(target.glb ? { preview: glbPreview(target.glb) } : {}),
+    };
+  });
+  const unmatched = targets.filter((target) =>
+    !matchedTargetIds.has(target.manifest.target.partDefinitionElementId)
+  );
+  if (unmatched.length > 0) {
+    fail(
+      `The targeted geometry PartDefinition ${unmatched[0]!.manifest.target.partDefinitionElementId} is absent from the exact SysON Product catalog.`,
+    );
+  }
+  return validateThreadComponentCatalog({
+    ...catalog,
+    rationale:
+      "This Product Structure is derived from the exact architecture capture and " +
+      "the active targeted geometry capture set. Each signed PartDefinition identity " +
+      "maps to its authoritative STEP and reviewed GLB presentation when present; " +
+      "no assembly, occurrence, placement, or complete-product CAD coverage is claimed.",
+    components,
+  });
 }
 
 function attachExactCadBindings(
