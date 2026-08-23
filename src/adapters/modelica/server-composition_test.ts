@@ -17,6 +17,7 @@ import {
   createModelicaThermalMethodSheetJoin,
   createQualifiedModelicaCapability,
 } from "./server-composition.ts";
+import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
 
 const LIMITS = Object.freeze<IsolatedCodeExecutionLimits>({
   maxWallTimeMs: 120_000,
@@ -55,10 +56,12 @@ Deno.test("Modelica kit and admitted stay distinct; L4 evaluation requires SysON
       sysonModelSeedCaptureDirectory: `${root}/seed`,
       architectureCaptureDirectory: `${root}/architecture`,
       requirementsCaptureDirectory: `${root}/requirements`,
+      resources: testReopenAgentResource(`${root}/agent-resources`),
     });
     const compilation = createTechnicalCompilationFoundation({
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
+      resources: testReopenAgentResource(`${root}/agent-resources-compile`),
     });
     const compilationProject = createTechnicalCompilationProject({
       projects: runtime.projects,

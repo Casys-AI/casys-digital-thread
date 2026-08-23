@@ -42,10 +42,12 @@ fingerprint. Extra keys fail closed.
 
 ## Capture and compile
 
-1. `project_fea_proof_case_capture` takes `{ sourceText }` (max 262144 characters). The
-   server parses, validates, stores canonical JSON, rereads it, and returns
+1. `project_fea_proof_case_capture` takes a full `resourceRef` from
+   `project_resource_capture` (max 262144 bytes). The server reopens exact UTF-8 JSON,
+   parses, validates, stores canonical JSON, rereads it, and returns
    `fea-proof-case-source-capture-review/1.0` with opaque `reference.fingerprint` only.
-   Grants none. No project or Thread mutation.
+   That case fingerprint may differ from the raw resource SHA. Grants none. No project
+   or Thread mutation.
 2. `project_fea_proof_seal_review` takes `projectId` + `caseRef.fingerprint` and
    optional `sensitivityCatalogOptIn`. The server selects the unique current Thread tip
    — never `latest` — and recrosses unique canonical part STEP, CAD provenance, SysON

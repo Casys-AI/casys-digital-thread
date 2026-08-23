@@ -5,6 +5,7 @@ import type { CrossDomainImpactManifestStore } from "../../application/ports/out
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PrepareProjectCrossDomainImpactManifestCapture } from "../../application/use-cases/impact/prepare-project-cross-domain-impact-manifest-capture.ts";
+import type { ReopenAgentResource } from "../../application/use-cases/resource/reopen-agent-resource.ts";
 import { PrepareProjectCrossDomainImpactManifestSealReview } from "../../application/use-cases/impact/prepare-project-cross-domain-impact-manifest-seal-review.ts";
 import { PrepareCrossDomainImpactDecision } from "../../application/use-cases/impact/prepare-cross-domain-impact-decision.ts";
 import { PrepareCrossDomainImpactEvaluation } from "../../application/use-cases/impact/prepare-cross-domain-impact-evaluation.ts";
@@ -37,6 +38,7 @@ export interface CrossDomainImpactProjectOptions {
   };
   readonly lease: EngineeringProjectRunLease;
   readonly recordedAnalysisDirectory: string;
+  readonly resources: ReopenAgentResource;
 }
 
 export interface CrossDomainImpactProject {
@@ -100,6 +102,7 @@ export function createCrossDomainImpactProject(
   const briefGates = new ProjectCrossDomainImpactBriefGateReader(options.projects);
   const capture = new PrepareProjectCrossDomainImpactManifestCapture({
     manifests,
+    resources: options.resources,
   });
   const review = new PrepareProjectCrossDomainImpactManifestSealReview({
     manifests,

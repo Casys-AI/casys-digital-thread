@@ -242,6 +242,10 @@ export class TechnicalSourceAnalysisCaptureService {
     this.#profiles = dependencies.profiles;
   }
 
+  requireCaptureProfile(profileId: string): TechnicalSourceAnalysisProfile {
+    return this.#profiles.requireForCapture(profileId).profile;
+  }
+
   async capture(inputValue: {
     readonly profileId: string;
     /** Assigned by the server before this boundary; never derived from a label. */

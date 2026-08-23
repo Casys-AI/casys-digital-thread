@@ -185,6 +185,13 @@ import {
   VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION,
   VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
 } from "./src/adapters/electrical/server-composition.ts";
+import { createAgentResourceIngress } from "./src/adapters/resource/server-composition.ts";
+import { FileAgentResourceStore } from "./src/adapters/resource/file-agent-resource-store.ts";
+import { ProjectResourceCaptureError } from "./src/application/use-cases/resource/prepare-project-resource-capture.ts";
+import {
+  AgentResourceReopenError,
+  ReopenAgentResource,
+} from "./src/application/use-cases/resource/reopen-agent-resource.ts";
 import {
   createCalculixCapability,
   createFeaFoundation,
@@ -274,6 +281,7 @@ const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
 });
 const LOCAL_MODELICA_QUALIFICATION_ROOT =
   "state/local/modelica-microsandbox-qualification";
+const DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY = "state/local/agent-resource-captures";
 
 const LOCAL_BUILD123D_EXECUTION_LIMITS = Object.freeze({
   maxWallTimeMs: 30_000,
@@ -449,6 +457,8 @@ export interface CreateConsoleServerOptions {
   projectBaselineDirectory?: string;
   /** Root of the closed CAS/WAL layout used by isolated-analysis operations. */
   recordedAnalysisDirectory?: string;
+  /** Draft CAS for agent-authored MCP resource ingress. */
+  agentResourceDirectory?: string;
   /**
    * Explicit qualified Build123d profile and optional isolated runtime.
    * Omitted means no review tool and no executor. A profile without a runtime
@@ -544,6 +554,7 @@ export async function createConsoleServer(
     maxConcurrent: 8,
     backpressureStrategy: "queue",
     validateSchema: true,
+    expectResources: projectControl !== undefined,
     ...(projectControl || projectBrief
       ? {
         mrtr: {
@@ -559,6 +570,8 @@ export async function createConsoleServer(
         (error.name === "ControlPlaneNotFoundError" ||
           error instanceof EngineeringProjectCommandError ||
           error instanceof CockpitFocusConflictError ||
+          error instanceof ProjectResourceCaptureError ||
+          error instanceof AgentResourceReopenError ||
           error instanceof TypeError)
         ? error.message
         : null,
@@ -578,7 +591,14 @@ export async function createConsoleServer(
   }
   registerControlPlaneTools(app, controlPlane);
   if (projectControl) {
-    registerProjectControlTools(app, { ...projectControl, approvalMode });
+    const resourceExposure = defaultProjectTools
+      ? await defaultProjectTools.bindAgentResources(app)
+      : projectControl.resourceExposure;
+    registerProjectControlTools(app, {
+      ...projectControl,
+      ...(resourceExposure ? { resourceExposure } : {}),
+      approvalMode,
+    });
   }
   if (projectBrief) {
     registerProjectBriefTools(app, { ...projectBrief, approvalMode });
@@ -600,6 +620,9 @@ async function createProjectControl(
 ): Promise<{
   readonly control: ProjectControlToolDependencies;
   readonly brief: ProjectBriefToolDependencies;
+  readonly bindAgentResources: ReturnType<
+    typeof createAgentResourceIngress
+  >["bind"];
 }> {
   const activeThreadSnapshots = new FileThreadSnapshotStore(
     options.threadSnapshotDirectory ?? DEFAULT_THREAD_SNAPSHOT_DIRECTORY,
@@ -666,6 +689,10 @@ async function createProjectControl(
   // until each executor has admitted its exact queued run and source bytes.
   const recordedAnalysisDirectory = options.recordedAnalysisDirectory ??
     DEFAULT_RECORDED_ANALYSIS_DIRECTORY;
+  const agentResourceStore = new FileAgentResourceStore(
+    options.agentResourceDirectory ?? DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY,
+  );
+  const reopenAgentResource = new ReopenAgentResource(agentResourceStore);
 
   const architectureFoundation = createArchitectureFoundation({
     recordedAnalysisDirectory,
@@ -678,10 +705,12 @@ async function createProjectControl(
       DEFAULT_ARCHITECTURE_CAPTURE_DIRECTORY,
     requirementsCaptureDirectory: options.requirementsCaptureDirectory ??
       DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
+    resources: reopenAgentResource,
   });
   const compilationFoundation = createTechnicalCompilationFoundation({
     recordedAnalysisDirectory,
     snapshots: build123dThreadSnapshots,
+    resources: reopenAgentResource,
   });
 
   const build123dCapability = await createBuild123dCapability({
@@ -821,6 +850,7 @@ async function createProjectControl(
     snapshots: activeThreadSnapshots,
     lease,
     recordedAnalysisDirectory,
+    resources: reopenAgentResource,
   });
   const feaProject = createFeaProject({
     projects: runtime.projects,
@@ -838,6 +868,7 @@ async function createProjectControl(
     sysonMcpUrl,
     recordedAnalysisDirectory,
     canonicalAssetDirectory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
+    resources: reopenAgentResource,
   });
   const sensitivity = createSensitivityComposition({
     projects: runtime.projects,
@@ -846,7 +877,7 @@ async function createProjectControl(
     lease,
     admissions: compilationFoundation.technicalCompilationAdmissions,
     technicalCompilationPreview,
-    technicalSourceCapture: compilationFoundation.technicalSourceCapture,
+    technicalSourceCapture: compilationFoundation.technicalSourceAnalysis,
     feaProofCaptures: feaFoundation.feaProofCaptures,
     sensitivityCatalogOfferCaptures: feaFoundation.sensitivityCatalogOfferCaptures,
     sysonModelSeedCaptures: architectureFoundation.sysonModelSeedCaptures,
@@ -862,6 +893,7 @@ async function createProjectControl(
   });
   const electrical = createLedDriverSourceComposition({
     recordedAnalysisDirectory,
+    resources: reopenAgentResource,
   });
   const spiceProject = createAdmittedSpiceProject({
     projects: runtime.projects,
@@ -885,6 +917,11 @@ async function createProjectControl(
     spiceCaptures: admittedSpice.captures,
   });
 
+  const agentResourceIngress = createAgentResourceIngress({
+    store: agentResourceStore,
+    thermalSheets: thermalJoin.thermalMethodSheets,
+    electricalSheets: electricalMethodSheets.electricalObservationMethodSheets,
+  });
   const baseline = new ApprovedBriefBaselineRunExecutor({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1025,6 +1062,7 @@ async function createProjectControl(
       projects: runtime.projects,
       commands: new ProjectBriefCommandService(runtime.projects),
     },
+    bindAgentResources: (app) => agentResourceIngress.bind(app),
     control: {
       projects: runtime.projects,
       commands: runtime.commands,
@@ -1064,6 +1102,7 @@ async function createProjectControl(
       ledDriverSourceCapture: electrical.ledDriverSourceCapture,
       ledDriverSourceReview: electrical.ledDriverSourceReview,
       admittedSpiceRunReview: spiceProject.admittedSpiceRunReview,
+      resourceCapture: agentResourceIngress.capture,
       electricalObservationMethodSheetSealReview:
         electricalProject.electricalObservationMethodSheetSealReview,
       admittedSpiceEvaluationReview: electricalProject.admittedSpiceEvaluationReview,

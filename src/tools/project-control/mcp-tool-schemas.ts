@@ -1,4 +1,7 @@
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
+import { AGENT_RESOURCE_REFERENCE_SCHEMA as AGENT_RESOURCE_REFERENCE_JSON_SCHEMA } from "../../domain/resource/agent-resource-reference.ts";
+
+export const AGENT_RESOURCE_REFERENCE_SCHEMA = AGENT_RESOURCE_REFERENCE_JSON_SCHEMA;
 
 export const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,

@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
-import { validLedDriverHumanSourceText } from "../../testing/led-driver-source-fixtures.ts";
+import { sampleAgentResourceReference } from "../../testing/agent-resource-test-support.ts";
 import { registerProjectLedDriverSourceTools } from "./led-driver-source-tools.ts";
 
 Deno.test("LED-driver source tools register capture and review independently", () => {
@@ -71,12 +71,15 @@ Deno.test("project_led_driver_source_capture is a draft CAS write and stays refe
     },
   });
 
-  const sourceText = validLedDriverHumanSourceText();
+  const resourceRef = sampleAgentResourceReference({
+    name: "led-driver.json",
+    mimeType: "application/json",
+  });
   const result = await app.handler("project_led_driver_source_capture")({
-    sourceText,
+    resourceRef,
   }) as Record<string, unknown>;
   assert(result.structuredContent === review);
-  assertEquals(calls, [{ sourceText }]);
+  assertEquals(calls, [{ resourceRef }]);
   assertStringIncludes(result.content as string, "result.reference");
   assertStringIncludes(result.content as string, "project_led_driver_source_review");
   assertStringIncludes(
@@ -102,9 +105,10 @@ Deno.test("project_led_driver_source_capture is a draft CAS write and stays refe
   assertStringIncludes(tool.description, "no technical execution");
   const schema = tool.inputSchema as Record<string, unknown>;
   assertEquals(Object.keys(schema.properties as Record<string, unknown>), [
-    "sourceText",
+    "resourceRef",
   ]);
   assertEquals(schema.additionalProperties, false);
+  assertEquals("sourceText" in (schema.properties as Record<string, unknown>), false);
   assertEquals(
     Object.keys(
       (tool.outputSchema as { properties: Record<string, unknown> }).properties,
@@ -123,7 +127,7 @@ Deno.test("project_led_driver_source_capture is a draft CAS write and stays refe
   await assertRejects(
     () =>
       app.handler("project_led_driver_source_capture")({
-        sourceText,
+        resourceRef,
         provider: "ngspice",
       }) as Promise<unknown>,
     TypeError,
@@ -132,7 +136,7 @@ Deno.test("project_led_driver_source_capture is a draft CAS write and stays refe
   await assertRejects(
     () =>
       app.handler("project_led_driver_source_capture")({
-        sourceText,
+        resourceRef,
         supplyVoltage: 12,
       }) as Promise<unknown>,
     TypeError,

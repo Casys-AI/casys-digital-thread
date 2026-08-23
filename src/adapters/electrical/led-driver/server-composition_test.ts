@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { validLedDriverHumanSourceText } from "../../../testing/led-driver-source-fixtures.ts";
+import { persistAgentResourceText } from "../../../testing/agent-resource-test-support.ts";
 import { createLedDriverSourceComposition } from "./server-composition.ts";
 
 Deno.test("LED-driver composition captures and reviews without a provider or ngspice grant", async () => {
@@ -7,11 +8,20 @@ Deno.test("LED-driver composition captures and reviews without a provider or ngs
     prefix: "casys-led-driver-composition-",
   });
   try {
+    const persisted = await persistAgentResourceText(
+      `${recordedAnalysisDirectory}/agent-resources`,
+      {
+        name: "led-driver.json",
+        mimeType: "application/json",
+        text: validLedDriverHumanSourceText(),
+      },
+    );
     const composed = createLedDriverSourceComposition({
       recordedAnalysisDirectory,
+      resources: persisted.reopen,
     });
     const review = await composed.ledDriverSourceCapture.capture({
-      sourceText: validLedDriverHumanSourceText(),
+      resourceRef: persisted.reference,
     });
     assertEquals(review.status, "unresolved");
     assertEquals(review.grants, "none");

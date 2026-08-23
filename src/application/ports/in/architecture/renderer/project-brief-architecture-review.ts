@@ -27,7 +27,11 @@ import type {
 
 /** One reviewed PartUsage occurrence transcribed from an exact brief item. */
 export interface BriefArchitectureComponentDeclaration {
-  /** Component slug used by the `component.<slug>.<field>` grammar. */
+  /**
+   * Component slug used by the `component.<slug>.<field>` grammar.
+   * Shared proposal-parameter slug: letters, digits, hyphen, underscore.
+   * Not a SysML identifier.
+   */
   readonly slug: string;
   readonly name: string;
   readonly usage: string;
@@ -39,6 +43,11 @@ export interface BriefArchitectureComponentDeclaration {
 
 /** One reviewed AttributeUsage transcribed from an exact brief item. */
 export interface BriefArchitectureAttributeDeclaration {
+  /**
+   * Attribute slug used by the `attribute.<slug>.<field>` grammar.
+   * Shared proposal-parameter slug: letters, digits, hyphen, underscore.
+   * Not a SysML identifier.
+   */
   readonly slug: string;
   readonly name: string;
   /** Owning PartDefinition. Omitted: the production parser defaults to `system.name`. */
@@ -76,6 +85,8 @@ export type BriefArchitectureDiagnosticCode =
   | "brief-item-unsourced"
   | "duplicate-component-slug"
   | "duplicate-attribute-slug"
+  | "invalid-component-slug"
+  | "invalid-attribute-slug"
   | "proposal-grammar-rejected";
 
 export interface BriefArchitectureDiagnostic {

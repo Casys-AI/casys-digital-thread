@@ -17,8 +17,9 @@ Truth: [impact coverage](../../reference/domains/impact/coverage.md),
 | --------------- | --------------- |
 | Generic X10 rerun planner | X07/X08 fix `rerunProposals` to `none`. There is no registered thermal/electrical redispatch from impact. Independent admitted Modelica or admitted SPICE walks are not X10. |
 
-Draft capture is public: `project_cross_domain_impact_manifest_capture` with `sourceText`
-only. Pass `result.reference` as `manifestRef`. If
+Draft capture is public: `project_resource_capture` then
+`project_cross_domain_impact_manifest_capture` with that full `resourceRef`. Pass
+`result.reference` as `manifestRef`. If
 `project_cross_domain_impact_manifest_seal_review` returns `unavailable` /
 `manifest_unavailable`, stop.
 
@@ -28,7 +29,7 @@ Connect the agent to `http://127.0.0.1:3020/mcp`. Public surfaces that exist:
 
 ```bash
 deno task mcp:call --name=project_cross_domain_impact_manifest_capture \
-  --args='{"sourceText":"<cross-domain-impact-manifest/1.0 JSON body without fingerprint>"}'
+  --args='{"resourceRef":{}}'
 
 deno task mcp:call --name=project_cross_domain_impact_manifest_seal_review \
   --args='{"projectId":"<project-id>","manifestRef":{"fingerprint":{"algorithm":"sha256","digest":"<opaque-capture-digest>"}}}'
@@ -42,12 +43,13 @@ server selects the unique current Thread tip and unique prerequisite capture.
 
 ## 1. Capture the closed manifest body
 
-Call `project_cross_domain_impact_manifest_capture` with one `sourceText` JSON object:
-exact `cross-domain-impact-manifest/1.0` body keys, no `fingerprint` field. The server
+Upload the JSON body with `project_resource_capture`, then call
+`project_cross_domain_impact_manifest_capture` with that full `resourceRef`. Exact
+`cross-domain-impact-manifest/1.0` body keys, no `fingerprint` field. The server
 canonicalizes, computes the embedded body fingerprint and the outer CAS fingerprint, and
 returns `status: captured`, opaque `reference.fingerprint`, a summary of exact
 ids/revision/basis/`changeKinds`, and `grants: none`. Do not echo or persist a path or
-URI. Same `sourceText` is deterministic.
+URI. Same bytes are deterministic.
 
 Pass only `result.reference` as later `manifestRef`. A human-shaped assertion in that
 JSON is not proof.

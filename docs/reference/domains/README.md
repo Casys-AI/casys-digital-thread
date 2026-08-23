@@ -11,7 +11,7 @@ OpenModelica to Modelica, and CalculiX to FEA.
 | CAD         | Closed-language geometry source, execution drafts, canonical geometry | [CAD](cad/README.md)                 |
 | Modelica    | Closed-source dynamic simulation and documentary observations         | [Modelica](modelica/README.md)       |
 | FEA         | Mechanical proof declarations, isolated solves and evaluated criteria | [FEA](fea/README.md)                 |
-| SysML       | Bounded architecture source, renderer, captures and Thread documents  | [SysML](sysml/README.md)             |
+| SysML       | Bounded architecture source, renderer, captures and Thread documents  | [SysML](sysml/README.md) · [language](sysml/language.md) · [paths](sysml/paths.md) |
 | Sensitivity | First-order study declarations and catalogued offers                  | [Sensitivity](sensitivity/README.md) |
 | Electrical  | LED-driver human fiche and circuit-only SPICE closed subset           | [Electrical](electrical/README.md)   |
 | Impact      | Sealed cross-domain manifest, recross, human X09, mechanical X11      | [Impact](impact/README.md)           |

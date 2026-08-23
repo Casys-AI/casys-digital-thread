@@ -4,7 +4,9 @@ import type { ProjectFeaProofSealReviewUseCase } from "../../application/ports/i
 import type { ProjectFeaIsolatedRunReviewUseCase } from "../../application/ports/in/fea/isolated-v3/project-fea-isolated-run-review.ts";
 import type { ProjectEvaluationCloseoutReviewUseCase } from "../../application/ports/in/fea/evaluation-closeout/project-evaluation-closeout-review.ts";
 import { captureReviewContent } from "../../domain/fea/seal-case/fea-proof-case-source-capture.ts";
+import { parseAgentResourceReference } from "../../domain/resource/agent-resource-reference.ts";
 import {
+  AGENT_RESOURCE_REFERENCE_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
   PROJECT_ID,
   READ_ONLY_ANNOTATIONS,
@@ -40,7 +42,10 @@ function registerCapture(
   const capture = dependencies.feaProofCaseCapture;
   app.registerTool(projectFeaProofCaseCaptureTool, async (args) => {
     const review = await capture.capture({
-      sourceText: String(args.sourceText ?? ""),
+      resourceRef: parseAgentResourceReference(
+        args.resourceRef,
+        "$feaProofCaseCapture.resourceRef",
+      ),
     });
     return {
       content: captureReviewContent(review),
@@ -140,19 +145,13 @@ const DRAFT_CAS_WRITE_ANNOTATIONS = {
 const projectFeaProofCaseCaptureTool: MCPTool = {
   name: "project_fea_proof_case_capture",
   description:
-    "Capture exact agent-authored mechanical-proof-case-source/1.0 JSON in immutable draft CAS. The server parses, validates, stores canonical bytes, and rereads them. Pass result.reference, never this whole review, to project_fea_proof_seal_review. The caller supplies only sourceText; Thread tip, CAD provenance, solver, provider, tool, runtime and work/decision identities remain server-owned. This writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
+    "Capture exact agent-authored mechanical-proof-case-source/1.0 JSON in immutable draft CAS. First call project_resource_capture, then supply that full resourceRef. The server reopens exact UTF-8 JSON, parses, stores canonical bytes, and rereads them. The returned FEA case fingerprint may differ from the raw resource SHA. Pass result.reference, never this whole review, to project_fea_proof_seal_review. Thread tip, CAD provenance, solver, provider, tool, runtime and work/decision identities remain server-owned. This writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
   inputSchema: {
     type: "object",
     properties: {
-      sourceText: {
-        type: "string",
-        minLength: 1,
-        maxLength: 262_144,
-        description:
-          "Exact mechanical-proof-case-source/1.0 JSON. Canonical form is stored.",
-      },
+      resourceRef: AGENT_RESOURCE_REFERENCE_SCHEMA,
     },
-    required: ["sourceText"],
+    required: ["resourceRef"],
     additionalProperties: false,
   },
   outputSchema: {

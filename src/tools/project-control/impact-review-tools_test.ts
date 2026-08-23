@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import { sampleAgentResourceReference } from "../../testing/agent-resource-test-support.ts";
 import { registerProjectCrossDomainImpactReviewTools } from "./impact-review-tools.ts";
 
 const COMMAND = {
@@ -61,12 +62,15 @@ Deno.test("project_cross_domain_impact_manifest_capture is a draft CAS write and
     },
   });
 
-  const sourceText = '{"schemaVersion":"cross-domain-impact-manifest/1.0"}';
+  const resourceRef = sampleAgentResourceReference({
+    name: "impact.json",
+    mimeType: "application/json",
+  });
   const result = await app.handler("project_cross_domain_impact_manifest_capture")({
-    sourceText,
+    resourceRef,
   }) as Record<string, unknown>;
   assert(result.structuredContent === review);
-  assertEquals(calls, [{ sourceText }]);
+  assertEquals(calls, [{ resourceRef }]);
   assertStringIncludes(result.content as string, "result.reference");
   assertStringIncludes(
     result.content as string,
@@ -91,12 +95,10 @@ Deno.test("project_cross_domain_impact_manifest_capture is a draft CAS write and
   assertStringIncludes(tool.description, "no EngineeringProject or Thread state");
   const schema = tool.inputSchema as Record<string, unknown>;
   assertEquals(Object.keys(schema.properties as Record<string, unknown>), [
-    "sourceText",
+    "resourceRef",
   ]);
   assertEquals(schema.additionalProperties, false);
-  const sourceSchema = (schema.properties as Record<string, Record<string, unknown>>)
-    .sourceText;
-  assertEquals(sourceSchema.maxLength, 262_144);
+  assertEquals("sourceText" in (schema.properties as Record<string, unknown>), false);
   assertEquals(
     Object.keys(
       (tool.outputSchema as { properties: Record<string, unknown> }).properties,
@@ -111,7 +113,7 @@ Deno.test("project_cross_domain_impact_manifest_capture is a draft CAS write and
   await assertRejects(
     () =>
       app.handler("project_cross_domain_impact_manifest_capture")({
-        sourceText,
+        resourceRef,
         provider: "ngspice",
       }) as Promise<unknown>,
     TypeError,
@@ -119,7 +121,7 @@ Deno.test("project_cross_domain_impact_manifest_capture is a draft CAS write and
   await assertRejects(
     () =>
       app.handler("project_cross_domain_impact_manifest_capture")({
-        sourceText,
+        resourceRef,
         fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
       }) as Promise<unknown>,
     TypeError,

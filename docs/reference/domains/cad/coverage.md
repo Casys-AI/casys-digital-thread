@@ -36,6 +36,10 @@ These states must remain literal: they are not degraded success.
   0.11.1 inventory does not. It is not executable capability.
 - A successful parser/capture, a `levers` result, or isolated execution is not
   admission, canonical geometry, DFM/FEA input, observation, evaluation, or verdict.
+- CAD `.py` enters through `project_resource_capture` then
+  `project_technical_source_capture` (`profileId` + `sourceId` + full `resourceRef`).
+  Public capture does not accept `sourceText`. Isolated execution still starts from
+  `compile.seal-admission@1`.
 
 ## Candidates and non-goals
 

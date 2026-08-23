@@ -1,6 +1,7 @@
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import type { ProjectBriefArchitectureReviewUseCase } from "../../application/ports/in/architecture/renderer/project-brief-architecture-review.ts";
 import type { ProjectBriefRequirementsReviewUseCase } from "../../application/ports/in/architecture/requirements/project-brief-requirements-review.ts";
+import { PROPOSAL_PARAMETER_SLUG_BODY } from "../../domain/kernel/case-validation.ts";
 import {
   OBJECT_OUTPUT_SCHEMA,
   PROJECT_ID,
@@ -68,12 +69,20 @@ const BRIEF_ITEM_ID_SCHEMA = {
   pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
 } as const;
 
+const PROPOSAL_PARAMETER_SLUG_SCHEMA = {
+  type: "string",
+  minLength: 1,
+  maxLength: 256,
+  pattern: `^${PROPOSAL_PARAMETER_SLUG_BODY}$`,
+} as const;
+
 const REQUIREMENT_DECLARATION_SCHEMA = {
   type: "object",
   properties: {
     slug: {
-      ...BRIEF_ITEM_ID_SCHEMA,
-      description: "Requirement slug used by the requirement.<slug>.<field> grammar.",
+      ...PROPOSAL_PARAMETER_SLUG_SCHEMA,
+      description:
+        "Requirement slug used by the requirement.<slug>.<field> grammar. Letters, digits, hyphen and underscore only; not a SysML identifier.",
     },
     name: { type: "string", minLength: 1, maxLength: 256 },
     metric: { type: "string", minLength: 1, maxLength: 256 },
@@ -146,8 +155,9 @@ const COMPONENT_DECLARATION_SCHEMA = {
   type: "object",
   properties: {
     slug: {
-      ...BRIEF_ITEM_ID_SCHEMA,
-      description: "Component slug used by the component.<slug>.<field> grammar.",
+      ...PROPOSAL_PARAMETER_SLUG_SCHEMA,
+      description:
+        "Component slug used by the component.<slug>.<field> grammar. Letters, digits, hyphen and underscore only; not a SysML identifier.",
     },
     name: { type: "string", minLength: 1, maxLength: 256 },
     usage: { type: "string", minLength: 1, maxLength: 256 },
@@ -172,8 +182,9 @@ const ATTRIBUTE_DECLARATION_SCHEMA = {
   type: "object",
   properties: {
     slug: {
-      ...BRIEF_ITEM_ID_SCHEMA,
-      description: "Attribute slug used by the attribute.<slug>.<field> grammar.",
+      ...PROPOSAL_PARAMETER_SLUG_SCHEMA,
+      description:
+        "Attribute slug used by the attribute.<slug>.<field> grammar. Letters, digits, hyphen and underscore only; not a SysML identifier.",
     },
     name: { type: "string", minLength: 1, maxLength: 256 },
     parent: { type: "string", minLength: 1, maxLength: 256 },
@@ -190,7 +201,7 @@ const ATTRIBUTE_DECLARATION_SCHEMA = {
 const projectBriefArchitectureReviewTool: MCPTool = {
   name: "project_brief_architecture_review",
   description:
-    "Compile reviewed brief architecture into the canonical model.write-architecture@1 MRTR parameters. The server reopens the exact human-approved canonical brief itself and checks every declaration against it: an absent item, an item that is an exclusion or an open-question, an unsourced item, a duplicate slug, or an envelope the architecture grammar refuses (unknown parent, cycle, duplicate usage) yields an unresolved result with diagnostics and no parameters. The caller may name only the package, the system, optional component rows, optional AttributeUsage rows and the brief items; parameter keys, labels and structural admissibility remain server-owned. Zero components is a single-part system. This read-only surface writes no EngineeringProject or Thread state, calls no SysON, and grants no MRTR or dispatch authority. It does not read the item prose, so it never asserts that a declared name restates its statement — the signing human does.",
+    "Compile reviewed brief architecture into the canonical model.write-architecture@1 MRTR parameters. The server reopens the exact human-approved canonical brief itself and checks every declaration against it: an absent item, an item that is an exclusion or an open-question, an unsourced item, a duplicate slug, a slug that is not a proposal-parameter slug, or an envelope the architecture grammar refuses (unknown parent, cycle, duplicate usage) yields an unresolved result with diagnostics and no parameters. The caller may name only the package, the system, optional component rows, optional AttributeUsage rows and the brief items; parameter keys, labels and structural admissibility remain server-owned. Zero components is a single-part system. This read-only surface writes no EngineeringProject or Thread state, calls no SysON, and grants no MRTR or dispatch authority. It does not read the item prose, so it never asserts that a declared name restates its statement — the signing human does.",
   inputSchema: {
     type: "object",
     properties: {

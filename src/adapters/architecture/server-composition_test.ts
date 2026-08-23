@@ -13,6 +13,7 @@ import {
   createArchitectureFoundation,
   createArchitectureProject,
 } from "./server-composition.ts";
+import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
 
 Deno.test("architecture composition seals without SysON and writes only when a SysON URL is supplied", async () => {
   const root = await Deno.makeTempDir({
@@ -36,6 +37,7 @@ Deno.test("architecture composition seals without SysON and writes only when a S
       sysonModelSeedCaptureDirectory: `${root}/seed`,
       architectureCaptureDirectory: `${root}/architecture`,
       requirementsCaptureDirectory: `${root}/requirements`,
+      resources: testReopenAgentResource(`${root}/agent-resources`),
     });
     const shared = {
       projects: runtime.projects,

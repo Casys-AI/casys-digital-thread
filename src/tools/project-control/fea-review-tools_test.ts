@@ -62,6 +62,13 @@ Deno.test("project_fea_proof_case_capture review names exact project and target 
     required: ["id", "subjectId"],
     additionalProperties: false,
   });
+  const input = app.tool("project_fea_proof_case_capture").inputSchema as {
+    properties: Record<string, unknown>;
+    required: unknown;
+  };
+  assertEquals(Object.keys(input.properties), ["resourceRef"]);
+  assertEquals(input.required, ["resourceRef"]);
+  assertEquals("sourceText" in input.properties, false);
   assertEquals(output.properties.target, {
     type: "object",
     properties: {

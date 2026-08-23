@@ -133,6 +133,95 @@ Deno.test(
 );
 
 Deno.test(
+  "brief architecture review compiles a hyphenated grouping slug the production grammar accepts",
+  async () => {
+    const review = await reviewFor(await approvedProjectStore());
+
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      packageName: "HeatedStage",
+      packageSourceItemId: "objective",
+      systemName: "HeatedStageSystem",
+      systemSourceItemId: "mission-articulated-arm",
+      components: [{
+        slug: "heated-stage-plate",
+        name: "HeatedStagePlate",
+        usage: "heatedStagePlate",
+        sourceItemId: "constraint-arm",
+      }],
+      attributes: [{
+        slug: "plate-thickness",
+        name: "thickness",
+        parent: "HeatedStagePlate",
+        sourceItemId: "constraint-thickness",
+      }],
+    });
+
+    assertEquals(result.status, "resolved");
+    assertEquals(result.diagnostics, []);
+    assertExists(result.decisionParameters);
+    const parsed = parseArchitectureProposalParameters(result.decisionParameters);
+    assertEquals(parsed.components, [{
+      name: "HeatedStagePlate",
+      usageName: "heatedStagePlate",
+      parentName: "HeatedStageSystem",
+    }]);
+    assertEquals(parsed.attributes, [{
+      name: "thickness",
+      parentName: "HeatedStagePlate",
+    }]);
+    const traced = new Set(result.provenance.map((entry) => entry.parameterKey));
+    assertEquals(traced.has("component.heated-stage-plate.name"), true);
+    assertEquals(traced.has("attribute.plate-thickness.name"), true);
+  },
+);
+
+Deno.test(
+  "brief architecture review refuses a dotted slug at the declaration, not as an unknown compiled key",
+  async () => {
+    const review = await reviewFor(await approvedProjectStore());
+
+    const component = await review.execute({
+      projectId: PROJECT_ID,
+      packageName: "ArticulatedArm",
+      packageSourceItemId: "objective",
+      systemName: "ArticulatedArmSystem",
+      systemSourceItemId: "mission-articulated-arm",
+      components: [{ ...ARM, slug: "heated.stage" }],
+    });
+
+    assertEquals(component.status, "unresolved");
+    assertEquals(component.decisionParameters, undefined);
+    assertEquals(component.diagnostics.map((item) => item.code), [
+      "invalid-component-slug",
+    ]);
+    assertEquals(component.diagnostics[0]?.slug, "heated.stage");
+
+    const attribute = await review.execute({
+      projectId: PROJECT_ID,
+      packageName: "ArticulatedArm",
+      packageSourceItemId: "objective",
+      systemName: "ArticulatedArmSystem",
+      systemSourceItemId: "mission-articulated-arm",
+      components: [],
+      attributes: [{
+        slug: "plate:thickness",
+        name: "thickness",
+        parent: "ArticulatedArmSystem",
+        sourceItemId: "constraint-thickness",
+      }],
+    });
+
+    assertEquals(attribute.status, "unresolved");
+    assertEquals(attribute.decisionParameters, undefined);
+    assertEquals(attribute.diagnostics.map((item) => item.code), [
+      "invalid-attribute-slug",
+    ]);
+    assertEquals(attribute.diagnostics[0]?.slug, "plate:thickness");
+  },
+);
+
+Deno.test(
   "brief architecture review leaves identifier admissibility to the production grammar",
   async () => {
     const review = await reviewFor(await approvedProjectStore());

@@ -12,6 +12,11 @@ import {
 } from "./server-composition.ts";
 import { CompileSealAdmissionRunExecutor } from "./executors/compile-seal-admission-run-executor.ts";
 import { CaptureBackedTechnicalCompilationAdmissionReader } from "./admission/capture-backed-technical-compilation-admission-reader.ts";
+import {
+  persistAgentResourceText,
+  testReopenAgentResource,
+} from "../../testing/agent-resource-test-support.ts";
+import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "../cad/source/qualified-build123d-source-analyzer.ts";
 
 Deno.test("compilation composition shares one admission CAS and keeps preview off the seal path", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-compile-composition-" });
@@ -33,10 +38,12 @@ Deno.test("compilation composition shares one admission CAS and keeps preview of
       sysonModelSeedCaptureDirectory: `${root}/seed`,
       architectureCaptureDirectory: `${root}/architecture`,
       requirementsCaptureDirectory: `${root}/requirements`,
+      resources: testReopenAgentResource(`${root}/agent-resources`),
     });
     const foundation = createTechnicalCompilationFoundation({
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
+      resources: testReopenAgentResource(`${root}/agent-resources-compile`),
     });
     const project = createTechnicalCompilationProject({
       projects: runtime.projects,
@@ -85,6 +92,37 @@ Deno.test("compilation composition shares one admission CAS and keeps preview of
       new URL("./server-composition.ts", import.meta.url),
     );
     assertEquals(source.includes("CreateConsoleServerOptions"), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("technical source capture reopens resourceRef then uses the existing analyzer", async () => {
+  const root = await Deno.makeTempDir({ prefix: "casys-compile-resource-ref-" });
+  try {
+    const snapshots = new FileThreadSnapshotStore(`${root}/snapshots`);
+    const persisted = await persistAgentResourceText(`${root}/agent-resources`, {
+      name: "part.py",
+      mimeType: "text/x-python",
+      text: "from build123d import Box\nresult = Box(1, 2, 3)\n",
+    });
+    const foundation = createTechnicalCompilationFoundation({
+      recordedAnalysisDirectory: `${root}/analysis`,
+      snapshots,
+      resources: persisted.reopen,
+    });
+    const review = await foundation.technicalSourceCapture.capture({
+      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      sourceId: "source.cad",
+      resourceRef: persisted.reference,
+    });
+    assertEquals(review.schemaVersion, "technical-source-capture-review/1.0");
+    const source = review.reference.source as {
+      language: string;
+      sha256: string;
+    };
+    assertEquals(source.language, "python");
+    assertEquals(source.sha256, persisted.reference.fingerprint.digest);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

@@ -9,10 +9,10 @@ import type {
 import type {
   ReopenedCrossDomainImpactManifest,
 } from "../../ports/out/impact/cross-domain-impact-manifest-reader.ts";
-import { CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS } from "../../ports/in/impact/project-cross-domain-impact-manifest-capture.ts";
 import {
   validCrossDomainImpactManifestBody,
 } from "../../../testing/cross-domain-impact-fixtures.ts";
+import { persistAgentResourceText } from "../../../testing/agent-resource-test-support.ts";
 import {
   PrepareProjectCrossDomainImpactManifestCapture,
   ProjectCrossDomainImpactManifestCaptureError,
@@ -22,11 +22,17 @@ Deno.test("impact-manifest capture writes draft CAS, rereads, and stays referenc
   const root = await Deno.makeTempDir({ prefix: "impact-manifest-capture-" });
   try {
     const manifests = fileStore(root);
+    const sourceText = JSON.stringify(validCrossDomainImpactManifestBody());
+    const persisted = await persistAgentResourceText(`${root}/agent-resources`, {
+      name: "impact.json",
+      mimeType: "application/json",
+      text: sourceText,
+    });
     const capture = new PrepareProjectCrossDomainImpactManifestCapture({
       manifests,
+      resources: persisted.reopen,
     });
-    const sourceText = JSON.stringify(validCrossDomainImpactManifestBody());
-    const review = await capture.capture({ sourceText });
+    const review = await capture.capture({ resourceRef: persisted.reference });
     assertEquals(
       review.schemaVersion,
       "cross-domain-impact-manifest-capture-review/1.0",
@@ -69,12 +75,18 @@ Deno.test("impact-manifest capture is deterministic and immediately readable", a
   const root = await Deno.makeTempDir({ prefix: "impact-manifest-capture-det-" });
   try {
     const manifests = fileStore(root);
+    const sourceText = JSON.stringify(validCrossDomainImpactManifestBody());
+    const persisted = await persistAgentResourceText(`${root}/agent-resources`, {
+      name: "impact.json",
+      mimeType: "application/json",
+      text: sourceText,
+    });
     const capture = new PrepareProjectCrossDomainImpactManifestCapture({
       manifests,
+      resources: persisted.reopen,
     });
-    const sourceText = JSON.stringify(validCrossDomainImpactManifestBody());
-    const first = await capture.capture({ sourceText });
-    const second = await capture.capture({ sourceText });
+    const first = await capture.capture({ resourceRef: persisted.reference });
+    const second = await capture.capture({ resourceRef: persisted.reference });
     assertEquals(second.reference, first.reference);
     assertEquals(second.summary, first.summary);
     const reopened = await manifests.read(first.reference);
@@ -87,100 +99,147 @@ Deno.test("impact-manifest capture is deterministic and immediately readable", a
 });
 
 Deno.test("impact-manifest capture rejects a forged fingerprint or extra field before save", async () => {
-  let saves = 0;
-  const capture = new PrepareProjectCrossDomainImpactManifestCapture({
-    manifests: countingStore(() => {
-      saves += 1;
-    }),
-  });
-  const body = validCrossDomainImpactManifestBody();
-  const forged = await assertRejects(
-    () =>
-      capture.capture({
-        sourceText: JSON.stringify({
-          ...body,
-          fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
-        }),
+  const root = await Deno.makeTempDir({ prefix: "impact-manifest-invalid-" });
+  try {
+    let saves = 0;
+    const body = validCrossDomainImpactManifestBody();
+    const forgedResource = await persistAgentResourceText(`${root}/forged`, {
+      name: "forged.json",
+      mimeType: "application/json",
+      text: JSON.stringify({
+        ...body,
+        fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
       }),
-    ProjectCrossDomainImpactManifestCaptureError,
-  );
-  assertEquals(forged.code, "invalid_manifest");
-  const extra = await assertRejects(
-    () =>
-      capture.capture({
-        sourceText: JSON.stringify({ ...body, provider: "ngspice" }),
+    });
+    const capture = new PrepareProjectCrossDomainImpactManifestCapture({
+      manifests: countingStore(() => {
+        saves += 1;
       }),
-    ProjectCrossDomainImpactManifestCaptureError,
-  );
-  assertEquals(extra.code, "invalid_manifest");
-  const mismatched = structuredClone(body);
-  mismatched.basis.projectId = "other-project";
-  const join = await assertRejects(
-    () => capture.capture({ sourceText: JSON.stringify(mismatched) }),
-    ProjectCrossDomainImpactManifestCaptureError,
-  );
-  assertEquals(join.code, "invalid_manifest");
-  assertEquals(saves, 0);
+      resources: forgedResource.reopen,
+    });
+    const forged = await assertRejects(
+      () => capture.capture({ resourceRef: forgedResource.reference }),
+      ProjectCrossDomainImpactManifestCaptureError,
+    );
+    assertEquals(forged.code, "invalid_manifest");
+    const extraResource = await persistAgentResourceText(`${root}/extra`, {
+      name: "extra.json",
+      mimeType: "application/json",
+      text: JSON.stringify({ ...body, provider: "ngspice" }),
+    });
+    const extraCapture = new PrepareProjectCrossDomainImpactManifestCapture({
+      manifests: countingStore(() => {
+        saves += 1;
+      }),
+      resources: extraResource.reopen,
+    });
+    const extra = await assertRejects(
+      () => extraCapture.capture({ resourceRef: extraResource.reference }),
+      ProjectCrossDomainImpactManifestCaptureError,
+    );
+    assertEquals(extra.code, "invalid_manifest");
+    const mismatched = structuredClone(body);
+    mismatched.basis.projectId = "other-project";
+    const joinResource = await persistAgentResourceText(`${root}/join`, {
+      name: "join.json",
+      mimeType: "application/json",
+      text: JSON.stringify(mismatched),
+    });
+    const joinCapture = new PrepareProjectCrossDomainImpactManifestCapture({
+      manifests: countingStore(() => {
+        saves += 1;
+      }),
+      resources: joinResource.reopen,
+    });
+    const join = await assertRejects(
+      () => joinCapture.capture({ resourceRef: joinResource.reference }),
+      ProjectCrossDomainImpactManifestCaptureError,
+    );
+    assertEquals(join.code, "invalid_manifest");
+    assertEquals(saves, 0);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("impact-manifest capture refuses extra authority fields and invalid JSON", async () => {
-  let saves = 0;
-  const capture = new PrepareProjectCrossDomainImpactManifestCapture({
-    manifests: countingStore(() => {
-      saves += 1;
-    }),
-  });
-  const extra = await assertRejects(
-    () =>
-      capture.capture({
-        sourceText: JSON.stringify(validCrossDomainImpactManifestBody()),
-        provider: "ngspice",
-        runtime: "latest",
-      } as never),
-    ProjectCrossDomainImpactManifestCaptureError,
-  );
-  assertEquals(extra.code, "invalid_request");
-  const invalidJson = await assertRejects(
-    () => capture.capture({ sourceText: "{" }),
-    ProjectCrossDomainImpactManifestCaptureError,
-  );
-  assertEquals(invalidJson.code, "invalid_manifest");
-  const oversized = await assertRejects(
-    () =>
-      capture.capture({
-        sourceText: "x".repeat(
-          CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS + 1,
-        ),
+  const root = await Deno.makeTempDir({ prefix: "impact-manifest-refuse-" });
+  try {
+    let saves = 0;
+    const persisted = await persistAgentResourceText(`${root}/ok`, {
+      name: "impact.json",
+      mimeType: "application/json",
+      text: JSON.stringify(validCrossDomainImpactManifestBody()),
+    });
+    const capture = new PrepareProjectCrossDomainImpactManifestCapture({
+      manifests: countingStore(() => {
+        saves += 1;
       }),
-    ProjectCrossDomainImpactManifestCaptureError,
-  );
-  assertEquals(oversized.code, "invalid_request");
-  assertEquals(saves, 0);
+      resources: persisted.reopen,
+    });
+    const extra = await assertRejects(
+      () =>
+        capture.capture({
+          resourceRef: persisted.reference,
+          provider: "ngspice",
+          runtime: "latest",
+        } as never),
+      ProjectCrossDomainImpactManifestCaptureError,
+    );
+    assertEquals(extra.code, "invalid_request");
+    const invalid = await persistAgentResourceText(`${root}/bad`, {
+      name: "bad.json",
+      mimeType: "application/json",
+      text: "{",
+    });
+    const invalidCapture = new PrepareProjectCrossDomainImpactManifestCapture({
+      manifests: countingStore(() => {
+        saves += 1;
+      }),
+      resources: invalid.reopen,
+    });
+    const invalidJson = await assertRejects(
+      () => invalidCapture.capture({ resourceRef: invalid.reference }),
+      ProjectCrossDomainImpactManifestCaptureError,
+    );
+    assertEquals(invalidJson.code, "invalid_manifest");
+    assertEquals(saves, 0);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 Deno.test("impact-manifest capture wraps a corrupt readback before returning a review", async () => {
-  const capture = new PrepareProjectCrossDomainImpactManifestCapture({
-    manifests: {
-      save() {
-        return Promise.resolve({
-          reference: {
-            fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
-          },
-        });
+  const root = await Deno.makeTempDir({ prefix: "impact-manifest-readback-" });
+  try {
+    const persisted = await persistAgentResourceText(root, {
+      name: "impact.json",
+      mimeType: "application/json",
+      text: JSON.stringify(validCrossDomainImpactManifestBody()),
+    });
+    const capture = new PrepareProjectCrossDomainImpactManifestCapture({
+      manifests: {
+        save() {
+          return Promise.resolve({
+            reference: {
+              fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+            },
+          });
+        },
+        read() {
+          return Promise.resolve(undefined);
+        },
       },
-      read() {
-        return Promise.resolve(undefined);
-      },
-    },
-  });
-  const error = await assertRejects(
-    () =>
-      capture.capture({
-        sourceText: JSON.stringify(validCrossDomainImpactManifestBody()),
-      }),
-    ProjectCrossDomainImpactManifestCaptureError,
-  );
-  assertEquals(error.code, "source_capture_failed");
+      resources: persisted.reopen,
+    });
+    const error = await assertRejects(
+      () => capture.capture({ resourceRef: persisted.reference }),
+      ProjectCrossDomainImpactManifestCaptureError,
+    );
+    assertEquals(error.code, "source_capture_failed");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });
 
 function fileStore(root: string): FileCrossDomainImpactManifestStore {

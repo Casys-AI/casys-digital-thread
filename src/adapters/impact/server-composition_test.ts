@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import { validCrossDomainImpactManifestBody } from "../../testing/cross-domain-impact-fixtures.ts";
+import { persistAgentResourceText } from "../../testing/agent-resource-test-support.ts";
 import { createCrossDomainImpactProject } from "./server-composition.ts";
 
 Deno.test("impact composition captures a closed manifest without a provider grant", async () => {
@@ -8,6 +9,15 @@ Deno.test("impact composition captures a closed manifest without a provider gran
     prefix: "casys-impact-composition-",
   });
   try {
+    const sourceText = JSON.stringify(validCrossDomainImpactManifestBody());
+    const persisted = await persistAgentResourceText(
+      `${recordedAnalysisDirectory}/agent-resources`,
+      {
+        name: "impact.json",
+        mimeType: "application/json",
+        text: sourceText,
+      },
+    );
     const composed = createCrossDomainImpactProject({
       projects: {
         get: () => Promise.resolve(undefined),
@@ -19,10 +29,10 @@ Deno.test("impact composition captures a closed manifest without a provider gran
       } as never,
       lease: unusedLease(),
       recordedAnalysisDirectory,
+      resources: persisted.reopen,
     });
-    const sourceText = JSON.stringify(validCrossDomainImpactManifestBody());
     const review = await composed.crossDomainImpactManifestCapture.capture({
-      sourceText,
+      resourceRef: persisted.reference,
     });
     assertEquals(review.status, "captured");
     assertEquals(review.grants, "none");

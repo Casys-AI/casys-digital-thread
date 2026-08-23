@@ -111,6 +111,11 @@ conversion is done here rather than left to the agent.
 }
 ```
 
+Component, attribute and requirement slugs follow the shared proposal-parameter grammar
+(`^[A-Za-z0-9][A-Za-z0-9_-]*$`): hyphens are allowed because the slug is a grouping key,
+not a SysML identifier. Dots and colons are refused: they would make the dotted key
+ambiguous. SysML identifiers remain `packageName`, `systemName`, `name` and `usage`.
+
 Omit `parent` and the production parser anchors the component to `system.name`. A parent
 that names neither the system nor another declared component is refused by the grammar,
 along with cycles and duplicate usages under one parent.

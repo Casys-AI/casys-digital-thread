@@ -24,6 +24,7 @@ import {
   uncertainWriterBasisReleaseText,
 } from "../domain/record/uncertain-writer-basis-release.ts";
 import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
+import { sampleAgentResourceReference } from "../testing/agent-resource-test-support.ts";
 import {
   collectEngineeringActivities,
   stampEngineeringActivityIdentity,
@@ -125,17 +126,21 @@ Deno.test("technical source capture is conditional, exact, and has no project au
 
   assertEquals(app.hasTool("project_technical_source_capture"), true);
   assertEquals(app.hasTool("project_technical_compilation_preview"), false);
-  const sourceText = "\nfrom build123d import Box\nresult = Box(1, 2, 3)\n";
+  const resourceRef = sampleAgentResourceReference({
+    name: "part.py",
+    mimeType: "text/x-python",
+    byteCount: 12,
+  });
   const result = await app.handler("project_technical_source_capture")({
     profileId: "profile.build123d",
     sourceId: "source.cad",
-    sourceText,
+    resourceRef,
   }) as Record<string, unknown>;
   assert(result.structuredContent === TECHNICAL_SOURCE_CAPTURE_REVIEW);
   assertEquals(calls, [{
     profileId: "profile.build123d",
     sourceId: "source.cad",
-    sourceText,
+    resourceRef,
   }]);
   assertEquals(projectReads, 0);
   assertStringIncludes(result.content as string, "parser status passed");
@@ -167,10 +172,11 @@ Deno.test("technical source capture is conditional, exact, and has no project au
   const schema = tool.inputSchema as Record<string, unknown>;
   assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
     "profileId",
+    "resourceRef",
     "sourceId",
-    "sourceText",
   ]);
   assertEquals(schema.additionalProperties, false);
+  assertEquals("sourceText" in (schema.properties as Record<string, unknown>), false);
   assertNoTechnicalAuthorityFields(schema);
 
   await assertRejects(
@@ -178,7 +184,7 @@ Deno.test("technical source capture is conditional, exact, and has no project au
       app.handler("project_technical_source_capture")({
         profileId: "profile.build123d",
         sourceId: "source.cad",
-        sourceText,
+        resourceRef,
         provider: "mcp-build123d",
       }) as Promise<unknown>,
     TypeError,

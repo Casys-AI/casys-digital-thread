@@ -5,7 +5,12 @@ import type {
 } from "../../application/ports/in/electrical/led-driver/project-led-driver-source-capture.ts";
 import type { ProjectLedDriverSourceReviewUseCase } from "../../application/ports/in/electrical/led-driver/project-led-driver-source-review.ts";
 import { captureReviewContent } from "../../domain/electrical/led-driver/led-driver-source-capture-review.ts";
-import { OBJECT_OUTPUT_SCHEMA, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
+import { parseAgentResourceReference } from "../../domain/resource/agent-resource-reference.ts";
+import {
+  AGENT_RESOURCE_REFERENCE_SCHEMA,
+  OBJECT_OUTPUT_SCHEMA,
+  READ_ONLY_ANNOTATIONS,
+} from "./mcp-tool-schemas.ts";
 
 export interface ProjectLedDriverSourceToolDependencies {
   /** Provider-free draft-CAS capture of exact LED-driver human-source text. */
@@ -186,19 +191,13 @@ const LED_DRIVER_SOURCE_CAPTURE_REVIEW_SCHEMA = {
 const projectLedDriverSourceCaptureTool: MCPTool = {
   name: "project_led_driver_source_capture",
   description:
-    "Capture exact agent-authored led-driver-human-source/1.0 UTF-8 JSON bytes in immutable draft CAS. The server hashes before parse and rereads the stored bytes. Named circuit, test condition and declared unknowns are recorded; unknowns stay unresolved. Pass result.reference, never this whole review object, to project_led_driver_source_review. The caller supplies only sourceText; language, analyzer, D1, provider, tool and ngspice arguments remain server-owned or absent. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
+    "Capture exact agent-authored led-driver-human-source/1.0 UTF-8 JSON bytes in immutable draft CAS. First call project_resource_capture, then supply that full resourceRef. The server reopens exact UTF-8, hashes before parse, and rereads the stored bytes. Named circuit, test condition and declared unknowns are recorded; unknowns stay unresolved. Pass result.reference, never this whole review object, to project_led_driver_source_review. Language, analyzer, D1, provider, tool and ngspice arguments remain server-owned or absent. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
   inputSchema: {
     type: "object",
     properties: {
-      sourceText: {
-        type: "string",
-        minLength: 1,
-        maxLength: 262_144,
-        description:
-          "Exact UTF-8 led-driver-human-source/1.0 JSON. Edge whitespace and line endings are preserved.",
-      },
+      resourceRef: AGENT_RESOURCE_REFERENCE_SCHEMA,
     },
-    required: ["sourceText"],
+    required: ["resourceRef"],
     additionalProperties: false,
   },
   outputSchema: LED_DRIVER_SOURCE_CAPTURE_REVIEW_SCHEMA,
@@ -224,17 +223,16 @@ const projectLedDriverSourceReviewTool: MCPTool = {
 function ledDriverSourceCaptureCommand(
   value: Record<string, unknown>,
 ): ProjectLedDriverSourceCaptureCommand {
-  const extras = Object.keys(value).filter((key) => key !== "sourceText");
+  const extras = Object.keys(value).filter((key) => key !== "resourceRef");
   if (extras.length > 0) {
     throw new TypeError(
       `ledDriverSourceCapture has unsupported field(s): ${extras.join(", ")}`,
     );
   }
-  if (typeof value.sourceText !== "string" || value.sourceText.length === 0) {
-    throw new TypeError("sourceText must be a non-empty string");
-  }
-  if (value.sourceText.length > 262_144) {
-    throw new TypeError("sourceText must not exceed 262144 characters");
-  }
-  return { sourceText: value.sourceText };
+  return {
+    resourceRef: parseAgentResourceReference(
+      value.resourceRef,
+      "$ledDriverSourceCapture.resourceRef",
+    ),
+  };
 }

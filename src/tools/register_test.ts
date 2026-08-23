@@ -614,6 +614,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_led_driver_source_review",
     "project_plan_publish",
     "project_question_propose",
+    "project_resource_capture",
     "project_sensitivity_base_evaluation_review",
     "project_sensitivity_study_seal_review",
     "project_snapshot",
@@ -685,6 +686,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_led_driver_source_review",
       "project_plan_publish",
       "project_question_propose",
+      "project_resource_capture",
       "project_sensitivity_base_evaluation_review",
       "project_sensitivity_study_seal_review",
       "project_snapshot",
@@ -925,6 +927,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_start" ||
           tool.name === "project_question_propose" ||
+          tool.name === "project_resource_capture" ||
           tool.name === "project_answer_record" ||
           tool.name === "project_brief_propose" ||
           tool.name === "project_brief_confirm" ||

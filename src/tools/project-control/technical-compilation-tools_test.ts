@@ -368,7 +368,7 @@ Deno.test("isolated geometry seal review rejects unknown authority fields before
   assertEquals(calls, 0);
 });
 
-Deno.test("technical source capture accepts only profileId/sourceId/sourceText and spice role on references", () => {
+Deno.test("technical source capture accepts only profileId/sourceId/resourceRef and spice role on references", () => {
   const app = new CapturingApp();
   registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
     technicalSourceCapture: {
@@ -382,9 +382,13 @@ Deno.test("technical source capture accepts only profileId/sourceId/sourceText a
   const captureInput = capture.inputSchema as Record<string, unknown>;
   assertEquals(
     Object.keys(captureInput.properties as Record<string, unknown>).sort(),
-    ["profileId", "sourceId", "sourceText"],
+    ["profileId", "resourceRef", "sourceId"],
   );
   assertEquals(captureInput.additionalProperties, false);
+  assertEquals(
+    "sourceText" in (captureInput.properties as Record<string, unknown>),
+    false,
+  );
   assertEquals(
     Object.keys(captureInput.properties as Record<string, unknown>).some((key) =>
       ["provider", "tool", "runtime", "image", "ngspice"].includes(key)

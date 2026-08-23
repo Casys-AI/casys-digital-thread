@@ -57,11 +57,12 @@ from UI copy or tool descriptions.
   is the same pattern for circuit-only SPICE (`spice-circuit-source`). It is not
   mcp-spice and not the LED-driver fiche. Pattern:
   [admitted source isolated execution](docs/reference/pipeline/admitted-source-isolated-execution.md).
-- `project_technical_source_capture` returns `technical-source-capture-review/1.0`:
-  `parser`, `levers`, and an opaque `reference`. `parser.status` is not admission. Pass
-  `result.reference` only. A constructor photo is `levers.unresolved`. A reachable
-  literal without `parameterizes` is compile `binding.missing`, not
-  `source.no-named-numeric-lever`.
+- `project_technical_source_capture` takes `profileId`, `sourceId`, and a full
+  `resourceRef` from `project_resource_capture`. It does not accept `sourceText`. It
+  returns `technical-source-capture-review/1.0`: `parser`, `levers`, and an opaque
+  `reference`. `parser.status` is not admission. Pass `result.reference` only. A
+  constructor photo is `levers.unresolved`. A reachable literal without `parameterizes`
+  is compile `binding.missing`, not `source.no-named-numeric-lever`.
 - `project_technical_compilation_preview` takes `projectId` + `result.reference`. The
   server selects the current Thread tip, the unique catalog profile, and unique SysML
   joins. Do not pass bindings or profileRequests. Unresolved previews hoist `gaps`

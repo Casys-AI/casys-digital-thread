@@ -99,6 +99,10 @@ import {
   registerProjectSpiceReviewTools,
 } from "./project-control/spice-review-tools.ts";
 import {
+  type ProjectResourceCaptureToolDependencies,
+  registerProjectResourceCaptureTools,
+} from "./project-control/resource-capture-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -125,7 +129,8 @@ export interface ProjectControlToolDependencies
     ProjectSensitivityReviewToolDependencies,
     ProjectDemoLoopToolDependencies,
     ProjectLedDriverSourceToolDependencies,
-    ProjectSpiceReviewToolDependencies {
+    ProjectSpiceReviewToolDependencies,
+    ProjectResourceCaptureToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
@@ -202,6 +207,7 @@ export function registerProjectControlTools(
   registerProjectDemoLoopTools(app, dependencies);
   registerProjectLedDriverSourceTools(app, dependencies);
   registerProjectSpiceReviewTools(app, dependencies);
+  registerProjectResourceCaptureTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);

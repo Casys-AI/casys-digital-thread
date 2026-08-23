@@ -14,7 +14,10 @@
 
 import type { EngineeringDecisionProposalParameter } from "../../project/engineering-project.ts";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
-import { exactRecord } from "../../kernel/case-validation.ts";
+import {
+  exactRecord,
+  PROPOSAL_PARAMETER_SLUG_BODY,
+} from "../../kernel/case-validation.ts";
 
 // ── Operation identity ───────────────────────────────────────────────────────
 
@@ -65,6 +68,7 @@ export type ArchitectureProposalParseErrorCode =
   | "missing_system"
   | "unknown_key"
   | "invalid_identifier"
+  | "invalid_slug"
   | "invalid_usage_identifier"
   | "usage_same_as_name"
   | "non_string_value"
@@ -95,8 +99,15 @@ export class ArchitectureProposalParseError extends Error {
 
 const SYSML_IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*$/;
 const SYSML_USAGE_IDENTIFIER = /^[a-z][A-Za-z0-9_]*$/;
-const COMPONENT_KEY = /^component\.([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z]+)$/;
-const ATTRIBUTE_KEY = /^attribute\.([A-Za-z][A-Za-z0-9_]*)\.(name|parent)$/;
+/** Slug is the shared proposal-parameter grammar, not a SysML identifier. */
+const COMPONENT_KEY = new RegExp(
+  `^component\\.(${PROPOSAL_PARAMETER_SLUG_BODY})\\.(name|usage|parent)$`,
+);
+const ATTRIBUTE_KEY = new RegExp(
+  `^attribute\\.(${PROPOSAL_PARAMETER_SLUG_BODY})\\.(name|parent)$`,
+);
+const COMPONENT_KEY_SHAPE = /^component\.(.+)\.(name|usage|parent)$/;
+const ATTRIBUTE_KEY_SHAPE = /^attribute\.(.+)\.(name|parent)$/;
 
 // ── Parser ───────────────────────────────────────────────────────────────────
 
@@ -155,31 +166,27 @@ export function parseArchitectureProposalParameters(
       attributeFields.set(slug, entry);
       continue;
     }
+    rejectMalformedArchitectureSlug(param.key, "attribute", ATTRIBUTE_KEY_SHAPE);
 
     const match = COMPONENT_KEY.exec(param.key);
-    if (!match) {
-      throw new ArchitectureProposalParseError(
-        "unknown_key",
-        `Unknown architecture parameter key "${param.key}". Allowed keys: architecture.package, system.name, component.<slug>.(name|usage|parent), attribute.<slug>.(name|parent).`,
-        { key: param.key },
-      );
+    if (match) {
+      const [, slug, field] = match;
+      if (!componentFields.has(slug!)) {
+        componentFields.set(slug!, {});
+      }
+      const entry = componentFields.get(slug!)!;
+      if (field === "name") entry.name = value;
+      else if (field === "usage") entry.usage = value;
+      else entry.parent = value;
+      continue;
     }
+    rejectMalformedArchitectureSlug(param.key, "component", COMPONENT_KEY_SHAPE);
 
-    const [, slug, field] = match;
-    if (field !== "name" && field !== "usage" && field !== "parent") {
-      throw new ArchitectureProposalParseError(
-        "unknown_key",
-        `Unknown component field "${field}" in key "${param.key}". Allowed fields: name, usage, parent.`,
-        { key: param.key, field },
-      );
-    }
-    if (!componentFields.has(slug!)) {
-      componentFields.set(slug!, {});
-    }
-    const entry = componentFields.get(slug!)!;
-    if (field === "name") entry.name = value;
-    else if (field === "usage") entry.usage = value;
-    else entry.parent = value;
+    throw new ArchitectureProposalParseError(
+      "unknown_key",
+      `Unknown architecture parameter key "${param.key}". Allowed keys: architecture.package, system.name, component.<slug>.(name|usage|parent), attribute.<slug>.(name|parent).`,
+      { key: param.key },
+    );
   }
 
   if (!packageName || !packageName.trim()) {
@@ -338,6 +345,23 @@ export function parseArchitectureProposalParameters(
     components,
     attributes,
   };
+}
+
+function rejectMalformedArchitectureSlug(
+  key: string,
+  kind: "component" | "attribute",
+  shape: RegExp,
+): void {
+  const match = shape.exec(key);
+  if (!match) return;
+  const slug = match[1]!;
+  throw new ArchitectureProposalParseError(
+    "invalid_slug",
+    `${kind === "component" ? "Component" : "Attribute"} slug "${slug}" in key ` +
+      `"${key}" is not a valid proposal parameter slug (^[A-Za-z0-9][A-Za-z0-9_-]*$). ` +
+      "Dots and colons are refused because they make the dotted key grammar ambiguous.",
+    { key, slug },
+  );
 }
 
 function detectCycles(

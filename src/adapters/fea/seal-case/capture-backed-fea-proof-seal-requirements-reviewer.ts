@@ -12,6 +12,7 @@ import {
   parseExactRequirementsCapture,
   REQUIREMENTS_CAPTURE_SCHEMA,
 } from "../../architecture/requirements/requirements-capture.ts";
+import { mechanicalProofRequirementsMatchCapture } from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
 
 interface TextCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
@@ -102,7 +103,12 @@ export class CaptureBackedFeaProofSealRequirementsReviewer
           `Requirements capture "${artifact.id}" does not bind one exact active V3 component lineage.`,
         );
       }
-      if (!requirementsMatch(capture.requirements, input.proofCase.requirements)) {
+      if (
+        !mechanicalProofRequirementsMatchCapture(
+          capture.requirements,
+          input.proofCase.requirements,
+        )
+      ) {
         return unresolved(
           "requirements-capture-invalid",
           artifact.id,
@@ -200,29 +206,6 @@ export class CaptureBackedFeaProofSealRequirementsReviewer
     }
     return { status: "resolved", artifact: selected.artifact };
   }
-}
-
-function requirementsMatch(
-  captured: readonly {
-    readonly metric: string;
-    readonly operator: string;
-    readonly limit: { readonly value: number; readonly unit: string };
-  }[],
-  declared: readonly {
-    readonly feature: string;
-    readonly operator: string;
-    readonly limit: { readonly value: number; readonly unit: string };
-  }[],
-): boolean {
-  return captured.length === declared.length &&
-    declared.every((requirement) =>
-      captured.some((candidate) =>
-        candidate.metric === requirement.feature &&
-        candidate.operator === requirement.operator &&
-        candidate.limit.value === requirement.limit.value &&
-        candidate.limit.unit === requirement.limit.unit
-      )
-    );
 }
 
 function unresolved(

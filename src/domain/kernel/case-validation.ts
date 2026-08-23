@@ -15,6 +15,17 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$/;
 
 /**
+ * Body of a dotted MRTR parameter slug (`component.<slug>.name`,
+ * `requirement.<slug>.metric`). Hyphens are allowed because the slug is a
+ * grouping key, not a SysML identifier. Dots and colons are not: they would
+ * make the dotted key grammar ambiguous. Narrower than SAFE_ID.
+ */
+export const PROPOSAL_PARAMETER_SLUG_BODY = "[A-Za-z0-9][A-Za-z0-9_-]*";
+export const PROPOSAL_PARAMETER_SLUG = new RegExp(
+  `^${PROPOSAL_PARAMETER_SLUG_BODY}$`,
+);
+
+/**
  * Assert that value is a plain object with exactly the declared keys.
  * A key in excess or a key missing both throw TypeError — fail-closed.
  */
@@ -100,6 +111,20 @@ export function safeId(value: unknown, path: string): string {
   if (!SAFE_ID.test(s)) {
     throw new TypeError(
       `${path} must be a stable identifier (letters, digits, ._:-).`,
+    );
+  }
+  return s;
+}
+
+/**
+ * Assert that value can occupy one segment of a dotted MRTR parameter key.
+ * Rejects dots and colons even though SAFE_ID would accept them.
+ */
+export function proposalParameterSlug(value: unknown, path: string): string {
+  const s = nonEmptyText(value, path);
+  if (!PROPOSAL_PARAMETER_SLUG.test(s) || s.length > 256) {
+    throw new TypeError(
+      `${path} must be a proposal parameter slug (letters, digits, hyphen, underscore; no dot or colon).`,
     );
   }
   return s;

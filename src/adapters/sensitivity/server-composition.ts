@@ -7,7 +7,7 @@
  */
 
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
-import type { ProjectTechnicalSourceCaptureUseCase } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
+import type { TechnicalSourceCapturePort } from "./correction-source/compile-capture-corrected-source-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PreviewProjectTechnicalCompilation } from "../../application/use-cases/compile/admission/preview-project-technical-compilation.ts";
 import { PrepareProjectCorrectedAdmissionReview } from "../../application/use-cases/sensitivity/correction-source/prepare-project-corrected-admission-review.ts";
@@ -86,7 +86,7 @@ export interface SensitivityCompositionOptions {
   readonly lease: EngineeringProjectRunLease;
   readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
   readonly technicalCompilationPreview: PreviewProjectTechnicalCompilation;
-  readonly technicalSourceCapture: ProjectTechnicalSourceCaptureUseCase;
+  readonly technicalSourceCapture: TechnicalSourceCapturePort;
   readonly feaProofCaptures: FileCaptureStore<"fea-proof-case">;
   readonly sensitivityCatalogOfferCaptures: FileCaptureStore<
     "sensitivity-catalog-offer"

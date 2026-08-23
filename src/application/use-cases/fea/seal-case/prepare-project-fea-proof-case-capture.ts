@@ -7,12 +7,18 @@
 
 import { assembleFeaProofCaseSourceCaptureReview } from "../../../../domain/fea/seal-case/fea-proof-case-source-capture.ts";
 import { exactRecord } from "../../../../domain/kernel/case-validation.ts";
+import { JSON_SOURCE_ACCEPTED_MIME_TYPES } from "../../../../domain/resource/agent-resource-reference.ts";
+import { parseAgentResourceReference } from "../../../../domain/resource/agent-resource-reference.ts";
 import type {
   ProjectFeaProofCaseCaptureCommand,
   ProjectFeaProofCaseCaptureUseCase,
 } from "../../../ports/in/fea/seal-case/project-fea-proof-case-capture.ts";
 import type { FeaProofCaseSourceCaptureReader } from "../../../ports/out/fea/seal-case/fea-proof-case-source-capture-reader.ts";
 import type { FeaProofCaseSourceCaptureReview } from "../../../../domain/fea/seal-case/fea-proof-case-source-capture.ts";
+import {
+  AgentResourceReopenError,
+  type ReopenAgentResource,
+} from "../../resource/reopen-agent-resource.ts";
 
 export type ProjectFeaProofCaseCaptureErrorCode =
   | "invalid_request"
@@ -31,14 +37,17 @@ export class ProjectFeaProofCaseCaptureError extends Error {
 
 export interface PrepareProjectFeaProofCaseCaptureDependencies {
   readonly captures: FeaProofCaseSourceCaptureReader;
+  readonly resources: ReopenAgentResource;
 }
 
 export class PrepareProjectFeaProofCaseCapture
   implements ProjectFeaProofCaseCaptureUseCase {
   readonly #captures: FeaProofCaseSourceCaptureReader;
+  readonly #resources: ReopenAgentResource;
 
   constructor(dependencies: PrepareProjectFeaProofCaseCaptureDependencies) {
     this.#captures = dependencies.captures;
+    this.#resources = dependencies.resources;
   }
 
   async capture(
@@ -55,14 +64,19 @@ export class PrepareProjectFeaProofCaseCapture
       );
     }
     try {
-      const reference = await this.#captures.capture(command.sourceText);
-      const reopened = await this.#captures.reopen(reference);
+      const reopened = await this.#resources.reopenUtf8Text(command.resourceRef, {
+        acceptedMimeTypes: JSON_SOURCE_ACCEPTED_MIME_TYPES,
+        maxBytes: 262_144,
+      });
+      const reference = await this.#captures.capture(reopened.text);
+      const stored = await this.#captures.reopen(reference);
       return assembleFeaProofCaseSourceCaptureReview({
-        fingerprint: reopened.reference.fingerprint,
-        source: reopened.source,
+        fingerprint: stored.reference.fingerprint,
+        source: stored.source,
       });
     } catch (cause) {
       if (cause instanceof ProjectFeaProofCaseCaptureError) throw cause;
+      if (cause instanceof AgentResourceReopenError) throw cause;
       throw new ProjectFeaProofCaseCaptureError(
         "source_capture_failed",
         "The mechanical proof-case source could not be captured and reread.",
@@ -75,11 +89,11 @@ export class PrepareProjectFeaProofCaseCapture
 function parseCommand(
   value: unknown,
 ): ProjectFeaProofCaseCaptureCommand {
-  const input = exactRecord(value, ["sourceText"], "$feaProofCaseCapture");
-  if (typeof input.sourceText !== "string" || input.sourceText.length === 0) {
-    throw new TypeError(
-      "$feaProofCaseCapture.sourceText must be a non-empty string.",
-    );
-  }
-  return { sourceText: input.sourceText };
+  const input = exactRecord(value, ["resourceRef"], "$feaProofCaseCapture");
+  return {
+    resourceRef: parseAgentResourceReference(
+      input.resourceRef,
+      "$feaProofCaseCapture.resourceRef",
+    ),
+  };
 }

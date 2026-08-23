@@ -13,6 +13,7 @@ import type {
 } from "../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import { FileByteStore } from "../../../../adapters/shared/cas/file-byte-store.ts";
 import { FeaProofCaseSourceCaptureService } from "../../../../adapters/fea/seal-case/fea-proof-case-source-capture.ts";
+import { persistAgentResourceText } from "../../../../testing/agent-resource-test-support.ts";
 import { PrepareProjectFeaProofCaseCapture } from "./prepare-project-fea-proof-case-capture.ts";
 import { PrepareProjectFeaProofSealReview } from "./prepare-project-fea-proof-seal-review.ts";
 import {
@@ -75,8 +76,16 @@ async function captureSource(sourceText: string) {
       label: "FEA proof-case source",
     }),
   });
-  const review = await new PrepareProjectFeaProofCaseCapture({ captures })
-    .capture({ sourceText });
+  const persisted = await persistAgentResourceText(`${root}/agent-resources`, {
+    name: "proof.json",
+    mimeType: "application/json",
+    text: sourceText,
+  });
+  const review = await new PrepareProjectFeaProofCaseCapture({
+    captures,
+    resources: persisted.reopen,
+  })
+    .capture({ resourceRef: persisted.reference });
   return { captures, review, root };
 }
 

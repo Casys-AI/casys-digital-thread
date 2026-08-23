@@ -21,7 +21,9 @@ import type {
 } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import { compilationPreviewContent } from "../../domain/compile/admission/technical-compilation-preview-review.ts";
 import { captureReviewContent } from "../../domain/compile/admission/technical-source-capture-review.ts";
+import { parseAgentResourceReference } from "../../domain/resource/agent-resource-reference.ts";
 import {
+  AGENT_RESOURCE_REFERENCE_SCHEMA,
   FINGERPRINT_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
   READ_ONLY_ANNOTATIONS,
@@ -301,21 +303,15 @@ const TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA = {
 const projectTechnicalSourceCaptureTool: MCPTool = {
   name: "project_technical_source_capture",
   description:
-    "Capture exact agent-authored technical source bytes and their server-selected parser analysis in immutable draft CAS. parser.status is the closed-subset parser only; it is not admission. levers.status is the behave-CAD handle diagnosis (reachable named numeric literals). Pass result.reference, never this whole review object, to project_technical_compilation_preview. The caller may select only a registered profile id and source id; language, analyzer and policy remain server-owned. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
+    "Capture exact agent-authored technical source bytes and their server-selected parser analysis in immutable draft CAS. parser.status is the closed-subset parser only; it is not admission. levers.status is the behave-CAD handle diagnosis (reachable named numeric literals). Pass result.reference, never this whole review object, to project_technical_compilation_preview. First call project_resource_capture, then supply that full resourceRef plus a registered profile id and source id. Language, analyzer and policy remain server-owned. MIME is a guard, not a parser. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
   inputSchema: {
     type: "object",
     properties: {
       profileId: TECHNICAL_ID_SCHEMA,
       sourceId: TECHNICAL_ID_SCHEMA,
-      sourceText: {
-        type: "string",
-        minLength: 1,
-        maxLength: 65_536,
-        description:
-          "Exact UTF-8 technical source. Edge whitespace and line endings are preserved.",
-      },
+      resourceRef: AGENT_RESOURCE_REFERENCE_SCHEMA,
     },
-    required: ["profileId", "sourceId", "sourceText"],
+    required: ["profileId", "sourceId", "resourceRef"],
     additionalProperties: false,
   },
   outputSchema: TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA,
@@ -410,18 +406,17 @@ function technicalSourceCaptureCommand(
 ): ProjectTechnicalSourceCaptureCommand {
   exactKeys(
     value,
-    ["profileId", "sourceId", "sourceText"],
+    ["profileId", "sourceId", "resourceRef"],
     [],
     "technicalSourceCapture",
   );
-  const sourceText = exactSourceText(value.sourceText, "sourceText");
-  if (sourceText.length > 65_536) {
-    throw new TypeError("sourceText must not exceed 65536 characters");
-  }
   return {
     profileId: technicalId(value.profileId, "profileId"),
     sourceId: technicalId(value.sourceId, "sourceId"),
-    sourceText,
+    resourceRef: parseAgentResourceReference(
+      value.resourceRef,
+      "$technicalSourceCapture.resourceRef",
+    ),
   };
 }
 

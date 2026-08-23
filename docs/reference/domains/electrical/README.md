@@ -30,5 +30,11 @@ documentary L3 evidence. It is not mcp-spice. L4 derives named criteria from a r
 method sheet with a server-owned comparator; ngspice is not the oracle. An L4 `pass` is
 never L5. Safety, EMC, optical output, lifetime, and vendor validity stay `unavailable`.
 
+Circuit-only SPICE `.cir` and LED-driver JSON enter through `project_resource_capture`
+then `resourceRef` (`project_technical_source_capture` / `project_led_driver_source_capture`).
+`project_resource_capture` may also interpret a reviewed
+`electrical-observation-method-sheet/1.0` through the existing typed store. Admitted
+SPICE execution still starts from `compile.seal-admission@1`.
+
 A local AL01 walk of that chain is tracking evidence, not this contract:
 [AL01 runtime evidence](../../../projects/articulated-led-desk-lamp/runtime-evidence.md).

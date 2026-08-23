@@ -134,16 +134,36 @@ through the same command service. See
 
 | Tool                                        | Writes               | Grant                                                         |
 | ------------------------------------------- | -------------------- | ------------------------------------------------------------- |
-| `project_architecture_sysml_source_capture` | Draft CAS only       | Opaque reference. No project, Thread, MRTR, or SysON          |
-| `project_architecture_sysml_preview`        | None (or reopen CAS) | Diagnostics + optional `decisionParameters`. Not Thread state |
+| `project_architecture_sysml_source_capture` | Draft CAS only       | `profileId` + `sourceId` + full `resourceRef` from `project_resource_capture`. Opaque analysis reference. No project, Thread, MRTR, or SysON |
+| `project_architecture_sysml_preview`        | None (or reopen CAS) | Opaque `sourceRef` from that capture. Diagnostics + optional `decisionParameters`. Not Thread state |
 
 How-to: [Author architecture SysML](../../how-to/compile/author-architecture-sysml.md).
+Upload: [Capture an agent resource](../../how-to/compile/capture-an-agent-resource.md).
+
+### Agent resource ingress (draft MCP resource)
+
+| Tool                       | Writes        | Grant                                                                                                                                                                                                 |
+| -------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project_resource_capture` | Draft CAS only | One small agent-authored file as an MCP resource. Name + MIME + exactly one of UTF-8 `text` or canonical padded `blob`. Opaque `reference` + `resources/read`. Known method-sheet schemas interpret through existing typed stores. `grants: none`. |
+
+The caller never supplies a path, provider, runtime, project, CAS URI, fingerprint or
+MRTR. The server hashes exact bytes (bound 262144), persists them, rereads them, and
+mints `casys://agent-resource-capture/sha256/<digest>`. Later public captures take that
+full `resourceRef` only — not `sourceText`. Unknown files stay raw. A declared
+`modelica-thermal-method-sheet/1.0` or `electrical-observation-method-sheet/1.0` that
+fails validation stays `unresolved` without a typed reference. A valid known sheet
+yields `interpretation.typed.fingerprint` for the existing seal-review tools. This is
+**not** admission and must not be passed to a microVM;
+`ReopenAdmittedCompilationSource` remains the isolated-execution authority.
+
+How-to: [Capture an agent resource](../../how-to/compile/capture-an-agent-resource.md).
+Why: [MCP resource ingress](../../explanations/runtime/mcp-resource-ingress.md).
 
 ### LED-driver human source
 
 | Tool                                 | Writes         | Grant                                                                                                                                      |
 | ------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `project_led_driver_source_capture`  | Draft CAS only | `led-driver-source-capture-review/1.0`. Pass `result.reference` only. No project, Thread, D1, provider, tool, or ngspice                    |
+| `project_led_driver_source_capture`  | Draft CAS only | Full `resourceRef` from `project_resource_capture`. `led-driver-source-capture-review/1.0`. Pass `result.reference` only. No project, Thread, D1, provider, tool, or ngspice |
 | `project_led_driver_source_review`   | None           | Reopen one opaque `led-driver-source-capture/1.0` locator. Unknowns stay `unresolved`. Grants none. Never pass `sourceText` or the review envelope |
 
 ### Brief compilation (approved brief → proposal grammar)
@@ -189,7 +209,9 @@ How-to: [Compile brief parameters](../../how-to/compile/compile-brief-parameters
 | `project_fea_proof_seal_review`   | None           | `decisionParameters` plus `next.append` / `next.propose` for `verify.seal-proof-case@1` |
 | `project_fea_isolated_run_review` | None           | Isolated `@3` bindings plus guarded hops. `geometry` = canonical part STEP              |
 
-Capture takes only `sourceText` (`mechanical-proof-case-source/1.0`). The seal review
+Capture takes only a full `resourceRef` from `project_resource_capture`
+(`mechanical-proof-case-source/1.0` JSON). The returned case fingerprint may differ
+from the raw SHA. The seal review
 takes `projectId` + opaque `caseRef.fingerprint` and optional false-by-default
 `sensitivityCatalogOptIn`. The server selects the unique current Thread tip — not
 `latest` — and recrosses unique canonical part STEP, CAD provenance, SysON requirements,
@@ -249,7 +271,7 @@ seal / run tools stay.
 
 | Tool                                         | Writes             | Grant                                                                                                                            |
 | -------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `project_technical_source_capture`           | Draft CAS          | Review: `parser` + `levers` + opaque `reference`. Pass `result.reference` only                                                   |
+| `project_technical_source_capture`           | Draft CAS          | `profileId` + `sourceId` + full `resourceRef`. Review: `parser` + `levers` + opaque `reference`. Pass `result.reference` only     |
 | `project_technical_compilation_preview`      | Review draft CAS   | `projectId` + `result.reference`. Server tip/profile/unique SysML join. `decisionParameters` for `compile.seal-admission@1` only |
 | `project_admitted_geometry_export`           | Geometry **draft** | Parameters for `design.write-geometry@1`. Not isolated execution                                                                 |
 | `project_build123d_execution_review`         | None               | Parameters for `design.execute-build123d@1`. No capability                                                                       |
@@ -258,7 +280,7 @@ seal / run tools stay.
 | `project_sensitivity_base_evaluation_review` | None               | Ready only if study metrics join Thread requirements exactly                                                                     |
 | `project_corrected_admission_review`         | None               | Parameters for `compile.seal-admission@1` from a corrected source                                                                |
 | `project_evaluation_closeout_review`         | None               | `projectId` only. Server reopens one current static FEA `@3` branch and derives closed human L5 accept/reject parameters; no solver/SysON/CAD/correction grant. Accept is offered only when every L4 criterion is literal `pass`. How-to: [review static-mechanical closeout](../../how-to/behave/review-static-mechanical-closeout.md) |
-| `project_cross_domain_impact_manifest_capture` | Draft CAS only | `sourceText` JSON body of `cross-domain-impact-manifest/1.0` without fingerprint. Review: `captured` + opaque `{ fingerprint }` + ids/revision/basis/`changeKinds` + `grants: none`. Pass `result.reference` as `manifestRef`. No project, Thread, MRTR, provider, tool, args, or runtime |
+| `project_cross_domain_impact_manifest_capture` | Draft CAS only | Full `resourceRef` from `project_resource_capture`. JSON body of `cross-domain-impact-manifest/1.0` without fingerprint. Review: `captured` + opaque `{ fingerprint }` + ids/revision/basis/`changeKinds` + `grants: none`. Pass `result.reference` as `manifestRef`. No project, Thread, MRTR, provider, tool, args, or runtime |
 | `project_cross_domain_impact_manifest_seal_review` | None         | `projectId` + opaque capture `manifestRef`. Canonical MRTR for `verify.seal-cross-domain-impact-manifest@1`. Recrosses project/subject/current Thread/Brief gates/evidence. No evaluation, claim mutation, or recapture of manifest bytes |
 | `project_cross_domain_impact_decision_review` | None              | `projectId` only. Unique current X07/X08 capture → canonical MRTR for `decide.accept-cross-domain-impact@1`. No rerun. How-to: [walk cross-domain impact judgement](../../how-to/behave/walk-cross-domain-impact-judgement.md) |
 | `project_modelica_qualified_kit_run_review`  | None               | Parameters for the one local Modelica kit                                                                                        |

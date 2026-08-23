@@ -20,12 +20,18 @@ import {
   deterministicJson,
   fingerprintsEqual,
 } from "../../../domain/kernel/deterministic-json.ts";
+import { JSON_SOURCE_ACCEPTED_MIME_TYPES } from "../../../domain/resource/agent-resource-reference.ts";
+import { parseAgentResourceReference } from "../../../domain/resource/agent-resource-reference.ts";
 import {
   CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS,
   type ProjectCrossDomainImpactManifestCaptureCommand,
   type ProjectCrossDomainImpactManifestCaptureUseCase,
 } from "../../ports/in/impact/project-cross-domain-impact-manifest-capture.ts";
 import type { CrossDomainImpactManifestStore } from "../../ports/out/impact/cross-domain-impact-manifest-store.ts";
+import {
+  AgentResourceReopenError,
+  type ReopenAgentResource,
+} from "../resource/reopen-agent-resource.ts";
 
 export type ProjectCrossDomainImpactManifestCaptureErrorCode =
   | "invalid_request"
@@ -45,16 +51,19 @@ export class ProjectCrossDomainImpactManifestCaptureError extends Error {
 
 export interface PrepareProjectCrossDomainImpactManifestCaptureDependencies {
   readonly manifests: CrossDomainImpactManifestStore;
+  readonly resources: ReopenAgentResource;
 }
 
 export class PrepareProjectCrossDomainImpactManifestCapture
   implements ProjectCrossDomainImpactManifestCaptureUseCase {
   readonly #manifests: CrossDomainImpactManifestStore;
+  readonly #resources: ReopenAgentResource;
 
   constructor(
     dependencies: PrepareProjectCrossDomainImpactManifestCaptureDependencies,
   ) {
     this.#manifests = dependencies.manifests;
+    this.#resources = dependencies.resources;
   }
 
   async capture(
@@ -71,10 +80,25 @@ export class PrepareProjectCrossDomainImpactManifestCapture
       );
     }
 
+    let sourceText: string;
+    try {
+      sourceText = (await this.#resources.reopenUtf8Text(command.resourceRef, {
+        acceptedMimeTypes: JSON_SOURCE_ACCEPTED_MIME_TYPES,
+        maxBytes: CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS,
+      })).text;
+    } catch (cause) {
+      if (cause instanceof AgentResourceReopenError) throw cause;
+      throw new ProjectCrossDomainImpactManifestCaptureError(
+        "invalid_request",
+        "The cross-domain impact-manifest resource could not be reopened.",
+        cause,
+      );
+    }
+
     let manifest;
     try {
       manifest = await createCrossDomainImpactManifest(
-        parseManifestBody(command.sourceText),
+        parseManifestBody(sourceText),
       );
     } catch (cause) {
       if (cause instanceof ProjectCrossDomainImpactManifestCaptureError) {
@@ -126,23 +150,15 @@ function parseCommand(
 ): ProjectCrossDomainImpactManifestCaptureCommand {
   const input = exactRecord(
     value,
-    ["sourceText"],
+    ["resourceRef"],
     "$impactManifestCapture",
   );
-  if (typeof input.sourceText !== "string" || input.sourceText.length === 0) {
-    throw new TypeError(
-      "$impactManifestCapture.sourceText must be a non-empty string.",
-    );
-  }
-  if (
-    input.sourceText.length >
-      CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS
-  ) {
-    throw new TypeError(
-      "$impactManifestCapture.sourceText must not exceed 262144 characters.",
-    );
-  }
-  return { sourceText: input.sourceText };
+  return {
+    resourceRef: parseAgentResourceReference(
+      input.resourceRef,
+      "$impactManifestCapture.resourceRef",
+    ),
+  };
 }
 
 function parseManifestBody(sourceText: string): unknown {

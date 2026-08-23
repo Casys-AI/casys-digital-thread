@@ -21,7 +21,7 @@ fixture, or a successful solver call is not a product capability by itself.
 | ----- | ------ | ------------------------ |
 | X04 | Supported | Outbound ports under `src/application/ports/out/impact/`: manifest store (save + opaque read), Thread lineage, Brief V2 gates, capture stores, L5 closeout reader. No MCP provider client, no Workbench write. |
 | X05 | Supported | Draft-capture and recross use cases under `src/application/use-cases/impact/` plus CAS/Thread adapters under `src/adapters/impact/`. Invalid capture fails closed. Recross mismatch stays `unavailable` or `unresolved`. |
-| X06 | Supported | Public `project_cross_domain_impact_manifest_capture` writes draft CAS only (`sourceText` → opaque `{ fingerprint }`). Read-only `project_cross_domain_impact_manifest_seal_review` (`projectId` + that reference) then registered `verify.seal-cross-domain-impact-manifest@1`. Seal publishes identities; it does not evaluate a branch. Capture is not a registered operation. |
+| X06 | Supported | Public `project_cross_domain_impact_manifest_capture` writes draft CAS only (full `resourceRef` → opaque `{ fingerprint }`). Read-only `project_cross_domain_impact_manifest_seal_review` (`projectId` + that reference) then registered `verify.seal-cross-domain-impact-manifest@1`. Seal publishes identities; it does not evaluate a branch. Capture is not a registered operation. |
 | X07 | Supported | Pure analysis: registered `analyze.evaluate-cross-domain-impact@1`. Internal command is not an agent JSON envelope. Proposes branch and gate-claim statuses. Mutates none. |
 | X08 | Supported | Documentary Thread capture of that X07 recross (`cross-domain-impact-evaluation-capture/1.0`). `workItemInvalidations` and `rerunProposals` are literal `none`. |
 | X09 | Bounded | Read-only `project_cross_domain_impact_decision_review` (`projectId` only) then human-origin `decide.accept-cross-domain-impact@1`. Applies the already-proposed statuses onto existing work-item claims. No `decide.reject-cross-domain-impact@1`. |
@@ -47,7 +47,7 @@ X10 exist.
 
 Project-control tools that exist:
 
-- `project_cross_domain_impact_manifest_capture` (draft CAS write; `sourceText` only)
+- `project_cross_domain_impact_manifest_capture` (draft CAS write; full `resourceRef` only)
 - `project_cross_domain_impact_manifest_seal_review` (read-only; `projectId` + opaque capture reference)
 - `project_cross_domain_impact_decision_review`
 

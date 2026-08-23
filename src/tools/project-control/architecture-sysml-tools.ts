@@ -5,7 +5,13 @@ import type {
 import type {
   ProjectArchitectureSysmlSourceCaptureUseCase,
 } from "../../application/ports/in/architecture/agent-seal/project-architecture-sysml-source-capture.ts";
-import { FINGERPRINT_SCHEMA, OBJECT_OUTPUT_SCHEMA } from "./mcp-tool-schemas.ts";
+import { exactRecord } from "../../domain/kernel/case-validation.ts";
+import { parseAgentResourceReference } from "../../domain/resource/agent-resource-reference.ts";
+import {
+  AGENT_RESOURCE_REFERENCE_SCHEMA,
+  FINGERPRINT_SCHEMA,
+  OBJECT_OUTPUT_SCHEMA,
+} from "./mcp-tool-schemas.ts";
 
 export interface ProjectArchitectureSysmlToolDependencies {
   architectureSysmlSourceCapture?: ProjectArchitectureSysmlSourceCaptureUseCase;
@@ -143,21 +149,15 @@ const SOURCE_CAPTURE_REFERENCE_SCHEMA = {
 const projectArchitectureSysmlSourceCaptureTool: MCPTool = {
   name: "project_architecture_sysml_source_capture",
   description:
-    "Capture exact agent-authored architecture SysML UTF-8 bytes and their server-owned closed-subset analysis in immutable draft CAS. The caller may select only the registered profile id sysml-architecture-closed-subset-v1 and a source id; language, tokenizer, parser and policy remain server-owned. This is not sysml-source-capture/1.0 and does not insert into SysON. Preserve the returned reference verbatim for project_architecture_sysml_preview.",
+    "Capture exact agent-authored architecture SysML UTF-8 bytes and their server-owned closed-subset analysis in immutable draft CAS. First call project_resource_capture, then supply that full resourceRef plus the registered profile id sysml-architecture-closed-subset-v1 and a source id. Language, tokenizer, parser and policy remain server-owned. This is not sysml-source-capture/1.0, does not insert into SysON, and does not use model.write-architecture@1. Preserve the returned reference verbatim for project_architecture_sysml_preview.",
   inputSchema: {
     type: "object",
     properties: {
       profileId: ID_SCHEMA,
       sourceId: ID_SCHEMA,
-      sourceText: {
-        type: "string",
-        minLength: 1,
-        maxLength: 262_144,
-        description:
-          "Exact UTF-8 architecture SysML. Edge whitespace and line endings are preserved.",
-      },
+      resourceRef: AGENT_RESOURCE_REFERENCE_SCHEMA,
     },
-    required: ["profileId", "sourceId", "sourceText"],
+    required: ["profileId", "sourceId", "resourceRef"],
     additionalProperties: false,
   },
   outputSchema: SOURCE_CAPTURE_REFERENCE_SCHEMA,
@@ -167,18 +167,13 @@ const projectArchitectureSysmlSourceCaptureTool: MCPTool = {
 const projectArchitectureSysmlPreviewTool: MCPTool = {
   name: "project_architecture_sysml_preview",
   description:
-    "Tokenize, parse and analyse one agent-authored architecture SysML closed-subset source without writing Thread state. Supply either exact UTF-8 sourceText or one opaque capture reference. Unresolved constructs are first-class and are never omitted. A ready captured result may include decisionParameters for a later model.seal-architecture-sysml@1 proposal. This does not call SysON and does not reuse compile.seal-admission@1.",
+    "Tokenize, parse and analyse one captured architecture SysML closed-subset source without writing Thread state. Supply the opaque architecture-sysml-source-analysis-capture/1.0 reference from project_architecture_sysml_source_capture. Unresolved constructs are first-class and are never omitted. A ready captured result may include decisionParameters for a later model.seal-architecture-sysml@1 proposal. This does not call SysON and does not reuse compile.seal-admission@1.",
   inputSchema: {
     type: "object",
     properties: {
-      sourceId: ID_SCHEMA,
-      sourceText: {
-        type: "string",
-        minLength: 1,
-        maxLength: 262_144,
-      },
       sourceRef: SOURCE_CAPTURE_REFERENCE_SCHEMA,
     },
+    required: ["sourceRef"],
     additionalProperties: false,
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,
@@ -188,20 +183,24 @@ const projectArchitectureSysmlPreviewTool: MCPTool = {
 function captureCommand(args: Record<string, unknown>): {
   readonly profileId: string;
   readonly sourceId: string;
-  readonly sourceText: string;
+  readonly resourceRef: ReturnType<typeof parseAgentResourceReference>;
 } {
-  if (
-    typeof args.profileId !== "string" ||
-    typeof args.sourceId !== "string" ||
-    typeof args.sourceText !== "string"
-  ) {
+  const root = exactRecord(
+    args,
+    ["profileId", "sourceId", "resourceRef"],
+    "$architectureSysmlCapture",
+  );
+  if (typeof root.profileId !== "string" || typeof root.sourceId !== "string") {
     throw new TypeError(
-      "Architecture SysML capture requires profileId, sourceId, and sourceText.",
+      "Architecture SysML capture requires profileId, sourceId, and resourceRef.",
     );
   }
   return {
-    profileId: args.profileId,
-    sourceId: args.sourceId,
-    sourceText: args.sourceText,
+    profileId: root.profileId,
+    sourceId: root.sourceId,
+    resourceRef: parseAgentResourceReference(
+      root.resourceRef,
+      "$architectureSysmlCapture.resourceRef",
+    ),
   };
 }

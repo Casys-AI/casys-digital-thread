@@ -34,6 +34,7 @@ import {
   deepFreeze,
   exactRecord,
   nonEmptyText,
+  PROPOSAL_PARAMETER_SLUG,
   safeId,
 } from "../../../../domain/kernel/case-validation.ts";
 import type {
@@ -146,6 +147,17 @@ export class PrepareProjectBriefArchitectureReview
 
     const seenSlugs = new Set<string>();
     for (const component of command.components) {
+      if (!PROPOSAL_PARAMETER_SLUG.test(component.slug)) {
+        diagnostics.push({
+          code: "invalid-component-slug",
+          slug: component.slug,
+          sourceItemId: component.sourceItemId,
+          message: `Component slug "${component.slug}" is not a valid proposal ` +
+            "parameter slug (^[A-Za-z0-9][A-Za-z0-9_-]*$). Dots and colons are " +
+            "refused because they make the component.<slug>.<field> key grammar ambiguous.",
+        });
+        continue;
+      }
       if (seenSlugs.has(component.slug)) {
         diagnostics.push({
           code: "duplicate-component-slug",
@@ -178,6 +190,17 @@ export class PrepareProjectBriefArchitectureReview
 
     const seenAttributeSlugs = new Set<string>();
     for (const attribute of command.attributes ?? []) {
+      if (!PROPOSAL_PARAMETER_SLUG.test(attribute.slug)) {
+        diagnostics.push({
+          code: "invalid-attribute-slug",
+          slug: attribute.slug,
+          sourceItemId: attribute.sourceItemId,
+          message: `Attribute slug "${attribute.slug}" is not a valid proposal ` +
+            "parameter slug (^[A-Za-z0-9][A-Za-z0-9_-]*$). Dots and colons are " +
+            "refused because they make the attribute.<slug>.<field> key grammar ambiguous.",
+        });
+        continue;
+      }
       if (seenAttributeSlugs.has(attribute.slug)) {
         diagnostics.push({
           code: "duplicate-attribute-slug",

@@ -34,6 +34,11 @@ Thread shape after the runner returns.
 Callers never pass source text, a provider name, a command, or a runtime alias. The
 server owns the profile, image digest, wrapper, paths, policy, and limits.
 
+`project_resource_capture` is draft MCP-resource ingress only. Public small-file
+captures now take that full `resourceRef`, reopen exact UTF-8, then reuse the existing
+parser/canonicalizer. Do not pass its raw CAS URI to a microVM. Isolated execution still
+starts from `compile.seal-admission@1` via `ReopenAdmittedCompilationSource`.
+
 ## Consumers
 
 | Language  | Review tool                            | Operation                          | What a success is                                     | What it is not                           |

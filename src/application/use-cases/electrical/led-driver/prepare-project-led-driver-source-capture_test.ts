@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { validLedDriverHumanSourceText } from "../../../../testing/led-driver-source-fixtures.ts";
+import { persistAgentResourceText } from "../../../../testing/agent-resource-test-support.ts";
 import { FileByteStore } from "../../../../adapters/shared/cas/file-byte-store.ts";
 import { LedDriverSourceCaptureService } from "../../../../adapters/electrical/led-driver/led-driver-source-capture.ts";
 import {
@@ -19,9 +20,16 @@ Deno.test("LED-driver source capture hashes, rereads, and returns a reviewable r
         label: "LED-driver human source",
       }),
     });
-    const sourceText = validLedDriverHumanSourceText();
-    const review = await new PrepareProjectLedDriverSourceCapture({ captures })
-      .capture({ sourceText });
+    const persisted = await persistAgentResourceText(`${root}/agent-resources`, {
+      name: "led-driver.json",
+      mimeType: "application/json",
+      text: validLedDriverHumanSourceText(),
+    });
+    const review = await new PrepareProjectLedDriverSourceCapture({
+      captures,
+      resources: persisted.reopen,
+    })
+      .capture({ resourceRef: persisted.reference });
     assertEquals(review.schemaVersion, "led-driver-source-capture-review/1.0");
     assertEquals(review.status, "unresolved");
     assertEquals(review.grants, "none");
@@ -52,11 +60,24 @@ Deno.test("LED-driver source capture refuses extra authority fields", async () =
         throw new Error("must not reopen");
       },
     },
+    resources: {
+      reopenUtf8Text: () => {
+        throw new Error("must not reopen resource");
+      },
+    } as never,
   });
   const error = await assertRejects(
     () =>
       capture.capture({
-        sourceText: validLedDriverHumanSourceText(),
+        resourceRef: {
+          schemaVersion: "agent-resource-capture/1.0",
+          uri: `casys://agent-resource-capture/sha256/${"a".repeat(64)}`,
+          name: "led-driver.json",
+          mimeType: "application/json",
+          representation: "text",
+          byteCount: 2,
+          fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+        },
         provider: "ngspice",
       } as never),
     ProjectLedDriverSourceCaptureError,
@@ -65,19 +86,30 @@ Deno.test("LED-driver source capture refuses extra authority fields", async () =
 });
 
 Deno.test("LED-driver source capture wraps a failed hash-before-parse write", async () => {
-  const capture = new PrepareProjectLedDriverSourceCapture({
-    captures: {
-      capture: () => {
-        throw new Error("bytes did not persist");
+  const root = await Deno.makeTempDir({ prefix: "led-driver-source-fail-" });
+  try {
+    const persisted = await persistAgentResourceText(root, {
+      name: "led-driver.json",
+      mimeType: "application/json",
+      text: validLedDriverHumanSourceText(),
+    });
+    const capture = new PrepareProjectLedDriverSourceCapture({
+      captures: {
+        capture: () => {
+          throw new Error("bytes did not persist");
+        },
+        reopen: () => {
+          throw new Error("must not reopen");
+        },
       },
-      reopen: () => {
-        throw new Error("must not reopen");
-      },
-    },
-  });
-  const error = await assertRejects(
-    () => capture.capture({ sourceText: validLedDriverHumanSourceText() }),
-    ProjectLedDriverSourceCaptureError,
-  );
-  assertEquals(error.code, "source_capture_failed");
+      resources: persisted.reopen,
+    });
+    const error = await assertRejects(
+      () => capture.capture({ resourceRef: persisted.reference }),
+      ProjectLedDriverSourceCaptureError,
+    );
+    assertEquals(error.code, "source_capture_failed");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
 });

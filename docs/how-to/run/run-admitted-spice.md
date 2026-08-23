@@ -46,9 +46,11 @@ required after composing `--local-execution` so the review tool and executor are
 
 ## 1. Capture
 
-Call `project_technical_source_capture` with one source satisfying the v1 circuit-only
-grammar. Pass `profileId` `spice-circuit-closed-subset-v1`. Ordinary numeric netlists
-without `.param` are admissible.
+Call `project_resource_capture` with the `.cir` UTF-8, then
+`project_technical_source_capture` with `profileId` `spice-circuit-closed-subset-v1`,
+`sourceId`, and that full `resourceRef`. The source must satisfy the v1 circuit-only
+grammar. Ordinary numeric netlists without `.param` are admissible. There is no inline
+`sourceText`.
 
 Read the result fields separately:
 

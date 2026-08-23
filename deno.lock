@@ -3,25 +3,24 @@
   "specifiers": {
     "jsr:@casys/mcp-calculix@0.7.0": "0.7.0",
     "jsr:@casys/mcp-modelica@0.4.0": "0.4.0",
-    "jsr:@casys/mcp-server@0.24.1": "0.24.1",
     "jsr:@casys/mcp-server@0.26.0": "0.26.0",
+    "jsr:@casys/mcp-server@0.26.1": "0.26.1",
     "jsr:@std/assert@1.0.14": "1.0.14",
     "jsr:@std/cli@1": "1.0.32",
-    "jsr:@std/fmt@^1.0.10": "1.0.10",
     "jsr:@std/internal@^1.0.10": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
-    "jsr:@std/path@*": "1.1.6",
     "jsr:@std/path@^1.1.0": "1.1.6",
     "jsr:@std/yaml@1": "1.2.0",
     "npm:@dagrejs/dagre@^3.1.0": "3.1.0",
     "npm:@lezer/python@1.1.19": "1.1.19",
     "npm:@modelcontextprotocol/ext-apps@^1.7.4": "1.7.5_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3",
     "npm:@modelcontextprotocol/sdk@^1.29.0": "1.30.0_zod@4.4.3",
+    "npm:@modelcontextprotocol/server@2": "2.0.0",
     "npm:@opentelemetry/api@^1.9.0": "1.9.1",
     "npm:ajv@^8.17.1": "8.20.0",
     "npm:graphology@0.26": "0.26.0_graphology-types@0.24.8",
-    "npm:hono@4": "4.13.1",
-    "npm:jose@6": "6.2.8",
+    "npm:hono@4": "4.13.3",
+    "npm:jose@6": "6.2.9",
     "npm:microsandbox@0.6.8": "0.6.8",
     "npm:occt-import-js@0.0.23": "0.0.23",
     "npm:typescript@*": "7.0.2"
@@ -31,18 +30,18 @@
       "integrity": "d4c4aa83fe0c31fadc121440b804cc19a9a186f2b736279c60821b6e3b64a17b",
       "dependencies": [
         "jsr:@casys/mcp-server@0.26.0",
-        "jsr:@std/path@^1.1.0"
+        "jsr:@std/path"
       ]
     },
     "@casys/mcp-modelica@0.4.0": {
       "integrity": "43d983919799203cf9024c9a46e0202c003cdd46229abe708927d97097d51d59",
       "dependencies": [
         "jsr:@casys/mcp-server@0.26.0",
-        "jsr:@std/path@^1.1.0"
+        "jsr:@std/path"
       ]
     },
-    "@casys/mcp-server@0.24.1": {
-      "integrity": "5163093e08b0b0e9fba8fce0688af725a24b0ba4b352bb1b2085ec375a086ece",
+    "@casys/mcp-server@0.26.0": {
+      "integrity": "5b80442ff2bff853da0a1245d7da031719c1b7ae5a1b5ea11b450c99f7c457bb",
       "dependencies": [
         "jsr:@std/yaml",
         "npm:@modelcontextprotocol/ext-apps",
@@ -53,12 +52,13 @@
         "npm:jose"
       ]
     },
-    "@casys/mcp-server@0.26.0": {
-      "integrity": "5b80442ff2bff853da0a1245d7da031719c1b7ae5a1b5ea11b450c99f7c457bb",
+    "@casys/mcp-server@0.26.1": {
+      "integrity": "c064c8574aec6231cdbb548c302c9090cd174e34158b98bbbe60bd18683d7b09",
       "dependencies": [
         "jsr:@std/yaml",
         "npm:@modelcontextprotocol/ext-apps",
         "npm:@modelcontextprotocol/sdk",
+        "npm:@modelcontextprotocol/server",
         "npm:@opentelemetry/api",
         "npm:ajv",
         "npm:hono",
@@ -74,12 +74,8 @@
     "@std/cli@1.0.32": {
       "integrity": "188b3a100d6202d64e3f5bd3d799c7fa4f6d77f92cc65eb7f641c1fa0aa92a66",
       "dependencies": [
-        "jsr:@std/fmt",
         "jsr:@std/internal@^1.0.14"
       ]
-    },
-    "@std/fmt@1.0.10": {
-      "integrity": "90dfba288802ac6de82fb31d0917eb9e4450b9925b954d5e51fc29ac07419db5"
     },
     "@std/internal@1.0.14": {
       "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
@@ -104,8 +100,8 @@
     "@dagrejs/graphlib@4.0.3": {
       "integrity": "sha512-9kvysNliOxG5m3lr1Qq5uCc+SYxx+BaLDM2SDGkgoZvKJ1bSESzbZ3gn4rSxqX1xR07swcSdeuGyKYQhAURxAA=="
     },
-    "@hono/node-server@2.1.0_hono@4.13.1": {
-      "integrity": "sha512-XovyyCCnBzW+zKu+z/zq8hwNs4KOR5rEMAOxo2f40Q5xoOI37IMm6MIg2COOUtUApo0i6850MTBKH2u4QLGIqg==",
+    "@hono/node-server@2.1.1_hono@4.13.3": {
+      "integrity": "sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==",
       "dependencies": [
         "hono"
       ]
@@ -131,6 +127,12 @@
         "@lezer/common",
         "@lezer/highlight",
         "@lezer/lr"
+      ]
+    },
+    "@modelcontextprotocol/core@2.0.0": {
+      "integrity": "sha512-pJCEwGG7Lfr/+PQp9ZTwKXNeO5wzbfKL7H3MYpCorM4oFBoQrdjnBgEoqG+RjhsvS1FKrDbKux+M1HhlnGWqcA==",
+      "dependencies": [
+        "zod"
       ]
     },
     "@modelcontextprotocol/ext-apps@1.7.5_@modelcontextprotocol+sdk@1.30.0__zod@4.4.3_zod@4.4.3": {
@@ -161,6 +163,13 @@
         "raw-body",
         "zod",
         "zod-to-json-schema"
+      ]
+    },
+    "@modelcontextprotocol/server@2.0.0": {
+      "integrity": "sha512-YhHWdHfpFMQfd0prsEnxKeS3Qz3ytIGmsS0sth4KDjnacIT7hxk6hXHkJ9KysxlkvTM+WZAtQbbcUhdoP4Hvtw==",
+      "dependencies": [
+        "@modelcontextprotocol/core",
+        "zod"
       ]
     },
     "@opentelemetry/api@1.9.1": {
@@ -323,7 +332,7 @@
       "integrity": "sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==",
       "dependencies": [
         "bytes",
-        "content-type@2.0.0",
+        "content-type@2.1.0",
         "debug",
         "http-errors",
         "iconv-lite",
@@ -356,8 +365,8 @@
     "content-type@1.0.5": {
       "integrity": "sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA=="
     },
-    "content-type@2.0.0": {
-      "integrity": "sha512-j/O/d7GcZCyNl7/hwZAb606rzqkyvaDctLmckbxLzHvFBzTJHuGEdodATcP3yIRoDrLHkIATJuvzbFlp/ki2cQ=="
+    "content-type@2.1.0": {
+      "integrity": "sha512-mj7UPXE0jaqaOsukNZRUEfEi2AcL7C/vwmwcHV0O97eO1E1pxBZuyjlZrx5seTaNBg1U6+o35wpa35Qfcc+7ag=="
     },
     "cookie-signature@1.2.2": {
       "integrity": "sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg=="
@@ -544,8 +553,8 @@
         "function-bind"
       ]
     },
-    "hono@4.13.1": {
-      "integrity": "sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw=="
+    "hono@4.13.3": {
+      "integrity": "sha512-r8AO2mYHoLxSHkgafNeC/BXyb2vWRxD3jem4Ts+ptav8oTG5FIRifAjuJEmZI4bSvvc2ns0GxmIYiZnHqN3mMw=="
     },
     "http-errors@2.0.1": {
       "integrity": "sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==",
@@ -578,8 +587,8 @@
     "isexe@2.0.0": {
       "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="
     },
-    "jose@6.2.8": {
-      "integrity": "sha512-Bsdjwm3Qsd/P0jR+BHDe3LytDfY7WBq2HmCCLIwuVRHMuEC9ae7/R474GIUdF1NgCyZjzVo/A9DOiOBtXq8ZoQ=="
+    "jose@6.2.9": {
+      "integrity": "sha512-XrchZOFZUl/T3vTwRe8XK+cJrGtMF4th1ARnDfwbBXFKThGhlsxEE4Zu03AD/bjJSt/9jT/mxrOCkJWOg77aPA=="
     },
     "json-schema-traverse@1.0.0": {
       "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="
@@ -779,7 +788,7 @@
     "type-is@2.1.0": {
       "integrity": "sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==",
       "dependencies": [
-        "content-type@2.0.0",
+        "content-type@2.1.0",
         "media-typer",
         "mime-types"
       ]
@@ -838,7 +847,7 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@casys/mcp-server@0.24.1",
+      "jsr:@casys/mcp-server@0.26.1",
       "jsr:@std/assert@1.0.14",
       "jsr:@std/cli@1",
       "jsr:@std/yaml@1",

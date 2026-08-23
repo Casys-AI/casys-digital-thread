@@ -93,8 +93,6 @@ export function createElectricalMethodSheetJoin(
         directory:
           `${options.recordedAnalysisDirectory}/electrical/observation-method-sheet-captures`,
       }),
-      // Agent-authored project JSON; start:yolo already permits the config tree.
-      ["config/electrical-observation-method-sheets"],
     );
   const sealBytes = new FileByteStore({
     kind: "electrical-observation-method-sheet-seal-capture",

@@ -372,6 +372,70 @@ export function parseMechanicalProofAnalysis(
   };
 }
 
+/**
+ * One captured scalar as the mechanical proof can observe it. Capture rows
+ * have no proof-case metric kind; `metric` is the arbitrary SysON feature
+ * name (`MechanicalRequirement.feature`), not `maximum-displacement`.
+ */
+export interface MechanicalProofCaptureCriterion {
+  readonly metric: string;
+  readonly operator: string;
+  readonly limit: { readonly value: number; readonly unit: string };
+}
+
+/**
+ * V1 capture/proof join units for the closed linear-static metrics.
+ * Feature names are arbitrary. Distinct from solver-native MPa in
+ * STATIC_PROOF_METRIC_UNITS.
+ */
+export function isMechanicalProofLimitUnit(unit: string): boolean {
+  return unit === "mm" || unit === "Pa";
+}
+
+/**
+ * Admit a requirements capture against declared mechanical proof criteria.
+ *
+ * Every declared criterion must match capture exactly on feature, operator,
+ * value and unit. Capture rows whose unit is not a mechanical proof unit may
+ * coexist. Capture rows whose unit is mm or Pa are treated as mechanical
+ * obligations, including when their SysON feature name is arbitrary.
+ *
+ * Limitation: V1 `requirements-capture` has no semantic kind. A non-FEA
+ * criterion that happens to use mm or Pa is therefore refused if omitted
+ * from the proof. Do not invent a metric-name catalog or a temperature
+ * exception to paper over that missing kind.
+ */
+export function mechanicalProofRequirementsMatchCapture(
+  captured: readonly MechanicalProofCaptureCriterion[],
+  declared: readonly Pick<
+    MechanicalRequirement,
+    "feature" | "operator" | "limit"
+  >[],
+): boolean {
+  if (
+    !declared.every((requirement) =>
+      captured.some((candidate) => sameCaptureCriterion(candidate, requirement))
+    )
+  ) {
+    return false;
+  }
+  return captured
+    .filter((candidate) => isMechanicalProofLimitUnit(candidate.limit.unit))
+    .every((candidate) =>
+      declared.some((requirement) => sameCaptureCriterion(candidate, requirement))
+    );
+}
+
+function sameCaptureCriterion(
+  captured: MechanicalProofCaptureCriterion,
+  declared: Pick<MechanicalRequirement, "feature" | "operator" | "limit">,
+): boolean {
+  return captured.metric === declared.feature &&
+    captured.operator === declared.operator &&
+    captured.limit.value === declared.limit.value &&
+    captured.limit.unit === declared.limit.unit;
+}
+
 /** Closed requirement vocabulary shared with the agent source document. */
 export function parseMechanicalProofRequirements(
   value: unknown,

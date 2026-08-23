@@ -16,7 +16,7 @@ general SysML v2 support, nor the full native feature set of SysON.
 | Architecture readback  | The adapter rereads the exact package, its `PartDefinition`s and one-level owned `PartUsage`/`AttributeUsage` children. It resolves each usage target through the pinned `FeatureTyping.type` AQL expression, then saves `architecture-capture/3.0`.                                                                                             |
 | PartDefinition capture | `model.capture-part-definitions@1` rereads only the identities sealed by the active generic architecture capture and publishes `part-definitions-capture/1.0`; it is not a live whole-model inventory.                                                                                                                                           |
 | Scalar requirements    | `model.write-requirements@1` writes native per-metric typed attributes, `require constraint`, a subject relation and qualified SI imports against one exact captured `PartDefinition`. Current thresholds are safe integers with `<=` or `>=` and a qualified unit; extraction must round-trip every metric, operator, value, unit and identity. |
-| Agent-authored source  | The separate profile `sysml-architecture-closed-subset-v1` captures exact UTF-8 bytes and recognizes one package of part definitions, one part definition, or one typed part usage. Its symbol/dependency evidence is documentary-only when sealed with `model.seal-architecture-sysml@1`.                                                       |
+| Agent-authored source  | Profile `sysml-architecture-closed-subset-v1`. Public capture takes `profileId`, `sourceId`, and a full `resourceRef` from `project_resource_capture` (no `sourceText`). Preview takes that opaque `sourceRef` only. Tokens, one-form rule, and 262144-byte bound: [language](language.md). Documentary Thread only after `model.seal-architecture-sysml@1`. |
 
 ### Structural rules and ratchets
 
@@ -39,10 +39,8 @@ revision or deletion facility.
 
 ## Two source authorities, not one
 
-| Path          | Input authority                                               | Output and effect                                                    | Important limit                                                                                                                                      |
-| ------------- | ------------------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Renderer      | Human-approved flat MRTR parameters; server renders the bytes | SysON mutation, reread capture and a `sysml-model` Thread artifact   | An agent supplies neither SysML text nor provider envelope. Bare attributes are supported here.                                                      |
-| Closed subset | Agent-authored exact UTF-8 captured under the fixed profile   | CAS analysis and a documentary Thread document after a separate MRTR | Never writes SysON and cannot authorize compilation, CAD, simulation or a verdict. Comments, strings, numbers and attributes are lexically rejected. |
+Comparison, distinct identities, and writer lookalikes: [paths](paths.md). Closed-subset
+tokens, one-form rule, and resource ingress: [language](language.md).
 
 The closed-subset parser records other tokenizable constructs as `unresolved`; a preview
 with such constructs is not `ready-for-review`. A captured source can be sealed only

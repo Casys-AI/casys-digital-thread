@@ -110,6 +110,61 @@ Deno.test(
   },
 );
 
+Deno.test("parseArchitectureProposalParameters: a hyphenated grouping slug is not a SysML identifier and is accepted", () => {
+  const proposal = parseArchitectureProposalParameters([
+    { key: "architecture.package", label: "Package", value: "StagePackage" },
+    { key: "system.name", label: "System", value: "StageSystem" },
+    {
+      key: "component.heated-stage-plate.name",
+      label: "Plate name",
+      value: "HeatedStagePlate",
+    },
+    {
+      key: "component.heated-stage-plate.usage",
+      label: "Plate usage",
+      value: "heatedStagePlate",
+    },
+    {
+      key: "attribute.plate-thickness.name",
+      label: "Thickness",
+      value: "thickness",
+    },
+    {
+      key: "attribute.plate-thickness.parent",
+      label: "Thickness parent",
+      value: "HeatedStagePlate",
+    },
+  ]);
+  assertEquals(proposal.components, [{
+    name: "HeatedStagePlate",
+    usageName: "heatedStagePlate",
+    parentName: "StageSystem",
+  }]);
+  assertEquals(proposal.attributes, [{
+    name: "thickness",
+    parentName: "HeatedStagePlate",
+  }]);
+});
+
+Deno.test("parseArchitectureProposalParameters: a dotted slug is refused as invalid_slug, not unknown_key", () => {
+  const error = assertThrows(
+    () =>
+      parseArchitectureProposalParameters([
+        { key: "architecture.package", label: "Package", value: "StagePackage" },
+        { key: "system.name", label: "System", value: "StageSystem" },
+        {
+          key: "component.heated.stage.name",
+          label: "Plate name",
+          value: "HeatedStagePlate",
+        },
+      ]),
+    ArchitectureProposalParseError,
+  ) as ArchitectureProposalParseError;
+  assertEquals(error.code, "invalid_slug");
+  assertEquals(error.context.key, "component.heated.stage.name");
+  assertEquals(error.context.slug, "heated.stage");
+});
+
 Deno.test("parseArchitectureProposalParameters: unknown key is rejected", () => {
   const error = assertThrows(
     () =>

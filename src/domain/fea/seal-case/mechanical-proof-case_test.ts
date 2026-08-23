@@ -2,6 +2,7 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   type MechanicalDeclarationIdentityBinding,
   type MechanicalProofCase,
+  mechanicalProofRequirementsMatchCapture,
   validateMechanicalDeclarationIdentityBinding,
   validateMechanicalProofCase,
 } from "./mechanical-proof-case.ts";
@@ -350,6 +351,111 @@ Deno.test("imported or reconstructed CAD requires exact sources, licence and exp
     'manufacturability must equal "not-established"',
   );
 });
+
+Deno.test("mechanical capture admission allows an extra K criterion beside exact proof criteria", () => {
+  assertEquals(
+    mechanicalProofRequirementsMatchCapture(
+      [
+        displacementCapture("arm_max_displacement"),
+        stressCapture("arm_max_von_mises"),
+        {
+          metric: "maxSurfaceTemperature",
+          operator: "<=",
+          limit: { value: 373, unit: "K" },
+        },
+      ],
+      [
+        displacementDeclared("arm_max_displacement"),
+        stressDeclared("arm_max_von_mises"),
+      ],
+    ),
+    true,
+  );
+});
+
+Deno.test("mechanical capture admission refuses an omitted mm/Pa criterion even with an arbitrary feature", () => {
+  assertEquals(
+    mechanicalProofRequirementsMatchCapture(
+      [
+        displacementCapture("arm_max_displacement"),
+        stressCapture("drip_tray_max_von_mises"),
+      ],
+      [displacementDeclared("arm_max_displacement")],
+    ),
+    false,
+  );
+});
+
+Deno.test("mechanical capture admission refuses a mismatched mechanical criterion", () => {
+  assertEquals(
+    mechanicalProofRequirementsMatchCapture(
+      [{
+        ...displacementCapture("arm_max_displacement"),
+        limit: { value: 5, unit: "mm" },
+      }],
+      [displacementDeclared("arm_max_displacement")],
+    ),
+    false,
+  );
+});
+
+Deno.test(
+  "mechanical capture admission conservatively treats extra mm as omitted mechanical because V1 capture has no kind",
+  () => {
+    assertEquals(
+      mechanicalProofRequirementsMatchCapture(
+        [
+          displacementCapture("arm_max_displacement"),
+          {
+            metric: "clearance",
+            operator: "<=",
+            limit: { value: 2, unit: "mm" },
+          },
+        ],
+        [displacementDeclared("arm_max_displacement")],
+      ),
+      false,
+    );
+  },
+);
+
+function displacementCapture(feature: string) {
+  return {
+    metric: feature,
+    operator: "<=",
+    limit: { value: 1, unit: "mm" },
+  };
+}
+
+function stressCapture(feature: string) {
+  return {
+    metric: feature,
+    operator: "<=",
+    limit: { value: 80_000_000, unit: "Pa" },
+  };
+}
+
+function displacementDeclared(feature: string) {
+  return {
+    id: "proof-deflection",
+    name: feature,
+    metric: "maximum-displacement" as const,
+    feature,
+    operator: "<=" as const,
+    limit: { value: 1, unit: "mm" as const },
+  };
+}
+
+function stressDeclared(feature: string) {
+  return {
+    id: "proof-stress",
+    name: feature,
+    metric: "maximum-von-mises-stress" as const,
+    feature,
+    operator: "<=" as const,
+    limit: { value: 80_000_000, unit: "Pa" as const },
+  };
+}
 
 function caseInput(): Record<string, unknown> {
   return JSON.parse(CONFIG_TEXT) as Record<string, unknown>;

@@ -2,7 +2,6 @@
 
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import {
-  CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS,
   type ProjectCrossDomainImpactManifestCaptureCommand,
   type ProjectCrossDomainImpactManifestCaptureUseCase,
 } from "../../application/ports/in/impact/project-cross-domain-impact-manifest-capture.ts";
@@ -16,7 +15,9 @@ import type {
 import { captureReviewContent } from "../../domain/impact/cross-domain-impact-manifest-capture-review.ts";
 import { validateContentFingerprint } from "../../domain/compile/isolation/isolated-code-execution.ts";
 import { exactRecord, safeId } from "../../domain/kernel/case-validation.ts";
+import { parseAgentResourceReference } from "../../domain/resource/agent-resource-reference.ts";
 import {
+  AGENT_RESOURCE_REFERENCE_SCHEMA,
   FINGERPRINT_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
   READ_ONLY_ANNOTATIONS,
@@ -143,19 +144,13 @@ const IMPACT_MANIFEST_CAPTURE_REVIEW_SCHEMA = {
 const projectCrossDomainImpactManifestCaptureTool: MCPTool = {
   name: "project_cross_domain_impact_manifest_capture",
   description:
-    "Capture exact agent-authored cross-domain-impact-manifest/1.0 JSON in immutable draft CAS. The caller supplies only sourceText: the JSON body without its computed fingerprint field. The server validates the closed object, canonicalizes it, and computes the embedded body fingerprint and outer CAS fingerprint. Pass result.reference as manifestRef to project_cross_domain_impact_manifest_seal_review; never pass this whole review, sourceText, a path, a URI, or a caller-selected fingerprint. A human-shaped assertion in draft JSON is not proof. The caller does not choose provider, tool, args, or runtime. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no evaluation, gate-claim transition, or technical execution.",
+    "Capture exact agent-authored cross-domain-impact-manifest/1.0 JSON in immutable draft CAS. First call project_resource_capture, then supply that full resourceRef. The JSON body must omit its computed fingerprint field. The server reopens exact UTF-8, validates the closed object, canonicalizes it, and computes the embedded body fingerprint and outer CAS fingerprint. Pass result.reference as manifestRef to project_cross_domain_impact_manifest_seal_review; never pass this whole review, sourceText, a path, a URI, or a caller-selected fingerprint. A human-shaped assertion in draft JSON is not proof. The caller does not choose provider, tool, args, or runtime. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no evaluation, gate-claim transition, or technical execution.",
   inputSchema: {
     type: "object",
     properties: {
-      sourceText: {
-        type: "string",
-        minLength: 1,
-        maxLength: CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS,
-        description:
-          "JSON object body of cross-domain-impact-manifest/1.0 without fingerprint. Extra keys are refused.",
-      },
+      resourceRef: AGENT_RESOURCE_REFERENCE_SCHEMA,
     },
-    required: ["sourceText"],
+    required: ["resourceRef"],
     additionalProperties: false,
   },
   outputSchema: IMPACT_MANIFEST_CAPTURE_REVIEW_SCHEMA,
@@ -205,23 +200,15 @@ function captureCommand(
 ): ProjectCrossDomainImpactManifestCaptureCommand {
   const root = exactRecord(
     value,
-    ["sourceText"],
+    ["resourceRef"],
     "$projectCrossDomainImpactManifestCapture",
   );
-  if (typeof root.sourceText !== "string" || root.sourceText.length === 0) {
-    throw new TypeError(
-      "$projectCrossDomainImpactManifestCapture.sourceText must be a non-empty string.",
-    );
-  }
-  if (
-    root.sourceText.length >
-      CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_SOURCE_MAX_CHARS
-  ) {
-    throw new TypeError(
-      "$projectCrossDomainImpactManifestCapture.sourceText must not exceed 262144 characters.",
-    );
-  }
-  return { sourceText: root.sourceText };
+  return {
+    resourceRef: parseAgentResourceReference(
+      root.resourceRef,
+      "$projectCrossDomainImpactManifestCapture.resourceRef",
+    ),
+  };
 }
 
 function command(

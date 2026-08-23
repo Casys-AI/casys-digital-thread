@@ -32,6 +32,7 @@ import {
   SUPPORTED_ORACLE_UNITS,
 } from "../../kernel/proof-case.ts";
 import { sha256Fingerprint } from "../../kernel/deterministic-json.ts";
+import { PROPOSAL_PARAMETER_SLUG_BODY } from "../../kernel/case-validation.ts";
 
 // ── Operation identity ───────────────────────────────────────────────────────
 
@@ -193,10 +194,13 @@ const SYSML_PASCAL_IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*$/;
 const SYSML_METRIC_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
- * Matches `requirement.<slug>.<field>` keys. The slug may contain hyphens
- * (user-facing only — it never reaches SysML). The field must be a word.
+ * Matches `requirement.<slug>.<field>` keys. The slug uses the shared
+ * proposal-parameter grammar (hyphens allowed; user-facing only — it never
+ * reaches SysML). The field must be a word.
  */
-const REQUIREMENT_KEY = /^requirement\.([A-Za-z0-9][A-Za-z0-9_-]*)\.([A-Za-z]+)$/;
+const REQUIREMENT_KEY = new RegExp(
+  `^requirement\\.(${PROPOSAL_PARAMETER_SLUG_BODY})\\.([A-Za-z]+)$`,
+);
 
 const ALLOWED_REQUIREMENT_FIELDS = new Set(["name", "metric", "operator", "threshold"]);
 

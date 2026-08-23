@@ -10,6 +10,7 @@ import {
   createRecordedOperationPlanComposition,
   recordedPlanCalculixBinding,
 } from "./server-composition.ts";
+import { testReopenAgentResource } from "../../../testing/agent-resource-test-support.ts";
 
 Deno.test("ROP composition reopens the exact shared proof and requirements CAS instances", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-rop-composition-" });
@@ -27,10 +28,12 @@ Deno.test("ROP composition reopens the exact shared proof and requirements CAS i
       sysonModelSeedCaptureDirectory: `${root}/seed`,
       architectureCaptureDirectory: `${root}/architecture`,
       requirementsCaptureDirectory: `${root}/requirements`,
+      resources: testReopenAgentResource(`${root}/agent-resources`),
     });
     const compilation = createTechnicalCompilationFoundation({
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
+      resources: testReopenAgentResource(`${root}/agent-resources-compile`),
     });
     const fea = createFeaFoundation();
     const plans = createRecordedOperationPlanComposition({

@@ -2,14 +2,17 @@
  * Inward port for capturing one exact agent-authored architecture SysML source.
  *
  * The MCP surface may select only the server-registered closed-subset profile
- * and supply source identity plus unchanged UTF-8 text. Parsing, CAS
- * persistence, and replay stay behind this provider-free port.
+ * and supply source identity plus a full AgentResourceReference from
+ * `project_resource_capture`. Parsing, CAS persistence, and replay stay
+ * behind this provider-free port.
  */
+
+import type { AgentResourceReference } from "../../../../../domain/resource/agent-resource-capture.ts";
 
 export interface ProjectArchitectureSysmlSourceCaptureCommand {
   readonly profileId: string;
   readonly sourceId: string;
-  readonly sourceText: string;
+  readonly resourceRef: AgentResourceReference;
 }
 
 export type ProjectArchitectureSysmlSourceCaptureReference = Readonly<object>;

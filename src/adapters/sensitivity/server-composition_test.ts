@@ -1,6 +1,6 @@
 import { assertEquals, assertInstanceOf } from "@std/assert";
 import { PreviewProjectTechnicalCompilation } from "../../application/use-cases/compile/admission/preview-project-technical-compilation.ts";
-import type { ProjectTechnicalSourceCaptureUseCase } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
+
 import { createEngineeringProjectCommandRuntime } from "../project/engineering-project-command-runtime.ts";
 import type { Build123dExecutionComposition } from "../cad/isolated/build123d-execution-composition.ts";
 import { FileCaptureStore } from "../shared/cas/file-capture-store.ts";
@@ -17,6 +17,7 @@ import { AnalyzeRunFeaSensitivityRunExecutor } from "./live-fea/analyze-run-fea-
 import { DesignApplyVectorCorrectionRunExecutor } from "./vector-correction/design-apply-vector-correction-run-executor.ts";
 import { VerifyEvaluateSensitivityBaseRunExecutor } from "./base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts";
 import { createSensitivityComposition } from "./server-composition.ts";
+import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
 
 Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correction is not a proof-run grant", async () => {
   const root = await Deno.makeTempDir({
@@ -40,10 +41,12 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       sysonModelSeedCaptureDirectory: `${root}/seed`,
       architectureCaptureDirectory: `${root}/architecture`,
       requirementsCaptureDirectory: `${root}/requirements`,
+      resources: testReopenAgentResource(`${root}/agent-resources`),
     });
     const compilation = createTechnicalCompilationFoundation({
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
+      resources: testReopenAgentResource(`${root}/agent-resources-compile`),
     });
     const compilationProject = createTechnicalCompilationProject({
       projects: runtime.projects,
@@ -69,7 +72,7 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       lease: new FileEngineeringProjectRunLease(`${root}/sensitivity-leases`),
       admissions: compilation.technicalCompilationAdmissions,
       technicalCompilationPreview: preview,
-      technicalSourceCapture: compilation.technicalSourceCapture,
+      technicalSourceCapture: compilation.technicalSourceAnalysis,
       feaProofCaptures: fea.feaProofCaptures,
       sensitivityCatalogOfferCaptures: fea.sensitivityCatalogOfferCaptures,
       sysonModelSeedCaptures: architecture.sysonModelSeedCaptures,
@@ -94,8 +97,7 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       false,
     );
     assertInstanceOf(preview, PreviewProjectTechnicalCompilation);
-    const unusedCapture: ProjectTechnicalSourceCaptureUseCase =
-      compilation.technicalSourceCapture;
+    const unusedCapture = compilation.technicalSourceAnalysis;
     assertEquals(typeof unusedCapture.capture, "function");
 
     const live = createSensitivityComposition({
@@ -121,8 +123,8 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
     );
     assertEquals(
       live.analyzeRunFeaSensitivity ===
-        (live.designApplyVectorCorrection as unknown as
-          AnalyzeRunFeaSensitivityRunExecutor),
+        (live
+          .designApplyVectorCorrection as unknown as AnalyzeRunFeaSensitivityRunExecutor),
       false,
     );
 

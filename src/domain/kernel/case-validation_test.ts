@@ -8,6 +8,7 @@ import {
   nonEmptyArray,
   nonEmptyText,
   positiveInteger,
+  proposalParameterSlug,
   rejectDuplicates,
   safeId,
   safeVersion,
@@ -149,6 +150,29 @@ Deno.test("case-validation safeId accepts a hyphenated identifier", () => {
 
 Deno.test("case-validation safeId accepts an alphanumeric identifier", () => {
   assertEquals(safeId("req1", "$x"), "req1");
+});
+
+Deno.test("case-validation proposalParameterSlug accepts a hyphenated grouping key", () => {
+  assertEquals(
+    proposalParameterSlug("heated-stage-plate", "$slug"),
+    "heated-stage-plate",
+  );
+  assertEquals(proposalParameterSlug("arm_plate", "$slug"), "arm_plate");
+});
+
+Deno.test("case-validation proposalParameterSlug rejects dots and colons that SAFE_ID would accept", () => {
+  assertEquals(safeId("heated.stage", "$id"), "heated.stage");
+  assertEquals(safeId("heated:stage", "$id"), "heated:stage");
+  assertThrows(
+    () => proposalParameterSlug("heated.stage", "$slug"),
+    TypeError,
+    "proposal parameter slug",
+  );
+  assertThrows(
+    () => proposalParameterSlug("heated:stage", "$slug"),
+    TypeError,
+    "proposal parameter slug",
+  );
 });
 
 Deno.test("case-validation safeVersion accepts bounded build metadata without widening safeId", () => {

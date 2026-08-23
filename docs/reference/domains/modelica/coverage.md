@@ -62,6 +62,10 @@ The following are not extension shortcuts:
   grows by a versioned common grammar, not by allowing whatever OMC accepts.
 - Caller-selected source bytes at execution, solver, image, provider, command, runtime
   alias or scenario. The server reopens the sealed admission and owns those choices.
+- Treating raw CAS as Modelica source ingress. A `.mo` file enters through
+  `project_resource_capture` then `project_technical_source_capture` (`resourceRef`).
+  A thermal method sheet may be interpreted at upload through the existing typed store.
+  Admitted execution still starts from `compile.seal-admission@1`.
 - Treating the image-owned qualified kit as a fallback for admitted source.
 - Claiming a desk-lamp thermal proof from admitted L3, kit smoke, or an L4 comparator.
 - Calling a successful simulation a product/FEA requirement verdict, or bypassing the

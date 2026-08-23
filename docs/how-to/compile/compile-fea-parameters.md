@@ -25,13 +25,13 @@ test/conformance data only. It is not live production authority.
 ## The short path
 
 ```jsonc
-{ "sourceText": "{ ... mechanical-proof-case-source/1.0 ... }" }
+{ "resourceRef": { "... AgentResourceReference from project_resource_capture ..." } }
 { "projectId": "new-project", "caseRef": { "fingerprint": "<sha256>" } }
 { "projectId": "new-project", "caseRef": { "fingerprint": "<sha256>" }, "sensitivityCatalogOptIn": true }
 ```
 
-1. `project_fea_proof_case_capture` — after the agent authors the closed source JSON.
-   Pass `result.reference` only.
+1. `project_resource_capture` then `project_fea_proof_case_capture` with that full
+   `resourceRef`. Pass `result.reference` only.
 2. `project_fea_proof_seal_review` — after geometry + requirements exist. Read
    `selected` first. Paste `next.append.arguments` into `project_change_append`, then
    `next.propose.arguments` into `project_decision_propose`. Server-owned

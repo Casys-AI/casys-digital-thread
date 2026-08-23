@@ -10,6 +10,7 @@ import type { CalculixIsolatedExecutionComposition } from "./isolated-v3/calculi
 import { VerifyRunFeaStaticProofV3RunExecutor } from "./isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts";
 import { VerifySealProofCaseRunExecutor } from "./seal-case/verify-seal-proof-case-run-executor.ts";
 import { createFeaFoundation, createFeaProject } from "./server-composition.ts";
+import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
 
 Deno.test("FEA @3 requires SysON plus CalculiX runtime and keeps the historical proof CAS", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-fea-composition-" });
@@ -31,10 +32,12 @@ Deno.test("FEA @3 requires SysON plus CalculiX runtime and keeps the historical 
       sysonModelSeedCaptureDirectory: `${root}/seed`,
       architectureCaptureDirectory: `${root}/architecture`,
       requirementsCaptureDirectory: `${root}/requirements`,
+      resources: testReopenAgentResource(`${root}/agent-resources`),
     });
     const compilation = createTechnicalCompilationFoundation({
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
+      resources: testReopenAgentResource(`${root}/agent-resources-compile`),
     });
     const foundation = createFeaFoundation();
     const probe = { algorithm: "sha256" as const, digest: "0".repeat(64) };
@@ -88,6 +91,7 @@ Deno.test("FEA @3 requires SysON plus CalculiX runtime and keeps the historical 
       recordedAnalysisCas: plans.recordedAnalysisCas,
       recordedAnalysisDirectory: `${root}/analysis`,
       canonicalAssetDirectory: `${root}/assets`,
+      resources: testReopenAgentResource(`${root}/agent-resources-fea`),
     };
     const withoutSyson = createFeaProject({
       ...projectOptions,

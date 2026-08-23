@@ -48,14 +48,14 @@ Authority:
 | X09 claim map | Each proposed gate-claim recrosses exactly one existing work-item claim | Enforced; missing/ambiguous/mismatched refused |
 | X09 limits | `providerCalls`, `solverCalls`, `reruns`, `newWorkItems` = `none` | Enforced |
 | X11 `carried-forward` | Current mechanical independence assertion + exact fresh `@3` evidence + unique accepted closeout of that execution | Enforced; otherwise literal `impact-unresolved` |
-| Public capture input | `sourceText` only; JSON object; exact body keys; no fingerprint/extra key; max 262144 chars | Enforced |
+| Public capture input | Full `resourceRef` only; JSON object; exact body keys; no fingerprint/extra key; max 262144 bytes | Enforced |
 | Public review input | Seal review: `projectId` + opaque capture `{ fingerprint }`. Decision/L5 reviews: `projectId` only | Enforced |
 
 Review diagnostics stay `unavailable` (cannot reopen) or `unresolved` (reopened but
 inexact). Never relabel those as `resolved`.
 
 CAS roots live under `state/local/recorded-analysis/impact/`. Public capture
-`sourceText` is capped at 262144 characters. The file adapter has no separate
+`resourceRef` payload is capped at 262144 bytes. The file adapter has no separate
 code-owned byte ceiling beyond that public parser (**unbounded** storage size once
 admitted; needs a product/storage decision). Do not treat a directory listing or
 “latest file” as authority.

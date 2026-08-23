@@ -38,6 +38,7 @@ import { DecideStaticMechanicalEvaluationCloseoutRunExecutor } from "./evaluatio
 import { CaptureBackedFeaProofSealRequirementsReviewer } from "./seal-case/capture-backed-fea-proof-seal-requirements-reviewer.ts";
 import { FeaProofCaseSourceCaptureService } from "./seal-case/fea-proof-case-source-capture.ts";
 import { PrepareProjectFeaProofCaseCapture } from "../../application/use-cases/fea/seal-case/prepare-project-fea-proof-case-capture.ts";
+import type { ReopenAgentResource } from "../../application/use-cases/resource/reopen-agent-resource.ts";
 import {
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VerifySealProofCaseRunExecutor,
@@ -78,6 +79,7 @@ export interface FeaProjectOptions {
   readonly sysonMcpUrl?: string;
   readonly recordedAnalysisDirectory: string;
   readonly canonicalAssetDirectory: string;
+  readonly resources: ReopenAgentResource;
 }
 
 export interface FeaProject {
@@ -178,6 +180,7 @@ export function createFeaProject(options: FeaProjectOptions): FeaProject {
   });
   const feaProofCaseCapture = new PrepareProjectFeaProofCaseCapture({
     captures: proofCaseSources,
+    resources: options.resources,
   });
   const feaProofSealReview = new PrepareProjectFeaProofSealReview({
     snapshots: options.snapshots,

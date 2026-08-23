@@ -96,23 +96,23 @@ function validTechnicalCompilationAdmissionParameters() {
 }
 
 Deno.test("a proposal the authorising operation cannot parse is refused before it is recorded", () => {
-  const misspelledSlug = VALID_ARCHITECTURE.map((parameter) =>
+  const unknownField = VALID_ARCHITECTURE.map((parameter) =>
     parameter.key === "component.part.name"
-      ? { ...parameter, key: "component.demo-part.name" }
+      ? { ...parameter, key: "component.part.colour" }
       : parameter
   );
   const error = assertThrows(
     () =>
       assertProposalMatchesOperationGrammar(
         MODEL_WRITE_ARCHITECTURE_OPERATION,
-        misspelledSlug,
+        unknownField,
       ),
     ProposalGrammarError,
   );
   assertEquals(error.operationKey, "model.write-architecture@1");
   // The underlying grammar message is carried verbatim: the agent needs the
   // offending key, not a generic rejection.
-  assert(error.message.includes("component.demo-part.name"));
+  assert(error.message.includes("component.part.colour"));
 });
 
 Deno.test("Build123d execution cannot enter human review without its closed admission grammar", () => {

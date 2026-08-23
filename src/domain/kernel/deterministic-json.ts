@@ -1,4 +1,5 @@
 import type { ContentFingerprint } from "./primitives.ts";
+import { fingerprintResourceBytes } from "./resource-bytes.ts";
 
 /** Canonical JSON with lexicographically sorted object keys and stable arrays. */
 export function deterministicJson(value: unknown): string {
@@ -28,11 +29,9 @@ export function deterministicJson(value: unknown): string {
   }
 }
 
-/** SHA-256 of exact bytes as lowercase hex. Same algorithm as CAS STEP reads. */
+/** SHA-256 of exact bytes as lowercase hex. Delegates to the kernel primitive. */
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return fingerprintResourceBytes(bytes);
 }
 
 export async function sha256Fingerprint(

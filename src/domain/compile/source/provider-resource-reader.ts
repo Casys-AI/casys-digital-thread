@@ -8,6 +8,9 @@ import {
   safeId,
 } from "../../kernel/case-validation.ts";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
+import { fingerprintResourceBytes } from "../../kernel/resource-bytes.ts";
+
+export { fingerprintResourceBytes };
 
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const CANONICAL_MEDIA_TYPE =
@@ -223,15 +226,6 @@ export function sha256Hex(value: unknown, path: string): string {
     throw new TypeError(`${path} must be lowercase sha256 hex.`);
   }
   return digest;
-}
-
-export async function fingerprintResourceBytes(
-  bytes: Uint8Array,
-): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 function canonicalUri(value: unknown, path: string): string {

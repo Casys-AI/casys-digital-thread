@@ -63,6 +63,7 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 - [Compile brief parameters](how-to/compile/compile-brief-parameters.md)
 - [Compile FEA parameters](how-to/compile/compile-fea-parameters.md)
 - [Compile sensitivity parameters](how-to/compile/compile-sensitivity-parameters.md)
+- [Capture an agent resource](how-to/compile/capture-an-agent-resource.md)
 
 ### How-to — `run/`
 
@@ -102,6 +103,8 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 - [Modelica](reference/domains/modelica/README.md)
 - [FEA](reference/domains/fea/README.md)
 - [SysML](reference/domains/sysml/README.md)
+- [SysML language](reference/domains/sysml/language.md)
+- [SysML paths](reference/domains/sysml/paths.md)
 - [Sensitivity](reference/domains/sensitivity/README.md)
 - [Electrical](reference/domains/electrical/README.md)
 - [Impact](reference/domains/impact/README.md)
@@ -129,6 +132,10 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 - [SysON surface](reference/providers/syson/README.md)
 - [Providers, analyses, evidence and oracles](reference/providers/provider-analysis-oracle-taxonomy.md)
 - [Oracle units](reference/providers/oracle-units.md)
+
+### Explanations — `runtime/`
+
+- [MCP resource ingress](explanations/runtime/mcp-resource-ingress.md)
 
 ### Explanations — `product/`
 

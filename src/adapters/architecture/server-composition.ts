@@ -11,6 +11,10 @@
 
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { ProjectArchitectureSysmlSourceCaptureUseCase } from "../../application/ports/in/architecture/agent-seal/project-architecture-sysml-source-capture.ts";
+import type { ReopenAgentResource } from "../../application/use-cases/resource/reopen-agent-resource.ts";
+import { AgentResourceReopenError } from "../../application/use-cases/resource/reopen-agent-resource.ts";
+import { SYSML_SOURCE_ACCEPTED_MIME_TYPES } from "../../domain/resource/agent-resource-reference.ts";
+import { INITIAL_ARCHITECTURE_SYSML_MAX_SOURCE_BYTES } from "./agent-seal/architecture-sysml-source-analysis-composition.ts";
 import { PreviewProjectArchitectureSysml } from "../../application/use-cases/architecture/agent-seal/preview-project-architecture-sysml.ts";
 import { PrepareProjectBriefArchitectureReview } from "../../application/use-cases/architecture/renderer/prepare-project-brief-architecture-review.ts";
 import { PrepareProjectBriefRequirementsReview } from "../../application/use-cases/architecture/requirements/prepare-project-brief-requirements-review.ts";
@@ -22,21 +26,20 @@ import { fileTextCaptureStore } from "../shared/cas/file-text-capture-store.ts";
 import {
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
+  PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
   REQUIREMENTS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
-  PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
 } from "../shared/cas/file-capture-store.ts";
 import { HttpMcpToolClient } from "../shared/mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import type { FileLiveThreadUpdateStore } from "../shared/stores/live-thread-update-store.ts";
 import { createArchitectureSysmlSourceAnalysisCaptureService } from "./agent-seal/architecture-sysml-source-analysis-composition.ts";
 import type { ArchitectureSysmlSourceAnalysisCaptureService } from "./agent-seal/architecture-sysml-source-analysis-capture.ts";
-import { QualifiedArchitectureSysmlAnalyzer } from "./agent-seal/qualified-architecture-sysml-analyzer.ts";
 import {
+  type ArchitectureSysmlSealCaptureStore,
   MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
   ModelSealArchitectureSysmlRunExecutor,
-  type ArchitectureSysmlSealCaptureStore,
 } from "./agent-seal/model-seal-architecture-sysml-run-executor.ts";
 import { FilePartDefinitionsPublicationStore } from "./part-definitions/file-part-definitions-publication-store.ts";
 import { ModelCapturePartDefinitionsRunExecutor } from "./part-definitions/model-capture-part-definitions-run-executor.ts";
@@ -57,10 +60,10 @@ import { SysonModelSeedRunExecutor } from "./seed/syson-model-seed-run-executor.
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
 
 export {
+  MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
   MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   MODEL_WRITE_REQUIREMENTS_OPERATION,
-  MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
 };
 
 export interface ArchitectureFoundationOptions {
@@ -70,6 +73,7 @@ export interface ArchitectureFoundationOptions {
   readonly sysonModelSeedCaptureDirectory: string;
   readonly architectureCaptureDirectory: string;
   readonly requirementsCaptureDirectory: string;
+  readonly resources: ReopenAgentResource;
 }
 
 export interface ArchitectureFoundation {
@@ -79,8 +83,7 @@ export interface ArchitectureFoundation {
   readonly requirementsCaptures: FileCaptureStore<"requirements-capture">;
   readonly architectureSysmlSourceAnalysis:
     ArchitectureSysmlSourceAnalysisCaptureService;
-  readonly architectureSysmlSourceCapture:
-    ProjectArchitectureSysmlSourceCaptureUseCase;
+  readonly architectureSysmlSourceCapture: ProjectArchitectureSysmlSourceCaptureUseCase;
   readonly architectureSysmlPreview: PreviewProjectArchitectureSysml;
   readonly architectureSysmlSeals: ArchitectureSysmlSealCaptureStore;
 }
@@ -163,15 +166,31 @@ export function createArchitectureFoundation(
         label: "Captured architecture SysML analysis",
       }),
     });
-  const architectureSysmlSourceCapture:
-    ProjectArchitectureSysmlSourceCaptureUseCase = {
-      capture: async (command) =>
-        structuredClone(
-          await architectureSysmlSourceAnalysis.capture(command),
-        ) as unknown as Readonly<Record<string, unknown>>,
-    };
+  const architectureSysmlSourceCapture: ProjectArchitectureSysmlSourceCaptureUseCase = {
+    capture: async (command) => {
+      let sourceText: string;
+      try {
+        sourceText = (await options.resources.reopenUtf8Text(
+          command.resourceRef,
+          {
+            acceptedMimeTypes: SYSML_SOURCE_ACCEPTED_MIME_TYPES,
+            maxBytes: INITIAL_ARCHITECTURE_SYSML_MAX_SOURCE_BYTES,
+          },
+        )).text;
+      } catch (error) {
+        if (error instanceof AgentResourceReopenError) throw error;
+        throw error;
+      }
+      return structuredClone(
+        await architectureSysmlSourceAnalysis.capture({
+          profileId: command.profileId,
+          sourceId: command.sourceId,
+          sourceText,
+        }),
+      ) as unknown as Readonly<Record<string, unknown>>;
+    },
+  };
   const architectureSysmlPreview = new PreviewProjectArchitectureSysml({
-    frontend: new QualifiedArchitectureSysmlAnalyzer(),
     captures: architectureSysmlSourceAnalysis,
   });
   const architectureSysmlSealBytes = new FileByteStore({

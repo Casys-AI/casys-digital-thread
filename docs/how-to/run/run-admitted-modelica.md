@@ -26,8 +26,10 @@ Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only.
 
 ## 1. Capture
 
-Call `project_technical_source_capture` with one source satisfying the v2 grammar,
-including its exact `annotation(experiment(...))` scenario.
+Call `project_resource_capture` with the `.mo` UTF-8, then
+`project_technical_source_capture` with `profileId`, `sourceId`, and that full
+`resourceRef`. The source must satisfy the v2 grammar, including its exact
+`annotation(experiment(...))` scenario. There is no inline `sourceText`.
 
 Read the result fields separately:
 

@@ -55,13 +55,14 @@ Bindings later consumed from a sealed document are **symbol ids**, never labels.
 
 ## 1. Capture exact bytes
 
-Call `project_architecture_sysml_source_capture` with:
+First call `project_resource_capture` with the `.sysml` UTF-8 (`text/x-sysml` or
+`text/plain`). Then call `project_architecture_sysml_source_capture` with:
 
-| Field        | Rule                                                        |
-| ------------ | ----------------------------------------------------------- |
-| `profileId`  | `sysml-architecture-closed-subset-v1`                       |
-| `sourceId`   | Caller-chosen stable id                                     |
-| `sourceText` | Exact UTF-8. Edge whitespace and line endings are preserved |
+| Field         | Rule                                  |
+| ------------- | ------------------------------------- |
+| `profileId`   | `sysml-architecture-closed-subset-v1` |
+| `sourceId`    | Caller-chosen stable id               |
+| `resourceRef` | Full reference from the upload        |
 
 The tool writes draft CAS under
 `state/local/recorded-analysis/architecture-sysml/{sources,analyses}` and returns an
@@ -73,12 +74,10 @@ This creates no `EngineeringProject`, no Thread revision, no MRTR, and no SysON 
 
 ## 2. Preview
 
-Call `project_architecture_sysml_preview` with **either** the same `sourceText` **or**
-the opaque `sourceRef`.
-
-- Raw text is analysed in memory. It produces no `decisionParameters`.
-- A reopened passed capture may include `decisionParameters`. Those are the only values
-  allowed in a later `model.seal-architecture-sysml@1` proposal.
+Call `project_architecture_sysml_preview` with the opaque `sourceRef` from that
+capture. A reopened passed capture may include `decisionParameters`. Those are the only
+values allowed in a later `model.seal-architecture-sysml@1` proposal. This path does
+not call SysON. `model.write-architecture@1` remains the renderer path.
 
 Treat `status !== "ready-for-review"` as diagnostic. Do not invent missing parameters.
 
