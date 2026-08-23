@@ -80,6 +80,107 @@ Deno.test("external URL command stays on the Desktop binding capability", async 
   assertEquals(opened, ["https://example.com/confirm"]);
 });
 
+Deno.test("Chat snapshot without Workbench focus returns no transcript and calls no Host", async () => {
+  const handlers = new Map<string, (input: unknown) => unknown>();
+  let snapshots = 0;
+  registerDesktopChatBindings(
+    { bind: (name, handler) => handlers.set(name, handler) },
+    {
+      snapshot() {
+        snapshots += 1;
+        return Promise.resolve(snapshot(conversation()));
+      },
+      command: () => Promise.reject(new Error("not used")),
+    },
+    undefined,
+    { currentProjectId: () => Promise.resolve(undefined) },
+  );
+
+  const response = await handlers.get(CHAT_SNAPSHOT_BINDING)?.({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+  });
+  assertEquals(response, {
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    host: "ready",
+    conversations: [],
+    error: "Chat transcripts require an available Workbench project focus.",
+  });
+  assertEquals(snapshots, 0);
+  assertEquals(JSON.stringify(response).includes("FOREIGN_SECRET"), false);
+});
+
+Deno.test("global Chat snapshot filters foreign transcripts and explicit unknown ids call no Host", async () => {
+  const handlers = new Map<string, (input: unknown) => unknown>();
+  let snapshots = 0;
+  registerDesktopChatBindings(
+    { bind: (name, handler) => handlers.set(name, handler) },
+    {
+      snapshot() {
+        snapshots += 1;
+        return Promise.resolve(snapshot(
+          conversation("coffee-machine", "conversation:coffee", "CURRENT"),
+          conversation("foreign-project", "conversation:foreign", "FOREIGN_SECRET"),
+        ));
+      },
+      command: () => Promise.reject(new Error("not used")),
+    },
+    undefined,
+    { currentProjectId: () => Promise.resolve("coffee-machine") },
+  );
+
+  const global = await handlers.get(CHAT_SNAPSHOT_BINDING)?.({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+  });
+  assertEquals(
+    (global as { conversations: readonly ChatConversationDto[] }).conversations
+      .map((item) => item.id),
+    ["conversation:coffee"],
+  );
+  assertEquals(JSON.stringify(global).includes("FOREIGN_SECRET"), false);
+  assertEquals(snapshots, 1);
+
+  const foreign = await handlers.get(CHAT_SNAPSHOT_BINDING)?.({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    conversationId: "conversation:foreign",
+  });
+  assertEquals(
+    (foreign as { conversations: readonly ChatConversationDto[] }).conversations,
+    [],
+  );
+  assertEquals(JSON.stringify(foreign).includes("FOREIGN_SECRET"), false);
+  assertEquals(snapshots, 1);
+});
+
+Deno.test("focus changing while Chat snapshot loads releases zero transcript", async () => {
+  const handlers = new Map<string, (input: unknown) => unknown>();
+  const focus = ["coffee-machine", "other-project"];
+  let snapshots = 0;
+  registerDesktopChatBindings(
+    { bind: (name, handler) => handlers.set(name, handler) },
+    {
+      snapshot() {
+        snapshots += 1;
+        return Promise.resolve(snapshot(
+          conversation("coffee-machine", "conversation:coffee", "CHANGED_SECRET"),
+        ));
+      },
+      command: () => Promise.reject(new Error("not used")),
+    },
+    undefined,
+    { currentProjectId: () => Promise.resolve(focus.shift()) },
+  );
+
+  const response = await handlers.get(CHAT_SNAPSHOT_BINDING)?.({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+  });
+  assertEquals(
+    (response as { conversations: readonly ChatConversationDto[] }).conversations,
+    [],
+  );
+  assertEquals(JSON.stringify(response).includes("CHANGED_SECRET"), false);
+  assertEquals(snapshots, 1);
+});
+
 Deno.test("WebView conversation creation is refused out of focus before Chat Host", async () => {
   const handlers = new Map<string, (input: unknown) => unknown>();
   const commandInputs: unknown[] = [];
@@ -250,23 +351,37 @@ Deno.test("focus changing during existing-conversation authorization fails close
   assertEquals(commands, 0);
 });
 
-function snapshot(conversation?: ChatConversationDto) {
+function snapshot(...conversations: readonly ChatConversationDto[]) {
   return Object.freeze({
     protocol: DESKTOP_CHAT_PROTOCOL,
     host: "ready" as const,
-    conversations: Object.freeze(conversation === undefined ? [] : [conversation]),
-    ...(conversation === undefined ? {} : { selectedConversationId: conversation.id }),
+    conversations: Object.freeze(conversations),
+    ...(conversations[0] === undefined
+      ? {}
+      : { selectedConversationId: conversations[0].id }),
   });
 }
 
-function conversation(): ChatConversationDto {
+function conversation(
+  projectId = "coffee-machine",
+  id = "conversation:1",
+  message?: string,
+): ChatConversationDto {
   return Object.freeze({
-    id: "conversation:1",
-    projectId: "coffee-machine",
+    id,
+    projectId,
     title: "Coffee machine",
     status: "idle",
     createdAt: "2026-08-23T00:00:00.000Z",
     updatedAt: "2026-08-23T00:00:00.000Z",
-    messages: Object.freeze([]),
+    messages: Object.freeze(
+      message === undefined ? [] : [{
+        id: `message:${id}`,
+        role: "assistant" as const,
+        kind: "text" as const,
+        text: message,
+        createdAt: "2026-08-23T00:00:00.000Z",
+      }],
+    ),
   });
 }

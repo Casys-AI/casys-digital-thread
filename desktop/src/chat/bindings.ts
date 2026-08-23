@@ -35,6 +35,7 @@ export function registerDesktopChatBindings(
   externalUrl?: ExternalUrlOpener,
   projectFocus?: DesktopChatProjectFocusAuthority,
 ): void {
+  const conversationProjects = new Map<string, string>();
   window.bind(CHAT_SNAPSHOT_BINDING, async (value: unknown) => {
     const input = parseChatSnapshotRequest(value);
     if (host === undefined) {
@@ -45,7 +46,12 @@ export function registerDesktopChatBindings(
         error: "The packaged Chat Host is unavailable.",
       }) satisfies ChatSnapshotDto;
     }
-    return await host.snapshot(input);
+    return await focusedSnapshot(
+      input,
+      host,
+      projectFocus,
+      conversationProjects,
+    );
   });
   window.bind(CHAT_COMMAND_BINDING, async (value: unknown) => {
     const input = parseDesktopChatBindingCommandRequest(value);
@@ -86,7 +92,103 @@ export function registerDesktopChatBindings(
         error: authorizationError,
       }) satisfies ChatCommandResponse;
     }
-    return await host.command(input);
+    const response = await host.command(input);
+    if (
+      input.command === "conversation.create" && response.ok &&
+      response.conversationId !== undefined
+    ) {
+      conversationProjects.set(response.conversationId, input.projectId);
+    }
+    return response;
+  });
+}
+
+async function focusedSnapshot(
+  input: ReturnType<typeof parseChatSnapshotRequest>,
+  host: DesktopChatBindingHost,
+  projectFocus: DesktopChatProjectFocusAuthority | undefined,
+  conversationProjects: Map<string, string>,
+): Promise<ChatSnapshotDto> {
+  const focusedProjectId = await readCurrentProjectFocus(projectFocus);
+  if (focusedProjectId === undefined) {
+    return emptyFocusedSnapshot(
+      "ready",
+      "Chat transcripts require an available Workbench project focus.",
+    );
+  }
+  if (
+    input.conversationId !== undefined &&
+    conversationProjects.get(input.conversationId) !== focusedProjectId
+  ) {
+    return emptyFocusedSnapshot(
+      "ready",
+      "The requested conversation is unavailable for the current Workbench project focus.",
+    );
+  }
+
+  let snapshot: ChatSnapshotDto;
+  try {
+    snapshot = await host.snapshot(input);
+  } catch {
+    return emptyFocusedSnapshot(
+      "unavailable",
+      "The packaged Chat Host snapshot is unavailable.",
+    );
+  }
+  if (await readCurrentProjectFocus(projectFocus) !== focusedProjectId) {
+    return emptyFocusedSnapshot(
+      snapshot.host,
+      "Workbench project focus changed while the Chat snapshot was loading.",
+    );
+  }
+
+  if (input.conversationId === undefined) {
+    conversationProjects.clear();
+    for (const conversation of snapshot.conversations) {
+      conversationProjects.set(conversation.id, conversation.projectId);
+    }
+  }
+  const conversations = Object.freeze(
+    snapshot.conversations.filter((conversation) =>
+      conversation.projectId === focusedProjectId &&
+      (input.conversationId === undefined || conversation.id === input.conversationId)
+    ),
+  );
+  const selectedConversationId = snapshot.selectedConversationId !== undefined &&
+      conversations.some((conversation) =>
+        conversation.id === snapshot.selectedConversationId
+      )
+    ? snapshot.selectedConversationId
+    : undefined;
+  return Object.freeze({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    host: snapshot.host,
+    conversations,
+    ...(selectedConversationId === undefined ? {} : { selectedConversationId }),
+    ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
+  });
+}
+
+async function readCurrentProjectFocus(
+  projectFocus?: DesktopChatProjectFocusAuthority,
+): Promise<string | undefined> {
+  if (projectFocus === undefined) return undefined;
+  try {
+    return await projectFocus.currentProjectId();
+  } catch {
+    return undefined;
+  }
+}
+
+function emptyFocusedSnapshot(
+  host: ChatSnapshotDto["host"],
+  error: string,
+): ChatSnapshotDto {
+  return Object.freeze({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    host,
+    conversations: Object.freeze([]),
+    error,
   });
 }
 
