@@ -18,7 +18,7 @@ static int valid_data_root(const char *value) {
         (end - segment == 2 && segment[0] == '.' && segment[1] == '.')) {
       return 0;
     }
-    segment = end;
+    segment = *end == '/' ? end + 1 : end;
   }
   return 1;
 }

@@ -29,6 +29,27 @@ Deno.test("native Chat Host launcher rejects arbitrary Node scripts and flags", 
   }
 });
 
+Deno.test("native Chat Host launcher parses a valid multi-segment data root", async () => {
+  const child = new Deno.Command("dist/helpers/casys-chat-host", {
+    args: ["--data-root=/tmp/casys/chat"],
+    env: {},
+    clearEnv: true,
+    stdin: "null",
+    stdout: "null",
+    stderr: "piped",
+  }).spawn();
+  const stderr = new Response(child.stderr).text();
+  const exited = await Promise.race([
+    child.status.then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1_000)),
+  ]);
+  if (!exited) child.kill("SIGKILL");
+  const status = await child.status;
+  assertEquals(exited, true, "launcher hung while parsing an absolute path");
+  assertEquals(status.code, 70);
+  assertStringIncludes(await stderr, "must run from its signed app bundle");
+});
+
 Deno.test("Chat Host manifest pins official Node, fork acpx runtime, lifeline, and adapter", async () => {
   const target = resolveTargetArtifacts("darwin-arm64");
   const manifest = JSON.parse(
