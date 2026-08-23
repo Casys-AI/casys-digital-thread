@@ -12,6 +12,7 @@ import type {
 } from "../../../domain/project/engineering-project.ts";
 import type {
   EngineeringWorkbenchActivity,
+  EngineeringWorkbenchCaseActivityJoin,
   EngineeringWorkbenchPhaseLane,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
@@ -85,6 +86,7 @@ export interface ProjectOverviewProps {
   readonly thread: ThreadWorkbenchSnapshot;
   readonly phaseLanes: readonly EngineeringWorkbenchPhaseLane[];
   readonly activities: readonly EngineeringWorkbenchActivity[];
+  readonly caseActivityJoins: readonly EngineeringWorkbenchCaseActivityJoin[];
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
   readonly onOpenProductFacet?: (facet: ProductWorkspaceFacet) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
@@ -102,6 +104,7 @@ export function ProjectOverview({
   thread,
   phaseLanes,
   activities,
+  caseActivityJoins,
   onNavigate,
   onOpenProductFacet,
   onOpenActivity,
@@ -110,7 +113,12 @@ export function ProjectOverview({
 }: ProjectOverviewProps): JSX.Element {
   const brief = buildProjectBrief(project);
   const currentWork = buildCurrentProjectWork(project);
-  const projectPath = buildProjectPath(project, thread, activities);
+  const projectPath = buildProjectPath(
+    project,
+    thread,
+    activities,
+    caseActivityJoins,
+  );
   const requirementMatrix = buildRequirementMatrix(thread);
   const currentFocus = selectCurrentProjectFocus(project);
   const openBlocker = brief.openBlockers[0];
@@ -468,7 +476,11 @@ function Chevron({ className }: { readonly className?: string }): JSX.Element {
 function SpinePhase(
   { item, isLast }: { item: ProjectPathActivityView; isLast: boolean },
 ): JSX.Element {
-  const open = item.status === "active" || item.status === "blocked";
+  const hasJoinedCases = item.revisions.some((revision) =>
+    revision.attempts.some((attempt) => attempt.cases.length > 0)
+  );
+  const open = item.status === "active" || item.status === "blocked" ||
+    hasJoinedCases;
   return (
     <li
       data-state={item.status}
@@ -505,9 +517,15 @@ function SpinePhase(
                 <li key={revision.id}>
                   {revision.title} · {revision.status}
                   {revision.attempts.map((attempt) => (
-                    <span key={attempt.id}>
+                    <span key={attempt.run.id}>
                       {" · "}
-                      {attempt.status}
+                      {attempt.run.status}
+                      {attempt.cases.map((engineeringCase) => (
+                        <span key={engineeringCase.caseKey}>
+                          {" · "}
+                          {engineeringCase.caseId}@{engineeringCase.caseRevision}
+                        </span>
+                      ))}
                     </span>
                   ))}
                 </li>

@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+  GENERIC_ENGINEERING_WORKBENCH_FIXTURE,
   GENERIC_PROJECT_FIXTURE,
 } from "../testing/workbench/generic-engineering-workbench-fixture.ts";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
@@ -23,6 +24,8 @@ import {
 } from "./src/project/model.ts";
 import { isEngineeringProjectSnapshot } from "./src/project/contract.ts";
 import { collectEngineeringActivities } from "../domain/project/engineering-activity.ts";
+import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../domain/electrical/spice/admitted/run-proposal.ts";
+import type { EngineeringWorkbenchActivity } from "./src/thread/types.ts";
 
 function collectActivityIds(
   project: {
@@ -549,6 +552,132 @@ Deno.test("current project work does not advertise a ready predecessor when a la
   assertEquals(current.nextWork.map((item) => item.id), ["wi-industrialize"]);
   assertEquals(current.historicalWorkItemIds, ["wi-geom"]);
   assertEquals(current.closedActionTargetIds, []);
+});
+
+Deno.test("admitted SPICE revisions in the Physics lane wrap as one activity with their attempts and no Engineering Case", () => {
+  const { project, thread, activities } = spicePhysicsLinkedRevisionsFixture();
+  const path = buildProjectPath(project, thread, activities);
+
+  assertEquals(path.activities.length, 1);
+  const activity = path.activities[0]!;
+  assertEquals(activity.id, "activity:wi-spice-r18");
+  assertEquals(activity.lane, "physics");
+  assertEquals(activity.revisions.map((revision) => revision.id), [
+    "wi-spice-r18",
+    "wi-spice-r18b",
+  ]);
+  assertEquals(
+    activity.revisions[1]?.predecessorRevisionId,
+    "wi-spice-r18",
+  );
+  assertEquals(
+    activity.revisions.map((revision) =>
+      revision.attempts.map((attempt) => attempt.run.id)
+    ),
+    [["run-spice-r18"], ["run-spice-r18b"]],
+  );
+  assertEquals(
+    activity.revisions.every((revision) =>
+      revision.attempts.every((attempt) => attempt.cases.length === 0)
+    ),
+    true,
+  );
+});
+
+Deno.test("AL01 leftover SPICE work without an explicit predecessor is not backfilled from labels or timestamps", () => {
+  const { project, thread, activities } = al01UnlinkedSpiceFixture();
+  const path = buildProjectPath(project, thread, activities);
+
+  assertEquals(project.workItems.map((item) => item.title), [
+    "Run admitted SPICE operating point",
+    "Run admitted SPICE operating point",
+  ]);
+  assertEquals(
+    project.workItems.every((item) =>
+      !("predecessorRevisionId" in item) ||
+      item.predecessorRevisionId === undefined
+    ),
+    true,
+  );
+  assertEquals(
+    path.activities.map((activity) => activity.id).toSorted(),
+    [
+      "activity:work-al01-admitted-spice-run-r18",
+      "activity:work-al01-admitted-spice-run-r18b",
+    ],
+  );
+  assertEquals(
+    path.activities.every((activity) => activity.revisions.length === 1),
+    true,
+  );
+  assertEquals(
+    path.activities.every((activity) =>
+      activity.revisions[0]?.predecessorRevisionId === undefined
+    ),
+    true,
+  );
+});
+
+Deno.test("Overview attaches an Engineering Case under the existing activity revision and attempt", () => {
+  const activities =
+    GENERIC_ENGINEERING_WORKBENCH_FIXTURE.projectPath.activities;
+  const joined = {
+    caseKey: `mechanical-proof:${"a".repeat(64)}`,
+    caseId: "arm-cantilever",
+    caseRevision: 2,
+    activityId: "activity:work-simulate",
+    workItemId: "work-simulate",
+    runId: "agent-run-mechanical-fixture",
+  };
+  const orphan = {
+    caseKey: `mechanical-proof:${"b".repeat(64)}`,
+    caseId: "ghost",
+    caseRevision: 1,
+    activityId: "activity:invented",
+    workItemId: "invented-work",
+    runId: "invented-run",
+  };
+  const path = buildProjectPath(
+    GENERIC_PROJECT_FIXTURE,
+    GENERIC_THREAD_FIXTURE,
+    activities,
+    [joined, orphan],
+  );
+
+  const activity = path.activities.find((item) =>
+    item.id === "activity:work-simulate"
+  );
+  assertEquals(activity?.revisions.map((revision) => revision.id), [
+    "work-simulate",
+  ]);
+  assertEquals(
+    activity?.revisions[0]?.attempts.map((attempt) => ({
+      runId: attempt.run.id,
+      cases: attempt.cases,
+    })),
+    [{
+      runId: "agent-run-mechanical-fixture",
+      cases: [{
+        caseKey: joined.caseKey,
+        caseId: "arm-cantilever",
+        caseRevision: 2,
+      }],
+    }],
+  );
+  assertEquals(
+    path.activities.some((item) => item.id === "activity:invented"),
+    false,
+  );
+  assertEquals(
+    path.activities.flatMap((item) =>
+      item.revisions.flatMap((revision) =>
+        revision.attempts.flatMap((attempt) =>
+          attempt.cases.map((engineeringCase) => engineeringCase.caseId)
+        )
+      )
+    ),
+    ["arm-cantilever"],
+  );
 });
 
 Deno.test("project path omits a historical ready predecessor while Activity retains it", () => {
@@ -1381,6 +1510,120 @@ function cancelledSeedSuccessorFixture(spec?: {
     blockers: [],
   };
   return { project, thread: structuredClone(GENERIC_THREAD_FIXTURE) };
+}
+
+function spicePhysicsLinkedRevisionsFixture() {
+  const { project, thread } = spiceProjectFixture({
+    firstId: "wi-spice-r18",
+    secondId: "wi-spice-r18b",
+    linked: true,
+  });
+  return {
+    project,
+    thread,
+    activities: physicsActivities(project.workItems),
+  };
+}
+
+function al01UnlinkedSpiceFixture() {
+  const { project, thread } = spiceProjectFixture({
+    firstId: "work-al01-admitted-spice-run-r18",
+    secondId: "work-al01-admitted-spice-run-r18b",
+    linked: false,
+    title: "Run admitted SPICE operating point",
+  });
+  return {
+    project,
+    thread,
+    activities: physicsActivities(project.workItems),
+  };
+}
+
+function physicsActivities(
+  workItems: typeof GENERIC_PROJECT_FIXTURE["workItems"],
+): readonly EngineeringWorkbenchActivity[] {
+  return collectEngineeringActivities(workItems).map((activity) => ({
+    id: activity.id,
+    lane: "physics",
+    rootRevisionId: activity.rootRevisionId,
+    revisionIds: activity.revisionIds,
+  }));
+}
+
+function spiceProjectFixture(spec: {
+  readonly firstId: string;
+  readonly secondId: string;
+  readonly linked: boolean;
+  readonly title?: string;
+}) {
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
+  const title = spec.title ?? spec.firstId;
+  const operation = {
+    id: SIMULATE_RUN_ADMITTED_SPICE_OPERATION.id,
+    version: SIMULATE_RUN_ADMITTED_SPICE_OPERATION.version,
+    bindings: [{
+      name: "compilationAdmission",
+      source: { kind: "approved-brief" as const },
+    }],
+  };
+  const first = {
+    id: spec.firstId,
+    activityId: `activity:${spec.firstId}`,
+    phaseId: "phase-spice",
+    title,
+    description: title,
+    kind: "simulate" as const,
+    operation,
+    status: "completed" as const,
+    owner: "agent" as const,
+    dependsOnWorkItemIds: [],
+    evidenceRefs: [],
+    decisionIds: [],
+    blockerIds: [],
+  };
+  const second = {
+    ...first,
+    id: spec.secondId,
+    activityId: spec.linked
+      ? `activity:${spec.firstId}`
+      : `activity:${spec.secondId}`,
+    ...(spec.linked ? { predecessorRevisionId: spec.firstId } : {}),
+    title,
+    description: title,
+  };
+  const project = {
+    ...base,
+    phases: [{
+      id: "phase-spice",
+      name: "Admitted SPICE",
+      order: 1,
+      description: "Circuit-only admitted SPICE execution.",
+      workItemIds: [first.id, second.id],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [first, second],
+    agentRuns: [
+      spiceRun("run-spice-r18", first.id, "2026-08-23T12:00:00.000Z"),
+      spiceRun("run-spice-r18b", second.id, "2026-08-23T12:00:01.000Z"),
+    ],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  };
+  return { project, thread: structuredClone(GENERIC_THREAD_FIXTURE) };
+}
+
+function spiceRun(id: string, workItemId: string, queuedAt: string) {
+  return {
+    id,
+    workItemId,
+    status: "completed" as const,
+    summary: "Recorded the admitted SPICE operating point.",
+    queuedAt,
+    completedAt: queuedAt,
+    evidenceRefs: [],
+  };
 }
 
 function leftoverReadyPredecessorFixture(spec: {

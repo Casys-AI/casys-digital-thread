@@ -1310,6 +1310,7 @@ export function ThreadWorkbench({
             thread={snapshot}
             phaseLanes={workbench.projectPath.phaseLanes}
             activities={workbench.projectPath.activities}
+            caseActivityJoins={workbench.caseActivityJoins}
             onNavigate={changeView}
             onOpenProductFacet={changeProductFacet}
             onOpenActivity={openDecisionActivity}

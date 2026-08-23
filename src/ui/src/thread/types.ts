@@ -95,6 +95,11 @@ import type {
   ThreadComponentCatalog,
 } from "../../../presentation/workbench/thread/components.ts";
 import {
+  collectEngineeringActivities,
+  collectEngineeringActivityLifecycleIssues,
+  engineeringActivityIdFromRootRevision,
+} from "../../../domain/project/engineering-activity.ts";
+import {
   isEngineeringProjectSnapshot,
   isEngineeringPublicPretechnicalProjectSnapshot,
 } from "../project/contract.ts";
@@ -322,8 +327,17 @@ function isProjectPathProjection(
     projectedPhaseIds.add(entry.phaseId);
   }
   if (projectedPhaseIds.size !== knownPhaseIds.size) return false;
+  if (
+    collectEngineeringActivityLifecycleIssues(project.workItems).length > 0
+  ) {
+    return false;
+  }
+  const domainActivities = collectEngineeringActivities(project.workItems);
+  if (value.activities.length !== domainActivities.length) return false;
+  const expectedById = new Map(
+    domainActivities.map((activity) => [activity.id, activity]),
+  );
   const projectedActivityIds = new Set<string>();
-  const projectedRevisionIds = new Set<string>();
   for (const activity of value.activities) {
     if (
       !isRecord(activity) ||
@@ -337,25 +351,31 @@ function isProjectPathProjection(
       projectedActivityIds.has(activity.id) ||
       !isEngineeringPathLaneId(activity.lane) ||
       typeof activity.rootRevisionId !== "string" ||
-      !knownWorkItemIds.has(activity.rootRevisionId) ||
-      !Array.isArray(activity.revisionIds) ||
-      activity.revisionIds[0] !== activity.rootRevisionId
+      !Array.isArray(activity.revisionIds)
+    ) {
+      return false;
+    }
+    const expected = expectedById.get(activity.id);
+    if (
+      expected === undefined ||
+      activity.id !==
+        engineeringActivityIdFromRootRevision(expected.rootRevisionId) ||
+      activity.rootRevisionId !== expected.rootRevisionId ||
+      activity.revisionIds.length !== expected.revisionIds.length ||
+      activity.revisionIds.some((id, index) =>
+        id !== expected.revisionIds[index]
+      )
     ) {
       return false;
     }
     projectedActivityIds.add(activity.id);
-    for (const revisionId of activity.revisionIds) {
-      if (
-        typeof revisionId !== "string" ||
-        !knownWorkItemIds.has(revisionId) ||
-        projectedRevisionIds.has(revisionId)
-      ) {
-        return false;
-      }
-      projectedRevisionIds.add(revisionId);
-    }
   }
-  return projectedRevisionIds.size === knownWorkItemIds.size;
+  return projectedActivityIds.size === domainActivities.length &&
+    knownWorkItemIds.size ===
+      domainActivities.reduce(
+        (total, activity) => total + activity.revisionIds.length,
+        0,
+      );
 }
 
 function isEngineeringPathLaneId(
@@ -402,7 +422,7 @@ function isCaseActivityJoinList(
     seenKeys.add(entry.caseKey);
     const workItem = knownWork.get(entry.workItemId);
     const run = knownRuns.get(entry.runId);
-    const verificationCase = knownCases.get(entry.caseKey);
+    const engineeringCase = knownCases.get(entry.caseKey);
     if (
       !workItem || workItem.activityId !== entry.activityId ||
       !run || run.workItemId !== entry.workItemId
@@ -411,17 +431,17 @@ function isCaseActivityJoinList(
     }
     if (thread.engineeringCases === undefined) return false;
     if (
-      !verificationCase ||
-      verificationCase.id !== entry.caseId ||
-      verificationCase.revision !== entry.caseRevision ||
-      verificationCase.authorityArtifactIds.length === 0
+      !engineeringCase ||
+      engineeringCase.id !== entry.caseId ||
+      engineeringCase.revision !== entry.caseRevision ||
+      engineeringCase.authorityArtifactIds.length === 0
     ) {
       return false;
     }
     const artifactsById = new Map(
       thread.artifacts.map((artifact) => [artifact.id, artifact]),
     );
-    for (const artifactId of verificationCase.authorityArtifactIds) {
+    for (const artifactId of engineeringCase.authorityArtifactIds) {
       const artifact = artifactsById.get(artifactId);
       if (!artifact || artifact.producerRunId !== entry.runId) return false;
     }

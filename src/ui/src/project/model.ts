@@ -15,8 +15,9 @@ import {
   attemptIdsForRevision,
   collectEngineeringActivities,
 } from "../../../domain/project/engineering-activity.ts";
-import type { EngineeringWorkbenchActivity } from "../thread/types.ts";
 import type {
+  EngineeringWorkbenchActivity,
+  EngineeringWorkbenchCaseActivityJoin,
   EngineeringWorkbenchPhaseLane,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
@@ -110,12 +111,23 @@ export const PROJECT_PATH_PRESENTATION_POLICY = {
   attempts: "EngineeringAgentRun bound to one revision",
 } as const;
 
+export interface ProjectPathCaseRef {
+  readonly caseKey: string;
+  readonly caseId: string;
+  readonly caseRevision: number;
+}
+
+export interface ProjectPathAttemptView {
+  readonly run: EngineeringAgentRun;
+  readonly cases: readonly ProjectPathCaseRef[];
+}
+
 export interface ProjectPathRevisionView {
   readonly id: string;
   readonly predecessorRevisionId?: string;
   readonly title: string;
   readonly status: EngineeringWorkItem["status"];
-  readonly attempts: readonly EngineeringAgentRun[];
+  readonly attempts: readonly ProjectPathAttemptView[];
 }
 
 export interface ProjectPathActivityView {
@@ -456,6 +468,7 @@ export function buildProjectPath(
       rootRevisionId: activity.rootRevisionId,
       revisionIds: activity.revisionIds,
     })),
+  caseActivityJoins: readonly EngineeringWorkbenchCaseActivityJoin[] = [],
 ): ProjectPath {
   const workById = new Map(snapshot.workItems.map((item) => [item.id, item]));
   const runById = new Map(snapshot.agentRuns.map((run) => [run.id, run]));
@@ -465,11 +478,20 @@ export function buildProjectPath(
   const activities = projectedActivities.map((projected) => {
     const revisions = projected.revisionIds.flatMap((id) => {
       const item = workById.get(id);
-      return item ? [projectPathRevision(item, runById)] : [];
+      return item
+        ? [projectPathRevision(
+          item,
+          runById,
+          projected.id,
+          caseActivityJoins,
+        )]
+        : [];
     });
     const root = workById.get(projected.rootRevisionId);
     const statuses = revisions.map((revision) => revision.status);
-    const runs = revisions.flatMap((revision) => revision.attempts);
+    const runs = revisions.flatMap((revision) =>
+      revision.attempts.map((attempt) => attempt.run)
+    );
     const status: EngineeringPhaseStatus = runs.some((run) =>
         run.status === "queued" || run.status === "running" ||
         run.status === "waiting-for-decision" || run.status === "publishing"
@@ -529,11 +551,23 @@ export function buildProjectPath(
 function projectPathRevision(
   item: EngineeringWorkItem,
   runById: ReadonlyMap<string, EngineeringAgentRun>,
+  activityId: string,
+  caseActivityJoins: readonly EngineeringWorkbenchCaseActivityJoin[],
 ): ProjectPathRevisionView {
   const attempts = attemptIdsForRevision([...runById.values()], item.id)
     .flatMap((id) => {
       const run = runById.get(id);
-      return run ? [run] : [];
+      return run
+        ? [{
+          run,
+          cases: casesAttachedToExistingAttempt(
+            caseActivityJoins,
+            activityId,
+            item.id,
+            run.id,
+          ),
+        }]
+        : [];
     });
   return {
     id: item.id,
@@ -544,6 +578,30 @@ function projectPathRevision(
     status: item.status,
     attempts,
   };
+}
+
+/**
+ * Attach an exact Thread case only when the join already names this activity,
+ * revision and attempt. A join never creates a gate or a predecessor.
+ */
+function casesAttachedToExistingAttempt(
+  joins: readonly EngineeringWorkbenchCaseActivityJoin[],
+  activityId: string,
+  workItemId: string,
+  runId: string,
+): readonly ProjectPathCaseRef[] {
+  return joins
+    .filter((join) =>
+      join.activityId === activityId &&
+      join.workItemId === workItemId &&
+      join.runId === runId
+    )
+    .map((join) => ({
+      caseKey: join.caseKey,
+      caseId: join.caseId,
+      caseRevision: join.caseRevision,
+    }))
+    .toSorted((left, right) => left.caseKey.localeCompare(right.caseKey));
 }
 
 export function agentRunRecordedAt(run: EngineeringAgentRun): string {

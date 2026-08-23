@@ -931,6 +931,114 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
   assertEquals(isThreadWorkbenchSnapshot(unavailableFamily), false);
 });
 
+Deno.test("evidence Workbench recrosses projected activity membership with domain identity", () => {
+  const valid = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
+  assertEquals(isEngineeringWorkbenchSnapshot(valid), true);
+
+  const first = valid.projectPath.activities[0]!;
+  const second = valid.projectPath.activities[1]!;
+  assertEquals(
+    isEngineeringWorkbenchSnapshot({
+      ...valid,
+      projectPath: {
+        ...valid.projectPath,
+        activities: valid.projectPath.activities.map((activity, index) =>
+          index === 0 ? { ...activity, id: "forged-activity" } : activity
+        ),
+      },
+    }),
+    false,
+  );
+  assertEquals(
+    isEngineeringWorkbenchSnapshot({
+      ...valid,
+      projectPath: {
+        ...valid.projectPath,
+        activities: valid.projectPath.activities.map((activity, index) =>
+          index === 0
+            ? {
+              ...first,
+              rootRevisionId: second.rootRevisionId,
+              revisionIds: second.revisionIds,
+            }
+            : index === 1
+            ? {
+              ...second,
+              rootRevisionId: first.rootRevisionId,
+              revisionIds: first.revisionIds,
+            }
+            : activity
+        ),
+      },
+    }),
+    false,
+  );
+  assertEquals(
+    isEngineeringWorkbenchSnapshot({
+      ...valid,
+      projectPath: {
+        ...valid.projectPath,
+        activities: [
+          ...valid.projectPath.activities,
+          {
+            id: "activity:invented",
+            lane: "physics",
+            rootRevisionId: "work-define",
+            revisionIds: ["work-define"],
+          },
+        ],
+      },
+    }),
+    false,
+  );
+
+  const linked = {
+    ...valid,
+    project: {
+      ...valid.project,
+      workItems: valid.project.workItems.map((item) =>
+        item.id === "work-simulate"
+          ? {
+            ...item,
+            activityId: "activity:work-design",
+            predecessorRevisionId: "work-design",
+          }
+          : item
+      ),
+    },
+    projectPath: {
+      ...valid.projectPath,
+      activities: valid.projectPath.activities.flatMap((activity) => {
+        if (activity.id === "activity:work-simulate") return [];
+        if (activity.id !== "activity:work-design") return [activity];
+        return [{
+          ...activity,
+          revisionIds: ["work-design", "work-simulate"],
+        }];
+      }),
+    },
+  };
+  assertEquals(isEngineeringWorkbenchSnapshot(linked), true);
+  assertEquals(
+    isEngineeringWorkbenchSnapshot({
+      ...linked,
+      projectPath: {
+        ...linked.projectPath,
+        activities: linked.projectPath.activities.map((activity) =>
+          activity.id === "activity:work-design"
+            ? {
+              ...activity,
+              rootRevisionId: "work-simulate",
+              revisionIds: ["work-simulate", "work-design"],
+            }
+            : activity
+        ),
+      },
+    }),
+    false,
+  );
+});
+
 Deno.test("evidence Workbench recrosses a case join to every authority producer run", () => {
   const workbench = joinedCaseWorkbench();
   assertEquals(isEngineeringWorkbenchSnapshot(workbench), true);
