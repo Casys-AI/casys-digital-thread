@@ -1,7 +1,9 @@
 import { createRoot } from "react-dom/client";
+import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { HttpCockpitFleetClient, HttpThreadWorkbenchClient } from "./client.ts";
 import { ThreadWorkbench } from "./workbench.tsx";
+import { DesktopChat } from "./desktop-chat.tsx";
 import "../styles.css";
 
 const root = document.querySelector<HTMLElement>("#native-preview");
@@ -24,6 +26,10 @@ const fleetClient = new HttpCockpitFleetClient(
  * the harness adds no chrome of its own.
  */
 function NativeCockpit(): JSX.Element {
+  const [projectId, setProjectId] = useState<string>();
+  const focusProject = useCallback((next: string | undefined) => {
+    setProjectId(next);
+  }, []);
   return (
     <div className="native-preview-shell">
       {/* Chaque vue possède son propre <main> : le harnais reste un div. */}
@@ -31,8 +37,10 @@ function NativeCockpit(): JSX.Element {
         <ThreadWorkbench
           client={client}
           fleetClient={fleetClient}
+          onProjectFocus={focusProject}
         />
       </div>
+      <DesktopChat projectId={projectId} />
     </div>
   );
 }

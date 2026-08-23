@@ -1,8 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@1.0.14";
 import manifest from "../../component-manifest.json" with { type: "json" };
 
-Deno.test("Lot 3 manifest pins the shell and both dedicated sidecars", () => {
-  assertEquals(manifest.product.version, "0.3.0");
+Deno.test("Desktop 0.4 manifest pins Workbench and the separate Chat Host", () => {
+  assertEquals(manifest.product.version, "0.4.0");
   const shell = manifest.components.find((component) =>
     component.id === "desktop-shell"
   );
@@ -14,7 +14,7 @@ Deno.test("Lot 3 manifest pins the shell and both dedicated sidecars", () => {
   );
   assertEquals(shell, {
     id: "desktop-shell",
-    version: "0.3.0",
+    version: "0.4.0",
     delivery: "bundled",
     lifecycle: "active",
   });
@@ -27,6 +27,12 @@ Deno.test("Lot 3 manifest pins the shell and both dedicated sidecars", () => {
   assertEquals(workbench, {
     id: "workbench-projection",
     version: "0.3.0",
+    delivery: "sidecar",
+    lifecycle: "active",
+  });
+  assertEquals(manifest.components.find((component) => component.id === "chat-host"), {
+    id: "chat-host",
+    version: "0.4.0",
     delivery: "sidecar",
     lifecycle: "active",
   });

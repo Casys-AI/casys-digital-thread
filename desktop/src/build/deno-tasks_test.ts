@@ -81,10 +81,12 @@ Deno.test("Lot 3 tasks compile both dedicated helpers and keep the host free of 
   for (const flag of WORKBENCH_COMPILE_PERMISSION_FLAGS) {
     assertEquals(flag.includes("allow-run=deno"), false);
   }
-  assertEquals(denoConfig.version, "0.3.0");
+  assertEquals(denoConfig.version, "0.4.0");
   assertEquals(denoConfig.permissions.desktop.run, [
     "casys-control-plane",
+    "casys-chat-host",
     "casys-workbench",
+    "open",
   ]);
   assertEquals(denoConfig.permissions.desktop.net, [
     "127.0.0.1:3020",

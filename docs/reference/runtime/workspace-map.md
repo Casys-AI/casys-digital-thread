@@ -161,6 +161,15 @@ The Workbench has no POST or command surface. Every command and signed decision 
 the paired MCP conversation, so the cockpit exposes no project mutation or provider-call
 surface.
 
+The Desktop Chat Host is not another loopback API. The Deno host exposes only two
+closed, versioned in-process WebView bindings for sanitized chat snapshot/command DTOs,
+then delegates over private stdio to a separately packaged Chat Host. That host alone
+owns the exact acpx session handles and exact agent adapter; it reaches the same Casys
+server on `127.0.0.1:3020`. It receives one Workbench-projected project identifier per
+conversation and revalidates it. Its retained transcript store is separate from
+Thread/CAS and never becomes engineering truth. ACP permission and server-validated
+MRTR remain distinct interactions.
+
 `deno task start` exposes the MCP project surface used by the paired agent. Agents can
 inspect the same active project, propose an input, elicit an exact human decision in the
 conversation, queue a ready registered work item, and execute only that server-derived

@@ -20,7 +20,7 @@ export const CONTROL_PLANE_LIFECYCLE_SCHEMA =
 export const CONTROL_PLANE_SERVER_NAME = "casys-digital-thread-console";
 export const CONTROL_PLANE_SERVER_VERSION = "0.2.0";
 export const CONTROL_PLANE_PRODUCT_IDENTIFIER = "ai.casys.digital-thread";
-export const CONTROL_PLANE_PRODUCT_VERSION = "0.3.0";
+export const CONTROL_PLANE_PRODUCT_VERSION = "0.4.0";
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 
 /** Read-only Desktop identity tool. Lane B must register this exact name. */

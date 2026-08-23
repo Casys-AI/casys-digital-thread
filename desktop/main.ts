@@ -2,9 +2,14 @@ import rawManifest from "./component-manifest.json" with { type: "json" };
 import { createDesktopShellHandler } from "./src/application/shell-handler.ts";
 import {
   drainAndExitDesktop,
+  drainDesktopForWindowClose,
   installDesktopShutdownSignals,
+  installDesktopWindowClose,
 } from "./src/application/shutdown.ts";
 import { startDesktopApplication } from "./src/application/startup.ts";
+import { registerDesktopChatBindings } from "./src/chat/bindings.ts";
+import { createExternalUrlOpener } from "./src/chat/external-url.ts";
+import { startPackagedChatHost } from "./src/chat-host/startup.ts";
 import {
   CONTROL_PLANE_PRODUCT_IDENTIFIER,
   CONTROL_PLANE_SERVER_NAME,
@@ -37,13 +42,14 @@ const readEnvironment: EnvironmentReader = (name) => {
   }
 };
 
+const platform = desktopPlatform(Deno.build.os);
 const application = await startDesktopApplication({
   manifest: rawManifest,
   actualDenoVersion: Deno.version.deno,
   // Deno Desktop ships in the same pinned runtime binary as Deno itself.
   actualDesktopRuntimeVersion: Deno.version.deno,
   actualProductVersion: Deno.desktopVersion,
-  platform: desktopPlatform(Deno.build.os),
+  platform,
   env: readEnvironment,
   executablePath: Deno.execPath(),
 }, {
@@ -82,6 +88,21 @@ const application = await startDesktopApplication({
   },
 });
 
+const browserWindow = new Deno.BrowserWindow();
+const chatHost = await startPackagedChatHost({
+  launchable: application.chatHostLaunchable,
+  executablePath: Deno.execPath(),
+  platform,
+  arch: Deno.build.arch,
+  env: readEnvironment,
+  childEnv: chatHostEnvironment,
+});
+registerDesktopChatBindings(
+  browserWindow,
+  chatHost,
+  createExternalUrlOpener(platform),
+);
+
 let server: Deno.HttpServer;
 try {
   server = Deno.serve(
@@ -94,37 +115,84 @@ try {
   await application.stop().catch(() => undefined);
   throw error;
 }
-const shutdownRequested = Promise.withResolvers<void>();
-let receivedShutdownSignal = false;
+const signalShutdown = Promise.withResolvers<void>();
+let windowShutdown = Promise.withResolvers<void>();
+const windowClose = installDesktopWindowClose(browserWindow, () => {
+  windowShutdown.resolve();
+});
 const cleanupSignals = installDesktopShutdownSignals(() => {
-  receivedShutdownSignal = true;
-  shutdownRequested.resolve();
+  signalShutdown.resolve();
 }, {
   add: (signal, listener) => Deno.addSignalListener(signal, listener),
   remove: (signal, listener) => Deno.removeSignalListener(signal, listener),
 });
 
+let resourcesDrained = false;
 try {
-  await Promise.race([server.finished, shutdownRequested.promise]);
-  if (receivedShutdownSignal) {
-    let serverStop: Promise<void> | undefined;
-    while (true) {
-      try {
-        await drainAndExitDesktop({
-          stopApplication: () => application.stop(),
-          shutdownServer: () => serverStop ??= server.shutdown(),
-          exitProcess: (code) => Deno.exit(code),
-        });
-        break;
-      } catch {
-        console.error(
-          "Desktop shutdown remains unresolved; retrying owned cleanup without exiting.",
-        );
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
+  while (true) {
+    const outcome = await Promise.race([
+      server.finished.then(() => "server" as const),
+      signalShutdown.promise.then(() => "signal" as const),
+      windowShutdown.promise.then(() => "window" as const),
+    ]);
+    if (outcome === "server") break;
+    if (outcome === "signal") {
+      await drainAndExitDesktop({
+        stopApplication: stopDesktopResources,
+        shutdownServer: () => server.shutdown(),
+        exitProcess: (code) => Deno.exit(code),
+      });
+      resourcesDrained = true;
+      break;
     }
+    const drained = await drainDesktopForWindowClose({
+      stopApplication: stopDesktopResources,
+      shutdownServer: () => server.shutdown(),
+    });
+    if (drained.status === "drained") {
+      resourcesDrained = true;
+      windowClose.complete();
+      break;
+    }
+    console.error(
+      `Desktop close deferred: ${drained.stage} drain is unresolved; close again to retry.`,
+    );
+    windowClose.retry();
+    windowShutdown = Promise.withResolvers<void>();
   }
 } finally {
   cleanupSignals();
-  await application.stop().catch(() => undefined);
+  windowClose.cleanup();
+  if (!resourcesDrained) await stopDesktopResources();
+}
+
+async function stopDesktopResources(): Promise<void> {
+  const stopped = await Promise.allSettled([
+    (async () => {
+      const result = await chatHost?.stop();
+      if (result?.status === "unresolved") {
+        throw new Error(result.reason ?? "Chat Host process exit is unresolved");
+      }
+    })(),
+    application.stop(),
+  ]);
+  const errors = stopped.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : []
+  );
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Desktop owned-resource shutdown failed");
+  }
+}
+
+function chatHostEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const name of ["HOME", "CODEX_HOME", "OPENAI_API_KEY"] as const) {
+    try {
+      const value = Deno.env.get(name);
+      if (value !== undefined) env[name] = value;
+    } catch (error) {
+      if (!(error instanceof Deno.errors.PermissionDenied)) throw error;
+    }
+  }
+  return env;
 }

@@ -173,11 +173,14 @@ export interface ThreadWorkbenchProps {
   client: ThreadWorkbenchClient;
   /** Declared fleet topology; absent when the BFF has no manifest. */
   fleetClient?: CockpitFleetClient;
+  /** Validated read-only projection focus for sibling Desktop capabilities. */
+  onProjectFocus?: (projectId: string | undefined) => void;
 }
 
 export function ThreadWorkbench({
   client,
   fleetClient,
+  onProjectFocus,
 }: ThreadWorkbenchProps): JSX.Element {
   const [workbench, setWorkbench] = useState<EngineeringWorkbenchSnapshot>();
   const [fleet, setFleet] = useState<CockpitFleetProjection>();
@@ -213,6 +216,10 @@ export function ThreadWorkbench({
   const [drawerMode, setDrawerMode] = useState<"tool" | "record">("tool");
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [error, setError] = useState<string>();
+  useEffect(() => {
+    onProjectFocus?.(workbench?.project.project.id);
+    return () => onProjectFocus?.(undefined);
+  }, [onProjectFocus, workbench?.project.project.id]);
   // Evidence is one Graphology + dagre + Sigma canvas. The SVG Map layout
   // is not a second organisation of the same dossier.
   // Profondeur du voisinage en vue locale (façon Obsidian). Décision

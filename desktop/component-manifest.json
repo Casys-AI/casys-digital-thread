@@ -3,7 +3,7 @@
   "product": {
     "identifier": "ai.casys.digital-thread",
     "name": "Casys Digital Thread",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "runtime": {
     "denoVersion": "2.9.2",
@@ -14,7 +14,7 @@
   "components": [
     {
       "id": "desktop-shell",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "delivery": "bundled",
       "lifecycle": "active"
     },
@@ -32,9 +32,9 @@
     },
     {
       "id": "chat-host",
-      "version": null,
+      "version": "0.4.0",
       "delivery": "sidecar",
-      "lifecycle": "deferred-lot-4"
+      "lifecycle": "active"
     }
   ]
 }

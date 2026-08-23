@@ -9,6 +9,10 @@ import {
   CONTROL_PLANE_SERVER_VERSION,
 } from "../control-plane/contracts.ts";
 import {
+  CHAT_HOST_COMPONENT_ID,
+  CHAT_HOST_COMPONENT_VERSION,
+} from "../chat/contracts.ts";
+import {
   type ApplicationSupportLayout,
   type ComponentManifest,
   deriveDesktopShellViewModel,
@@ -49,6 +53,8 @@ export interface DesktopBootstrapFacts {
   /** Current compiled helper grants cover this exact layout profile. */
   readonly packagedHelperPermissionsCompatible: boolean;
   readonly workbenchLaunchable: boolean;
+  /** Exact Chat Host declaration; it does not itself authorize a subprocess. */
+  readonly chatHostPinValid: boolean;
   readonly controlPlaneVersion?: string;
 }
 
@@ -80,6 +86,11 @@ export function inspectDesktopBootstrap(
       component.id === "workbench-projection"
     )
     : undefined;
+  const chatHost = manifest.ok
+    ? manifest.value.components.find((component) =>
+      component.id === CHAT_HOST_COMPONENT_ID
+    )
+    : undefined;
   const runtimeMatches = manifest.ok &&
     input.actualDenoVersion.trim() === manifest.value.runtime.denoVersion &&
     input.actualDesktopRuntimeVersion.trim() ===
@@ -102,6 +113,10 @@ export function inspectDesktopBootstrap(
     workbench.version === WORKBENCH_VERSION;
   const workbenchLaunchable = runtimeMatches && layout.ok && workbenchPinValid &&
     packagedHelperPermissionsCompatible;
+  const chatHostPinValid = manifest.ok &&
+    chatHost?.lifecycle === "active" &&
+    chatHost.delivery === "sidecar" &&
+    chatHost.version === CHAT_HOST_COMPONENT_VERSION;
 
   return Object.freeze({
     manifest,
@@ -115,6 +130,7 @@ export function inspectDesktopBootstrap(
     workbenchPinValid,
     packagedHelperPermissionsCompatible,
     workbenchLaunchable,
+    chatHostPinValid,
     ...(controlPlanePinValid
       ? { controlPlaneVersion: CONTROL_PLANE_SERVER_VERSION }
       : {}),

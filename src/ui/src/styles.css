@@ -23,6 +23,7 @@
 @import "./styles/10-light-atelier.css";
 @import "./styles/11-review-notifications.css";
 @import "./styles/17-saas-shell.css";
+@import "./styles/18-desktop-chat.css";
 
 /* --- Design system shadcn (palette zinc, claire) ---------------------------
    Prefixe `--ui-` : les jetons historiques (`--muted`, `--accent`) designent

@@ -83,6 +83,7 @@ Deno.test("invalid manifest, runtime, or layout causes zero lifecycle factory", 
     });
     assertEquals(factories, 0);
     assertEquals(application.model.status, "recovery-required");
+    assertFalse(application.chatHostLaunchable);
     await application.stop();
     assertEquals(factories, 0);
   }
@@ -127,6 +128,7 @@ Deno.test("a wrong active sidecar pin fails closed before the lifecycle factory"
   });
   assertEquals(factories, 0);
   assertEquals(application.model.status, "recovery-required");
+  assertFalse(application.chatHostLaunchable);
   assertEquals(
     application.model.components.find((component) =>
       component.id === "casys-control-plane"
@@ -198,10 +200,11 @@ Deno.test("startup passes only the nested helper and validated finite layout", a
     launchCwd: "/Users/ada/Library/Application Support",
     relativeWorkspace: "ai.casys.digital-thread/control-plane",
     productIdentifier: "ai.casys.digital-thread",
-    productVersion: "0.3.0",
+    productVersion: "0.4.0",
     controlPlaneVersion: "0.2.0",
   });
   assertEquals(controller.starts, 1);
+  assertEquals(application.chatHostLaunchable, true);
   assertEquals(
     application.model.components.find((component) =>
       component.id === "casys-control-plane"
@@ -318,7 +321,7 @@ Deno.test("startup keeps Workbench capability host-only and drains both owned he
     workbenchLaunch?.helperPath,
     "/Applications/CasysDigitalThread.app/Contents/Helpers/casys-workbench",
   );
-  assertEquals(workbenchLaunch?.productVersion, "0.3.0");
+  assertEquals(workbenchLaunch?.productVersion, "0.4.0");
   assertEquals(workbench.starts, 1);
   assertEquals(application.workbenchSession?.accessToken, "a".repeat(64));
   assertFalse(JSON.stringify(application.model).includes("a".repeat(64)));
@@ -357,6 +360,22 @@ Deno.test("Workbench can reopen offline state while the control plane startup is
   );
   await application.stop();
   assertEquals(workbench.stops, 1);
+});
+
+Deno.test("a wrong Chat Host component pin never authorizes Chat Host launch", async () => {
+  const manifest = structuredClone(rawManifest);
+  const chatHost = manifest.components.find((component) =>
+    component.id === "chat-host"
+  );
+  if (chatHost === undefined) throw new Error("missing Chat Host fixture");
+  chatHost.version = "0.4.1";
+
+  const application = await startDesktopApplication(input({ manifest }), {
+    createControlPlane: () => new FakeController(),
+  });
+
+  assertFalse(application.chatHostLaunchable);
+  await application.stop();
 });
 
 Deno.test("missing packaged helper fabricates neither a version nor provider counts", async () => {
@@ -540,6 +559,25 @@ Deno.test("Workbench startup retains a controller whose cleanup is unresolved", 
 
   await application.stop();
   assertEquals(stopCalls, 2);
+});
+
+Deno.test("a rejected application stop can be retried without concurrent duplication", async () => {
+  let stops = 0;
+  const application = await startDesktopApplication(input(), {
+    createControlPlane: () => ({
+      start: () => Promise.resolve(readyProjection()),
+      stop() {
+        stops += 1;
+        return stops === 1
+          ? Promise.reject(new Error("bounded stop unresolved"))
+          : Promise.resolve();
+      },
+    }),
+  });
+
+  await application.stop().catch(() => undefined);
+  await application.stop();
+  assertEquals(stops, 2);
 });
 
 Deno.test("only the safe control-plane projection influences the renderer model", async () => {

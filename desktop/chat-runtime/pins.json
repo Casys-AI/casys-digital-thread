@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "casys-desktop-chat-runtime-pins/1.0",
+  "nodeVersion": "26.5.0",
+  "packageManager": {
+    "npmVersion": "11.17.0",
+    "pnpmVersion": "10.34.5"
+  },
+  "acpx": {
+    "version": "0.13.1",
+    "repository": "https://github.com/Casys-AI/acpx",
+    "commit": "3c927fcee1b300f9d2a604abd38cbaa9422713ea",
+    "archiveSha256": "72b2c7cadbb32d1f53cf73721d4c29aed28b0f591fabe04a2048f3beaf655b5c",
+    "runtimeSha256": "c9abb1434b03c35442f9c4a71beee4faa0aa2df0613b117c865977cd4cb7fe8a"
+  },
+  "adapter": {
+    "package": "@agentclientprotocol/codex-acp",
+    "version": "1.1.5",
+    "integrity": "sha512-ZBfl3dJ1Y27M8Rlh9hM/82Dy+EbOwZ1uyhLq9YGdblUoHDgCtimqZnd8ktuLsXTa1sInKRZHCvCs3EjtZ3arsw==",
+    "entrySha256": "8ef25bf9e507fb1af3625287b3fb1a9e4aaac539d44834fdef17b7d3cfbe4202",
+    "codexPackageVersion": "0.144.6"
+  },
+  "targets": {
+    "darwin-arm64": {
+      "status": "implemented-tested",
+      "nodeArchive": "https://nodejs.org/dist/v26.5.0/node-v26.5.0-darwin-arm64.tar.gz",
+      "nodeArchiveSha256": "ee920559aaa2391569cff4d737e3b83963430e3a14dedd91bfe0ff53171b5af9",
+      "nodeBinarySha256": "cbee2298aee5cc476bf8d5441e7348b627254a39d869743a5b04489028c729d4",
+      "acpxLifelineSha256": "d65c8f81de2321251a7a0f82d06a6f5aaf881c8c354ddefa18574cfe8e21a4d4",
+      "codexPackage": "@openai/codex-darwin-arm64",
+      "codexPackageIntegrity": "sha512-6zgvh70MzBNSeT17HEhSOrmmGGZGAKzSC7x6JAq+edkJkdPYA9P0I1tG7aJ49GlBkBxuC+MKBH1qm6+2Cghcww==",
+      "codexBinaryPath": "vendor/aarch64-apple-darwin/bin/codex",
+      "codexBinarySha256": "80a3933d11a9d13ef806aa24f7bb8afc9169cfe4e9b09d6da6a92922cbde9cff"
+    },
+    "linux-x64": {
+      "status": "missing-pins"
+    },
+    "windows-x64": {
+      "status": "missing-pins"
+    }
+  }
+}

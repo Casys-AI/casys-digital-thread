@@ -6,6 +6,12 @@ import {
   CONTROL_PLANE_PRODUCT_VERSION,
   CONTROL_PLANE_SERVER_VERSION,
 } from "../control-plane/contracts.ts";
+import {
+  CHAT_HOST_COMPONENT_ID,
+  CHAT_HOST_COMPONENT_VERSION,
+} from "../chat/contracts.ts";
+import { MACOS_EXTERNAL_URL_OPENER_NAME } from "../chat/external-url.ts";
+import { PACKAGED_CHAT_HOST_NAME } from "../chat-host/path.ts";
 import { validateComponentManifest } from "../host/mod.ts";
 import {
   WORKBENCH_HOSTNAME,
@@ -53,6 +59,9 @@ const controlPlane = manifest.value.components.find((component) =>
 const workbench = manifest.value.components.find((component) =>
   component.id === "workbench-projection"
 );
+const chatHost = manifest.value.components.find((component) =>
+  component.id === CHAT_HOST_COMPONENT_ID
+);
 if (
   manifest.value.product.version !== CONTROL_PLANE_PRODUCT_VERSION ||
   controlPlane?.version !== CONTROL_PLANE_SERVER_VERSION ||
@@ -70,11 +79,21 @@ if (
     "Cannot build Desktop: Lot 3 requires the exact active packaged Workbench sidecar pin.",
   );
 }
+if (
+  chatHost?.version !== CHAT_HOST_COMPONENT_VERSION ||
+  chatHost.lifecycle !== "active" || chatHost.delivery !== "sidecar"
+) {
+  throw new Error(
+    "Cannot build Desktop: Lot 4 requires the exact active packaged Chat Host sidecar pin.",
+  );
+}
 
 const expectedEnvironment = [
   "APPDATA",
+  "CODEX_HOME",
   "HOME",
   "LOCALAPPDATA",
+  "OPENAI_API_KEY",
   "XDG_DATA_HOME",
 ];
 const actualEnvironment = [...denoConfig.permissions.desktop.env].sort();
@@ -85,8 +104,10 @@ if (
   JSON.stringify(actualEnvironment) !== JSON.stringify(expectedEnvironment) ||
   JSON.stringify(actualRun) !==
     JSON.stringify([
+      PACKAGED_CHAT_HOST_NAME,
       PACKAGED_CONTROL_PLANE_HELPER_NAME,
       PACKAGED_WORKBENCH_HELPER_NAME,
+      MACOS_EXTERNAL_URL_OPENER_NAME,
     ].sort()) ||
   JSON.stringify(actualNet) !==
     JSON.stringify([
@@ -98,7 +119,7 @@ if (
   denoConfig.permissions.desktop.import !== false
 ) {
   throw new Error(
-    "Cannot build Desktop: runtime permissions must contain only application-support env reads, the two packaged helper basenames, their canonical loopback endpoints, and denied remote imports.",
+    "Cannot build Desktop: runtime permissions must contain only named layout/agent env reads, the three packaged helper basenames, the external URL opener, their canonical loopback endpoints, and denied remote imports.",
   );
 }
 

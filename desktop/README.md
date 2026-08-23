@@ -1,33 +1,37 @@
 # Casys Digital Thread Desktop
 
-This package is the Deno Desktop shell implemented through Lot 3. It contains one native
-system WebView plus two dedicated compiled Deno helpers: the existing control plane and
-a read-only Workbench BFF. They are separate privilege and lifecycle processes, not a
-second authority model or language stack, and the bundle contains no general Deno CLI.
+This package is the Deno Desktop shell implemented through Lot 4. It contains one native
+system WebView, two dedicated compiled Deno helpers for the existing control plane and
+read-only Workbench BFF, and a separate packaged Chat Host. These remain distinct
+privilege and lifecycle processes, not a second authority model or general Deno/Node
+CLI.
 
-The Workbench reuses the existing Preact/Vite product UI and the existing GET/SSE BFF.
-Chat Host remains a separate later component. The Desktop renderer is still
-presentation-only. That web UI, the Deno BFF, its loopback proxy contract, and the
-helper lifecycle are OS-independent product layers. macOS is the first distribution
-proved by the current packager, not the product architecture boundary.
+The Workbench reuses the existing Preact/Vite product UI and GET/SSE BFF. Its integrated
+Chat React surface feature-detects two narrow native bindings. Both surfaces remain
+presentation-only. The web UI, Deno BFF/proxy, closed Chat DTOs, and host protocols are
+OS-independent product layers; macOS remains the only distribution proved by the current
+packager.
 
 ## Current behavior
 
-- Product and Workbench `0.3.0`, Deno and Deno Desktop runtime `2.9.2`, and control
-  plane server `0.2.0` are exact pins. The WebView engine remains OS-owned and is
-  labelled that way in the manifest.
+- Product and Chat Host `0.4.0`, Workbench `0.3.0`, Deno and Deno Desktop runtime
+  `2.9.2`, and control plane server `0.2.0` are exact pins. The WebView engine remains
+  OS-owned and is labelled that way in the manifest.
 - Before any helper process is considered, Desktop validates the embedded manifest,
-  observed Deno/Desktop/product versions, the selected finite platform
-  application-support layout, product identifier, and the exact `active` + `sidecar`
-  declarations.
-- Runtime resolves helpers from `Deno.execPath()` plus one closed bundle layout selected
-  by `DesktopPlatform`. There is no checkout helper, PATH lookup, ambiguous layout, or
-  Deno CLI fallback. A missing helper or an inspect identity/digest mismatch remains a
-  fail-closed startup result.
-- Desktop passes the already validated layout profile through each helper's closed CLI
-  grammar. The Workbench derives the existing control-plane and sibling lifecycle roots
-  from that profile with native separators; neither renderer nor helper chooses a
+  observed Deno/Desktop/product versions, selected finite platform application-support
+  layout, product identifier, and exact `active` + `sidecar` declarations.
+- Runtime resolves the control-plane and Workbench helpers from `Deno.execPath()` plus
+  one closed bundle layout selected by `DesktopPlatform`. There is no checkout helper,
+  PATH lookup, ambiguous layout, or general Deno CLI fallback.
+- Desktop passes the already validated layout profile through each Deno helper's closed
+  CLI grammar. The Workbench derives the existing control-plane and sibling lifecycle
+  roots from that profile with native separators; neither renderer nor helper chooses a
   project root.
+- Chat starts only after the validated product bootstrap is live and the manifest
+  declares exact active sidecar `chat-host@0.4.0`. Production then resolves only the
+  target-owned `casys-chat-host` package layout. A recovery-required bootstrap, wrong
+  pin, unsupported target, missing digest, or lookalike executable produces no Chat Host
+  child.
 - The helper's read-only `inspect` mode supplies the exact embedded-asset digest,
   configuration state, lock, and marker. Desktop then either reconnects to an exact
   identity or starts one helper and waits for its bounded readiness handshake.
@@ -49,9 +53,10 @@ proved by the current packager, not the product architecture boundary.
   separate states. Providers may be `unavailable` without counts. Indexed or `demo` run
   records remain `candidate-unverified`; they are not promoted to verified Thread
   evidence.
-- The renderer receives only closed lifecycle DTOs. It never receives a token, pid,
-  launch id, digest, helper origin/path, storage path, provider credentials or process
-  handle.
+- The renderer receives only closed lifecycle and `casys-desktop-chat/1.0` DTOs through
+  narrow native bindings. It never receives a token, pid, launch id, digest, helper
+  origin/path, storage path, process handle, ACP handle, MCP/provider credential, raw
+  provider payload, or arbitrary HTML.
 - When the Workbench helper is ready, the WebView root is the embedded Workbench. The
   Desktop host proxies only an exact path allowlist through `GET` and `HEAD`; SSE stays
   GET-only. It injects a host-only session capability and forwards only bounded `Accept`
@@ -64,8 +69,9 @@ proved by the current packager, not the product architecture boundary.
 
 ## Runtime boundary
 
-The Desktop host can read only `HOME`, `XDG_DATA_HOME`, `APPDATA`, and `LOCALAPPDATA`,
-run only the two packaged helper basenames, and reach only `127.0.0.1:3020` and the
+The Desktop host reads only its named layout and agent-credential environment entries,
+runs only packaged `casys-control-plane`, `casys-workbench`, `casys-chat-host`, and the
+platform external-URL opener basenames, and reaches only `127.0.0.1:3020` plus the
 private Workbench BFF on `127.0.0.1:5176`. It receives no filesystem, FFI, or general
 subprocess permission; runtime remote imports are denied.
 
@@ -101,10 +107,12 @@ Those test permissions are not embedded in the Desktop host or helper; narrowing
 remains test-harness hardening debt.
 
 The workspace resolver treats platform layout as closed input data and its macOS,
-Windows, and Linux contracts are covered by unit tests. Lot 3 currently packages and
-launches the helpers only in the macOS distribution; later platform packagers must stage
-the same portable web UI, BFF/proxy and least-privilege helper contracts under their
-native application-support roots:
+Windows, and Linux contracts are covered by unit tests. The Deno host, portable web UI,
+BFF/proxy, closed Chat DTO/IPC contract, storage semantics, and React UI are
+platform-independent. macOS `darwin-arm64` is the only implemented and tested native
+package target. Windows and Linux Chat artifacts intentionally remain `missing-pins` and
+stop before launch; their later packagers must stage the same least-privilege contracts
+under native application-support roots:
 
 | Platform | Product root                                                                                                                |
 | -------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -139,6 +147,8 @@ From this directory:
 deno task verify
 deno task workbench:test
 deno task sidecar:test
+deno task chat:test
+deno task chat:mrtr-test
 deno task package
 ```
 
@@ -147,23 +157,27 @@ signed helpers from `Deno.execPath()`, and an HMR process cannot reproduce that 
 topology without adding a second helper lookup or broader subprocess permission. Use the
 packaged app for native runtime checks.
 
-`package` builds the Vite Workbench, compiles both dedicated helpers, builds
-`dist/CasysDigitalThread.app`, stages them under `Contents/Helpers`, and installs a
-minimal native launcher as the bundle entrypoint. The launcher validates the unsymlinked
-packaged runtime and helper, places the signed Helpers directory first on the initial
-process `PATH`, then `exec`s the Deno Desktop runtime. This lets Deno resolve the exact
-basename-scoped `run` permission before JavaScript starts while keeping a relocated
+`package` builds the Vite Workbench, compiles both dedicated Deno helpers, prepares the
+exact Chat Host runtime, builds `dist/CasysDigitalThread.app`, and stages the closed
+artifacts under `Contents/Helpers`. A minimal native launcher validates the unsymlinked
+packaged runtime and helpers, places the signed Helpers directory first on the initial
+process `PATH`, then `exec`s the Deno Desktop runtime. This lets Deno resolve exact
+basename-scoped `run` permissions before JavaScript starts while keeping a relocated
 bundle functional. It does not grant general subprocess access or add a checkout lookup.
-Packaging rejects a bundled general Deno CLI, signs the helper, runtime, launcher, and
-outer app, then verifies every signature. It also fixes and verifies
-`LSMinimumSystemVersion` at macOS 14.0, matching the launcher and Deno Desktop runtime
-deployment target. `dist/` is ignored. `sidecar:test` compiles its dedicated helper
-first, so it is reproducible from a checkout with no prior `dist/` artifact.
+Packaging rejects a bundled general Deno or Node CLI, signs the helpers, runtimes,
+launchers, and outer app, then verifies every signature. The closed Chat Host launcher
+accepts only one exact `--data-root` argument and executes a fixed private official Node
+`26.5.0` plus fixed `main.mjs`; package and runtime gates verify Node, acpx/runtime,
+lifeline, adapter, and Codex executable digests. It also fixes and verifies
+`LSMinimumSystemVersion` at macOS 14.0, matching the launchers and Deno Desktop runtime
+deployment target. `dist/` is ignored. The focused tasks rebuild their artifacts from
+exact pins rather than relying on ambient Node/acpx or a checkout runtime.
 
 `workbench:test` is the isolated Lot 3 gate: it rebuilds only the portable web bundle
 and Workbench helper, then tests its closed lifecycle and compiled offline GET/SSE path
 on private loopback `:5176`. `sidecar:test` additionally exercises the older control
-plane on `:3020` and therefore requires that port to be free.
+plane on `:3020` and therefore requires that port to be free. `chat:test` and
+`chat:mrtr-test` exercise the separate Chat Host and server-validated MRTR path.
 
 Deno Desktop and config-file permission sets are experimental in Deno 2.9.2. The ad-hoc
 signature proves local bundle integrity; it is not a Developer ID signature or a
@@ -172,5 +186,5 @@ notarized public release.
 The renderer and host preserve the authority model in [AGENTS.md](../AGENTS.md): the
 agent proposes registered operations, the human signs consequential decisions, the
 server owns sequences/profiles/lowering/recovery, and the Workbench remains a read-only
-`GET` + SSE projection. A later acpx Chat Host belongs in its own sidecar and must not
-be merged into this control-plane helper.
+`GET` + SSE projection. The implemented acpx Chat Host is its own sidecar and must not
+be merged into the control-plane helper.

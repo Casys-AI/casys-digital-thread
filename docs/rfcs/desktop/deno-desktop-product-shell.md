@@ -1,25 +1,26 @@
 Audience: agent · Diátaxis: none · Kind: RFC
 
-Status: active · Implemented through Lot 3
+Status: active · Implemented through Lot 4
 
 # RFC: Deno Desktop product shell
 
 This page is the implementation brief and status record for the Desktop product shell.
 Deno Desktop is the decided first product distribution, not a spike to compare with a
-bridge-only product. Lots 1 through 3 are implemented in product `0.3.0`; only the Chat
-Host lot remains future work. The living Casys authority and runtime topology remain in
-the [workspace map](../../reference/runtime/workspace-map.md) and
+bridge-only product. Lots 1 through 4 are implemented in product `0.4.0`. The living
+Casys authority and runtime topology remain in the
+[workspace map](../../reference/runtime/workspace-map.md) and
 [product direction](../../explanations/product/product-direction.md).
 
 The product architecture is OS-independent: the Preact/Vite Workbench, Deno BFF,
-GET/HEAD/SSE proxy contract and closed helper lifecycle do not assume Darwin. macOS is
-the first distribution proved by the current packager and signing pipeline, not the
-boundary of the product. Windows and Linux layouts remain explicit, tested data
-contracts for later native packagers. The runtime selects one closed bundle layout from
+GET/HEAD/SSE proxy contract, Chat Host DTOs and React UI, and closed helper lifecycles
+do not assume Darwin. macOS is the only distribution proved by the current packager and
+signing pipeline, not the boundary of the product. Windows and Linux layouts remain
+explicit, tested data contracts for later native packagers, while their Chat Host
+entries still lack pins. The runtime selects one closed bundle layout from
 `DesktopPlatform`; it never infers a platform from path text or falls back to a
 checkout.
 
-## Implemented now — product 0.3.0
+## Implemented now — product 0.4.0
 
 | Capability                | Current state                                                                                                                                                                                                                                                                                             |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,7 +30,7 @@ checkout.
 | Lifecycle                 | **Implemented.** Desktop can inspect, start, reconnect to an exact matching identity, report conflicts without adoption, and stop only an owned in-memory child handle. Lock, marker, configuration digest, readiness handshake, stdin lifeline, and bounded shutdown are distinct checks.                |
 | Provider observation      | **Implemented as fail-closed diagnostics only.** The helper has no Docker authority; provider state may remain `unavailable`, and candidate or `demo` records never become verified evidence.                                                                                                             |
 | Live Workbench projection | **Implemented.** A separately compiled, read-only helper reuses the canonical Workbench GET/SSE BFF and Preact/Vite bundle. Desktop exposes only an exact GET/HEAD/SSE allowlist, while project focus remains the durable `primary` focus.                                                                |
-| Embedded chat/acpx        | **Not implemented.** The bundle has no Chat Host, chat IPC, acpx runtime or agent subprocess. acpx `0.13.1` is aligned separately, but that completed dependency is not Desktop integration.                                                                                                              |
+| Embedded chat/acpx        | **Implemented by Lot 4.** A separate packaged Chat Host owns exact acpx/runtime, adapter, FIFO sessions, bounded lifecycle, retained transcripts and native elicitation behind two versioned bindings. The Workbench HTTP surface remains GET/SSE only.                                                   |
 
 ## Target outcome
 
@@ -44,27 +45,29 @@ product experience:
 - clear status for required local engineering providers distributed as published images.
 
 The target app works without Claude Code, Codex, Grok, a Casys SaaS account, team sync,
-or a marketplace. Product `0.3.0` runs its local control plane and in-app Workbench
-without those clients, but it does not yet supply the in-app conversation.
+or a marketplace. Product `0.4.0` packages its local control plane, live Workbench and
+Chat Host without those companion clients.
 
 ## Product boundary
 
-Current product `0.3.0`:
+Current product `0.4.0`:
 
 ```text
 Deno Desktop host
 ├─ native HTTP seam: exact Workbench GET/HEAD/SSE proxy or static fallback
+├─ separate packaged Chat Host
+│  └─ exact private Node + acpx/runtime + adapter
 ├─ packaged Deno control-plane helper
-   ├─ existing Casys server composition on loopback :3020
-   ├─ persistent project/CAS/WAL roots below Application Support
-   └─ exact inspect | start | reconnect | owned-stop lifecycle
+│  ├─ existing Casys server composition on loopback :3020
+│  ├─ persistent project/CAS/WAL roots below Application Support
+│  └─ exact inspect | start | reconnect | owned-stop lifecycle
 └─ packaged Deno Workbench helper on private loopback :5176
    ├─ reads the same control-plane project/Thread/CAS/focus roots
    ├─ serves embedded Preact/Vite assets plus the existing read-only BFF
    └─ separate lock, private token, exact reconnect and owned-stop lifecycle
 ```
 
-Target after the deferred Chat Host lot:
+Longer-term product topology:
 
 ```text
 Deno Desktop
@@ -80,8 +83,8 @@ optional native agent CLI ── mcp-bridge ──> same local Casys server
 
 Desktop is intended to become the primary onboarding, navigation, status, and update
 surface. `mcp-bridge` remains optional out-of-process companion access for expert-native
-agents and automation; it is not a substitute for the missing embedded chat. Neither
-surface may create a second project, store, provider route, permission model, or
+agents and automation; it is neither an authority nor required for the embedded chat.
+Neither surface may create a second project, store, provider route, permission model, or
 authority.
 
 ## Ownership
@@ -97,12 +100,15 @@ authority.
 - the existing Workbench dossier through a separate least-privilege helper and host-only
   reverse proxy; and
 - explicit durable cockpit focus. Without focus, persisted projects are shown as passive
-  sanitized records or the catalog remains literally `unavailable`.
+  sanitized records or the catalog remains literally `unavailable`;
+- a separate packaged Chat Host, closed native bindings, FIFO sessions, retained
+  transcripts and native elicitation.
 
 ### Deferred product-shell ownership
 
-- a privileged IPC boundary for chat and native actions;
-- navigation between conversation and the existing project dossier; and
+- explicit local project selection; never a hidden default project;
+- navigation refinement between conversation, project dossier, activity, evidence, and
+  settings; and
 - update presentation and rollback metadata without silently changing engineering
   profiles during a run.
 
@@ -122,13 +128,14 @@ authority.
 The implemented privilege domains are:
 
 1. **Renderer/webview** — presentation only. It loads the Workbench through Desktop's
-   same-origin exact GET/HEAD/SSE proxy and receives sanitized lifecycle DTOs. It has no
-   helper token/origin, chat model, provider credentials, filesystem authority, process
+   same-origin exact GET/HEAD/SSE proxy, sanitized lifecycle DTOs, and closed
+   `casys-desktop-chat/1.0` DTOs through native bindings. It has no helper token/origin,
+   chat model or MCP credentials, provider credentials, filesystem authority, process
    spawning, Docker socket, raw MCP transport, POST or command route.
 2. **Desktop host** — owns bootstrap and application lifecycle. It can launch only the
-   two nested packaged helpers, probe only loopback `:3020` and `:5176`, retain the
-   Workbench session token outside renderer DTOs, and proxy only the canonical path
-   allowlist.
+   packaged control-plane and Workbench helpers plus the separate Chat Host, probe only
+   loopback `:3020` and `:5176`, retain the Workbench session token outside renderer
+   DTOs, and proxy only the canonical path allowlist.
 3. **Deno control-plane helper** — hosts the existing Casys server composition, closed
    persistent state, MRTR signing material, exact lifecycle identity, and server-owned
    operations. Its Docker observer deliberately reports unavailable.
@@ -136,11 +143,14 @@ The implemented privilege domains are:
    only its separate lifecycle directory, binds only `:5176`, and owns no MCP, provider,
    Docker, process, environment, FFI or remote-import capability. Its BFF cannot mutate
    project focus or engineering state.
+5. **Chat Host** — a distinct, closed launcher and private Node/acpx runtime. It owns
+   chat FIFO/session lifecycle and separate retained transcripts, and talks only to the
+   Casys control plane. It is never folded into the helper or Workbench.
 
-The later Chat Host remains a separate privilege domain. Its contract is specified in
-[embedded acpx chat](embedded-acpx-chat.md). Engineering providers remain independently
-versioned published images; Desktop may later supervise their declared lifecycle but
-never absorbs their authority or source.
+The Chat Host and live Workbench remain separate privilege domains. The Chat Host
+contract is specified in [embedded acpx chat](embedded-acpx-chat.md). Engineering
+providers remain independently versioned published images; Desktop may later supervise
+their declared lifecycle but never absorbs their authority or source.
 
 Deno permissions must be explicit per process. Do not use blanket permissions for
 convenience. Scope filesystem access to application state and declared assets, network
@@ -154,7 +164,7 @@ local user/installation and makes no multi-user claim.
 
 ```text
 open Desktop
-  -> validate manifest, runtime pins and the selected finite platform layout
+  -> validate manifest, product/runtime pins and the selected finite platform layout
   -> resolve the exact platform bundle contract from Deno.execPath()
   -> derive only that bundle's control-plane and Workbench helper paths
   -> pass the already validated fixed layout profile to both helper CLIs
@@ -165,13 +175,17 @@ open Desktop
   -> inspect the Workbench helper independently
   -> reconnect to an exact Workbench identity or start one owned helper
   -> retain its private session capability in the host only
+  -> if the exact Chat Host component is launchable, verify its package and executable
+     digests, then start the separate host and retain its private session
   -> serve the Workbench root through the exact GET/HEAD/SSE proxy
+  -> expose Chat only through the closed native bindings
   -> fall back to static ready | degraded | recovery-required diagnostics if unavailable
 ```
 
 Shutdown drains the renderer server and stops only control-plane and Workbench child
 handles owned in memory. A reconnected instance never stops a helper it did not launch.
-Chat turn draining and Chat Host cleanup are future requirements, not current behavior.
+Chat shutdown cancels pending interactions and turns, closes retained sessions, asks the
+separate host to exit, escalates through `SIGTERM`/`SIGKILL`, and bounds the final wait.
 
 ## Local data
 
@@ -219,13 +233,14 @@ Chat turn draining and Chat Host cleanup are future requirements, not current be
 
 ### Lot 4 — Chat Host seam
 
-**Deferred; not implemented.** acpx `0.13.1` already provides the required upstream
-elicitation surface; Desktop still needs the host, IPC and UI integration.
+**Implemented in 0.4.0.** acpx `0.13.1` provides the aligned elicitation surface;
+Desktop packages the exact reviewed fork/runtime and adapter behind the separate host,
+closed IPC, and Workbench-ready React UI.
 
 - Add only the typed IPC and lifecycle boundary required by the separate chat RFC.
 - Do not invent an ACP implementation inside the Desktop shell.
 
-## Acceptance proven for Lots 1 through 3
+## Acceptance proven for Lots 1 through 4
 
 - A packaged app launches from a clean user context and uses its application-support
   directory, not the git checkout.
@@ -251,11 +266,12 @@ elicitation surface; Desktop still needs the host, IPC and UI integration.
 - Unit and startup tests cover the exact macOS, Linux, and Windows bundle-path contracts
   plus root, traversal, mixed-separator, cross-platform and ambiguous-layout rejection.
   Only the macOS package itself has been built and signature-verified.
+- The real packaged acpx/runtime starts a fixture turn, streams output, crosses form
+  elicitation, closes the session, and reaps the fixture process tree. A real Casys
+  server E2E validates and persists an MRTR approval; ACP permission remains distinct.
 
-## Acceptance deferred with Lot 4
+## Acceptance deferred for distribution follow-up
 
-- Desktop starts, drains and resumes its embedded Chat Host without creating alternate
-  project or evidence truth.
 - The optional bridge and Desktop observe the same project/Thread truth.
 
 ## Current distribution envelope
@@ -263,7 +279,9 @@ elicitation surface; Desktop still needs the host, IPC and UI integration.
 - Lot 3's first proved distribution is macOS 14.0 or later. Linux and Windows paths are
   validated data contracts, but their native packaging/finalization is not yet shipped;
   macOS is the first proved distribution, not the product limit, and this distribution
-  envelope does not narrow the portable Workbench/BFF/proxy architecture.
+  envelope does not narrow the portable Workbench/BFF/proxy, Chat DTO or React UI
+  architecture. Their Chat Host target entries remain `missing-pins`; no package is
+  claimed for them.
 - Linux uses `<prefix>/casys-digital-thread/{bin,libexec}` and Windows uses
   `<prefix>\\CasysDigitalThread\\{CasysDigitalThread.exe,Helpers}` as closed future
   bundle contracts. Missing helpers, failed inspect, or identity/digest mismatch remain
@@ -288,7 +306,7 @@ elicitation surface; Desktop still needs the host, IPC and UI integration.
   bounded terminal-timeout behavior, so universal no-orphan across every Desktop
   component is not claimed here.
 - Deno Desktop and config-file permission sets remain experimental in the pinned Deno
-  `2.9.2` toolchain. Product `0.3.0` therefore proves the reviewed local package, not a
+  `2.9.2` toolchain. Product `0.4.0` therefore proves the reviewed local package, not a
   generally supported or notarized distribution channel.
 - Production permissions are closed and process-specific. The current test tasks still
   use unscoped `--allow-read --allow-write`; that is test-harness hardening debt, not a

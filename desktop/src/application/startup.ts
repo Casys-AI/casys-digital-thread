@@ -60,6 +60,11 @@ export interface StartedDesktopApplication {
   readonly model: DesktopShellViewModel;
   /** Host-only reverse-proxy session. Never serialize into the renderer. */
   readonly workbenchSession?: WorkbenchSession;
+  /**
+   * True only after the pinned product/runtime/control-plane bootstrap is live
+   * and the exact Chat Host component declaration was validated.
+   */
+  readonly chatHostLaunchable: boolean;
   stop(): Promise<void>;
 }
 
@@ -162,6 +167,8 @@ export async function startDesktopApplication(
   return liveApplication(
     bootstrapDesktopShellFromFacts(facts, controlPlane, workbench),
     [controller, workbenchController],
+    controller !== undefined && facts.controlPlaneLaunchable &&
+      facts.chatHostPinValid,
     workbenchSession,
   );
 }
@@ -173,11 +180,13 @@ function liveApplication(
     | DesktopWorkbenchController
     | undefined
   )[],
+  chatHostLaunchable: boolean,
   workbenchSession?: WorkbenchSession,
 ): StartedDesktopApplication {
   let stopPromise: Promise<void> | undefined;
   return Object.freeze({
     model,
+    chatHostLaunchable,
     ...(workbenchSession === undefined ? {} : { workbenchSession }),
     stop(): Promise<void> {
       if (stopPromise === undefined) {
@@ -243,6 +252,7 @@ function stoppedApplication(
 ): StartedDesktopApplication {
   return Object.freeze({
     model,
+    chatHostLaunchable: false,
     stop: () => Promise.resolve(),
   });
 }

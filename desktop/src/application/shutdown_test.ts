@@ -2,7 +2,9 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import {
   type DesktopShutdownSignal,
   drainAndExitDesktop,
+  drainDesktopForWindowClose,
   installDesktopShutdownSignals,
+  installDesktopWindowClose,
 } from "./shutdown.ts";
 
 function deferred(): {
@@ -134,4 +136,83 @@ Deno.test("an unsupported signal does not prevent the supported listener", () =>
   interrupt();
   cleanup();
   assertEquals(shutdowns, 1);
+});
+
+Deno.test("native close is prevented until drain succeeds and can retry", async () => {
+  let listener: ((event: { preventDefault(): void }) => void) | undefined;
+  let closeCalls = 0;
+  let requests = 0;
+  let prevented = 0;
+  const window = {
+    addEventListener(
+      _type: "close",
+      next: (event: { preventDefault(): void }) => void,
+    ) {
+      listener = next;
+    },
+    removeEventListener() {
+      listener = undefined;
+    },
+    close() {
+      closeCalls += 1;
+      listener?.({ preventDefault: () => prevented++ });
+    },
+  };
+  const controller = installDesktopWindowClose(window, () => requests++);
+
+  listener?.({ preventDefault: () => prevented++ });
+  listener?.({ preventDefault: () => prevented++ });
+  assertEquals({ prevented, requests, closeCalls }, {
+    prevented: 2,
+    requests: 1,
+    closeCalls: 0,
+  });
+
+  controller.retry();
+  listener?.({ preventDefault: () => prevented++ });
+  assertEquals(requests, 2);
+  controller.complete();
+  assertEquals(closeCalls, 1);
+  assertEquals(prevented, 3);
+  controller.cleanup();
+});
+
+Deno.test("window drain keeps the server live after unresolved stop then terminates", async () => {
+  let stopAttempts = 0;
+  let serverStops = 0;
+  const ports = {
+    stopApplication() {
+      stopAttempts += 1;
+      return stopAttempts === 1
+        ? Promise.reject(new Error("Chat Host unresolved"))
+        : Promise.resolve();
+    },
+    shutdownServer() {
+      serverStops += 1;
+      return Promise.resolve();
+    },
+  };
+
+  assertEquals(await drainDesktopForWindowClose(ports), {
+    status: "unresolved",
+    stage: "application",
+  });
+  assertEquals({ stopAttempts, serverStops }, { stopAttempts: 1, serverStops: 0 });
+  assertEquals(await drainDesktopForWindowClose(ports), { status: "drained" });
+  assertEquals({ stopAttempts, serverStops }, { stopAttempts: 2, serverStops: 1 });
+});
+
+Deno.test("window drain bounds a never-settling resource without closing the server", async () => {
+  let serverStops = 0;
+  assertEquals(
+    await drainDesktopForWindowClose({
+      stopApplication: () => new Promise(() => undefined),
+      shutdownServer() {
+        serverStops += 1;
+        return Promise.resolve();
+      },
+    }, 5),
+    { status: "unresolved", stage: "application" },
+  );
+  assertEquals(serverStops, 0);
 });

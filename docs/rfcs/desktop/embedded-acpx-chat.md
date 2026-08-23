@@ -1,28 +1,28 @@
 Audience: agent · Diátaxis: none · Kind: RFC
 
-Status: proposed · Not implemented
+Status: implemented · Desktop Lot 4
 
 # RFC: embedded acpx chat with native elicitation
 
-This page is the future implementation brief for the primary Deno Desktop conversation.
+This page is the implementation record for the primary Deno Desktop conversation.
 The [acpx 0.13.1 alignment](acpx-0.13.1-elicitation-alignment.md) is complete, while the
-[Deno Desktop shell](deno-desktop-product-shell.md) currently stops at Lot 2. This RFC
-does not describe a capability present in product `0.2.0`; it does not turn the
-Workbench into a command surface or make chat history engineering evidence.
+[Deno Desktop shell](deno-desktop-product-shell.md) hosts the separate Chat capability
+in product `0.4.0`. It does not turn the Workbench HTTP surface into a command channel
+or make chat history engineering evidence.
 
 ## Current implementation boundary
 
-- The Desktop component manifest declares `chat-host` with no version and lifecycle
-  `deferred-lot-4`.
-- No module under `desktop/` imports `acpx/runtime`, launches an acpx process, exposes
-  chat IPC, persists an ACP session, or renders a conversation.
-- The current WebView receives one static diagnostics document. The Workbench GET/SSE
-  projection is also deferred, independently of chat.
-- The separate acpx checkout and global CLI are aligned on `0.13.1`. That proves the
-  dependency surface exists; it does not prove Desktop host wiring, renderer safety,
-  session persistence, or a Casys MRTR path.
-
-Everything below is a target contract and future acceptance gate.
+- The component manifest declares active sidecar `chat-host` `0.4.0`.
+- The packaged target is `darwin-arm64`, using official Node `26.5.0`, exact Casys acpx
+  commit `3c927fc`, and exact adapter `1.1.5`, all with recorded digests. Linux and
+  Windows are modelled targets with `missing-pins` and stop explicitly.
+- `BrowserWindow.bind` exposes only snapshot and command functions over
+  `casys-desktop-chat/1.0`. The React renderer reconstructs closed DTOs and receives no
+  path, process handle, MCP/provider credential, arbitrary HTML, or raw tool payload.
+- The dashboard binds new conversations to the validated Workbench project projection;
+  it offers no free-form project selector. The Chat Host validates the project id again.
+- Metadata and bounded transcripts use a separate retained chat store. Thread/CAS
+  remains authoritative.
 
 ## Target outcome
 
@@ -55,7 +55,7 @@ privileged Chat Host
        registered server-owned operations
 ```
 
-The future Chat Host is a sibling of the Workbench BFF, not part of it. The renderer
+The Chat Host is a sibling of the Workbench BFF, not part of it. The renderer
 must never receive MCP credentials, provider credentials, ACP process handles, or raw
 filesystem and terminal authority.
 
@@ -75,7 +75,7 @@ control-plane helper. The Deno Desktop host communicates through one closed, ver
 IPC contract. A CLI subprocess may be used for diagnostics, but human-readable CLI
 output is not the production IPC protocol.
 
-## Future session contract
+## Implemented session contract
 
 - One Desktop conversation owns one exact acpx session and one explicit Casys project
   focus.
@@ -94,15 +94,15 @@ The embedded agent sees the Casys Digital Thread MCP server, not raw engineering
 provider MCP servers. Registered server operations continue to own provider/tool/args,
 lowering, recovery, CAS, and Thread publication.
 
-The bridge and future embedded Chat Host may both connect to the same local Casys
+The bridge and embedded Chat Host may both connect to the same local Casys
 server, but they must not share an active ACP session concurrently. The server remains
 the arbiter of project basis and run claims; neither client can repair a conflict by
 selecting a provider call or stale revision.
 
 ## Elicitation contract
 
-acpx `0.13.1` already exposes the aligned API. When Desktop implements its host,
-configure only the modes for which a native renderer is installed:
+acpx `0.13.1` exposes the aligned API. The Desktop host configures only the modes for
+which its native renderer is installed:
 
 - `form` — render supported structured fields from the ACP request as native controls;
   preserve exact schema, `sessionId`, optional `toolCallId`, and request id;
@@ -139,11 +139,13 @@ the Desktop do not manufacture or reuse that decision.
   retention/deletion policy and never becomes sensitivity experience.
 - The Chat Host passes only the minimum sanitized event model required by the renderer.
 
-## Future implementation lots
+## Implemented lots
 
 ### Lot 1 — pinned Chat Host
 
-**Not implemented.**
+**Implemented.** A closed native launcher accepts only one exact data-root argument and
+executes the private official Node plus fixed `main.mjs`. The host imports the packaged
+`acpx/runtime`; no ambient Node/acpx/adapter or checkout fallback exists.
 
 - Consume the aligned, pinned acpx runtime and exact agent adapter.
 - Define the Desktop IPC DTOs for session lifecycle, turns, streaming events, status,
@@ -152,7 +154,9 @@ the Desktop do not manufacture or reuse that decision.
 
 ### Lot 2 — conversation UI
 
-**Not implemented.**
+**Implemented in the Workbench React dashboard.** Normal browser previews feature-detect
+the absent Desktop binding and render no simulated authority. The static Desktop shell
+remains only a diagnostic fallback when the Workbench cannot be served.
 
 - Render user/agent turns, streamed progress, tool activity summaries, errors, and
   project focus.
@@ -161,8 +165,10 @@ the Desktop do not manufacture or reuse that decision.
 
 ### Lot 3 — native elicitation
 
-**Not implemented.** The acpx API dependency is ready; the Desktop form/URL renderer,
-correlation and fail-closed lifecycle are not.
+**Implemented.** Form and URL interactions preserve correlation, support
+`accept`/`decline`/`cancel`, propagate abort, and reject late or mismatched replies.
+URL opening is a separate HTTPS-only Desktop capability that invokes the external
+browser; the privileged webview does not navigate to the requested origin.
 
 - Enable `form` and `url` modes only when their renderers are installed.
 - Implement `accept`, `decline`, `cancel`, abort, timeout, prompt replacement, and late
@@ -171,30 +177,37 @@ correlation and fail-closed lifecycle are not.
 
 ### Lot 4 — companion bridge coexistence
 
-**Not implemented as a Desktop integration proof.** Existing bridge access is an
-external companion surface, not evidence that the embedded session exists.
+**Prepared, with companion live proof still separate.** Desktop session keys use the
+reserved `casys-desktop-exclusive/<project>/<conversation>` namespace and the host
+rejects a backend/agent session identity already owned by another conversation. A bridge
+must use another session and may share only the server-authoritative project/Thread.
 
 - Document connection from Claude Code, Codex, and Grok through `mcp-bridge`.
 - Prove embedded and companion clients observe the same project/Thread truth without
   sharing or racing one ACP session.
 
-## Future acceptance — none claimed by product 0.2.0
+## Acceptance evidence in product 0.4.0
 
-- Desktop starts a pinned agent, streams one turn, cancels one turn, and resumes one
-  session after application restart.
+- The packaged-runtime smoke imports the real fork runtime, creates a session, starts and
+  streams one turn, crosses form elicitation, closes it, and observes no fixture agent or
+  grandchild orphan.
 - Two rapid sends remain ordered and do not cross session/project ownership.
 - Form elicitation preserves request/session/tool-call identity and validates accepted
   content.
 - `decline`, `cancel`, timeout, shutdown, and late responses all fail closed.
 - URL completion is correlated to the exact request.
 - A focused regression proves schemas and answers do not enter generic ACP taps or logs.
-- A real Casys MRTR path requires its exact server validation; ordinary permission or
-  chat text cannot substitute.
-- Killing/restarting Desktop leaves no Chat Host or agent child orphan and does not
-  corrupt the Casys project.
+- A Desktop Chat E2E drives `project_brief_confirm` through the real Casys HTTP server:
+  first `input_required`, then accepted form content with signed `requestState`, server
+  retry verification, and persisted human approval. Ordinary ACP permission remains a
+  separately labelled interaction and cannot substitute.
+- Chat Host client shutdown is bounded through graceful request, `SIGTERM`, and
+  `SIGKILL`; a final unsettled status is surfaced as `unresolved` instead of hanging or
+  claiming exit.
 - Workbench remains GET/SSE only and has no MCP credential or command IPC.
-- A companion native CLI reads the same persisted project state through the bridge but
-  creates no alternate evidence truth.
+- The packaged macOS application and a companion bridge must still be exercised
+  together before claiming a live coexistence proof. Linux and Windows remain
+  `missing-pins`, not shipped packages.
 
 ## Stop rules
 
