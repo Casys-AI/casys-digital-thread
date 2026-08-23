@@ -2,13 +2,19 @@ import { LANE_LABEL, SECTION_LABEL } from "../ui/cockpit.tsx";
 import { cn } from "../lib/utils.ts";
 import type { JSX } from "react";
 import { useState } from "react";
+import type { EngineeringPhaseStatus } from "../../../domain/project/engineering-project.ts";
 import {
   buildOverviewThreadHero,
   OVERVIEW_HERO_WIDTH,
   OVERVIEW_LANES,
+  type OverviewActivityHeroNode,
   type OverviewHeroNode,
+  type OverviewRecordedHeroNode,
 } from "./overview-thread-hero-model.ts";
+import type { ProjectPathActivityView } from "./model.ts";
+import { recordStatusVariant } from "./record-status.ts";
 import type {
+  ThreadGraphNode,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
@@ -19,12 +25,16 @@ const OVERVIEW_SELECTION_ID = "overview-thread-selection";
 
 export function OverviewThreadHero({
   thread,
+  activities = [],
   onOpenEvidence,
+  onOpenActivity,
 }: {
   readonly thread: ThreadWorkbenchSnapshot;
+  readonly activities?: readonly ProjectPathActivityView[];
   readonly onOpenEvidence: (reference: ThreadGraphRef) => void;
+  readonly onOpenActivity: () => void;
 }): JSX.Element {
-  const view = buildOverviewThreadHero(thread);
+  const view = buildOverviewThreadHero(thread, activities);
   const [selectedKey, setSelectedKey] = useState<string>();
   const selected = view.nodes.find((item) => item.key === selectedKey);
   const toggleSelection = (item: OverviewHeroNode) => {
@@ -59,7 +69,7 @@ export function OverviewThreadHero({
         viewBox={`0 0 ${OVERVIEW_HERO_WIDTH} ${view.height}`}
         className="block h-auto w-full bg-card"
         role="group"
-        aria-label="Recorded thread across requirements, model, geometry, physics and verdicts"
+        aria-label="Recorded thread and project progress across requirements, model, geometry, physics and verdicts"
       >
         {view.lanes.slice(1).map((column, index) => (
           <path
@@ -92,10 +102,16 @@ export function OverviewThreadHero({
           />
         ))}
       </svg>
-      {selected && (
-        <OverviewNodePanel
+      {selected?.kind === "recorded" && (
+        <OverviewRecordedNodePanel
           item={selected}
           onOpenEvidence={() => onOpenEvidence(selected.node.ref)}
+        />
+      )}
+      {selected?.kind === "activity" && (
+        <OverviewActivityNodePanel
+          item={selected}
+          onOpenActivity={onOpenActivity}
         />
       )}
     </div>
@@ -118,13 +134,21 @@ function HeroNode({
   selected: boolean;
   onToggle: () => void;
 }): JSX.Element {
-  const label = item.node.ref.id;
-  const caption = item.node.summary;
+  const title = item.kind === "activity"
+    ? `Project activity · ${item.activity.title} · ${
+      activityStatusCaption(item.activity.status)
+    }`
+    : `${item.node.label} · ${item.node.ref.id} · ${item.node.summary}`;
+  const ariaLabel = item.kind === "activity"
+    ? `Project activity ${item.activity.title}, ${
+      activityStatusCaption(item.activity.status)
+    }`
+    : `Inspect ${item.node.label} locally`;
   return (
     <g
       role="button"
       tabIndex={0}
-      aria-label={`Inspect ${item.node.label} locally`}
+      aria-label={ariaLabel}
       aria-controls={selected ? OVERVIEW_SELECTION_ID : undefined}
       aria-expanded={selected}
       className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
@@ -135,7 +159,7 @@ function HeroNode({
         onToggle();
       }}
     >
-      <title>{item.node.label} · {label} · {caption}</title>
+      <title>{title}</title>
       <circle
         cx={item.x}
         cy={item.y}
@@ -152,6 +176,20 @@ function HeroNode({
           strokeWidth="1.5"
         />
       )}
+      {item.kind === "activity"
+        ? <ActivityMarker item={item} />
+        : <RecordedMarker item={item} />}
+    </g>
+  );
+}
+
+function RecordedMarker(
+  { item }: { item: OverviewRecordedHeroNode },
+): JSX.Element {
+  const label = item.node.ref.id;
+  const caption = item.node.summary;
+  return (
+    <>
       <circle
         cx={item.x}
         cy={item.y}
@@ -181,15 +219,79 @@ function HeroNode({
       >
         {compactNodeText(caption, 17)}
       </text>
-    </g>
+    </>
   );
 }
 
-function OverviewNodePanel({
+function ActivityMarker(
+  { item }: { item: OverviewActivityHeroNode },
+): JSX.Element {
+  const status = item.activity.status;
+  const caption = activityStatusCaption(status);
+  const planned = status === "planned";
+  const blocked = status === "blocked";
+  const active = status === "active";
+  return (
+    <>
+      {active && (
+        <circle
+          cx={item.x}
+          cy={item.y}
+          r="11"
+          fill="none"
+          className="stroke-success/30"
+          strokeWidth="3"
+        />
+      )}
+      <circle
+        cx={item.x}
+        cy={item.y}
+        r="7"
+        className={cn(
+          "fill-card",
+          blocked
+            ? "stroke-destructive"
+            : planned
+            ? "stroke-muted-foreground"
+            : "stroke-success",
+        )}
+        strokeWidth={planned ? 1.5 : 2}
+        strokeDasharray={planned ? "3 2" : undefined}
+      />
+      <text
+        x={item.x}
+        y={item.y - 16}
+        textAnchor="middle"
+        fontFamily="ui-monospace, Menlo, monospace"
+        fontSize="9.5"
+        fill="#52525c"
+      >
+        {compactNodeText(item.activity.title, 15)}
+      </text>
+      <text
+        x={item.x}
+        y={item.y + 22}
+        textAnchor="middle"
+        fontFamily="ui-monospace, Menlo, monospace"
+        fontSize="8.5"
+        className={blocked
+          ? "fill-destructive"
+          : planned
+          ? undefined
+          : "fill-success"}
+        fill={planned ? "var(--thread-muted)" : undefined}
+      >
+        {caption}
+      </text>
+    </>
+  );
+}
+
+function OverviewRecordedNodePanel({
   item,
   onOpenEvidence,
 }: {
-  item: OverviewHeroNode;
+  item: OverviewRecordedHeroNode;
   onOpenEvidence: () => void;
 }): JSX.Element {
   const node = item.node;
@@ -238,8 +340,56 @@ function OverviewNodePanel({
   );
 }
 
+function OverviewActivityNodePanel({
+  item,
+  onOpenActivity,
+}: {
+  item: OverviewActivityHeroNode;
+  onOpenActivity: () => void;
+}): JSX.Element {
+  const activity = item.activity;
+  const laneLabel =
+    OVERVIEW_LANES.find((lane) => lane.id === item.lane)?.title ??
+      item.lane;
+  return (
+    <section
+      id={OVERVIEW_SELECTION_ID}
+      aria-label={`Selected project activity: ${activity.title}`}
+      aria-live="polite"
+      className="grid gap-3 border-t border-border bg-muted/20 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className={cn("m-0", SECTION_LABEL)}>
+            Project activity · {laneLabel}
+          </p>
+          <Badge variant={recordStatusVariant(activity.status)}>
+            {activityStatusCaption(activity.status)}
+          </Badge>
+        </div>
+        <h4 className="mt-1 text-[13px] font-semibold">{activity.title}</h4>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="justify-self-start md:justify-self-end"
+        onClick={onOpenActivity}
+      >
+        Open in Activity →
+      </Button>
+    </section>
+  );
+}
+
+function activityStatusCaption(status: EngineeringPhaseStatus): string {
+  if (status === "blocked") return "BLOCKED";
+  if (status === "active") return "IN PROGRESS";
+  if (status === "planned") return "PENDING";
+  return "COMPLETED";
+}
+
 function freshnessBadgeVariant(
-  freshness: OverviewHeroNode["node"]["freshness"],
+  freshness: ThreadGraphNode["freshness"],
 ): "success" | "warning" | "info" | "destructive" {
   if (freshness === "failed") return "destructive";
   if (freshness === "stale") return "warning";

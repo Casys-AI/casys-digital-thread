@@ -28,7 +28,6 @@ import {
   type EngineeringPathLaneId,
 } from "../../../domain/project/engineering-path-lane.ts";
 import { currentRequirements } from "../thread/versioned-provenance-model.ts";
-import { overviewLaneDefinition } from "./overview-lanes.ts";
 
 export interface ProjectPhaseView {
   readonly phase: EngineeringProjectPhase;
@@ -167,20 +166,19 @@ export interface ProjectPath {
 
 export interface ProjectPathLaneGroup {
   readonly id: EngineeringPathLaneId;
-  readonly label: string;
-  readonly color: string;
   readonly gates: readonly ProjectPathActivityView[];
   readonly satisfiedGates: number;
   readonly totalGates: number;
-  readonly approvedDecisions: number;
-  readonly requiredDecisions: number;
-  readonly evidenceCount: number;
 }
 
 /**
- * Group exact phase records using only the server-owned five-column projection.
- * Friendly phase names never classify a lane, and the Overview column order is
- * stable even when a project has no recorded gate in one of the columns.
+ * Group exact activity records using only the server-owned five-column
+ * projection. Always returns the five canonical lanes in order. An absent
+ * lane is [] and 0/0, never dropped.
+ *
+ * Classification is `gate.lane` only. `_phaseLanes` is a leftover argument
+ * kept so callers need not change; it is ignored and never classifies a lane.
+ * Friendly phase names never classify a lane.
  */
 export function groupProjectPathGatesByLane(
   gates: readonly ProjectPathActivityView[],
@@ -192,167 +190,43 @@ export function groupProjectPathGatesByLane(
     if (existing) existing.push(gate);
     else grouped.set(gate.lane, [gate]);
   }
-  return ENGINEERING_PATH_LANE_IDS.flatMap((id) => {
-    const laneGates = grouped.get(id);
-    if (!laneGates) return [];
-    const lane = overviewLaneDefinition(id);
-    return [{
+  return ENGINEERING_PATH_LANE_IDS.map((id) => {
+    const laneGates = grouped.get(id) ?? [];
+    return {
       id,
-      label: lane.title,
-      color: lane.color,
       gates: laneGates,
       satisfiedGates: laneGates.filter((gate) => gate.status === "completed").length,
       totalGates: laneGates.length,
-      approvedDecisions: sum(laneGates, "approvedDecisions"),
-      requiredDecisions: sum(laneGates, "requiredDecisions"),
-      evidenceCount: sum(laneGates, "evidenceCount"),
-    }];
+    };
   });
 }
 
-function sum(
-  gates: readonly ProjectPathActivityView[],
-  key: "approvedDecisions" | "requiredDecisions" | "evidenceCount",
-): number {
-  return gates.reduce((total, gate) => total + gate[key], 0);
-}
-
-export function activityAttemptCount(
-  activity: Pick<ProjectPathActivityView, "revisions">,
-): number {
-  return activity.revisions.reduce(
-    (total, revision) => total + revision.attempts.length,
-    0,
-  );
-}
-
-export function activityHasLifecycleHistory(
-  activity: Pick<ProjectPathActivityView, "revisions">,
-): boolean {
-  const revisions = activity.revisions.length;
-  return revisions > 1 || activityAttemptCount(activity) > revisions;
-}
-
-export function activityShowsRevisionAttemptList(
-  activity: ProjectPathActivityView,
-): boolean {
-  if (activity.status === "active" || activity.status === "blocked") {
-    return true;
-  }
-  const hasJoinedCase = activity.revisions.some((revision) =>
-    revision.attempts.some((attempt) => attempt.cases.length > 0)
-  );
-  return hasJoinedCase || activityHasLifecycleHistory(activity);
-}
-
-function countedNoun(count: number, singular: string): string {
-  return `${count} ${count === 1 ? singular : `${singular}s`}`;
-}
-
-export function activityLifecycleSummary(
-  activity: Pick<ProjectPathActivityView, "revisions">,
-): string {
-  const revisions = countedNoun(activity.revisions.length, "revision");
-  const attempts = countedNoun(activityAttemptCount(activity), "attempt");
-  return `${revisions} · ${attempts}`;
-}
-
-export function activityCounterLabel(
-  activity: ProjectPathActivityView,
-): string {
-  const parts = [
-    countedNoun(activity.revisions.length, "revision"),
-    countedNoun(activityAttemptCount(activity), "attempt"),
-    `${activity.evidenceCount} evidence`,
-  ];
-  if (activity.requiredDecisions > 0) {
-    parts.splice(
-      2,
-      0,
-      `${activity.approvedDecisions}/${activity.requiredDecisions} decisions`,
-    );
-  }
-  return parts.join(" · ");
-}
-
-export function laneGroupCounterLabel(
-  group: ProjectPathLaneGroup,
-): string {
-  const parts = [
-    `${group.satisfiedGates}/${group.totalGates} gates`,
-    `${group.evidenceCount} evidence`,
-  ];
-  if (group.requiredDecisions > 0) {
-    parts.splice(
-      1,
-      0,
-      `${group.approvedDecisions}/${group.requiredDecisions} decisions`,
-    );
-  }
-  return parts.join(" · ");
-}
-
-export function laneGroupsCounterLabel(
-  groups: readonly ProjectPathLaneGroup[],
-): string {
-  const total = groups.reduce(
-    (aggregate, group) => ({
-      satisfiedGates: aggregate.satisfiedGates + group.satisfiedGates,
-      gates: aggregate.gates + group.totalGates,
-      approvedDecisions: aggregate.approvedDecisions + group.approvedDecisions,
-      requiredDecisions: aggregate.requiredDecisions + group.requiredDecisions,
-      evidenceCount: aggregate.evidenceCount + group.evidenceCount,
-    }),
-    {
-      satisfiedGates: 0,
-      gates: 0,
-      approvedDecisions: 0,
-      requiredDecisions: 0,
-      evidenceCount: 0,
-    },
-  );
-  const parts = [
-    `${total.satisfiedGates}/${total.gates} gates`,
-    `${total.evidenceCount} evidence`,
-  ];
-  if (total.requiredDecisions > 0) {
-    parts.splice(
-      1,
-      0,
-      `${total.approvedDecisions}/${total.requiredDecisions} decisions`,
-    );
-  }
-  return parts.join(" · ");
-}
+export type ProjectPathStageStatus =
+  | "completed"
+  | "blocked"
+  | "active"
+  | "planned";
 
 /**
- * Compresse le passé de l'épine : au-delà d'un seuil d'affichage, la série
- * initiale de gates satisfaites se replie en une rangée-résumé, en gardant
- * les dernières satisfaites visibles pour le contexte. La phase active, une
- * phase bloquée ou toute gate non satisfaite ne sont jamais repliées — le
- * repli s'arrête à la première non-satisfaite.
+ * Band status from group gate statuses only. An empty lane stays planned;
+ * it is never invented as active.
  */
-export function splitLeadingSatisfiedGates<
-  T extends { readonly status: EngineeringPhaseStatus },
->(
-  phases: readonly T[],
-): { readonly collapsed: readonly T[]; readonly visible: readonly T[] } {
-  const displayThreshold = 8;
-  const keepVisible = 2;
-  const minCollapsed = 3;
-  if (phases.length <= displayThreshold) {
-    return { collapsed: [], visible: phases };
+export function projectPathLaneStageStatus(
+  group: Pick<
+    ProjectPathLaneGroup,
+    "gates" | "satisfiedGates" | "totalGates"
+  >,
+): ProjectPathStageStatus {
+  if (group.totalGates > 0 && group.satisfiedGates === group.totalGates) {
+    return "completed";
   }
-  let leading = 0;
-  while (phases[leading]?.status === "completed") {
-    leading++;
+  if (group.gates.some((gate) => gate.status === "blocked")) {
+    return "blocked";
   }
-  const collapsedEnd = leading - keepVisible;
-  if (collapsedEnd < minCollapsed) return { collapsed: [], visible: phases };
-  return {
-    collapsed: phases.slice(0, collapsedEnd),
-    visible: phases.slice(collapsedEnd),
-  };
+  if (group.gates.some((gate) => gate.status === "active")) {
+    return "active";
+  }
+  return "planned";
 }
 
 export function buildProjectBrief(
@@ -602,7 +476,11 @@ export function buildProjectPath(
         : [];
     });
     const root = workById.get(projected.rootRevisionId);
-    const status = deriveProjectPathActivityStatus(revisions, projected.id);
+    const status = deriveProjectPathActivityStatus(
+      revisions,
+      projected.id,
+      snapshot.blockers,
+    );
     const evidenceCount = revisions.reduce(
       (total, revision) =>
         total + (workById.get(revision.id)?.evidenceRefs.length ?? 0),
@@ -646,7 +524,25 @@ export function buildProjectPath(
 function deriveProjectPathActivityStatus(
   revisions: readonly ProjectPathRevisionView[],
   activityId: string,
+  blockers: readonly EngineeringBlocker[],
 ): EngineeringPhaseStatus {
+  const leafIds = new Set(
+    leafRevisionIdsForActivity(revisions.map((revision) => ({
+      id: revision.id,
+      activityId,
+      ...(revision.predecessorRevisionId
+        ? { predecessorRevisionId: revision.predecessorRevisionId }
+        : {}),
+    }))),
+  );
+  if (
+    blockers.some((blocker) =>
+      blocker.status === "open" &&
+      blocker.workItemIds.some((id) => leafIds.has(id))
+    )
+  ) {
+    return "blocked";
+  }
   const runs = revisions.flatMap((revision) =>
     revision.attempts.map((attempt) => attempt.run)
   );
@@ -666,15 +562,6 @@ function deriveProjectPathActivityStatus(
   ) {
     return "active";
   }
-  const leafIds = new Set(
-    leafRevisionIdsForActivity(revisions.map((revision) => ({
-      id: revision.id,
-      activityId,
-      ...(revision.predecessorRevisionId
-        ? { predecessorRevisionId: revision.predecessorRevisionId }
-        : {}),
-    }))),
-  );
   const leaves = revisions.filter((revision) => leafIds.has(revision.id));
   if (
     leaves.length > 0 &&

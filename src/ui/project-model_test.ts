@@ -5,11 +5,6 @@ import {
 } from "../testing/workbench/generic-engineering-workbench-fixture.ts";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
-  activityAttemptCount,
-  activityCounterLabel,
-  activityHasLifecycleHistory,
-  activityLifecycleSummary,
-  activityShowsRevisionAttemptList,
   agentPreparationDecisions,
   agentRunRecordedAt,
   agentRunSummary,
@@ -18,19 +13,19 @@ import {
   buildProjectBrief,
   buildProjectPath,
   groupProjectPathGatesByLane,
-  laneGroupCounterLabel,
-  laneGroupsCounterLabel,
   phaseStatusLabel,
   pendingHumanConfirmationDecisions,
   PROJECT_PATH_PRESENTATION_POLICY,
   projectBriefStatusLabel,
+  projectPathLaneStageStatus,
   projectPulseStatus,
   projectStatusLabel,
   selectCurrentProjectFocus,
-  splitLeadingSatisfiedGates,
   verificationChainDetail,
   workOwnerLabel,
 } from "./src/project/model.ts";
+import { PROJECT_PATH_STAGE_LABELS } from "./src/project/overview-lanes.ts";
+import { ENGINEERING_PATH_LANE_IDS } from "../domain/project/engineering-path-lane.ts";
 import { isEngineeringProjectSnapshot } from "./src/project/contract.ts";
 import { collectEngineeringActivities } from "../domain/project/engineering-activity.ts";
 import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "../domain/electrical/spice/admitted/run-proposal.ts";
@@ -621,49 +616,36 @@ Deno.test("linked SPICE revisions count as one Physics gate instead of 1/2 work"
 
   assertEquals(path.activities.length, 1);
   const activity = path.activities[0]!;
-  assertEquals(activity.revisions.length, 2);
-  assertEquals(activityAttemptCount(activity), 2);
-  assertEquals(activityHasLifecycleHistory(activity), true);
-  assertEquals(activityShowsRevisionAttemptList(activity), true);
+  assertEquals(activity.lane, "physics");
+  assertEquals(activity.revisions.map((revision) => revision.id), [
+    "wi-spice-r18",
+    "wi-spice-r18b",
+  ]);
+  assertEquals(
+    activity.revisions.map((revision) =>
+      revision.attempts.map((attempt) => attempt.run.id)
+    ),
+    [["run-spice-r18"], ["run-spice-r18b"]],
+  );
   assertEquals(Object.hasOwn(activity, "completedWorkItems"), false);
   assertEquals(Object.hasOwn(activity, "totalWorkItems"), false);
+
   assertEquals(
-    activityCounterLabel(activity),
-    "2 revisions · 2 attempts · 0 evidence",
+    groups.map((group) => group.id),
+    [...ENGINEERING_PATH_LANE_IDS],
   );
-  assertEquals(activityCounterLabel(activity).includes("work"), false);
-  assertEquals(activityCounterLabel(activity).includes("1/2"), false);
-
-  const simple = { ...activity, revisions: [activity.revisions[0]!] };
-  assertEquals(activityAttemptCount(simple), 1);
-  assertEquals(activityHasLifecycleHistory(simple), false);
-  assertEquals(activityShowsRevisionAttemptList(simple), false);
-  assertEquals(activityLifecycleSummary(simple), "1 revision · 1 attempt");
-
-  const retried = {
-    ...activity,
-    revisions: [{
-      ...activity.revisions[0]!,
-      attempts: [
-        activity.revisions[0]!.attempts[0]!,
-        activity.revisions[1]!.attempts[0]!,
-      ],
-    }],
-  };
-  assertEquals(activityHasLifecycleHistory(retried), true);
-  assertEquals(activityShowsRevisionAttemptList(retried), true);
-  assertEquals(activityLifecycleSummary(retried), "1 revision · 2 attempts");
-
-  assertEquals(groups.map((group) => group.id), ["physics"]);
-  const physics = groups[0]!;
+  const physics = groups.find((group) => group.id === "physics")!;
+  assertEquals(physics.gates, [activity]);
   assertEquals(physics.satisfiedGates, 1);
   assertEquals(physics.totalGates, 1);
   assertEquals(Object.hasOwn(physics, "completedWorkItems"), false);
   assertEquals(Object.hasOwn(physics, "totalWorkItems"), false);
-  assertEquals(laneGroupCounterLabel(physics), "1/1 gates · 0 evidence");
-  assertEquals(laneGroupsCounterLabel(groups), "1/1 gates · 0 evidence");
-  assertEquals(laneGroupCounterLabel(physics).includes("work"), false);
-  assertEquals(laneGroupsCounterLabel(groups).includes("work"), false);
+  for (const group of groups) {
+    if (group.id === "physics") continue;
+    assertEquals(group.gates, []);
+    assertEquals(group.satisfiedGates, 0);
+    assertEquals(group.totalGates, 0);
+  }
 });
 
 Deno.test("AL01 leftover SPICE work without an explicit predecessor is not backfilled from labels or timestamps", () => {
@@ -795,7 +777,7 @@ Deno.test("project path omits a historical ready predecessor while Activity reta
   );
 });
 
-Deno.test("same activity r1 completed then explicit r2 ready stays planned and is not collapsed", () => {
+Deno.test("same activity r1 completed then explicit r2 ready stays planned", () => {
   const first = leftoverOperationWork({
     id: "wi-r1",
     phaseId: "phase-r1",
@@ -857,26 +839,133 @@ Deno.test("same activity r1 completed then explicit r2 ready stays planned and i
   ]);
   assertEquals(activity.status, "planned");
   assertEquals(path.status, "planned");
+});
 
-  const padded = [
-    ...Array.from({ length: 5 }, (_, index) => ({
-      id: `before-${index}`,
-      status: "completed" as const,
-    })),
-    activity,
-    ...Array.from({ length: 5 }, (_, index) => ({
-      id: `after-${index}`,
-      status: "completed" as const,
-    })),
-  ];
-  const split = splitLeadingSatisfiedGates(padded);
-  assertEquals(
-    split.collapsed.some((item) => item.id === activity.id),
-    false,
+Deno.test("an OPEN blocker targeting a leaf revision blocks that activity before active", () => {
+  const first = leftoverOperationWork({
+    id: "wi-r1",
+    phaseId: "phase-r1",
+    order: 1,
+    operationId: "design.write-geometry",
+    version: "1",
+    status: "completed",
+    activityId: "activity:wi-r1",
+  }, "completed");
+  const second = leftoverOperationWork({
+    id: "wi-r2",
+    phaseId: "phase-r2",
+    order: 2,
+    operationId: "design.write-geometry",
+    version: "1",
+    status: "ready",
+    activityId: "activity:wi-r1",
+    predecessorRevisionId: "wi-r1",
+  }, "ready");
+  const base = structuredClone(GENERIC_PROJECT_FIXTURE);
+  const snapshotFor = (
+    workItems: typeof GENERIC_PROJECT_FIXTURE.workItems,
+    blockers: typeof GENERIC_PROJECT_FIXTURE.blockers,
+  ) => ({
+    ...base,
+    phases: [{
+      id: "phase-r1",
+      name: "phase-r1",
+      order: 1,
+      description: "phase-r1",
+      workItemIds: [first.id],
+      requiredDecisionIds: [],
+      evidenceRefs: first.evidenceRefs,
+    }, {
+      id: "phase-r2",
+      name: "phase-r2",
+      order: 2,
+      description: "phase-r2",
+      workItemIds: [second.id],
+      requiredDecisionIds: [],
+      evidenceRefs: second.evidenceRefs,
+    }],
+    workItems,
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers,
+  });
+  const leafBlocker = {
+    id: "blocker-leaf",
+    phaseId: second.phaseId,
+    title: "Open blocker on the current leaf",
+    description: "Names the current leaf revision of the stable activity.",
+    kind: "dependency" as const,
+    status: "open" as const,
+    openedAt: "2026-08-01T08:40:04.000Z",
+    workItemIds: [second.id],
+    decisionIds: [] as string[],
+  };
+  const leafWork = {
+    ...second,
+    status: "in-progress" as const,
+    blockerIds: [leafBlocker.id],
+  };
+  const leafSnapshot = snapshotFor(
+    [first, leafWork] as typeof GENERIC_PROJECT_FIXTURE.workItems,
+    [leafBlocker] as typeof GENERIC_PROJECT_FIXTURE.blockers,
   );
+  assertEquals(leafBlocker.phaseId, leafWork.phaseId);
+  assertEquals(leafWork.blockerIds, [leafBlocker.id]);
+  assertEquals(leafBlocker.workItemIds, [leafWork.id]);
+
+  const leafPath = buildProjectPath(leafSnapshot, GENERIC_THREAD_FIXTURE);
+  assertEquals(leafPath.activities.length, 1);
+  assertEquals(leafPath.activities[0]?.status, "blocked");
   assertEquals(
-    split.visible.some((item) => item.id === activity.id),
-    true,
+    leafPath.activities[0]?.revisions.map((revision) => revision.id),
+    ["wi-r1", "wi-r2"],
+  );
+  assertEquals(leafPath.activities[0]?.revisions[1]?.predecessorRevisionId, "wi-r1");
+
+  const resolved = {
+    ...leafSnapshot,
+    blockers: leafSnapshot.blockers.map((blocker) => ({
+      ...blocker,
+      status: "resolved" as const,
+      resolvedAt: "2026-08-01T09:00:00.000Z",
+      resolution: "Cleared.",
+    })),
+  };
+  assertEquals(
+    buildProjectPath(resolved, GENERIC_THREAD_FIXTURE).activities[0]?.status,
+    "active",
+  );
+
+  const supersededBlocker = {
+    id: "blocker-r1",
+    phaseId: first.phaseId,
+    title: "Open blocker on a superseded revision",
+    description: "Names the predecessor, not the current leaf.",
+    kind: "dependency" as const,
+    status: "open" as const,
+    openedAt: "2026-08-01T08:40:04.000Z",
+    workItemIds: [first.id],
+    decisionIds: [] as string[],
+  };
+  const supersededFirst = { ...first, blockerIds: [supersededBlocker.id] };
+  const supersededLeaf = {
+    ...second,
+    status: "in-progress" as const,
+    blockerIds: [] as string[],
+  };
+  assertEquals(supersededBlocker.phaseId, supersededFirst.phaseId);
+  assertEquals(supersededFirst.blockerIds, [supersededBlocker.id]);
+  assertEquals(supersededBlocker.workItemIds, [supersededFirst.id]);
+  assertEquals(
+    buildProjectPath(
+      snapshotFor(
+        [supersededFirst, supersededLeaf] as typeof GENERIC_PROJECT_FIXTURE.workItems,
+        [supersededBlocker] as typeof GENERIC_PROJECT_FIXTURE.blockers,
+      ),
+      GENERIC_THREAD_FIXTURE,
+    ).activities[0]?.status,
+    "active",
   );
 });
 
@@ -2303,70 +2392,59 @@ Deno.test("project pulse status labels keep planned cancelled and completed lite
   );
 });
 
-Deno.test("the spine split never hides the active phase or an unsatisfied gate", () => {
-  const gates = (
+Deno.test("path band status follows group gates and leaves empty lanes planned", () => {
+  const group = (
     statuses: readonly ("completed" | "active" | "planned" | "blocked")[],
-  ) => statuses.map((status, index) => ({ status, id: index }));
+  ) => ({
+    gates: statuses.map((status, index) => ({
+      id: `g-${index}`,
+      lane: "physics" as const,
+      title: "gate",
+      status,
+      revisions: [],
+      approvedDecisions: 0,
+      requiredDecisions: 0,
+      evidenceCount: 0,
+    })),
+    satisfiedGates: statuses.filter((status) => status === "completed").length,
+    totalGates: statuses.length,
+  });
 
-  // Sous le seuil d'affichage : aucun repli, quel que soit le passé.
-  const short = splitLeadingSatisfiedGates(
-    gates(["completed", "completed", "completed", "active"]),
-  );
-  assertEquals(short.collapsed.length, 0);
-  assertEquals(short.visible.length, 4);
-
-  // Long chemin : le repli s'arrête avant les 2 dernières satisfaites, et la
-  // première non-satisfaite reste toujours visible.
-  const long = splitLeadingSatisfiedGates(gates([
-    ...Array(10).fill("completed"),
-    "active",
-    "planned",
-  ]));
-  assertEquals(long.collapsed.length, 8);
+  assertEquals(projectPathLaneStageStatus(group([])), "planned");
   assertEquals(
-    long.collapsed.every((gate) => gate.status === "completed"),
-    true,
+    projectPathLaneStageStatus(group(["completed", "completed"])),
+    "completed",
   );
-  assertEquals(long.visible.map((gate) => gate.status), [
-    "completed",
-    "completed",
+  assertEquals(
+    projectPathLaneStageStatus(group(["completed", "blocked"])),
+    "blocked",
+  );
+  assertEquals(
+    projectPathLaneStageStatus(group(["active", "blocked"])),
+    "blocked",
+  );
+  assertEquals(
+    projectPathLaneStageStatus(group(["completed", "active"])),
     "active",
+  );
+  assertEquals(
+    projectPathLaneStageStatus(group(["completed", "planned"])),
     "planned",
-  ]);
-  assertEquals([...long.collapsed, ...long.visible].length, 12);
-
-  // Un chemin long mais au passé court ne se replie pas : un résumé d'une ou
-  // deux gates coûterait plus de lecture qu'il n'en économise.
-  const shallowPast = splitLeadingSatisfiedGates(gates([
-    "completed",
-    "completed",
-    ...Array(8).fill("planned"),
-  ]));
-  assertEquals(shallowPast.collapsed.length, 0);
-
-  // Chemin long entièrement satisfait : les 2 dernières gates restent
-  // visibles comme contexte, tout le reste se replie.
-  const allDone = splitLeadingSatisfiedGates(gates(Array(9).fill("completed")));
-  assertEquals(allDone.collapsed.length, 7);
-  assertEquals(allDone.visible.length, 2);
-
-  // Une gate bloquée arrête le repli exactement comme une planifiée : elle
-  // reste toujours visible.
-  const blockedFirst = splitLeadingSatisfiedGates(gates([
-    ...Array(10).fill("completed"),
-    "blocked",
-    "planned",
-  ]));
-  assertEquals(blockedFirst.collapsed.length, 8);
-  assertEquals(blockedFirst.visible.map((gate) => gate.status), [
-    "completed",
-    "completed",
-    "blocked",
-    "planned",
-  ]);
+  );
 });
 
-Deno.test("collapsed project gates follow the five projected thread lanes without reading phase labels", () => {
+Deno.test("grouping with no activities still returns five empty 0/0 lanes", () => {
+  const groups = groupProjectPathGatesByLane([], []);
+  assertEquals(groups.map((group) => group.id), [...ENGINEERING_PATH_LANE_IDS]);
+  for (const group of groups) {
+    assertEquals(group.gates, []);
+    assertEquals(group.satisfiedGates, 0);
+    assertEquals(group.totalGates, 0);
+    assertEquals(projectPathLaneStageStatus(group), "planned");
+  }
+});
+
+Deno.test("project path gates always occupy the five projected thread lanes without reading phase labels", () => {
   const gate = (
     id: string,
     lane: "requirements" | "system-model" | "geometry",
@@ -2395,17 +2473,31 @@ Deno.test("collapsed project gates follow the five projected thread lanes withou
     "requirements",
     "system-model",
     "geometry",
+    "physics",
+    "verdicts",
   ]);
   assertEquals(groups[1], {
     id: "system-model",
-    label: "System model",
-    color: "#2563eb",
     gates: groups[1]!.gates,
     satisfiedGates: 2,
     totalGates: 2,
-    approvedDecisions: 2,
-    requiredDecisions: 2,
-    evidenceCount: 4,
   });
-  assertEquals(groups[0]?.label, "Requirements");
+  assertEquals(groups[1]!.gates.map((item) => item.id), ["f1", "f2"]);
+  assertEquals(groups[3], {
+    id: "physics",
+    gates: [],
+    satisfiedGates: 0,
+    totalGates: 0,
+  });
+  assertEquals(groups[4], {
+    id: "verdicts",
+    gates: [],
+    satisfiedGates: 0,
+    totalGates: 0,
+  });
+  assertEquals(PROJECT_PATH_STAGE_LABELS.requirements, "FRAME");
+  assertEquals(PROJECT_PATH_STAGE_LABELS["system-model"], "SYSTEM MODEL");
+  assertEquals(PROJECT_PATH_STAGE_LABELS.geometry, "GEOMETRY");
+  assertEquals(PROJECT_PATH_STAGE_LABELS.physics, "PHYSICS");
+  assertEquals(PROJECT_PATH_STAGE_LABELS.verdicts, "VERIFICATION");
 });

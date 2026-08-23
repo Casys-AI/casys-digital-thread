@@ -7,6 +7,7 @@ import type {
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
 import { OVERVIEW_LANES, type OverviewLane } from "./overview-lanes.ts";
 import { condenseEdgesThroughHiddenNodes } from "./overview-condensed-edges.ts";
+import type { ProjectPathActivityView } from "./model.ts";
 
 export type OverviewLaneId = EngineeringPathLaneId;
 export { OVERVIEW_LANES } from "./overview-lanes.ts";
@@ -14,15 +15,28 @@ export { OVERVIEW_LANES } from "./overview-lanes.ts";
 export const OVERVIEW_HERO_WIDTH = 1230;
 export const OVERVIEW_HERO_HEIGHT = 300;
 
-export interface OverviewHeroNode {
+interface OverviewHeroPlacement {
   readonly key: string;
-  readonly node: ThreadGraphNode;
   readonly lane: OverviewLaneId;
   readonly x: number;
   readonly y: number;
+}
+
+export interface OverviewRecordedHeroNode extends OverviewHeroPlacement {
+  readonly kind: "recorded";
+  readonly node: ThreadGraphNode;
   readonly color: string;
   readonly emphasis: boolean;
 }
+
+export interface OverviewActivityHeroNode extends OverviewHeroPlacement {
+  readonly kind: "activity";
+  readonly activity: ProjectPathActivityView;
+}
+
+export type OverviewHeroNode =
+  | OverviewRecordedHeroNode
+  | OverviewActivityHeroNode;
 
 export interface OverviewHeroEdge {
   readonly key: string;
@@ -50,11 +64,14 @@ const NODE_BOTTOM = 44;
 
 /**
  * Essential recorded nodes, wrapped in the same five lanes as the Project
- * Path. Every semantic point is retained; the two-track layout grows only as
- * high as its busiest lane instead of silently truncating after four nodes.
+ * Path. Non-completed project activities append as Overview-only markers in
+ * their projected lane. Every semantic point is retained; the two-track
+ * layout grows only as high as its busiest lane instead of silently
+ * truncating after four nodes.
  */
 export function buildOverviewThreadHero(
   thread: ThreadWorkbenchSnapshot,
+  activities: readonly ProjectPathActivityView[] = [],
 ): OverviewThreadHeroView {
   const essential = applyEssentialFilter(
     thread.graph.nodes,
@@ -76,6 +93,7 @@ export function buildOverviewThreadHero(
     counts[lane] = index + 1;
     const column = OVERVIEW_LANES.find((item) => item.id === lane)!;
     placed.push({
+      kind: "recorded",
       key: refKey(node.ref),
       node,
       lane,
@@ -83,6 +101,21 @@ export function buildOverviewThreadHero(
       y: NODE_TOP + Math.floor(index / TRACKS_PER_LANE) * NODE_GAP,
       color: column.color,
       emphasis: node.freshness === "failed" || node.freshness === "stale",
+    });
+  }
+
+  for (const activity of activities) {
+    if (activity.status === "completed") continue;
+    const lane = activity.lane;
+    const index = counts[lane];
+    counts[lane] = index + 1;
+    placed.push({
+      kind: "activity",
+      key: `project-activity:${activity.id}`,
+      activity,
+      lane,
+      x: wrappedNodeX(lane, index),
+      y: NODE_TOP + Math.floor(index / TRACKS_PER_LANE) * NODE_GAP,
     });
   }
 
@@ -95,9 +128,10 @@ export function buildOverviewThreadHero(
     NODE_TOP + (rowCount - 1) * NODE_GAP + NODE_BOTTOM,
   );
 
-  const byKey = new Map(placed.map((item) => [item.key, item]));
+  const recorded = placed.filter(isRecordedOverviewHeroNode);
+  const byKey = new Map(recorded.map((item) => [item.key, item]));
   const condensed = condenseEdgesThroughHiddenNodes(
-    new Set(placed.map((item) => item.key)),
+    new Set(recorded.map((item) => item.key)),
     thread.graph.edges,
   );
   const edges: OverviewHeroEdge[] = [];
@@ -117,13 +151,21 @@ export function buildOverviewThreadHero(
     lanes: OVERVIEW_LANES.map((lane) => ({
       lane,
       systems: uniqueSystems(
-        placed.filter((item) => item.lane === lane.id).map((item) => item.node.system),
+        recorded.filter((item) => item.lane === lane.id).map((item) =>
+          item.node.system
+        ),
       ),
     })),
     nodes: placed,
     edges,
     height,
   };
+}
+
+export function isRecordedOverviewHeroNode(
+  item: OverviewHeroNode,
+): item is OverviewRecordedHeroNode {
+  return item.kind === "recorded";
 }
 
 export function overviewLaneFor(

@@ -1,78 +1,69 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
 
-Deno.test("Collapsible wraps Ark UI and is the disclosure for earlier gates", async () => {
+Deno.test("Collapsible wraps Ark UI", async () => {
   const primitive = await Deno.readTextFile(
     new URL("./src/ui/collapsible.tsx", import.meta.url),
-  );
-  const overview = await Deno.readTextFile(
-    new URL("./src/project/overview.tsx", import.meta.url),
   );
 
   assertStringIncludes(primitive, 'from "@ark-ui/react/collapsible"');
   assertStringIncludes(primitive, "export function Collapsible");
   assertStringIncludes(primitive, "export function CollapsibleTrigger");
   assertStringIncludes(primitive, "export function CollapsibleContent");
-
-  assertStringIncludes(overview, 'from "../ui/collapsible.tsx"');
-  assertStringIncludes(overview, "earlier gates satisfied");
-  assertStringIncludes(overview, "<Collapsible");
-  assertStringIncludes(overview, "<CollapsibleTrigger");
-  assertStringIncludes(overview, "<CollapsibleContent");
-  assertEquals(
-    overview.includes('<details className="min-w-0 pb-3">'),
-    false,
-    "collapsed earlier gates must not stay on native details",
-  );
 });
 
-Deno.test("earlier gates expand below the spine and follow the five thread lanes", async () => {
+Deno.test("Overview path band uses the five stage labels and not the old gate spine", async () => {
   const overview = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
   );
-  const historyStart = overview.indexOf("function EarlierGatesPanel");
-  const historyEnd = overview.indexOf("function Chevron", historyStart);
-  const history = overview.slice(historyStart, historyEnd);
+  const lanes = await Deno.readTextFile(
+    new URL("./src/project/overview-lanes.ts", import.meta.url),
+  );
+  const hero = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
+  );
 
-  assertEquals(historyStart >= 0, true);
-  assertEquals(historyEnd > historyStart, true);
+  assertStringIncludes(lanes, 'requirements: "FRAME"');
+  assertStringIncludes(lanes, '"system-model": "SYSTEM MODEL"');
+  assertStringIncludes(lanes, 'geometry: "GEOMETRY"');
+  assertStringIncludes(lanes, 'physics: "PHYSICS"');
+  assertStringIncludes(lanes, 'verdicts: "VERIFICATION"');
+  assertEquals(lanes.includes("CAD"), false);
+
+  assertStringIncludes(overview, "PROJECT_PATH_STAGE_LABELS");
   assertStringIncludes(overview, "groupProjectPathGatesByLane");
-  assertStringIncludes(overview, 'data-project-path-history="lanes"');
-  assertStringIncludes(
-    overview,
-    '<CollapsibleContent className="border-t border-border bg-muted/20',
-  );
+  assertStringIncludes(overview, "projectPathLaneStageStatus");
+  assertStringIncludes(overview, "function ProjectPathStageBand");
+  assertStringIncludes(overview, 'role="list"');
+  assertStringIncludes(overview, "aria-label={`${label} ${count} ${status}`}");
+  assertEquals(overview.includes("<Collapsible"), false);
+  assertEquals(overview.includes('from "../ui/collapsible.tsx"'), false);
+  assertEquals(overview.includes("earlier gates"), false);
+  assertEquals(overview.includes("Earlier project gates"), false);
+  assertEquals(overview.includes("function EarlierGatesPanel"), false);
+  assertEquals(overview.includes("function SpinePhase"), false);
   assertEquals(
-    overview.includes("collapsedGates.map"),
+    overview.includes("function ActivityRevisionAttemptList"),
     false,
-    "the top-level disclosure must not render a flat list of every old gate",
   );
-  assertStringIncludes(history, "groups.map");
-  assertStringIncludes(history, "<Collapsible");
-  assertStringIncludes(history, "<Badge");
-  assertStringIncludes(history, "variant={recordStatusVariant(item.status)}");
-  assertStringIncludes(history, "{phaseStatusLabel(item.status)}");
-  assertEquals(
-    history.includes('className="sr-only"'),
-    false,
-    "expanded historical gates must not hide phase status as sr-only",
-  );
+  assertEquals(overview.includes("function Chevron"), false);
+  assertEquals(overview.includes("1 revision · 1 attempt"), false);
+  assertEquals(overview.includes("activityLifecycleSummary"), false);
+  assertEquals(overview.includes("splitLeadingSatisfiedGates"), false);
 
-  // Le bandeau n'écrit plus le statut sous chaque gate — répété huit fois il
-  // cassait la ligne. Il doit rester dans le nom accessible de l'étape, et
-  // l'état doit se distinguer par la FORME du nœud, pas par la seule couleur.
-  const spineStart = overview.indexOf("function SpinePhase(");
-  const spineEnd = overview.indexOf("function ", spineStart + 10);
-  const spine = overview.slice(spineStart, spineEnd);
-  assertEquals(spineStart >= 0, true);
-  assertEquals(spineEnd > spineStart, true);
-  assertStringIncludes(spine, "phaseStatusLabel(item.status)");
-  assertStringIncludes(spine, "aria-label=");
-  assertStringIncludes(overview, "border-2 border-success bg-background");
-  assertEquals(
-    spine.includes('className="sr-only"'),
-    false,
-    "compact spine phases must not hide planned as sr-only",
-  );
+  const bandStart = overview.indexOf("function ProjectPathStageBand");
+  const bandEnd = overview.indexOf("function OverviewReviewBanner", bandStart);
+  const band = overview.slice(bandStart, bandEnd);
+  assertEquals(bandStart >= 0, true);
+  assertEquals(bandEnd > bandStart, true);
+  assertEquals(band.includes("<button"), false);
+  assertEquals(band.includes("CAD"), false);
+  assertEquals(band.includes("group.color"), false);
+  assertEquals(band.includes("style={{ color:"), false);
+
+  assertStringIncludes(hero, "OVERVIEW_LANES");
+  assertStringIncludes(hero, "column.lane.color");
+  assertEquals(hero.includes("PROJECT_PATH_STAGE_LABELS"), false);
+  assertEquals(hero.includes("FRAME"), false);
 });
 
 Deno.test("the Work ribbon stays visible instead of a collapsed Project pulse", async () => {

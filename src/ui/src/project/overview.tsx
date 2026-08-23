@@ -5,7 +5,6 @@ import { recordStatusVariant } from "./record-status.ts";
 import type {
   EngineeringAgentRun,
   EngineeringBlocker,
-  EngineeringPhaseStatus,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringWorkItem,
@@ -45,11 +44,6 @@ import {
   DialogTrigger,
 } from "../ui/dialog.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "../ui/collapsible.tsx";
 import type { ProjectWorkspaceView } from "./navigation.tsx";
 import {
   hasDistinctProjectObjectiveStatement,
@@ -67,26 +61,20 @@ import {
   currentProjectReview,
 } from "./review-decision-model.ts";
 import {
-  activityCounterLabel,
-  activityHasLifecycleHistory,
-  activityLifecycleSummary,
-  activityShowsRevisionAttemptList,
   agentRunRecordedAt,
   buildCurrentProjectWork,
   buildProjectBrief,
   buildProjectPath,
   groupProjectPathGatesByLane,
-  laneGroupCounterLabel,
-  laneGroupsCounterLabel,
-  phaseStatusLabel,
-  type ProjectPathActivityView,
   type ProjectPathLaneGroup,
+  projectPathLaneStageStatus,
+  type ProjectPathStageStatus,
   projectPathStatusLabel,
   projectStatusTone,
   selectCurrentProjectFocus,
-  splitLeadingSatisfiedGates,
   workOwnerLabel,
 } from "./model.ts";
+import { PROJECT_PATH_STAGE_LABELS } from "./overview-lanes.ts";
 
 export interface ProjectOverviewProps {
   readonly project: EngineeringProjectSnapshot;
@@ -102,9 +90,9 @@ export interface ProjectOverviewProps {
 }
 
 /**
- * Grammaire 2a : thread-first. Une bannière de review, le bandeau de
- * gates branché sur le graphe enregistré (ThreadGraph, pas un SVG inventé),
- * les tuiles de verdict, Now en feed, GLB en vignette.
+ * Grammaire 2a : thread-first. Une bannière de review, le bandeau cinq
+ * étapes, le graphe enregistré (ThreadGraph), les tuiles de verdict, Now
+ * en feed, GLB en vignette.
  */
 export function ProjectOverview({
   project,
@@ -135,10 +123,8 @@ export function ProjectOverview({
   const sealedAssemblyGlb = sealedAssembly
     ? sealedAssemblyGlbAsset(sealedAssembly)
     : undefined;
-  const { collapsed: collapsedGates, visible: visiblePhases } =
-    splitLeadingSatisfiedGates(projectPath.activities);
-  const collapsedLanes = groupProjectPathGatesByLane(
-    collapsedGates,
+  const pathStages = groupProjectPathGatesByLane(
+    projectPath.activities,
     phaseLanes,
   );
   const openProductFacet = (facet: ProductWorkspaceFacet) => {
@@ -154,6 +140,13 @@ export function ProjectOverview({
       return;
     }
     onNavigate("verification");
+  };
+  const openOverviewActivity = () => {
+    if (onOpenActivity) {
+      onOpenActivity();
+      return;
+    }
+    onNavigate("work");
   };
 
   // minmax(0,1fr) : sans lui, un contenu large imposerait sa largeur
@@ -258,49 +251,13 @@ export function ProjectOverview({
       <Card className="overflow-hidden">
         <section aria-labelledby="project-phase-title">
           <h3 id="project-phase-title" className="sr-only">Project path</h3>
-          <Collapsible>
-            {/* display:grid retire le rôle liste sous VoiceOver/Safari. */}
-            <ol
-              className="flex items-center gap-0 overflow-x-auto px-4 py-2.5 tabular-nums"
-              role="list"
-            >
-              {collapsedGates.length > 0 && (
-                <li
-                  data-state="completed"
-                  className="flex min-w-0 shrink-0 items-center"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="size-2.5 shrink-0 rounded-full bg-success"
-                  />
-                  <CollapsibleTrigger className="group/path-trigger mx-2 cursor-pointer font-mono text-[10.5px] font-medium uppercase tracking-wide">
-                    {collapsedGates.length} earlier gates satisfied
-                    <Chevron className="group-data-[state=open]/path-trigger:rotate-180" />
-                  </CollapsibleTrigger>
-                  <span
-                    aria-hidden="true"
-                    className="mx-2.5 h-0.5 w-8 shrink-0 rounded-full bg-success/40"
-                  />
-                </li>
-              )}
-              {visiblePhases.map((item, index) => (
-                <SpinePhase
-                  key={item.id}
-                  item={item}
-                  isLast={index === visiblePhases.length - 1}
-                />
-              ))}
-            </ol>
-            {collapsedGates.length > 0 && (
-              <CollapsibleContent className="border-t border-border bg-muted/20 px-3 py-3 md:px-4">
-                <EarlierGatesPanel groups={collapsedLanes} />
-              </CollapsibleContent>
-            )}
-          </Collapsible>
+          <ProjectPathStageBand groups={pathStages} />
         </section>
         <OverviewThreadHero
           thread={thread}
+          activities={projectPath.activities}
           onOpenEvidence={openOverviewEvidence}
+          onOpenActivity={openOverviewActivity}
         />
       </Card>
 
@@ -388,226 +345,68 @@ export function ProjectOverview({
   );
 }
 
-function EarlierGatesPanel(
+/**
+ * Bande cinq étapes : un nœud par lane persistée, x/y d'activités stables.
+ * `flex` et `role="list"` conservent le rôle liste ; `display:grid` le
+ * retirerait sous VoiceOver/Safari.
+ */
+function ProjectPathStageBand(
   { groups }: { readonly groups: readonly ProjectPathLaneGroup[] },
 ): JSX.Element {
   return (
-    <div className="grid gap-3" data-project-path-history="lanes">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className={cn("m-0", SECTION_LABEL)}>Earlier project gates</p>
-          <p className="mt-1 font-mono text-[10px] tabular-nums text-muted-foreground">
-            {laneGroupsCounterLabel(groups)}
-          </p>
-        </div>
-        <span className="font-mono text-[9.5px] uppercase tracking-wide text-muted-foreground">
-          {groups.length}/5 thread columns represented
-        </span>
-      </div>
-      <div className="grid gap-2 lg:grid-cols-2">
-        {groups.map((group, index) => (
-          <Collapsible
+    <ol
+      className="flex items-center gap-0 overflow-x-auto px-4 py-2 tabular-nums"
+      role="list"
+    >
+      {groups.map((group, index) => {
+        const label = PROJECT_PATH_STAGE_LABELS[group.id];
+        const status = projectPathLaneStageStatus(group);
+        const count = `${group.satisfiedGates}/${group.totalGates}`;
+        const suffix = status === "active" || status === "blocked"
+          ? status.toUpperCase()
+          : undefined;
+        return (
+          <li
             key={group.id}
             data-lane={group.id}
-            className="overflow-hidden rounded-lg border border-border bg-background"
+            data-state={status}
+            aria-current={status === "active" ? "step" : undefined}
+            aria-label={`${label} ${count} ${status}`}
+            className="flex min-w-[6.75rem] shrink-0 flex-1 items-center"
           >
-            <CollapsibleTrigger className="group/lane-trigger w-full justify-between gap-3 px-3 py-2.5">
-              <span className="flex min-w-0 items-start gap-2.5">
-                <span className="pt-0.5 font-mono text-[9.5px] tabular-nums text-muted-foreground">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span
-                  aria-hidden="true"
-                  className="mt-1 size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: group.color }}
-                />
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-medium">
-                    {group.label}
-                  </span>
-                  <span className="mt-0.5 block font-mono text-[9.5px] tabular-nums text-muted-foreground">
-                    {laneGroupCounterLabel(group)}
-                  </span>
-                </span>
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                <Badge variant="success">
-                  {group.satisfiedGates}/{group.totalGates} gates
-                </Badge>
-                <Chevron className="group-data-[state=open]/lane-trigger:rotate-180" />
-              </span>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="border-t border-border bg-muted/10">
-              <ol className="divide-y divide-border" role="list">
-                {group.gates.map((item) => (
-                  <li
-                    key={item.id}
-                    data-state={item.status}
-                    className="flex min-w-0 items-start justify-between gap-3 px-3 py-2.5"
-                  >
-                    <div className="min-w-0">
-                      <span className="text-[13px]">{item.title}</span>
-                      <p className="mt-0.5 font-mono text-[9.5px] tabular-nums text-muted-foreground">
-                        {activityCounterLabel(item)}
-                      </p>
-                      {activityShowsRevisionAttemptList(item) && (
-                        <ActivityRevisionAttemptList item={item} />
-                      )}
-                    </div>
-                    <Badge variant={recordStatusVariant(item.status)}>
-                      {phaseStatusLabel(item.status)}
-                    </Badge>
-                  </li>
-                ))}
-              </ol>
-            </CollapsibleContent>
-          </Collapsible>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Chevron({ className }: { readonly className?: string }): JSX.Element {
-  return (
-    <svg
-      aria-hidden="true"
-      className={cn(
-        "size-3 shrink-0 text-muted-foreground transition-transform",
-        className,
-      )}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth="2"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="m6 9 6 6 6-6"
-      />
-    </svg>
-  );
-}
-
-/**
- * Une vertèbre de l'épine, à deux densités : seules les phases active ou
- * bloquée s'ouvrent (statut, tallies, lifecycle) ; les autres restent des
- * lignes compactes — le statut y reste un Badge texte, pas seulement le
- * nœud coloré. Un lifecycle en attention reste visible même compact : il
- * réclame une review.
- */
-function SpinePhase(
-  { item, isLast }: { item: ProjectPathActivityView; isLast: boolean },
-): JSX.Element {
-  const hasJoinedCases = item.revisions.some((revision) =>
-    revision.attempts.some((attempt) => attempt.cases.length > 0)
-  );
-  const open = item.status === "active" || item.status === "blocked" ||
-    hasJoinedCases;
-  const lifecycle = activityLifecycleSummary(item);
-  return (
-    <li
-      data-state={item.status}
-      aria-current={item.status === "active" ? "step" : undefined}
-      aria-label={`${item.title} — ${lifecycle} ${
-        phaseStatusLabel(item.status)
-      }`}
-      className="flex min-w-0 flex-1 items-center"
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "size-2.5 shrink-0 rounded-full",
-          phaseNodeClass(item.status),
-        )}
-      />
-      {open
-        ? (
-          <div className="mx-1.5 min-w-0">
             <span
+              aria-hidden="true"
               className={cn(
-                "font-mono text-[10.5px] font-semibold uppercase tracking-wide",
-                phaseStatusTextClass(item.status),
+                "size-2 shrink-0 rounded-full",
+                stageNodeClass(status),
               )}
-            >
-              {item.title}{" "}
-              <span className="text-success">
-                {lifecycle} {phaseStatusLabel(item.status)}
-              </span>
-            </span>
-            <ActivityRevisionAttemptList item={item} />
-          </div>
-        )
-        : activityHasLifecycleHistory(item)
-        ? (
-          <div className="mx-1.5 min-w-0">
-            <div className="flex min-w-0 items-baseline gap-1.5">
-              <span className="truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-                {item.title}
+            />
+            <div className="mx-1.5 min-w-0">
+              <span className={cn("block truncate", SECTION_LABEL)}>
+                {label}
               </span>
               <span
                 className={cn(
-                  "shrink-0 font-mono text-[10.5px] font-medium tabular-nums",
-                  phaseStatusTextClass(item.status),
+                  "block font-mono text-[10.5px] font-medium tabular-nums",
+                  stageCountClass(status),
                 )}
               >
-                {lifecycle}
+                {count}
+                {suffix ? ` ${suffix}` : ""}
               </span>
             </div>
-            <ActivityRevisionAttemptList item={item} />
-          </div>
-        )
-        : (
-          <div className="mx-1.5 flex min-w-0 items-baseline gap-1.5">
-            <span className="truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">
-              {item.title}
-            </span>
-            <span
-              className={cn(
-                "shrink-0 font-mono text-[10.5px] font-medium tabular-nums",
-                phaseStatusTextClass(item.status),
-              )}
-            >
-              {lifecycle}
-            </span>
-          </div>
-        )}
-      {!isLast && (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "mx-2.5 h-0.5 min-w-8 flex-1 rounded-full",
-            item.status === "completed" ? "bg-success/40" : "bg-border",
-          )}
-        />
-      )}
-    </li>
-  );
-}
-
-function ActivityRevisionAttemptList(
-  { item }: { item: ProjectPathActivityView },
-): JSX.Element {
-  return (
-    <ol className="m-0 list-none p-0 font-mono text-[9px] text-muted-foreground">
-      {item.revisions.map((revision) => (
-        <li key={revision.id}>
-          {revision.title} · {revision.status}
-          {revision.attempts.map((attempt) => (
-            <span key={attempt.run.id}>
-              {" · "}
-              {attempt.run.status}
-              {attempt.cases.map((engineeringCase) => (
-                <span key={engineeringCase.caseKey}>
-                  {" · "}
-                  {engineeringCase.caseId}@{engineeringCase.caseRevision}
-                </span>
-              ))}
-            </span>
-          ))}
-        </li>
-      ))}
+            {index < groups.length - 1 && (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "mx-1.5 h-px min-w-3 flex-1",
+                  status === "completed" ? "bg-success/40" : "bg-border",
+                )}
+              />
+            )}
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -1060,7 +859,7 @@ function toneDotClass(tone: ReturnType<typeof projectStatusTone>): string {
   return "bg-muted-foreground";
 }
 
-function phaseNodeClass(status: EngineeringPhaseStatus): string {
+function stageNodeClass(status: ProjectPathStageStatus): string {
   if (status === "completed") return "bg-success";
   if (status === "active") {
     return "border-2 border-success bg-background ring-4 ring-success/15";
@@ -1069,9 +868,9 @@ function phaseNodeClass(status: EngineeringPhaseStatus): string {
   return "border border-muted-foreground/40 bg-background";
 }
 
-function phaseStatusTextClass(status: EngineeringPhaseStatus): string {
-  if (status === "active") return "font-medium text-success";
-  if (status === "blocked") return "font-medium text-destructive";
+function stageCountClass(status: ProjectPathStageStatus): string {
+  if (status === "active") return "text-success";
+  if (status === "blocked") return "text-destructive";
   return "text-muted-foreground";
 }
 
