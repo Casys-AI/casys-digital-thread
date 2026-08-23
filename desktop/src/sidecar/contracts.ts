@@ -1,7 +1,7 @@
 /** Exact Lot 2 sidecar identities. Lane A parses these documents, not aliases. */
 
 export const PRODUCT_IDENTIFIER = "ai.casys.digital-thread";
-export const PRODUCT_VERSION = "0.2.0";
+export const PRODUCT_VERSION = "0.3.0";
 export const SERVER_NAME = "casys-digital-thread-console";
 export const SERVER_VERSION = "0.2.0";
 export const CONTROL_PLANE_HELPER_NAME = "casys-control-plane";

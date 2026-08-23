@@ -440,7 +440,9 @@ export function serializeDesktopRuntime(
   }\n`;
 }
 
-function parseDesktopRuntime(text: string): void {
+export function parseDesktopRuntime(text: string): {
+  readonly configDigest: string;
+} {
   const record = exactRecord(
     parseJsonObject(text, "Desktop runtime receipt", "workspace.runtime-corrupt"),
     [
@@ -470,6 +472,7 @@ function parseDesktopRuntime(text: string): void {
       "The Desktop runtime receipt is not the exact closed schema.",
     );
   }
+  return { configDigest: record.configDigest };
 }
 
 async function readOptionalWorkspaceText(

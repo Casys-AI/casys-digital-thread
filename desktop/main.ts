@@ -12,6 +12,7 @@ import {
   createDenoControlPlanePorts,
 } from "./src/control-plane/mod.ts";
 import type { DesktopPlatform, EnvironmentReader } from "./src/host/mod.ts";
+import { createDenoWorkbenchHost } from "./src/workbench/host.ts";
 
 function desktopPlatform(os: typeof Deno.build.os): DesktopPlatform {
   switch (os) {
@@ -68,11 +69,23 @@ const application = await startDesktopApplication({
       stop: () => host.stop(),
     };
   },
+  createWorkbench(launch) {
+    const host = createDenoWorkbenchHost(launch.helperPath, launch.launchCwd);
+    return {
+      start: () => host.start(),
+      stop: () => host.stop(),
+    };
+  },
 });
 
 let server: Deno.HttpServer;
 try {
-  server = Deno.serve(createDesktopShellHandler(application.model));
+  server = Deno.serve(
+    createDesktopShellHandler(
+      application.model,
+      application.workbenchSession,
+    ),
+  );
 } catch (error) {
   await application.stop().catch(() => undefined);
   throw error;

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/denoland/deno/v2.9.2/cli/schemas/config-file.v1.json",
   "name": "casys-digital-thread-desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "exports": "./main.ts",
   "lock": false,
   "compilerOptions": {
@@ -10,12 +10,15 @@
     ]
   },
   "tasks": {
-    "check": "deno check main.ts src/application/**/*.ts src/contracts/**/*.ts src/host/**/*.ts src/renderer/**/*.ts src/build/**/*.ts && deno check --config=../deno.json src/sidecar/main.ts",
+    "check": "deno check main.ts src/application/**/*.ts src/contracts/**/*.ts src/host/**/*.ts src/renderer/**/*.ts src/build/**/*.ts src/workbench/{cli,compile-permissions,contracts,host,proxy,runtime,workspace}.ts && deno check --config=../deno.json src/sidecar/main.ts src/workbench/main.ts",
     "fmt": "deno fmt --check deno.json README.md component-manifest.json main.ts src",
     "lint": "deno lint main.ts src",
-    "test": "deno test --allow-read --allow-write --ignore=src/build/compiled-helper_e2e_test.ts",
-    "sidecar:compile": "deno run --no-prompt --allow-run=deno --allow-write=dist --deny-env --deny-net src/build/compile-control-plane-helper.ts",
-    "sidecar:test": "deno task sidecar:compile && deno test --allow-read --allow-write --allow-net=127.0.0.1:3020 --allow-run=deno,dist/helpers/casys-control-plane src/sidecar src/build",
+    "test": "deno test --allow-read --allow-write --ignore=src/build/compiled-helper_e2e_test.ts --ignore=src/build/compiled-workbench-helper_e2e_test.ts",
+    "ui:build": "npm --prefix ../src/ui run build:thread",
+    "workbench:compile": "deno task ui:build && deno run --no-prompt --allow-run=deno --allow-write=dist --deny-env --deny-net src/build/compile-workbench-helper.ts",
+    "workbench:test": "deno task workbench:compile && deno test --allow-read --allow-write --allow-net=127.0.0.1:5176 --allow-run=dist/helpers/casys-workbench src/workbench src/build/compiled-workbench-helper_e2e_test.ts",
+    "sidecar:compile": "deno task ui:build && deno run --no-prompt --allow-run=deno --allow-write=dist --deny-env --deny-net src/build/compile-control-plane-helper.ts && deno run --no-prompt --allow-run=deno --allow-write=dist --deny-env --deny-net src/build/compile-workbench-helper.ts",
+    "sidecar:test": "deno task sidecar:compile && deno test --allow-read --allow-write --allow-net=127.0.0.1:3020,127.0.0.1:5176 --allow-run=deno,dist/helpers/casys-control-plane,dist/helpers/casys-workbench src/sidecar src/workbench src/build",
     "runtime:check": "deno run --no-prompt src/application/runtime-check.ts",
     "verify": "deno task fmt && deno task lint && deno task check && deno task test && deno task runtime:check",
     "package": "deno task runtime:check && deno task sidecar:compile && DENO_BIN=$(which deno) && PATH=\"$PWD/dist/helpers:$PATH\" \"$DENO_BIN\" desktop --no-prompt --deny-import -P=desktop --output=dist/CasysDigitalThread.app main.ts && deno run --no-prompt --allow-read=dist --allow-write=dist --allow-run=/usr/bin/plutil,/usr/bin/codesign,/usr/bin/clang src/build/finalize-macos.ts dist/CasysDigitalThread.app"
@@ -29,10 +32,12 @@
         "LOCALAPPDATA"
       ],
       "run": [
-        "casys-control-plane"
+        "casys-control-plane",
+        "casys-workbench"
       ],
       "net": [
-        "127.0.0.1:3020"
+        "127.0.0.1:3020",
+        "127.0.0.1:5176"
       ],
       "import": false
     }

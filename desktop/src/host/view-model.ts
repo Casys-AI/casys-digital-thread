@@ -3,6 +3,7 @@ import type {
   ComponentState,
   DesktopControlPlaneProjection,
   DesktopShellViewModel,
+  DesktopWorkbenchProjection,
 } from "../contracts/diagnostics.ts";
 import { classifyShellStatus } from "./classify.ts";
 import type { ApplicationSupportLayout, DesktopPlatform } from "./layout.ts";
@@ -17,6 +18,7 @@ export interface DesktopShellObservations {
   readonly platform: DesktopPlatform;
   readonly layout: HostResult<ApplicationSupportLayout>;
   readonly controlPlane?: DesktopControlPlaneProjection;
+  readonly workbench?: DesktopWorkbenchProjection;
 }
 
 const FALLBACK_PRODUCT_NAME = "Casys Digital Thread";
@@ -49,7 +51,7 @@ const KNOWN_DEFERRED_COMPONENTS = [
     id: "chat-host",
     label: "Chat host",
     summary: "Embedded chat is unavailable in this Desktop build.",
-    evidence: "Desktop 0.2.0 starts no acpx runtime, agent, or chat sidecar.",
+    evidence: "Desktop 0.3.0 starts no acpx runtime, agent, or chat sidecar.",
     recovery:
       "Use a supported native agent through the bridge until the pinned Chat Host is installed.",
   },
@@ -87,8 +89,13 @@ export function deriveDesktopShellViewModel(
       observations.manifest,
       observations.controlPlane,
     );
+  const workbenchDiagnostics = observations.workbench === undefined
+    ? []
+    : [diagnoseWorkbench(observations.manifest, observations.workbench)];
   const projectedIds = new Set(
-    controlPlaneDiagnostics.map((component) => component.id),
+    [...controlPlaneDiagnostics, ...workbenchDiagnostics].map((component) =>
+      component.id
+    ),
   );
   const components = [
     manifestDiagnostic,
@@ -96,6 +103,7 @@ export function deriveDesktopShellViewModel(
     layoutDiagnostic,
     shellDiagnostic,
     ...controlPlaneDiagnostics,
+    ...workbenchDiagnostics,
     ...deferredComponents(observations.manifest, projectedIds),
   ];
 
@@ -110,6 +118,103 @@ export function deriveDesktopShellViewModel(
     platform: observations.platform,
     components,
   });
+}
+
+function diagnoseWorkbench(
+  manifest: HostResult<ComponentManifest>,
+  projection: DesktopWorkbenchProjection,
+): ComponentDiagnostic {
+  const declared = manifest.ok
+    ? manifest.value.components.find((component) =>
+      component.id === "workbench-projection"
+    )
+    : undefined;
+  if (
+    declared === undefined || declared.lifecycle !== "active" ||
+    declared.delivery !== "sidecar" || declared.version === null
+  ) {
+    return {
+      id: "workbench-projection",
+      label: "Workbench projection",
+      state: "error",
+      summary: "The Workbench projection manifest declaration is error.",
+      evidence:
+        "Desktop requires one active, exact-version, sidecar Workbench projection.",
+      recovery: "Restore the exact packaged Workbench component declaration.",
+    };
+  }
+  if (
+    (projection.lifecycle === "owned-ready" ||
+      projection.lifecycle === "reconnected-ready") &&
+    projection.version === declared.version
+  ) {
+    return {
+      id: "workbench-projection",
+      label: "Workbench projection",
+      state: "ready",
+      summary: "The read-only Workbench projection is ready.",
+      evidence: projection.lifecycle === "owned-ready"
+        ? "Desktop owns the exact GET and SSE Workbench helper lifecycle."
+        : "Desktop reconnected to the exact read-only Workbench helper lifecycle.",
+      version: declared.version,
+    };
+  }
+  if (
+    projection.lifecycle === "owned-ready" ||
+    projection.lifecycle === "reconnected-ready"
+  ) {
+    return {
+      id: "workbench-projection",
+      label: "Workbench projection",
+      state: "error",
+      summary: "The Workbench projection version is error.",
+      evidence: "The observed helper version does not match the manifest pin.",
+      recovery: "Restore the exact packaged Workbench helper.",
+    };
+  }
+  if (projection.lifecycle === "unavailable") {
+    return {
+      id: "workbench-projection",
+      label: "Workbench projection",
+      state: "unavailable",
+      summary: "The read-only Workbench projection is unavailable.",
+      evidence: workbenchRecoveryEvidence(projection.recoveryCode),
+      recovery:
+        "Restore the persisted workspace or packaged helper; do not seed a fallback project.",
+    };
+  }
+  return {
+    id: "workbench-projection",
+    label: "Workbench projection",
+    state: "error",
+    summary: "The Workbench projection requires lifecycle recovery.",
+    evidence: workbenchRecoveryEvidence(projection.recoveryCode),
+    recovery:
+      "Resolve the exact helper conflict. Desktop will not adopt or stop an unowned process.",
+  };
+}
+
+function workbenchRecoveryEvidence(
+  code: DesktopWorkbenchProjection["recoveryCode"],
+): string {
+  switch (code) {
+    case "configuration-unavailable":
+      return "The persisted control-plane workspace is literally unavailable.";
+    case "helper-unavailable":
+      return "The pinned packaged Workbench helper is unavailable.";
+    case "listener-conflict":
+      return "The private Workbench loopback listener is occupied without exact ownership.";
+    case "manifest-mismatch":
+      return "The packaged Workbench declaration does not match the exact installed pin.";
+    case "marker-invalid":
+      return "The Workbench marker, token, and held lock do not agree.";
+    case "probe-failed":
+      return "The private Workbench listener state is ambiguous; absence was not proven.";
+    case "startup-failed":
+      return "The owned Workbench helper failed before exact readiness.";
+    default:
+      return "No exact Workbench lifecycle observation is available.";
+  }
 }
 
 function diagnoseControlPlane(
@@ -285,7 +390,7 @@ function recoveryEvidence(
       "The canonical loopback endpoint is occupied without exact Desktop ownership.",
     "helper-unavailable": "The pinned packaged helper could not be executed.",
     "manifest-mismatch":
-      "The product or control-plane component does not match the exact Lot 2 pin.",
+      "The product or control-plane component does not match the exact installed pin.",
     "marker-invalid": "The lifecycle ownership marker is invalid or ambiguous.",
     "permission-denied": "A required scoped Deno permission was denied.",
     "probe-failed": "Exact MCP identity or readiness verification failed.",

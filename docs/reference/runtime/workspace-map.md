@@ -4,14 +4,14 @@ Audience: both · Diátaxis: reference · Kind: contract
 
 Where things run, and which page owns the file census.
 
-| Need | Page |
-| ---- | ---- |
-| File census, CAS roots, isolation spine | [workspace source map](workspace-source-map.md) |
-| Admitted CAD/Modelica microVM pattern | [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md) |
-| H01 isolation, WAL, and Thread collection bounds | [isolation and Thread boundedness](isolation-and-thread-boundedness.md) |
-| Agent tools, operations, grants | [agent workspace](../agent/agent-workspace.md) |
-| Lookalike pairs | [lookalike traps](../agent/lookalike-traps.md) |
-| Loopback ports, YOLO, runtime ownership | this page |
+| Need                                             | Page                                                                                    |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| File census, CAS roots, isolation spine          | [workspace source map](workspace-source-map.md)                                         |
+| Admitted CAD/Modelica microVM pattern            | [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md) |
+| H01 isolation, WAL, and Thread collection bounds | [isolation and Thread boundedness](isolation-and-thread-boundedness.md)                 |
+| Agent tools, operations, grants                  | [agent workspace](../agent/agent-workspace.md)                                          |
+| Lookalike pairs                                  | [lookalike traps](../agent/lookalike-traps.md)                                          |
+| Loopback ports, YOLO, runtime ownership          | this page                                                                               |
 
 ## Local YOLO approval mode
 
@@ -59,10 +59,9 @@ temporary state. That focused approval gate itself does not execute Build123d.
 `--yolo` is accepted only when the effective MCP hostname is an explicit loopback
 hostname; a non-loopback binding is rejected before startup. The startup-owned gate
 table auto-confirms positive `project_brief_confirm`, `project_decision_approve`, queued
-and `project_agent_run_cancel`. Those paths
-still call the canonical command services and persist the fixed origin
-`{ kind: "human", actorId: "local-yolo:startup-opt-in" }` plus an explicit YOLO
-rationale; they do not fabricate an MCP elicitation response.
+and `project_agent_run_cancel`. Those paths still call the canonical command services
+and persist the fixed origin `{ kind: "human", actorId: "local-yolo:startup-opt-in" }`
+plus an explicit YOLO rationale; they do not fabricate an MCP elicitation response.
 
 This mode does not auto-reject and it does not satisfy a human-only execution
 interaction. It also does not bypass compilation admission, qualified execution
@@ -72,24 +71,25 @@ execution or evidence shortcut; no environment variable enables it implicitly.
 
 ## Local endpoints
 
-| Endpoint                     | Owner                       | Purpose                                                                                                                                                                            |
-| ---------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `http://127.0.0.1:8180`      | SysON                       | SysML web modeler                                                                                                                                                                  |
-| `http://127.0.0.1:3009/mcp`  | `mcp-syson`                 | Model, constraints and evaluations                                                                                                                                                 |
-| `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                                                                                                                           |
-| `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | Historical recipe CAD execution and shared exports                                                                                                                                 |
-| `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Legacy agent-proposed geometry preview, private export volume                                                                                                                      |
-| `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Static, modal, buckling, creep and coupled-thermal FEA; identity-bound recorded static runs                                                                                        |
-| `http://127.0.0.1:3016/mcp`  | retired                     | Historical `mcp-modelica` Compose sidecar. Product Modelica is the local microVM (admitted + kit). Do not start or probe this port.                                                |
-| `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | Measured DFM checks on produced STEP (`dfm_check_envelope`, `dfm_check_min_thickness`, `dfm_check_overhangs`); SHA-256 attestation required. Live tools take `step_path`, not STL. |
-| `http://127.0.0.1:3019/mcp`  | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                                                                                                                                                    |
-| `http://127.0.0.1:3022/mcp`  | `mcp-prusaslicer`           | Print time and material from real G-code                                                                                                                                           |
-| `http://127.0.0.1:3023/mcp`  | `mcp-spice`                 | ngspice operating points and transients                                                                                                                                            |
-| `http://127.0.0.1:3020/mcp`  | `deno task start`           | Fleet reads plus agent project control                                                                                                                                             |
-| `http://127.0.0.1:3021/`     | retired                     | Former Console MCP App harness; `preview:browser` now refuses                                                                                                                      |
-| `http://127.0.0.1:5175/`     | `deno task preview:cockpit` | Read-only BFF (API/SSE) and built cockpit HTML + hashed JS/CSS                                                                                                                     |
-| `http://127.0.0.1:5173/`     | `deno task preview:thread`  | Vite HMR cockpit; proxies `/api` to the BFF on :5175                                                                                                                               |
-| `/api/draft-assets/<sha256>` | BFF (native Workbench)      | Read-only geometry draft bytes; 404 if absent or hash-mismatched; Cache-Control: no-store                                                                                          |
+| Endpoint                     | Owner                       | Purpose                                                                                                                                                                                                      |
+| ---------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `http://127.0.0.1:8180`      | SysON                       | SysML web modeler                                                                                                                                                                                            |
+| `http://127.0.0.1:3009/mcp`  | `mcp-syson`                 | Model, constraints and evaluations                                                                                                                                                                           |
+| `http://127.0.0.1:3012/mcp`  | `mcp-erpnext`               | Provider-native ERP data                                                                                                                                                                                     |
+| `http://127.0.0.1:3014/mcp`  | `mcp-build123d`             | Historical recipe CAD execution and shared exports                                                                                                                                                           |
+| `http://127.0.0.1:3024/mcp`  | `mcp-build123d-sandbox`     | Legacy agent-proposed geometry preview, private export volume                                                                                                                                                |
+| `http://127.0.0.1:3015/mcp`  | `mcp-calculix`              | Static, modal, buckling, creep and coupled-thermal FEA; identity-bound recorded static runs                                                                                                                  |
+| `http://127.0.0.1:3016/mcp`  | retired                     | Historical `mcp-modelica` Compose sidecar. Product Modelica is the local microVM (admitted + kit). Do not start or probe this port.                                                                          |
+| `http://127.0.0.1:3018/mcp`  | `mcp-dfm`                   | Measured DFM checks on produced STEP (`dfm_check_envelope`, `dfm_check_min_thickness`, `dfm_check_overhangs`); SHA-256 attestation required. Live tools take `step_path`, not STL.                           |
+| `http://127.0.0.1:3019/mcp`  | `mcp-tolerance`             | ISO 286-1 fits and 1D stack-ups                                                                                                                                                                              |
+| `http://127.0.0.1:3022/mcp`  | `mcp-prusaslicer`           | Print time and material from real G-code                                                                                                                                                                     |
+| `http://127.0.0.1:3023/mcp`  | `mcp-spice`                 | ngspice operating points and transients                                                                                                                                                                      |
+| `http://127.0.0.1:3020/mcp`  | `deno task start`           | Fleet reads plus agent project control                                                                                                                                                                       |
+| `http://127.0.0.1:5176/`     | packaged Desktop Workbench  | Private helper BFF: canonical Workbench GET/SSE plus built assets. Desktop alone retains the session token and proxies an exact same-origin path allowlist; this is not a public preview or command endpoint |
+| `http://127.0.0.1:3021/`     | retired                     | Former Console MCP App harness; `preview:browser` now refuses                                                                                                                                                |
+| `http://127.0.0.1:5175/`     | `deno task preview:cockpit` | Read-only BFF (API/SSE) and built cockpit HTML + hashed JS/CSS                                                                                                                                               |
+| `http://127.0.0.1:5173/`     | `deno task preview:thread`  | Vite HMR cockpit; proxies `/api` to the BFF on :5175                                                                                                                                                         |
+| `/api/draft-assets/<sha256>` | BFF (native Workbench)      | Read-only geometry draft bytes; 404 if absent or hash-mismatched; Cache-Control: no-store                                                                                                                    |
 
 Docker Compose starts the provider topology only. Product composition occurs in the
 backend workflow and linked state, not in the container orchestrator.
@@ -100,11 +100,11 @@ One MCP server wraps exactly one engine, and the server's name states what kind 
 contract the caller signs. Three naming rules coexist, and the choice between them is
 informative, not stylistic:
 
-| Rule                  | When it applies                                                                                                     | Examples                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Exact engine name** | The input contract is specific to that engine — its scripts, profiles or flags would not transfer to a competitor   | `mcp-calculix`, `mcp-build123d`, `mcp-prusaslicer`                       |
+| Rule                  | When it applies                                                                                                     | Examples                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Exact engine name** | The input contract is specific to that engine — its scripts, profiles or flags would not transfer to a competitor   | `mcp-calculix`, `mcp-build123d`, `mcp-prusaslicer`                                                |
 | **Standard language** | The input is a format several engines speak; the wrapped implementation is an internal detail the caller never sees | `mcp-spice` (ngspice). Historical `mcp-modelica` (OpenModelica) was the retired port 3016 sidecar |
-| **Domain**            | No single dominant library exists — the engine is normative formulas or in-house computation                        | `mcp-dfm` (gmsh + in-house checks), `mcp-tolerance` (ISO 286-1 formulas) |
+| **Domain**            | No single dominant library exists — the engine is normative formulas or in-house computation                        | `mcp-dfm` (gmsh + in-house checks), `mcp-tolerance` (ISO 286-1 formulas)                          |
 
 Corollaries: tool names are prefixed with the server name (`prusaslicer_estimate_fff`,
 never a generic `slicer_*`); a second engine in the same domain is a second server, not
@@ -146,6 +146,13 @@ Loopback is a deployment guard, not user authentication. Human confirmation flow
 the paired MCP host and still require a real authentication policy before multi-user
 deployment.
 
+The packaged Desktop Workbench does not reuse preview port `:5175`. Its dedicated helper
+binds fixed private port `:5176`, reads the same Application Support control-plane
+project/Thread/CAS/focus roots, and writes only its separate lifecycle directory. The
+WebView never receives `:5176`, the helper session capability, MCP or provider
+credentials. `POST`, health, lifecycle and command paths are absent from the Desktop
+proxy.
+
 `deno task preview:thread` injects `--workspace-id=primary` and follows the durable
 cockpit focus. Pass `--project-id=` only to pin a vehicle; that disables focus follow.
 Without a focus and without a pin, it reports awaiting project context. It never seeds
@@ -159,19 +166,19 @@ inspect the same active project, propose an input, elicit an exact human decisio
 conversation, queue a ready registered work item, and execute only that server-derived
 run. Agents cannot confirm their own proposal or choose arbitrary provider calls. New V3
 projects are created from first intent and the server-owned baseline executor creates
-the immutable,
-pre-technical approved-brief r1. The provider-backed `architecture.seed-syson-model@2`
-executor accepts only that exact r1 and its brief-bound project-change lineage, then
-uses fixed SysON calls to create a blank project, document, and root package; it reads
-the root back, normalizes its identities into `syson-model-seed-capture/2.0`, and
-publishes r2. The signed MRTR is the closed seed grammar (`seed.schemaVersion`,
-`seed.scope`, `seed.operation`, `model.name`); the executor still derives provider names
-from `project.project.name` and the run id and does not consume those parameters.
-Callers supply no arbitrary arguments or SysML text; uncertain writes are not blindly
-retried. r2 remains a container identity, not an architecture, requirements, CAD,
-simulation, measurement, or verdict. The seed work item must name the documentary
-baseline in `dependsOnWorkItemIds`; `project_change_append` refuses the omission. The
-executor keeps the same check for historical work items accepted before that guard.
+the immutable, pre-technical approved-brief r1. The provider-backed
+`architecture.seed-syson-model@2` executor accepts only that exact r1 and its
+brief-bound project-change lineage, then uses fixed SysON calls to create a blank
+project, document, and root package; it reads the root back, normalizes its identities
+into `syson-model-seed-capture/2.0`, and publishes r2. The signed MRTR is the closed
+seed grammar (`seed.schemaVersion`, `seed.scope`, `seed.operation`, `model.name`); the
+executor still derives provider names from `project.project.name` and the run id and
+does not consume those parameters. Callers supply no arbitrary arguments or SysML text;
+uncertain writes are not blindly retried. r2 remains a container identity, not an
+architecture, requirements, CAD, simulation, measurement, or verdict. The seed work item
+must name the documentary baseline in `dependsOnWorkItemIds`; `project_change_append`
+refuses the omission. The executor keeps the same check for historical work items
+accepted before that guard.
 
 From that exact technical basis, the generic route can execute further reviewed
 contracts. `model.write-architecture@1` renders and verifies one human-approved SysML
@@ -198,10 +205,10 @@ names only a project and an opaque manifest fingerprint. The server rereads the 
 manifest, exact Thread lineage, declared mechanical evidence, and current approved Brief
 V2 gate dependencies; `verify.seal-cross-domain-impact-manifest@1` can then seal that
 same identity after a separate human MRTR. Neither surface evaluates a branch, changes a
-gate claim, calls a solver/provider, or creates a Workbench command path.
-The post-MRTR seal is one fresh documentary Thread document whose capture records those
-identities; it is not the later impact-evaluation capture: it creates no branch outcome,
-gate-claim transition, invalidation, proposed work item, or automatic rerun.
+gate claim, calls a solver/provider, or creates a Workbench command path. The post-MRTR
+seal is one fresh documentary Thread document whose capture records those identities; it
+is not the later impact-evaluation capture: it creates no branch outcome, gate-claim
+transition, invalidation, proposed work item, or automatic rerun.
 
 `project_cross_domain_impact_decision_review` is the later read-only recross: the caller
 names only `projectId`. The server reopens the unique current Thread tip and unique
@@ -222,8 +229,8 @@ evidence from that assertion/X08 recross. Unrelated accepted closeouts for other
 executions do not block; zero or multiple closeouts for the same asserted evidence stay
 `impact-unresolved`. That closeout's named identities (`canonicalStep`, `sealedProof`,
 `executionEvidence`, `evaluationCapture`) select the FEA artifacts; a sibling evidence
-from the same FEA run is not an L4 substitute. Canonical STEP is recrossed as the
-unique cad-asset sibling owned by the cad-model attached to a completed
+from the same FEA run is not an L4 substitute. Canonical STEP is recrossed as the unique
+cad-asset sibling owned by the cad-model attached to a completed
 `design.write-geometry@1` run; the STEP producer is the sandbox export, not that
 write-geometry evidence. An isolated, preview, arbitrary, or ambiguously owned STEP
 stays `impact-unresolved`. Thread consumptions are recrossed from the snapshot
@@ -288,19 +295,19 @@ captures remain documentary evidence; they are not a live projector or executor 
 
 ## Runtime ownership
 
-| Data                         | Owner                             | Workspace access                                                                                      |
-| ---------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| SysML and requirements       | SysON                             | Private provider MCP plus operation WAL/readback; outside local microVM isolation                     |
-| Local Build123d execution    | Microsandbox microVM + DT broker  | Exact admitted bytes in; declared output handles out; no repository, secrets or canonical volumes     |
-| Local Build123d output       | Recorded-analysis output CAS      | Publication-gated private STEP plus byte-free receipt; noncanonical and absent from Thread artifacts  |
-| CAD exports                  | `exports` volume                  | Hash-attested build123d to CalculiX read-only exchange                                                |
-| Generic FEA staging          | CalculiX `calculix-inputs` volume | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence |
-| CalculiX recorded runs       | `calculix-runs` volume            | Identity-bound `calculix_run_get` plus exact `resources/read`; separate from CAD exchange             |
+| Data                         | Owner                             | Workspace access                                                                                                                            |
+| ---------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| SysML and requirements       | SysON                             | Private provider MCP plus operation WAL/readback; outside local microVM isolation                                                           |
+| Local Build123d execution    | Microsandbox microVM + DT broker  | Exact admitted bytes in; declared output handles out; no repository, secrets or canonical volumes                                           |
+| Local Build123d output       | Recorded-analysis output CAS      | Publication-gated private STEP plus byte-free receipt; noncanonical and absent from Thread artifacts                                        |
+| CAD exports                  | `exports` volume                  | Hash-attested build123d to CalculiX read-only exchange                                                                                      |
+| Generic FEA staging          | CalculiX `calculix-inputs` volume | Digital Thread writes content-addressed STEP bytes; provider-private, non-authoritative, not evidence                                       |
+| CalculiX recorded runs       | `calculix-runs` volume            | Identity-bound `calculix_run_get` plus exact `resources/read`; separate from CAD exchange                                                   |
 | Modelica execution           | Local Modelica microVM            | Admitted closed-subset and qualified kit via `casys/modelica-microsandbox-worker`. Port 3016 sidecar and `modelica-runs` volume are retired |
-| ERP data                     | External ERPNext database         | Provider-native MCP from backend only                                                                 |
-| Native `ThreadSnapshot`      | Immutable local file store        | Read-only projection in the native Workbench                                                          |
-| `EngineeringProjectSnapshot` | Immutable active file store       | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions              |
-| Live engineering activity    | Append-only local JSONL           | SSE projection; never canonical authority                                                             |
+| ERP data                     | External ERPNext database         | Provider-native MCP from backend only                                                                                                       |
+| Native `ThreadSnapshot`      | Immutable local file store        | Read-only projection in the native Workbench                                                                                                |
+| `EngineeringProjectSnapshot` | Immutable active file store       | Intent, living brief, exact reviews, bounded runs and evidence references; CAS revisions                                                    |
+| Live engineering activity    | Append-only local JSONL           | SSE projection; never canonical authority                                                                                                   |
 
 The Console browser harness forwards only reviewed Console tools. It is not a generic
 MCP proxy. The native browser receives ordinary linked JSON and no MCP credentials.

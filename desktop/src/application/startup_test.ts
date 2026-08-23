@@ -4,6 +4,7 @@ import type { DesktopControlPlaneProjection } from "../contracts/diagnostics.ts"
 import {
   type DesktopControlPlaneController,
   type DesktopControlPlaneLaunch,
+  type DesktopWorkbenchController,
   startDesktopApplication,
 } from "./startup.ts";
 
@@ -36,6 +37,27 @@ class FakeController implements DesktopControlPlaneController {
     this.starts += 1;
     if (this.failStart) return Promise.reject(new Error("private helper failure"));
     return Promise.resolve(this.projection);
+  }
+
+  stop(): Promise<void> {
+    this.stops += 1;
+    return Promise.resolve();
+  }
+}
+
+class FakeWorkbenchController implements DesktopWorkbenchController {
+  starts = 0;
+  stops = 0;
+
+  start() {
+    this.starts += 1;
+    return Promise.resolve({
+      projection: { lifecycle: "owned-ready" as const, version: "0.3.0" },
+      session: {
+        origin: "http://127.0.0.1:5176" as const,
+        accessToken: "a".repeat(64),
+      },
+    });
   }
 
   stop(): Promise<void> {
@@ -113,6 +135,34 @@ Deno.test("a wrong active sidecar pin fails closed before the lifecycle factory"
   );
 });
 
+Deno.test("a wrong active Workbench pin fails closed before either lifecycle factory", async () => {
+  const manifest = structuredClone(rawManifest);
+  const workbench = manifest.components.find((component) =>
+    component.id === "workbench-projection"
+  );
+  if (workbench === undefined) throw new Error("missing Workbench fixture");
+  workbench.version = "0.3.1";
+  let factories = 0;
+  const application = await startDesktopApplication(input({ manifest }), {
+    createControlPlane() {
+      factories += 1;
+      return new FakeController();
+    },
+    createWorkbench() {
+      factories += 1;
+      return new FakeWorkbenchController();
+    },
+  });
+  assertEquals(factories, 0);
+  assertEquals(application.model.status, "recovery-required");
+  assertEquals(
+    application.model.components.find((component) =>
+      component.id === "workbench-projection"
+    )?.state,
+    "error",
+  );
+});
+
 Deno.test("an active local control plane is not accepted as the packaged sidecar", async () => {
   const manifest = structuredClone(rawManifest);
   const controlPlane = manifest.components.find((component) =>
@@ -148,7 +198,7 @@ Deno.test("startup passes only the nested helper and validated finite layout", a
     launchCwd: "/Users/ada/Library/Application Support",
     relativeWorkspace: "ai.casys.digital-thread/control-plane",
     productIdentifier: "ai.casys.digital-thread",
-    productVersion: "0.2.0",
+    productVersion: "0.3.0",
     controlPlaneVersion: "0.2.0",
   });
   assertEquals(controller.starts, 1);
@@ -162,6 +212,62 @@ Deno.test("startup passes only the nested helper and validated finite layout", a
   await application.stop();
   await application.stop();
   assertEquals(controller.stops, 1);
+});
+
+Deno.test("startup keeps Workbench capability host-only and drains both owned helpers", async () => {
+  const controlPlane = new FakeController();
+  const workbench = new FakeWorkbenchController();
+  let workbenchLaunch: DesktopControlPlaneLaunch | undefined;
+  const application = await startDesktopApplication(input(), {
+    createControlPlane: () => controlPlane,
+    createWorkbench(launch) {
+      workbenchLaunch = launch;
+      return workbench;
+    },
+  });
+  assertEquals(
+    workbenchLaunch?.helperPath,
+    "/Applications/CasysDigitalThread.app/Contents/Helpers/casys-workbench",
+  );
+  assertEquals(workbenchLaunch?.productVersion, "0.3.0");
+  assertEquals(workbench.starts, 1);
+  assertEquals(application.workbenchSession?.accessToken, "a".repeat(64));
+  assertFalse(JSON.stringify(application.model).includes("a".repeat(64)));
+  assertFalse(JSON.stringify(application.model).includes("127.0.0.1:5176"));
+  assertEquals(
+    application.model.components.find((component) =>
+      component.id === "workbench-projection"
+    )?.state,
+    "ready",
+  );
+  await application.stop();
+  await application.stop();
+  assertEquals(controlPlane.stops, 1);
+  assertEquals(workbench.stops, 1);
+});
+
+Deno.test("Workbench can reopen offline state while the control plane startup is degraded", async () => {
+  const workbench = new FakeWorkbenchController();
+  const application = await startDesktopApplication(input(), {
+    createControlPlane: () => new FakeController(readyProjection(), true),
+    createWorkbench: () => workbench,
+  });
+  assertEquals(workbench.starts, 1);
+  assertEquals(application.workbenchSession?.origin, "http://127.0.0.1:5176");
+  assertEquals(
+    application.model.components.find((component) =>
+      component.id === "casys-control-plane"
+    )?.state,
+    "error",
+  );
+  assertEquals(
+    application.model.components.find((component) =>
+      component.id === "workbench-projection"
+    )?.state,
+    "ready",
+  );
+  await application.stop();
+  assertEquals(workbench.stops, 1);
 });
 
 Deno.test("missing packaged helper fabricates neither a version nor provider counts", async () => {

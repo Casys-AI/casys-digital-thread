@@ -188,7 +188,32 @@ export interface NativeWorkbenchHandlerOptions {
    * to thread-observed systems. Never live health.
    */
   cockpitFleet?: () => Promise<CockpitFleetProjection | undefined>;
+  /**
+   * Sanitized persisted-project index for an unfocused Desktop workspace.
+   * This is a read-only navigation projection, never a focus mutation.
+   */
+  projectCatalog?: () => Promise<NativeWorkbenchProjectCatalog>;
 }
+
+export interface NativeWorkbenchProjectCatalogItem {
+  readonly id: string;
+  readonly name: string;
+  readonly revision: number;
+  readonly subjectId: string;
+}
+
+export type NativeWorkbenchProjectCatalog =
+  | {
+    readonly schemaVersion: "native-workbench-project-catalog/1.0";
+    readonly state: "available";
+    readonly projects: readonly NativeWorkbenchProjectCatalogItem[];
+  }
+  | {
+    readonly schemaVersion: "native-workbench-project-catalog/1.0";
+    readonly state: "unavailable";
+    readonly projects: readonly [];
+    readonly reason: string;
+  };
 
 /**
  * A caller that names a project does not also have to know the project's
@@ -341,6 +366,10 @@ export function createNativeWorkbenchHandler(
       if (request.method !== "GET") return methodNotAllowed();
       return await serveCockpitFleet(options);
     }
+    if (url.pathname === "/api/projects") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await serveProjectCatalog(options);
+    }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
       return await snapshotEventStream(request, options);
@@ -388,14 +417,9 @@ export function createNativeWorkbenchHandler(
         ? await Deno.readTextFile(options.htmlPath)
         : options.html ?? "";
       return new Response(html, {
-        headers: {
+        headers: workbenchDocumentHeaders({
           "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store",
-          "Content-Security-Policy":
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
-          "X-Content-Type-Options": "nosniff",
-          "X-Frame-Options": "DENY",
-        },
+        }),
       });
     }
     if (request.method === "GET") {
@@ -515,12 +539,11 @@ async function snapshotEventStream(
   });
 
   return new Response(body, {
-    headers: {
+    headers: workbenchReadHeaders({
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
-      "X-Content-Type-Options": "nosniff",
-    },
+    }),
   });
 }
 
@@ -796,7 +819,7 @@ async function serveThreadAsset(
     return new Response("Not found", { status: 404 });
   }
   return new Response(Uint8Array.from(bytes).buffer, {
-    headers: {
+    headers: workbenchReadHeaders({
       "Content-Type": filename.endsWith(".step")
         ? "model/step"
         : filename.endsWith(".glb")
@@ -805,8 +828,7 @@ async function serveThreadAsset(
         ? "model/gltf+json"
         : "model/stl",
       "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
+    }),
   });
 }
 
@@ -853,11 +875,10 @@ async function serveDraftAsset(
     return new Response("Draft asset fingerprint mismatch", { status: 404 });
   }
   return new Response(Uint8Array.from(bytes).buffer, {
-    headers: {
+    headers: workbenchReadHeaders({
       "Content-Type": "application/octet-stream",
       "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
+    }),
   });
 }
 
@@ -933,11 +954,10 @@ async function serveWorkbenchUiAsset(
   try {
     const bytes = await Deno.readFile(path);
     return new Response(bytes, {
-      headers: {
+      headers: workbenchReadHeaders({
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=31536000, immutable",
-        "X-Content-Type-Options": "nosniff",
-      },
+      }),
     });
   } catch (error) {
     if (error instanceof Deno.errors.NotFound) {
@@ -1170,6 +1190,7 @@ interface FocusedWorkspaceHandlerOptions {
   readonly focus: CockpitFocusStore;
   readonly workspaceId: string;
   readonly native: (request: Request) => Promise<Response>;
+  readonly projectCatalog?: () => Promise<NativeWorkbenchProjectCatalog>;
 }
 
 /**
@@ -1182,16 +1203,22 @@ export function createFocusedWorkspaceHandler(
   return async (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/healthz") return await options.native(request);
+    if (request.method !== "GET") return methodNotAllowed();
     if (url.pathname.startsWith("/assets/")) {
-      if (request.method !== "GET") return methodNotAllowed();
       return await options.native(request);
     }
+    if (url.pathname === "/api/projects") return await options.native(request);
     const focus = await options.focus.get(options.workspaceId);
-    if (!focus) return cockpitFocusUnavailable(options.workspaceId, request);
+    if (!focus) {
+      return await cockpitFocusUnavailable(
+        options.workspaceId,
+        request,
+        options.projectCatalog,
+      );
+    }
     if (
       url.pathname === "/" || url.pathname === "/native-workbench.html"
     ) {
-      if (request.method !== "GET") return methodNotAllowed();
       // The canonical cockpit owns the root before and after approval. The
       // browser reads the durable focus through its read-only API, never by a
       // focus command or a second application URL.
@@ -1221,6 +1248,24 @@ async function serveCockpitFleet(
   return json(projection, 200);
 }
 
+async function serveProjectCatalog(
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response> {
+  if (!options.projectCatalog) {
+    return json(
+      {
+        schemaVersion: "native-workbench-project-catalog/1.0",
+        state: "unavailable",
+        projects: [],
+        reason: "Persisted project catalog is unavailable.",
+      } satisfies NativeWorkbenchProjectCatalog,
+      503,
+    );
+  }
+  const catalog = await options.projectCatalog();
+  return json(catalog, catalog.state === "available" ? 200 : 503);
+}
+
 async function readOptionalComponentCatalog(
   path: string,
 ): Promise<ThreadComponentCatalog | undefined> {
@@ -1241,17 +1286,17 @@ function json(
 ): Response {
   return Response.json(value, {
     status,
-    headers: {
+    headers: workbenchReadHeaders({
       "Cache-Control": "no-store",
       ...headers,
-    },
+    }),
   });
 }
 
 function methodNotAllowed(allow = "GET"): Response {
   return new Response("Method not allowed", {
     status: 405,
-    headers: { Allow: allow },
+    headers: workbenchReadHeaders({ Allow: allow }),
   });
 }
 
@@ -1269,10 +1314,11 @@ function publicFocusTarget(target: ActiveTargetResolution): {
   return { kind: "project", projectId: target.projectId };
 }
 
-function cockpitFocusUnavailable(
+async function cockpitFocusUnavailable(
   workspaceId: string,
   request: Request,
-): Response {
+  projectCatalog?: () => Promise<NativeWorkbenchProjectCatalog>,
+): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/")) {
     return json({
@@ -1282,20 +1328,70 @@ function cockpitFocusUnavailable(
         "The paired agent has not selected a durable project for this cockpit workspace yet.",
     }, 409);
   }
+  const catalog = projectCatalog ? await projectCatalog() : {
+    schemaVersion: "native-workbench-project-catalog/1.0" as const,
+    state: "unavailable" as const,
+    projects: [] as const,
+    reason: "Persisted project catalog is unavailable.",
+  };
+  const projects = catalog.state === "available"
+    ? catalog.projects.map((project) =>
+      `<li><strong>${escapeHtml(project.name)}</strong><br><code>${
+        escapeHtml(project.id)
+      }</code> · revision ${project.revision}</li>`
+    ).join("")
+    : `<li><strong>unavailable</strong> — ${escapeHtml(catalog.reason)}</li>`;
+  const empty = catalog.state === "available" && catalog.projects.length === 0
+    ? "<p>No persisted engineering project is available.</p>"
+    : `<ul>${projects}</ul>`;
   return new Response(
-    `<!doctype html><title>Cockpit awaiting project context</title><main><h1>Opening project context</h1><p>Your paired agent has not selected a project for this workspace yet. Continue the conversation; no engineering tool is running.</p></main>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cockpit awaiting project context</title><style>body{font:16px system-ui;max-width:52rem;margin:8vh auto;padding:0 1.5rem;color:#1c2126;background:#f5f2ea}main{padding:2rem;border:1px solid #d4cdc0;background:#fbf8f1}code{overflow-wrap:anywhere}li+li{margin-top:1rem}</style><main><p>Casys Digital Thread</p><h1>Opening project context</h1><p>Your paired agent has not selected a durable project for this workspace. No engineering tool is running.</p><h2>Persisted projects</h2>${empty}<p>Select focus through the paired MCP conversation; this read-only Workbench has no project command.</p></main></html>`,
     {
       status: 200,
-      headers: {
+      headers: workbenchDocumentHeaders({
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store",
-        "Content-Security-Policy":
-          "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
-        "X-Content-Type-Options": "nosniff",
-        "X-Frame-Options": "DENY",
-      },
+      }),
     },
   );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+const WORKBENCH_CSP = "default-src 'none'; base-uri 'none'; form-action 'none'; " +
+  "frame-ancestors 'none'; object-src 'none'; script-src 'self'; " +
+  "style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
+  "font-src 'self'; connect-src 'self'; media-src 'none'; " +
+  "worker-src 'none'; manifest-src 'none'";
+
+function workbenchReadHeaders(
+  headers: Readonly<Record<string, string>> = {},
+): Headers {
+  return new Headers({
+    "Cache-Control": "no-store",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Permissions-Policy":
+      "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    ...headers,
+  });
+}
+
+function workbenchDocumentHeaders(
+  headers: Readonly<Record<string, string>> = {},
+): Headers {
+  const result = workbenchReadHeaders(headers);
+  result.set("Content-Security-Policy", WORKBENCH_CSP);
+  return result;
 }
 
 function configuredProjectId(options: NativeWorkbenchHandlerOptions): string {

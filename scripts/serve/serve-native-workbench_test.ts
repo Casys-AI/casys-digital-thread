@@ -160,6 +160,84 @@ Deno.test("native Workbench health is independent of focus and project state", a
   assertEquals(focusReads, 1);
 });
 
+Deno.test("native Workbench exposes persisted projects without inventing a default focus", async () => {
+  const focus = new MutableFocus(undefined);
+  const catalog = {
+    schemaVersion: "native-workbench-project-catalog/1.0" as const,
+    state: "available" as const,
+    projects: [{
+      id: "project-<one>",
+      name: "Pump & <script>alert(1)</script>",
+      revision: 7,
+      subjectId: "subject-one",
+    }],
+  };
+  const native = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([]),
+    html: "unused",
+    projectCatalog: () => Promise.resolve(catalog),
+  });
+  const handler = createFocusedWorkspaceHandler({
+    focus,
+    workspaceId: "primary",
+    native,
+    projectCatalog: () => Promise.resolve(catalog),
+  });
+
+  const projects = await handler(new Request("http://localhost/api/projects"));
+  assertEquals(projects.status, 200);
+  assertEquals(await projects.json(), catalog);
+  assertEquals(projects.headers.get("X-Content-Type-Options"), "nosniff");
+
+  const page = await handler(new Request("http://localhost/"));
+  const html = await page.text();
+  assertEquals(page.status, 200);
+  assertStringIncludes(html, "Pump &amp; &lt;script&gt;alert(1)&lt;/script&gt;");
+  assertStringIncludes(html, "project-&lt;one&gt;");
+  assertEquals(html.includes("<script>alert(1)</script>"), false);
+  assertEquals(html.includes("href="), false);
+  assertEquals(html.includes("<form"), false);
+  assertStringIncludes(
+    page.headers.get("Content-Security-Policy") ?? "",
+    "connect-src 'self'",
+  );
+
+  const rejected = await handler(
+    new Request("http://localhost/", { method: "POST" }),
+  );
+  assertEquals(rejected.status, 405);
+  assertEquals(rejected.headers.get("Allow"), "GET");
+  assertEquals(rejected.headers.get("X-Frame-Options"), "DENY");
+});
+
+Deno.test("native Workbench labels persisted-project discovery literally unavailable", async () => {
+  const unavailable = {
+    schemaVersion: "native-workbench-project-catalog/1.0" as const,
+    state: "unavailable" as const,
+    projects: [] as const,
+    reason: "Persisted project revisions could not be reopened exactly.",
+  };
+  const native = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([]),
+    html: "unused",
+    projectCatalog: () => Promise.resolve(unavailable),
+  });
+  const handler = createFocusedWorkspaceHandler({
+    focus: new MutableFocus(undefined),
+    workspaceId: "primary",
+    native,
+    projectCatalog: () => Promise.resolve(unavailable),
+  });
+
+  const projects = await handler(new Request("http://localhost/api/projects"));
+  assertEquals(projects.status, 503);
+  assertEquals((await projects.json()).state, "unavailable");
+  const page = await handler(new Request("http://localhost/"));
+  assertStringIncludes(await page.text(), "<strong>unavailable</strong>");
+});
+
 Deno.test("native Workbench serves a planning-only project without borrowing a thread", async () => {
   const project = projectFixture("project-one", "subject-one");
   const store = new EmptyThreadStore();
@@ -284,7 +362,7 @@ Deno.test("native Workbench applies the verification-case read model after pure 
     coverage: [
       { family: "mechanical-proof", status: "observed" },
       { family: "sensitivity-study", status: "observed" },
-          ],
+    ],
     cases: [],
     issues: [],
   });
@@ -549,14 +627,15 @@ Deno.test("native Workbench serves declared fleet identity without health", asyn
     projectId: project.project.id,
     subjectId: project.project.subjectId,
     html: "<html><body>Workbench</body></html>",
-    cockpitFleet: async () => ({
-      servers: [{
-        id: "syson",
-        displayName: "SysON",
-        role: "System model",
-        required: true,
-      }],
-    }),
+    cockpitFleet: () =>
+      Promise.resolve({
+        servers: [{
+          id: "syson",
+          displayName: "SysON",
+          role: "System model",
+          required: true,
+        }],
+      }),
   });
 
   const response = await handler(new Request("http://localhost/api/fleet"));
@@ -603,14 +682,15 @@ Deno.test("native Workbench API routes reject non-GET verbs and keep SSE on GET"
     html: "<html><body>Workbench</body></html>",
     assetReader: () => Promise.resolve(undefined),
     draftAssetReader: () => Promise.resolve(undefined),
-    cockpitFleet: async () => ({
-      servers: [{
-        id: "syson",
-        displayName: "SysON",
-        role: "System model",
-        required: true,
-      }],
-    }),
+    cockpitFleet: () =>
+      Promise.resolve({
+        servers: [{
+          id: "syson",
+          displayName: "SysON",
+          role: "System model",
+          required: true,
+        }],
+      }),
     pollIntervalMs: 50,
   });
 
@@ -1052,9 +1132,9 @@ class ProjectStore implements EngineeringProjectRevisionStore {
 }
 
 class MutableFocus implements CockpitFocusStore {
-  constructor(public value: CockpitFocusSnapshot) {}
+  constructor(public value: CockpitFocusSnapshot | undefined) {}
 
-  get(_workspaceId: string): Promise<CockpitFocusSnapshot> {
+  get(_workspaceId: string): Promise<CockpitFocusSnapshot | undefined> {
     return Promise.resolve(this.value);
   }
 

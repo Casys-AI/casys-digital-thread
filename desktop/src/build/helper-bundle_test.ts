@@ -4,6 +4,9 @@ import {
   HELPER_BUNDLE_RELATIVE_PATH,
   HELPER_STAGE_SOURCE,
   stageControlPlaneHelper,
+  stageWorkbenchHelper,
+  WORKBENCH_BUNDLE_RELATIVE_PATH,
+  WORKBENCH_STAGE_SOURCE,
 } from "./helper-bundle.ts";
 
 Deno.test("stageControlPlaneHelper copies the dedicated helper into Contents/Helpers", async () => {
@@ -26,6 +29,18 @@ Deno.test("stageControlPlaneHelper refuses a general Deno CLI name", async () =>
     Error,
     "general Deno CLI",
   );
+});
+
+Deno.test("stageWorkbenchHelper copies only the dedicated read-only helper", async () => {
+  const root = await Deno.makeTempDir({ prefix: "casys-workbench-bundle-" });
+  const source = `${root}/casys-workbench`;
+  const appPath = `${root}/CasysDigitalThread.app`;
+  await Deno.writeTextFile(source, "workbench-helper-bytes");
+  const staged = await stageWorkbenchHelper({ appPath, sourcePath: source });
+  assertEquals(staged, `${appPath}/${WORKBENCH_BUNDLE_RELATIVE_PATH}`);
+  assertEquals(await Deno.readTextFile(staged), "workbench-helper-bytes");
+  assertEquals(WORKBENCH_STAGE_SOURCE.endsWith("/casys-workbench"), true);
+  assertEquals(WORKBENCH_STAGE_SOURCE.includes("/deno"), false);
 });
 
 Deno.test("assertNoGeneralDenoCli fails closed when a Deno CLI is nested in the app", async () => {

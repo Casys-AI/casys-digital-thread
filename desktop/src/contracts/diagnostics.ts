@@ -58,3 +58,21 @@ export interface DesktopControlPlaneProjection {
     | "unavailable"
     | "error";
 }
+
+/** Renderer-safe Workbench lifecycle; contains no origin, token, path, or pid. */
+export interface DesktopWorkbenchProjection {
+  readonly lifecycle:
+    | "owned-ready"
+    | "reconnected-ready"
+    | "unavailable"
+    | "recovery-required";
+  readonly version?: string;
+  readonly recoveryCode?:
+    | "configuration-unavailable"
+    | "helper-unavailable"
+    | "listener-conflict"
+    | "manifest-mismatch"
+    | "marker-invalid"
+    | "probe-failed"
+    | "startup-failed";
+}

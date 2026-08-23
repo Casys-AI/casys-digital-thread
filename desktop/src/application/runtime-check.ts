@@ -7,7 +7,15 @@ import {
   CONTROL_PLANE_SERVER_VERSION,
 } from "../control-plane/contracts.ts";
 import { validateComponentManifest } from "../host/mod.ts";
-import { PACKAGED_CONTROL_PLANE_HELPER_NAME } from "./helper-path.ts";
+import {
+  WORKBENCH_HOSTNAME,
+  WORKBENCH_PORT,
+  WORKBENCH_VERSION,
+} from "../workbench/contracts.ts";
+import {
+  PACKAGED_CONTROL_PLANE_HELPER_NAME,
+  PACKAGED_WORKBENCH_HELPER_NAME,
+} from "./helper-path.ts";
 
 const manifest = validateComponentManifest(rawManifest);
 if (!manifest.ok) {
@@ -42,13 +50,24 @@ if (
 const controlPlane = manifest.value.components.find((component) =>
   component.id === "casys-control-plane"
 );
+const workbench = manifest.value.components.find((component) =>
+  component.id === "workbench-projection"
+);
 if (
   manifest.value.product.version !== CONTROL_PLANE_PRODUCT_VERSION ||
   controlPlane?.version !== CONTROL_PLANE_SERVER_VERSION ||
   controlPlane?.lifecycle !== "active" || controlPlane?.delivery !== "sidecar"
 ) {
   throw new Error(
-    "Cannot build Desktop: Lot 2 requires the exact active packaged control-plane sidecar pin.",
+    "Cannot build Desktop: Lot 3 requires the exact active packaged control-plane sidecar pin.",
+  );
+}
+if (
+  workbench?.version !== WORKBENCH_VERSION ||
+  workbench.lifecycle !== "active" || workbench.delivery !== "sidecar"
+) {
+  throw new Error(
+    "Cannot build Desktop: Lot 3 requires the exact active packaged Workbench sidecar pin.",
   );
 }
 
@@ -65,15 +84,21 @@ const permissionKeys = Object.keys(denoConfig.permissions.desktop).sort();
 if (
   JSON.stringify(actualEnvironment) !== JSON.stringify(expectedEnvironment) ||
   JSON.stringify(actualRun) !==
-    JSON.stringify([PACKAGED_CONTROL_PLANE_HELPER_NAME]) ||
+    JSON.stringify([
+      PACKAGED_CONTROL_PLANE_HELPER_NAME,
+      PACKAGED_WORKBENCH_HELPER_NAME,
+    ].sort()) ||
   JSON.stringify(actualNet) !==
-    JSON.stringify([`${CONTROL_PLANE_LOOPBACK_HOST}:${CONTROL_PLANE_PORT}`]) ||
+    JSON.stringify([
+      `${CONTROL_PLANE_LOOPBACK_HOST}:${CONTROL_PLANE_PORT}`,
+      `${WORKBENCH_HOSTNAME}:${WORKBENCH_PORT}`,
+    ].sort()) ||
   JSON.stringify(permissionKeys) !==
     JSON.stringify(["env", "import", "net", "run"]) ||
   denoConfig.permissions.desktop.import !== false
 ) {
   throw new Error(
-    "Cannot build Desktop: runtime permissions must contain only application-support env reads, the packaged helper basename, the canonical loopback endpoint, and denied remote imports.",
+    "Cannot build Desktop: runtime permissions must contain only application-support env reads, the two packaged helper basenames, their canonical loopback endpoints, and denied remote imports.",
   );
 }
 

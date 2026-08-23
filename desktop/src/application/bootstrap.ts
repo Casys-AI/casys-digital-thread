@@ -1,6 +1,7 @@
 import type {
   DesktopControlPlaneProjection,
   DesktopShellViewModel,
+  DesktopWorkbenchProjection,
 } from "../contracts/diagnostics.ts";
 import {
   CONTROL_PLANE_PRODUCT_IDENTIFIER,
@@ -17,6 +18,7 @@ import {
   resolveApplicationSupportLayout,
   validateComponentManifest,
 } from "../host/mod.ts";
+import { WORKBENCH_VERSION } from "../workbench/contracts.ts";
 
 export interface DesktopBootstrapInput {
   readonly manifest: unknown;
@@ -28,6 +30,7 @@ export interface DesktopBootstrapInput {
   readonly platform: DesktopPlatform;
   readonly env: EnvironmentReader;
   readonly controlPlane?: DesktopControlPlaneProjection;
+  readonly workbench?: DesktopWorkbenchProjection;
 }
 
 export interface DesktopBootstrapFacts {
@@ -37,10 +40,12 @@ export interface DesktopBootstrapFacts {
   readonly actualDesktopRuntimeVersion: string;
   readonly actualProductVersion: string | null;
   readonly platform: DesktopPlatform;
-  /** Exact Lot 2 product and active sidecar declaration, independent of runtime. */
+  /** Exact product and active control-plane declaration, independent of runtime. */
   readonly controlPlanePinValid: boolean;
   /** True only when every host pin and the packaged sidecar declaration agree. */
   readonly controlPlaneLaunchable: boolean;
+  readonly workbenchPinValid: boolean;
+  readonly workbenchLaunchable: boolean;
   readonly controlPlaneVersion?: string;
 }
 
@@ -67,6 +72,11 @@ export function inspectDesktopBootstrap(
       component.id === "casys-control-plane"
     )
     : undefined;
+  const workbench = manifest.ok
+    ? manifest.value.components.find((component) =>
+      component.id === "workbench-projection"
+    )
+    : undefined;
   const runtimeMatches = manifest.ok &&
     input.actualDenoVersion.trim() === manifest.value.runtime.denoVersion &&
     input.actualDesktopRuntimeVersion.trim() ===
@@ -80,6 +90,11 @@ export function inspectDesktopBootstrap(
     controlPlane.version === CONTROL_PLANE_SERVER_VERSION;
   const controlPlaneLaunchable = input.platform === "macOS" && runtimeMatches &&
     layout.ok && controlPlanePinValid;
+  const workbenchPinValid = manifest.ok &&
+    workbench?.lifecycle === "active" && workbench.delivery === "sidecar" &&
+    workbench.version === WORKBENCH_VERSION;
+  const workbenchLaunchable = input.platform === "macOS" && runtimeMatches &&
+    layout.ok && workbenchPinValid;
 
   return Object.freeze({
     manifest,
@@ -90,6 +105,8 @@ export function inspectDesktopBootstrap(
     platform: input.platform,
     controlPlanePinValid,
     controlPlaneLaunchable,
+    workbenchPinValid,
+    workbenchLaunchable,
     ...(controlPlaneLaunchable
       ? { controlPlaneVersion: CONTROL_PLANE_SERVER_VERSION }
       : {}),
@@ -100,6 +117,7 @@ export function inspectDesktopBootstrap(
 export function bootstrapDesktopShellFromFacts(
   facts: DesktopBootstrapFacts,
   controlPlane?: DesktopControlPlaneProjection,
+  workbench?: DesktopWorkbenchProjection,
 ): DesktopShellViewModel {
   return deriveDesktopShellViewModel({
     manifest: facts.manifest,
@@ -109,6 +127,7 @@ export function bootstrapDesktopShellFromFacts(
     platform: facts.platform,
     layout: facts.layout,
     controlPlane,
+    workbench,
   });
 }
 
@@ -117,5 +136,9 @@ export function bootstrapDesktopShell(
   input: DesktopBootstrapInput,
 ): DesktopShellViewModel {
   const facts = inspectDesktopBootstrap(input);
-  return bootstrapDesktopShellFromFacts(facts, input.controlPlane);
+  return bootstrapDesktopShellFromFacts(
+    facts,
+    input.controlPlane,
+    input.workbench,
+  );
 }

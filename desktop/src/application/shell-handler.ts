@@ -1,5 +1,10 @@
 import type { DesktopShellViewModel } from "../contracts/diagnostics.ts";
 import { desktopShellResponseHeaders, renderDesktopShell } from "../renderer/mod.ts";
+import type { WorkbenchSession } from "../workbench/contracts.ts";
+import {
+  isAllowedWorkbenchPath,
+  proxyDesktopWorkbenchRequest,
+} from "../workbench/proxy.ts";
 
 const DOCUMENT_PATHS = new Set(["/", "/index.html"]);
 
@@ -24,13 +29,41 @@ function textResponse(
  */
 export function createDesktopShellHandler(
   model: DesktopShellViewModel,
-): (request: Request) => Response {
+  workbenchSession?: WorkbenchSession,
+  fetchImpl?: typeof fetch,
+): (request: Request) => Promise<Response> {
   const document = renderDesktopShell(model);
   const headers = desktopShellResponseHeaders();
 
-  return (request: Request): Response => {
+  return async (request: Request): Promise<Response> => {
     const method = request.method.toUpperCase();
     const path = new URL(request.url).pathname;
+    const workbenchPath = isAllowedWorkbenchPath(path);
+    const events = path === "/api/thread/workbench/events";
+    if (
+      workbenchPath &&
+      (method !== "GET" && (method !== "HEAD" || events))
+    ) {
+      return textResponse("Method not allowed.\n", 405, {
+        Allow: events ? "GET" : "GET, HEAD",
+      });
+    }
+    if (workbenchSession && workbenchPath) {
+      try {
+        const proxied = await proxyDesktopWorkbenchRequest(request, {
+          session: workbenchSession,
+          fetchImpl,
+        });
+        if (proxied) return proxied;
+      } catch {
+        if (path.startsWith("/api/")) return workbenchUnavailable(method);
+        if (!DOCUMENT_PATHS.has(path)) {
+          return textResponse(method === "HEAD" ? null : "Not found.\n", 404);
+        }
+      }
+    } else if (path.startsWith("/api/") && workbenchPath) {
+      return workbenchUnavailable(method);
+    }
     if (!DOCUMENT_PATHS.has(path)) {
       return textResponse(method === "HEAD" ? null : "Not found.\n", 404);
     }
@@ -46,4 +79,19 @@ export function createDesktopShellHandler(
       headers,
     });
   };
+}
+
+function workbenchUnavailable(method: string): Response {
+  const body = JSON.stringify({
+    schemaVersion: "desktop-workbench-unavailable/1.0",
+    state: "unavailable",
+  });
+  return new Response(method === "HEAD" ? null : body, {
+    status: 503,
+    headers: {
+      ...desktopShellResponseHeaders(),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }

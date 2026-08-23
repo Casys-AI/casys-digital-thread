@@ -5,6 +5,9 @@ import {
   HELPER_STAGE_SOURCE,
   helperBundlePath,
   stageControlPlaneHelper,
+  stageWorkbenchHelper,
+  WORKBENCH_STAGE_SOURCE,
+  workbenchBundlePath,
 } from "./helper-bundle.ts";
 import {
   assertMacosBundleStrings,
@@ -94,6 +97,10 @@ const helperPath = await stageControlPlaneHelper({
   appPath,
   sourcePath: HELPER_STAGE_SOURCE,
 });
+const workbenchPath = await stageWorkbenchHelper({
+  appPath,
+  sourcePath: WORKBENCH_STAGE_SOURCE,
+});
 const bundleExecutable = await plistValue("CFBundleExecutable");
 if (bundleExecutable === undefined) {
   throw new Error("Final bundle omits CFBundleExecutable.");
@@ -104,15 +111,20 @@ const installed = await installMacosLauncher({
 });
 await assertNoGeneralDenoCli(appPath);
 await command(CODESIGN, ["--force", "--sign", "-", helperPath]);
+await command(CODESIGN, ["--force", "--sign", "-", workbenchPath]);
 await command(CODESIGN, ["--force", "--sign", "-", installed.runtimePath]);
 await command(CODESIGN, ["--force", "--sign", "-", installed.launcherPath]);
 await command(CODESIGN, ["--force", "--sign", "-", appPath]);
 await command(CODESIGN, ["--verify", "--strict", helperPath]);
+await command(CODESIGN, ["--verify", "--strict", workbenchPath]);
 await command(CODESIGN, ["--verify", "--strict", installed.runtimePath]);
 await command(CODESIGN, ["--verify", "--strict", installed.launcherPath]);
 await command(CODESIGN, ["--verify", "--deep", "--strict", appPath]);
 if (helperBundlePath(appPath) !== helperPath) {
   throw new Error("Staged helper path is not the exact bundle Helpers path.");
+}
+if (workbenchBundlePath(appPath) !== workbenchPath) {
+  throw new Error("Staged Workbench path is not the exact bundle Helpers path.");
 }
 if (macosRuntimeExecutablePath(appPath) !== installed.runtimePath) {
   throw new Error("Staged Desktop runtime path is not the exact MacOS path.");

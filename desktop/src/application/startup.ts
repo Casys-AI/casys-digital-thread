@@ -1,6 +1,7 @@
 import type {
   DesktopControlPlaneProjection,
   DesktopShellViewModel,
+  DesktopWorkbenchProjection,
 } from "../contracts/diagnostics.ts";
 import type { ControlPlaneLayoutProfile } from "../control-plane/contracts.ts";
 import type { DesktopPlatform } from "../host/mod.ts";
@@ -9,7 +10,11 @@ import {
   type DesktopBootstrapInput,
   inspectDesktopBootstrap,
 } from "./bootstrap.ts";
-import { resolvePackagedControlPlaneHelper } from "./helper-path.ts";
+import {
+  resolvePackagedControlPlaneHelper,
+  resolvePackagedWorkbenchHelper,
+} from "./helper-path.ts";
+import type { WorkbenchHostResult, WorkbenchSession } from "../workbench/contracts.ts";
 
 export interface DesktopControlPlaneLaunch {
   readonly helperPath: string;
@@ -29,10 +34,20 @@ export interface DesktopControlPlaneController {
   stop(): Promise<void>;
 }
 
+export interface DesktopWorkbenchController {
+  /** Returns a renderer-safe status plus a host-only proxy session. */
+  start(): Promise<WorkbenchHostResult>;
+  /** Stops only the Workbench child retained by this controller. */
+  stop(): Promise<void>;
+}
+
 export interface DesktopStartupPorts {
   readonly createControlPlane: (
     launch: DesktopControlPlaneLaunch,
   ) => DesktopControlPlaneController;
+  readonly createWorkbench?: (
+    launch: DesktopControlPlaneLaunch & { readonly helperPath: string },
+  ) => DesktopWorkbenchController;
 }
 
 export interface DesktopStartupInput
@@ -43,6 +58,8 @@ export interface DesktopStartupInput
 
 export interface StartedDesktopApplication {
   readonly model: DesktopShellViewModel;
+  /** Host-only reverse-proxy session. Never serialize into the renderer. */
+  readonly workbenchSession?: WorkbenchSession;
   stop(): Promise<void>;
 }
 
@@ -57,8 +74,8 @@ export async function startDesktopApplication(
 ): Promise<StartedDesktopApplication> {
   const facts = inspectDesktopBootstrap(input);
   if (
-    !facts.controlPlaneLaunchable || !facts.manifest.ok || !facts.layout.ok ||
-    facts.controlPlaneVersion === undefined
+    !facts.manifest.ok || !facts.layout.ok || facts.controlPlaneVersion === undefined ||
+    !facts.workbenchPinValid
   ) {
     return stoppedApplication(
       bootstrapDesktopShellFromFacts(
@@ -66,20 +83,19 @@ export async function startDesktopApplication(
         facts.manifest.ok && !facts.controlPlanePinValid
           ? manifestMismatchProjection()
           : undefined,
+        facts.manifest.ok && !facts.workbenchPinValid
+          ? workbenchUnavailableProjection("manifest-mismatch", true)
+          : undefined,
       ),
     );
   }
 
-  const helper = resolvePackagedControlPlaneHelper(input.executablePath);
-  if (!helper.ok) {
-    return stoppedApplication(
-      bootstrapDesktopShellFromFacts(facts, helperUnavailableProjection()),
-    );
-  }
+  const controlPlaneHelper = resolvePackagedControlPlaneHelper(input.executablePath);
+  const workbenchHelper = resolvePackagedWorkbenchHelper(input.executablePath);
 
   const layout = facts.layout.value;
   const launch: DesktopControlPlaneLaunch = Object.freeze({
-    helperPath: helper.value,
+    helperPath: controlPlaneHelper.ok ? controlPlaneHelper.value : "unavailable",
     platform: facts.platform,
     layoutProfile: layout.controlPlaneLayoutProfile,
     launchCwd: layout.controlPlaneLaunchCwd,
@@ -90,32 +106,78 @@ export async function startDesktopApplication(
   });
 
   let controller: DesktopControlPlaneController | undefined;
+  let controlPlane = controlPlaneHelper.ok && facts.controlPlaneLaunchable
+    ? undefined
+    : helperUnavailableProjection();
   try {
-    controller = ports.createControlPlane(launch);
-    const projection = await controller.start();
-    return liveApplication(
-      bootstrapDesktopShellFromFacts(facts, projection),
-      controller,
-    );
+    if (controlPlaneHelper.ok && facts.controlPlaneLaunchable) {
+      controller = ports.createControlPlane(launch);
+      controlPlane = await controller.start();
+    }
   } catch {
     await controller?.stop().catch(() => undefined);
-    return stoppedApplication(
-      bootstrapDesktopShellFromFacts(facts, startupFailureProjection()),
-    );
+    controller = undefined;
+    controlPlane = startupFailureProjection();
   }
+
+  let workbenchController: DesktopWorkbenchController | undefined;
+  let workbench: DesktopWorkbenchProjection;
+  let workbenchSession: WorkbenchSession | undefined;
+  if (!workbenchHelper.ok || !facts.workbenchLaunchable || !ports.createWorkbench) {
+    workbench = workbenchUnavailableProjection(
+      workbenchHelper.ok ? "configuration-unavailable" : "helper-unavailable",
+    );
+  } else {
+    try {
+      workbenchController = ports.createWorkbench({
+        ...launch,
+        helperPath: workbenchHelper.value,
+      });
+      const result = await workbenchController.start();
+      workbench = result.projection;
+      workbenchSession = result.session;
+    } catch {
+      await workbenchController?.stop().catch(() => undefined);
+      workbenchController = undefined;
+      workbench = workbenchUnavailableProjection("startup-failed", true);
+    }
+  }
+  return liveApplication(
+    bootstrapDesktopShellFromFacts(facts, controlPlane, workbench),
+    [controller, workbenchController],
+    workbenchSession,
+  );
 }
 
 function liveApplication(
   model: DesktopShellViewModel,
-  controller: DesktopControlPlaneController,
+  controllers: readonly (
+    | DesktopControlPlaneController
+    | DesktopWorkbenchController
+    | undefined
+  )[],
+  workbenchSession?: WorkbenchSession,
 ): StartedDesktopApplication {
   let stopPromise: Promise<void> | undefined;
   return Object.freeze({
     model,
+    ...(workbenchSession === undefined ? {} : { workbenchSession }),
     stop(): Promise<void> {
-      stopPromise ??= controller.stop();
+      stopPromise ??= Promise.allSettled(
+        controllers.map((controller) => controller?.stop()),
+      ).then(() => undefined);
       return stopPromise;
     },
+  });
+}
+
+function workbenchUnavailableProjection(
+  recoveryCode: NonNullable<DesktopWorkbenchProjection["recoveryCode"]>,
+  recoveryRequired = false,
+): DesktopWorkbenchProjection {
+  return Object.freeze({
+    lifecycle: recoveryRequired ? "recovery-required" : "unavailable",
+    recoveryCode,
   });
 }
 

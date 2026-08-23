@@ -266,7 +266,7 @@ function diagnoseProjectEvidence(
     "Project evidence",
     "unresolved",
     "Persisted project evidence is unresolved.",
-    `console_snapshot returned ${snapshot.runCount} candidate run item(s), but Lot 2 has no exact project reopen validator.${demoLabel}`,
+    `console_snapshot returned ${snapshot.runCount} candidate run item(s), but control-plane diagnostics do not reopen an exact project revision.${demoLabel}`,
     "Open an exact project through the read-only Workbench projection before claiming verified evidence.",
   );
 }
