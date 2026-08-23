@@ -22,6 +22,7 @@ import {
   fingerprintAdmittedObservationEvaluationMethod,
   mapAdmittedObservationEvidenceBySourceIdentity,
   selectAdmittedObservationEvaluations,
+  selectUniqueThreadRequirementByPair,
 } from "../../../../domain/modelica/evaluation/admitted-observation-evaluation.ts";
 import {
   encodeAdmittedObservationEvaluationAdmission,
@@ -175,6 +176,14 @@ export class PrepareProjectAdmittedModelicaEvaluationReview
         "recross_failed",
         "The reopened thermal method sheet is foreign to the requested project.",
       );
+    }
+    try {
+      for (const output of sheet.outputs) {
+        selectUniqueThreadRequirementByPair(snapshot.requirements, output);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw reviewError("recross_failed", message);
     }
 
     const evidenceArtifact = selectUniqueFreshEvidence(snapshot);

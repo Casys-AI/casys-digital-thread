@@ -132,6 +132,45 @@ Deno.test(
 );
 
 Deno.test(
+  "evaluate-admitted-modelica-observations selects the signed metric among shared SysML RequirementUsage ids",
+  async () => {
+    const fixture = await executeFixture({ extraSharedElementRequirements: true });
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      const snapshot = await fixture.snapshots.getFresh(
+        project.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      assertEquals(snapshot?.evaluations[0]?.requirementId, THREAD_REQUIREMENT_ID);
+      assertEquals(
+        snapshot?.evaluations.every((item) => item.status === "unresolved"),
+        true,
+      );
+      assertEquals(fixture.syson.calls.length, 1);
+      assertSplitRequirementIdentities(snapshot, fixture.syson.calls);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
+  "evaluate-admitted-modelica-observations refuses a missing Thread requirement pair before SysON",
+  async () => {
+    const fixture = await executeFixture({ omitMatchingRequirement: true });
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(AGENT, fixture.command),
+        EngineeringProjectCommandError,
+        "no current requirement",
+      );
+      assertEquals(fixture.syson.calls.length, 0);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
   "evaluate-admitted-modelica-observations keys SysON by SysML id and the successor by Thread requirement id",
   async () => {
     const fixture = await executeFixture();
@@ -588,6 +627,8 @@ async function executeFixture(
       readonly metric: string;
     };
     readonly sysonContent?: Record<string, unknown>;
+    readonly extraSharedElementRequirements?: boolean;
+    readonly omitMatchingRequirement?: boolean;
   } = {},
 ) {
   const directory = await Deno.makeTempDir({
@@ -743,59 +784,42 @@ async function executeFixture(
       },
       freshness: fresh(AT),
     }],
-    requirements: [{
-      id: THREAD_REQUIREMENT_ID,
-      name: "placeholder",
-      statement: "Placeholder requirement. Not a thermal verdict.",
-      version: "1",
-      criterion: {
-        metric: REQUIREMENT_METRIC,
-        operator: "<=",
-        limit: { value: 1, unit: ORACLE_UNIT },
-      },
-      trace: {
-        sourceArtifactId: "artifact.brief",
-        elementId: SYSML_REQUIREMENT_ELEMENT_ID,
-        targetArtifactIds: ["artifact.brief"],
-      },
-      freshness: fresh(AT),
-    }],
+    requirements: evaluationRequirements(options),
     evaluations: [],
     violations: [],
-    provenance: [{
-      id: "provenance.change.brief",
-      relation: "changes",
-      from: { kind: "change", id: "change.brief" },
-      to: { kind: "artifact", id: "artifact.brief" },
-      rationale: "The applied change introduced the brief document.",
-    }, {
-      id: "trace-requirement-to-brief",
-      relation: "traces_to",
-      from: { kind: "requirement", id: THREAD_REQUIREMENT_ID },
-      to: { kind: "artifact", id: "artifact.brief" },
-      rationale: "The placeholder requirement constrains the brief artifact.",
-    }, {
-      id: `${options.admittedObservation?.id ?? OBSERVATION_ID}-from-evidence`,
-      relation: "derived_from",
-      from: {
-        kind: "observation",
-        id: options.admittedObservation?.id ?? OBSERVATION_ID,
+    provenance: [
+      {
+        id: "provenance.change.brief",
+        relation: "changes",
+        from: { kind: "change", id: "change.brief" },
+        to: { kind: "artifact", id: "artifact.brief" },
+        rationale: "The applied change introduced the brief document.",
       },
-      to: {
-        kind: "artifact",
-        id: `modelica-admitted-evidence-${EVIDENCE_DIGEST}`,
+      ...evaluationRequirementProvenance(options),
+      {
+        id: `${options.admittedObservation?.id ?? OBSERVATION_ID}-from-evidence`,
+        relation: "derived_from",
+        from: {
+          kind: "observation",
+          id: options.admittedObservation?.id ?? OBSERVATION_ID,
+        },
+        to: {
+          kind: "artifact",
+          id: `modelica-admitted-evidence-${EVIDENCE_DIGEST}`,
+        },
+        rationale: "The observation is reported by the exact normalized evidence.",
       },
-      rationale: "The observation is reported by the exact normalized evidence.",
-    }, {
-      id: `${options.admittedObservation?.id ?? OBSERVATION_ID}-from-result`,
-      relation: "derived_from",
-      from: {
-        kind: "observation",
-        id: options.admittedObservation?.id ?? OBSERVATION_ID,
+      {
+        id: `${options.admittedObservation?.id ?? OBSERVATION_ID}-from-result`,
+        relation: "derived_from",
+        from: {
+          kind: "observation",
+          id: options.admittedObservation?.id ?? OBSERVATION_ID,
+        },
+        to: { kind: "artifact", id: `modelica-admitted-result-${RESULT_DIGEST}` },
+        rationale: "The observation is reported by the exact retained solver result.",
       },
-      to: { kind: "artifact", id: `modelica-admitted-result-${RESULT_DIGEST}` },
-      rationale: "The observation is reported by the exact retained solver result.",
-    }],
+    ],
     proposedActions: [],
   });
   const basisFingerprint = await sha256Fingerprint(basisSnapshot);
@@ -1366,6 +1390,61 @@ function assertNormalizedOracleSuccessor(
   );
   if (!evaluation) throw new Error("missing evaluation");
   return evaluation;
+}
+
+function evaluationRequirements(options: {
+  readonly extraSharedElementRequirements?: boolean;
+  readonly omitMatchingRequirement?: boolean;
+}) {
+  const extras = options.extraSharedElementRequirements === true ||
+      options.omitMatchingRequirement === true
+    ? [
+      evaluationRequirement(
+        "thread-max-displacement",
+        "maxDisplacement",
+        "mm",
+      ),
+      evaluationRequirement("thread-max-von-mises", "maxVonMises", "Pa"),
+    ]
+    : [];
+  if (options.omitMatchingRequirement === true) return extras;
+  return [
+    ...extras,
+    evaluationRequirement(THREAD_REQUIREMENT_ID, REQUIREMENT_METRIC, ORACLE_UNIT),
+  ];
+}
+
+function evaluationRequirementProvenance(options: {
+  readonly extraSharedElementRequirements?: boolean;
+  readonly omitMatchingRequirement?: boolean;
+}) {
+  return evaluationRequirements(options).map((requirement) => ({
+    id: `trace-${requirement.id}-to-brief`,
+    relation: "traces_to" as const,
+    from: { kind: "requirement" as const, id: requirement.id },
+    to: { kind: "artifact" as const, id: "artifact.brief" },
+    rationale: "The placeholder requirement constrains the brief artifact.",
+  }));
+}
+
+function evaluationRequirement(id: string, metric: string, unit: string) {
+  return {
+    id,
+    name: id,
+    statement: "Placeholder requirement. Not a thermal verdict.",
+    version: "1",
+    criterion: {
+      metric,
+      operator: "<=" as const,
+      limit: { value: 1, unit },
+    },
+    trace: {
+      sourceArtifactId: "artifact.brief",
+      elementId: SYSML_REQUIREMENT_ELEMENT_ID,
+      targetArtifactIds: ["artifact.brief"],
+    },
+    freshness: fresh(AT),
+  };
 }
 
 function assertSplitRequirementIdentities(

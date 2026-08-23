@@ -35,6 +35,7 @@ import {
   fingerprintAdmittedObservationEvaluationMethod,
   mapAdmittedObservationEvidenceBySourceIdentity,
   selectAdmittedObservationEvaluations,
+  selectUniqueThreadRequirementByPair,
 } from "../../../domain/modelica/evaluation/admitted-observation-evaluation.ts";
 import {
   type AdmittedObservationEvaluationAdmission,
@@ -735,15 +736,22 @@ function oraclePair(
   }[],
   snapshot: ThreadSnapshot,
 ): AdmittedObservationOraclePair | undefined {
-  const requirement = snapshot.requirements.find((item) =>
-    item.id === selection.requirementElementId ||
-    item.trace.elementId === selection.requirementElementId
-  );
+  let requirement;
+  try {
+    requirement = selectUniqueThreadRequirementByPair(
+      snapshot.requirements,
+      selection,
+    );
+  } catch (error) {
+    throw invalidTransition(
+      error instanceof Error ? error.message : String(error),
+    );
+  }
   const metric = metrics.find((item) =>
     item.outputName === selection.outputSymbolId &&
     item.statistic === selection.role
   );
-  if (!requirement || !metric) return undefined;
+  if (!metric) return undefined;
   const operator = requirement.criterion.operator;
   if (operator !== "<=" && operator !== ">=") return undefined;
   const oracleRequirement: OracleRequirement = {

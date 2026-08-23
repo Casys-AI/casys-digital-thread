@@ -82,6 +82,43 @@ Deno.test("thermal method sheet refuses an unknown observation role", () => {
   assertEquals(error.message.includes("role"), true);
 });
 
+Deno.test("thermal method sheet requires a signed requirementMetric on each output and binding", () => {
+  const missing = validThermalMethodSheetPlaceholder();
+  delete (missing.outputs as Record<string, unknown>[])[0]!.requirementMetric;
+  const missingError = assertThrowsOn(() =>
+    validateModelicaThermalMethodSheet(missing)
+  );
+  assertEquals(missingError.message.includes("requirementMetric"), true);
+
+  const mismatched = validThermalMethodSheetPlaceholder();
+  (mismatched.bindings as {
+    outputRequirements: Array<Record<string, unknown>>;
+  }).outputRequirements[0]!.requirementMetric = "other-metric";
+  const mismatchError = assertThrowsOn(() =>
+    validateModelicaThermalMethodSheet(mismatched)
+  );
+  assertEquals(mismatchError.message.includes("binding"), true);
+});
+
+Deno.test(
+  "thermal method sheet fingerprints change when requirementMetric changes",
+  async () => {
+    const left = validateModelicaThermalMethodSheet(
+      validThermalMethodSheetPlaceholder(),
+    );
+    const input = validThermalMethodSheetPlaceholder();
+    (input.outputs as Record<string, unknown>[])[0]!.requirementMetric = "other-metric";
+    (input.bindings as {
+      outputRequirements: Array<Record<string, unknown>>;
+    }).outputRequirements[0]!.requirementMetric = "other-metric";
+    const right = validateModelicaThermalMethodSheet(input);
+    const leftDigest = (await fingerprintModelicaThermalMethodSheet(left)).digest;
+    const rightDigest = (await fingerprintModelicaThermalMethodSheet(right))
+      .digest;
+    assertEquals(leftDigest === rightDigest, false);
+  },
+);
+
 function assertThrowsOn(run: () => unknown): TypeError {
   try {
     run();

@@ -48,6 +48,7 @@ export interface ThermalMethodSheetOutput {
   readonly quantityMeaning: string;
   readonly declaredUnit: string;
   readonly requirementElementId: string;
+  readonly requirementMetric: string;
   readonly limitation: string;
 }
 
@@ -82,6 +83,7 @@ export interface ModelicaThermalMethodSheet {
       readonly modelSymbolId: string;
       readonly role: ThermalMethodSheetObservationRole;
       readonly requirementElementId: string;
+      readonly requirementMetric: string;
     }[];
   };
   readonly review: {
@@ -166,6 +168,10 @@ export function validateModelicaThermalMethodSheet(
     outputs.map((item) => `${item.modelSymbolId}:${item.role}`),
     "$sheet.outputs",
   );
+  rejectDuplicates(
+    outputs.map((item) => `${item.requirementElementId}:${item.requirementMetric}`),
+    "$sheet.outputs requirement pairs",
+  );
 
   const parameterizes = arrayOf(
     bindingsInput.parameterizes,
@@ -187,6 +193,12 @@ export function validateModelicaThermalMethodSheet(
     outputRequirements.map((item) => `${item.modelSymbolId}:${item.role}`),
     "$sheet.bindings.outputRequirements",
   );
+  rejectDuplicates(
+    outputRequirements.map((item) =>
+      `${item.requirementElementId}:${item.requirementMetric}`
+    ),
+    "$sheet.bindings.outputRequirements requirement pairs",
+  );
 
   for (const parameter of parameters) {
     const binding = parameterizes.find((item) =>
@@ -207,7 +219,8 @@ export function validateModelicaThermalMethodSheet(
     );
     if (
       !binding ||
-      binding.requirementElementId !== output.requirementElementId
+      binding.requirementElementId !== output.requirementElementId ||
+      binding.requirementMetric !== output.requirementMetric
     ) {
       throw new TypeError(
         `$sheet.outputs modelSymbolId "${output.modelSymbolId}" role "${output.role}" has no exact outputRequirements binding.`,
@@ -314,6 +327,7 @@ function parseOutput(value: unknown, path: string): ThermalMethodSheetOutput {
       "quantityMeaning",
       "declaredUnit",
       "requirementElementId",
+      "requirementMetric",
       "limitation",
     ],
     path,
@@ -330,6 +344,10 @@ function parseOutput(value: unknown, path: string): ThermalMethodSheetOutput {
     requirementElementId: safeId(
       input.requirementElementId,
       `${path}.requirementElementId`,
+    ),
+    requirementMetric: safeId(
+      input.requirementMetric,
+      `${path}.requirementMetric`,
     ),
     limitation: nonEmptyText(input.limitation, `${path}.limitation`),
   };
@@ -353,10 +371,11 @@ function parseOutputBinding(
   readonly modelSymbolId: string;
   readonly role: ThermalMethodSheetObservationRole;
   readonly requirementElementId: string;
+  readonly requirementMetric: string;
 } {
   const input = exactRecord(
     value,
-    ["modelSymbolId", "role", "requirementElementId"],
+    ["modelSymbolId", "role", "requirementElementId", "requirementMetric"],
     path,
   );
   const role = nonEmptyText(input.role, `${path}.role`);
@@ -369,6 +388,10 @@ function parseOutputBinding(
     requirementElementId: safeId(
       input.requirementElementId,
       `${path}.requirementElementId`,
+    ),
+    requirementMetric: safeId(
+      input.requirementMetric,
+      `${path}.requirementMetric`,
     ),
   };
 }

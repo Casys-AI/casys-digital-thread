@@ -27,6 +27,7 @@ import {
   type CrossDomainImpactThreadLineage,
   type CrossDomainImpactThreadLineageReader,
 } from "../../ports/out/impact/cross-domain-impact-thread-lineage-reader.ts";
+import { recrossCrossDomainImpactManifestGateMap } from "../../../domain/impact/cross-domain-impact-decision.ts";
 import {
   evaluateCrossDomainImpact,
   type CrossDomainImpactBranchReadiness,
@@ -93,7 +94,8 @@ type ReviewCode =
   | "lineage_mismatch"
   | "brief_unavailable"
   | "brief_not_v2"
-  | "brief_gate_unresolved";
+  | "brief_gate_unresolved"
+  | "work_item_claim_unresolved";
 
 export class PrepareCrossDomainImpactEvaluation
   implements EvaluateCrossDomainImpactUseCase {
@@ -210,6 +212,16 @@ export class PrepareCrossDomainImpactEvaluation
     }
     if (!sameManifestSealAdmission(manifest, reopenedManifest.reference.fingerprint, seal.admission)) {
       return unresolved("manifest_mismatch", "The reopened manifest does not match the exact human-sealed manifest admission.");
+    }
+    try {
+      recrossCrossDomainImpactManifestGateMap(project.workItems, manifest.gateMap);
+    } catch (error) {
+      return unresolved(
+        "work_item_claim_unresolved",
+        error instanceof Error
+          ? error.message
+          : "The exact manifest gateMap does not recross current work-item gate claims.",
+      );
     }
 
     const sourceIssue = await recrossSourceAnchors(project, sourceSnapshot, manifest);

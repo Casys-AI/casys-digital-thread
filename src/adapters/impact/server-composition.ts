@@ -108,6 +108,7 @@ export function createCrossDomainImpactProject(
     manifests,
     lineage,
     briefGates,
+    projects: options.projects,
   });
   const evaluation = new PrepareCrossDomainImpactEvaluation({
     projects: options.projects,

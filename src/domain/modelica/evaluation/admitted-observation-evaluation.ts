@@ -45,7 +45,21 @@ export interface AdmittedObservationSelection {
   readonly outputSymbolId: string;
   readonly role: AdmittedObservationRole;
   readonly requirementElementId: string;
+  readonly requirementMetric: string;
   readonly declaredUnit: string;
+}
+
+/** Signed sheet identity used to select one current Thread requirement. */
+export interface ThermalRequirementPairIdentity {
+  readonly requirementElementId: string;
+  readonly requirementMetric: string;
+}
+
+/** Structural Thread requirement fields needed for the pair recross. */
+export interface ThreadRequirementPairCandidate {
+  readonly id: string;
+  readonly trace: { readonly elementId: string };
+  readonly criterion: { readonly metric: string };
 }
 
 export interface AdmittedObservationEvaluationMethod {
@@ -133,6 +147,7 @@ export function deriveAdmittedObservationEvaluationMethod(
       outputSymbolId: output.modelSymbolId,
       role: output.role,
       requirementElementId: output.requirementElementId,
+      requirementMetric: output.requirementMetric,
       declaredUnit: output.declaredUnit,
     })),
   });
@@ -201,6 +216,10 @@ export function validateAdmittedObservationEvaluationMethod(
   rejectDuplicates(
     selections.map((item) => item.requirementElementId),
     "$evaluationMethod.selections requirements",
+  );
+  rejectDuplicates(
+    selections.map((item) => `${item.requirementElementId}:${item.requirementMetric}`),
+    "$evaluationMethod.selections requirement pairs",
   );
   return deepFreeze({
     schemaVersion: MODELICA_ADMITTED_OBSERVATION_EVALUATION_METHOD_SCHEMA,
@@ -331,6 +350,43 @@ export function selectAdmittedObservationEvaluations(
   return deepFreeze(selected);
 }
 
+/**
+ * Select exactly one current Thread requirement by the signed sheet pair.
+ * `requirementElementId` matches `requirement.id` or `requirement.trace.elementId`.
+ * `requirementMetric` matches `requirement.criterion.metric` exactly.
+ * Missing or multiple matches stay unresolved; the first match is never chosen.
+ */
+export function threadRequirementMatchesSheetPair(
+  requirement: ThreadRequirementPairCandidate,
+  identity: ThermalRequirementPairIdentity,
+): boolean {
+  const elementMatches = requirement.id === identity.requirementElementId ||
+    requirement.trace.elementId === identity.requirementElementId;
+  return elementMatches &&
+    requirement.criterion.metric === identity.requirementMetric;
+}
+
+export function selectUniqueThreadRequirementByPair<
+  T extends ThreadRequirementPairCandidate,
+>(
+  requirements: readonly T[],
+  identity: ThermalRequirementPairIdentity,
+): T {
+  const matches = requirements.filter((requirement) =>
+    threadRequirementMatchesSheetPair(requirement, identity)
+  );
+  const pair = `${identity.requirementElementId}:${identity.requirementMetric}`;
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length === 0) {
+    throw new TypeError(
+      `Thread requirement pair ${pair} is unresolved: no current requirement matches requirementElementId and requirementMetric.`,
+    );
+  }
+  throw new TypeError(
+    `Thread requirement pair ${pair} is unresolved: ${matches.length} current requirements match requirementElementId and requirementMetric; the server will not choose one.`,
+  );
+}
+
 function parseUnitPolicy(
   value: unknown,
   path: string,
@@ -349,7 +405,13 @@ function parseSelection(
 ): AdmittedObservationSelection {
   const input = exactRecord(
     value,
-    ["outputSymbolId", "role", "requirementElementId", "declaredUnit"],
+    [
+      "outputSymbolId",
+      "role",
+      "requirementElementId",
+      "requirementMetric",
+      "declaredUnit",
+    ],
     path,
   );
   const role = nonEmptyText(input.role, `${path}.role`);
@@ -362,6 +424,10 @@ function parseSelection(
     requirementElementId: safeId(
       input.requirementElementId,
       `${path}.requirementElementId`,
+    ),
+    requirementMetric: safeId(
+      input.requirementMetric,
+      `${path}.requirementMetric`,
     ),
     declaredUnit: nonEmptyText(input.declaredUnit, `${path}.declaredUnit`),
   };

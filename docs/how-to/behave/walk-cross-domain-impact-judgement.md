@@ -58,7 +58,9 @@ JSON is not proof.
 
 Call `project_cross_domain_impact_manifest_seal_review` with `projectId` and that opaque
 reference. The server recrosses project/subject/current Thread, Brief V2 gates, and
-declared evidence. Stop on `unavailable` or `unresolved`.
+declared evidence. Each manifest `gateMap` entry must resolve exactly one current
+work-item `gateClaim` with the same role. Missing, mismatched or ambiguous claims stop
+`unresolved`. Stop on `unavailable` or `unresolved`.
 
 On `resolved`, append `verify.seal-cross-domain-impact-manifest@1` with the sole
 `approvedBrief` binding and the returned `decisionParameters`:
@@ -78,14 +80,16 @@ After that unique seal work item is complete, append
 `dependsOn` the unique seal work item, `approvedBrief` binding). This operation
 accepts **no** MRTR of its own.
 
-Queue and execute. The run is X07 pure analysis plus X08 documentary capture. It
-proposes `current`, `impact-unresolved`, `invalidated`, or `carried-forward`. It does
-not apply those statuses, invent work items, or queue reruns.
+Queue and execute. X07/X08 recheck that every manifest `gateMap` still resolves exactly
+one current same-role `gateClaim`; a missing, mismatched or ambiguous mapping stops
+`unresolved` before evaluation capture. A successful run is X07 pure analysis plus X08
+documentary capture. It proposes `current`, `impact-unresolved`, `invalidated`, or
+`carried-forward`. It does not apply those statuses, invent work items, or queue reruns.
 
 ## 4. Human applies the proposed claims (X09)
 
-Call `project_cross_domain_impact_decision_review` with `projectId` only. Stop on
-`unavailable` or `unresolved`.
+Call `project_cross_domain_impact_decision_review` with `projectId` only. X09 recrosses
+the sealed result itself; stop on `unavailable` or `unresolved`.
 
 On `resolved`, append `decide.accept-cross-domain-impact@1` (`mustOrigin: human`) with
 the returned `decisionParameters`. Human MRTR, then agent queue and execute.

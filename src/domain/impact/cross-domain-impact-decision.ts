@@ -19,6 +19,7 @@ import type {
   EngineeringGateClaimStatus,
   EngineeringWorkItem,
 } from "../project/engineering-project.ts";
+import type { CrossDomainImpactGateMap } from "./cross-domain-impact-manifest.ts";
 import {
   CROSS_DOMAIN_IMPACT_GATE_CLAIM_STATUSES,
   type CrossDomainImpactGateClaimStatus,
@@ -40,6 +41,34 @@ export interface CrossDomainImpactWorkItemClaimTransition {
   readonly status: CrossDomainImpactGateClaimStatus;
 }
 
+export interface CrossDomainImpactResolvedWorkItemGateClaim {
+  readonly workItemId: string;
+  readonly gateItemId: string;
+  readonly role: EngineeringGateClaimRole;
+  readonly status: EngineeringGateClaimStatus;
+}
+
+/**
+ * Resolve each manifest gateMap target onto exactly one current work-item
+ * gate claim. Missing, role-mismatched, or duplicate coverage is refused.
+ * This does not invent, rename, or attach a claim.
+ */
+export function recrossCrossDomainImpactManifestGateMap(
+  workItems: readonly EngineeringWorkItem[],
+  gateMap: readonly Pick<CrossDomainImpactGateMap, "gateItemId" | "role">[],
+  options: { readonly excludeWorkItemId?: string } = {},
+): readonly CrossDomainImpactResolvedWorkItemGateClaim[] {
+  if (gateMap.length === 0) {
+    throw new TypeError(
+      "$manifest.gateMap must recross at least one work-item gate claim.",
+    );
+  }
+  const resolved = gateMap.map((gate) =>
+    uniqueWorkItemGateClaim(workItems, gate, options)
+  );
+  return deepFreeze(resolved);
+}
+
 /**
  * Map each proposed gate-claim onto exactly one existing work-item claim.
  * Missing, role-mismatched, or duplicate coverage is refused.
@@ -54,44 +83,67 @@ export function recrossCrossDomainImpactWorkItemClaims(
       "$impactDecision.workItemClaims must recross at least one proposed gate claim.",
     );
   }
-  const excluded = options.excludeWorkItemId;
   const transitions = gateClaims.map((claim, index) => {
-    const matches: CrossDomainImpactWorkItemClaimTransition[] = [];
-    const sameGate: string[] = [];
-    for (const workItem of workItems) {
-      if (excluded !== undefined && workItem.id === excluded) continue;
-      for (const existing of workItem.gateClaims ?? []) {
-        if (existing.gateItemId !== claim.gateItemId) continue;
-        sameGate.push(workItem.id);
-        if (existing.role !== claim.role) continue;
-        matches.push({
-          workItemId: workItem.id,
-          gateItemId: claim.gateItemId,
-          role: claim.role,
-          previousStatus: existing.status,
-          status: claim.status,
-        });
-      }
-    }
-    if (matches.length === 1) return matches[0]!;
-    if (matches.length > 1) {
+    let resolved: CrossDomainImpactResolvedWorkItemGateClaim;
+    try {
+      resolved = uniqueWorkItemGateClaim(workItems, claim, options);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
       throw new TypeError(
-        `$impactDecision.workItemClaims[${index}] is an ambiguous work-item gate claim.`,
+        `$impactDecision.workItemClaims[${index}] ${detail}`,
       );
     }
-    if (sameGate.length > 0) {
-      throw new TypeError(
-        `$impactDecision.workItemClaims[${index}] is a mismatched work-item gate claim.`,
-      );
-    }
-    throw new TypeError(
-      `$impactDecision.workItemClaims[${index}] is a missing work-item gate claim.`,
-    );
+    return {
+      workItemId: resolved.workItemId,
+      gateItemId: resolved.gateItemId,
+      role: resolved.role,
+      previousStatus: resolved.status,
+      status: claim.status,
+    };
   });
   return deepFreeze(
     [...transitions].sort((left, right) =>
       workItemClaimKey(left).localeCompare(workItemClaimKey(right))
     ),
+  );
+}
+
+function uniqueWorkItemGateClaim(
+  workItems: readonly EngineeringWorkItem[],
+  target: { readonly gateItemId: string; readonly role: EngineeringGateClaimRole },
+  options: { readonly excludeWorkItemId?: string } = {},
+): CrossDomainImpactResolvedWorkItemGateClaim {
+  const excluded = options.excludeWorkItemId;
+  const matches: CrossDomainImpactResolvedWorkItemGateClaim[] = [];
+  const sameGate: string[] = [];
+  for (const workItem of workItems) {
+    if (excluded !== undefined && workItem.id === excluded) continue;
+    for (const existing of workItem.gateClaims ?? []) {
+      if (existing.gateItemId !== target.gateItemId) continue;
+      sameGate.push(workItem.id);
+      if (existing.role !== target.role) continue;
+      matches.push({
+        workItemId: workItem.id,
+        gateItemId: existing.gateItemId,
+        role: existing.role,
+        status: existing.status,
+      });
+    }
+  }
+  const gateItemId = JSON.stringify(target.gateItemId);
+  if (matches.length === 1) return matches[0]!;
+  if (matches.length > 1) {
+    throw new TypeError(
+      `gateItemId ${gateItemId} is an ambiguous work-item gate claim.`,
+    );
+  }
+  if (sameGate.length > 0) {
+    throw new TypeError(
+      `gateItemId ${gateItemId} is a mismatched work-item gate claim.`,
+    );
+  }
+  throw new TypeError(
+    `gateItemId ${gateItemId} is a missing work-item gate claim.`,
   );
 }
 

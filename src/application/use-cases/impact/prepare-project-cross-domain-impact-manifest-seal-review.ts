@@ -13,6 +13,7 @@ import type {
   ProjectCrossDomainImpactManifestSealReviewResult,
   ProjectCrossDomainImpactManifestSealReviewUseCase,
 } from "../../ports/in/impact/project-cross-domain-impact-manifest-seal-review.ts";
+import type { EngineeringProjectRevisionStore } from "../../ports/out/engineering-project-revision-store.ts";
 import type { CrossDomainImpactBriefGateReader } from "../../ports/out/impact/cross-domain-impact-brief-gate-reader.ts";
 import type { CrossDomainImpactManifestReader } from "../../ports/out/impact/cross-domain-impact-manifest-reader.ts";
 import type {
@@ -25,6 +26,7 @@ import {
   parseCrossDomainImpactManifestSealParameters,
   type CrossDomainImpactManifestSealAdmission,
 } from "../../../domain/impact/cross-domain-impact-manifest-proposal.ts";
+import { recrossCrossDomainImpactManifestGateMap } from "../../../domain/impact/cross-domain-impact-decision.ts";
 import { validateCrossDomainImpactManifest } from "../../../domain/impact/cross-domain-impact-manifest.ts";
 import { validateContentFingerprint } from "../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
@@ -42,6 +44,7 @@ export interface PrepareProjectCrossDomainImpactManifestSealReviewDependencies {
   readonly manifests: CrossDomainImpactManifestReader;
   readonly lineage: CrossDomainImpactThreadLineageReader;
   readonly briefGates: CrossDomainImpactBriefGateReader;
+  readonly projects: Pick<EngineeringProjectRevisionStore, "get">;
 }
 
 /**
@@ -57,18 +60,22 @@ type ReviewCode =
   | "lineage_mismatch"
   | "brief_not_v2"
   | "brief_gate_unresolved"
-  | "mechanical_evidence_unresolved";
+  | "mechanical_evidence_unresolved"
+  | "project_unavailable"
+  | "work_item_claim_unresolved";
 
 export class PrepareProjectCrossDomainImpactManifestSealReview
   implements ProjectCrossDomainImpactManifestSealReviewUseCase {
   readonly #manifests: CrossDomainImpactManifestReader;
   readonly #lineage: CrossDomainImpactThreadLineageReader;
   readonly #briefGates: CrossDomainImpactBriefGateReader;
+  readonly #projects: Pick<EngineeringProjectRevisionStore, "get">;
 
   constructor(dependencies: PrepareProjectCrossDomainImpactManifestSealReviewDependencies) {
     this.#manifests = dependencies.manifests;
     this.#lineage = dependencies.lineage;
     this.#briefGates = dependencies.briefGates;
+    this.#projects = dependencies.projects;
   }
 
   async execute(
@@ -102,6 +109,26 @@ export class PrepareProjectCrossDomainImpactManifestSealReview
     }
     if (manifest.project.id !== command.projectId) {
       return unresolved("manifest_mismatch", "The reopened manifest belongs to another project.");
+    }
+
+    let project;
+    try {
+      project = await this.#projects.get(command.projectId);
+    } catch {
+      return unavailable("project_unavailable", "The exact engineering project is unavailable.");
+    }
+    if (!project || project.project.id !== command.projectId) {
+      return unavailable("project_unavailable", "The exact engineering project is unavailable.");
+    }
+    try {
+      recrossCrossDomainImpactManifestGateMap(project.workItems, manifest.gateMap);
+    } catch (error) {
+      return unresolved(
+        "work_item_claim_unresolved",
+        error instanceof Error
+          ? error.message
+          : "The exact manifest gateMap does not recross current work-item gate claims.",
+      );
     }
 
     let lineage: CrossDomainImpactThreadLineage | undefined;

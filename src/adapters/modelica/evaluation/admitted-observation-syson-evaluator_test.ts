@@ -18,6 +18,7 @@ const SELECTION: AdmittedObservationSelection = {
   outputSymbolId: "placeholder-output",
   role: "final",
   requirementElementId: SYSML_REQUIREMENT_ELEMENT_ID,
+  requirementMetric: "placeholder-output",
   declaredUnit: "unit-pending-source",
 };
 

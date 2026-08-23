@@ -19,6 +19,10 @@ import {
   fingerprintModelicaThermalMethodSheet,
   type ModelicaThermalMethodSheet,
 } from "../../../domain/modelica/thermal-method-sheet.ts";
+import {
+  selectUniqueThreadRequirementByPair,
+  threadRequirementMatchesSheetPair,
+} from "../../../domain/modelica/evaluation/admitted-observation-evaluation.ts";
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../../domain/modelica/thermal-method-sheet-proposal.ts";
 import {
   deterministicJson,
@@ -565,7 +569,7 @@ function exactEvaluations(
   capture: AdmittedObservationEvaluationCapture,
   sheet: ModelicaThermalMethodSheet,
 ): AdmittedModelicaEvaluationCloseoutResolvedEvidence["evaluations"] {
-  const outcomes = captureOutcomes(capture, snapshot);
+  const outcomes = captureOutcomes(capture, snapshot, sheet);
   const evidencing = snapshot.evaluations.filter((evaluation) =>
     evaluation.evidenceArtifactIds.length === 1 &&
     evaluation.evidenceArtifactIds[0] === captureArtifact.id
@@ -626,6 +630,7 @@ function exactEvaluations(
 function captureOutcomes(
   capture: AdmittedObservationEvaluationCapture,
   snapshot: ThreadSnapshot,
+  sheet: ModelicaThermalMethodSheet,
 ): ReadonlyMap<string, {
   readonly requirement: TracedRequirement;
   readonly result: ParsedOracleResult;
@@ -657,7 +662,7 @@ function captureOutcomes(
   const oracleRequirements: OracleRequirement[] = [];
   const threadByConstraint = new Map<string, TracedRequirement>();
   for (const constraintId of resultIdentities.keys()) {
-    const requirement = uniqueThreadRequirement(snapshot, constraintId);
+    const requirement = uniqueThreadRequirement(snapshot, sheet, constraintId);
     threadByConstraint.set(constraintId, requirement);
     oracleRequirements.push(oracleRequirementFromThread(requirement, constraintId));
   }
@@ -689,7 +694,11 @@ function captureOutcomes(
   }
   for (const item of capture.unresolved) {
     outcomes.set(item.requirementElementId, {
-      requirement: uniqueThreadRequirement(snapshot, item.requirementElementId),
+      requirement: uniqueThreadRequirement(
+        snapshot,
+        sheet,
+        item.requirementElementId,
+      ),
       result: { status: "unresolved" },
     });
   }
@@ -701,22 +710,34 @@ function captureOutcomes(
 
 function uniqueThreadRequirement(
   snapshot: ThreadSnapshot,
+  sheet: ModelicaThermalMethodSheet,
   identity: string,
 ): TracedRequirement {
-  const matches = snapshot.requirements.filter((requirement) =>
-    requirement.id === identity || requirement.trace.elementId === identity
+  const outputs = sheet.outputs.filter((output) =>
+    output.requirementElementId === identity
   );
-  if (matches.length === 0) {
+  if (outputs.length === 0) {
     throw integrity(
-      `The current Thread has no requirement for capture identity ${identity}.`,
+      `The reopened thermal method sheet has no output mapped to capture identity ${identity}.`,
     );
   }
-  if (matches.length !== 1) {
+  if (outputs.length !== 1) {
     throw ambiguous(
-      `The current Thread has an ambiguous requirement mapping for ${identity}.`,
+      `The reopened thermal method sheet has an ambiguous output mapping for capture identity ${identity}.`,
     );
   }
-  return matches[0]!;
+  try {
+    return selectUniqueThreadRequirementByPair(
+      snapshot.requirements,
+      outputs[0]!,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("will not choose one")) {
+      throw ambiguous(message);
+    }
+    throw integrity(message);
+  }
 }
 
 function oracleRequirementFromThread(
@@ -853,8 +874,7 @@ function uniqueSheetOutput(
   requirement: TracedRequirement,
 ): ModelicaThermalMethodSheet["outputs"][number] {
   const matches = sheet.outputs.filter((output) =>
-    output.requirementElementId === requirement.id ||
-    output.requirementElementId === requirement.trace.elementId
+    threadRequirementMatchesSheetPair(requirement, output)
   );
   if (matches.length === 0) {
     throw integrity(

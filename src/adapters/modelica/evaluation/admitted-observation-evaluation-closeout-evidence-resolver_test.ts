@@ -9,6 +9,7 @@ import {
 } from "../../../domain/modelica/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
+import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import {
   admittedModelicaEvaluationCloseoutAdmission,
   AdmittedModelicaEvaluationCloseoutResolutionError,
@@ -612,7 +613,7 @@ Deno.test(
           snapshot: extraRows.snapshot,
         }),
       AdmittedModelicaEvaluationCloseoutResolutionError,
-      "no requirement",
+      "capture identity extra-requirement",
     );
 
     const overlap = await createAdmittedModelicaCloseoutEvidenceFixture({
@@ -960,7 +961,7 @@ Deno.test(
     await rejectCloseout(
       foreign,
       foreign.snapshot,
-      "no output mapped to Thread requirement",
+      "no output mapped to capture identity placeholder-requirement",
     );
 
     const ambiguous = await createAdmittedModelicaCloseoutEvidenceFixture({
@@ -973,8 +974,75 @@ Deno.test(
       ambiguous.snapshot,
       "ambiguous output mapping",
     );
+
+    const shared = await createAdmittedModelicaCloseoutEvidenceFixture({
+      evaluationStatus: "pass",
+      threadRequirementId: distinctId,
+    });
+    const extras = [
+      closeoutSharedRequirement(
+        "thread-max-displacement",
+        "maxDisplacement",
+        shared.snapshot.requirements[0]!.trace,
+      ),
+      closeoutSharedRequirement(
+        "thread-max-von-mises",
+        "maxVonMises",
+        shared.snapshot.requirements[0]!.trace,
+      ),
+    ];
+    const sharedSnapshot = validateThreadSnapshot({
+      ...shared.snapshot,
+      requirements: [...extras, ...shared.snapshot.requirements],
+      provenance: [
+        ...shared.snapshot.provenance,
+        ...extras.map((requirement) => ({
+          id: `trace-${requirement.id}-to-brief`,
+          relation: "traces_to" as const,
+          from: { kind: "requirement" as const, id: requirement.id },
+          to: {
+            kind: "artifact" as const,
+            id: requirement.trace.sourceArtifactId,
+          },
+          rationale: "The extra mechanical projection shares the SysML identity.",
+        })),
+      ],
+    });
+    const resolvedShared = await resolveAdmittedModelicaEvaluationCloseoutEvidence(
+      shared.dependencies,
+      {
+        project: shared.project,
+        basis: shared.basis,
+        snapshot: sharedSnapshot,
+      },
+    );
+    assertEquals(resolvedShared.evaluations[0]?.requirementId, distinctId);
   },
 );
+
+function closeoutSharedRequirement(
+  id: string,
+  metric: string,
+  trace: ThreadSnapshot["requirements"][number]["trace"],
+) {
+  return {
+    id,
+    name: id,
+    statement: "Placeholder requirement. Not a thermal verdict.",
+    version: "1",
+    criterion: {
+      metric,
+      operator: "<=" as const,
+      limit: { value: 1, unit: "unit-pending-source" },
+    },
+    trace: { ...trace },
+    freshness: {
+      status: "fresh" as const,
+      changedAt: "2026-08-21T12:00:00.000Z",
+      invalidatedByChangeIds: [] as const,
+    },
+  };
+}
 
 Deno.test(
   "closeout resolver fails closed on duplicate method-sheet derived_from and evaluation provenance",

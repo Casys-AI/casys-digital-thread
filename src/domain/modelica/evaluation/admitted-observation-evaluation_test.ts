@@ -7,6 +7,7 @@ import {
   mapAdmittedObservationEvidenceBySourceIdentity,
   normalizeAdmittedObservationUnit,
   selectAdmittedObservationEvaluations,
+  selectUniqueThreadRequirementByPair,
   validateAdmittedObservationEvaluationMethod,
 } from "./admitted-observation-evaluation.ts";
 
@@ -32,6 +33,7 @@ function validMethod(): Record<string, unknown> {
       outputSymbolId: "placeholder-output",
       role: "final",
       requirementElementId: "placeholder-requirement",
+      requirementMetric: "placeholder-output",
       declaredUnit: "unit-pending-source",
     }],
   };
@@ -59,6 +61,7 @@ Deno.test(
       outputSymbolId: "placeholder-output",
       role: "final",
       requirementElementId: "placeholder-requirement",
+      requirementMetric: "placeholder-output",
       declaredUnit: "unit-pending-source",
     }]);
   },
@@ -180,11 +183,13 @@ Deno.test("admitted observation method refuses a duplicate requirement", () => {
     outputSymbolId: "placeholder-output",
     role: "final",
     requirementElementId: "placeholder-requirement",
+    requirementMetric: "placeholder-output",
     declaredUnit: "unit-pending-source",
   }, {
     outputSymbolId: "placeholder-output",
     role: "max_abs",
     requirementElementId: "placeholder-requirement",
+    requirementMetric: "placeholder-output",
     declaredUnit: "unit-pending-source",
   }];
   assertThrows(
@@ -250,6 +255,67 @@ Deno.test("identity unit policy matches only Object.is-equal unit strings", () =
     { status: "unresolved", reason: "unit-identity-mismatch" },
   );
 });
+
+Deno.test(
+  "admitted observation pair selects exactly one Thread requirement and never the first of several",
+  () => {
+    const identity = {
+      requirementElementId: "c1f7534f-cca7-4909-bf0f-42a0b09701bc",
+      requirementMetric: "temperature",
+    };
+    const displacement = threadRequirement(
+      "thread-displacement",
+      identity.requirementElementId,
+      "maxDisplacement",
+    );
+    const vonMises = threadRequirement(
+      "thread-von-mises",
+      identity.requirementElementId,
+      "maxVonMises",
+    );
+    const temperature = threadRequirement(
+      "thread-temperature",
+      identity.requirementElementId,
+      "temperature",
+    );
+    const selected = selectUniqueThreadRequirementByPair(
+      [displacement, vonMises, temperature],
+      identity,
+    );
+    assertEquals(selected, temperature);
+
+    assertThrows(
+      () =>
+        selectUniqueThreadRequirementByPair(
+          [displacement, vonMises],
+          identity,
+        ),
+      TypeError,
+      "no current requirement",
+    );
+    assertThrows(
+      () =>
+        selectUniqueThreadRequirementByPair(
+          [temperature, { ...temperature, id: "thread-temperature-duplicate" }],
+          identity,
+        ),
+      TypeError,
+      "will not choose one",
+    );
+  },
+);
+
+function threadRequirement(
+  id: string,
+  elementId: string,
+  metric: string,
+) {
+  return {
+    id,
+    trace: { elementId },
+    criterion: { metric },
+  };
+}
 
 Deno.test("admitted observation selection leaves a unit mismatch unresolved", () => {
   const method = validateAdmittedObservationEvaluationMethod(validMethod());

@@ -93,7 +93,10 @@ real admitted `.mo` plus its published observations.
 Call `project_admitted_modelica_evaluation_review` with `projectId` only. Do not pass
 values, units, output names, feature, limit, provider, SysON tool or args. The server
 reopens the unique current Thread tip, the unique sealed thermal method sheet, and the
-unique admitted Modelica evidence.
+unique admitted Modelica evidence. Each sheet output and output-requirement binding
+signs `requirementElementId` plus `requirementMetric`; L4 requires exactly one current
+Thread requirement for that pair before it creates evidence, calls SysON or prepares
+MRTR.
 
 Obtain a new human MRTR, queue, then execute
 `verify.evaluate-admitted-modelica-observations@1`. SysON remains the comparator. A
@@ -115,9 +118,10 @@ closed as `unavailable` or `unresolved`.
 
 The review returns a bounded read of the exact L4 identities and statuses plus **both**
 accept and reject `decisionParameters`. They bind the same project, subject, basis,
-sheet and capture and differ only in consequence. L4 `pass`/`fail`/`unresolved`/`error`
-are preserved literally. The human decides on the exact L4 and its scope; L4 pass is
-never implicit L5. There is no mechanical all-pass acceptance rule.
+sheet, capture and `(requirementElementId, requirementMetric)` pair, and differ only in
+consequence. L4 `pass`/`fail`/`unresolved`/`error` are preserved literally. The human
+decides on the exact L4 and its scope; L4 pass is never implicit L5. There is no
+mechanical all-pass acceptance rule.
 
 Obtain human G4 MRTR, queue, then execute exactly one of
 `decide.accept-admitted-modelica-evaluation@1` or

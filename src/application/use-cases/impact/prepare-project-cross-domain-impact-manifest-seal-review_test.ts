@@ -14,7 +14,10 @@ Deno.test("impact-manifest review produces only canonical MRTR material and neve
   const fixture = await reviewFixture();
   const result = await fixture.review.execute(fixture.command);
   assertEquals(result.status, "resolved");
-  assertEquals(result.status === "resolved" && result.decisionParameters.length > 0, true);
+  assertEquals(
+    result.status === "resolved" && result.decisionParameters.length > 0,
+    true,
+  );
   assertEquals(fixture.manifests.reads, 1);
   assertEquals(fixture.lineage.reads, 1);
   assertEquals(fixture.briefs.reads, 1);
@@ -26,12 +29,29 @@ Deno.test("impact-manifest review produces only canonical MRTR material and neve
 Deno.test("impact-manifest review keeps bad project, subject, basis, and manifest fingerprint literal unresolved", async () => {
   for (const mutation of ["project", "subject", "basis", "reference"] as const) {
     const fixture = await reviewFixture();
-    if (mutation === "project") fixture.lineage.value.project = { ...fixture.lineage.value.project, id: "foreign.project" };
-    if (mutation === "subject") fixture.lineage.value.subject = { ...fixture.lineage.value.subject, id: "foreign.subject" };
-    if (mutation === "basis") fixture.lineage.value.basis = { ...fixture.lineage.value.basis, revision: fixture.lineage.value.basis.revision + 1 };
-    if (mutation === "reference") fixture.manifests.value.reference = {
-      fingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
-    };
+    if (mutation === "project") {
+      fixture.lineage.value.project = {
+        ...fixture.lineage.value.project,
+        id: "foreign.project",
+      };
+    }
+    if (mutation === "subject") {
+      fixture.lineage.value.subject = {
+        ...fixture.lineage.value.subject,
+        id: "foreign.subject",
+      };
+    }
+    if (mutation === "basis") {
+      fixture.lineage.value.basis = {
+        ...fixture.lineage.value.basis,
+        revision: fixture.lineage.value.basis.revision + 1,
+      };
+    }
+    if (mutation === "reference") {
+      fixture.manifests.value.reference = {
+        fingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+      };
+    }
     const result = await fixture.review.execute(fixture.command);
     assertEquals(result.status, "unresolved", mutation);
   }
@@ -41,7 +61,9 @@ Deno.test("impact-manifest review refuses a non-V2 brief, missing gate, or missi
   for (const mutation of ["v1", "gate", "dependency"] as const) {
     const fixture = await reviewFixture();
     if (mutation === "v1") fixture.briefs.value.contractVersion = "1.0";
-    if (mutation === "gate") fixture.briefs.value.gates = fixture.briefs.value.gates.slice(1);
+    if (mutation === "gate") {
+      fixture.briefs.value.gates = fixture.briefs.value.gates.slice(1);
+    }
     if (mutation === "dependency") {
       fixture.briefs.value.gates = fixture.briefs.value.gates.map((gate: {
         id: string;
@@ -60,9 +82,55 @@ Deno.test("impact-manifest review refuses a non-V2 brief, missing gate, or missi
 Deno.test("impact-manifest review rejects caller-injected branches, edges, artifacts, and provider envelopes", async () => {
   for (const field of ["branch", "edge", "artifact", "provider"] as const) {
     const fixture = await reviewFixture();
-    const result = await fixture.review.execute({ ...fixture.command, [field]: { forged: true } });
+    const result = await fixture.review.execute({
+      ...fixture.command,
+      [field]: { forged: true },
+    });
     assertEquals(result.status, "unresolved", field);
   }
+});
+
+Deno.test("impact-manifest review recrosses unique current work-item gate claims before MRTR", async () => {
+  const fixture = await reviewFixture();
+  const result = await fixture.review.execute(fixture.command);
+  assertEquals(result.status, "resolved");
+  assertEquals(fixture.projects.reads >= 1, true);
+});
+
+Deno.test("impact-manifest review keeps missing or ambiguous work-item gate claims unresolved before MRTR", async () => {
+  const missing = await reviewFixture();
+  missing.projects.value.workItems = [];
+  const missingResult = await missing.review.execute(missing.command);
+  assertEquals(missingResult.status, "unresolved");
+  assertEquals(
+    missingResult.status !== "resolved" &&
+      missingResult.diagnostics[0]?.code === "work_item_claim_unresolved",
+    true,
+  );
+  assertEquals(
+    missingResult.status !== "resolved" &&
+      missingResult.diagnostics[0]?.message.includes("gate-electrical") === true,
+    true,
+  );
+
+  const ambiguous = await reviewFixture();
+  const original = ambiguous.projects.value.workItems[0]!;
+  ambiguous.projects.value.workItems = [
+    ...ambiguous.projects.value.workItems,
+    { ...original, id: `${original.id}-duplicate` },
+  ];
+  const ambiguousResult = await ambiguous.review.execute(ambiguous.command);
+  assertEquals(ambiguousResult.status, "unresolved");
+  assertEquals(
+    ambiguousResult.status !== "resolved" &&
+      ambiguousResult.diagnostics[0]?.code === "work_item_claim_unresolved",
+    true,
+  );
+  assertEquals(
+    ambiguousResult.status !== "resolved" &&
+      ambiguousResult.diagnostics[0]?.message.includes("ambiguous") === true,
+    true,
+  );
 });
 
 Deno.test("impact-manifest review keeps stale or mismatched declared mechanical evidence unresolved", async () => {
@@ -121,17 +189,33 @@ async function reviewFixture() {
       dependsOnItemIds: index === 0 ? [] : ["brief.source.impact"],
     })),
   });
+  const projects = new MemoryProjectReader({
+    project: { id: manifest.project.id },
+    workItems: manifest.gateMap.map((mapping) => ({
+      id: `work-${mapping.branchId}`,
+      gateClaims: [{
+        gateItemId: mapping.gateItemId,
+        role: mapping.role,
+        status: "current" as const,
+      }],
+    })),
+  });
   const review = new PrepareProjectCrossDomainImpactManifestSealReview({
     manifests,
     lineage: lineages,
     briefGates: briefs,
+    projects,
   });
   return {
     review,
-    command: { projectId: manifest.project.id, manifestRef: { fingerprint: reference } },
+    command: {
+      projectId: manifest.project.id,
+      manifestRef: { fingerprint: reference },
+    },
     manifests,
     lineage: lineages,
     briefs,
+    projects,
     solverCalls: 0,
   };
 }
@@ -160,5 +244,27 @@ class MemoryBriefGateReader implements CrossDomainImpactBriefGateReader {
   read() {
     this.reads += 1;
     return Promise.resolve(this.value);
+  }
+}
+
+class MemoryProjectReader {
+  reads = 0;
+  constructor(
+    readonly value: {
+      project: { id: string };
+      workItems: Array<{
+        id: string;
+        gateClaims?: Array<{
+          gateItemId: string;
+          role: "satisfies" | "contributes-to";
+          status: "current" | "impact-unresolved" | "invalidated" | "carried-forward";
+        }>;
+      }>;
+    },
+  ) {}
+  get(projectId: string) {
+    this.reads += 1;
+    if (this.value.project.id !== projectId) return Promise.resolve(undefined);
+    return Promise.resolve(this.value as any);
   }
 }

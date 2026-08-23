@@ -133,6 +133,43 @@ Deno.test(
 );
 
 Deno.test(
+  "admitted Modelica evaluation review selects the unique Thread pair among shared SysML ids",
+  async () => {
+    const fixture = await harness({ requirements: "shared-element" });
+    const result = await fixture.service.execute({ projectId: PROJECT_ID });
+    assertEquals(result.method.selections[0]?.requirementMetric, "placeholder-output");
+    assertEquals(
+      result.method.selections[0]?.requirementElementId,
+      "placeholder-requirement",
+    );
+  },
+);
+
+Deno.test(
+  "admitted Modelica evaluation review refuses a missing Thread requirement pair before MRTR",
+  async () => {
+    const fixture = await harness({ requirements: "missing" });
+    await assertRejects(
+      () => fixture.service.execute({ projectId: PROJECT_ID }),
+      ProjectAdmittedModelicaEvaluationReviewError,
+      "no current requirement",
+    );
+  },
+);
+
+Deno.test(
+  "admitted Modelica evaluation review refuses an ambiguous Thread requirement pair before MRTR",
+  async () => {
+    const fixture = await harness({ requirements: "ambiguous" });
+    await assertRejects(
+      () => fixture.service.execute({ projectId: PROJECT_ID }),
+      ProjectAdmittedModelicaEvaluationReviewError,
+      "will not choose one",
+    );
+  },
+);
+
+Deno.test(
   "admitted Modelica evaluation review leaves a unit mismatch unresolved",
   async () => {
     const fixture = await harness();
@@ -154,8 +191,14 @@ Deno.test(
   },
 );
 
-async function harness(options: { includeEvidence?: boolean } = {}) {
+async function harness(
+  options: {
+    includeEvidence?: boolean;
+    requirements?: "unique" | "missing" | "ambiguous" | "shared-element";
+  } = {},
+) {
   const includeEvidence = options.includeEvidence !== false;
+  const requirementMode = options.requirements ?? "unique";
   const sheet = validateModelicaThermalMethodSheet(identitySheetInput());
   await fingerprintModelicaThermalMethodSheet(sheet);
   const evidenceFingerprint: ContentFingerprint = {
@@ -225,16 +268,19 @@ async function harness(options: { includeEvidence?: boolean } = {}) {
     ],
     consumptions: [],
     observations: [],
-    requirements: [],
+    requirements: reviewRequirements(requirementMode),
     evaluations: [],
     violations: [],
-    provenance: [{
-      id: "provenance.change.brief",
-      relation: "changes",
-      from: { kind: "change", id: "change.brief" },
-      to: { kind: "artifact", id: "artifact.brief" },
-      rationale: "The applied change introduced the brief document.",
-    }],
+    provenance: [
+      {
+        id: "provenance.change.brief",
+        relation: "changes",
+        from: { kind: "change", id: "change.brief" },
+        to: { kind: "artifact", id: "artifact.brief" },
+        rationale: "The applied change introduced the brief document.",
+      },
+      ...reviewRequirementProvenance(requirementMode),
+    ],
     proposedActions: [],
   });
   const objective = "Evaluate admitted Modelica observations.";
@@ -360,6 +406,66 @@ class MemoryEvidenceReader implements AdmittedObservationEvidenceReader {
 
 function fresh(at: string) {
   return { status: "fresh" as const, changedAt: at, invalidatedByChangeIds: [] };
+}
+
+function reviewRequirements(
+  mode: "unique" | "missing" | "ambiguous" | "shared-element",
+) {
+  if (mode === "missing") return [];
+  const elementId = "placeholder-requirement";
+  const matching = reviewRequirement(
+    "thread-placeholder-requirement",
+    elementId,
+    "placeholder-output",
+  );
+  if (mode === "unique") return [matching];
+  if (mode === "ambiguous") {
+    return [
+      matching,
+      reviewRequirement(
+        "thread-placeholder-requirement-duplicate",
+        elementId,
+        "placeholder-output",
+      ),
+    ];
+  }
+  return [
+    reviewRequirement("thread-max-displacement", elementId, "maxDisplacement"),
+    reviewRequirement("thread-max-von-mises", elementId, "maxVonMises"),
+    matching,
+  ];
+}
+
+function reviewRequirementProvenance(
+  mode: "unique" | "missing" | "ambiguous" | "shared-element",
+) {
+  return reviewRequirements(mode).map((requirement) => ({
+    id: `trace-${requirement.id}-to-brief`,
+    relation: "traces_to" as const,
+    from: { kind: "requirement" as const, id: requirement.id },
+    to: { kind: "artifact" as const, id: "artifact.brief" },
+    rationale: "The placeholder requirement constrains the brief artifact.",
+  }));
+}
+
+function reviewRequirement(id: string, elementId: string, metric: string) {
+  return {
+    id,
+    name: id,
+    statement: "Placeholder requirement. Not a thermal verdict.",
+    version: "1",
+    criterion: {
+      metric,
+      operator: "<=" as const,
+      limit: { value: 1, unit: "unit-pending-source" },
+    },
+    trace: {
+      sourceArtifactId: "artifact.brief",
+      elementId,
+      targetArtifactIds: ["artifact.brief"],
+    },
+    freshness: fresh(AT),
+  };
 }
 
 function identitySheetInput(): Record<string, unknown> {

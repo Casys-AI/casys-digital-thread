@@ -2,6 +2,7 @@ import { assertEquals, assertThrows } from "@std/assert";
 import type { EngineeringWorkItem } from "../project/engineering-project.ts";
 import {
   applyCrossDomainImpactWorkItemClaims,
+  recrossCrossDomainImpactManifestGateMap,
   recrossCrossDomainImpactWorkItemClaims,
 } from "./cross-domain-impact-decision.ts";
 
@@ -24,6 +25,40 @@ Deno.test("impact decision recrosses each proposed gate onto exactly one work-it
     "current",
     "current",
   ]);
+});
+
+Deno.test("impact manifest gateMap recrosses unique current work-item claims and names missing or ambiguous gates", () => {
+  const gateMap = [
+    { gateItemId: "gate-electrical", role: "satisfies" as const },
+    { gateItemId: "gate-thermal", role: "contributes-to" as const },
+    { gateItemId: "gate-mechanical", role: "satisfies" as const },
+  ];
+  const resolved = recrossCrossDomainImpactManifestGateMap(workItems(), gateMap);
+  assertEquals(resolved.map((item) => item.workItemId), [
+    "work-electrical",
+    "work-thermal",
+    "work-mechanical",
+  ]);
+  assertEquals(resolved.every((item) => item.status === "current"), true);
+
+  assertThrows(
+    () =>
+      recrossCrossDomainImpactManifestGateMap(workItems(), [
+        { gateItemId: "gate-missing", role: "satisfies" },
+      ]),
+    TypeError,
+    'gateItemId "gate-missing" is a missing work-item gate claim',
+  );
+  const duplicated = workItems();
+  duplicated.push({
+    ...duplicated[0]!,
+    id: "work-electrical-duplicate",
+  });
+  assertThrows(
+    () => recrossCrossDomainImpactManifestGateMap(duplicated, gateMap),
+    TypeError,
+    'gateItemId "gate-electrical" is an ambiguous work-item gate claim',
+  );
 });
 
 Deno.test("impact decision recross refuses missing, mismatched, and ambiguous work-item claims", () => {

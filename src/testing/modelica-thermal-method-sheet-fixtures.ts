@@ -55,6 +55,7 @@ export function validThermalMethodSheetPlaceholder(): Record<string, unknown> {
       quantityMeaning: "named-thermal-observation",
       declaredUnit: "unit-pending-source",
       requirementElementId: "placeholder-requirement",
+      requirementMetric: "placeholder-output",
       limitation: "Observation role only. Not a verdict.",
     }],
     bindings: {
@@ -66,6 +67,7 @@ export function validThermalMethodSheetPlaceholder(): Record<string, unknown> {
         modelSymbolId: "placeholder-output",
         role: "final",
         requirementElementId: "placeholder-requirement",
+        requirementMetric: "placeholder-output",
       }],
     },
     review: {
@@ -96,6 +98,7 @@ export function missingBindingThermalMethodSheet(): Record<string, unknown> {
       modelSymbolId: "placeholder-output",
       role: "final",
       requirementElementId: "placeholder-requirement",
+      requirementMetric: "placeholder-output",
     }],
   };
   return sheet;
