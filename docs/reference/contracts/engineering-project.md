@@ -53,7 +53,7 @@ Contents: [Three truth boundaries](#three-truth-boundaries) ·
 | **Live**    | Append-only progress and result notifications used to refresh the activity feed while work is occurring                                                                                              | Canonical evidence, completion, approval, or a pass/fail verdict      |
 
 The BFF composes these boundaries for presentation. Its browser contract is an
-`engineering-workbench/0.5` object with an explicit surface: `planning` contains the
+`engineering-workbench/0.6` object with an explicit surface: `planning` contains the
 durable project plus the status of the first documentary baseline and redacted live
 milestones; `evidence` contains the project, projected `thread` (whose `live` field
 contains current activity), `alignment`, and `projectPath`. `projectPath.phaseLanes`

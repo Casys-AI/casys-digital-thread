@@ -21,7 +21,7 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
   const canonical = linkedSnapshot();
   const projection = projectThreadWorkbenchSnapshot(canonical);
 
-  assertEquals(projection.schemaVersion, "thread-workbench/0.1");
+  assertEquals(projection.schemaVersion, "thread-workbench/0.2");
   assertEquals(projection.source, "observed");
   assertEquals(projection.subject.label, "Generic Product GEN-01");
   assertEquals(projection.engineeringCases, {

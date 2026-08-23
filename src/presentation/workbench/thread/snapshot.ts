@@ -143,8 +143,10 @@ export interface ThreadEvaluationCloseoutIndex {
   cards: ThreadEvaluationCloseoutCard[];
 }
 
+export const THREAD_WORKBENCH_SCHEMA = "thread-workbench/0.2" as const;
+
 export interface ThreadWorkbenchSnapshot {
-  schemaVersion: "thread-workbench/0.1";
+  schemaVersion: typeof THREAD_WORKBENCH_SCHEMA;
   id: string;
   subject: { id: string; label: string; program: string };
   generatedAt: string;
@@ -153,7 +155,7 @@ export interface ThreadWorkbenchSnapshot {
   sourceLabel: string;
   change: ThreadChange;
   components: ThreadComponentCatalog;
-  /** Absent means unavailable for older 0.1 producers; never an empty catalog. */
+  /** Absent means unavailable for older producers; never an empty catalog. */
   engineeringCases?: EngineeringCaseCatalog;
   /** Absent means the BFF has no local closeout-capture reader configured. */
   evaluationCloseouts?: ThreadEvaluationCloseoutIndex;

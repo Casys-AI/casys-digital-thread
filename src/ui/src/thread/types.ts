@@ -73,20 +73,21 @@ import {
   ENGINEERING_CASE_FAMILIES,
   ENGINEERING_CASE_SCHEMA_BY_FAMILY,
 } from "../../../presentation/workbench/thread/evidence.ts";
-import type {
-  ThreadAction,
-  ThreadArtifact,
-  ThreadEvaluationCloseoutBasis,
-  ThreadEvaluationCloseoutCard,
-  ThreadEvaluationCloseoutCriterion,
-  ThreadEvaluationCloseoutEvidenceRef,
-  ThreadEvaluationCloseoutIndex,
-  ThreadEvaluationCloseoutProofLimitations,
-  ThreadObservation,
-  ThreadRequirement,
-  ThreadViolation,
-  ThreadWorkbenchPreviousSnapshot,
-  ThreadWorkbenchSnapshot,
+import {
+  THREAD_WORKBENCH_SCHEMA,
+  type ThreadAction,
+  type ThreadArtifact,
+  type ThreadEvaluationCloseoutBasis,
+  type ThreadEvaluationCloseoutCard,
+  type ThreadEvaluationCloseoutCriterion,
+  type ThreadEvaluationCloseoutEvidenceRef,
+  type ThreadEvaluationCloseoutIndex,
+  type ThreadEvaluationCloseoutProofLimitations,
+  type ThreadObservation,
+  type ThreadRequirement,
+  type ThreadViolation,
+  type ThreadWorkbenchPreviousSnapshot,
+  type ThreadWorkbenchSnapshot,
 } from "../../../presentation/workbench/thread/snapshot.ts";
 import type {
   ThreadComponent,
@@ -160,6 +161,7 @@ export {
   ENGINEERING_WORKBENCH_SCHEMA,
   LIVE_THREAD_OVERLAY_SCHEMA,
 } from "../../../presentation/workbench/engineering/schema.ts";
+export { THREAD_WORKBENCH_SCHEMA } from "../../../presentation/workbench/thread/snapshot.ts";
 export type {
   EngineeringDocumentaryTechnicalStart,
   EngineeringDocumentaryTechnicalStartState,
@@ -845,7 +847,7 @@ export function isThreadWorkbenchSnapshot(
     "violations",
     "actions",
     "live",
-  ]) && candidate.schemaVersion === "thread-workbench/0.1" &&
+  ]) && candidate.schemaVersion === THREAD_WORKBENCH_SCHEMA &&
     typeof candidate.id === "string" && candidate.id.length > 0 &&
     typeof candidate.generatedAt === "string" &&
     (candidate.previous === undefined ||

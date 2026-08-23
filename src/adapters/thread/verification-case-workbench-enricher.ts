@@ -170,7 +170,8 @@ export async function enrichThreadWorkbenchWithEngineeringCases(
   for (const artifact of snapshot.artifacts) {
     const driver = drivers.find((candidate) =>
       candidate.producedBy === artifact.producedBy &&
-      artifact.uri?.startsWith(`${candidate.uriPrefix}sha256/`) === true
+      (artifact.id.startsWith(candidate.artifactIdPrefix) ||
+        artifact.uri?.startsWith(`${candidate.uriPrefix}sha256/`) === true)
     );
     if (!driver) continue;
 

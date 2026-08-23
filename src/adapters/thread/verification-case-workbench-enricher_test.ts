@@ -289,6 +289,34 @@ Deno.test(
 );
 
 Deno.test(
+  "engineering case enricher reports a family artifact whose URI is missing as artifact-binding-invalid",
+  async () => {
+    const proof = await sealedProof(PROOF_CASE, "run.seal.corrupt-uri");
+    const snapshot = workbenchFor([proof]);
+    const corrupt = snapshot.artifacts.find((artifact) =>
+      artifact.id === proof.artifact.id
+    )!;
+    delete corrupt.uri;
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        mechanicalProof: { read: () => Promise.resolve(proof.captureText) },
+      }),
+      CASE_CONTEXT,
+    );
+
+    assertEquals(enriched.engineeringCases.cases, []);
+    assertEquals(enriched.engineeringCases.issues, [{
+      family: "mechanical-proof",
+      authorityArtifactId: proof.artifact.id,
+      status: "error",
+      reason: "artifact-binding-invalid",
+    }]);
+  },
+);
+
+Deno.test(
   "verification case enricher ignores another document emitted by the proof operation",
   async () => {
     const proof = await sealedProof(PROOF_CASE, "run.seal.with-offer");
@@ -607,7 +635,7 @@ function workbenchFor(proofs: readonly SealedProof[]): ThreadWorkbenchSnapshot {
   );
 
   return {
-    schemaVersion: "thread-workbench/0.1",
+    schemaVersion: "thread-workbench/0.2",
     id: "snapshot",
     subject: {
       id: PROOF_CASE.project.subjectId,

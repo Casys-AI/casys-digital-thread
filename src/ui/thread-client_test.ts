@@ -359,7 +359,7 @@ Deno.test("Workbench contract rejects a planning activity that carries graph or 
 Deno.test("Workbench contract keeps a documentary baseline separate from an evidence thread", () => {
   const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
-    schemaVersion: "engineering-workbench/0.5",
+    schemaVersion: "engineering-workbench/0.6",
     surface: "documentary",
     project: publicPretechnicalProject(fixture.project),
     documentary: {
@@ -394,7 +394,7 @@ Deno.test("Workbench contract keeps a documentary baseline separate from an evid
 Deno.test("Workbench contract accepts only the closed live SysON seed sequence on documentary r1", () => {
   const fixture = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
   const documentary = {
-    schemaVersion: "engineering-workbench/0.5",
+    schemaVersion: "engineering-workbench/0.6",
     surface: "documentary",
     project: publicPretechnicalProject(fixture.project),
     documentary: {
@@ -1067,7 +1067,7 @@ function proofNode(id: string, caseKey: string): ThreadGraphNode {
   };
 }
 
-Deno.test("thread-workbench/0.1 keeps the case extension additive and fail-closed", () => {
+Deno.test("thread-workbench/0.2 keeps the case extension additive and fail-closed", () => {
   const legacy = structuredClone(GENERIC_THREAD_FIXTURE) as
     & typeof GENERIC_THREAD_FIXTURE
     & { engineeringCases?: unknown };

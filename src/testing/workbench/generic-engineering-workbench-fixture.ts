@@ -193,7 +193,7 @@ export const GENERIC_PROJECT_FIXTURE: EngineeringProjectSnapshot = {
 
 export const GENERIC_ENGINEERING_WORKBENCH_FIXTURE:
   EngineeringEvidenceWorkbenchSnapshot = {
-    schemaVersion: "engineering-workbench/0.5",
+    schemaVersion: "engineering-workbench/0.6",
     surface: "evidence",
     project: GENERIC_PROJECT_FIXTURE,
     thread: {

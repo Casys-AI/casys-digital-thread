@@ -11,7 +11,7 @@ import type { ThreadWorkbenchSnapshot } from "../../presentation/workbench/threa
 
 /** Explicit product-design fixture; never presented as live engineering proof. */
 export const GENERIC_THREAD_FIXTURE: ThreadWorkbenchSnapshot = {
-  schemaVersion: "thread-workbench/0.1",
+  schemaVersion: "thread-workbench/0.2",
   id: "thread-generic-chg-184",
   subject: {
     id: "GEN-01",

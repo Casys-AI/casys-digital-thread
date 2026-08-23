@@ -28,13 +28,14 @@ import type {
   AssertionScope,
   SemanticRef,
 } from "../../domain/thread/engineering-assertion.ts";
-import type {
-  ThreadAction,
-  ThreadArtifact,
-  ThreadObservation,
-  ThreadRequirement,
-  ThreadViolation,
-  ThreadWorkbenchSnapshot,
+import {
+  THREAD_WORKBENCH_SCHEMA,
+  type ThreadAction,
+  type ThreadArtifact,
+  type ThreadObservation,
+  type ThreadRequirement,
+  type ThreadViolation,
+  type ThreadWorkbenchSnapshot,
 } from "../../presentation/workbench/thread/snapshot.ts";
 import type {
   ThreadAnalysisScope,
@@ -93,7 +94,7 @@ export function projectThreadWorkbenchSnapshot(
   });
 
   return {
-    schemaVersion: "thread-workbench/0.1",
+    schemaVersion: THREAD_WORKBENCH_SCHEMA,
     id: snapshot.id,
     subject: {
       id: snapshot.subject.id,
