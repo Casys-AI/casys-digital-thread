@@ -33,8 +33,10 @@ disposable capture-keyed traversal index.
 #### [`src/adapters/architecture/renderer/architecture-capture-navigation-index.ts`](../../../src/adapters/architecture/renderer/architecture-capture-navigation-index.ts)
 
 Graphology traversal index for one exact architecture capture. Algorithmic, disposable.
-Not product authority. Not imported into `src/domain`. Exposed by MCP tools and the
-Workbench GET/SSE DTO. The existing SysML catalog view is not a second product tree.
+Not product authority. Not imported into `src/domain`. `hasElement({id, kind})` matches
+exact `PartDefinition` or `PartUsage` identity, not locate/occurrence heuristics.
+Exposed by MCP tools and the Workbench GET/SSE DTO. The existing SysML catalog view is
+not a second product tree.
 
 #### [`src/adapters/architecture/renderer/capture-product-structure-traversal.ts`](../../../src/adapters/architecture/renderer/capture-product-structure-traversal.ts)
 

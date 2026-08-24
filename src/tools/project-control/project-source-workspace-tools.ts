@@ -6,6 +6,7 @@ import {
   FINGERPRINT_SCHEMA,
   PROJECT_ID,
   READ_ONLY_ANNOTATIONS,
+  THREAD_SNAPSHOT_REF_SCHEMA,
 } from "./mcp-tool-schemas.ts";
 
 export interface ProjectSourceWorkspaceToolDependencies {
@@ -102,7 +103,7 @@ const CAPTURE_REQUEST = {
 const SNAPSHOT_OUTPUT = {
   type: "object",
   properties: {
-    schemaVersion: { const: "project-source-workspace-snapshot/1.0" },
+    schemaVersion: { const: "project-source-workspace-snapshot/2.0" },
     projectId: PROJECT_ID,
     workspaceRevision: WORKSPACE_REVISION,
     lastEventFingerprint: {
@@ -111,6 +112,7 @@ const SNAPSHOT_OUTPUT = {
     rootModuleIds: { type: "array", items: ID_SCHEMA },
     moduleCount: { type: "integer", minimum: 0 },
     activeFileCount: { type: "integer", minimum: 0 },
+    activeAttachmentCount: { type: "integer", minimum: 0 },
     grants: { const: "none" },
   },
   required: [
@@ -121,6 +123,7 @@ const SNAPSHOT_OUTPUT = {
     "rootModuleIds",
     "moduleCount",
     "activeFileCount",
+    "activeAttachmentCount",
     "grants",
   ],
   additionalProperties: false,
@@ -310,6 +313,165 @@ const FILE_READ_OUTPUT = {
   additionalProperties: false,
 } as const;
 
+const ATTACHMENT_ROLE = {
+  type: "object",
+  properties: {
+    id: ID_SCHEMA,
+    version: { type: "integer", minimum: 1 },
+  },
+  required: ["id", "version"],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_TARGET = {
+  type: "object",
+  properties: {
+    elementId: ID_SCHEMA,
+    elementKind: { enum: ["PartDefinition", "PartUsage"] },
+  },
+  required: ["elementId", "elementKind"],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_DECLARED_AGAINST = {
+  type: "object",
+  properties: {
+    thread: THREAD_SNAPSHOT_REF_SCHEMA,
+    architecture: {
+      type: "object",
+      properties: {
+        artifactId: ID_SCHEMA,
+        fingerprint: FINGERPRINT_SCHEMA,
+        captureSchema: { const: "architecture-capture/4.0" },
+      },
+      required: ["artifactId", "fingerprint", "captureSchema"],
+      additionalProperties: false,
+    },
+  },
+  required: ["thread", "architecture"],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_CONTENT_RECORD = {
+  type: "object",
+  properties: {
+    kind: { const: "content" },
+    attachmentId: ID_SCHEMA,
+    attachmentRevision: { type: "integer", minimum: 1 },
+    predecessorAttachmentRevision: { type: "integer", minimum: 1 },
+    fileId: ID_SCHEMA,
+    role: ATTACHMENT_ROLE,
+    target: ATTACHMENT_TARGET,
+    declaredAgainst: ATTACHMENT_DECLARED_AGAINST,
+    fingerprint: FINGERPRINT_SCHEMA,
+  },
+  required: [
+    "kind",
+    "attachmentId",
+    "attachmentRevision",
+    "fileId",
+    "role",
+    "target",
+    "declaredAgainst",
+    "fingerprint",
+  ],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_TOMBSTONE_RECORD = {
+  type: "object",
+  properties: {
+    kind: { const: "tombstone" },
+    attachmentId: ID_SCHEMA,
+    attachmentRevision: { type: "integer", minimum: 1 },
+    predecessorAttachmentRevision: { type: "integer", minimum: 1 },
+    fingerprint: FINGERPRINT_SCHEMA,
+  },
+  required: [
+    "kind",
+    "attachmentId",
+    "attachmentRevision",
+    "predecessorAttachmentRevision",
+    "fingerprint",
+  ],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_READ_OUTPUT = {
+  type: "object",
+  properties: {
+    workspaceRevision: WORKSPACE_REVISION,
+    fileId: ID_SCHEMA,
+    fileHeadRevision: {
+      anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }],
+    },
+    sourceStatus: { enum: ["active", "source-removed"] },
+    record: {
+      oneOf: [ATTACHMENT_CONTENT_RECORD, ATTACHMENT_TOMBSTONE_RECORD],
+    },
+    grants: { const: "none" },
+  },
+  required: [
+    "workspaceRevision",
+    "fileId",
+    "fileHeadRevision",
+    "sourceStatus",
+    "record",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_LIST_ENTRY = {
+  type: "object",
+  properties: {
+    attachmentId: ID_SCHEMA,
+    attachmentRevision: { type: "integer", minimum: 1 },
+    fileId: ID_SCHEMA,
+    role: ATTACHMENT_ROLE,
+    target: ATTACHMENT_TARGET,
+    declaredAgainst: ATTACHMENT_DECLARED_AGAINST,
+    fingerprint: FINGERPRINT_SCHEMA,
+    fileHeadRevision: {
+      anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }],
+    },
+    sourceStatus: { enum: ["active", "source-removed"] },
+  },
+  required: [
+    "attachmentId",
+    "attachmentRevision",
+    "fileId",
+    "role",
+    "target",
+    "declaredAgainst",
+    "fingerprint",
+    "fileHeadRevision",
+    "sourceStatus",
+  ],
+  additionalProperties: false,
+} as const;
+
+const ATTACHMENT_LIST_OUTPUT = {
+  type: "object",
+  properties: {
+    workspaceRevision: WORKSPACE_REVISION,
+    entries: { type: "array", items: ATTACHMENT_LIST_ENTRY },
+    nextCursor: {
+      anyOf: [
+        {
+          type: "string",
+          minLength: 1,
+          maxLength: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength,
+        },
+        { type: "null" },
+      ],
+    },
+    grants: { const: "none" },
+  },
+  required: ["workspaceRevision", "entries", "nextCursor", "grants"],
+  additionalProperties: false,
+} as const;
+
 export function registerProjectSourceWorkspaceTools(
   app: McpApp,
   dependencies: ProjectSourceWorkspaceToolDependencies,
@@ -343,6 +505,28 @@ export function registerProjectSourceWorkspaceTools(
       content: `Source file ${
         String(args.fileId)
       } is tombstoned at workspace revision ${snapshot.workspaceRevision}. History and CAS bytes remain. Grants none.`,
+      structuredContent: snapshot as unknown as Record<string, unknown>,
+    };
+  });
+
+  app.registerTool(projectSourceAttachmentPutTool, async (args) => {
+    const snapshot = await workspace.putAttachment(attachmentPutCommand(args));
+    return {
+      content: `Source attachment ${
+        String(args.attachmentId)
+      } is recorded at workspace revision ${snapshot.workspaceRevision} against an exact SysML element. Authoring relation only; grants none. Not admission, compilation or execution.`,
+      structuredContent: snapshot as unknown as Record<string, unknown>,
+    };
+  });
+
+  app.registerTool(projectSourceAttachmentDetachTool, async (args) => {
+    const snapshot = await workspace.detachAttachment(
+      attachmentDetachCommand(args),
+    );
+    return {
+      content: `Source attachment ${
+        String(args.attachmentId)
+      } is detached at workspace revision ${snapshot.workspaceRevision}. History remains. Grants none.`,
       structuredContent: snapshot as unknown as Record<string, unknown>,
     };
   });
@@ -385,6 +569,29 @@ export function registerProjectSourceWorkspaceTools(
     return {
       content: body,
       structuredContent: read as unknown as Record<string, unknown>,
+    };
+  });
+
+  app.registerTool(projectSourceAttachmentReadTool, async (args) => {
+    const read = await workspace.readAttachment(args);
+    const identity = `Source attachment ${String(args.attachmentId)}@${
+      String(args.attachmentRevision)
+    } was read at workspace revision ${read.workspaceRevision}.`;
+    const body = read.record.kind === "content"
+      ? `${identity} Content revision. Source status ${read.sourceStatus}. Grants none.`
+      : `${identity} Tombstone revision. Source status ${read.sourceStatus}. Grants none.`;
+    return {
+      content: body,
+      structuredContent: read as unknown as Record<string, unknown>,
+    };
+  });
+
+  app.registerTool(projectSourceAttachmentListTool, async (args) => {
+    const page = await workspace.listAttachments(args);
+    return {
+      content:
+        `Source attachment page at workspace revision ${page.workspaceRevision} has ${page.entries.length} active heads. Grants none.`,
+      structuredContent: page as unknown as Record<string, unknown>,
     };
   });
 }
@@ -566,6 +773,114 @@ const projectSourceSearchTool: MCPTool = {
   annotations: READ_ONLY_ANNOTATIONS,
 };
 
+const projectSourceAttachmentPutTool: MCPTool = {
+  name: "project_source_attachment_put",
+  description:
+    "Create or revise one versioned authoring attachment from a stable fileId to one exact SysML PartDefinition or PartUsage. Recrosses the unique current Thread tip and architecture-capture/4.0. Role/target/basis changes are explicit successors. Grants none. Not admission, compilation, provider or path authority.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      mutationId: MUTATION_ID,
+      expectedWorkspaceRevision: EXPECTED_WORKSPACE_REVISION,
+      attachmentId: ID_SCHEMA,
+      predecessorAttachmentRevision: { type: "integer", minimum: 1 },
+      fileId: ID_SCHEMA,
+      role: ATTACHMENT_ROLE,
+      target: ATTACHMENT_TARGET,
+      declaredAgainst: ATTACHMENT_DECLARED_AGAINST,
+    },
+    required: [
+      "projectId",
+      "mutationId",
+      "expectedWorkspaceRevision",
+      "attachmentId",
+      "fileId",
+      "role",
+      "target",
+      "declaredAgainst",
+    ],
+    additionalProperties: false,
+  },
+  outputSchema: SNAPSHOT_OUTPUT,
+  annotations: WORKSPACE_MUTATION_ANNOTATIONS,
+};
+
+const projectSourceAttachmentDetachTool: MCPTool = {
+  name: "project_source_attachment_detach",
+  description:
+    "Record an explicit tombstone for one active authoring attachment at an exact workspace revision. File bytes, architecture captures and history remain. Grants none.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      mutationId: MUTATION_ID,
+      expectedWorkspaceRevision: EXPECTED_WORKSPACE_REVISION,
+      attachmentId: ID_SCHEMA,
+      activeAttachmentRevision: { type: "integer", minimum: 1 },
+    },
+    required: [
+      "projectId",
+      "mutationId",
+      "expectedWorkspaceRevision",
+      "attachmentId",
+      "activeAttachmentRevision",
+    ],
+    additionalProperties: false,
+  },
+  outputSchema: SNAPSHOT_OUTPUT,
+  annotations: WORKSPACE_MUTATION_ANNOTATIONS,
+};
+
+const projectSourceAttachmentReadTool: MCPTool = {
+  name: "project_source_attachment_read",
+  description:
+    "Read one exact attachment revision at one exact workspace revision. Content or tombstone. Publishes source status active or source-removed for the named file identity. Grants none.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      workspaceRevision: WORKSPACE_REVISION,
+      attachmentId: ID_SCHEMA,
+      attachmentRevision: { type: "integer", minimum: 1 },
+    },
+    required: [
+      "projectId",
+      "workspaceRevision",
+      "attachmentId",
+      "attachmentRevision",
+    ],
+    additionalProperties: false,
+  },
+  outputSchema: ATTACHMENT_READ_OUTPUT,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const projectSourceAttachmentListTool: MCPTool = {
+  name: "project_source_attachment_list",
+  description:
+    "List active attachment heads at one exact workspace revision, filtered by exactly fileId or exactly target. Includes source-removed heads. Bounded page. A mismatched cursor fails closed. Grants none.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      workspaceRevision: WORKSPACE_REVISION,
+      fileId: ID_SCHEMA,
+      target: ATTACHMENT_TARGET,
+      pageSize: PAGE_SIZE,
+      cursor: {
+        type: "string",
+        minLength: 1,
+        maxLength: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength,
+      },
+    },
+    required: ["projectId", "workspaceRevision"],
+    additionalProperties: false,
+  },
+  outputSchema: ATTACHMENT_LIST_OUTPUT,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
 const projectSourceFileReadTool: MCPTool = {
   name: "project_source_file_read",
   description:
@@ -635,6 +950,38 @@ function fileRemoveCommand(args: Record<string, unknown>): unknown {
       kind: "file_remove",
       fileId: args.fileId,
       activeFileRevision: args.activeFileRevision,
+    },
+  };
+}
+
+function attachmentPutCommand(args: Record<string, unknown>): unknown {
+  return {
+    projectId: args.projectId,
+    mutationId: args.mutationId,
+    expectedWorkspaceRevision: args.expectedWorkspaceRevision,
+    mutation: {
+      kind: "attachment_put",
+      attachmentId: args.attachmentId,
+      fileId: args.fileId,
+      role: args.role,
+      target: args.target,
+      declaredAgainst: args.declaredAgainst,
+      ...(args.predecessorAttachmentRevision === undefined
+        ? {}
+        : { predecessorAttachmentRevision: args.predecessorAttachmentRevision }),
+    },
+  };
+}
+
+function attachmentDetachCommand(args: Record<string, unknown>): unknown {
+  return {
+    projectId: args.projectId,
+    mutationId: args.mutationId,
+    expectedWorkspaceRevision: args.expectedWorkspaceRevision,
+    mutation: {
+      kind: "attachment_detach",
+      attachmentId: args.attachmentId,
+      activeAttachmentRevision: args.activeAttachmentRevision,
     },
   };
 }

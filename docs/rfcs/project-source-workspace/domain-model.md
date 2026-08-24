@@ -9,10 +9,10 @@ tree on every revision.
 
 The aggregate exposes a materialised read model for navigation, but the event log is the
 recovery authority. Each accepted mutation publishes one
-`project-source-workspace-event/2.0` record. Revision 1 has
+`project-source-workspace-event/3.0` record. Revision 1 has
 `previousEventFingerprint: null`. Later revisions name the exact prior event
-fingerprint, which is part of the hashed event body. A broken chain is refused. `/1.0`
-events are not accepted.
+fingerprint, which is part of the hashed event body. A broken chain is refused. `/2.0`
+and `/1.0` events are not accepted. There is no historical-byte migration.
 
 ## Stable entities
 
@@ -53,12 +53,37 @@ dependencies increments the file revision. Renaming or moving therefore preserve
 `fileId` but creates a successor. Removing a file records a tombstone; it never deletes
 CAS bytes or history.
 
+### `ProjectSourceAttachment`
+
+An attachment is a stable, separately revisioned authoring edge between a workspace
+`fileId` and one exact captured SysML element. It is not stored in a file revision, a
+Thread artifact, or the Graphology index. One edge revision contains:
+
+- `attachmentId` and a positive attachment revision;
+- exact predecessor, absent only on creation;
+- stable `fileId` that cannot change along the chain;
+- versioned product-relation role `{id, version}`;
+- exact `target.elementId` and `target.elementKind` (`PartDefinition` or `PartUsage`);
+- `declaredAgainst` naming the exact Thread `{snapshotId, revision, subjectId}` and the
+  exact architecture
+  `{artifactId, fingerprint, captureSchema: architecture-capture/4.0}`;
+- the canonical edge-revision fingerprint.
+
+Role or target change is an explicit successor. An identical active
+`fileId + role + target` edge may not be declared twice. Detach writes a tombstone;
+detached identities are not revived. File remove does not cascade: the edge stays
+visible with `source-removed`.
+
 ## Invariants
 
 - A module slug is unique among active sibling modules.
 - A logical file name is unique among active files in one module; the derived path is
   consequently unique in one exact workspace revision.
-- A predecessor must be the unique active revision of the same `fileId`.
+- A predecessor must be the unique active revision of the same `fileId` or
+  `attachmentId`.
+- A new attachment requires an active file. A successor cannot change `fileId`.
+- An active `fileId + role + target` tuple is unique. Put after an attachment tombstone
+  is `branch_ambiguity`.
 - Dependencies name exact revisions in the same project and form an acyclic graph.
 - A module parent graph is acyclic.
 - Resource reference URI, digest, size, representation, name and MIME are re-opened

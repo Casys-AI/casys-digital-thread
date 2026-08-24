@@ -26,6 +26,7 @@ Deno.test("file put reopens the exact resource and refuses a missing project or 
       projects: { get: () => Promise.resolve(undefined) },
       workspace,
       resources: persisted.reopen,
+      ...unusedExternal(),
     });
     const missing = await assertRejects(
       () => missingProject.putModule(modulePut("m1", 0)),
@@ -164,6 +165,7 @@ Deno.test("historical read and tree pagination stay at the requested revision", 
       projects: { get: () => Promise.resolve({ id: PROJECT }) },
       workspace: new FileProjectSourceWorkspaceStore(`${root}/ws`),
       resources: v2.reopen,
+      ...unusedExternal(),
     });
     await later.putFile(filePut("f2", 2, v2.reference, {
       predecessorFileRevision: 1,
@@ -191,6 +193,22 @@ Deno.test("historical read and tree pagination stay at the requested revision", 
   }
 });
 
+function unusedExternal() {
+  return {
+    snapshots: {
+      get: () => Promise.reject(new Error("snapshots must not be used")),
+    },
+    traversal: {
+      open: () => Promise.reject(new Error("traversal must not be used")),
+    },
+    roles: {
+      accept: () => {
+        throw new Error("roles must not be used");
+      },
+    },
+  };
+}
+
 function cases(
   workspace: FileProjectSourceWorkspaceStore,
   resources: AgentResourceExactReopener = { reopenExact: () => Promise.resolve({}) },
@@ -199,6 +217,7 @@ function cases(
     projects: { get: () => Promise.resolve({ id: PROJECT }) },
     workspace,
     resources,
+    ...unusedExternal(),
   });
 }
 

@@ -3,6 +3,8 @@
  */
 
 import type {
+  ProjectSourceAttachmentListEntry,
+  ProjectSourceAttachmentRead,
   ProjectSourceFileRead,
   ProjectSourcePage,
   ProjectSourceSearchHit,
@@ -14,6 +16,8 @@ export interface ProjectSourceWorkspaceUseCase {
   putModule(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
   putFile(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
   removeFile(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
+  putAttachment(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
+  detachAttachment(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
   snapshot(value: unknown): Promise<ProjectSourceWorkspaceSnapshot>;
   tree(
     value: unknown,
@@ -22,4 +26,8 @@ export interface ProjectSourceWorkspaceUseCase {
     value: unknown,
   ): Promise<ProjectSourcePage<ProjectSourceSearchHit>>;
   readFile(value: unknown): Promise<ProjectSourceFileRead>;
+  readAttachment(value: unknown): Promise<ProjectSourceAttachmentRead>;
+  listAttachments(
+    value: unknown,
+  ): Promise<ProjectSourcePage<ProjectSourceAttachmentListEntry>>;
 }

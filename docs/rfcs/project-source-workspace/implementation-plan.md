@@ -19,15 +19,17 @@ from the real MCP and runtime path, not fixtures or UI copy.
 
 ## Phase B: semantic attachments and exact source closure
 
-- Add a stable, separately revisioned workspace edge from `fileId` to one exact captured
-  SysML element. Preserve it across file edits and never infer a retarget from labels.
-- From exact `System`, `PartUsage` and `PartDefinition` nodes, expose attached source,
-  geometry, physics and verdict references with their exact bases.
-- Resolve a bounded technical dependency closure only after selecting an attached source
-  root from an exact semantic target.
-- Return an opaque locator and bounded diagnostics; keep the closure non-authoritative
-  and permission-free.
-- Prove cycle, stale edge, missing resource, bound and recovery behavior.
+- Implemented: stable, separately revisioned `ProjectSourceWorkspace` edge from `fileId`
+  to one exact captured SysML element, with workspace MCP put/detach/read/list. Preserve
+  it across file edits and never infer a retarget from labels.
+- Pending: from exact `System`, `PartUsage` and `PartDefinition` nodes, expose attached
+  source, geometry, physics and verdict references with their exact bases.
+- Pending: resolve a bounded technical dependency closure only after selecting an
+  attached source root from an exact semantic target.
+- Pending: return an opaque locator and bounded diagnostics; keep the closure
+  non-authoritative and permission-free.
+- Pending: prove cycle, stale edge, missing resource, bound and recovery behavior on the
+  proving vehicle.
 
 ## Phase C: reusable definition builds
 

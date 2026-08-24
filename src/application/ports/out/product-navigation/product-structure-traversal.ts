@@ -30,6 +30,10 @@ export interface OpenedProductStructure {
     readonly children: readonly ProductNavigationNode[];
   };
   hasDefinition(id: string): boolean;
+  hasElement(query: {
+    readonly id: string;
+    readonly kind: "PartDefinition" | "PartUsage";
+  }): boolean;
 }
 
 export interface ProductStructureTraversal {

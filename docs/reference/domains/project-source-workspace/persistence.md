@@ -10,12 +10,14 @@ Each accepted mutation publishes one immutable event `NNNNNNNNNN.json` after
 Compare-and-swap is `createNew` on the claim. A claimed but unpublished revision fails
 closed on the next load.
 
-The event is recovery authority: `project-source-workspace-event/2.0`, previous
+The event is recovery authority: `project-source-workspace-event/3.0`, previous
 workspace revision, `previousEventFingerprint` (null at revision 1, otherwise the exact
 prior event fingerprint), mutation id, bounded mutation payload, canonical fingerprint.
 The prior fingerprint is included in the event body fingerprint; the log is
-hash-chained. There is no `/1.0` reader, writer or migration. Append compares the
-durable predecessor fingerprint with `event.previousEventFingerprint` before claiming.
+hash-chained. There is no `/2.0` or `/1.0` reader, writer or migration. Historical
+`/2.0` bytes are not reinterpreted. Append compares the durable predecessor fingerprint
+with `event.previousEventFingerprint` before claiming. The materialised index includes
+the attachments map and can be rebuilt solely from the event log.
 
 The in-memory index is a replaceable optimisation: every load observes the on-disk
 event/claim census, then incrementally applies new events when the cached head is still

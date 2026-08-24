@@ -74,23 +74,29 @@ Immutable project intent and execution-state contract
 
 #### [`src/domain/project-source-workspace/`](../../../src/domain/project-source-workspace)
 
-Generic draft source-tree aggregate: modules, files, exact predecessors, derived POSIX
-paths, mutation-id idempotency. Not Thread, not admission
+Generic draft source-tree aggregate: modules, files, versioned authoring attachments,
+exact predecessors, derived POSIX paths, mutation-id idempotency. Event `/3.0`, snapshot
+`/2.0`. Replay is pure. Not Thread, not admission
 
 #### [`src/adapters/project-source-workspace/`](../../../src/adapters/project-source-workspace)
 
-Append-only event adapter under `state/local/project-source-workspaces/` and
-composition. Claim/publish fail-closed. Not a generic repository
+Append-only event adapter under `state/local/project-source-workspaces/`, composition,
+and the fixed generic v1 attachment-role catalogue. Claim/publish fail-closed. Not a
+generic repository. `server.ts` shares one `CaptureProductStructureTraversal` with
+product navigation.
 
 #### [`src/application/use-cases/project-source-workspace/`](../../../src/application/use-cases/project-source-workspace)
 
 Project-scoped mutations and revision-anchored reads. File put reopens the exact
-`AgentResourceReference` before the event is accepted. Not admission
+`AgentResourceReference` before the event is accepted. Attachment put recrosses the
+current Thread tip and `architecture-capture/4.0` unless the mutation id is already
+accepted. Not admission
 
 #### [`src/tools/project-control/project-source-workspace-tools.ts`](../../../src/tools/project-control/project-source-workspace-tools.ts)
 
-Seven MCP tools for the draft source tree. `grants: none`. Optional `captureRequest` is
-stored inertly; Vertical 1 does not register it
+Eleven MCP tools for the draft source tree and authoring attachments. `grants: none`.
+Optional `captureRequest` is stored inertly; Vertical 1 does not register it. Attachment
+roles are the fixed generic v1 catalogue only
 
 #### [`src/domain/project/thread-tip.ts`](../../../src/domain/project/thread-tip.ts)
 

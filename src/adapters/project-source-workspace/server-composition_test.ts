@@ -14,6 +14,12 @@ Deno.test("workspace composition mutates without a provider, runtime or compilat
       directory: `${root}/ws`,
       projects: { get: () => Promise.resolve({ id: "generic-project" }) },
       resources: persisted.reopen,
+      snapshots: {
+        get: () => Promise.reject(new Error("snapshots must not be used")),
+      },
+      traversal: {
+        open: () => Promise.reject(new Error("traversal must not be used")),
+      },
     });
     const snapshot = await composed.sourceWorkspace.putModule({
       projectId: "generic-project",
@@ -34,6 +40,7 @@ Deno.test("workspace composition mutates without a provider, runtime or compilat
     assertEquals(source.includes("HttpMcpToolClient"), false);
     assertEquals(source.includes("CreateConsoleServerOptions"), false);
     assertEquals(source.includes("imageReference"), false);
+    assertEquals(snapshot.activeAttachmentCount, 0);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

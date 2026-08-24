@@ -18,8 +18,18 @@ import { parseAgentResourceReference } from "../resource/agent-resource-referenc
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { AgentResourceReference } from "../resource/agent-resource-capture.ts";
 import {
+  PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA,
+  PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS,
   PROJECT_SOURCE_WORKSPACE_BOUNDS as BOUNDS,
   PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
+  type ProjectSourceAttachmentDeclaredAgainst,
+  type ProjectSourceAttachmentDetach,
+  type ProjectSourceAttachmentElementKind,
+  type ProjectSourceAttachmentListQuery,
+  type ProjectSourceAttachmentPut,
+  type ProjectSourceAttachmentReadQuery,
+  type ProjectSourceAttachmentRole,
+  type ProjectSourceAttachmentTarget,
   type ProjectSourceCaptureRequest,
   type ProjectSourceFilePut,
   type ProjectSourceFileReadQuery,
@@ -301,6 +311,151 @@ export function parseFilePut(
   });
 }
 
+export function parseAttachmentRole(
+  value: unknown,
+  path: string,
+): ProjectSourceAttachmentRole {
+  const rec = exactClosed(value, ["id", "version"], ["id", "version"], path);
+  return deepFreeze({
+    id: parseProjectId(rec.id, `${path}.id`),
+    version: positiveInteger(rec.version, `${path}.version`),
+  });
+}
+
+export function parseAttachmentTarget(
+  value: unknown,
+  path: string,
+): ProjectSourceAttachmentTarget {
+  const rec = exactClosed(
+    value,
+    ["elementId", "elementKind"],
+    ["elementId", "elementKind"],
+    path,
+  );
+  if (
+    rec.elementKind !== "PartDefinition" && rec.elementKind !== "PartUsage"
+  ) {
+    workspaceError(
+      "invalid_request",
+      `${path}.elementKind must be ${
+        PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS.join(" or ")
+      }.`,
+    );
+  }
+  return deepFreeze({
+    elementId: parseProjectId(rec.elementId, `${path}.elementId`),
+    elementKind: rec.elementKind as ProjectSourceAttachmentElementKind,
+  });
+}
+
+export function parseAttachmentDeclaredAgainst(
+  value: unknown,
+  path: string,
+): ProjectSourceAttachmentDeclaredAgainst {
+  const rec = exactClosed(
+    value,
+    ["thread", "architecture"],
+    ["thread", "architecture"],
+    path,
+  );
+  const thread = exactClosed(
+    rec.thread,
+    ["snapshotId", "revision", "subjectId"],
+    ["snapshotId", "revision", "subjectId"],
+    `${path}.thread`,
+  );
+  const architecture = exactClosed(
+    rec.architecture,
+    ["artifactId", "fingerprint", "captureSchema"],
+    ["artifactId", "fingerprint", "captureSchema"],
+    `${path}.architecture`,
+  );
+  literalValue(
+    architecture.captureSchema,
+    PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA,
+    `${path}.architecture.captureSchema`,
+  );
+  return deepFreeze({
+    thread: {
+      snapshotId: parseProjectId(thread.snapshotId, `${path}.thread.snapshotId`),
+      revision: positiveInteger(thread.revision, `${path}.thread.revision`),
+      subjectId: parseProjectId(thread.subjectId, `${path}.thread.subjectId`),
+    },
+    architecture: {
+      artifactId: parseProjectId(
+        architecture.artifactId,
+        `${path}.architecture.artifactId`,
+      ),
+      fingerprint: parseContentFingerprint(
+        architecture.fingerprint,
+        `${path}.architecture.fingerprint`,
+      ),
+      captureSchema: PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA,
+    },
+  });
+}
+
+export function parseAttachmentPut(
+  value: unknown,
+  path = "$mutation",
+): ProjectSourceAttachmentPut {
+  const rec = exactClosed(
+    value,
+    [
+      "kind",
+      "attachmentId",
+      "predecessorAttachmentRevision",
+      "fileId",
+      "role",
+      "target",
+      "declaredAgainst",
+    ],
+    ["kind", "attachmentId", "fileId", "role", "target", "declaredAgainst"],
+    path,
+  );
+  literalValue(rec.kind, "attachment_put", `${path}.kind`);
+  return deepFreeze({
+    kind: "attachment_put" as const,
+    attachmentId: parseProjectId(rec.attachmentId, `${path}.attachmentId`),
+    fileId: parseProjectId(rec.fileId, `${path}.fileId`),
+    role: parseAttachmentRole(rec.role, `${path}.role`),
+    target: parseAttachmentTarget(rec.target, `${path}.target`),
+    declaredAgainst: parseAttachmentDeclaredAgainst(
+      rec.declaredAgainst,
+      `${path}.declaredAgainst`,
+    ),
+    ...(Object.hasOwn(rec, "predecessorAttachmentRevision")
+      ? {
+        predecessorAttachmentRevision: positiveInteger(
+          rec.predecessorAttachmentRevision,
+          `${path}.predecessorAttachmentRevision`,
+        ),
+      }
+      : {}),
+  });
+}
+
+export function parseAttachmentDetach(
+  value: unknown,
+  path = "$mutation",
+): ProjectSourceAttachmentDetach {
+  const rec = exactClosed(
+    value,
+    ["kind", "attachmentId", "activeAttachmentRevision"],
+    ["kind", "attachmentId", "activeAttachmentRevision"],
+    path,
+  );
+  literalValue(rec.kind, "attachment_detach", `${path}.kind`);
+  return deepFreeze({
+    kind: "attachment_detach" as const,
+    attachmentId: parseProjectId(rec.attachmentId, `${path}.attachmentId`),
+    activeAttachmentRevision: positiveInteger(
+      rec.activeAttachmentRevision,
+      `${path}.activeAttachmentRevision`,
+    ),
+  });
+}
+
 export function parseFileRemove(
   value: unknown,
   path = "$mutation",
@@ -333,6 +488,8 @@ export function parseMutation(
   if (kind === "module_put") return parseModulePut(value, path);
   if (kind === "file_put") return parseFilePut(value, path);
   if (kind === "file_remove") return parseFileRemove(value, path);
+  if (kind === "attachment_put") return parseAttachmentPut(value, path);
+  if (kind === "attachment_detach") return parseAttachmentDetach(value, path);
   workspaceError("invalid_request", `${path}.kind must be a workspace mutation.`);
 }
 
@@ -464,6 +621,87 @@ export function parseSearchQuery(
           ),
         }
         : {}),
+      ...(Object.hasOwn(rec, "pageSize")
+        ? { pageSize: parsePageSize(rec.pageSize, `${path}.pageSize`) }
+        : {}),
+      ...(Object.hasOwn(rec, "cursor")
+        ? {
+          cursor: parseBoundedText(
+            rec.cursor,
+            `${path}.cursor`,
+            BOUNDS.maxCursorLength,
+          ),
+        }
+        : {}),
+    };
+  } catch (cause) {
+    asWorkspaceError(cause, path);
+  }
+}
+
+export function parseAttachmentReadQuery(
+  value: unknown,
+  path = "$query",
+): { readonly projectId: string } & ProjectSourceAttachmentReadQuery {
+  try {
+    const rec = exactClosed(
+      value,
+      ["projectId", "workspaceRevision", "attachmentId", "attachmentRevision"],
+      ["projectId", "workspaceRevision", "attachmentId", "attachmentRevision"],
+      path,
+    );
+    return {
+      projectId: parseProjectId(rec.projectId, `${path}.projectId`),
+      workspaceRevision: parseWorkspaceRevision(
+        rec.workspaceRevision,
+        `${path}.workspaceRevision`,
+      ),
+      attachmentId: parseProjectId(rec.attachmentId, `${path}.attachmentId`),
+      attachmentRevision: positiveInteger(
+        rec.attachmentRevision,
+        `${path}.attachmentRevision`,
+      ),
+    };
+  } catch (cause) {
+    asWorkspaceError(cause, path);
+  }
+}
+
+export function parseAttachmentListQuery(
+  value: unknown,
+  path = "$query",
+): { readonly projectId: string } & ProjectSourceAttachmentListQuery {
+  try {
+    const rec = exactClosed(
+      value,
+      [
+        "projectId",
+        "workspaceRevision",
+        "fileId",
+        "target",
+        "pageSize",
+        "cursor",
+      ],
+      ["projectId", "workspaceRevision"],
+      path,
+    );
+    const hasFileId = Object.hasOwn(rec, "fileId");
+    const hasTarget = Object.hasOwn(rec, "target");
+    if (hasFileId === hasTarget) {
+      workspaceError(
+        "invalid_request",
+        `${path} must filter by exactly fileId or exactly target.`,
+      );
+    }
+    return {
+      projectId: parseProjectId(rec.projectId, `${path}.projectId`),
+      workspaceRevision: parseWorkspaceRevision(
+        rec.workspaceRevision,
+        `${path}.workspaceRevision`,
+      ),
+      ...(hasFileId ? { fileId: parseProjectId(rec.fileId, `${path}.fileId`) } : {
+        target: parseAttachmentTarget(rec.target, `${path}.target`),
+      }),
       ...(Object.hasOwn(rec, "pageSize")
         ? { pageSize: parsePageSize(rec.pageSize, `${path}.pageSize`) }
         : {}),
@@ -768,7 +1006,7 @@ export function dependencyGraphHasCycle(
   return false;
 }
 
-function parseContentFingerprint(
+export function parseContentFingerprint(
   value: unknown,
   path: string,
 ): ContentFingerprint {

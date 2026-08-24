@@ -24,6 +24,20 @@ Takes `projectId`, `mutationId`, `expectedWorkspaceRevision`, `fileId` and the e
 active file revision. It records an explicit tombstone. The history and raw CAS bytes
 remain recoverable.
 
+### `project_source_attachment_put`
+
+Takes `projectId`, `mutationId`, `expectedWorkspaceRevision`, `attachmentId`, optional
+predecessor, stable `fileId`, versioned role, exact target, and `declaredAgainst`. The
+application recrosses the unique current Thread tip and unique
+`architecture-capture/4.0`, then `hasElement` on that capture. An already accepted
+`mutationId` replays without recross. Grants none.
+
+### `project_source_attachment_detach`
+
+Takes `projectId`, `mutationId`, `expectedWorkspaceRevision`, `attachmentId` and the
+exact active attachment revision. It records a tombstone. It does not contact SysON or
+the product-structure traversal.
+
 The first implementation may expose these as separate commands. A later batch command
 may apply several already-validated mutations atomically, but it must preserve the same
 per-file identities and events.
@@ -54,6 +68,18 @@ closed.
 
 Returns metadata for one exact revision plus its full `AgentResourceReference`. The
 agent reads the bytes through the existing MCP resource URI.
+
+### `project_source_attachment_read`
+
+Returns one exact attachment revision at one exact workspace revision. Content or
+tombstone. Publishes `sourceStatus` `active` or `source-removed` for the named file
+identity at that workspace revision.
+
+### `project_source_attachment_list`
+
+Lists active attachment heads, including `source-removed`, filtered by exactly `fileId`
+or exactly `target`. Paginated. The cursor binds workspace revision, filter and last
+`attachmentId`. A mismatched cursor fails closed.
 
 ## Technical capture bridge
 

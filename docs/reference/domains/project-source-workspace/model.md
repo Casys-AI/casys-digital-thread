@@ -4,10 +4,11 @@ Audience: agent · Diátaxis: reference · Kind: contract
 
 `ProjectSourceWorkspace` is the consistency boundary for one project source tree. Every
 mutation carries an exact `expectedWorkspaceRevision` and a stable `mutationId`. The log
-stores one bounded `project-source-workspace-event/2.0` record per accepted mutation.
+stores one bounded `project-source-workspace-event/3.0` record per accepted mutation.
 Events are hash-chained: revision 1 has `previousEventFingerprint: null`; later
 revisions name the exact prior event fingerprint, which is included in the event body
-fingerprint. `/1.0` events are not accepted.
+fingerprint. `/2.0` and `/1.0` events are not accepted. There is no historical-byte
+migration.
 
 ## Modules and files
 
@@ -27,6 +28,12 @@ on create), full `AgentResourceReference`, role, optional inert `captureRequest`
 dependency revisions, and the fingerprint of the canonical revision record. Rename or
 move preserves `fileId` and creates a successor. Remove records a tombstone. History and
 CAS bytes remain.
+
+An attachment is a separately revisioned authoring edge from a stable `fileId` to one
+exact SysML `PartDefinition` or `PartUsage`. `fileId` cannot change along the chain.
+Role or target change is an explicit successor. Detach writes a tombstone. File remove
+does not cascade; reads publish `source-removed`. Snapshot schema is
+`project-source-workspace-snapshot/2.0` and includes `activeAttachmentCount`.
 
 ## Invariants
 

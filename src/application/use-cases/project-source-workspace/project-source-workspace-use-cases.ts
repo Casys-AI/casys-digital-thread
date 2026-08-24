@@ -3,6 +3,8 @@
  *
  * EngineeringProject must already exist. File puts reopen the exact
  * AgentResourceReference before the aggregate accepts the revision.
+ * Attachment puts recross the current Thread tip and architecture-capture/4.0
+ * unless the mutation id is already accepted.
  */
 
 import type { ProjectSourceWorkspaceUseCase } from "../../ports/in/project-source-workspace/project-source-workspace.ts";
@@ -11,25 +13,41 @@ import type { ProjectSourceWorkspaceEventStore } from "../../ports/out/project-s
 import {
   ProjectSourceWorkspaceStoreError,
 } from "../../ports/out/project-source-workspace/project-source-workspace-event-store.ts";
+import type { ProjectSourceAttachmentRoleCatalog } from "../../ports/out/project-source-workspace/project-source-attachment-role-catalog.ts";
+import type {
+  ProductStructureTraversal,
+} from "../../ports/out/product-navigation/product-structure-traversal.ts";
+import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
+import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
+import { selectCurrentThreadTip } from "../../../domain/project/thread-tip.ts";
+import { fingerprintsEqual } from "../../../domain/kernel/deterministic-json.ts";
 import {
   applyProjectSourceWorkspaceCommand,
 } from "../../../domain/project-source-workspace/transitions.ts";
 import {
+  projectSourceWorkspaceAttachmentList,
+  projectSourceWorkspaceAttachmentRead,
   projectSourceWorkspaceFileRead,
   projectSourceWorkspaceSearchPage,
   projectSourceWorkspaceSnapshot,
   projectSourceWorkspaceTreePage,
 } from "../../../domain/project-source-workspace/reads.ts";
 import {
+  type ProjectSourceAttachmentListEntry,
+  type ProjectSourceAttachmentPut,
+  type ProjectSourceAttachmentRead,
   type ProjectSourceFileRead,
   type ProjectSourcePage,
   type ProjectSourceSearchHit,
   type ProjectSourceTreeEntry,
+  type ProjectSourceWorkspaceCommand,
   ProjectSourceWorkspaceError,
   type ProjectSourceWorkspaceSnapshot,
   type ProjectSourceWorkspaceState,
 } from "../../../domain/project-source-workspace/types.ts";
 import {
+  parseAttachmentListQuery,
+  parseAttachmentReadQuery,
   parseFileReadQuery,
   parseSearchQuery,
   parseSnapshotQuery,
@@ -41,19 +59,30 @@ export interface ProjectExistenceReader {
   get(projectId: string): Promise<unknown>;
 }
 
+export interface ProjectSourceWorkspaceUseCasesDependencies {
+  readonly projects: ProjectExistenceReader;
+  readonly workspace: ProjectSourceWorkspaceEventStore;
+  readonly resources: AgentResourceExactReopener;
+  readonly snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly traversal: ProductStructureTraversal;
+  readonly roles: ProjectSourceAttachmentRoleCatalog;
+}
+
 export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUseCase {
   readonly #projects: ProjectExistenceReader;
   readonly #workspace: ProjectSourceWorkspaceEventStore;
   readonly #resources: AgentResourceExactReopener;
+  readonly #snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly #traversal: ProductStructureTraversal;
+  readonly #roles: ProjectSourceAttachmentRoleCatalog;
 
-  constructor(dependencies: {
-    readonly projects: ProjectExistenceReader;
-    readonly workspace: ProjectSourceWorkspaceEventStore;
-    readonly resources: AgentResourceExactReopener;
-  }) {
+  constructor(dependencies: ProjectSourceWorkspaceUseCasesDependencies) {
     this.#projects = dependencies.projects;
     this.#workspace = dependencies.workspace;
     this.#resources = dependencies.resources;
+    this.#snapshots = dependencies.snapshots;
+    this.#traversal = dependencies.traversal;
+    this.#roles = dependencies.roles;
   }
 
   async putModule(value: unknown): Promise<ProjectSourceWorkspaceSnapshot> {
@@ -66,6 +95,31 @@ export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUse
 
   async removeFile(value: unknown): Promise<ProjectSourceWorkspaceSnapshot> {
     return await this.mutate(value, "file_remove");
+  }
+
+  async putAttachment(value: unknown): Promise<ProjectSourceWorkspaceSnapshot> {
+    const command = parseWorkspaceCommand(value);
+    if (command.mutation.kind !== "attachment_put") {
+      throw new ProjectSourceWorkspaceError(
+        "invalid_request",
+        "This command accepts only attachment_put mutations.",
+      );
+    }
+    const current = await this.#workspace.load(command.projectId);
+    if (current.mutations.has(command.mutationId)) {
+      const replayed = await applyProjectSourceWorkspaceCommand(current, command);
+      return await this.snapshotAt(
+        command.projectId,
+        replayed.event.workspaceRevision,
+      );
+    }
+    await this.recrossAttachmentPut(command.projectId, command.mutation);
+    const state = await this.#workspace.load(command.projectId);
+    return await this.commit(state, command);
+  }
+
+  async detachAttachment(value: unknown): Promise<ProjectSourceWorkspaceSnapshot> {
+    return await this.mutate(value, "attachment_detach");
   }
 
   async snapshot(value: unknown): Promise<ProjectSourceWorkspaceSnapshot> {
@@ -100,9 +154,29 @@ export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUse
     return projectSourceWorkspaceFileRead(state, query);
   }
 
+  async readAttachment(value: unknown): Promise<ProjectSourceAttachmentRead> {
+    const query = parseAttachmentReadQuery(value);
+    await this.requireProject(query.projectId);
+    const state = await this.loadRevision(query.projectId, query.workspaceRevision);
+    return projectSourceWorkspaceAttachmentRead(state, query);
+  }
+
+  async listAttachments(
+    value: unknown,
+  ): Promise<ProjectSourcePage<ProjectSourceAttachmentListEntry>> {
+    const query = parseAttachmentListQuery(value);
+    await this.requireProject(query.projectId);
+    const state = await this.loadRevision(query.projectId, query.workspaceRevision);
+    return projectSourceWorkspaceAttachmentList(state, query);
+  }
+
   private async mutate(
     value: unknown,
-    kind: "module_put" | "file_put" | "file_remove",
+    kind:
+      | "module_put"
+      | "file_put"
+      | "file_remove"
+      | "attachment_detach",
   ): Promise<ProjectSourceWorkspaceSnapshot> {
     const command = parseWorkspaceCommand(value);
     if (command.mutation.kind !== kind) {
@@ -124,6 +198,13 @@ export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUse
       await this.#resources.reopenExact(command.mutation.resourceRef);
     }
     const state = await this.#workspace.load(command.projectId);
+    return await this.commit(state, command);
+  }
+
+  private async commit(
+    state: ProjectSourceWorkspaceState,
+    command: ProjectSourceWorkspaceCommand,
+  ): Promise<ProjectSourceWorkspaceSnapshot> {
     const transition = await applyProjectSourceWorkspaceCommand(state, command);
     if (transition.replayed) {
       return await this.snapshotAt(
@@ -160,6 +241,75 @@ export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUse
     );
   }
 
+  private async recrossAttachmentPut(
+    projectId: string,
+    mutation: ProjectSourceAttachmentPut,
+  ): Promise<void> {
+    const project = await this.requireExactProject(projectId);
+    const tip = selectCurrentThreadTip(project.threadSnapshots);
+    if (tip.status !== "ok") {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "thread_tip_unresolved",
+        tip.diagnostic.message,
+      );
+    }
+    const declaredThread = mutation.declaredAgainst.thread;
+    if (
+      declaredThread.snapshotId !== tip.basis.snapshotId ||
+      declaredThread.revision !== tip.basis.revision ||
+      declaredThread.subjectId !== tip.basis.subjectId
+    ) {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "declared_against_mismatch",
+        "declaredAgainst.thread must equal the unique current Thread tip.",
+      );
+    }
+    const snapshot = await this.#snapshots.get(declaredThread.snapshotId);
+    if (
+      !snapshot ||
+      snapshot.id !== declaredThread.snapshotId ||
+      snapshot.revision !== declaredThread.revision ||
+      snapshot.subject.id !== declaredThread.subjectId
+    ) {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "thread_snapshot_mismatch",
+        "Thread snapshot recross does not match declaredAgainst.thread.",
+      );
+    }
+    const opened = await this.#traversal.open(snapshot);
+    const architecture = mutation.declaredAgainst.architecture;
+    if (
+      !opened ||
+      opened.architectureArtifactId !== architecture.artifactId ||
+      !fingerprintsEqual(
+        opened.architectureFingerprint,
+        architecture.fingerprint,
+      )
+    ) {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "architecture_mismatch",
+        "Architecture recross does not match declaredAgainst.architecture on architecture-capture/4.0.",
+      );
+    }
+    if (
+      !opened.hasElement({
+        id: mutation.target.elementId,
+        kind: mutation.target.elementKind,
+      })
+    ) {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "target_not_found",
+        `Target ${mutation.target.elementKind} ${mutation.target.elementId} is not present on the recrossed architecture capture.`,
+      );
+    }
+    if (!this.#roles.accept(mutation.role, mutation.target)) {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "role_not_accepted",
+        `Attachment role ${mutation.role.id}@${mutation.role.version} is not accepted for ${mutation.target.elementKind}.`,
+      );
+    }
+  }
+
   private async snapshotAt(
     projectId: string,
     workspaceRevision: number,
@@ -184,9 +334,38 @@ export class ProjectSourceWorkspaceUseCases implements ProjectSourceWorkspaceUse
       );
     }
   }
+
+  private async requireExactProject(
+    projectId: string,
+  ): Promise<EngineeringProjectSnapshot> {
+    const project = await this.#projects.get(projectId);
+    if (!isExactEngineeringProject(project, projectId)) {
+      throw new ProjectSourceWorkspaceApplicationError(
+        "project_not_found",
+        `Engineering project ${projectId} does not exist.`,
+      );
+    }
+    return project;
+  }
 }
 
-export type ProjectSourceWorkspaceApplicationErrorCode = "project_not_found";
+function isExactEngineeringProject(
+  value: unknown,
+  projectId: string,
+): value is EngineeringProjectSnapshot {
+  if (value === null || typeof value !== "object") return false;
+  const rec = value as EngineeringProjectSnapshot;
+  return rec.project?.id === projectId && Array.isArray(rec.threadSnapshots);
+}
+
+export type ProjectSourceWorkspaceApplicationErrorCode =
+  | "project_not_found"
+  | "thread_tip_unresolved"
+  | "declared_against_mismatch"
+  | "thread_snapshot_mismatch"
+  | "architecture_mismatch"
+  | "target_not_found"
+  | "role_not_accepted";
 
 export class ProjectSourceWorkspaceApplicationError extends Error {
   constructor(

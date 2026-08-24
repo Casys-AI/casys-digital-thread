@@ -10,7 +10,8 @@ Read:
 
 1. [Authority](authority.md) — four boundaries; `captureRequest` is caller-authored
    identity only and is not registered in Vertical 1.
-2. [Model](model.md) — aggregate, modules, files, derived paths, mutation id.
+2. [Model](model.md) — aggregate, modules, files, authoring attachments, derived paths,
+   mutation id.
 3. [Operations](operations.md) — MCP tools and bounded pagination.
 4. [Persistence](persistence.md) — append-only events and fail-closed recovery.
 5. [Coverage](coverage.md) — current vertical, deliberately missing bridges, and the

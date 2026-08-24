@@ -8,9 +8,12 @@ Audience: both · Diátaxis: reference · Kind: coverage
 - Stable module and file identities with derived logical paths.
 - Exact append-only revisions, predecessor chains, tombstones, dependencies and mutation
   replay.
-- Hash-chained `project-source-workspace-event/2.0` events: `previousEventFingerprint`
-  is null at revision 1 and the exact prior event fingerprint thereafter. `/1.0` is not
-  accepted.
+- Hash-chained `project-source-workspace-event/3.0` events: `previousEventFingerprint`
+  is null at revision 1 and the exact prior event fingerprint thereafter. `/2.0` and
+  `/1.0` are not accepted.
+- Versioned authoring attachments (`fileId` → exact SysML element) with put, detach,
+  exact read and bounded list. Replay never contacts SysON, Graphology, or the role
+  catalog.
 - Exact `AgentResourceReference` reopening before a file revision is accepted.
 - Revision-anchored snapshot, tree, search and file reads with bounded pagination.
 - Fail-closed recovery for gaps, corruption, incomplete claims and concurrent writers.
@@ -44,6 +47,7 @@ execution.
 | Vertical | Missing capability                                                          | Why it remains separate                                                               |
 | -------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | 3        | MCS-01 CAD, FEA, Modelica and SPICE sources executed from workspace entries | It is the first real-product proof of the bridge, not a workspace invariant           |
+| 3b       | Product-navigation authoring attachments, source closure, admission recross | Workspace edges exist; they are not yet projected as product context or sealed        |
 | 4        | Multi-file CAD bundle, placements and hierarchical assembly evidence        | Large assemblies must stay modular and bounded; one flat product manifest is rejected |
 
 Cross-file language imports, unlimited provider execution, and a mutable Workbench tree

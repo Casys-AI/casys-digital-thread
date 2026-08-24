@@ -11,6 +11,12 @@ import {
 import { deterministicJson } from "../kernel/deterministic-json.ts";
 import {
   PROJECT_SOURCE_WORKSPACE_SNAPSHOT_SCHEMA,
+  type ProjectSourceAttachmentListEntry,
+  type ProjectSourceAttachmentListQuery,
+  type ProjectSourceAttachmentRead,
+  type ProjectSourceAttachmentReadQuery,
+  type ProjectSourceAttachmentSourceStatus,
+  type ProjectSourceAttachmentTarget,
   type ProjectSourceFileRead,
   type ProjectSourceFileReadQuery,
   type ProjectSourcePage,
@@ -21,10 +27,15 @@ import {
   type ProjectSourceWorkspaceSnapshot,
   type ProjectSourceWorkspaceState,
 } from "./types.ts";
-import { contentRevisionAt } from "./transitions.ts";
+import {
+  attachmentFileIdAt,
+  attachmentRevisionAt,
+  contentRevisionAt,
+} from "./transitions.ts";
 import {
   derivedFilePath,
   derivedModulePath,
+  parseAttachmentTarget,
   parseClassification,
   parseLogicalName,
   parsePageSize,
@@ -55,6 +66,18 @@ interface SearchFilter {
   readonly profileId?: string;
 }
 
+interface AttachmentListFilter {
+  readonly fileId?: string;
+  readonly target?: ProjectSourceAttachmentTarget;
+}
+
+interface AttachmentListCursor {
+  readonly kind: "attachment-list";
+  readonly workspaceRevision: number;
+  readonly filter: AttachmentListFilter;
+  readonly after?: { readonly attachmentId: string };
+}
+
 export function projectSourceWorkspaceSnapshot(
   state: ProjectSourceWorkspaceState,
 ): ProjectSourceWorkspaceSnapshot {
@@ -66,6 +89,10 @@ export function projectSourceWorkspaceSnapshot(
   for (const file of state.files.values()) {
     if (file.status === "active") activeFileCount += 1;
   }
+  let activeAttachmentCount = 0;
+  for (const attachment of state.attachments.values()) {
+    if (attachment.status === "active") activeAttachmentCount += 1;
+  }
   return deepFreeze({
     schemaVersion: PROJECT_SOURCE_WORKSPACE_SNAPSHOT_SCHEMA,
     projectId: state.projectId,
@@ -74,6 +101,7 @@ export function projectSourceWorkspaceSnapshot(
     rootModuleIds,
     moduleCount: state.modules.size,
     activeFileCount,
+    activeAttachmentCount,
     grants: "none",
   });
 }
@@ -150,6 +178,67 @@ export function projectSourceWorkspaceSearchPage(
     workspaceRevision: query.workspaceRevision,
     filter,
     after: { derivedPath: last.derivedPath, fileId: last.fileId },
+  });
+  return deepFreeze({
+    workspaceRevision: query.workspaceRevision,
+    entries: page,
+    nextCursor,
+    grants: "none",
+  });
+}
+
+export function projectSourceWorkspaceAttachmentRead(
+  state: ProjectSourceWorkspaceState,
+  query: ProjectSourceAttachmentReadQuery,
+): ProjectSourceAttachmentRead {
+  assertExactRevision(state, query.workspaceRevision);
+  const attachmentId = parseProjectId(query.attachmentId, "$query.attachmentId");
+  const attachmentRevision = positiveInteger(
+    query.attachmentRevision,
+    "$query.attachmentRevision",
+  );
+  const record = attachmentRevisionAt(state, attachmentId, attachmentRevision);
+  const fileId = attachmentFileIdAt(state, attachmentId);
+  const source = fileSourceAt(state, fileId);
+  return deepFreeze({
+    workspaceRevision: query.workspaceRevision,
+    fileId,
+    fileHeadRevision: source.fileHeadRevision,
+    sourceStatus: source.sourceStatus,
+    record,
+    grants: "none",
+  });
+}
+
+export function projectSourceWorkspaceAttachmentList(
+  state: ProjectSourceWorkspaceState,
+  query: ProjectSourceAttachmentListQuery,
+): ProjectSourcePage<ProjectSourceAttachmentListEntry> {
+  assertExactRevision(state, query.workspaceRevision);
+  const filter = parseAttachmentListFilter(query);
+  const pageSize = parsePageSize(query.pageSize, "$query.pageSize");
+  const cursor = query.cursor
+    ? decodeAttachmentListCursor(query.cursor, query.workspaceRevision, filter)
+    : undefined;
+  const entries = collectAttachmentListEntries(state, filter);
+  const start = cursor?.after
+    ? entries.findIndex((entry) => entry.attachmentId === cursor.after!.attachmentId) +
+      1
+    : 0;
+  if (cursor?.after && start === 0) {
+    workspaceError(
+      "cursor_mismatch",
+      "Attachment list cursor sort key is not in this page set.",
+    );
+  }
+  const page = entries.slice(start, start + pageSize);
+  const last = page.at(-1);
+  const exhausted = start + page.length >= entries.length;
+  const nextCursor = exhausted || !last ? null : encodeCursor({
+    kind: "attachment-list",
+    workspaceRevision: query.workspaceRevision,
+    filter,
+    after: { attachmentId: last.attachmentId },
   });
   return deepFreeze({
     workspaceRevision: query.workspaceRevision,
@@ -406,7 +495,130 @@ function parsePathKey(value: unknown, path: string): string {
   return value;
 }
 
-function encodeCursor(value: TreeCursor | SearchCursor): string {
+function collectAttachmentListEntries(
+  state: ProjectSourceWorkspaceState,
+  filter: AttachmentListFilter,
+): ProjectSourceAttachmentListEntry[] {
+  const entries: ProjectSourceAttachmentListEntry[] = [];
+  for (const attachment of state.attachments.values()) {
+    if (attachment.status !== "active") continue;
+    const head = attachment.revisions.get(attachment.headRevision);
+    if (!head || head.kind !== "content") continue;
+    if (filter.fileId && head.fileId !== filter.fileId) continue;
+    if (
+      filter.target &&
+      (head.target.elementId !== filter.target.elementId ||
+        head.target.elementKind !== filter.target.elementKind)
+    ) {
+      continue;
+    }
+    const source = fileSourceAt(state, head.fileId);
+    entries.push({
+      attachmentId: attachment.attachmentId,
+      attachmentRevision: head.attachmentRevision,
+      fileId: head.fileId,
+      role: head.role,
+      target: head.target,
+      declaredAgainst: head.declaredAgainst,
+      fingerprint: head.fingerprint,
+      fileHeadRevision: source.fileHeadRevision,
+      sourceStatus: source.sourceStatus,
+    });
+  }
+  return entries.sort((left, right) =>
+    left.attachmentId.localeCompare(right.attachmentId)
+  );
+}
+
+function parseAttachmentListFilter(
+  query: ProjectSourceAttachmentListQuery,
+): AttachmentListFilter {
+  const hasFileId = query.fileId !== undefined;
+  const hasTarget = query.target !== undefined;
+  if (hasFileId === hasTarget) {
+    workspaceError(
+      "invalid_request",
+      "$query must filter by exactly fileId or exactly target.",
+    );
+  }
+  if (hasFileId) {
+    return { fileId: parseProjectId(query.fileId, "$query.fileId") };
+  }
+  return { target: parseAttachmentTarget(query.target, "$query.target") };
+}
+
+function decodeAttachmentListCursor(
+  cursor: string,
+  workspaceRevision: number,
+  filter: AttachmentListFilter,
+): AttachmentListCursor {
+  const decoded = decodeCursor(cursor);
+  const rec = closedRecord(
+    decoded,
+    ["kind", "workspaceRevision", "filter", "after"],
+    ["kind", "workspaceRevision", "filter"],
+    "$cursor",
+  );
+  literalValue(rec.kind, "attachment-list", "$cursor.kind");
+  const cursorRevision = parseWorkspaceRevision(
+    rec.workspaceRevision,
+    "$cursor.workspaceRevision",
+  );
+  if (cursorRevision !== workspaceRevision) {
+    workspaceError(
+      "cursor_mismatch",
+      "Attachment list cursor does not match the requested workspace revision.",
+    );
+  }
+  if (deterministicJson(rec.filter) !== deterministicJson(filter)) {
+    workspaceError(
+      "cursor_mismatch",
+      "Attachment list cursor does not match the requested filter.",
+    );
+  }
+  let after: AttachmentListCursor["after"];
+  if (Object.hasOwn(rec, "after")) {
+    const afterRec = closedRecord(
+      rec.after,
+      ["attachmentId"],
+      ["attachmentId"],
+      "$cursor.after",
+    );
+    after = {
+      attachmentId: parseProjectId(
+        afterRec.attachmentId,
+        "$cursor.after.attachmentId",
+      ),
+    };
+  }
+  return {
+    kind: "attachment-list",
+    workspaceRevision,
+    filter,
+    ...(after ? { after } : {}),
+  };
+}
+
+function fileSourceAt(
+  state: ProjectSourceWorkspaceState,
+  fileId: string,
+): {
+  readonly sourceStatus: ProjectSourceAttachmentSourceStatus;
+  readonly fileHeadRevision: number | null;
+} {
+  const file = state.files.get(fileId);
+  if (!file) {
+    return { sourceStatus: "source-removed", fileHeadRevision: null };
+  }
+  return {
+    sourceStatus: file.status === "active" ? "active" : "source-removed",
+    fileHeadRevision: file.headRevision,
+  };
+}
+
+function encodeCursor(
+  value: TreeCursor | SearchCursor | AttachmentListCursor,
+): string {
   return btoa(deterministicJson(value));
 }
 

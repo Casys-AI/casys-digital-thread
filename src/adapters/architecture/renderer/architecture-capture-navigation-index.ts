@@ -47,6 +47,10 @@ export interface ArchitectureCaptureNavigationIndex {
   definition(
     id: string,
   ): { readonly id: string; readonly label: string } | undefined;
+  hasElement(query: {
+    readonly id: string;
+    readonly kind: "PartDefinition" | "PartUsage";
+  }): boolean;
 }
 
 export function architectureCaptureNavigationIndex(
@@ -119,6 +123,7 @@ export function architectureCaptureNavigationIndex(
       const node = graph.getNodeAttributes(key);
       return { id, label: node.label };
     },
+    hasElement: (query) => hasElement(graph, query),
   };
 }
 
@@ -259,6 +264,23 @@ function neighborhoodOf(
   return { parent, siblings, children };
 }
 
+function hasElement(
+  graph: MultiDirectedGraph<CaptureNavNodeAttrs, CaptureNavEdgeAttrs>,
+  query: { readonly id: string; readonly kind: "PartDefinition" | "PartUsage" },
+): boolean {
+  if (query.id.length === 0 || query.id.toLowerCase() === "latest") return false;
+  const key = query.kind === "PartDefinition"
+    ? definitionKey(query.id)
+    : query.kind === "PartUsage"
+    ? usageNodeKey(query.id)
+    : undefined;
+  if (!key || !graph.hasNode(key)) return false;
+  const kind = graph.getNodeAttribute(key, "kind");
+  return query.kind === "PartDefinition"
+    ? kind === "part-definition"
+    : kind === "part-usage";
+}
+
 function emptyIndex(): ArchitectureCaptureNavigationIndex {
   return {
     root: () => undefined,
@@ -267,6 +289,7 @@ function emptyIndex(): ArchitectureCaptureNavigationIndex {
     locate: () => [],
     neighborhood: () => ({ siblings: [], children: [] }),
     definition: () => undefined,
+    hasElement: () => false,
   };
 }
 

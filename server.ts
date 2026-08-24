@@ -937,10 +937,16 @@ async function createProjectControl(
     spiceCaptures: admittedSpice.captures,
   });
 
+  const productStructureTraversal = new CaptureProductStructureTraversal(
+    architectureFoundation.genericArchitectureCaptures,
+    architectureFoundation.sysmlSourceAnalysis,
+  );
   const sourceWorkspace = createProjectSourceWorkspaceComposition({
     store: sourceWorkspaceStore,
     projects: runtime.projects,
     resources: reopenAgentResource,
+    snapshots: threadSnapshots,
+    traversal: productStructureTraversal,
   });
   const agentResourceIngress = createAgentResourceIngress({
     store: agentResourceStore,
@@ -1135,10 +1141,7 @@ async function createProjectControl(
       productNavigation: new ProjectProductNavigation({
         projects: runtime.projects,
         snapshots: threadSnapshots,
-        traversal: new CaptureProductStructureTraversal(
-          architectureFoundation.genericArchitectureCaptures,
-          architectureFoundation.sysmlSourceAnalysis,
-        ),
+        traversal: productStructureTraversal,
         workspace: sourceWorkspaceStore,
         attachments: new WorkbenchProductNavigationAttachmentReader({
           architectureCaptures: architectureFoundation.genericArchitectureCaptures,

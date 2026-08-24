@@ -14,6 +14,7 @@ import {
   ProjectSourceWorkspaceError,
   type ProjectSourceWorkspaceEvent,
 } from "../../domain/project-source-workspace/types.ts";
+import { sampleAgentResourceReference } from "../../testing/agent-resource-test-support.ts";
 
 const PROJECT = "generic-project";
 
@@ -47,6 +48,68 @@ Deno.test("append-only store writes one event per revision and rebuilds without 
     const historical = await rebuilt.loadAt(PROJECT, 1);
     assertEquals(historical.workspaceRevision, 1);
     assertEquals(historical.modules.has("mod-b"), false);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("store replays attachment events and clones the attachments map", async () => {
+  const root = await Deno.makeTempDir({ prefix: "psw-store-att-" });
+  try {
+    const store = new FileProjectSourceWorkspaceStore(root);
+    let state = emptyProjectSourceWorkspace(PROJECT);
+    const moduleEvent = await eventFor(state, modulePut("m1", 0));
+    await store.append(moduleEvent);
+    state = await store.load(PROJECT);
+    const fileEvent = await eventFor(state, {
+      projectId: PROJECT,
+      mutationId: "f1",
+      expectedWorkspaceRevision: 1,
+      mutation: {
+        kind: "file_put",
+        fileId: "file-rail",
+        moduleId: "mod-a",
+        logicalName: "rail.py",
+        role: "script",
+        dependencies: [],
+        resourceRef: sampleAgentResourceReference({ name: "rail.py" }),
+      },
+    });
+    await store.append(fileEvent);
+    state = await store.load(PROJECT);
+    const attachmentEvent = await eventFor(state, {
+      projectId: PROJECT,
+      mutationId: "a1",
+      expectedWorkspaceRevision: 2,
+      mutation: {
+        kind: "attachment_put",
+        attachmentId: "att-rail",
+        fileId: "file-rail",
+        role: { id: "design-source", version: 1 },
+        target: { elementId: "def-rail", elementKind: "PartDefinition" },
+        declaredAgainst: {
+          thread: {
+            snapshotId: "thread:p:r1",
+            revision: 1,
+            subjectId: "subject.p",
+          },
+          architecture: {
+            artifactId: "architecture-" + "a".repeat(64),
+            fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+            captureSchema: "architecture-capture/4.0",
+          },
+        },
+      },
+    });
+    await store.append(attachmentEvent);
+    const loaded = await new FileProjectSourceWorkspaceStore(root).load(PROJECT);
+    assertEquals(loaded.workspaceRevision, 3);
+    assertEquals(loaded.attachments.get("att-rail")?.status, "active");
+    (loaded.attachments as Map<string, unknown>).clear();
+    assertEquals(
+      (await store.load(PROJECT)).attachments.get("att-rail")?.status,
+      "active",
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }

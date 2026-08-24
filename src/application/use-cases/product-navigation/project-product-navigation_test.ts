@@ -262,6 +262,12 @@ function opened(): OpenedProductStructure {
       return { siblings: [], children: [] };
     },
     hasDefinition: (id) => id === "def-system" || id === "def-rail",
+    hasElement: (query) => {
+      if (query.kind === "PartDefinition") {
+        return query.id === "def-system" || query.id === "def-rail";
+      }
+      return query.id === "usage-left" || query.id === "usage-pad";
+    },
   };
 }
 
@@ -276,6 +282,7 @@ function workspaceWithHistoricalDependency(): ProjectSourceWorkspaceState {
     lastEventFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
     modules: new Map(),
     mutations: new Map(),
+    attachments: new Map(),
     files: new Map([
       ["source.cad", {
         fileId: "source.cad",

@@ -12,6 +12,11 @@ import type { ContentFingerprint } from "../kernel/primitives.ts";
 import {
   PROJECT_SOURCE_WORKSPACE_BOUNDS as BOUNDS,
   PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
+  type ProjectSourceAttachmentDetach,
+  type ProjectSourceAttachmentPut,
+  type ProjectSourceAttachmentRevision,
+  type ProjectSourceAttachmentRevisionRecord,
+  type ProjectSourceAttachmentTombstone,
   type ProjectSourceFilePut,
   type ProjectSourceFileRevision,
   type ProjectSourceFileRevisionRecord,
@@ -45,6 +50,7 @@ export function emptyProjectSourceWorkspace(
     workspaceRevision: 0,
     modules: new Map(),
     files: new Map(),
+    attachments: new Map(),
     mutations: new Map(),
   });
 }
@@ -243,7 +249,13 @@ async function applyMutation(
   if (mutation.kind === "file_put") {
     return await applyFilePut(state, mutation);
   }
-  return await applyFileRemove(state, mutation);
+  if (mutation.kind === "file_remove") {
+    return await applyFileRemove(state, mutation);
+  }
+  if (mutation.kind === "attachment_put") {
+    return await applyAttachmentPut(state, mutation);
+  }
+  return await applyAttachmentDetach(state, mutation);
 }
 
 function applyModulePut(
@@ -396,6 +408,148 @@ async function applyFileRemove(
   return { ...state, files };
 }
 
+async function applyAttachmentPut(
+  state: ProjectSourceWorkspaceState,
+  mutation: ProjectSourceAttachmentPut,
+): Promise<ProjectSourceWorkspaceState> {
+  const existing = state.attachments.get(mutation.attachmentId);
+  if (existing?.status === "detached") {
+    workspaceError(
+      "branch_ambiguity",
+      `Attachment ${mutation.attachmentId} is tombstoned; a new branch is refused.`,
+    );
+  }
+  if (existing?.status === "active") {
+    if (mutation.predecessorAttachmentRevision === undefined) {
+      workspaceError(
+        "branch_ambiguity",
+        `Attachment ${mutation.attachmentId} already exists; creation without the unique active predecessor is refused.`,
+      );
+    }
+    if (mutation.predecessorAttachmentRevision !== existing.headRevision) {
+      workspaceError(
+        "predecessor_mismatch",
+        `Attachment ${mutation.attachmentId} predecessor must be the unique active revision ${existing.headRevision}.`,
+      );
+    }
+    if (mutation.fileId !== existing.fileId) {
+      workspaceError(
+        "file_id_mismatch",
+        `Attachment ${mutation.attachmentId} fileId is stable and cannot change from ${existing.fileId}.`,
+      );
+    }
+  } else if (mutation.predecessorAttachmentRevision !== undefined) {
+    workspaceError(
+      "predecessor_mismatch",
+      `Attachment ${mutation.attachmentId} has no active revision; predecessor must be absent.`,
+    );
+  } else {
+    const file = state.files.get(mutation.fileId);
+    if (!file || file.status !== "active") {
+      workspaceError(
+        "file_not_found",
+        `Attachment ${mutation.attachmentId} requires active file ${mutation.fileId}.`,
+      );
+    }
+  }
+  assertUniqueActiveAttachmentEdge(state, mutation);
+  const attachmentRevision = mutation.predecessorAttachmentRevision
+    ? mutation.predecessorAttachmentRevision + 1
+    : 1;
+  const content: Omit<ProjectSourceAttachmentRevision, "fingerprint"> = {
+    kind: "content",
+    attachmentId: mutation.attachmentId,
+    attachmentRevision,
+    fileId: mutation.fileId,
+    role: mutation.role,
+    target: mutation.target,
+    declaredAgainst: mutation.declaredAgainst,
+    ...(mutation.predecessorAttachmentRevision !== undefined
+      ? { predecessorAttachmentRevision: mutation.predecessorAttachmentRevision }
+      : {}),
+  };
+  const record: ProjectSourceAttachmentRevision = {
+    ...content,
+    fingerprint: await sha256Fingerprint(content),
+  };
+  const attachments = new Map(state.attachments);
+  const revisions = new Map(existing?.revisions ?? []);
+  revisions.set(attachmentRevision, record);
+  attachments.set(mutation.attachmentId, {
+    attachmentId: mutation.attachmentId,
+    fileId: mutation.fileId,
+    headRevision: attachmentRevision,
+    status: "active",
+    revisions,
+  });
+  return { ...state, attachments };
+}
+
+async function applyAttachmentDetach(
+  state: ProjectSourceWorkspaceState,
+  mutation: ProjectSourceAttachmentDetach,
+): Promise<ProjectSourceWorkspaceState> {
+  const existing = state.attachments.get(mutation.attachmentId);
+  if (!existing || existing.status !== "active") {
+    workspaceError(
+      "attachment_not_found",
+      `Attachment ${mutation.attachmentId} is not active in the workspace.`,
+    );
+  }
+  if (existing.headRevision !== mutation.activeAttachmentRevision) {
+    workspaceError(
+      "predecessor_mismatch",
+      `Attachment ${mutation.attachmentId} detach must name the unique active revision ${existing.headRevision}.`,
+    );
+  }
+  const attachmentRevision = mutation.activeAttachmentRevision + 1;
+  const tombstoneBody: Omit<ProjectSourceAttachmentTombstone, "fingerprint"> = {
+    kind: "tombstone",
+    attachmentId: mutation.attachmentId,
+    attachmentRevision,
+    predecessorAttachmentRevision: mutation.activeAttachmentRevision,
+  };
+  const tombstone: ProjectSourceAttachmentTombstone = {
+    ...tombstoneBody,
+    fingerprint: await sha256Fingerprint(tombstoneBody),
+  };
+  const attachments = new Map(state.attachments);
+  const revisions = new Map(existing.revisions);
+  revisions.set(attachmentRevision, tombstone);
+  attachments.set(mutation.attachmentId, {
+    attachmentId: mutation.attachmentId,
+    fileId: existing.fileId,
+    headRevision: attachmentRevision,
+    status: "detached",
+    revisions,
+  });
+  return { ...state, attachments };
+}
+
+function assertUniqueActiveAttachmentEdge(
+  state: ProjectSourceWorkspaceState,
+  mutation: ProjectSourceAttachmentPut,
+): void {
+  for (const other of state.attachments.values()) {
+    if (other.attachmentId === mutation.attachmentId) continue;
+    if (other.status !== "active") continue;
+    const head = other.revisions.get(other.headRevision);
+    if (!head || head.kind !== "content") continue;
+    if (
+      head.fileId === mutation.fileId &&
+      head.role.id === mutation.role.id &&
+      head.role.version === mutation.role.version &&
+      head.target.elementId === mutation.target.elementId &&
+      head.target.elementKind === mutation.target.elementKind
+    ) {
+      workspaceError(
+        "duplicate_attachment",
+        `Active attachment ${other.attachmentId} already declares file ${mutation.fileId} with the same role and target.`,
+      );
+    }
+  }
+}
+
 function assertDependenciesExist(
   state: ProjectSourceWorkspaceState,
   mutation: ProjectSourceFilePut,
@@ -481,6 +635,7 @@ function freezeState(state: ProjectSourceWorkspaceState): ProjectSourceWorkspace
       : {}),
     modules: state.modules,
     files: state.files,
+    attachments: state.attachments,
     mutations: state.mutations,
   });
 }
@@ -496,6 +651,18 @@ export function cloneProjectSourceWorkspaceState(
       revisions: new Map(file.revisions),
     }]),
   );
+  const attachments = new Map(
+    [...state.attachments.entries()].map(([attachmentId, attachment]) => [
+      attachmentId,
+      {
+        attachmentId: attachment.attachmentId,
+        fileId: attachment.fileId,
+        headRevision: attachment.headRevision,
+        status: attachment.status,
+        revisions: new Map(attachment.revisions),
+      },
+    ]),
+  );
   return freezeState({
     projectId: state.projectId,
     workspaceRevision: state.workspaceRevision,
@@ -504,6 +671,7 @@ export function cloneProjectSourceWorkspaceState(
       : {}),
     modules: new Map(state.modules),
     files,
+    attachments,
     mutations: new Map(state.mutations),
   });
 }
@@ -522,4 +690,34 @@ export function contentRevisionAt(
     );
   }
   return record;
+}
+
+export function attachmentRevisionAt(
+  state: ProjectSourceWorkspaceState,
+  attachmentId: string,
+  attachmentRevision: number,
+): ProjectSourceAttachmentRevisionRecord {
+  const attachment = state.attachments.get(attachmentId);
+  const record = attachment?.revisions.get(attachmentRevision);
+  if (!record) {
+    workspaceError(
+      "revision_not_found",
+      `Attachment ${attachmentId}@${attachmentRevision} is not present at this workspace revision.`,
+    );
+  }
+  return record;
+}
+
+export function attachmentFileIdAt(
+  state: ProjectSourceWorkspaceState,
+  attachmentId: string,
+): string {
+  const attachment = state.attachments.get(attachmentId);
+  if (!attachment) {
+    workspaceError(
+      "attachment_not_found",
+      `Attachment ${attachmentId} is not present at this workspace revision.`,
+    );
+  }
+  return attachment.fileId;
 }

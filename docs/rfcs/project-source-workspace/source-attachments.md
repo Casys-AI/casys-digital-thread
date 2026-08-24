@@ -1,6 +1,7 @@
 # Versioned source attachments
 
-Status: proposed for breaking implementation
+Status: aggregate and workspace MCP implemented · product-navigation authoring
+attachments, source closure/admission, and real-project proof remain pending
 
 ## Purpose
 
@@ -45,8 +46,9 @@ technical authority by itself.
 The edge points to `fileId`, not `fileId@fileRevision`. At a named workspace revision,
 the read side resolves that stable identity to its exact active file head. Editing a
 file therefore preserves its product attachment without a second bookkeeping mutation. A
-technical admission remains stricter: it seals the exact resolved file revision,
-resource fingerprint, attachment revision, workspace basis, and architecture basis.
+later technical admission, not this vertical, is expected to be stricter: it would seal
+the exact resolved file revision, resource fingerprint, attachment revision, workspace
+basis, and architecture basis.
 
 ## Lifecycle
 
@@ -87,38 +89,45 @@ parser; a provider inventory or UI label is not coverage.
 ## Separation from technical authority
 
 An authoring attachment says only where a source belongs in the product workspace. It is
-not a compiler relation such as `represents` or `parameterizes`.
+not a compiler relation such as `represents` or `parameterizes`. Attaching a Modelica,
+CAD, SPICE, or supporting document still grants no execution right. Moving a file in the
+module tree does not retarget the edge; updating file bytes preserves it.
 
-`project_technical_source_capture` reopens an exact active attachment at a named
-workspace revision, resolves its active file head, and then applies the registered
-technical profile. The resulting admission may seal exact semantic bindings discovered
-by its parser. Those admitted bindings are projected separately from the authoring edge.
+This vertical does **not** change `project_technical_source_capture`,
+`compile.seal-admission`, `ProjectProductNavigation`, or the Workbench. Those surfaces
+still ignore `state.attachments`. A later admission vertical may reopen an exact active
+attachment, resolve its file head, and seal parser bindings separately from the
+authoring edge. A later product-navigation/Workbench vertical may project authoring
+attachments and admitted bindings as distinct collections. Graphology may later index
+the relation for bounded reads; it must never own or repair it.
 
-Consequently:
-
-- moving a file in the module tree does not retarget it;
-- updating its bytes preserves the authoring edge; current context marks an older
-  admission `superseded` and requires a new admission for new work;
-- attaching a Modelica, CAD, SPICE, or supporting document grants no execution right;
-- Graphology may index the relation for bounded reads but never owns or repairs it.
-
-A draft edit does not revoke or rewrite a historical Thread admission. That admission
-continues to reopen the exact attachment, file revision, closure and workspace revision
-it sealed. Refusing future use of it requires an explicit Thread invalidation or
-archive, not a hidden lookup of the mutable workspace head.
+A draft edit still does not revoke a historical Thread admission. When admission later
+seals an attachment revision, refusing future use of that sealed admission will require
+an explicit Thread invalidation or archive, not a hidden lookup of the mutable workspace
+head.
 
 ## Bounded operations
 
-The minimal agent surface is:
+The workspace MCP surface implemented now is:
 
 - `project_source_attachment_put`;
 - `project_source_attachment_detach`;
-- one exact attachment read;
-- one bounded attachment list filtered by exact `fileId` or exact element identity;
+- `project_source_attachment_read` (exact `attachmentId` + `attachmentRevision`);
+- `project_source_attachment_list` filtered by exact `fileId` or exact element identity.
+
+Pending, not implemented in this vertical:
+
+- `project_product_navigation_context` / Workbench reading `state.attachments`;
+- `project_technical_source_capture` and `compile.seal-admission` recrossing an
+  attachment revision;
 - dependency closure selected by exact attachment identity and workspace revision.
 
-Product context returns authoring attachments and admitted semantic bindings as distinct
-collections. Search labels may help discovery, but every subsequent mutation names the
+Fail-closed catalogue decision: the five generic v1 roles (`architecture-source`,
+`design-source`, `behavior-source`, `verification-source`, `supporting-document`) are
+accepted against both `PartDefinition` and `PartUsage`. Unknown ids, version ≠ 1, or
+other SysML kinds are refused. No per-project role exists.
+
+Search labels may help discovery later, but every subsequent mutation already names the
 exact architecture basis and element identity returned by the server.
 
 All operations retain server-owned bounds. A bound constrains one page or traversal, not

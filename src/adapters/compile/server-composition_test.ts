@@ -123,6 +123,9 @@ Deno.test("technical source capture reopens a workspace file revision then uses 
       },
       workspace,
       resources: persisted.reopen,
+      snapshots: { get: () => Promise.resolve(undefined) },
+      traversal: { open: () => Promise.resolve(undefined) },
+      roles: { accept: () => false },
     });
     await files.putModule({
       projectId,

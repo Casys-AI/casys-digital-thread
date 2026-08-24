@@ -282,6 +282,9 @@ async function withWorkspace(
       projects: { get: (id) => Promise.resolve(id === PROJECT ? { id } : undefined) },
       workspace: store,
       resources: reopen,
+      snapshots: { get: () => Promise.resolve(undefined) },
+      traversal: { open: () => Promise.resolve(undefined) },
+      roles: { accept: () => false },
     });
     await workspace.putModule({
       projectId: PROJECT,

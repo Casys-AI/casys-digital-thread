@@ -33,9 +33,11 @@ const PROJECT = "generic-project";
 
 Deno.test("empty workspace snapshot is revision 0 with no files and grants none", () => {
   const snapshot = projectSourceWorkspaceSnapshot(emptyProjectSourceWorkspace(PROJECT));
+  assertEquals(snapshot.schemaVersion, "project-source-workspace-snapshot/2.0");
   assertEquals(snapshot.workspaceRevision, 0);
   assertEquals(snapshot.moduleCount, 0);
   assertEquals(snapshot.activeFileCount, 0);
+  assertEquals(snapshot.activeAttachmentCount, 0);
   assertEquals(snapshot.rootModuleIds, []);
   assertEquals(snapshot.lastEventFingerprint, null);
   assertEquals(snapshot.grants, "none");
@@ -808,6 +810,17 @@ Deno.test("wrong or null previousEventFingerprint is refused as event_chain_mism
         parseWorkspaceEvent({
           ...legacy,
           schemaVersion: "project-source-workspace-event/1.0",
+        }),
+      ProjectSourceWorkspaceError,
+    ).code,
+    "invalid_request",
+  );
+  assertEquals(
+    assertThrows(
+      () =>
+        parseWorkspaceEvent({
+          ...first.event,
+          schemaVersion: "project-source-workspace-event/2.0",
         }),
       ProjectSourceWorkspaceError,
     ).code,

@@ -631,6 +631,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_sensitivity_base_evaluation_review",
     "project_sensitivity_study_seal_review",
     "project_snapshot",
+    "project_source_attachment_detach",
+    "project_source_attachment_list",
+    "project_source_attachment_put",
+    "project_source_attachment_read",
     "project_source_file_put",
     "project_source_file_read",
     "project_source_file_remove",
@@ -716,6 +720,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_sensitivity_base_evaluation_review",
       "project_sensitivity_study_seal_review",
       "project_snapshot",
+      "project_source_attachment_detach",
+      "project_source_attachment_list",
+      "project_source_attachment_put",
+      "project_source_attachment_read",
       "project_source_file_put",
       "project_source_file_read",
       "project_source_file_remove",
@@ -936,6 +944,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_tree" ||
           tool.name === "project_source_search" ||
           tool.name === "project_source_file_read" ||
+          tool.name === "project_source_attachment_read" ||
+          tool.name === "project_source_attachment_list" ||
           tool.name === "project_product_navigation_children" ||
           tool.name === "project_product_navigation_context" ||
           tool.name === "project_product_navigation_neighborhood" ||
@@ -970,6 +980,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_tree" ||
           tool.name === "project_source_search" ||
           tool.name === "project_source_file_read" ||
+          tool.name === "project_source_attachment_read" ||
+          tool.name === "project_source_attachment_list" ||
           tool.name === "project_product_navigation_children" ||
           tool.name === "project_product_navigation_context" ||
           tool.name === "project_product_navigation_neighborhood" ||
@@ -980,6 +992,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_module_put" ||
           tool.name === "project_source_file_put" ||
           tool.name === "project_source_file_remove" ||
+          tool.name === "project_source_attachment_put" ||
+          tool.name === "project_source_attachment_detach" ||
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_start" ||

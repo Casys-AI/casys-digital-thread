@@ -76,6 +76,7 @@ Deno.test(
       workspaceRevision: 0,
       modules: new Map(),
       files: new Map(),
+      attachments: new Map(),
       mutations: new Map(),
     };
     const enriched = await enrichThreadWorkbenchWithTechnicalAdmissions(

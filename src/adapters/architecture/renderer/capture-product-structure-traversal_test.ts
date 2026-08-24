@@ -22,9 +22,7 @@ export async function verifiedArchitectureNavigationFixture() {
     reader: {
       read: (value: ContentFingerprint) =>
         Promise.resolve(
-          value.digest === fingerprint.digest
-            ? deterministicJson(capture)
-            : undefined,
+          value.digest === fingerprint.digest ? deterministicJson(capture) : undefined,
         ),
     },
     sourceAnalysis: passingSourceAnalysis(),
@@ -45,6 +43,18 @@ Deno.test(
     );
     assertEquals(opened?.root()?.id, "sys-def-001");
     assertEquals(
+      opened?.hasElement({ id: "sys-def-001", kind: "PartDefinition" }),
+      true,
+    );
+    assertEquals(
+      opened?.hasElement({ id: "alpha-use-001", kind: "PartUsage" }),
+      true,
+    );
+    assertEquals(
+      opened?.hasElement({ id: "sys-def-001", kind: "PartUsage" }),
+      false,
+    );
+    assertEquals(
       await new CaptureProductStructureTraversal(fixture.reader).open(
         fixture.snapshot,
       ),
@@ -55,8 +65,7 @@ Deno.test(
 
 function passingSourceAnalysis(): SysmlSourceAnalysisReader {
   return {
-    reopen: (value) =>
-      Promise.resolve({ reference: structuredClone(value) } as never),
+    reopen: (value) => Promise.resolve({ reference: structuredClone(value) } as never),
   };
 }
 
@@ -202,8 +211,7 @@ function architectureSnapshot(captureFp: ContentFingerprint) {
       relation: "changes",
       from: { kind: "change", id: "change-r1" },
       to: { kind: "artifact", id: archId },
-      rationale:
-        "The architecture fixture change records the initial evidence.",
+      rationale: "The architecture fixture change records the initial evidence.",
     }, {
       id: "uses-seed",
       relation: "uses",

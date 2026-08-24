@@ -2,8 +2,9 @@
 
 Core workspace status: implemented · Owner: Digital Thread architecture
 
-Large-assembly extension status: in progress · exact SysML roots and read-side
-navigation implemented · versioned authoring attachments and real proving run pending
+Large-assembly extension status: in progress · exact SysML roots, read-side navigation,
+and versioned workspace authoring attachments implemented · product-navigation
+attachment projection, source closure/admission, and real proving run pending
 
 This RFC defines how an engineering agent keeps source files for a project without
 turning the project, a Thread snapshot, or one manifest into a monolith.

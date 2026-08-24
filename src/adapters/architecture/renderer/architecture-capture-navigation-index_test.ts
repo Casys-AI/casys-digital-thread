@@ -152,6 +152,41 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "architecture capture navigation index hasElement matches exact id and SysML kind, not locate heuristics",
+  () => {
+    const index = architectureCaptureNavigationIndex(capture());
+    assertEquals(
+      index.hasElement({ id: "def-rail", kind: "PartDefinition" }),
+      true,
+    );
+    assertEquals(
+      index.hasElement({ id: "def-rail", kind: "PartUsage" }),
+      false,
+    );
+    assertEquals(
+      index.hasElement({ id: "usage-left", kind: "PartUsage" }),
+      true,
+    );
+    assertEquals(
+      index.hasElement({ id: "usage-left", kind: "PartDefinition" }),
+      false,
+    );
+    assertEquals(
+      index.locate("def-rail").map((node) => node.id),
+      ["usage-left", "usage-right"],
+    );
+    assertEquals(
+      index.hasElement({ id: "latest", kind: "PartDefinition" }),
+      false,
+    );
+    assertEquals(
+      index.hasElement({ id: "missing", kind: "PartDefinition" }),
+      false,
+    );
+  },
+);
+
 function capture() {
   return parseExactArchitectureCapture({
     schemaVersion: "architecture-capture/4.0",

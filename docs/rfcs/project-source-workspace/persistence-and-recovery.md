@@ -3,11 +3,12 @@
 ## Authority
 
 The project-scoped event log is the recovery authority. Each event is
-`project-source-workspace-event/2.0` and contains the exact previous workspace revision,
+`project-source-workspace-event/3.0` and contains the exact previous workspace revision,
 `previousEventFingerprint`, mutation identity, bounded mutation payload and canonical
 fingerprint. Revision 1 requires `previousEventFingerprint: null`. Later revisions
 require the exact prior event fingerprint. That link is included in the event body
-fingerprint, so the log is hash-chained. There is no `/1.0` reader, writer or migration.
+fingerprint, so the log is hash-chained. There is no `/2.0` or `/1.0` reader, writer or
+migration. Historical `/2.0` bytes are not reinterpreted.
 
 Publication uses compare-and-swap semantics on the next workspace revision and fails
 closed on a claimed but incompletely published event. Append compares the durable

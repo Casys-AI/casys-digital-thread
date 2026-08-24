@@ -10,9 +10,15 @@ import type { AgentResourceReference } from "../resource/agent-resource-capture.
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 
 export const PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA =
-  "project-source-workspace-event/2.0" as const;
+  "project-source-workspace-event/3.0" as const;
 export const PROJECT_SOURCE_WORKSPACE_SNAPSHOT_SCHEMA =
-  "project-source-workspace-snapshot/1.0" as const;
+  "project-source-workspace-snapshot/2.0" as const;
+export const PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA =
+  "architecture-capture/4.0" as const;
+export const PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS = [
+  "PartDefinition",
+  "PartUsage",
+] as const;
 
 export const PROJECT_SOURCE_WORKSPACE_BOUNDS = Object.freeze({
   maxSlugLength: 64,
@@ -39,6 +45,9 @@ export type ProjectSourceWorkspaceErrorCode =
   | "dependency_cycle"
   | "module_not_found"
   | "file_not_found"
+  | "attachment_not_found"
+  | "duplicate_attachment"
+  | "file_id_mismatch"
   | "revision_not_found"
   | "cursor_mismatch"
   | "bound_exceeded"
@@ -105,10 +114,59 @@ export interface ProjectSourceFileRemove {
   readonly activeFileRevision: number;
 }
 
+export type ProjectSourceAttachmentElementKind =
+  typeof PROJECT_SOURCE_ATTACHMENT_ELEMENT_KINDS[number];
+
+/** Product-relation role. Distinct from the file capture role. */
+export interface ProjectSourceAttachmentRole {
+  readonly id: string;
+  readonly version: number;
+}
+
+export interface ProjectSourceAttachmentTarget {
+  readonly elementId: string;
+  readonly elementKind: ProjectSourceAttachmentElementKind;
+}
+
+export interface ProjectSourceAttachmentThreadBasis {
+  readonly snapshotId: string;
+  readonly revision: number;
+  readonly subjectId: string;
+}
+
+export interface ProjectSourceAttachmentArchitectureBasis {
+  readonly artifactId: string;
+  readonly fingerprint: ContentFingerprint;
+  readonly captureSchema: typeof PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA;
+}
+
+export interface ProjectSourceAttachmentDeclaredAgainst {
+  readonly thread: ProjectSourceAttachmentThreadBasis;
+  readonly architecture: ProjectSourceAttachmentArchitectureBasis;
+}
+
+export interface ProjectSourceAttachmentPut {
+  readonly kind: "attachment_put";
+  readonly attachmentId: string;
+  readonly predecessorAttachmentRevision?: number;
+  readonly fileId: string;
+  readonly role: ProjectSourceAttachmentRole;
+  readonly target: ProjectSourceAttachmentTarget;
+  readonly declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+}
+
+export interface ProjectSourceAttachmentDetach {
+  readonly kind: "attachment_detach";
+  readonly attachmentId: string;
+  readonly activeAttachmentRevision: number;
+}
+
 export type ProjectSourceWorkspaceMutation =
   | ProjectSourceModulePut
   | ProjectSourceFilePut
-  | ProjectSourceFileRemove;
+  | ProjectSourceFileRemove
+  | ProjectSourceAttachmentPut
+  | ProjectSourceAttachmentDetach;
 
 export interface ProjectSourceWorkspaceCommand {
   readonly projectId: string;
@@ -150,6 +208,40 @@ export interface ProjectSourceFileRecord {
   readonly revisions: ReadonlyMap<number, ProjectSourceFileRevisionRecord>;
 }
 
+export interface ProjectSourceAttachmentRevision {
+  readonly kind: "content";
+  readonly attachmentId: string;
+  readonly attachmentRevision: number;
+  readonly predecessorAttachmentRevision?: number;
+  readonly fileId: string;
+  readonly role: ProjectSourceAttachmentRole;
+  readonly target: ProjectSourceAttachmentTarget;
+  readonly declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+  readonly fingerprint: ContentFingerprint;
+}
+
+export interface ProjectSourceAttachmentTombstone {
+  readonly kind: "tombstone";
+  readonly attachmentId: string;
+  readonly attachmentRevision: number;
+  readonly predecessorAttachmentRevision: number;
+  readonly fingerprint: ContentFingerprint;
+}
+
+export type ProjectSourceAttachmentRevisionRecord =
+  | ProjectSourceAttachmentRevision
+  | ProjectSourceAttachmentTombstone;
+
+export interface ProjectSourceAttachmentRecord {
+  readonly attachmentId: string;
+  readonly fileId: string;
+  readonly headRevision: number;
+  readonly status: "active" | "detached";
+  readonly revisions: ReadonlyMap<number, ProjectSourceAttachmentRevisionRecord>;
+}
+
+export type ProjectSourceAttachmentSourceStatus = "active" | "source-removed";
+
 export interface ProjectSourceMutationAck {
   readonly mutationId: string;
   readonly commandFingerprint: ContentFingerprint;
@@ -173,6 +265,7 @@ export interface ProjectSourceWorkspaceState {
   readonly lastEventFingerprint?: ContentFingerprint;
   readonly modules: ReadonlyMap<string, ProjectSourceModule>;
   readonly files: ReadonlyMap<string, ProjectSourceFileRecord>;
+  readonly attachments: ReadonlyMap<string, ProjectSourceAttachmentRecord>;
   readonly mutations: ReadonlyMap<string, ProjectSourceMutationAck>;
 }
 
@@ -190,6 +283,7 @@ export interface ProjectSourceWorkspaceSnapshot {
   readonly rootModuleIds: readonly string[];
   readonly moduleCount: number;
   readonly activeFileCount: number;
+  readonly activeAttachmentCount: number;
   readonly grants: "none";
 }
 
@@ -215,6 +309,20 @@ export interface ProjectSourceFileReadQuery {
   readonly workspaceRevision: number;
   readonly fileId: string;
   readonly fileRevision: number;
+}
+
+export interface ProjectSourceAttachmentReadQuery {
+  readonly workspaceRevision: number;
+  readonly attachmentId: string;
+  readonly attachmentRevision: number;
+}
+
+export interface ProjectSourceAttachmentListQuery {
+  readonly workspaceRevision: number;
+  readonly fileId?: string;
+  readonly target?: ProjectSourceAttachmentTarget;
+  readonly pageSize?: number;
+  readonly cursor?: string;
 }
 
 export interface ProjectSourceTreeEntry {
@@ -251,4 +359,25 @@ export interface ProjectSourceFileRead {
   readonly derivedPath: string | null;
   readonly record: ProjectSourceFileRevisionRecord;
   readonly grants: "none";
+}
+
+export interface ProjectSourceAttachmentRead {
+  readonly workspaceRevision: number;
+  readonly fileId: string;
+  readonly fileHeadRevision: number | null;
+  readonly sourceStatus: ProjectSourceAttachmentSourceStatus;
+  readonly record: ProjectSourceAttachmentRevisionRecord;
+  readonly grants: "none";
+}
+
+export interface ProjectSourceAttachmentListEntry {
+  readonly attachmentId: string;
+  readonly attachmentRevision: number;
+  readonly fileId: string;
+  readonly role: ProjectSourceAttachmentRole;
+  readonly target: ProjectSourceAttachmentTarget;
+  readonly declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+  readonly fingerprint: ContentFingerprint;
+  readonly fileHeadRevision: number | null;
+  readonly sourceStatus: ProjectSourceAttachmentSourceStatus;
 }

@@ -16,9 +16,13 @@ Deno.test("source workspace tools register closed schemas without path, provider
       putModule: () => Promise.resolve({ grants: "none" }),
       putFile: () => Promise.resolve({ grants: "none" }),
       removeFile: () => Promise.resolve({ grants: "none" }),
+      putAttachment: () => Promise.resolve({ grants: "none" }),
+      detachAttachment: () => Promise.resolve({ grants: "none" }),
       snapshot: () => Promise.resolve({ grants: "none" }),
       tree: () => Promise.resolve({ grants: "none" }),
       search: () => Promise.resolve({ grants: "none" }),
+      readAttachment: () => Promise.resolve({ grants: "none" }),
+      listAttachments: () => Promise.resolve({ grants: "none" }),
       readFile: (value: unknown) => {
         const query = value as { fileRevision: number };
         if (query.fileRevision === 2) {
@@ -42,6 +46,10 @@ Deno.test("source workspace tools register closed schemas without path, provider
     } as never,
   });
   assertEquals(app.names.toSorted(), [
+    "project_source_attachment_detach",
+    "project_source_attachment_list",
+    "project_source_attachment_put",
+    "project_source_attachment_read",
     "project_source_file_put",
     "project_source_file_read",
     "project_source_file_remove",
@@ -56,6 +64,8 @@ Deno.test("source workspace tools register closed schemas without path, provider
       "project_source_tree",
       "project_source_search",
       "project_source_file_read",
+      "project_source_attachment_read",
+      "project_source_attachment_list",
     ]
   ) {
     assertEquals(app.tool(name).annotations, {
@@ -70,6 +80,8 @@ Deno.test("source workspace tools register closed schemas without path, provider
       "project_source_module_put",
       "project_source_file_put",
       "project_source_file_remove",
+      "project_source_attachment_put",
+      "project_source_attachment_detach",
     ]
   ) {
     assertEquals(app.tool(name).annotations, {
@@ -129,11 +141,34 @@ Deno.test("source workspace tools register closed schemas without path, provider
     additionalProperties: boolean;
   };
   assertEquals(snapshotOut.properties.grants.const, "none");
+  const attachmentPut = app.tool("project_source_attachment_put");
+  const attachmentSchema = attachmentPut.inputSchema as {
+    additionalProperties: boolean;
+    required: string[];
+    properties: Record<string, unknown>;
+  };
+  assertEquals(attachmentSchema.additionalProperties, false);
+  assertEquals("path" in attachmentSchema.properties, false);
+  assertEquals("provider" in attachmentSchema.properties, false);
+  assertEquals("runtime" in attachmentSchema.properties, false);
+  assertEquals("latest" in attachmentSchema.properties, false);
+  assertEquals(attachmentSchema.required.includes("declaredAgainst"), true);
+  const list = app.tool("project_source_attachment_list").inputSchema as {
+    additionalProperties: boolean;
+    required: string[];
+    properties: Record<string, unknown>;
+  };
+  assertEquals(list.additionalProperties, false);
+  assertEquals(list.required, ["projectId", "workspaceRevision"]);
+  assertEquals("fileId" in list.properties, true);
+  assertEquals("target" in list.properties, true);
   for (
     const name of [
       "project_source_tree",
       "project_source_search",
       "project_source_file_read",
+      "project_source_attachment_read",
+      "project_source_attachment_list",
     ]
   ) {
     const output = app.tool(name).outputSchema as {

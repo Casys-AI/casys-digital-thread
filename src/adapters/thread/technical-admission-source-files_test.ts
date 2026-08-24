@@ -265,6 +265,7 @@ function matchingWorkspace(
     lastEventFingerprint: anchor.workspaceEventFingerprint,
     modules,
     files,
+    attachments: new Map(),
     mutations: new Map(),
   };
 }

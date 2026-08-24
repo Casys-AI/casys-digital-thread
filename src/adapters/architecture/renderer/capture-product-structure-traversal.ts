@@ -59,6 +59,7 @@ export class CaptureProductStructureTraversal implements ProductStructureTravers
       locate: (id) => index.locate(id),
       neighborhood: (node) => index.neighborhood(node),
       hasDefinition: (id) => index.definition(id) !== undefined,
+      hasElement: (query) => index.hasElement(query),
     };
     this.#indexes.set(verified.artifact.fingerprint.digest, opened);
     return opened;
