@@ -6,8 +6,8 @@ Product admission compiler, reusable isolation spine, and the CAD / Modelica / S
 CalculiX verticals. Capture → MRTR → dispatch spine stays on
 [the authority pipeline](analysis-authority-pipeline.md). Recurrent admitted-source
 pattern: [admitted source isolated execution](admitted-source-isolated-execution.md).
-File census: [workspace source map](../runtime/workspace-source-map.md). Isolated output
-counts, WAL generations, and Thread collection cardinality:
+File census: [compile source map](../source-map/compile.md). Isolated output counts, WAL
+generations, and Thread collection cardinality:
 [isolation and Thread boundedness](../runtime/isolation-and-thread-boundedness.md).
 
 ## Product admission compiler boundary
@@ -177,6 +177,36 @@ and enters terminal quarantine; an unknown outcome also blocks dispatch. Generat
 does not exist, so a third dispatch is impossible. From `output-published` onward,
 recovery is CAS/WAL-only and reopens the same draft, capture and Thread evidence instead
 of executing source again.
+
+`deno task verify:generic:core` is the named local gate for the closed compiler/proposal
+contracts, generic isolated-execution domain, broker, filesystem output CAS,
+non-Build123d profile fixture and production import boundaries. It does not exercise a
+real local microVM or engineering run.
+
+At the Build123d seam, composition has three explicit states. With no
+`build123dExecution`, no review tool is exposed and the registered dispatcher reports
+the operation `unavailable`. A profile alone exposes the provider-free review tool but
+still no executor. A complete profile plus exact empty runtime marker composes the local
+Microsandbox backend, broker and
+[`file-isolated-output-cas.ts`](../../../src/adapters/shared/cas/file-isolated-output-cas.ts),
+then connects the WAL, evidence stores and executor to the registered-run dispatcher.
+Composition itself performs no network or microVM I/O; only a subsequently reviewed run
+can reach execution. Bounded attempt state lives under
+`${recordedAnalysisDirectory}/build123d/{outputs,attempts,drafts,captures}`. The output
+CAS owns the run-and-producer-generation tri-state publication marker and exposes no
+digest-only reader.
+
+The generation-0 real gate passed against
+`casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8`:
+producer generation 0, a 15,430-byte AP214 STEP validated with OCCT, proven broker
+destruction, publication resolved as `published`, and CAS reread. It performed no
+recovery abort after publication. It did not exercise generation-1 recovery, a persisted
+project executor, or production.
+
+Native N-API calls are not cancellable once entered; a privileged same-host race remains
+possible between native-artifact hashing and import; and guest directory listing is
+materialized within the SDK protocol frame rather than paginated by the adapter. These
+are explicit host trust/availability limits, not extra agent capabilities.
 
 Modelica has now passed one deliberately narrow real Microsandbox qualification against
 `casys/modelica-microsandbox-worker@sha256:7d3fdeabe794b0ded5360921b16724c7904487e9d11bc24fa37c72f9b92a1894`.

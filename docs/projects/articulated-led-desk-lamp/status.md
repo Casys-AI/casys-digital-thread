@@ -22,7 +22,7 @@ Truth columns: [projects README](../README.md). This page is not a project snaps
 ## Local runtime (2026-08-23, primary atelier, local)
 
 `state/local/` is gitignored ([`.gitignore`](../../../.gitignore);
-[workspace source map](../../reference/runtime/workspace-source-map.md)). Active
+[persistence roots](../../reference/source-map/persistence-roots.md)). Active
 revisions appear as directory names under `state/local/engineering-projects/`
 ([engineering-project contract](../../reference/contracts/engineering-project.md)).
 

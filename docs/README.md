@@ -96,6 +96,26 @@ vivante. Index, statuts et « lire plutôt » : [docs/rfcs/README.md](rfcs/READM
 - [Isolation, WAL, and Thread collection bounds](reference/runtime/isolation-and-thread-boundedness.md)
 - [MCP console](reference/runtime/console.md)
 
+### Reference — `source-map/`
+
+File census split from the workspace source-map index. Domain coverage stays on
+`domains/`.
+
+- [Foundation and composition](reference/source-map/foundation-and-composition.md)
+- [Project, Thread, and record](reference/source-map/project-thread-record.md)
+- [Resource ingress](reference/source-map/resource-ingress.md)
+- [Compile](reference/source-map/compile.md)
+- [SysML architecture and requirements](reference/source-map/sysml-architecture-requirements.md)
+- [CAD](reference/source-map/cad.md)
+- [Modelica](reference/source-map/modelica.md)
+- [FEA](reference/source-map/fea.md)
+- [Sensitivity](reference/source-map/sensitivity.md)
+- [Electrical and SPICE](reference/source-map/electrical-spice.md)
+- [Impact](reference/source-map/impact.md)
+- [Make and DFM](reference/source-map/make-dfm.md)
+- [Workbench, control plane, and desktop](reference/source-map/workbench-control-plane-desktop.md)
+- [Persistence roots](reference/source-map/persistence-roots.md)
+
 ### Reference — `domains/`
 
 - [Engineering domains](reference/domains/README.md)

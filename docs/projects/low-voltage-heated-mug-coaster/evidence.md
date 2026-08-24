@@ -5,7 +5,7 @@ Audience: both · Diátaxis: none · Kind: tracking evidence index
 **Documentation, not storage.** Authoritative bytes live in Thread, CAS, and
 `EngineeringProjectSnapshot` revisions under gitignored
 `state/local/engineering-projects/`
-([workspace source map](../../reference/runtime/workspace-source-map.md)).
+([persistence roots](../../reference/source-map/persistence-roots.md)).
 
 A terminal claim is not a persisted identity. Cockpit focus is not proof. Prior
 project r1 is **superseded** by project r29; do not treat r1 as current.
