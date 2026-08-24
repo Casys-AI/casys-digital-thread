@@ -218,8 +218,9 @@ with no declared dependency keeps its sealed analysis but emits a provenance-onl
 The graph cites the approved-brief document artifact, not the private source-analysis
 CAS, as evidence. The initial-baseline validator follows the sealed reference, reopens
 and re-hashes both CAS records, reruns the fixed analyzer over the exact source bytes
-and reconstructs the graph before accepting completion. Historical baseline capture
-`1.0` remains readable and never receives a reconstructed analysis retroactively.
+and reconstructs the graph before accepting completion. Only
+`approved-brief-baseline-capture/1.1` is current; the brief source analysis is
+mandatory. A missing or corrupted analysis fails closed.
 
 ## Implemented bounded SysML vertical
 

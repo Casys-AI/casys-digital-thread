@@ -24,6 +24,7 @@ import type {
 } from "../../domain/thread/thread-snapshot.ts";
 import type { ExactThreadSnapshotReader } from "../shared/stores/engineering-thread-snapshot-resolver.ts";
 import { requireBriefSourceAnalysis } from "../compile/captures/brief-source-analysis-capture.ts";
+import { APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA } from "../../orchestration/operations/approved-brief-baseline.ts";
 
 export interface ApprovedBriefBaselineCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
@@ -48,7 +49,7 @@ export class ExactInitialBaselineEvidenceValidator
   constructor(
     private readonly snapshots: ExactThreadSnapshotReader,
     private readonly captures: ApprovedBriefBaselineCaptureReader,
-    private readonly briefSourceAnalysis?: BriefSourceAnalysisCaptureReaders,
+    private readonly briefSourceAnalysis: BriefSourceAnalysisCaptureReaders,
   ) {}
 
   async validateInitial(
@@ -82,18 +83,12 @@ export class ExactInitialBaselineEvidenceValidator
       document,
       runId,
     );
-    if (sourceAnalysisReference !== undefined) {
-      await this.assertExactBriefSourceAnalysis(
-        sourceAnalysisReference,
-        capture,
-        snapshot,
-        document,
-      );
-    } else if (snapshot.schemaVersion !== "1.0") {
-      invalidEvidence(
-        "A historical approved-brief capture without source analysis must use ThreadSnapshot schema 1.0.",
-      );
-    }
+    await this.assertExactBriefSourceAnalysis(
+      sourceAnalysisReference,
+      capture,
+      snapshot,
+      document,
+    );
   }
 
   private async assertExactBriefSourceAnalysis(
@@ -102,11 +97,6 @@ export class ExactInitialBaselineEvidenceValidator
     snapshot: ThreadSnapshot,
     document: ThreadArtifact,
   ): Promise<void> {
-    if (!this.briefSourceAnalysis) {
-      invalidEvidence(
-        "Brief source-analysis stores are required to validate a 1.1 approved-brief baseline capture.",
-      );
-    }
     const parsedReference = parseBriefSourceAnalysisReference(reference);
     const approvedBrief = record(capture.approvedBrief, "capture.approvedBrief");
     if (
@@ -321,10 +311,9 @@ function assertApprovedBriefCaptureMatchesRun(
   snapshot: ThreadSnapshot,
   document: ThreadArtifact,
   expectedRunId: string,
-): Record<string, unknown> | undefined {
+): Record<string, unknown> {
   if (
-    (capture.schemaVersion !== "approved-brief-baseline-capture/1.0" &&
-      capture.schemaVersion !== "approved-brief-baseline-capture/1.1") ||
+    capture.schemaVersion !== APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA ||
     capture.kind !== "approved-brief-documentary-baseline" ||
     capture.scope !== "pre-technical-documentation" ||
     capture.capturedAt !== snapshot.generatedAt ||
@@ -348,9 +337,7 @@ function assertApprovedBriefCaptureMatchesRun(
         "workItemId",
         "projectDefinition",
         "approvedBrief",
-        ...(capture.schemaVersion === "approved-brief-baseline-capture/1.1"
-          ? ["briefSourceAnalysis"]
-          : []),
+        "briefSourceAnalysis",
       ],
       "capture",
     );
@@ -397,17 +384,6 @@ function assertApprovedBriefCaptureMatchesRun(
     basis,
     "capture.projectDefinition.plan.basis",
   );
-  if (capture.schemaVersion === "approved-brief-baseline-capture/1.0") {
-    if (Object.hasOwn(capture, "briefSourceAnalysis")) {
-      invalidEvidence("Approved-brief capture 1.0 must not contain source analysis.");
-    }
-    return undefined;
-  }
-  if (!Object.hasOwn(capture, "briefSourceAnalysis")) {
-    invalidEvidence(
-      "Approved-brief capture 1.1 must seal a brief source-analysis reference.",
-    );
-  }
   return record(capture.briefSourceAnalysis, "capture.briefSourceAnalysis");
 }
 

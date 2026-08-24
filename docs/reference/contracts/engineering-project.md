@@ -217,8 +217,10 @@ sensitivity capability, not the provenance of product static `@3`.
 
 `baseline.from-approved-brief@1` has no provider call: after the agent queues the ready
 registered work item, the backend records the exact approved brief and reviewed plan as
-canonical JSON, fingerprints its bytes with SHA-256, stores them immutably, and cites
-that document from root thread revision 1.
+`approved-brief-baseline-capture/1.1`, fingerprints its bytes with SHA-256, stores them
+immutably, and cites that document from root thread revision 1. The capture seals the
+exact brief source analysis; the validator rereads both CAS records and fails closed if
+either is absent or corrupted.
 
 `architecture.seed-syson-model@2` is available only after that exact documentary root.
 Its fixed server-owned sequence is `syson_project_create`, then `syson_model_create`
@@ -335,11 +337,12 @@ run has published its root record, the implemented SysON seed requires that exac
 revision-1 documentary `thread-snapshot` basis; `latest` is never accepted.
 
 The first result is intentionally a **documentary, pre-technical baseline**. Its single
-document artifact contains the immutable approved brief and reviewed plan, its SHA-256
-fingerprint, an immutable capture URI, the bounded operation revision, and its run
-provenance. It proves that the project started from that reviewed source. It does
-**not** prove or create a SysML model, CAD geometry, mesh, FEA result, simulation,
-measurement, requirement verdict, conformity claim, or certification.
+document artifact contains the immutable approved brief and reviewed plan, the sealed
+brief source analysis (`approved-brief-baseline-capture/1.1`), its SHA-256 fingerprint,
+an immutable capture URI, the bounded operation revision, and its run provenance. It
+proves that the project started from that reviewed source. It does **not** prove or
+create a SysML model, CAD geometry, mesh, FEA result, simulation, measurement,
+requirement verdict, conformity claim, or certification.
 
 The first continuation is deliberately narrower than a system design:
 
@@ -627,8 +630,8 @@ The source dispatcher materializes generic V3 operations. The product
 `architecture.author-inspection-drone@3` and
 `model.capture-inspection-drone-part-definitions@1` identities are retired and
 unregistered. `baseline.from-approved-brief@1` has no provider invocation and persists
-its canonical capture before publishing the cited root snapshot.
-`architecture.seed-syson-model@2` owns only the fixed SysON
+its canonical `approved-brief-baseline-capture/1.1` before publishing the cited root
+snapshot. `architecture.seed-syson-model@2` owns only the fixed SysON
 project/document/root-package sequence, closed capture, materializer, and result
 validator before publishing revision 2. `model.write-architecture@1` and
 `model.write-requirements@1` each perform a closed SysON write/readback sequence and

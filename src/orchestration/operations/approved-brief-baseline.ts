@@ -34,8 +34,6 @@ import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-vali
 import { validateRegisteredEngineeringOperationInput } from "./registry.ts";
 
 export const APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA =
-  "approved-brief-baseline-capture/1.0" as const;
-export const APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA_V1_1 =
   "approved-brief-baseline-capture/1.1" as const;
 
 export interface MaterializeApprovedBriefBaselineInput {
@@ -77,7 +75,8 @@ export interface ApprovedBriefBaselineProjectDefinition {
   };
 }
 
-interface ApprovedBriefBaselineCaptureBase {
+export interface ApprovedBriefBaselineCapture {
+  readonly schemaVersion: typeof APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA;
   readonly kind: "approved-brief-documentary-baseline";
   readonly scope: "pre-technical-documentation";
   readonly statement: string;
@@ -87,24 +86,8 @@ interface ApprovedBriefBaselineCaptureBase {
   readonly workItemId: string;
   readonly projectDefinition: ApprovedBriefBaselineProjectDefinition;
   readonly approvedBrief: ProjectBriefRevision;
-}
-
-/** Historical documentary baseline which predates local brief analysis. */
-export interface ApprovedBriefBaselineCaptureV1
-  extends ApprovedBriefBaselineCaptureBase {
-  readonly schemaVersion: typeof APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA;
-}
-
-/** Documentary baseline sealing the exact brief source and local analysis CAS. */
-export interface ApprovedBriefBaselineCaptureV1_1
-  extends ApprovedBriefBaselineCaptureBase {
-  readonly schemaVersion: typeof APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA_V1_1;
   readonly briefSourceAnalysis: BriefSourceAnalysisReference;
 }
-
-export type ApprovedBriefBaselineCapture =
-  | ApprovedBriefBaselineCaptureV1
-  | ApprovedBriefBaselineCaptureV1_1;
 
 export interface ApprovedBriefBaselineMaterialization {
   readonly capture: ApprovedBriefBaselineCapture;
@@ -130,8 +113,7 @@ export class ApprovedBriefBaselineMaterializationError extends Error {
 
 /**
  * Pure fail-closed eligibility check used before the executor writes source
- * CAS records. It deliberately does not construct a capture, so it cannot be
- * misused to emit the historical 1.0 write shape.
+ * CAS records. It does not construct a capture.
  */
 export function prepareApprovedBriefBaselineEligibility(
   input: PrepareApprovedBriefBaselineEligibilityInput,
@@ -170,7 +152,8 @@ export async function materializeApprovedBriefBaseline(
     input.briefSourceAnalysis,
     brief,
   );
-  const captureBase: ApprovedBriefBaselineCaptureBase = {
+  const capture: ApprovedBriefBaselineCapture = {
+    schemaVersion: APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA,
     kind: "approved-brief-documentary-baseline",
     scope: "pre-technical-documentation",
     statement:
@@ -186,10 +169,6 @@ export async function materializeApprovedBriefBaseline(
       workItem,
     },
     approvedBrief: structuredClone(brief),
-  };
-  const capture: ApprovedBriefBaselineCaptureV1_1 = {
-    ...captureBase,
-    schemaVersion: APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA_V1_1,
     briefSourceAnalysis: structuredClone(briefSourceAnalysis.reference),
   };
   const text = deterministicJson(capture);

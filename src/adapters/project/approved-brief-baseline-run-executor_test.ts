@@ -24,7 +24,10 @@ import {
   fingerprintSourceAnalysisBundle,
   validateSourceAnalysisBundle,
 } from "../../domain/compile/source/source-analysis.ts";
-import { materializeApprovedBriefBaseline } from "../../orchestration/operations/approved-brief-baseline.ts";
+import {
+  APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA,
+  materializeApprovedBriefBaseline,
+} from "../../orchestration/operations/approved-brief-baseline.ts";
 
 Deno.test("approved in-project brief becomes the first durable documentary baseline", async () => {
   const root = await Deno.makeTempDir({ prefix: "approved-brief-baseline-" });
@@ -212,6 +215,11 @@ Deno.test("approved in-project brief becomes the first durable documentary basel
     );
     assertEquals(snapshot?.schemaVersion, "1.1");
     assertEquals(snapshot?.analysisGraph?.relations.length, 1);
+    const captureText = await captures.read(snapshot!.artifacts[0]!.fingerprint);
+    if (captureText === undefined) throw new Error("capture is missing in test");
+    const capture = JSON.parse(captureText);
+    assertEquals(capture.schemaVersion, APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA);
+    assertEquals(typeof capture.briefSourceAnalysis, "object");
   } finally {
     await Deno.remove(root, { recursive: true });
   }
