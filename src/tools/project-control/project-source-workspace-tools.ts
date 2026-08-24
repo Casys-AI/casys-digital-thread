@@ -545,6 +545,9 @@ const projectSourceSearchTool: MCPTool = {
         type: "string",
         minLength: 1,
         maxLength: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxDerivedPathLength,
+        pattern: "^/",
+        description:
+          "Derived POSIX path prefix. It starts with '/', for example /product/mechanics.",
       },
       moduleId: ID_SCHEMA,
       domain: CLASSIFICATION_SCHEMA,

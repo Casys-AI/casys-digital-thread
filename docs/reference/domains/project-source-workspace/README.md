@@ -16,6 +16,9 @@ Read:
 5. [Coverage](coverage.md) — current vertical, deliberately missing bridges, and the
    next proof.
 
+How-to:
+[author and revise a project source workspace](../../../how-to/compile/author-project-source-workspace.md).
+
 RFC (accepted, not the runtime contract):
 [project source workspace](../../../rfcs/project-source-workspace/README.md).
 

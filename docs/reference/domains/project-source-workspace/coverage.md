@@ -15,6 +15,14 @@ Audience: both · Diátaxis: reference · Kind: coverage
 This surface gives an agent a scalable project source tree. It does **not** make draft
 bytes admitted product evidence.
 
+## Current runtime proof
+
+MCS-01 reached workspace revision 12 through the loopback MCP on 2026-08-24: eight
+modules, three active files, exact tree/search/read, and one stable file advanced from
+revision 1 to revision 2 while its two sibling revisions remained unchanged. The
+workspace store is local runtime state; this result proves Vertical 1, not admission or
+execution.
+
 ## Not implemented yet
 
 | Vertical | Missing capability                                                                   | Why it remains separate                                                               |

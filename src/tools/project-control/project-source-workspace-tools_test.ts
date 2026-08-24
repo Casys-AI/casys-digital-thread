@@ -120,6 +120,10 @@ Deno.test("source workspace tools register closed schemas without path, provider
     (search.properties.pathPrefix as { maxLength: number }).maxLength,
     PROJECT_SOURCE_WORKSPACE_BOUNDS.maxDerivedPathLength,
   );
+  assertEquals(
+    (search.properties.pathPrefix as { pattern: string }).pattern,
+    "^/",
+  );
   const snapshotOut = app.tool("project_source_workspace_snapshot").outputSchema as {
     properties: { grants: { const: string } };
     additionalProperties: boolean;

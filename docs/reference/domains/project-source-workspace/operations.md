@@ -18,6 +18,9 @@ Tree and search are bounded and revision-anchored. The cursor binds workspace re
 filter and last sort key. A mutation cannot make a later page silently cross revisions;
 a mismatched cursor fails closed.
 
+`pathPrefix` is a derived POSIX path and therefore starts with `/`, for example
+`/product/mechanics`. It is not a host filesystem path.
+
 `project_source_file_put` takes a full `AgentResourceReference` from
 `project_resource_capture`. It does not accept `sourceText`, a local path, or a
 caller-invented CAS URI. Optional `captureRequest` is caller-authored requested
