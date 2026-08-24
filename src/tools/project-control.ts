@@ -696,10 +696,12 @@ const projectAgentRunExecuteTool: MCPTool = {
  * Human-only governed abandonment for work items that never acquired a run.
  *
  * WHY HUMAN-ONLY — abandoning a work item and its pending decisions is an
- * irreversible editorial act on the project plan.  The operator confirms the
- * exact target set and rationale through MCP elicitation before the service
- * marks each entity as `abandoned`.  No provider, agent run, or ThreadSnapshot
- * is created: the change is project-state-only.
+ * irreversible editorial act on the project plan. Interactive mode confirms
+ * the exact target set and rationale through MCP elicitation. An explicit
+ * loopback-only --yolo startup opt-in records that same positive confirmation
+ * through EngineeringProjectCommandService with the persisted local-yolo
+ * human origin; it never fabricates inputResponses. No provider, agent run,
+ * or ThreadSnapshot is created: the change is project-state-only.
  */
 const projectWorkItemAbandonTool: MCPTool = {
   name: "project_work_item_abandon",
@@ -707,6 +709,8 @@ const projectWorkItemAbandonTool: MCPTool = {
     "Ask the paired MCP host to confirm the abandonment of one or more work items and their pending decisions. " +
     "Each work item must be in `ready` or `waiting-for-decision` status with no associated runs and no evidence refs. " +
     "Each decision must be in `required` or `proposed` status (not `approved`). " +
+    "In the default interactive mode, the first call requests elicitation and only a signed accepted retry records abandonment. " +
+    "An explicit loopback-only --yolo startup opt-in instead records the same positive abandonment through the command service with the persisted local-yolo human origin; it never fabricates elicitation responses. " +
     "On confirmation the service marks each target as `abandoned` and revokes any pending approval for a proposed decision. " +
     "No agent run, provider call, or ThreadSnapshot is created. " +
     "Abandoned entities remain in history but are excluded from active views.",
@@ -889,6 +893,33 @@ async function handleWorkItemAbandonment(
     common.projectId,
     common.expectedRevision,
   );
+  const itemCount = workItemIds.length;
+  const decisionCount = decisionIds.length;
+  const abandonedSummary = `${itemCount} work item${itemCount === 1 ? "" : "s"}` +
+    (decisionCount > 0
+      ? ` and ${decisionCount} decision${decisionCount === 1 ? "" : "s"}`
+      : "");
+  const approvalMode = dependencies.approvalMode ??
+    INTERACTIVE_PROJECT_APPROVAL_MODE;
+  if (autoConfirms(approvalMode, "work-item-abandon")) {
+    const snapshot = await dependencies.commands.abandonWorkItems(
+      approvalMode.origin,
+      {
+        ...common,
+        workItemIds,
+        decisionIds,
+        rationale: localYoloRationale(
+          `positive work-item abandonment ${workItemIds.join(", ")}`,
+          rationale,
+        ),
+      },
+    );
+    return await projectResult(
+      `YOLO local startup opt-in auto-abandoned ${abandonedSummary} at project revision ${snapshot.revision}. No inputResponses or retryVerified value was fabricated. No agent run, provider call, or ThreadSnapshot was created.`,
+      snapshot,
+      dependencies.threadSnapshots,
+    );
+  }
   const confirmation = workItemAbandonmentConfirmationResponse(context);
   if (confirmation === undefined) {
     return workItemAbandonmentConfirmationRequest(
@@ -909,15 +940,8 @@ async function handleWorkItemAbandonment(
     elicitedHumanOrigin(context),
     { ...common, workItemIds, decisionIds, rationale },
   );
-  const itemCount = workItemIds.length;
-  const decisionCount = decisionIds.length;
   return await projectResult(
-    `The paired MCP host recorded human abandonment of ${itemCount} work item${
-      itemCount === 1 ? "" : "s"
-    }` +
-      (decisionCount > 0
-        ? ` and ${decisionCount} decision${decisionCount === 1 ? "" : "s"}`
-        : "") +
+    `The paired MCP host recorded human abandonment of ${abandonedSummary}` +
       ` at project revision ${snapshot.revision}. No agent run, provider call, or ThreadSnapshot was created.`,
     snapshot,
     dependencies.threadSnapshots,

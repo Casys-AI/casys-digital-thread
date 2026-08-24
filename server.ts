@@ -545,7 +545,7 @@ export async function createConsoleServer(
     : "Casys read-only fleet console. Project tools are disabled on this non-loopback or explicitly fleet-only binding. Unavailable, demo, and unverified evidence must stay explicitly labelled.";
   const instructions = baseInstructions +
     (approvalMode.kind === "local-yolo"
-      ? " Explicit local YOLO startup opt-in is active: positive project_brief_confirm, project_decision_approve, project_agent_run_cancel, and human-only project_agent_run_execute calls auto-confirm through the canonical human command services or the same registered runExecutor with a persisted local-yolo origin, without fabricating MCP elicitation responses. Rejection and supersession still require interactive signed MRTR elicitation."
+      ? " Explicit local YOLO startup opt-in is active: positive project_brief_confirm, project_decision_approve, project_agent_run_cancel, project_work_item_abandon, and human-only project_agent_run_execute calls auto-confirm through the canonical human command services or the same registered runExecutor with a persisted local-yolo origin, without fabricating MCP elicitation responses. Rejection remains interactive; registered operation, review, isolation, and evidence gates remain unchanged."
       : "");
   const app = new McpApp({
     name: "casys-digital-thread-console",
@@ -1383,7 +1383,7 @@ if (import.meta.main) {
       );
       if (approvalMode.kind === "local-yolo") {
         console.error(
-          "YOLO ACTIVE: positive brief confirmations and MRTR decision approvals are auto-approved under human/local-yolo:startup-opt-in.",
+          "YOLO ACTIVE: documented positive human confirmation gates use human/local-yolo:startup-opt-in; rejection remains interactive.",
         );
       }
       if (localExecution) {

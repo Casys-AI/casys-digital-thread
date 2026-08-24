@@ -58,13 +58,16 @@ temporary state. That focused approval gate itself does not execute Build123d.
 
 `--yolo` is accepted only when the effective MCP hostname is an explicit loopback
 hostname; a non-loopback binding is rejected before startup. The startup-owned gate
-table auto-confirms positive `project_brief_confirm`, `project_decision_approve`, queued
-and `project_agent_run_cancel`. Those paths still call the canonical command services
-and persist the fixed origin `{ kind: "human", actorId: "local-yolo:startup-opt-in" }`
+table auto-confirms positive `project_brief_confirm`, `project_decision_approve`,
+`project_agent_run_cancel`, `project_work_item_abandon`, and reviewed human-only
+`project_agent_run_execute`. Those paths still call the canonical command services or
+the registered executor and persist the fixed origin
+`{ kind: "human", actorId: "local-yolo:startup-opt-in" }`
 plus an explicit YOLO rationale; they do not fabricate an MCP elicitation response.
 
-This mode does not auto-reject and it does not satisfy a human-only execution
-interaction. It also does not bypass compilation admission, qualified execution
+This mode does not auto-reject. A human-only run still has to be a reviewed, queued,
+registered operation before YOLO may execute it under that human origin. The mode does
+not bypass compilation admission, qualified execution
 profiles, local microVM isolation, WAL/recovery, content hashing, output validation,
 cleanup or canonical-promotion review. It is an approval-loop convenience, not an
 execution or evidence shortcut; no environment variable enables it implicitly.

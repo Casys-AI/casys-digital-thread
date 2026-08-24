@@ -13,7 +13,7 @@ Deno.test("interactive mode elicits every human confirmation gate", () => {
 });
 
 Deno.test(
-  "local YOLO auto-confirms positive approvals, queued recovery, and human-only execute",
+  "local YOLO auto-confirms positive approvals, queued recovery, work-item abandon, and human-only execute",
   () => {
     assertEquals(
       autoConfirms(LOCAL_YOLO_PROJECT_APPROVAL_MODE, "brief-confirm"),
@@ -25,6 +25,10 @@ Deno.test(
     );
     assertEquals(
       autoConfirms(LOCAL_YOLO_PROJECT_APPROVAL_MODE, "queued-run-cancel"),
+      true,
+    );
+    assertEquals(
+      autoConfirms(LOCAL_YOLO_PROJECT_APPROVAL_MODE, "work-item-abandon"),
       true,
     );
     assertEquals(

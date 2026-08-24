@@ -68,6 +68,7 @@ projection.
 | `project_agent_run_queue`               | Bounded agent mutation   | Queue one ready, registered work item with server-derived run identity, basis, and summary |
 | `project_agent_run_plan_get`            | Read                     | Reopen the sealed `resolved-operation-plan/2.0` on one run; never executes                 |
 | `project_agent_run_cancel`              | Human elicitation        | Cancel one exact unclaimed queued run after signed paired-chat confirmation                |
+| `project_work_item_abandon`             | Human elicitation        | Abandon eligible work items and pending decisions; no run, provider, or Thread snapshot    |
 | `project_agent_run_execute`             | Bounded server execution | Dispatch that exact queued registered run; no arbitrary execution payload                  |
 
 Closing a leftover ready work item behind a completed successor is operator recovery,
@@ -209,13 +210,15 @@ still needs its own reviewed executor and output contract.
 
 ## Signed human elicitation
 
-`project_brief_confirm`, `project_decision_approve`, `project_decision_reject`, and
-`project_agent_run_cancel` use MCP `2026-07-28` multi-round-trip requests. Their first
+`project_brief_confirm`, `project_decision_approve`, `project_decision_reject`,
+`project_agent_run_cancel`, and `project_work_item_abandon` use MCP `2026-07-28`
+multi-round-trip requests in the default interactive mode. Their first
 call returns `input_required` with an `elicitation/create` request. The MCP host asks
 the person in the current conversation and retries the original tool call. The mutation
 is allowed only when the framework verifies the signed `requestState` and the response
-is explicitly accepted. This makes chat the human command surface without giving the
-agent self-approval authority.
+is explicitly accepted. The explicit loopback-only `--yolo` startup opt-in replaces the
+positive confirmation round trip with the persisted `local-yolo` human origin for the
+documented gates; it never fabricates a signed response and never auto-rejects.
 
 Set `MCP_MRTR_SIGNING_KEY` to a stable, high-entropy server secret outside source
 control. If it is absent, the loopback server creates an ephemeral key for that process;

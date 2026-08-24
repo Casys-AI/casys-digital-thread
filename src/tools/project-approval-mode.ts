@@ -7,7 +7,7 @@
  * never auto-rejects, never uses an agent origin, never fabricates MCP
  * elicitation responses, and cannot select providers or weaken executor
  * gates. Interactive mode still elicits every gate, including
- * `human-only-execute`.
+ * `human-only-execute` and `work-item-abandon`.
  */
 export type ProjectApprovalMode =
   | { readonly kind: "interactive" }
@@ -25,6 +25,7 @@ export const HUMAN_CONFIRMATION_GATES = [
   "decision-approve",
   "decision-reject",
   "queued-run-cancel",
+  "work-item-abandon",
   "human-only-execute",
 ] as const;
 
@@ -34,13 +35,15 @@ export type HumanConfirmationGate = typeof HUMAN_CONFIRMATION_GATES[number];
  * Positive local-yolo gates only. `human-only-execute` is included because
  * the operator already opted in to autonomous positive choices: a reviewed,
  * queued run whose required decisions are already approved may execute under
- * the persisted human origin through the normal executor. `decision-reject`
- * stays interactive.
+ * the persisted human origin through the normal executor. `work-item-abandon`
+ * is the same positive human-only editorial confirmation interactive mode
+ * would elicit. `decision-reject` stays interactive.
  */
 const YOLO_AUTO_GATES: readonly HumanConfirmationGate[] = [
   "brief-confirm",
   "decision-approve",
   "queued-run-cancel",
+  "work-item-abandon",
   "human-only-execute",
 ];
 

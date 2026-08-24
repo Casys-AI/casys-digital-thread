@@ -1145,6 +1145,146 @@ Deno.test("local YOLO auto-cancels a queued unclaimed run", async () => {
 });
 
 Deno.test(
+  "local YOLO auto-abandons work items through the canonical command service without elicitation",
+  async () => {
+    const snapshot = projectSnapshot({ withDecision: true });
+    const abandonments: Array<{ origin: unknown; command: Record<string, unknown> }> =
+      [];
+    const app = new CapturingApp();
+    registerProjectControlTools(app as unknown as McpApp, {
+      ...dependencies(snapshot, {
+        abandonWorkItems: (origin, command) => {
+          abandonments.push({
+            origin,
+            command: command as unknown as Record<string, unknown>,
+          });
+          const workItemIds = command.workItemIds;
+          const decisionIds = command.decisionIds;
+          return Promise.resolve({
+            ...snapshot,
+            revision: snapshot.revision + 1,
+            workItems: snapshot.workItems.map((item) =>
+              workItemIds.includes(item.id)
+                ? { ...item, status: "abandoned" as const }
+                : item
+            ),
+            decisions: snapshot.decisions.map((decision) =>
+              decisionIds.includes(decision.id)
+                ? { ...decision, status: "abandoned" as const }
+                : decision
+            ),
+          });
+        },
+      }),
+      approvalMode: LOCAL_YOLO_PROJECT_APPROVAL_MODE,
+    });
+    const args = {
+      ...COMMON,
+      workItemIds: ["establish-baseline"],
+      decisionIds: ["airframe-material"],
+      rationale: "Drop this unused path.",
+    };
+    const abandoned = await app.handler("project_work_item_abandon")(
+      args,
+      clientContext(),
+    ) as Record<string, unknown>;
+    assertEquals(abandoned.resultType, undefined);
+    assertEquals(abandoned.inputRequests, undefined);
+    assertStringIncludes(abandoned.content as string, "YOLO local startup opt-in");
+    assertStringIncludes(
+      abandoned.content as string,
+      "No inputResponses or retryVerified value was fabricated",
+    );
+    assertStringIncludes(
+      abandoned.content as string,
+      "No agent run, provider call, or ThreadSnapshot was created",
+    );
+    assertEquals(abandonments, [{
+      origin: { kind: "human", actorId: "local-yolo:startup-opt-in" },
+      command: {
+        ...args,
+        rationale:
+          "YOLO local startup opt-in auto-approved positive work-item abandonment establish-baseline without MCP elicitation. Caller rationale: Drop this unused path.",
+      },
+    }]);
+    const structured = abandoned.structuredContent as EngineeringProjectSnapshot;
+    assertEquals(
+      structured.workItems.find((item) => item.id === "establish-baseline")?.status,
+      "abandoned",
+    );
+    assertEquals(
+      structured.decisions.find((decision) => decision.id === "airframe-material")
+        ?.status,
+      "abandoned",
+    );
+    assertEquals(structured.threadSnapshots, []);
+    assertEquals(structured.agentRuns, []);
+    assertEquals(
+      structured.workItems.find((item) => item.id === "establish-baseline")
+        ?.evidenceRefs,
+      [],
+    );
+  },
+);
+
+Deno.test(
+  "interactive work-item abandonment still elicits and does not abandon",
+  async () => {
+    const snapshot = projectSnapshot({ withDecision: true });
+    const abandonments: Array<{ origin: unknown; command: Record<string, unknown> }> =
+      [];
+    const app = new CapturingApp();
+    registerProjectControlTools(
+      app as unknown as McpApp,
+      dependencies(snapshot, {
+        abandonWorkItems: (origin, command) => {
+          abandonments.push({
+            origin,
+            command: command as unknown as Record<string, unknown>,
+          });
+          return Promise.resolve(snapshot);
+        },
+      }),
+    );
+    const args = {
+      ...COMMON,
+      workItemIds: ["establish-baseline"],
+      decisionIds: ["airframe-material"],
+      rationale: "Drop this unused path.",
+    };
+    const abandon = app.handler("project_work_item_abandon");
+    const first = await abandon(args, clientContext()) as Record<string, unknown>;
+    assertEquals(first.resultType, "input_required");
+    const request = (first.inputRequests as Record<string, unknown>)
+      .work_item_abandonment_confirmation as Record<string, unknown>;
+    assertEquals(request.method, "elicitation/create");
+    assertStringIncludes(
+      (request.params as Record<string, unknown>).message as string,
+      "no agent run, provider call, or ThreadSnapshot will be created",
+    );
+    assertEquals(abandonments, []);
+
+    await assertRejects(
+      async () => {
+        await abandon(args, {
+          ...clientContext(),
+          retryVerified: false,
+          inputResponses: {
+            work_item_abandonment_confirmation: {
+              action: "accept",
+              content: { confirmed: true },
+            },
+          },
+        });
+      },
+      TypeError,
+      "verified signed request state",
+    );
+    assertEquals(abandonments, []);
+  },
+);
+
+Deno.test(
   "local YOLO executes a human-only queued run through the registered executor with the persisted human origin",
   async () => {
     const snapshot = humanOnlyQueuedRunSnapshot();
@@ -1588,6 +1728,7 @@ function dependencies(
       approveDecision: () => Promise.resolve(snapshot),
       rejectDecision: () => Promise.resolve(snapshot),
       cancelQueuedRun: () => Promise.resolve(snapshot),
+      abandonWorkItems: () => Promise.resolve(snapshot),
       ...commandOverrides,
     } as unknown as EngineeringProjectCommandService,
   };
