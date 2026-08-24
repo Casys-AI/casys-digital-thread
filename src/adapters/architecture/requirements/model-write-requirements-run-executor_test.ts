@@ -3409,7 +3409,7 @@ Deno.test(
 );
 
 Deno.test(
-  "model.write-requirements refuses legacy 1.0 captures before enrichment",
+  "model.write-requirements refuses a requirements-capture/1.0 predecessor before enrichment",
   async () => {
     const directory = await Deno.makeTempDir({ prefix: "casys-reqs-legacy-capture-" });
     try {
@@ -3455,7 +3455,7 @@ Deno.test(
             runId: queued.runId,
           }),
         EngineeringProjectCommandError,
-        "Legacy requirements-capture/1.0 cannot be enriched safely",
+        "not exact requirements-capture/3.0 evidence",
       );
       assertEquals(syson.calls, []);
       assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
@@ -3466,7 +3466,7 @@ Deno.test(
 );
 
 Deno.test(
-  "requirements-capture V2 remains readable history but cannot authorize enrichment",
+  "model.write-requirements refuses a requirements-capture/2.0 predecessor before enrichment",
   async () => {
     const directory = await Deno.makeTempDir({
       prefix: "casys-reqs-v2-non-authority-",
@@ -3528,11 +3528,11 @@ Deno.test(
             leaseSubdir: "v2-non-authority-leases",
           }).execute(AGENT, command),
         EngineeringProjectCommandError,
-        "prior_requirements_v2_non_authoritative",
+        "not exact requirements-capture/3.0 evidence",
       );
 
-      assertEquals(captureReads, 1, "the exact V2 schema must remain readable");
-      assertEquals(syson.calls, [], "V2 cannot authorize any provider operation");
+      assertEquals(captureReads, 1, "the old capture is read once then rejected");
+      assertEquals(syson.calls, [], "an old schema cannot authorize any provider operation");
       assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
       assertEquals(captureWrites, 0);
       assertEquals(snapshotWrites, 0);
@@ -4871,6 +4871,12 @@ Deno.test(
       ["extra root field", (record) => {
         record.agentSuppliedSysml = "requirement Foreign {}";
       }],
+      ["missing requirementUsage", (record) => {
+        delete record.requirementUsage;
+      }],
+      ["missing constraintUsages", (record) => {
+        delete record.constraintUsages;
+      }],
     ];
 
     for (const [name, mutate] of mutations) {
@@ -4917,7 +4923,7 @@ Deno.test(
         if (name === "extra root field") {
           assertEquals(
             error.message,
-            "The prior requirements capture is not exact schema-v2/v3 evidence: " +
+            "The prior requirements capture is not exact requirements-capture/3.0 evidence: " +
               "Requirements capture has non-exact fields.",
           );
         }

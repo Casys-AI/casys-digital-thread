@@ -12,6 +12,7 @@ import {
   encodeFeaProofDecisionParameters,
 } from "../domain/fea/seal-case/fea-proof-proposal.ts";
 import { validateMechanicalProofCase } from "../domain/fea/seal-case/mechanical-proof-case.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../domain/architecture/requirements/requirements-proposal.ts";
 import { fingerprintResourceBytes } from "../domain/compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../domain/kernel/deterministic-json.ts";
 import {
@@ -28,6 +29,11 @@ import type {
   TracedRequirement,
 } from "../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtensionIfNew } from "../domain/thread/thread-snapshot-extension.ts";
+import { REQUIREMENTS_CAPTURE_URI_PREFIX } from "../domain/thread/requirements-tip.ts";
+import {
+  parseExactRequirementsCapture,
+  REQUIREMENTS_CAPTURE_SCHEMA,
+} from "../adapters/architecture/requirements/requirements-capture.ts";
 import { FileByteStore } from "../adapters/shared/cas/file-byte-store.ts";
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
@@ -448,12 +454,6 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
   const stepFingerprint = await fingerprint(stepBytes);
   const geometryFingerprint = await fingerprint("fixture geometry capture");
   const requirementsComponent = "FixtureComponent";
-  const requirementsBytes = new TextEncoder().encode(deterministicJson({
-    schemaVersion: "requirements-capture/2.0",
-    containerComponent: requirementsComponent,
-    requirements: [],
-  }));
-  const requirementsFingerprint = await fingerprint(requirementsBytes);
   const geometryProducer = {
     serverId: "digital-thread",
     tool: "design.write-geometry@1",
@@ -472,15 +472,6 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
     "application/json",
     [],
     geometryProducer,
-  );
-  const requirementsArtifact = artifact(
-    "fixture-requirements-capture",
-    "document",
-    requirementsFingerprint,
-    `casys://requirements-capture/${requirementsComponent}/sha256/${requirementsFingerprint.digest}`,
-    "application/json",
-    [],
-    requirementsProducer,
   );
   const stepArtifact = artifact(
     "fixture-exact-step",
@@ -515,6 +506,34 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
     bytes: stepBytes.byteLength,
   };
   const proofCase = validateMechanicalProofCase(rawProof);
+  const seedFingerprint = await fingerprint("fixture requirements seed");
+  const architectureFingerprint = await fingerprint(
+    "fixture architecture capture",
+  );
+  // Current isolated CalculiX only reopens these bytes by Thread CAS identity.
+  // The shared fixture still has to be exact requirements-capture/3.0 so it
+  // cannot pretend a retired 2.0 envelope remains admitted.
+  const requirementsCapture = exactFixtureRequirementsCapture({
+    ancestor,
+    containerComponent: requirementsComponent,
+    proofCase,
+    seedFingerprint,
+    architectureFingerprint,
+    insertedAt: fresh().changedAt,
+  });
+  const requirementsBytes = new TextEncoder().encode(
+    deterministicJson(requirementsCapture),
+  );
+  const requirementsFingerprint = await fingerprint(requirementsBytes);
+  const requirementsArtifact = artifact(
+    "fixture-requirements-capture",
+    "document",
+    requirementsFingerprint,
+    `${REQUIREMENTS_CAPTURE_URI_PREFIX}${requirementsComponent}/sha256/${requirementsFingerprint.digest}`,
+    "application/json",
+    [],
+    requirementsProducer,
+  );
   const proofText = canonicalProofText(proofCase);
   const proofDigest = await fingerprintResourceBytes(
     new TextEncoder().encode(proofText),
@@ -639,6 +658,74 @@ async function sealedProofBranch(ancestor: ThreadSnapshot, sealedAt: string) {
     requirementsBytes,
     proofCase,
   };
+}
+
+function exactFixtureRequirementsCapture(input: {
+  readonly ancestor: ThreadSnapshot;
+  readonly containerComponent: string;
+  readonly proofCase: ReturnType<typeof validateMechanicalProofCase>;
+  readonly seedFingerprint: ContentFingerprint;
+  readonly architectureFingerprint: ContentFingerprint;
+  readonly insertedAt: string;
+}) {
+  const requirements = input.proofCase.requirements.map((requirement) => ({
+    id: requirement.id,
+    name: requirement.name,
+    // Capture metric is the SysON feature the FEA reader joins, not the
+    // proof-case metric kind.
+    metric: requirement.feature,
+    operator: requirement.operator,
+    limit: requirement.limit,
+  }));
+  const constraintUsages = [...requirements]
+    .map((requirement) => ({
+      requirementId: requirement.id,
+      id: `fixture-constraint-${requirement.id}`,
+      kind: "ConstraintUsage" as const,
+      sourceId: `fixture-constraint-${requirement.id}`,
+    }))
+    .sort((left, right) =>
+      left.requirementId < right.requirementId
+        ? -1
+        : left.requirementId > right.requirementId
+        ? 1
+        : 0
+    );
+  return parseExactRequirementsCapture({
+    schemaVersion: REQUIREMENTS_CAPTURE_SCHEMA,
+    operation: MODEL_WRITE_REQUIREMENTS_OPERATION,
+    trustedRunId: "run:fixture-requirements",
+    containerComponent: input.containerComponent,
+    partDefName: `${input.containerComponent}Requirements`,
+    target: {
+      kind: "part-definition",
+      label: input.containerComponent,
+      elementId: input.proofCase.target.modelElementId,
+    },
+    architectureBasis: {
+      snapshotId: input.ancestor.id,
+      revision: input.ancestor.revision,
+      fingerprint: input.architectureFingerprint.digest,
+    },
+    requirements,
+    seed: {
+      artifactId: "fixture-requirements-seed",
+      fingerprint: input.seedFingerprint,
+      producerRunId: "run:fixture-seed",
+    },
+    architecture: {
+      artifactId: "fixture-architecture-capture",
+      fingerprint: input.architectureFingerprint,
+      producerRunId: "run:fixture-architecture",
+    },
+    requirementsElementId: "fixture-requirements",
+    insertedAt: input.insertedAt,
+    requirementUsage: {
+      id: "fixture-requirements",
+      kind: "RequirementUsage",
+    },
+    constraintUsages,
+  });
 }
 
 function artifactBytesFor(

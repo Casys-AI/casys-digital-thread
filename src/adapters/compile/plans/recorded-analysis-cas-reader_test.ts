@@ -289,7 +289,7 @@ async function saveRequirementsText(
 ): Promise<StoredValue> {
   const text = JSON.stringify({
     containerComponent: component,
-    schemaVersion: "requirements-capture/2.0",
+    schemaVersion: "requirements-capture/3.0",
   });
   const bytes = encoder.encode(text);
   const fingerprint = await contentFingerprint(bytes);

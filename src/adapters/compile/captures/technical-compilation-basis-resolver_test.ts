@@ -14,10 +14,7 @@ import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtension } from "../../../domain/thread/thread-snapshot-extension.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { ARCHITECTURE_CAPTURE_SCHEMA } from "../../architecture/renderer/architecture-capture.ts";
-import {
-  REQUIREMENTS_CAPTURE_SCHEMA,
-  REQUIREMENTS_CAPTURE_V2_SCHEMA,
-} from "../../architecture/requirements/requirements-capture.ts";
+import { REQUIREMENTS_CAPTURE_SCHEMA } from "../../architecture/requirements/requirements-capture.ts";
 import {
   CaptureBackedTechnicalCompilationBasisResolver,
   TechnicalCompilationBasisResolutionError,
@@ -198,31 +195,26 @@ Deno.test("technical basis resolver admits V3 native requirement identities with
   assertEquals(constraintUsage?.provenance, requirementUsage?.provenance);
 });
 
-Deno.test("technical basis resolver reads V2 history without authorizing native constraints", async () => {
+Deno.test("technical basis resolver rejects an active requirements-capture/2.0 artifact", async () => {
   const fixture = await exactFixture({ requirementsCaptureVersion: "v2" });
-  const resolved = await fixture.resolver.resolve(fixture.request);
-  assertEquals(
-    resolved?.sysmlAnchor.elements.some((element) =>
-      element.kind === "RequirementUsage" || element.kind === "ConstraintUsage"
-    ),
-    false,
+  await assertRejects(
+    () => fixture.resolver.resolve(fixture.request),
+    TechnicalCompilationBasisResolutionError,
+    "schema is not exact",
   );
 });
 
 Deno.test(
-  "technical basis resolver ignores V2 requirements that still name a predecessor architecture tip",
+  "technical basis resolver rejects an active requirements-capture/2.0 after a successor architecture tip",
   async () => {
     const fixture = await exactFixture({
       requirementsCaptureVersion: "v2",
       successorArchitecture: true,
     });
-    const resolved = await fixture.resolver.resolve(fixture.request);
-    assertEquals(resolved?.sysmlAnchor.artifactId, fixture.architectureArtifactId);
-    assertEquals(
-      resolved?.sysmlAnchor.elements.some((element) =>
-        element.kind === "RequirementUsage" || element.kind === "ConstraintUsage"
-      ),
-      false,
+    await assertRejects(
+      () => fixture.resolver.resolve(fixture.request),
+      TechnicalCompilationBasisResolutionError,
+      "schema is not exact",
     );
   },
 );
@@ -441,7 +433,7 @@ async function exactFixture(options: FixtureOptions = {}) {
     const requirementsCapture: Record<string, unknown> = {
       schemaVersion: options.requirementsCaptureVersion === "v3"
         ? REQUIREMENTS_CAPTURE_SCHEMA
-        : REQUIREMENTS_CAPTURE_V2_SCHEMA,
+        : "requirements-capture/2.0",
       operation: { id: "model.write-requirements", version: "1" },
       trustedRunId: "run:requirements-basis-test",
       containerComponent: "Frame",
@@ -775,18 +767,69 @@ function projectSnapshot(
   declareBasis: boolean,
 ): EngineeringProjectSnapshot {
   const snapshot = snapshots.at(-1)!;
+  const generatedAt = snapshot.generatedAt;
+  const objective = "Resolve an exact technical basis without a provider call.";
+  const briefId = `${PROJECT_ID}:brief`;
+  const briefSnapshotId = `${PROJECT_ID}:brief:r1:fixture`;
+  const briefFingerprint = {
+    algorithm: "sha256" as const,
+    digest: "e".repeat(64),
+  };
   return validateEngineeringProjectSnapshot({
     schemaVersion: "4.0",
-    id: "basis-test:project:r1",
-    revision: 1,
-    generatedAt: snapshot.generatedAt,
+    id: "basis-test:project:r2",
+    revision: 2,
+    previous: { snapshotId: "basis-test:project:r1", revision: 1 },
+    generatedAt,
     project: {
       id: PROJECT_ID,
       name: "Technical basis test",
       subjectId: SUBJECT_ID,
-      objective: {
-        title: "Resolve an exact technical basis",
-        statement: "Resolve an exact technical basis without a provider call.",
+      objective: { title: objective, statement: objective },
+    },
+    framing: {
+      intent: {
+        statement: objective,
+        source: { kind: "human", reference: "paired-conversation" },
+        capturedAt: generatedAt,
+        capturedBy: { id: "human:owner", origin: "human" },
+      },
+      questions: [],
+      answers: [],
+      currentBrief: {
+        briefId,
+        id: briefSnapshotId,
+        revision: 1,
+        items: [{
+          id: "objective",
+          kind: "objective",
+          statement: objective,
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }, {
+          id: "mission",
+          kind: "mission-scenario",
+          statement:
+            "Review the technical compilation basis against recorded evidence.",
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }, {
+          id: "success",
+          kind: "success-criterion",
+          statement:
+            "The basis reopens exact current architecture and requirements captures.",
+          sourceRefs: [{ kind: "intent", reference: "paired-conversation" }],
+        }],
+        proposedAt: generatedAt,
+        proposedBy: { id: "agent:planner", origin: "agent" },
+      },
+      currentBriefApproval: {
+        briefSnapshotId,
+        briefRevision: 1,
+        status: "approved",
+        inputFingerprint: briefFingerprint,
+        requestedAt: generatedAt,
+        decidedAt: generatedAt,
+        decidedBy: { id: "human:owner", origin: "human" },
+        rationale: "Confirmed for the technical-basis fixture.",
       },
     },
     threadSnapshots: declareBasis
@@ -798,6 +841,33 @@ function projectSnapshot(
     decisions: [],
     approvals: [],
     blockers: [],
+    commandReceipts: [{
+      commandId: "project-start",
+      type: "project.start",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: generatedAt,
+      appliedAt: generatedAt,
+      requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+      resultingSnapshot: { snapshotId: "basis-test:project:r1", revision: 1 },
+    }, {
+      commandId: "project-brief-approve",
+      type: "project.brief-approve",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: generatedAt,
+      appliedAt: generatedAt,
+      requestFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+      resultingSnapshot: { snapshotId: "basis-test:project:r2", revision: 2 },
+      approvedBriefBasis: {
+        kind: "approved-brief",
+        projectId: PROJECT_ID,
+        projectSnapshotId: "basis-test:project:r2",
+        projectRevision: 2,
+        briefId,
+        briefSnapshotId,
+        briefRevision: 1,
+        approvedBriefFingerprint: briefFingerprint,
+      },
+    }],
   });
 }
 

@@ -131,12 +131,8 @@ import {
 } from "../renderer/sysml-source-analysis-capture.ts";
 import {
   type ExactRequirementsCapture,
-  type ExactRequirementsCaptureV2,
-  type ExactRequirementsCaptureV3,
-  isExactRequirementsCaptureV3,
   parseExactRequirementsCapture,
   REQUIREMENTS_CAPTURE_SCHEMA,
-  REQUIREMENTS_CAPTURE_V2_SCHEMA,
   type RequirementsCaptureConstraintUsage,
 } from "./requirements-capture.ts";
 import {
@@ -603,19 +599,6 @@ export class ModelWriteRequirementsRunExecutor {
       if (existingAttempt?.status === "completed" && !recoveryElementId) {
         throw new RequirementsWriteOutcomeUnknownError();
       }
-      if (
-        priorCapture !== undefined &&
-        priorCapture.authoritativeConstraintUsages === undefined &&
-        recoveryElementId === undefined
-      ) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "prior_requirements_v2_non_authoritative: requirements-capture/2.0 is " +
-            "readable history, but it does not capture provider-native " +
-            "ConstraintUsage identities and cannot authorize enrichment deletion. " +
-            "Re-author the requirements through a reviewed V3 transition.",
-        );
-      }
 
       // Pre-WAL lookup runs in every mode. An initial/re-authoring run may not
       // silently create a homonym, while enrichment must prove the exact live
@@ -683,12 +666,10 @@ export class ModelWriteRequirementsRunExecutor {
             priorLiveReadback.constraintUsages,
             "live predecessor",
           );
-          if (priorCapture.authoritativeConstraintUsages !== undefined) {
-            assertCapturedConstraintUsageBijection(
-              priorCapture.authoritativeConstraintUsages,
-              priorLiveReadback.constraintUsages,
-            );
-          }
+          assertCapturedConstraintUsageBijection(
+            priorCapture.authoritativeConstraintUsages,
+            priorLiveReadback.constraintUsages,
+          );
           priorRequirementsElementId = liveRequirementsElementId;
         } catch (error) {
           if (error instanceof RequirementsWriteOutcomeUnknownError) throw error;
@@ -1245,8 +1226,7 @@ export class ModelWriteRequirementsRunExecutor {
   ): Promise<{
     readonly requirements: readonly OracleRequirement[];
     readonly requirementsElementId: string;
-    /** V2 is readable history but carries no individual native authority. */
-    readonly authoritativeConstraintUsages?:
+    readonly authoritativeConstraintUsages:
       readonly RequirementsCaptureConstraintUsage[];
   }> {
     const text = await this.#captures.read(priorArtifact.fingerprint);
@@ -1265,45 +1245,24 @@ export class ModelWriteRequirementsRunExecutor {
         "The prior requirements capture is invalid JSON.",
       );
     }
-    if (
-      record && typeof record === "object" && !Array.isArray(record) &&
-      (record as Record<string, unknown>).schemaVersion ===
-        "requirements-capture/1.0"
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        "Legacy requirements-capture/1.0 cannot be enriched safely: it recorded " +
-          "an occurrence hint and a package-level helper PartDefinition, not a native " +
-          "RequirementUsage owned by an explicit target PartDefinition. Retire the " +
-          "legacy artifact through a reviewed archive transition, then re-author the " +
-          "requirements to establish a 3.0 capture.",
-      );
-    }
-    if (
-      !record || typeof record !== "object" || Array.isArray(record) ||
-      ((record as Record<string, unknown>).schemaVersion !==
-          REQUIREMENTS_CAPTURE_V2_SCHEMA &&
-        (record as Record<string, unknown>).schemaVersion !==
-          REQUIREMENTS_CAPTURE_SCHEMA) ||
-      (record as Record<string, unknown>).containerComponent !==
-        proposal.containerComponent ||
-      (record as Record<string, unknown>).partDefName !== proposal.partDefName ||
-      !Array.isArray((record as Record<string, unknown>).requirements)
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        "The prior requirements capture does not match the expected schema or target component.",
-      );
-    }
     let priorRecord: ExactRequirementsCapture;
     try {
       priorRecord = parseExactRequirementsCapture(record);
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `The prior requirements capture is not exact schema-v2/v3 evidence: ${
+        `The prior requirements capture is not exact requirements-capture/3.0 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
+      );
+    }
+    if (
+      priorRecord.containerComponent !== proposal.containerComponent ||
+      priorRecord.partDefName !== proposal.partDefName
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The prior requirements capture does not match the expected schema or target component.",
       );
     }
     const operation = priorRecord.operation;
@@ -1376,7 +1335,7 @@ export class ModelWriteRequirementsRunExecutor {
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The prior requirements artifact/capture pair is not exact schema-v2/v3 evidence " +
+        "The prior requirements artifact/capture pair is not exact requirements-capture/3.0 evidence " +
           "anchored to its historical architecture artifact.",
       );
     }
@@ -1715,9 +1674,7 @@ export class ModelWriteRequirementsRunExecutor {
     return {
       requirements: validated,
       requirementsElementId: rawReqsElementId,
-      ...(isExactRequirementsCaptureV3(priorRecord)
-        ? { authoritativeConstraintUsages: priorRecord.constraintUsages }
-        : {}),
+      authoritativeConstraintUsages: priorRecord.constraintUsages,
     };
   }
 
@@ -2142,7 +2099,7 @@ export class ModelWriteRequirementsRunExecutor {
       recordedCapture = parseExactRequirementsCapture(record);
     } catch (error) {
       throw completedRequirementsIntegrityError(
-        `the requirements capture is not exact schema-v2/v3 evidence: ${
+        `the requirements capture is not exact requirements-capture/3.0 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -2161,13 +2118,10 @@ export class ModelWriteRequirementsRunExecutor {
       runId: run.id,
       capturedAt,
     };
-    const expectedCapture = recordedCapture.schemaVersion ===
-        REQUIREMENTS_CAPTURE_SCHEMA
-      ? buildCaptureRecord({
-        ...captureOptions,
-        constraintUsages: recordedCapture.constraintUsages,
-      })
-      : buildHistoricalV2CaptureRecord(captureOptions);
+    const expectedCapture = buildCaptureRecord({
+      ...captureOptions,
+      constraintUsages: recordedCapture.constraintUsages,
+    });
     const captureFp = await sha256Fingerprint(expectedCapture);
     const captureUri = requirementsUriFor(
       proposal.containerComponent,
@@ -2340,7 +2294,7 @@ function buildCaptureRecord(
   options: RequirementsCaptureBuildOptions & {
     constraintUsages: readonly VerifiedConstraintUsageIdentity[];
   },
-): ExactRequirementsCaptureV3 {
+): ExactRequirementsCapture {
   const record = {
     schemaVersion: REQUIREMENTS_CAPTURE_SCHEMA,
     ...buildCaptureRecordBase(options),
@@ -2366,23 +2320,7 @@ function buildCaptureRecord(
   const parsed = parseExactRequirementsCapture(record);
   if (parsed.schemaVersion !== REQUIREMENTS_CAPTURE_SCHEMA) {
     throw new Error(
-      "The current requirements capture builder did not produce schema V3.",
-    );
-  }
-  return parsed;
-}
-
-function buildHistoricalV2CaptureRecord(
-  options: RequirementsCaptureBuildOptions,
-): ExactRequirementsCaptureV2 {
-  const record = {
-    schemaVersion: REQUIREMENTS_CAPTURE_V2_SCHEMA,
-    ...buildCaptureRecordBase(options),
-  };
-  const parsed = parseExactRequirementsCapture(record);
-  if (parsed.schemaVersion !== REQUIREMENTS_CAPTURE_V2_SCHEMA) {
-    throw new Error(
-      "The historical requirements capture builder did not produce schema V2.",
+      "The current requirements capture builder did not produce schema 3.0.",
     );
   }
   return parsed;

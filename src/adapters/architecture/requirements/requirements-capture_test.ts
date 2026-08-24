@@ -1,10 +1,8 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import {
-  isExactRequirementsCaptureV3,
   parseExactRequirementsCapture,
   REQUIREMENTS_CAPTURE_SCHEMA,
-  REQUIREMENTS_CAPTURE_V2_SCHEMA,
 } from "./requirements-capture.ts";
 
 function fingerprint(digit: string) {
@@ -64,24 +62,33 @@ Deno.test("requirements capture parser preserves exact canonical schema-v3 ident
   const value = capture();
   const parsed = parseExactRequirementsCapture(value);
   assertEquals(parsed.schemaVersion, REQUIREMENTS_CAPTURE_SCHEMA);
-  assertEquals(isExactRequirementsCaptureV3(parsed), true);
   assertEquals(parsed.target.elementId, "part-definition:wing");
   assertEquals(parsed.requirements[0]?.limit, { value: 3, unit: "mm" });
-  if (!isExactRequirementsCaptureV3(parsed)) throw new Error("Expected V3 capture.");
   assertEquals(parsed.requirementUsage.id, "requirement-usage:wing");
   assertEquals(parsed.constraintUsages[0]?.id, parsed.constraintUsages[0]?.sourceId);
   assertEquals(deterministicJson(parsed), deterministicJson(value));
 });
 
-Deno.test("requirements capture parser keeps schema-v2 readable without native anchors", () => {
-  const value = capture();
-  value.schemaVersion = REQUIREMENTS_CAPTURE_V2_SCHEMA;
-  delete value.requirementUsage;
-  delete value.constraintUsages;
-  const parsed = parseExactRequirementsCapture(value);
-  assertEquals(parsed.schemaVersion, REQUIREMENTS_CAPTURE_V2_SCHEMA);
-  assertEquals(isExactRequirementsCaptureV3(parsed), false);
-  assertEquals(deterministicJson(parsed), deterministicJson(value));
+Deno.test("requirements capture parser rejects every non-3.0 schema", () => {
+  for (
+    const schemaVersion of [
+      "requirements-capture/1.0",
+      "requirements-capture/2.0",
+    ]
+  ) {
+    const value = capture();
+    value.schemaVersion = schemaVersion;
+    assertThrows(
+      () => parseExactRequirementsCapture(value),
+      Error,
+      "schema is not exact",
+    );
+  }
+
+  const missingIdentities = capture();
+  delete missingIdentities.requirementUsage;
+  delete missingIdentities.constraintUsages;
+  assertThrows(() => parseExactRequirementsCapture(missingIdentities));
 });
 
 Deno.test("requirements capture parser requires a bijection of exact native identities", () => {

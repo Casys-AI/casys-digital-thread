@@ -24,9 +24,9 @@ reopens the parser-backed `architecture-capture/3.0` Package, PartDefinitions an
 PartUsages. It also admits exact RequirementUsage and ConstraintUsage identities from an
 active `requirements-capture/3.0` only after the capture bytes, provider identities,
 architecture basis and Thread artifact lineage have all been reread. Each anchor element
-carries the exact capture artifact fingerprint that attests it. Historical requirements
-capture V2 remains readable but contributes no individual constraint identity; a
-container, label or capture id is never expanded into fictional per-requirement anchors.
+carries the exact capture artifact fingerprint that attests it. An active older
+requirements capture is unsupported and fail-closed; a container, label or capture id
+is never expanded into fictional per-requirement anchors.
 
 The compiler consumes only closed, fingerprinted inputs: the reread SysML basis, exact
 native source bytes with their analysis, explicit source-symbol-to-SysML bindings and a

@@ -11,9 +11,6 @@ import {
   type RequirementsTarget,
 } from "../../../domain/architecture/requirements/requirements-proposal.ts";
 
-/** Historical capture retained for exact replay, but insufficient as a V3 anchor. */
-export const REQUIREMENTS_CAPTURE_V2_SCHEMA = "requirements-capture/2.0" as const;
-
 /** Current capture: every native RequirementUsage/ConstraintUsage identity is sealed. */
 export const REQUIREMENTS_CAPTURE_SCHEMA = "requirements-capture/3.0" as const;
 
@@ -29,13 +26,26 @@ export interface RequirementsCaptureArchitectureBasis {
   readonly fingerprint: string;
 }
 
+export interface RequirementsCaptureConstraintUsage {
+  /** Reviewed canonical requirement joined by its exact metric expression. */
+  readonly requirementId: string;
+  /** Native SysON ConstraintUsage UUID returned by the extractor. */
+  readonly id: string;
+  readonly kind: "ConstraintUsage";
+  /** Exact provider source identity; current SysON requires it to equal `id`. */
+  readonly sourceId: string;
+}
+
 /**
  * Canonical semantic record persisted by `model.write-requirements@1`.
  *
  * This contract contains captured provider identities and reviewed values. It
- * does not authorize a provider call or infer a target from a label.
+ * does not authorize a provider call or infer a target from a label. Exact
+ * keys always include the native RequirementUsage and ConstraintUsage
+ * identities sealed at publication.
  */
-interface ExactRequirementsCaptureBase {
+export interface ExactRequirementsCapture {
+  readonly schemaVersion: typeof REQUIREMENTS_CAPTURE_SCHEMA;
   readonly operation: typeof MODEL_WRITE_REQUIREMENTS_OPERATION;
   readonly trustedRunId: string;
   readonly containerComponent: string;
@@ -47,24 +57,6 @@ interface ExactRequirementsCaptureBase {
   readonly architecture: RequirementsCaptureArtifactReference;
   readonly requirementsElementId: string;
   readonly insertedAt: string;
-}
-
-export interface ExactRequirementsCaptureV2 extends ExactRequirementsCaptureBase {
-  readonly schemaVersion: typeof REQUIREMENTS_CAPTURE_V2_SCHEMA;
-}
-
-export interface RequirementsCaptureConstraintUsage {
-  /** Reviewed canonical requirement joined by its exact metric expression. */
-  readonly requirementId: string;
-  /** Native SysON ConstraintUsage UUID returned by the extractor. */
-  readonly id: string;
-  readonly kind: "ConstraintUsage";
-  /** Exact provider source identity; current SysON requires it to equal `id`. */
-  readonly sourceId: string;
-}
-
-export interface ExactRequirementsCaptureV3 extends ExactRequirementsCaptureBase {
-  readonly schemaVersion: typeof REQUIREMENTS_CAPTURE_SCHEMA;
   /** Exact native identity proved by element-get before capture publication. */
   readonly requirementUsage: {
     readonly id: string;
@@ -74,47 +66,39 @@ export interface ExactRequirementsCaptureV3 extends ExactRequirementsCaptureBase
   readonly constraintUsages: readonly RequirementsCaptureConstraintUsage[];
 }
 
-export type ExactRequirementsCapture =
-  | ExactRequirementsCaptureV2
-  | ExactRequirementsCaptureV3;
-
 /**
- * Parse one immutable schema-v2 or schema-v3 requirements capture fail-closed.
+ * Parse one current requirements-capture/3.0 record fail-closed.
  *
  * This parser deliberately validates only the self-contained capture. Callers
  * remain responsible for binding its artifact, architecture basis, seed, and
- * projected Thread entities to independently re-read evidence.
+ * projected Thread entities to independently re-read evidence. Older schemas
+ * are rejected.
  */
 export function parseExactRequirementsCapture(
   value: unknown,
 ): ExactRequirementsCapture {
   const record = exactObject(value, "Requirements capture");
-  const schemaVersion = record.schemaVersion;
-  if (
-    schemaVersion !== REQUIREMENTS_CAPTURE_V2_SCHEMA &&
-    schemaVersion !== REQUIREMENTS_CAPTURE_SCHEMA
-  ) {
+  if (record.schemaVersion !== REQUIREMENTS_CAPTURE_SCHEMA) {
     throw new Error("Requirements capture schema is not exact.");
   }
-  const v2Keys = [
-    "schemaVersion",
-    "operation",
-    "trustedRunId",
-    "containerComponent",
-    "partDefName",
-    "target",
-    "architectureBasis",
-    "requirements",
-    "seed",
-    "architecture",
-    "requirementsElementId",
-    "insertedAt",
-  ];
   exactKeys(
     record,
-    schemaVersion === REQUIREMENTS_CAPTURE_SCHEMA
-      ? [...v2Keys, "requirementUsage", "constraintUsages"]
-      : v2Keys,
+    [
+      "schemaVersion",
+      "operation",
+      "trustedRunId",
+      "containerComponent",
+      "partDefName",
+      "target",
+      "architectureBasis",
+      "requirements",
+      "seed",
+      "architecture",
+      "requirementsElementId",
+      "insertedAt",
+      "requirementUsage",
+      "constraintUsages",
+    ],
     "Requirements capture",
   );
 
@@ -192,9 +176,6 @@ export function parseExactRequirementsCapture(
     requirementsElementId,
     insertedAt: exactCanonicalInstant(record.insertedAt, "insertedAt"),
   };
-  if (schemaVersion === REQUIREMENTS_CAPTURE_V2_SCHEMA) {
-    return { schemaVersion: REQUIREMENTS_CAPTURE_V2_SCHEMA, ...common };
-  }
 
   const requirementUsage = exactObject(
     record.requirementUsage,
@@ -228,12 +209,6 @@ export function parseExactRequirementsCapture(
     requirementUsage: { id: requirementUsageId, kind: "RequirementUsage" },
     constraintUsages,
   };
-}
-
-export function isExactRequirementsCaptureV3(
-  capture: ExactRequirementsCapture,
-): capture is ExactRequirementsCaptureV3 {
-  return capture.schemaVersion === REQUIREMENTS_CAPTURE_SCHEMA;
 }
 
 function parseConstraintUsages(

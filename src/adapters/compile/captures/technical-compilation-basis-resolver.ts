@@ -51,7 +51,6 @@ import {
 } from "../../shared/cas/file-capture-store.ts";
 import {
   type ExactRequirementsCapture,
-  isExactRequirementsCaptureV3,
   parseExactRequirementsCapture,
 } from "../../architecture/requirements/requirements-capture.ts";
 import {
@@ -606,11 +605,6 @@ async function requirementsElements(
       );
     }
     components.add(capture.containerComponent);
-    // V2 remains readable for historical workflows, but it cannot contribute
-    // native constraint identities. After a later parser-backed architecture
-    // tip, a V2 capture still names its original architecture predecessor and
-    // must not fail-close the compilation basis.
-    if (!isExactRequirementsCaptureV3(capture)) continue;
     assertRequirementsInputs(
       snapshot,
       artifact,

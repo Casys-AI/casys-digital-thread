@@ -152,8 +152,7 @@ readback
 
 Content-addressed `requirements-capture/3.0` records bind the exact target
 PartDefinition, native RequirementUsage and bijective ConstraintUsage identities, and
-architecture basis; historical `2.0` remains readable but cannot authorize individual
-constraints, while predecessor lineage is carried by the Thread extension
+architecture basis; predecessor lineage is carried by the Thread extension.
 
 #### `state/local/requirements-attempts/`
 

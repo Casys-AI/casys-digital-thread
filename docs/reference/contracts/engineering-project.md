@@ -254,9 +254,9 @@ Its MRTR proposal identifies the reviewed target and declares named integer scal
 thresholds through `requirements.*` and `requirement.<slug>.*` parameters. The server
 derives the native `RequirementUsage` below the exact target `PartDefinition`, verifies
 its `subject target` typing and constraints by provider readback, and persists a
-`requirements-capture/2.0`. The Thread receives one `TracedRequirement` per verified
+`requirements-capture/3.0`. The Thread receives one `TracedRequirement` per verified
 integer scalar criterion and preserves the exact architecture and prior-requirements
-lineage. Legacy detached `requirements-capture/1.0` records are not silently enriched.
+lineage.
 This operation records model requirements; it does not evaluate them, invent
 measurements, or publish a pass/fail verdict.
 
