@@ -10,7 +10,6 @@ import type {
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
-  ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
   type ArchitectureCapturePartDefinition,
   parseArchitectureCapturePartDefinitions,
 } from "../renderer/architecture-capture.ts";
@@ -26,9 +25,7 @@ export interface PartDefinitionsCaptureArchitectureReference {
   readonly fingerprint: ContentFingerprint;
   readonly producerRunId: string;
   readonly uri: string;
-  readonly schemaVersion:
-    | typeof ARCHITECTURE_CAPTURE_SCHEMA
-    | typeof ARCHITECTURE_CAPTURE_SCHEMA_LEGACY;
+  readonly schemaVersion: typeof ARCHITECTURE_CAPTURE_SCHEMA;
   readonly packageName: string;
   readonly systemName: string;
   readonly package: { readonly id: string; readonly label: string };
@@ -190,10 +187,7 @@ function parseArchitectureReference(
     ],
     "architecture",
   );
-  if (
-    record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA &&
-    record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA_LEGACY
-  ) {
+  if (record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA) {
     throw new Error("PartDefinitions capture architecture schema is not exact.");
   }
   const rawPackage = exactObject(record.package, "architecture.package");

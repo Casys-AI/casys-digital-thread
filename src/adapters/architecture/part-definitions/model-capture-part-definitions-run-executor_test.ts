@@ -704,7 +704,7 @@ function seedCaptureRecord() {
 
 function architectureCaptureRecord(seed: ThreadArtifact) {
   return {
-    schemaVersion: "architecture-capture/2.0",
+    schemaVersion: "architecture-capture/3.0",
     operation: { id: "model.write-architecture", version: "1" },
     trustedRunId: ARCH_RUN_ID,
     packageName: PACKAGE_NAME,
@@ -715,6 +715,15 @@ function architectureCaptureRecord(seed: ThreadArtifact) {
       fingerprint: seed.fingerprint,
       producerRunId: seed.producer.runId,
     },
+    sourceAnalyses: [{
+      sourceId: "sysml-source:lamp-package",
+      selector: { kind: "full-package", packageName: PACKAGE_NAME },
+      runId: ARCH_RUN_ID,
+      operation: { id: "model.write-architecture", version: "1" },
+      sourceFingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+      sourceCaptureFingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      analysisFingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+    }],
     partDefinitions: [{
       id: SYSTEM_ID,
       kind: "PartDefinition",

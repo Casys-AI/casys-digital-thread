@@ -1,7 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
-  ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
   architectureGraphFromCapture,
   buildExactArchitectureCapture,
   extractPartDefinitionsFromCapture,
@@ -72,20 +71,30 @@ function currentCapture(): Record<string, unknown> {
   };
 }
 
-Deno.test("architecture capture parser bi-reads exact historical v2 and current v3", () => {
-  assertEquals(
-    parseExactArchitectureCapture({
-      schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
-      ...baseCapture(),
-    }).schemaVersion,
-    ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
-  );
+function liveFromBase() {
+  const capture = baseCapture();
+  return {
+    packageId: capture.package.id,
+    packageLabel: capture.package.label,
+    partDefs: capture.partDefinitions.map((part) => ({
+      ...part,
+      attributes: [],
+    })),
+  };
+}
+
+Deno.test("architecture capture parser accepts only exact architecture-capture/3.0", () => {
   const current = parseExactArchitectureCapture(currentCapture());
   assertEquals(current.schemaVersion, ARCHITECTURE_CAPTURE_SCHEMA);
-  if (current.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
-    assertEquals(current.sourceAnalyses, [sourceReference()]);
-  }
+  assertEquals(current.sourceAnalyses, [sourceReference()]);
+  assertThrows(() =>
+    parseExactArchitectureCapture({
+      schemaVersion: "architecture-capture/2.0",
+      ...baseCapture(),
+    })
+  );
 });
+
 Deno.test("current architecture capture requires non-empty exact source analyses", () => {
   const missing = currentCapture();
   delete missing.sourceAnalyses;
@@ -144,9 +153,8 @@ Deno.test("current architecture capture rejects repeated references and selector
 });
 
 Deno.test(
-  "parseExactArchitectureCapture remains the only reader of architecture-capture/2.0 and 3.0 keys",
+  "parseExactArchitectureCapture remains the only reader of architecture-capture/3.0 keys",
   async () => {
-    const thisFile = await Deno.readTextFile(new URL(import.meta.url));
     const parser = await Deno.readTextFile(
       new URL("./architecture-capture.ts", import.meta.url),
     );
@@ -171,7 +179,8 @@ Deno.test(
     assertEquals(sibling.includes("parseArchitectureCapturePartDefinitions("), true);
     assertEquals(executor.includes("parseExactArchitectureCapture("), true);
     assertEquals(executor.includes("exactKeys("), false);
-    assertEquals(thisFile.includes("architecture-capture/2.0"), true);
+    assertEquals(parser.includes("architecture-capture/2.0"), false);
+    assertEquals(parser.includes("ARCHITECTURE_CAPTURE_SCHEMA_LEGACY"), false);
   },
 );
 
@@ -226,44 +235,19 @@ Deno.test(
   },
 );
 
-Deno.test("historical v2 capture cannot be retrofitted with source analyses", () => {
+Deno.test("buildExactArchitectureCapture requires source analyses and always writes 3.0", () => {
   assertThrows(() =>
-    parseExactArchitectureCapture({
-      schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
-      ...baseCapture(),
-      sourceAnalyses: [sourceReference()],
+    buildExactArchitectureCapture({
+      trustedRunId: RUN_ID,
+      packageName: PACKAGE_NAME,
+      systemName: "DroneSystem",
+      architecturePackage: baseCapture().package,
+      seed: baseCapture().seed,
+      live: liveFromBase(),
+      insertedAt: AT,
+      sourceAnalyses: [],
     })
   );
-});
-
-function liveFromBase() {
-  const capture = baseCapture();
-  return {
-    packageId: capture.package.id,
-    packageLabel: capture.package.label,
-    partDefs: capture.partDefinitions.map((part) => ({
-      ...part,
-      attributes: [],
-    })),
-  };
-}
-
-Deno.test("buildExactArchitectureCapture v2 omits sourceAnalyses and round-trips the parser", () => {
-  const built = buildExactArchitectureCapture({
-    trustedRunId: RUN_ID,
-    packageName: PACKAGE_NAME,
-    systemName: "DroneSystem",
-    architecturePackage: baseCapture().package,
-    seed: baseCapture().seed,
-    live: liveFromBase(),
-    insertedAt: AT,
-  });
-  assertEquals(built.schemaVersion, ARCHITECTURE_CAPTURE_SCHEMA_LEGACY);
-  assertEquals("sourceAnalyses" in built, false);
-  assertEquals(parseExactArchitectureCapture(built), built);
-});
-
-Deno.test("buildExactArchitectureCapture v3 preserves source reference order and round-trips", () => {
   const first = sourceReference();
   const second = {
     ...sourceReference(),
@@ -290,9 +274,7 @@ Deno.test("buildExactArchitectureCapture v3 preserves source reference order and
     sourceAnalyses: [first, second],
   });
   assertEquals(built.schemaVersion, ARCHITECTURE_CAPTURE_SCHEMA);
-  if (built.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
-    assertEquals(built.sourceAnalyses, [first, second]);
-  }
+  assertEquals(built.sourceAnalyses, [first, second]);
   assertEquals(parseExactArchitectureCapture(built), built);
   const graph = architectureGraphFromCapture(built);
   assertEquals(graph.packageId, "package-drone-v4");

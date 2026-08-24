@@ -27,17 +27,11 @@ import {
 } from "../../shared/wal/durable-attempt-file-writes.ts";
 
 const NO_WRITE_PROGRESS = "Architecture write-attempt journal made no write progress.";
+export const ARCHITECTURE_WRITE_ATTEMPT_SCHEMA =
+  "architecture-write-attempt/3.0" as const;
 
-type ArchitectureWriteAttemptV2Base = {
-  readonly schemaVersion: "architecture-write-attempt/2.0";
-  readonly projectId: string;
-  readonly runId: string;
-  readonly planDigest: string;
-  readonly dispatchedAt: string;
-};
-
-type ArchitectureWriteAttemptV3Base = {
-  readonly schemaVersion: "architecture-write-attempt/3.0";
+type ArchitectureWriteAttemptBase = {
+  readonly schemaVersion: typeof ARCHITECTURE_WRITE_ATTEMPT_SCHEMA;
   readonly projectId: string;
   readonly runId: string;
   readonly packageName: string;
@@ -48,33 +42,17 @@ type ArchitectureWriteAttemptV3Base = {
   readonly dispatchedAt: string;
 };
 
-export type ArchitectureWriteAttemptV2 =
-  | ArchitectureWriteAttemptV2Base & {
-    readonly status: "dispatched";
-  }
-  | ArchitectureWriteAttemptV2Base & {
-    readonly status: "completed";
-    readonly result: {
-      readonly inserted: "true";
-      readonly architecturePackageId: string;
-    };
-  };
-
-type ArchitectureWriteAttemptV3 =
-  | ArchitectureWriteAttemptV3Base & {
-    readonly status: "dispatched";
-  }
-  | ArchitectureWriteAttemptV3Base & {
-    readonly status: "completed";
-    readonly result: {
-      readonly inserted: "true";
-      readonly architecturePackageId: string;
-    };
-  };
-
 export type ArchitectureWriteAttempt =
-  | ArchitectureWriteAttemptV2
-  | ArchitectureWriteAttemptV3;
+  | ArchitectureWriteAttemptBase & {
+    readonly status: "dispatched";
+  }
+  | ArchitectureWriteAttemptBase & {
+    readonly status: "completed";
+    readonly result: {
+      readonly inserted: "true";
+      readonly architecturePackageId: string;
+    };
+  };
 
 export class ArchitectureWriteOutcomeUnknownError extends Error {
   constructor() {
@@ -107,7 +85,7 @@ export class ArchitectureRunQuarantinedError extends Error {
 
 export class FileArchitectureAttemptStore {
   constructor(
-    private readonly directory = "state/local/architecture-write-attempts",
+    private readonly directory = "state/local/architecture-attempts",
   ) {}
 
   /**
@@ -132,9 +110,6 @@ export class FileArchitectureAttemptStore {
     const fresh = await attempt(input);
     await Deno.mkdir(this.directory, { recursive: true });
 
-    // The new run-scoped record is authoritative if a deployment briefly has
-    // both formats. A stale legacy per-plan marker must not hide a completed
-    // immutable recovery record.
     let current: ArchitectureWriteAttempt | undefined;
     try {
       current = await this.readRun(fresh.projectId, fresh.runId);
@@ -160,65 +135,6 @@ export class FileArchitectureAttemptStore {
     return actionFor(existing);
   }
 
-  /**
-   * Persist a completed v3 acknowledgement without a dispatched mutation.
-   *
-   * Used when the live SysON graph already matches the signed proposal and the
-   * only new evidence is parser-backed source analysis (historical 2.0 → 3.0).
-   * There is no provider crash window: the record is created completed.
-   */
-  async attest(input: {
-    readonly projectId: string;
-    readonly runId: string;
-    readonly packageName: string;
-    readonly items: readonly InsertionItem[];
-    readonly planDigest: string;
-    readonly dispatchedAt: string;
-    readonly sourceAnalyses: readonly SysmlSourceAnalysisReference[];
-    readonly architecturePackageId: string;
-  }): Promise<void> {
-    const architecturePackageId = nonEmpty(
-      input.architecturePackageId,
-      "architecturePackageId",
-    );
-    const fresh = await attempt(input);
-    const completed: ArchitectureWriteAttempt = {
-      ...fresh,
-      status: "completed",
-      result: { inserted: "true", architecturePackageId },
-    };
-    await Deno.mkdir(this.directory, { recursive: true });
-    let current: ArchitectureWriteAttempt | undefined;
-    try {
-      current = await this.readRun(fresh.projectId, fresh.runId);
-    } catch {
-      throw new ArchitectureWriteOutcomeUnknownError();
-    }
-    if (current) {
-      if (deterministicJson(current) !== deterministicJson(completed)) {
-        throw new ArchitectureWriteOutcomeUnknownError();
-      }
-      await syncAttemptDirectoryChain(this.directory);
-      return;
-    }
-    const path = await this.pathFor(fresh.projectId, fresh.runId);
-    try {
-      await writeNewAttemptFileDurably(
-        path,
-        `${deterministicJson(completed)}\n`,
-        this.directory,
-        NO_WRITE_PROGRESS,
-      );
-    } catch (error) {
-      if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
-      const existing = await this.requiredRun(fresh.projectId, fresh.runId);
-      if (deterministicJson(existing) !== deterministicJson(completed)) {
-        throw new ArchitectureWriteOutcomeUnknownError();
-      }
-      await syncAttemptDirectoryChain(this.directory);
-    }
-  }
-
   /** Mark the run completed only after exact readback pinned the Package id. */
   async complete(input: {
     readonly projectId: string;
@@ -234,13 +150,6 @@ export class FileArchitectureAttemptStore {
       "architecturePackageId",
     );
     const existing = await this.requiredRun(input.projectId, input.runId);
-    // Historical v2 records are immutable evidence only.  They can prevent a
-    // redispatch and remain readable for historical replay, but must never be
-    // promoted into a current completed acknowledgement: doing so would invent
-    // v3 source-analysis context that the historical dispatch did not seal.
-    if (existing.schemaVersion !== "architecture-write-attempt/3.0") {
-      throw new ArchitectureWriteOutcomeUnknownError();
-    }
     if (existing.planDigest !== input.planDigest) {
       throw new ArchitectureWriteOutcomeUnknownError();
     }
@@ -279,25 +188,7 @@ export class FileArchitectureAttemptStore {
       runId,
       undefined,
     );
-    if (current) return current;
-
-    // Before run-scoped filenames and Package-id pinning were introduced, the
-    // plan digest was part of the filename and a completed marker carried no
-    // architecturePackageId. Such a record can block a second dispatch but can
-    // never authorize publication. A current hash record above remains
-    // authoritative during a mixed-format deployment.
-    return await this.readLegacyRun(projectId, runId);
-  }
-
-  /** Compatibility for callers that still need to inspect an exact legacy plan. */
-  async read(
-    projectId: string,
-    runId: string,
-    planDigest: string,
-  ): Promise<ArchitectureWriteAttempt | undefined> {
-    nonEmpty(planDigest, "planDigest");
-    const current = await this.readRun(projectId, runId);
-    return current?.planDigest === planDigest ? current : undefined;
+    return current;
   }
 
   async quarantine(input: {
@@ -313,11 +204,6 @@ export class FileArchitectureAttemptStore {
       quarantinedAt: timestamp(input.quarantinedAt, "quarantinedAt"),
     };
     await Deno.mkdir(this.directory, { recursive: true });
-    const legacy = await this.readLegacyQuarantine(record.projectId, record.runId);
-    if (legacy) {
-      await syncAttemptDirectoryChain(this.directory);
-      return;
-    }
     const path = await this.quarantinePath(record.projectId, record.runId);
     try {
       await writeNewAttemptFileDurably(
@@ -341,8 +227,7 @@ export class FileArchitectureAttemptStore {
       projectId,
       runId,
     );
-    if (current) return true;
-    return Boolean(await this.readLegacyQuarantine(projectId, runId));
+    return current !== undefined;
   }
 
   private async requiredRun(
@@ -390,30 +275,6 @@ export class FileArchitectureAttemptStore {
     }
   }
 
-  private async readLegacyRun(
-    projectId: string,
-    runId: string,
-  ): Promise<ArchitectureWriteAttempt | undefined> {
-    let entries: Deno.DirEntry[];
-    try {
-      entries = [];
-      for await (const entry of Deno.readDir(this.directory)) entries.push(entry);
-    } catch (error) {
-      if (error instanceof Deno.errors.NotFound) return undefined;
-      throw error;
-    }
-
-    for (const entry of entries) {
-      if (!entry.isFile) continue;
-      const identity = legacyAttemptIdentity(entry.name);
-      if (!identity || identity.projectId !== projectId || identity.runId !== runId) {
-        continue;
-      }
-      throw new ArchitectureWriteOutcomeUnknownError();
-    }
-    return undefined;
-  }
-
   private async readQuarantinePath(
     path: string,
     projectId: string,
@@ -427,15 +288,6 @@ export class FileArchitectureAttemptStore {
     }
   }
 
-  private async readLegacyQuarantine(
-    projectId: string,
-    runId: string,
-  ): Promise<ArchitectureRunQuarantine | undefined> {
-    const path = legacyQuarantinePath(this.directory, projectId, runId);
-    if (!fitsNameMax(path)) return undefined;
-    return await this.readQuarantinePath(path, projectId, runId);
-  }
-
   private async pathFor(projectId: string, runId: string): Promise<string> {
     return `${root(this.directory)}/run-${await sha256Hex(
       JSON.stringify([projectId, runId]),
@@ -447,38 +299,6 @@ export class FileArchitectureAttemptStore {
       JSON.stringify([projectId, runId]),
     )}.json`;
   }
-}
-
-/**
- * Test-only migration fixture for immutable v2 records.
- *
- * Production code has no v2 writer: `begin` always requires and writes a v3
- * plan. Historical tests use this explicit helper when they need to prove
- * bi-read behavior without weakening the production boundary.
- */
-export async function writeArchitectureAttemptV2Fixture(
-  directory: string,
-  input: ArchitectureWriteAttemptV2,
-): Promise<void> {
-  const normalized = await parseAttempt(
-    deterministicJson(input),
-    input.projectId,
-    input.runId,
-    input.planDigest,
-  );
-  if (normalized.schemaVersion !== "architecture-write-attempt/2.0") {
-    throw new Error("Architecture v2 fixture did not normalize as historical v2.");
-  }
-  await Deno.mkdir(directory, { recursive: true });
-  const path = `${root(directory)}/run-${await sha256Hex(
-    JSON.stringify([input.projectId, input.runId]),
-  )}.json`;
-  await writeNewAttemptFileDurably(
-    path,
-    `${deterministicJson(normalized)}\n`,
-    directory,
-    NO_WRITE_PROGRESS,
-  );
 }
 
 async function attempt(input: {
@@ -508,7 +328,7 @@ async function attempt(input: {
     throw new Error("Architecture write-attempt planDigest does not seal its plan.");
   }
   return {
-    schemaVersion: "architecture-write-attempt/3.0",
+    schemaVersion: ARCHITECTURE_WRITE_ATTEMPT_SCHEMA,
     projectId,
     runId,
     packageName,
@@ -540,10 +360,8 @@ async function parseAttempt(
 ): Promise<ArchitectureWriteAttempt> {
   const record = parseObject(text, "Architecture insertion marker");
   const keys = Object.keys(record).sort();
-  const isV2 = record.schemaVersion === "architecture-write-attempt/2.0";
-  const isV3 = record.schemaVersion === "architecture-write-attempt/3.0";
   if (
-    (!isV2 && !isV3) ||
+    record.schemaVersion !== ARCHITECTURE_WRITE_ATTEMPT_SCHEMA ||
     record.projectId !== projectId || record.runId !== runId ||
     (typeof record.planDigest !== "string" ||
       !/^[0-9a-f]{64}$/.test(record.planDigest)) ||
@@ -555,18 +373,27 @@ async function parseAttempt(
   const expectedKeys = record.status === "completed"
     ? [
       "dispatchedAt",
+      "items",
+      "packageName",
       "planDigest",
       "projectId",
       "result",
       "runId",
       "schemaVersion",
+      "sourceAnalyses",
       "status",
     ]
-    : ["dispatchedAt", "planDigest", "projectId", "runId", "schemaVersion", "status"];
-  if (isV3) {
-    expectedKeys.push("items", "packageName", "sourceAnalyses");
-  }
-  expectedKeys.sort();
+    : [
+      "dispatchedAt",
+      "items",
+      "packageName",
+      "planDigest",
+      "projectId",
+      "runId",
+      "schemaVersion",
+      "sourceAnalyses",
+      "status",
+    ];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index])
@@ -584,41 +411,30 @@ async function parseAttempt(
       Object.keys(record.result as Record<string, unknown>).sort().join("\u0000") !==
         "architecturePackageId\u0000inserted")
   ) throw new Error("Completed architecture insertion marker has an invalid result.");
-  let base: ArchitectureWriteAttemptV2Base | ArchitectureWriteAttemptV3Base;
-  if (isV3) {
-    const packageName = sysmlName(record.packageName, "packageName");
-    const items = exactInsertionItems(record.items);
-    const sourceAnalyses = exactSourceAnalyses(
-      record.sourceAnalyses,
-      runId,
-      packageName,
-      items,
-    );
-    if (
-      record.planDigest !==
-        await architectureWritePlanDigest({ packageName, items, sourceAnalyses })
-    ) {
-      throw new Error("Architecture insertion marker planDigest is not exact.");
-    }
-    base = {
-      schemaVersion: "architecture-write-attempt/3.0" as const,
-      projectId,
-      runId,
-      packageName,
-      items,
-      sourceAnalyses,
-      planDigest: record.planDigest,
-      dispatchedAt: record.dispatchedAt,
-    };
-  } else {
-    base = {
-      schemaVersion: "architecture-write-attempt/2.0" as const,
-      projectId,
-      runId,
-      planDigest: record.planDigest,
-      dispatchedAt: record.dispatchedAt,
-    };
+  const packageName = sysmlName(record.packageName, "packageName");
+  const items = exactInsertionItems(record.items);
+  const sourceAnalyses = exactSourceAnalyses(
+    record.sourceAnalyses,
+    runId,
+    packageName,
+    items,
+  );
+  if (
+    record.planDigest !==
+      await architectureWritePlanDigest({ packageName, items, sourceAnalyses })
+  ) {
+    throw new Error("Architecture insertion marker planDigest is not exact.");
   }
+  const base: ArchitectureWriteAttemptBase = {
+    schemaVersion: ARCHITECTURE_WRITE_ATTEMPT_SCHEMA,
+    projectId,
+    runId,
+    packageName,
+    items,
+    sourceAnalyses,
+    planDigest: record.planDigest,
+    dispatchedAt: record.dispatchedAt,
+  };
   return record.status === "completed"
     ? {
       ...base,
@@ -836,41 +652,6 @@ function hex64(value: unknown, path: string): string {
     throw new Error(`${path} must be a SHA-256 digest.`);
   }
   return value;
-}
-
-function legacyAttemptIdentity(
-  fileName: string,
-):
-  | { readonly projectId: string; readonly runId: string; readonly planDigest: string }
-  | undefined {
-  if (!fileName.endsWith(".json")) return undefined;
-  let value: unknown;
-  try {
-    value = JSON.parse(decodeURIComponent(fileName.slice(0, -".json".length)));
-  } catch {
-    // Modern hash names and unrelated files are not legacy markers.
-    return undefined;
-  }
-  if (
-    !Array.isArray(value) || value.length !== 3 ||
-    value.some((part) => typeof part !== "string" || !part.trim())
-  ) return undefined;
-  const [projectId, runId, planDigest] = value as [string, string, string];
-  return { projectId, runId, planDigest };
-}
-
-function legacyQuarantinePath(
-  directory: string,
-  projectId: string,
-  runId: string,
-): string {
-  return `${root(directory)}/quarantine-${
-    encodeURIComponent(JSON.stringify([projectId, runId]))
-  }.json`;
-}
-
-function fitsNameMax(path: string): boolean {
-  return new TextEncoder().encode(path.slice(path.lastIndexOf("/") + 1)).length <= 255;
 }
 
 function root(directory: string): string {

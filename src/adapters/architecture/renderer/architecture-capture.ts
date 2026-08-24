@@ -12,19 +12,6 @@ import {
 } from "./sysml-source-analysis-capture.ts";
 
 export const ARCHITECTURE_CAPTURE_SCHEMA = "architecture-capture/3.0" as const;
-export const ARCHITECTURE_CAPTURE_SCHEMA_LEGACY = "architecture-capture/2.0" as const;
-
-interface ExactArchitectureCaptureBase {
-  readonly operation: typeof MODEL_WRITE_ARCHITECTURE_OPERATION;
-  readonly trustedRunId: string;
-  readonly packageName: string;
-  readonly systemName: string;
-  readonly package: { readonly id: string; readonly label: string };
-  readonly seed: ArchitectureCaptureArtifactReference;
-  readonly predecessor?: ArchitectureCaptureArtifactReference;
-  readonly partDefinitions: readonly ArchitectureCapturePartDefinition[];
-  readonly insertedAt: string;
-}
 
 export interface ArchitectureCaptureArtifactReference {
   readonly artifactId: string;
@@ -55,18 +42,19 @@ export interface ArchitectureCapturePartUsage {
   readonly targetLabel: string;
 }
 
-export interface ExactArchitectureCaptureV2 extends ExactArchitectureCaptureBase {
-  readonly schemaVersion: typeof ARCHITECTURE_CAPTURE_SCHEMA_LEGACY;
-}
-
-export interface ExactArchitectureCaptureV3 extends ExactArchitectureCaptureBase {
+export interface ExactArchitectureCapture {
   readonly schemaVersion: typeof ARCHITECTURE_CAPTURE_SCHEMA;
+  readonly operation: typeof MODEL_WRITE_ARCHITECTURE_OPERATION;
+  readonly trustedRunId: string;
+  readonly packageName: string;
+  readonly systemName: string;
+  readonly package: { readonly id: string; readonly label: string };
+  readonly seed: ArchitectureCaptureArtifactReference;
+  readonly predecessor?: ArchitectureCaptureArtifactReference;
+  readonly partDefinitions: readonly ArchitectureCapturePartDefinition[];
+  readonly insertedAt: string;
   readonly sourceAnalyses: readonly SysmlSourceAnalysisReference[];
 }
-
-export type ExactArchitectureCapture =
-  | ExactArchitectureCaptureV2
-  | ExactArchitectureCaptureV3;
 
 export interface ExactArchitectureCaptureBuildInput {
   readonly trustedRunId: string;
@@ -77,7 +65,7 @@ export interface ExactArchitectureCaptureBuildInput {
   readonly predecessor?: ArchitectureCaptureArtifactReference;
   readonly live: ExistingArchitectureStructure;
   readonly insertedAt: string;
-  readonly sourceAnalyses?: readonly SysmlSourceAnalysisReference[];
+  readonly sourceAnalyses: readonly SysmlSourceAnalysisReference[];
 }
 
 /**
@@ -124,16 +112,13 @@ export function buildExactArchitectureCapture(
     partDefinitions,
     insertedAt: input.insertedAt,
   };
-  if (input.sourceAnalyses && input.sourceAnalyses.length > 0) {
-    return {
-      schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
-      ...base,
-      sourceAnalyses: input.sourceAnalyses,
-    };
+  if (input.sourceAnalyses.length === 0) {
+    throw new Error("Current architecture capture must seal SysML source analyses.");
   }
   return {
-    schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+    schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
     ...base,
+    sourceAnalyses: input.sourceAnalyses,
   };
 }
 
@@ -170,17 +155,16 @@ export function architectureGraphFromCapture(
 }
 
 /**
- * Parse both immutable historical v2 and current v3 records fail-closed.
+ * Parse a current architecture-capture/3.0 record fail-closed.
  *
- * V3 source references are not opaque extras: their run, operation and package
+ * Source references are not opaque extras: their run, operation and package
  * selector are bound to the capture identity here, before any authoritative
- * reader is allowed to project the semantic graph.
+ * reader is allowed to project the semantic graph. Older schemas are rejected.
  */
 export function parseExactArchitectureCapture(
   value: unknown,
 ): ExactArchitectureCapture {
   const record = exactObject(value, "Architecture capture");
-  const currentSchema = record.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA;
   exactKeys(
     record,
     [
@@ -194,15 +178,14 @@ export function parseExactArchitectureCapture(
       ...(record.predecessor === undefined ? [] : ["predecessor"]),
       "partDefinitions",
       "insertedAt",
-      ...(currentSchema ? ["sourceAnalyses"] : []),
+      "sourceAnalyses",
     ],
     "Architecture capture",
   );
   const operation = exactObject(record.operation, "Architecture capture operation");
   exactKeys(operation, ["id", "version"], "Architecture capture operation");
   if (
-    (record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA &&
-      record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA_LEGACY) ||
+    record.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
     operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
     operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version
   ) {
@@ -227,13 +210,11 @@ export function parseExactArchitectureCapture(
   const predecessor = record.predecessor === undefined
     ? undefined
     : parseArtifactReference(record.predecessor, "predecessor");
-  const sourceAnalyses = currentSchema
-    ? parseExactSysmlSourceAnalyses(
-      record.sourceAnalyses,
-      trustedRunId,
-      packageName,
-    )
-    : undefined;
+  const sourceAnalyses = parseExactSysmlSourceAnalyses(
+    record.sourceAnalyses,
+    trustedRunId,
+    packageName,
+  );
 
   const partDefinitions = parseArchitectureCapturePartDefinitions(
     record.partDefinitions,
@@ -255,13 +236,11 @@ export function parseExactArchitectureCapture(
     partDefinitions,
     insertedAt,
   };
-  return currentSchema
-    ? {
-      schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
-      ...base,
-      sourceAnalyses: sourceAnalyses!,
-    }
-    : { schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA_LEGACY, ...base };
+  return {
+    schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
+    ...base,
+    sourceAnalyses,
+  };
 }
 
 /**

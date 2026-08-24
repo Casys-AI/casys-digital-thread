@@ -81,7 +81,6 @@ import {
 } from "../../shared/cas/file-capture-store.ts";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
-  ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
   architectureGraphFromCapture,
   buildExactArchitectureCapture,
   type ExactArchitectureCapture,
@@ -124,7 +123,7 @@ import {
 // ── Public re-exports ────────────────────────────────────────────────────────
 
 export { MODEL_WRITE_ARCHITECTURE_OPERATION };
-export { ARCHITECTURE_CAPTURE_SCHEMA, ARCHITECTURE_CAPTURE_SCHEMA_LEGACY };
+export { ARCHITECTURE_CAPTURE_SCHEMA };
 
 // ── Error: architecture artifact removed from a successor snapshot ────────────
 
@@ -507,21 +506,19 @@ export class ModelWriteArchitectureRunExecutor {
         // subsequent extraction/capture failure instead of leaving a retryable
         // running run that might redispatch.
         providerAcknowledged = true;
-        if (existingAttempt.schemaVersion === "architecture-write-attempt/3.0") {
-          sealedSources = await this.#reopenSysmlSources(
-            existingAttempt.sourceAnalyses,
-          );
-          this.#assertCurrentAttemptRunBasis(
-            existingAttempt,
-            architectureProposal,
-            run.id,
-            capturedAt,
-          );
-          this.#assertSourcesMatchCurrentProposal(
-            sealedSources,
-            architectureProposal,
-          );
-        }
+        sealedSources = await this.#reopenSysmlSources(
+          existingAttempt.sourceAnalyses,
+        );
+        this.#assertCurrentAttemptRunBasis(
+          existingAttempt,
+          architectureProposal,
+          run.id,
+          capturedAt,
+        );
+        this.#assertSourcesMatchCurrentProposal(
+          sealedSources,
+          architectureProposal,
+        );
         const existingForResume = await extractArchitectureStructure(
           this.#syson,
           editingContextId,
@@ -561,18 +558,11 @@ export class ModelWriteArchitectureRunExecutor {
           );
         }
         if (plan.toInsert.length === 0) {
-          const attested = await this.#attestAdoptedLegacyArchitecture({
-            predecessor: previousArchitectureArtifact,
-            existing,
-            proposal: architectureProposal,
-            adopted: plan.adopted,
-            projectId: project.project.id,
-            runId: run.id,
-            capturedAt,
-          });
-          architecturePackageId = attested.architecturePackageId;
-          adopted = attested.adopted;
-          sealedSources = attested.sealedSources;
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            "All proposed architecture components are already present and adopted. " +
+              "No insertion is needed; this transition would produce no new evidence.",
+          );
         } else {
           sealedSources = await this.#captureAndReopenSysmlSources(
             architectureProposal,
@@ -597,33 +587,29 @@ export class ModelWriteArchitectureRunExecutor {
             sourceAnalyses,
           );
           if (walResult.action === "completed") {
-            // A legacy or concurrently recovered record won the race. This branch
-            // is still strictly readback-only.
+            // A concurrently recovered record won the race. This branch is still
+            // strictly readback-only.
             providerAcknowledged = true;
             const completedAttempt = await this.#runAttemptOrFail(
               project.project.id,
               command.runId,
             );
-            if (completedAttempt?.schemaVersion === "architecture-write-attempt/3.0") {
-              sealedSources = await this.#reopenSysmlSources(
-                completedAttempt.sourceAnalyses,
-              );
-              this.#assertCurrentAttemptRunBasis(
-                completedAttempt,
-                architectureProposal,
-                run.id,
-                capturedAt,
-              );
-              this.#assertSourcesMatchCurrentProposal(
-                sealedSources,
-                architectureProposal,
-              );
-            } else {
-              // The durable acknowledgement predates source analysis. Keep the
-              // historical recovery historical: it may publish only v2 capture
-              // evidence, never a newly invented v3 source-analysis binding.
-              sealedSources = [];
+            if (!completedAttempt) {
+              throw new ArchitectureWriteOutcomeUnknownError();
             }
+            sealedSources = await this.#reopenSysmlSources(
+              completedAttempt.sourceAnalyses,
+            );
+            this.#assertCurrentAttemptRunBasis(
+              completedAttempt,
+              architectureProposal,
+              run.id,
+              capturedAt,
+            );
+            this.#assertSourcesMatchCurrentProposal(
+              sealedSources,
+              architectureProposal,
+            );
             const existingForResume = await extractArchitectureStructure(
               this.#syson,
               editingContextId,
@@ -791,9 +777,7 @@ export class ModelWriteArchitectureRunExecutor {
           : {}),
         live: verified,
         insertedAt: capturedAt,
-        ...(sealedSources.length > 0
-          ? { sourceAnalyses: sealedSources.map((source) => source.reference) }
-          : {}),
+        sourceAnalyses: sealedSources.map((source) => source.reference),
       });
       // Fingerprint the object so SHA-256 = SHA-256(raw text bytes of captureText).
       // FileCaptureStore.save verifies SHA-256 of raw bytes, so the fingerprint
@@ -989,97 +973,6 @@ export class ModelWriteArchitectureRunExecutor {
     }
   }
 
-  /**
-   * Seal parser-backed 3.0 evidence when the live graph already matches a
-   * historical 2.0 tip. No SysON mutation: WAL is created completed.
-   */
-  async #attestAdoptedLegacyArchitecture(input: {
-    readonly predecessor: ThreadArtifact | undefined;
-    readonly existing: Awaited<ReturnType<typeof extractArchitectureStructure>>;
-    readonly proposal: ArchitectureProposal;
-    readonly adopted: ReturnType<typeof planArchitectureInsertion>["adopted"];
-    readonly projectId: string;
-    readonly runId: string;
-    readonly capturedAt: string;
-  }): Promise<{
-    readonly architecturePackageId: string;
-    readonly adopted: ReturnType<typeof planArchitectureInsertion>["adopted"];
-    readonly sealedSources: readonly VerifiedSysmlSourceAnalysis[];
-  }> {
-    if (
-      !input.predecessor ||
-      !await this.#predecessorIsLegacyArchitecture(input.predecessor)
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "All proposed architecture components are already present and adopted. " +
-          "No insertion is needed; this transition would produce no new evidence.",
-      );
-    }
-    if (!input.existing) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "The architecture package is absent from SysON while the Thread tip still names it.",
-      );
-    }
-    const items = [{ kind: "full-package" as const }];
-    const sealedSources = await this.#captureAndReopenSysmlSources(
-      input.proposal,
-      "initial",
-      items,
-      input.runId,
-    );
-    this.#assertSourcesMatchCurrentProposal(sealedSources, input.proposal);
-    const sourceAnalyses = sealedSources.map((source) => source.reference);
-    const planDigest = await architectureWritePlanDigest({
-      items,
-      packageName: input.proposal.packageName,
-      sourceAnalyses,
-    });
-    try {
-      await this.#attempts.attest({
-        projectId: input.projectId,
-        runId: input.runId,
-        packageName: input.proposal.packageName,
-        items,
-        planDigest,
-        dispatchedAt: input.capturedAt,
-        sourceAnalyses,
-        architecturePackageId: input.existing.packageId,
-      });
-    } catch (error) {
-      if (error instanceof ArchitectureWriteOutcomeUnknownError) throw error;
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "The adopted architecture attestation could not be sealed.",
-      );
-    }
-    return {
-      architecturePackageId: input.existing.packageId,
-      adopted: input.adopted,
-      sealedSources,
-    };
-  }
-
-  /**
-   * Defense-in-depth only: a corrupted capture cannot reach this parse —
-   * `FileCaptureStore.read` rejects any byte drift against the content
-   * digest, and `#assertPredecessorCaptureExact` (main execute path) already
-   * rejects an authentic-but-non-canonical capture as `invalid_input`.
-   */
-  async #predecessorIsLegacyArchitecture(
-    predecessor: ThreadArtifact,
-  ): Promise<boolean> {
-    const text = await this.#captures.read(predecessor.fingerprint);
-    if (!text) return false;
-    try {
-      const capture = parseExactArchitectureCapture(JSON.parse(text));
-      return capture.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA_LEGACY;
-    } catch {
-      return false;
-    }
-  }
-
   async #walBeginOrFail(
     projectId: string,
     runId: string,
@@ -1206,9 +1099,8 @@ export class ModelWriteArchitectureRunExecutor {
    * basis before any provider read or publication path can trust it.
    */
   #assertCurrentAttemptRunBasis(
-    attempt: Extract<
-      NonNullable<Awaited<ReturnType<FileArchitectureAttemptStore["readRun"]>>>,
-      { readonly schemaVersion: "architecture-write-attempt/3.0" }
+    attempt: NonNullable<
+      Awaited<ReturnType<FileArchitectureAttemptStore["readRun"]>>
     >,
     proposal: ArchitectureProposal,
     runId: string,
@@ -1638,7 +1530,7 @@ export class ModelWriteArchitectureRunExecutor {
       ) {
         throw new EngineeringProjectCommandError(
           "invalid_input",
-          "The predecessor architecture capture is not exact v2/v3 evidence.",
+          "The predecessor architecture capture is not exact architecture-capture/3.0 evidence.",
         );
       }
       predecessorGraph = architectureGraphFromCapture(capture);
@@ -1680,7 +1572,7 @@ export class ModelWriteArchitectureRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `The predecessor architecture capture is not canonical v2/v3 evidence: ${
+        `The predecessor architecture capture is not canonical architecture-capture/3.0 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -1700,7 +1592,7 @@ export class ModelWriteArchitectureRunExecutor {
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "The predecessor architecture capture is not exact v2/v3 evidence.",
+        "The predecessor architecture capture is not exact architecture-capture/3.0 evidence.",
       );
     }
     const captureSeed = capture.seed;
@@ -1931,7 +1823,7 @@ export class ModelWriteArchitectureRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `Completed architecture capture is not canonical v2/v3 evidence: ${
+        `Completed architecture capture is not canonical architecture-capture/3.0 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -2135,33 +2027,25 @@ export class ModelWriteArchitectureRunExecutor {
         "Completed architecture evidence is not backed by an exact completed WAL acknowledgement, run start, and Package identity.",
       );
     }
-    if (capture.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
-      if (
-        completedAttempt.schemaVersion !== "architecture-write-attempt/3.0" ||
-        !sameSourceAnalysisReferences(
-          capture.sourceAnalyses!,
-          completedAttempt.sourceAnalyses,
-        )
-      ) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          "Completed current architecture capture does not match the exact source-analysis evidence sealed by its WAL.",
-        );
-      }
-      const sources = await this.#reopenSysmlSources(capture.sourceAnalyses!);
-      this.#assertCurrentAttemptRunBasis(
-        completedAttempt,
-        architectureProposal,
-        run.id,
-        requiredStart(run),
-      );
-      this.#assertSourcesMatchCurrentProposal(sources, architectureProposal);
-    } else if (completedAttempt.schemaVersion !== "architecture-write-attempt/2.0") {
+    if (
+      !sameSourceAnalysisReferences(
+        capture.sourceAnalyses,
+        completedAttempt.sourceAnalyses,
+      )
+    ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "Historical architecture capture must not be retrofitted with current source-analysis WAL evidence.",
+        "Completed current architecture capture does not match the exact source-analysis evidence sealed by its WAL.",
       );
     }
+    const sources = await this.#reopenSysmlSources(capture.sourceAnalyses);
+    this.#assertCurrentAttemptRunBasis(
+      completedAttempt,
+      architectureProposal,
+      run.id,
+      requiredStart(run),
+    );
+    this.#assertSourcesMatchCurrentProposal(sources, architectureProposal);
 
     let rebuilt: ReturnType<typeof applyThreadSnapshotExtensionIfNew>;
     try {

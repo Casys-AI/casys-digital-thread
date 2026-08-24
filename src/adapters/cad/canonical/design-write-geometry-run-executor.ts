@@ -1451,24 +1451,22 @@ async function assertComponentBindingsMatchArchitecture(
       "trustedRunId does not match the architecture artifact producer",
     );
   }
-  if (capture.schemaVersion === "architecture-capture/3.0") {
-    try {
-      await requireCurrentArchitectureSourceAnalyses(
-        capture.sourceAnalyses!,
-        sysmlSourceAnalysis,
-        {
-          runId: architectureArtifact.producer.runId,
-          operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
-          packageName: capture.packageName,
-        },
-      );
-    } catch (error) {
-      invalidArchitectureCapture(
-        `current source-analysis evidence is not exact: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
+  try {
+    await requireCurrentArchitectureSourceAnalyses(
+      capture.sourceAnalyses,
+      sysmlSourceAnalysis,
+      {
+        runId: architectureArtifact.producer.runId,
+        operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+        packageName: capture.packageName,
+      },
+    );
+  } catch (error) {
+    invalidArchitectureCapture(
+      `current source-analysis evidence is not exact: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
   assertArchitectureCaptureLineageExact(
     base,

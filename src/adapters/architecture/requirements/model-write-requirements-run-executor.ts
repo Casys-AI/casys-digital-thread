@@ -122,7 +122,6 @@ import {
 } from "../renderer/model-write-architecture-run-executor.ts";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
-  ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
   type ExactArchitectureCapture as ParsedArchCapture,
   parseExactArchitectureCapture,
 } from "../renderer/architecture-capture.ts";
@@ -1096,8 +1095,7 @@ export class ModelWriteRequirementsRunExecutor {
       architectureArtifact.mediaType !== "application/json" ||
       architectureArtifact.producer.serverId !== "syson" ||
       architectureArtifact.producer.tool !== "syson_element_insert_sysml" ||
-      (archCapture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA &&
-        archCapture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA_LEGACY) ||
+      archCapture.schemaVersion !== ARCHITECTURE_CAPTURE_SCHEMA ||
       archCapture.operation.id !== MODEL_WRITE_ARCHITECTURE_OPERATION.id ||
       archCapture.operation.version !== MODEL_WRITE_ARCHITECTURE_OPERATION.version ||
       archCapture.trustedRunId !== architectureArtifact.producer.runId
@@ -1107,25 +1105,23 @@ export class ModelWriteRequirementsRunExecutor {
         "The generic architecture artifact/capture pair is not exact architecture evidence.",
       );
     }
-    if (archCapture.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
-      try {
-        await requireCurrentArchitectureSourceAnalyses(
-          archCapture.sourceAnalyses!,
-          this.#sysmlSourceAnalysis,
-          {
-            runId: architectureArtifact.producer.runId,
-            operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
-            packageName: archCapture.packageName,
-          },
-        );
-      } catch (error) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          `Current architecture source-analysis evidence is not exact: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
+    try {
+      await requireCurrentArchitectureSourceAnalyses(
+        archCapture.sourceAnalyses,
+        this.#sysmlSourceAnalysis,
+        {
+          runId: architectureArtifact.producer.runId,
+          operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+          packageName: archCapture.packageName,
+        },
+      );
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Current architecture source-analysis evidence is not exact: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
 
     const seedArtifact = base.artifacts.find((artifact) =>
@@ -1424,30 +1420,28 @@ export class ModelWriteRequirementsRunExecutor {
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        `The historical architecture capture is not exact v2/v3 evidence: ${
+        `The historical architecture capture is not exact architecture-capture/3.0 evidence: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
     }
-    if (historicalCapture.schemaVersion === ARCHITECTURE_CAPTURE_SCHEMA) {
-      try {
-        await requireCurrentArchitectureSourceAnalyses(
-          historicalCapture.sourceAnalyses!,
-          this.#sysmlSourceAnalysis,
-          {
-            runId: historicalArchitecture!.producer.runId,
-            operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
-            packageName: historicalCapture.packageName,
-          },
-        );
-      } catch (error) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          `Historical architecture source-analysis evidence is not exact: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
+    try {
+      await requireCurrentArchitectureSourceAnalyses(
+        historicalCapture.sourceAnalyses,
+        this.#sysmlSourceAnalysis,
+        {
+          runId: historicalArchitecture!.producer.runId,
+          operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
+          packageName: historicalCapture.packageName,
+        },
+      );
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `Historical architecture source-analysis evidence is not exact: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
     const basisSnapshot = architectureBasis &&
         typeof architectureBasis.snapshotId === "string"

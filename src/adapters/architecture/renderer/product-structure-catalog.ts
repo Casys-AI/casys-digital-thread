@@ -237,22 +237,20 @@ async function verifyArchitectureLineage(
         "A generic architecture artifact metadata is not exactly bound to its capture.",
       );
     }
-    if (capture.schemaVersion === "architecture-capture/3.0") {
-      if (!sysmlSourceAnalysis) {
-        throw new ArchitectureCaptureUnreadableError(
-          "Current architecture source-analysis evidence has no configured read capability.",
-        );
-      }
-      await requireCurrentArchitectureSourceAnalyses(
-        capture.sourceAnalyses!,
-        sysmlSourceAnalysis,
-        {
-          runId: current.producer.runId,
-          operation: capture.operation,
-          packageName: capture.packageName,
-        },
+    if (!sysmlSourceAnalysis) {
+      throw new ArchitectureCaptureUnreadableError(
+        "Current architecture source-analysis evidence has no configured read capability.",
       );
     }
+    await requireCurrentArchitectureSourceAnalyses(
+      capture.sourceAnalyses,
+      sysmlSourceAnalysis,
+      {
+        runId: current.producer.runId,
+        operation: capture.operation,
+        packageName: capture.packageName,
+      },
+    );
     if (
       !artifactMatches(snapshot, capture.seed) ||
       !hasExactConsumption(snapshot, capture.seed, capture)
@@ -570,8 +568,9 @@ async function parseAndVerifyCapture(
     );
   }
 
-  // Validate the complete v2/v3 capture, including v3 source-analysis context,
-  // before this read-only projection omits fields it does not display.
+  // Validate the current architecture-capture/3.0 record, including
+  // source-analysis context, before this read-only projection omits fields
+  // it does not display.
   const exact = parseExactArchitectureCapture(record);
   if (deterministicJson(exact) !== text) {
     throw new Error("Architecture capture is not canonical JSON.");

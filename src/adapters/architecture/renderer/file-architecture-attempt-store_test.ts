@@ -9,7 +9,6 @@ import {
   ArchitectureWriteOutcomeUnknownError,
   architectureWritePlanDigest,
   FileArchitectureAttemptStore,
-  writeArchitectureAttemptV2Fixture,
 } from "./file-architecture-attempt-store.ts";
 
 const AT = "2026-08-08T12:00:00.000Z";
@@ -297,48 +296,36 @@ Deno.test("architecture WAL read rejects tampered v3 context and plan", async ()
   }
 });
 
-Deno.test("architecture WAL bi-reads explicit immutable v2 fixtures", async () => {
-  await withStore(async (directory, store) => {
-    const planDigest = "a".repeat(64);
-    await writeArchitectureAttemptV2Fixture(directory, {
-      schemaVersion: "architecture-write-attempt/2.0",
-      ...ID,
-      planDigest,
-      status: "completed",
-      dispatchedAt: AT,
-      result: { inserted: "true", architecturePackageId: PACKAGE_ID },
+Deno.test("architecture WAL parser rejects v1 and v2 attempt records", async () => {
+  for (
+    const schemaVersion of [
+      "architecture-write-attempt/1.0",
+      "architecture-write-attempt/2.0",
+    ]
+  ) {
+    await withStore(async (directory, store) => {
+      const exactInput = await input();
+      await store.begin(exactInput);
+      const [entry] = await Array.fromAsync(Deno.readDir(directory));
+      const path = `${directory}/${entry!.name}`;
+      const record = JSON.parse(await Deno.readTextFile(path)) as Record<
+        string,
+        unknown
+      >;
+      record.schemaVersion = schemaVersion;
+      if (schemaVersion === "architecture-write-attempt/2.0") {
+        delete record.items;
+        delete record.packageName;
+        delete record.sourceAnalyses;
+      }
+      await Deno.writeTextFile(path, `${deterministicJson(record)}\n`);
+      await assertRejects(() => store.readRun(ID.projectId, ID.runId));
+      await assertRejects(
+        () => store.begin(exactInput),
+        ArchitectureWriteOutcomeUnknownError,
+      );
     });
-    assertEquals(await store.readRun(ID.projectId, ID.runId), {
-      schemaVersion: "architecture-write-attempt/2.0",
-      ...ID,
-      planDigest,
-      status: "completed",
-      dispatchedAt: AT,
-      result: { inserted: "true", architecturePackageId: PACKAGE_ID },
-    });
-  });
-});
-
-Deno.test("architecture WAL never promotes a historical v2 record and leaves its bytes unchanged", async () => {
-  await withStore(async (directory, store) => {
-    const planDigest = "a".repeat(64);
-    await writeArchitectureAttemptV2Fixture(directory, {
-      schemaVersion: "architecture-write-attempt/2.0",
-      ...ID,
-      planDigest,
-      status: "dispatched",
-      dispatchedAt: AT,
-    });
-    const [entry] = await Array.fromAsync(Deno.readDir(directory));
-    const path = `${directory}/${entry!.name}`;
-    const before = await Deno.readTextFile(path);
-
-    await assertRejects(
-      () => store.complete({ ...ID, planDigest, architecturePackageId: PACKAGE_ID }),
-      ArchitectureWriteOutcomeUnknownError,
-    );
-    assertEquals(await Deno.readTextFile(path), before);
-  });
+  }
 });
 
 Deno.test("architecture quarantine validates an EEXIST sentinel before trusting it", async () => {
@@ -356,168 +343,32 @@ Deno.test("architecture quarantine validates an EEXIST sentinel before trusting 
   });
 });
 
-Deno.test("architecture WAL fails closed for a completed legacy run without a pinned Package id", async () => {
-  await withStore(async (directory, store) => {
-    await writeLegacy(directory, completedLegacy("a".repeat(64)));
-    await assertRejects(
-      async () => await store.begin(await input({ fingerprintDigit: "b" })),
-      ArchitectureWriteOutcomeUnknownError,
-    );
-    assertEquals((await Array.fromAsync(Deno.readDir(directory))).length, 1);
-  });
-});
-
-Deno.test("architecture WAL fails closed for a dispatched legacy marker under another digest", async () => {
-  await withStore(async (directory, store) => {
-    await writeLegacy(directory, dispatchedLegacy("a".repeat(64)));
-    await assertRejects(
-      async () => await store.begin(await input({ fingerprintDigit: "b" })),
-      ArchitectureWriteOutcomeUnknownError,
-    );
-  });
-});
-
-Deno.test("architecture WAL fails closed for a malformed matching legacy marker", async () => {
+Deno.test("architecture WAL ignores leftover per-plan filenames and uses only run-scoped paths", async () => {
   await withStore(async (directory, store) => {
     await Deno.writeTextFile(
-      `${directory}/${legacyName("a".repeat(64))}`,
-      "{",
+      `${directory}/${
+        encodeURIComponent(JSON.stringify([
+          ID.projectId,
+          ID.runId,
+          "a".repeat(64),
+        ]))
+      }.json`,
+      `${
+        deterministicJson({
+          schemaVersion: "architecture-write-attempt/1.0",
+          ...ID,
+          planDigest: "a".repeat(64),
+          status: "completed",
+          dispatchedAt: AT,
+          result: { inserted: "true" },
+        })
+      }\n`,
     );
-    await assertRejects(
-      async () => await store.begin(await input({ fingerprintDigit: "b" })),
-      ArchitectureWriteOutcomeUnknownError,
-    );
-  });
-});
-
-Deno.test("architecture WAL fails closed even for duplicate completed legacy encodings", async () => {
-  await withStore(async (directory, store) => {
-    const record = completedLegacy("a".repeat(64));
-    await writeLegacy(directory, record);
-    // `encodeURIComponent` has one canonical form, but old deployments can
-    // still leave an equivalent percent-encoding spelling after a migration.
-    await Deno.writeTextFile(
-      `${directory}/${legacyName(record.planDigest).replace(/%3A/g, ":")}`,
-      `${deterministicJson(record)}\n`,
-    );
-    await assertRejects(
-      async () => await store.begin(await input({ fingerprintDigit: "b" })),
-      ArchitectureWriteOutcomeUnknownError,
-    );
-  });
-});
-
-Deno.test("architecture WAL fails closed for contradictory completed legacy markers", async () => {
-  await withStore(async (directory, store) => {
-    await writeLegacy(directory, completedLegacy("a".repeat(64)));
-    await writeLegacy(directory, completedLegacy("b".repeat(64)));
-    await assertRejects(
-      async () => await store.begin(await input({ fingerprintDigit: "c" })),
-      ArchitectureWriteOutcomeUnknownError,
+    const exactInput = await input();
+    assertEquals(await store.begin(exactInput), { action: "dispatch" });
+    assertEquals(
+      (await store.readRun(ID.projectId, ID.runId))?.schemaVersion,
+      "architecture-write-attempt/3.0",
     );
   });
 });
-
-Deno.test("architecture WAL attest writes a completed record without a dispatched mutation", async () => {
-  await withStore(async (_directory, store) => {
-    const exactInput = await input({ fingerprintDigit: "a" });
-    await store.attest({
-      ...exactInput,
-      architecturePackageId: PACKAGE_ID,
-    });
-    assertEquals(await store.readRun(ID.projectId, ID.runId), {
-      schemaVersion: "architecture-write-attempt/3.0",
-      ...ID,
-      packageName: PACKAGE_NAME,
-      items: [...FULL_PACKAGE_ITEMS],
-      sourceAnalyses: exactInput.sourceAnalyses,
-      planDigest: exactInput.planDigest,
-      status: "completed",
-      dispatchedAt: AT,
-      result: { inserted: "true", architecturePackageId: PACKAGE_ID },
-    });
-    await store.attest({
-      ...exactInput,
-      architecturePackageId: PACKAGE_ID,
-    });
-    await assertRejects(
-      () =>
-        store.attest({
-          ...exactInput,
-          architecturePackageId: "other-package",
-        }),
-      ArchitectureWriteOutcomeUnknownError,
-    );
-  });
-});
-
-Deno.test("architecture WAL attest refuses to overwrite a dispatched mutation record", async () => {
-  await withStore(async (_directory, store) => {
-    const exactInput = await input({ fingerprintDigit: "a" });
-    await store.begin(exactInput);
-    await assertRejects(
-      () =>
-        store.attest({
-          ...exactInput,
-          architecturePackageId: PACKAGE_ID,
-        }),
-      ArchitectureWriteOutcomeUnknownError,
-    );
-  });
-});
-
-Deno.test("architecture WAL gives a hash-format record priority over legacy debris", async () => {
-  await withStore(async (directory, store) => {
-    const exactInput = await input({ fingerprintDigit: "c" });
-    await store.begin(exactInput);
-    await store.complete(completion(exactInput.planDigest));
-    await writeLegacy(directory, dispatchedLegacy("a".repeat(64)));
-    await Deno.writeTextFile(`${directory}/${legacyName("b".repeat(64))}`, "{");
-
-    assertEquals(await store.begin(await input({ fingerprintDigit: "d" })), {
-      action: "completed",
-      architecturePackageId: PACKAGE_ID,
-    });
-  });
-});
-
-function legacyName(planDigest: string): string {
-  return `${
-    encodeURIComponent(JSON.stringify([
-      ID.projectId,
-      ID.runId,
-      planDigest,
-    ]))
-  }.json`;
-}
-
-function completedLegacy(planDigest: string) {
-  return {
-    schemaVersion: "architecture-write-attempt/1.0" as const,
-    ...ID,
-    planDigest,
-    status: "completed" as const,
-    dispatchedAt: AT,
-    result: { inserted: "true" as const },
-  };
-}
-
-function dispatchedLegacy(planDigest: string) {
-  return {
-    schemaVersion: "architecture-write-attempt/1.0" as const,
-    ...ID,
-    planDigest,
-    status: "dispatched" as const,
-    dispatchedAt: AT,
-  };
-}
-
-async function writeLegacy(
-  directory: string,
-  record: ReturnType<typeof completedLegacy> | ReturnType<typeof dispatchedLegacy>,
-): Promise<void> {
-  await Deno.writeTextFile(
-    `${directory}/${legacyName(record.planDigest)}`,
-    `${deterministicJson(record)}\n`,
-  );
-}

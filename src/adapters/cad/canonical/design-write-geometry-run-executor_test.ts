@@ -115,7 +115,6 @@ import {
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../../domain/architecture/renderer/architecture-proposal.ts";
 import {
   ARCHITECTURE_CAPTURE_SCHEMA,
-  ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
 } from "../../architecture/renderer/architecture-capture.ts";
 import {
   type AnyGeometryManifest,
@@ -1489,9 +1488,7 @@ async function buildGeoFixture(
       },
     };
     const currentArchitectureCapture =
-      opts.architectureCaptureDefect === "missing-source-analyses" ||
-      opts.architectureCaptureDefect === "malformed-source-analysis" ||
-      opts.architectureCaptureDefect === "foreign-source-analysis";
+      opts.architectureCaptureDefect !== "missing-source-analyses";
     const sourceAnalysisReference = {
       sourceId: "sysml-source:geometry-test-architecture",
       selector: {
@@ -1513,9 +1510,7 @@ async function buildGeoFixture(
       },
     };
     const architectureCapture = {
-      schemaVersion: currentArchitectureCapture
-        ? ARCHITECTURE_CAPTURE_SCHEMA
-        : ARCHITECTURE_CAPTURE_SCHEMA_LEGACY,
+      schemaVersion: ARCHITECTURE_CAPTURE_SCHEMA,
       operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
       trustedRunId: "run:architecture",
       packageName: "GeometryTestArchitecture",

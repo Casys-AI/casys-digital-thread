@@ -250,15 +250,14 @@ reviewed ArchitectureProposal
   -> architecture-capture/3.0 seals the same references
 ```
 
-Requirements, geometry and Product Structure reopen every v3 source and analysis CAS
-reference before treating the architecture as current. Missing, altered, foreign or
-rejected analysis blocks authoritative writers; the read-only catalog returns
-`unavailable`. Historical architecture capture/WAL v2 remains readable as historical
-provider structure but cannot be promoted, rewritten or decorated with a fictional
-source analysis. This vertical still does not claim to parse arbitrary SysML or derive
-the provider readback from the renderer declaration. SysON remains a private provider
-MCP behind its own WAL, resource readback and Thread publication; it is not executed
-inside the local code-isolation backend.
+Requirements, geometry and Product Structure reopen every current 3.0 source and
+analysis CAS reference before treating the architecture as current. Missing, altered,
+foreign or rejected analysis blocks authoritative writers; the read-only catalog returns
+`unavailable`. Older architecture capture and WAL schemas are unsupported and are
+rejected rather than projected. This vertical still does not claim to parse arbitrary
+SysML or derive the provider readback from the renderer declaration. SysON remains a
+private provider MCP behind its own WAL, resource readback and Thread publication; it is
+not executed inside the local code-isolation backend.
 
 ## Implemented agent-authored architecture SysML slice
 

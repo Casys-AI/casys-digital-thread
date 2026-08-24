@@ -24,10 +24,35 @@ const SUBJECT_ID = "project:drone-v4-test";
 
 // ── Minimal fixture helper ────────────────────────────────────────────────────
 
+function sourceAnalyses(runId = "run:arch") {
+  return [{
+    sourceId: "sysml-source:system-v1",
+    selector: { kind: "full-package" as const, packageName: "SystemV1" },
+    runId,
+    operation: { id: "model.write-architecture", version: "1" },
+    sourceFingerprint: fingerprint("a"),
+    sourceCaptureFingerprint: fingerprint("b"),
+    analysisFingerprint: fingerprint("c"),
+  }];
+}
+
+function passingSourceAnalysis(): SysmlSourceAnalysisReader {
+  return {
+    reopen(value) {
+      return Promise.resolve(
+        {
+          reference: structuredClone(value),
+        } as unknown as VerifiedSysmlSourceAnalysis,
+      );
+    },
+  };
+}
+
 /** Capture record shape produced by model.write-architecture@1. */
 function makeCaptureRecord(
   overrides?: Partial<{
     systemName: string;
+    trustedRunId: string;
     declarations: {
       id: string;
       label: string;
@@ -35,10 +60,11 @@ function makeCaptureRecord(
     }[];
   }>,
 ): Record<string, unknown> {
+  const trustedRunId = overrides?.trustedRunId ?? "run:arch";
   return {
-    schemaVersion: "architecture-capture/2.0",
+    schemaVersion: "architecture-capture/3.0",
     operation: { id: "model.write-architecture", version: "1" },
-    trustedRunId: "run:arch",
+    trustedRunId,
     packageName: "SystemV1",
     systemName: overrides?.systemName ?? "SystemUnit",
     package: { id: "pkg-001", label: "SystemV1" },
@@ -79,23 +105,19 @@ function makeCaptureRecord(
       })),
     })),
     insertedAt: AT,
+    sourceAnalyses: sourceAnalyses(trustedRunId),
   };
 }
 
 function makeCurrentCaptureRecord(): Record<string, unknown> {
-  return {
-    ...makeCaptureRecord(),
-    schemaVersion: "architecture-capture/3.0",
-    sourceAnalyses: [{
-      sourceId: "sysml-source:system-v1",
-      selector: { kind: "full-package", packageName: "SystemV1" },
-      runId: "run:arch",
-      operation: { id: "model.write-architecture", version: "1" },
-      sourceFingerprint: fingerprint("a"),
-      sourceCaptureFingerprint: fingerprint("b"),
-      analysisFingerprint: fingerprint("c"),
-    }],
-  };
+  return makeCaptureRecord();
+}
+
+function makeLegacyCaptureRecord(): Record<string, unknown> {
+  const capture = makeCaptureRecord();
+  delete capture.sourceAnalyses;
+  capture.schemaVersion = "architecture-capture/2.0";
+  return capture;
 }
 
 function fingerprint(char: string): ContentFingerprint {
@@ -293,8 +315,7 @@ async function appendEnrichment(
   readonly artifact: ThreadArtifact;
 }> {
   const capture = {
-    ...makeCaptureRecord(),
-    trustedRunId: runId,
+    ...makeCaptureRecord({ trustedRunId: runId }),
     predecessor: {
       artifactId: predecessor.id,
       fingerprint: predecessor.fingerprint,
@@ -326,6 +347,22 @@ async function appendEnrichment(
     fingerprint: captureFingerprint,
     artifact,
   };
+}
+
+function resolveCatalog(
+  snapshot: ThreadSnapshot,
+  reader: GenericArchitectureCaptureReader,
+  geometryCaptures?: Parameters<
+    typeof resolveGenericProductStructureCatalog
+  >[2],
+  sourceAnalysis: SysmlSourceAnalysisReader | undefined = passingSourceAnalysis(),
+) {
+  return resolveGenericProductStructureCatalog(
+    snapshot,
+    reader,
+    geometryCaptures,
+    sourceAnalysis,
+  );
 }
 
 function readerFor(
@@ -416,9 +453,23 @@ Deno.test(
     };
 
     assertEquals(
-      await resolveGenericProductStructureCatalog(snapshot, emptyReader),
+      await resolveCatalog(snapshot, emptyReader),
       undefined,
     );
+  },
+);
+
+Deno.test(
+  "resolveGenericProductStructureCatalog rejects architecture-capture/2.0 rather than projecting it",
+  async () => {
+    const captureRecord = makeLegacyCaptureRecord();
+    const captureFp = await sha256Fingerprint(captureRecord);
+    const catalog = await resolveCatalog(
+      snapshotWithArchArtifact(captureFp),
+      makeReader(captureFp, captureRecord),
+    );
+    assertEquals(catalog?.components, []);
+    assertStringIncludes(catalog?.rationale ?? "", "could not be verified");
   },
 );
 
@@ -430,7 +481,7 @@ Deno.test(
     const snapshot = snapshotWithArchArtifact(captureFp);
     const reader = makeReader(captureFp, captureRecord);
 
-    const catalog = await resolveGenericProductStructureCatalog(snapshot, reader);
+    const catalog = await resolveCatalog(snapshot, reader);
 
     const archId = `architecture-${captureFp.digest}`;
     assertEquals(catalog?.subjectId, SUBJECT_ID);
@@ -479,7 +530,7 @@ Deno.test(
       ),
     };
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       makeReader(captureFp, captureRecord),
     );
@@ -499,7 +550,7 @@ Deno.test(
       read: () => Promise.resolve(undefined),
     };
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       emptyReader,
     );
@@ -522,7 +573,7 @@ Deno.test(
       read: () => Promise.resolve(deterministicJson(tampered)),
     };
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       reader,
     );
@@ -573,7 +624,7 @@ Deno.test(
       const capture = makeCurrentCaptureRecord();
       mutate(capture);
       const captureFp = await sha256Fingerprint(capture);
-      const catalog = await resolveGenericProductStructureCatalog(
+      const catalog = await resolveCatalog(
         snapshotWithArchArtifact(captureFp),
         makeReader(captureFp, capture),
       );
@@ -599,7 +650,7 @@ Deno.test(
         );
       },
     };
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshotWithArchArtifact(captureFp),
       makeReader(captureFp, capture),
       undefined,
@@ -615,7 +666,7 @@ Deno.test(
   async () => {
     const capture = makeCurrentCaptureRecord();
     const captureFp = await sha256Fingerprint(capture);
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshotWithArchArtifact(captureFp),
       makeReader(captureFp, capture),
       undefined,
@@ -642,7 +693,7 @@ Deno.test(
     const snapshot = snapshotWithArchArtifact(captureFp);
     const reader = makeReader(captureFp, captureRecord);
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       reader,
     );
@@ -678,7 +729,7 @@ Deno.test(
     const snapshot = snapshotWithArchArtifact(captureFp);
     const reader = makeReader(captureFp, captureRecord);
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       reader,
     );
@@ -712,7 +763,7 @@ Deno.test(
       ],
     });
     const captureFp = await sha256Fingerprint(captureRecord);
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshotWithArchArtifact(captureFp),
       makeReader(captureFp, captureRecord),
     );
@@ -756,7 +807,7 @@ Deno.test(
     const reader = makeReader(captureFp, captureRecord);
 
     assertStringIncludes(
-      (await resolveGenericProductStructureCatalog(snapshot, reader))?.rationale ?? "",
+      (await resolveCatalog(snapshot, reader))?.rationale ?? "",
       "multiple current tips",
     );
   },
@@ -772,6 +823,7 @@ Deno.test(
     const secondCapture = {
       ...firstCapture,
       trustedRunId: "run:arch-2",
+      sourceAnalyses: sourceAnalyses("run:arch-2"),
       predecessor: {
         artifactId: firstId,
         fingerprint: firstFp,
@@ -818,7 +870,7 @@ Deno.test(
           : Promise.resolve(undefined),
     };
 
-    const catalog = await resolveGenericProductStructureCatalog(snapshot, reader);
+    const catalog = await resolveCatalog(snapshot, reader);
     assertEquals(catalog?.components, []);
     assertStringIncludes(catalog?.rationale ?? "", "explicitly archived");
   },
@@ -834,7 +886,7 @@ Deno.test(
     const snapshot = snapshotWithArchArtifact(captureFp);
     const reader = makeReader(captureFp, captureRecord);
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       reader,
     );
@@ -864,7 +916,7 @@ Deno.test(
     const snapshot = snapshotWithArchArtifact(captureFp);
     const reader = makeReader(captureFp, captureRecord);
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       reader,
     );
@@ -915,7 +967,7 @@ Deno.test(
       "2026-08-08T00:02:00.000Z",
     );
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       third.snapshot,
       readerFor([
         { fingerprint: rootFingerprint, capture: rootCapture },
@@ -954,7 +1006,7 @@ Deno.test(
       "2026-08-08T00:02:00.000Z",
     );
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       third.snapshot,
       readerFor([
         { fingerprint: rootFingerprint, capture: rootCapture },
@@ -990,7 +1042,7 @@ Deno.test(
     );
     const tamperedSecond = { ...second.capture, packageName: "TamperedPackage" };
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       third.snapshot,
       readerFor([
         { fingerprint: rootFingerprint, capture: rootCapture },
@@ -1027,7 +1079,7 @@ Deno.test(
       artifacts: [...rootSnapshot.artifacts, cycleA, cycleB],
     };
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       readerFor([{ fingerprint: rootFingerprint, capture: rootCapture }]),
     );
@@ -1044,8 +1096,7 @@ Deno.test(
     const rootFingerprint = await sha256Fingerprint(rootCapture);
     const rootSnapshot = snapshotWithArchArtifact(rootFingerprint);
     const orphanCapture = {
-      ...makeCaptureRecord(),
-      trustedRunId: "run:orphan",
+      ...makeCaptureRecord({ trustedRunId: "run:orphan" }),
       insertedAt: "2026-08-08T00:01:00.000Z",
     };
     const orphanFingerprint = await sha256Fingerprint(orphanCapture);
@@ -1069,7 +1120,7 @@ Deno.test(
       },
     };
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       readerFor([
         { fingerprint: rootFingerprint, capture: rootCapture },
@@ -1091,8 +1142,7 @@ Deno.test(
     const missingFingerprint = fingerprint("m");
     const missingId = `architecture-${missingFingerprint.digest}`;
     const capture = {
-      ...makeCaptureRecord(),
-      trustedRunId: "run:broken",
+      ...makeCaptureRecord({ trustedRunId: "run:broken" }),
       predecessor: {
         artifactId: missingId,
         fingerprint: missingFingerprint,
@@ -1126,7 +1176,7 @@ Deno.test(
       ],
     };
 
-    const catalog = await resolveGenericProductStructureCatalog(
+    const catalog = await resolveCatalog(
       snapshot,
       readerFor([{ fingerprint: captureFingerprint, capture }]),
     );

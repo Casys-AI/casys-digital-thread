@@ -21,6 +21,10 @@ import {
   GEOMETRY_CAPTURE_URI_PREFIX,
 } from "../../src/adapters/shared/cas/file-capture-store.ts";
 import type { ContentFingerprint } from "../../src/domain/thread/thread-snapshot.ts";
+import type {
+  SysmlSourceAnalysisReader,
+  VerifiedSysmlSourceAnalysis,
+} from "../../src/adapters/architecture/renderer/sysml-source-analysis-capture.ts";
 import { resolveSnapshotComponentCatalog } from "./serve-native-workbench.ts";
 
 // ── Shared constants ─────────────────────────────────────────────────────────
@@ -38,6 +42,18 @@ function freshness() {
   return { status: "fresh" as const, changedAt: AT, invalidatedByChangeIds: [] };
 }
 
+function passingSourceAnalysis(): SysmlSourceAnalysisReader {
+  return {
+    reopen(value) {
+      return Promise.resolve(
+        {
+          reference: structuredClone(value),
+        } as unknown as VerifiedSysmlSourceAnalysis,
+      );
+    },
+  };
+}
+
 /** Minimal snapshot carrying a generic architecture artifact. */
 async function snapshotWithGenericArch(): Promise<
   {
@@ -47,7 +63,7 @@ async function snapshotWithGenericArch(): Promise<
   }
 > {
   const captureRecord = {
-    schemaVersion: "architecture-capture/2.0",
+    schemaVersion: "architecture-capture/3.0",
     operation: { id: "model.write-architecture", version: "1" },
     trustedRunId: "run:arch",
     packageName: "DroneV4",
@@ -75,6 +91,15 @@ async function snapshotWithGenericArch(): Promise<
       { id: "wing-def-001", kind: "PartDefinition", label: "Wing", usages: [] },
     ],
     insertedAt: AT,
+    sourceAnalyses: [{
+      sourceId: "sysml-source:drone-v4",
+      selector: { kind: "full-package", packageName: "DroneV4" },
+      runId: "run:arch",
+      operation: { id: "model.write-architecture", version: "1" },
+      sourceFingerprint: fingerprint("c"),
+      sourceCaptureFingerprint: fingerprint("d"),
+      analysisFingerprint: fingerprint("e"),
+    }],
   };
   const captureFp = await sha256Fingerprint(captureRecord);
   const archId = `architecture-${captureFp.digest}`;
@@ -257,6 +282,8 @@ Deno.test(
     const catalog = await resolveSnapshotComponentCatalog(
       snapshot,
       archCaptures,
+      undefined,
+      passingSourceAnalysis(),
     );
 
     assertExists(catalog, "catalog must be resolved for a generic subject");
@@ -334,6 +361,7 @@ Deno.test(
           return Promise.resolve(undefined);
         },
       },
+      passingSourceAnalysis(),
     );
 
     assertExists(catalog);

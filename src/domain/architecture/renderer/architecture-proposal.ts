@@ -1188,10 +1188,8 @@ export interface ArchitectureInsertionPlan {
  * an independent occurrence and is not a conflict.
  *
  * An empty `toInsert` with no conflicts means all components are already adopted.
- * The executor must reject this as `invalid_transition` unless the current
- * architecture tip is historical `architecture-capture/2.0`: that path may seal
- * parser-backed 3.0 evidence from a fresh full-package render without another
- * SysON insertion. An already-3.0 tip remains a no-op refusal.
+ * The executor must reject this as `invalid_transition`. A current plan with
+ * nothing to insert is a fail-closed no-op, not a no-provider reseal.
  */
 export function planArchitectureInsertion(
   existing: ExistingArchitectureStructure | undefined,

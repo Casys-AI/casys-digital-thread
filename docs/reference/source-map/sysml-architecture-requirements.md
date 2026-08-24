@@ -203,9 +203,9 @@ Write-ahead no-blind-retry store for generic architecture insertions
 
 #### [`src/adapters/architecture/renderer/product-structure-catalog.ts`](../../../src/adapters/architecture/renderer/product-structure-catalog.ts)
 
-Generic projector reading current `architecture-capture/3.0` plus historical 2.0: causal
-tip, PartUsage occurrence hierarchy, exact seed/predecessor and source-analysis
-evidence; quantity is one reviewed occurrence, never inferred BOM/provider multiplicity
+Generic projector reading current `architecture-capture/3.0` only: causal tip, PartUsage
+occurrence hierarchy, exact seed/predecessor and source-analysis evidence; quantity is
+one reviewed occurrence, never inferred BOM/provider multiplicity
 
 #### [`src/domain/architecture/requirements/requirements-proposal.ts`](../../../src/domain/architecture/requirements/requirements-proposal.ts)
 
