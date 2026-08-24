@@ -545,6 +545,45 @@ Deno.test(
   },
 );
 
+Deno.test("structural snapshot issues suppress later project-graph invariants", () => {
+  const issues = collectEngineeringProjectIssues({
+    extra: true,
+    schemaVersion: "4.0",
+    id: "project-structure-gate",
+    revision: 1,
+    generatedAt: "2026-08-01T10:36:58.345Z",
+    previous: { snapshotId: "project-structure-gate-r0", revision: 1 },
+    project: {
+      id: "project-structure-gate",
+      name: "Structure gate",
+      subjectId: "subject-structure-gate",
+      objective: { title: "Title", statement: "Statement" },
+    },
+    threadSnapshots: [],
+    phases: [],
+    workItems: [],
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+  });
+
+  assertEquals(
+    issues.some((entry) =>
+      entry.code === "unknown_property" && entry.path === "$.extra"
+    ),
+    true,
+  );
+  assertEquals(
+    issues.some((entry) =>
+      entry.code === "unexpected_previous" ||
+      entry.code === "missing_reference" ||
+      entry.code === "incomplete_command_history"
+    ),
+    false,
+  );
+});
+
 Deno.test("the exact same binding may never be supplied twice", async () => {
   const project = await projectJson() as Record<string, unknown>;
   const workItems = project.workItems as Record<string, unknown>[];
