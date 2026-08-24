@@ -62,7 +62,7 @@ Deno.test("unique catalog role selects the one SPICE profile among CAD and Model
 Deno.test("unique SPICE circuit and unique PartDefinition become represents", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [spiceSource("source.spice")],
+      [attached(spiceSource("source.spice"), "sysml.clamp")],
       [part("sysml.clamp", "Clamp")],
     ),
     [{
@@ -79,7 +79,7 @@ Deno.test("unique SPICE circuit and unique PartDefinition become represents", ()
 Deno.test("unique SPICE .param joins unique AttributeUsage as parameterizes", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [spiceSourceWithParameter("source.spice", "rseries")],
+      [attached(spiceSourceWithParameter("source.spice", "rseries"), "sysml.clamp")],
       [
         part("sysml.clamp", "Clamp"),
         attribute("sysml.clamp.rseries", "rseries", "sysml.clamp"),
@@ -159,7 +159,7 @@ Deno.test("selectUniqueRepresentedPartDefinition keeps only a unique PartDefinit
 Deno.test("unique result and unique PartDefinition become represents", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [cadSource("source.cad")],
+      [attached(cadSource("source.cad"), "sysml.arm")],
       [part("sysml.arm", "Arm")],
     ),
     [{
@@ -176,7 +176,7 @@ Deno.test("unique result and unique PartDefinition become represents", () => {
 Deno.test("unique Modelica root model and unique PartDefinition become represents", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [modelicaSource("source.modelica")],
+      [attached(modelicaSource("source.modelica"), "sysml.ramp")],
       [part("sysml.ramp", "MyRamp")],
     ),
     [{
@@ -195,7 +195,12 @@ Deno.test(
   () => {
     assertEquals(
       deriveUniqueTechnicalCompilationBindings(
-        [modelicaSourceWithParameters("source.modelica", ["state", "power"])],
+        [attached(
+          modelicaSourceWithParameters("source.modelica", ["state", "power"]),
+          "sysml.head",
+          "PartDefinition",
+          "different-basis",
+        )],
         [
           part("sysml.head", "Head"),
           part("sysml.driver", "Driver"),
@@ -226,7 +231,7 @@ Deno.test("several Modelica artifacts do not invent a represented root", () => {
   const source = modelicaSource("source.modelica");
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [{
+      [attached({
         ...source,
         analysis: {
           ...source.analysis,
@@ -239,17 +244,37 @@ Deno.test("several Modelica artifacts do not invent a represented root", () => {
             },
           ],
         },
-      }],
+      }, "sysml.ramp")],
       [part("sysml.ramp", "MyRamp")],
     ),
     [],
   );
 });
 
-Deno.test("several PartDefinitions do not invent a result join", () => {
+Deno.test("exact PartUsage attachment binds represents to that usage, not a PartDefinition", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [cadSource("source.cad")],
+      [attached(cadSource("source.cad"), "usage.arm", "PartUsage")],
+      [
+        part("sysml.arm", "Arm"),
+        { id: "usage.arm", kind: "PartUsage", name: "arm" },
+      ],
+    ),
+    [{
+      id: "binding:source.cad:artifact.result:represents",
+      sourceId: "source.cad",
+      sourceSymbolId: "artifact.result",
+      sysmlElementId: "usage.arm",
+      sysmlElementKind: "PartUsage",
+      relation: "represents",
+    }],
+  );
+});
+
+Deno.test("several PartDefinitions do not invent a result join without an exact attachment", () => {
+  assertEquals(
+    deriveUniqueTechnicalCompilationBindings(
+      [attached(cadSource("source.cad"), "sysml.arm", "PartDefinition", "different-basis")],
       [part("sysml.arm", "Arm"), part("sysml.base", "Base")],
     ),
     [],
@@ -257,11 +282,11 @@ Deno.test("several PartDefinitions do not invent a result join", () => {
 });
 
 Deno.test(
-  "multi-part CAD binds result to the exact common owner of reachable lever attributes",
+  "exact attachment target binds represents independently of AttributeUsage parents",
   () => {
     assertEquals(
       deriveUniqueTechnicalCompilationBindings(
-        [cadSource("source.cad")],
+        [attached(cadSource("source.cad"), "sysml.arm")],
         [
           part("sysml.arm", "Arm"),
           part("sysml.base", "Base"),
@@ -292,7 +317,7 @@ Deno.test(
   () => {
     assertEquals(
       deriveUniqueTechnicalCompilationBindings(
-        [cadSource("source.cad")],
+        [attached(cadSource("source.cad"), "sysml.arm", "PartDefinition", "different-basis")],
         [
           part("sysml.arm", "Arm"),
           part("sysml.base", "Base"),
@@ -316,7 +341,12 @@ Deno.test(
   () => {
     assertEquals(
       deriveUniqueTechnicalCompilationBindings(
-        [cadSourceWithTwoReachableLevers("source.cad")],
+        [attached(
+          cadSourceWithTwoReachableLevers("source.cad"),
+          "sysml.arm",
+          "PartDefinition",
+          "different-basis",
+        )],
         [
           part("sysml.arm", "Arm"),
           part("sysml.base", "Base"),
@@ -348,7 +378,7 @@ Deno.test(
   () => {
     assertEquals(
       deriveUniqueTechnicalCompilationBindings(
-        [cadSource("source.cad")],
+        [attached(cadSource("source.cad"), "sysml.arm", "PartDefinition", "different-basis")],
         [part("sysml.arm", "Arm"), part("sysml.base", "Base")],
       ),
       [],
@@ -356,10 +386,10 @@ Deno.test(
   },
 );
 
-Deno.test("unique AttributeUsage name joins a parameter as parameterizes", () => {
+Deno.test("unique AttributeUsage name joins a parameter as parameterizes and does not infer the file attachment", () => {
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(
-      [cadSource("source.cad")],
+      [attached(cadSource("source.cad"), "sysml.arm", "PartDefinition", "different-basis")],
       [attribute("sysml.thickness", "thickness")],
     ),
     [{
@@ -374,7 +404,7 @@ Deno.test("unique AttributeUsage name joins a parameter as parameterizes", () =>
 });
 
 Deno.test("missing, renamed, or duplicate AttributeUsage stays unbound", () => {
-  const source = [cadSource("source.cad")];
+  const source = [attached(cadSource("source.cad"), "sysml.arm")];
   assertEquals(
     deriveUniqueTechnicalCompilationBindings(source, [
       attribute("sysml.width", "width"),
@@ -402,6 +432,20 @@ Deno.test("missing, renamed, or duplicate AttributeUsage stays unbound", () => {
     }],
   );
 });
+
+function attached(
+  source: { sourceText: string; analysis: SourceAnalysisBundle },
+  elementId: string,
+  elementKind = "PartDefinition",
+  alignment: "exact" | "different-basis" | "target-missing" = "exact",
+) {
+  return {
+    ...source,
+    attachmentTarget: { elementId, elementKind },
+    attachmentAlignment: alignment,
+    closedDependencyCount: 0,
+  };
+}
 
 function cadSource(id: string): { sourceText: string; analysis: SourceAnalysisBundle } {
   return {

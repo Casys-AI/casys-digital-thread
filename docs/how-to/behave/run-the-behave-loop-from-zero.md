@@ -88,8 +88,8 @@ Two paths. They are not substitutes. Contract:
 
 | Path                    | Ops                                                                                                                         | What a success is        |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| Canonical (proof input) | capture → compilation preview → `compile.seal-admission@2` → `project_admitted_geometry_export` → `design.write-geometry@1` | Thread STEP / cad-model  |
-| Isolated draft          | `compile.seal-admission@2` + `design.execute-build123d@1` + `design.seal-isolated-geometry@1`                               | Thread **document** only |
+| Canonical (proof input) | capture → compilation preview → `compile.seal-admission@3` → `project_admitted_geometry_export` → `design.write-geometry@1` | Thread STEP / cad-model  |
+| Isolated draft          | `compile.seal-admission@3` + `design.execute-build123d@1` + `design.seal-isolated-geometry@1`                               | Thread **document** only |
 
 The proof case must name the canonical STEP. A successful isolated run is not Product
 authority and not a DFM target.
@@ -101,7 +101,7 @@ Not required to close behave. When walked, it is the CAD analog for `.mo`, not t
 ```text
 project_technical_source_capture          # modelica-closed-subset-v2
   → project_technical_compilation_preview
-  → compile.seal-admission@2
+  → compile.seal-admission@3
   → project_admitted_modelica_run_review
   → simulate.run-admitted-modelica@1
 ```
@@ -146,7 +146,7 @@ separate facts. `parser.status: passed` is not admission. A constructor photo is
 `project_technical_compilation_preview`. The server joins the current Thread tip and
 unique SysML names. Unresolved previews name those joins in `gaps`. It does not invent a
 lever or an AttributeUsage. `design.write-geometry@1` refuses a draft that was not
-exported from a parameterized `compile.seal-admission@2`.
+exported from a parameterized `compile.seal-admission@3`.
 
 Oracle `pass` or publishable `fail` stay literal. Human L5 over that exact `@3` branch
 is a separate walk:

@@ -61,7 +61,7 @@ AttributeUsage nodes
 
 #### [`src/adapters/thread/sealed-cad-lever-workbench-enricher.ts`](../../../src/adapters/thread/sealed-cad-lever-workbench-enricher.ts)
 
-Post-projection BFF enricher: reopens `compile.seal-admission@2` CAS. Missing/unreadable
+Post-projection BFF enricher: reopens `compile.seal-admission@3` CAS. Missing/unreadable
 seals add nothing
 
 #### [`src/adapters/thread/engineering-workbench-projector.ts`](../../../src/adapters/thread/engineering-workbench-projector.ts)

@@ -53,7 +53,7 @@ second capture tool. Do not pass raw CAS to a microVM.
 ## Do not
 
 - Do not pass raw CAS to a microVM. Isolated execution remains
-  `compile.seal-admission@2` → `ReopenAdmittedCompilationSource` → `IsolatedCodeRunner`.
+  `compile.seal-admission@3` → `ReopenAdmittedCompilationSource` → `IsolatedCodeRunner`.
 - Do not treat `model.write-architecture@1` as the agent-authored SysML path. That
   operation still renders into SysON. `model.seal-architecture-sysml@1` never writes
   SysON.

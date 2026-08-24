@@ -2,7 +2,7 @@
  * Reopen one sealed Build123d compilation and export its exact admitted bytes.
  *
  * Callers cannot supply Python, provider, tool, path, image or formats. The
- * use case reopens `compile.seal-admission@2`, extracts the singular admitted
+ * use case reopens `compile.seal-admission@3`, extracts the singular admitted
  * source, and hands those exact bytes to the server-owned exporter. The
  * product is a geometry DRAFT; `design.write-geometry@1` remains the sealer.
  */

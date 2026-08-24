@@ -342,7 +342,7 @@ function ArchitectureSysmlSealSummary({
       </header>
       <Notice title="Thread document only" tone="info">
         Producer {view.producer}. This is not a SysON model, not{" "}
-        model.write-architecture@1, and not compile.seal-admission@2. Bindings are
+        model.write-architecture@1, and not compile.seal-admission@3. Bindings are
         symbol ids; labels are display only.
       </Notice>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">

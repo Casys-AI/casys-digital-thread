@@ -51,8 +51,9 @@ export interface ProductNavigationUseCase {
   sourceClosure(
     query: ProductNavigationScope & {
       readonly node: ProductNavigationNodeQuery;
-      readonly fileId: string;
-      readonly fileRevision: number;
+      readonly workspaceRevision: number;
+      readonly attachmentId: string;
+      readonly attachmentRevision: number;
     },
   ): Promise<ProductNavigationSourceClosure>;
   authoringAttachments(

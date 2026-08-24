@@ -33,7 +33,6 @@ import {
   technicalSourceAnalysisCaptureStores,
   technicalSourceCaptureInput,
 } from "../../../testing/technical-source-capture-test-support.ts";
-import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import {
   TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA,
   TECHNICAL_COMPILATION_ADMISSION_CAPTURE_URI_PREFIX,
@@ -250,6 +249,49 @@ Deno.test("capture-backed admission reader fails closed on non-canonical CAS byt
   });
 });
 
+Deno.test("capture-backed admission reader refuses different-basis alignment and multi-file closures", async () => {
+  await withFixture(async (fixture) => {
+    for (const tamper of ["alignment", "deps"] as const) {
+      const reader = new CaptureBackedTechnicalCompilationAdmissionReader({
+        snapshots: {
+          get: (id) => Promise.resolve(fixture.snapshots.get(id)),
+        },
+        captures: {
+          read: (fingerprint) =>
+            Promise.resolve(
+              fingerprint.digest === fixture.request.artifactFingerprint.digest
+                ? deterministicJson(fixture.capture)
+                : undefined,
+            ),
+        },
+        sources: {
+          read: async (request) => {
+            const exact = await fixture.sources.read(request);
+            if (!exact) return undefined;
+            if (tamper === "alignment") {
+              return {
+                ...exact,
+                provenance: {
+                  ...exact.provenance,
+                  attachmentAlignment: "different-basis",
+                },
+              };
+            }
+            return {
+              ...exact,
+              source: { ...exact.source, closedDependencyCount: 1 },
+            };
+          },
+        },
+      });
+      await assertRejects(
+        () => reader.read(fixture.request),
+        TechnicalCompilationAdmissionReadError,
+      );
+    }
+  });
+});
+
 Deno.test("capture-backed admission reader reconstructs hostile store failures without inspecting or leaking them", async () => {
   await withFixture(async (fixture) => {
     for (const failurePoint of ["snapshot", "lineage", "capture"] as const) {
@@ -307,6 +349,7 @@ interface Fixture {
     captureText?: string,
   ) => CaptureBackedTechnicalCompilationAdmissionReader;
   readonly snapshots: Map<string, ThreadSnapshot>;
+  readonly sources: TechnicalCompilationSourceReader;
   readonly admissionBasis: ThreadSnapshot;
   readonly requirementsArtifact: ThreadArtifact;
   readonly capture: TechnicalCompilationAdmissionCapture;
@@ -336,6 +379,7 @@ function locatorBackedSourceReader(
           sourceText: reopened.sourceText,
           analysis: reopened.analysis,
           analysisFingerprint,
+          closedDependencyCount: 0,
         },
         provenance: {
           profile: reopened.document.profile,
@@ -346,8 +390,10 @@ function locatorBackedSourceReader(
           },
           captureFingerprint: request.referenceFingerprint,
           analysisFingerprint,
-          projectSource: reopened.document.projectSource,
+          attachment: reopened.document.attachment,
+          sourceClosure: reopened.document.sourceClosure,
           locator: reopened.locator,
+          attachmentAlignment: "exact",
         },
       };
     },
@@ -383,6 +429,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
     analysisFingerprint: await fingerprintSourceAnalysisBundle(
       reopenedSource.analysis,
     ),
+    closedDependencyCount: 0,
   };
 
   const sysmlFingerprint = await sha256Fingerprint({ sysml: "reader.fixture" });
@@ -603,7 +650,8 @@ async function buildFixture(directory: string): Promise<Fixture> {
       sourceFingerprint: source.analysis.source.fingerprint,
       captureFingerprint: sourceReferenceFingerprint,
       analysisFingerprint: source.analysisFingerprint,
-      projectSource: persistedSource.document.projectSource,
+      attachment: persistedSource.document.attachment,
+      sourceClosure: persistedSource.document.sourceClosure,
       locator: persistedSource.locator,
     }],
     bindings,
@@ -642,7 +690,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@2",
+      tool: "compile.seal-admission@3",
       runId: capture.trustedRunId,
     },
     inputArtifactIds: [requirementsArtifact.id, sysmlArtifact.id],
@@ -692,6 +740,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
     [successor.id, successor],
   ]);
   const captureText = deterministicJson(capture);
+  const sources = locatorBackedSourceReader(sourceCaptureService);
   const readerWith = (
     selectedSnapshots: Map<string, ThreadSnapshot>,
     selectedCaptureText = captureText,
@@ -708,7 +757,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
               : undefined,
           ),
       },
-      sources: locatorBackedSourceReader(sourceCaptureService),
+      sources,
     });
   const request: TechnicalCompilationAdmissionReadRequest = {
     projectId: PROJECT_ID,
@@ -725,6 +774,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
     reader: readerWith(snapshots),
     readerWith,
     snapshots,
+    sources,
     admissionBasis,
     requirementsArtifact,
     capture,

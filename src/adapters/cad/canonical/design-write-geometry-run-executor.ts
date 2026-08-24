@@ -427,7 +427,7 @@ export interface DesignWriteGeometryRunExecutorDependencies {
   readonly geometryCaptures: GeometryCaptureStore;
   /**
    * P2 target drafts retain only an admission locator. The canonical seal
-   * reopens the actual `compile.seal-admission@2` evidence through this port.
+   * reopens the actual `compile.seal-admission@3` evidence through this port.
    */
   readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
   readonly lease: EngineeringProjectRunLease;
@@ -3080,7 +3080,7 @@ interface TargetPartAdmissionReopenContext {
 
 /**
  * A targeted draft's admission stamp is only a transport locator produced by
- * P2a. Reopen the capture-backed `compile.seal-admission@2` artefact and
+ * P2a. Reopen the capture-backed `compile.seal-admission@3` artefact and
  * re-cross the actual admitted Build123d source and its P1 `represents`
  * binding before that locator can authorize canonical promotion.
  *
@@ -3104,14 +3104,14 @@ async function requireReopenedTargetPartAdmission(
     });
   } catch (error) {
     throw new TypeError(
-      `Target compile.seal-admission@2 artefact could not be reopened: ${
+      `Target compile.seal-admission@3 artefact could not be reopened: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
   }
   if (!reopened) {
     throw new TypeError(
-      "Target compile.seal-admission@2 artefact is unavailable for the exact project and Thread basis.",
+      "Target compile.seal-admission@3 artefact is unavailable for the exact project and Thread basis.",
     );
   }
   if (
@@ -3121,7 +3121,7 @@ async function requireReopenedTargetPartAdmission(
     reopened.trustedRunId.trim() === ""
   ) {
     throw new TypeError(
-      "Reopened target admission is not an exact compile.seal-admission@2 capture.",
+      "Reopened target admission is not an exact compile.seal-admission@3 capture.",
     );
   }
 
@@ -3260,7 +3260,7 @@ async function loadReviewedGeometryDraft(
     if (!targetAdmissionContext) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "Target PartDefinition sealing requires an exact compile.seal-admission@2 reader.",
+        "Target PartDefinition sealing requires an exact compile.seal-admission@3 reader.",
       );
     }
     return await loadReviewedGeometryPartDraft(
@@ -3277,7 +3277,7 @@ async function loadReviewedGeometryDraft(
   } catch (error) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `admission_required: design.write-geometry@1 can only seal a draft exported from compile.seal-admission@2 with a named numeric CAD lever. ${
+      `admission_required: design.write-geometry@1 can only seal a draft exported from compile.seal-admission@3 with a named numeric CAD lever. ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -3439,7 +3439,7 @@ async function loadReviewedGeometryPartDraft(
     }
     if (!admissionContext) {
       throw new TypeError(
-        "target draft has no exact compile.seal-admission@2 reopen context",
+        "target draft has no exact compile.seal-admission@3 reopen context",
       );
     }
     await requireReopenedTargetPartAdmission(

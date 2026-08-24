@@ -3,7 +3,7 @@
  *
  * It reopens one captured agent-authored architecture SysML analysis and
  * writes a Thread document only. It does not insert into SysON, does not
- * reuse `compile.seal-admission@2`, and does not treat renderer
+ * reuse `compile.seal-admission@3`, and does not treat renderer
  * `sysml-source-capture/1.0` envelopes as agent-authored authority.
  */
 

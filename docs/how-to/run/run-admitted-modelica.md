@@ -27,10 +27,11 @@ Connect the agent to `http://127.0.0.1:3020/mcp`. The Workbench is read-only.
 
 ## 1. Capture
 
-Call `project_resource_capture` with the `.mo` UTF-8, then
-`project_technical_source_capture` with `profileId`, `sourceId`, and that full
-`resourceRef`. The source must satisfy the v2 grammar, including its exact
-`annotation(experiment(...))` scenario. There is no inline `sourceText`.
+Call `project_resource_capture` with the `.mo` UTF-8, put that resource as a workspace
+file, attach it, then `project_technical_source_capture` with only `projectId`,
+`workspaceRevision`, `attachmentId` and `attachmentRevision`. The source must satisfy
+the v2 grammar, including its exact `annotation(experiment(...))` scenario. There is no
+inline `sourceText`, `profileId`, `sourceId` or `resourceRef`.
 
 Read the result fields separately:
 
@@ -55,14 +56,14 @@ Unresolved previews hoist `gaps`. A missing or ambiguous parameter bind is
 with `attribute.<slug>.name` and `attribute.<slug>.parent`; do not invent a bind inside
 the compiler request.
 
-Obtain human MRTR, queue, then execute `compile.seal-admission@2`.
+Obtain human MRTR, queue, then execute `compile.seal-admission@3`.
 
 ## 3. Review and run
 
 Call `project_admitted_modelica_run_review` with `projectId` only. Do not derive or pass
 a Thread basis, admission id, fingerprint, provider, solver or runtime. The server
 reopens the current Thread tip and selects exactly one fresh, non-archived canonical
-`document` produced by `digital-thread` / `compile.seal-admission@2` whose compilation
+`document` produced by `digital-thread` / `compile.seal-admission@3` whose compilation
 target and source are Modelica. A concurrent CAD admission is not a candidate.
 
 Zero Modelica candidates — including stale, archived, malformed, foreign-producer
@@ -138,7 +139,7 @@ L4 evidence at execution time. Neither operation calls OMC or SysON.
 | Recorded provider `@1` or `@2`                   | Historical identities are not registered                                 |
 | Extra `modelicaText` binding                     | Registry refuses it                                                      |
 | Caller Thread/admission identity                 | Review accepts `projectId` only; server selects the exact current join   |
-| Stale or wrong-producer admission                | Not a fresh `digital-thread` `compile.seal-admission@2` candidate        |
+| Stale or wrong-producer admission                | Not a fresh `digital-thread` `compile.seal-admission@3` candidate        |
 | Two fresh Modelica admissions on the current tip | Ambiguous; a concurrent CAD admission is not a candidate                 |
 | Caller solver, scenario or image                 | Sealed source plus server-owned OMC/DASSL worker and digest              |
 | Modelica success used as the FEA verdict         | Documentary observations and static FEA evaluations stay distinct        |

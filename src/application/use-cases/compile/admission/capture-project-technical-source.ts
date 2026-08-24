@@ -1,8 +1,9 @@
 /**
- * Capture one exact workspace file revision as a technical source.
+ * Capture one exact workspace attachment head as a technical source.
  *
  * Authority is the fresh hash-chained workspace snapshot. The caller cannot
- * name profile, source text, MIME, path, or a resource tuple.
+ * name profile, source text, MIME, path, file identity or a resource tuple.
+ * Root analysis still analyses only the root bytes.
  */
 
 import type {
@@ -16,6 +17,11 @@ import type { ProjectSourceWorkspaceEventStore } from "../../../ports/out/projec
 import {
   ProjectSourceWorkspaceStoreError,
 } from "../../../ports/out/project-source-workspace/project-source-workspace-event-store.ts";
+import type { ProjectSourceAttachmentRoleCatalog } from "../../../ports/out/project-source-workspace/project-source-attachment-role-catalog.ts";
+import type { ProjectSourceClosureStore } from "../../../ports/out/project-source-workspace/project-source-closure-store.ts";
+import {
+  ProjectSourceClosureStoreError,
+} from "../../../ports/out/project-source-workspace/project-source-closure-store.ts";
 import type { TechnicalSourceAnalysisCapture } from "../../../ports/out/compile/admission/technical-source-analysis-capture.ts";
 import {
   TechnicalSourceAnalysisCaptureError,
@@ -24,13 +30,18 @@ import {
 import { assembleTechnicalSourceCaptureReview } from "../../../../domain/compile/admission/technical-source-capture-review.ts";
 import type { TechnicalSourceCaptureReview } from "../../../../domain/compile/admission/technical-source-capture-review.ts";
 import {
-  assertTechnicalProjectSourceAnchorsEqual,
   assertTechnicalSourceAnalysisCaptureLocatorsEqual,
-  projectSourceAnchorFromActiveFile,
-  requireActiveTechnicalSourceFile,
-  TechnicalSourceWorkspaceRecrossError,
+  assertTechnicalSourceAttachmentProvenanceEqual,
+  assertTechnicalSourceClosureProvenanceEqual,
+  attachmentProvenanceFrom,
+  sourceClosureProvenanceFrom,
   validateTechnicalSourceAnalysisCaptureLocator,
 } from "../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import {
+  ProjectSourceClosureError,
+  recrossProjectSourceClosure,
+  resolveProjectSourceClosure,
+} from "../../../../domain/project-source-workspace/closure.ts";
 import {
   exactRecord,
   positiveInteger,
@@ -49,6 +60,8 @@ export interface CaptureProjectTechnicalSourceDependencies {
   readonly workspace: ProjectSourceWorkspaceEventStore;
   readonly resources: ReopenAgentResource;
   readonly captures: TechnicalSourceAnalysisCapture;
+  readonly closures: ProjectSourceClosureStore;
+  readonly roles: ProjectSourceAttachmentRoleCatalog;
 }
 
 export class CaptureProjectTechnicalSource
@@ -56,11 +69,15 @@ export class CaptureProjectTechnicalSource
   readonly #workspace: ProjectSourceWorkspaceEventStore;
   readonly #resources: ReopenAgentResource;
   readonly #captures: TechnicalSourceAnalysisCapture;
+  readonly #closures: ProjectSourceClosureStore;
+  readonly #roles: ProjectSourceAttachmentRoleCatalog;
 
   constructor(dependencies: CaptureProjectTechnicalSourceDependencies) {
     this.#workspace = dependencies.workspace;
     this.#resources = dependencies.resources;
     this.#captures = dependencies.captures;
+    this.#closures = dependencies.closures;
+    this.#roles = dependencies.roles;
   }
 
   async capture(value: unknown): Promise<TechnicalSourceCaptureReview> {
@@ -94,42 +111,61 @@ export class CaptureProjectTechnicalSource
       );
     }
 
-    let record;
+    let closure;
     try {
-      record = requireActiveTechnicalSourceFile(
-        state,
-        command.fileId,
-        command.fileRevision,
-      );
+      closure = await resolveProjectSourceClosure(state, {
+        attachmentId: command.attachmentId,
+        attachmentRevision: command.attachmentRevision,
+      });
     } catch (cause) {
-      if (cause instanceof TechnicalSourceWorkspaceRecrossError) {
+      throw mapClosureError(cause);
+    }
+    if (
+      !this.#roles.accept(closure.attachment.role, closure.attachment.target)
+    ) {
+      throw captureError(
+        "role_catalog_rejected",
+        "The attachment role is not accepted by the server-owned product-relation catalogue.",
+      );
+    }
+
+    for (const file of closure.files) {
+      try {
+        await this.#resources.reopenExact(file.resourceRef);
+      } catch (cause) {
         throw captureError(
-          cause.code === "file_revision_not_active"
-            ? "file_revision_not_active"
-            : "file_not_found",
-          cause.message,
+          "resource_reopen_failed",
+          `Workspace AgentResourceReference for ${file.fileId}@${file.fileRevision} could not be reopened.`,
           cause,
         );
       }
-      throw cause;
     }
-    if (record.captureRequest === undefined) {
+
+    const root = closure.files.find((file) =>
+      file.fileId === closure.root.fileId &&
+      file.fileRevision === closure.root.fileRevision
+    );
+    if (!root) {
+      throw captureError(
+        "closure_integrity_failed",
+        "The resolved source closure does not contain its exact root file.",
+      );
+    }
+    if (root.captureRequest === undefined) {
       throw captureError(
         "capture_request_missing",
-        `File ${command.fileId} has no captureRequest.profileId at workspace revision ${command.workspaceRevision}.`,
+        `File ${root.fileId} has no captureRequest.profileId at workspace revision ${command.workspaceRevision}.`,
       );
     }
 
     let profile;
     try {
-      profile = this.#captures.requireCaptureProfile(
-        record.captureRequest.profileId,
-      );
+      profile = this.#captures.requireCaptureProfile(root.captureRequest.profileId);
     } catch (cause) {
       if (cause instanceof TechnicalSourceCaptureProfileNotRegisteredError) {
         throw captureError(
           "profile_not_registered",
-          `No technical source-analysis profile is registered for ${record.captureRequest.profileId}.`,
+          `No technical source-analysis profile is registered for ${root.captureRequest.profileId}.`,
           cause,
         );
       }
@@ -139,16 +175,16 @@ export class CaptureProjectTechnicalSource
         cause,
       );
     }
-    if (record.role !== profile.role) {
+    if (root.role !== profile.role) {
       throw captureError(
         "role_mismatch",
-        `Workspace file role ${record.role} does not equal registered profile role ${profile.role}.`,
+        `Workspace file role ${root.role} does not equal registered profile role ${profile.role}.`,
       );
     }
 
     let sourceText: string;
     try {
-      sourceText = (await this.#resources.reopenUtf8Text(record.resourceRef, {
+      sourceText = (await this.#resources.reopenUtf8Text(root.resourceRef, {
         acceptedMimeTypes: acceptedMimeTypesForTechnicalLanguage(profile.language),
         maxBytes: profile.maxSourceBytes,
       })).text;
@@ -166,14 +202,36 @@ export class CaptureProjectTechnicalSource
       );
     }
 
-    const projectSource = projectSourceAnchorFromActiveFile(state, record);
+    let closureLocator;
+    try {
+      closureLocator = await this.#closures.persist(closure);
+      const reopenedClosure = await this.#closures.reopenLocator(closureLocator);
+      await recrossProjectSourceClosure(state, reopenedClosure.document);
+      if (reopenedClosure.document.fingerprint.digest !== closure.fingerprint.digest) {
+        throw new TypeError("Persisted source closure fingerprint drifted.");
+      }
+    } catch (cause) {
+      if (cause instanceof ProjectTechnicalSourceCaptureError) throw cause;
+      throw captureError(
+        cause instanceof ProjectSourceClosureStoreError &&
+          cause.code === "locator_cas_tampered"
+          ? "closure_integrity_failed"
+          : "closure_persist_failed",
+        "The project source closure could not be persisted and recrossed exactly.",
+        cause,
+      );
+    }
+
+    const attachment = attachmentProvenanceFrom(closure.attachment);
+    const sourceClosure = sourceClosureProvenanceFrom(closureLocator, closure);
     let persisted;
     try {
       persisted = await this.#captures.persist({
         profileId: profile.id,
-        sourceId: record.fileId,
+        sourceId: root.fileId,
         sourceText,
-        projectSource,
+        attachment,
+        sourceClosure,
       });
     } catch (cause) {
       throw mapPersistError(cause);
@@ -189,13 +247,18 @@ export class CaptureProjectTechnicalSource
         reopened.locator,
         "$persistedTechnicalSource.locator",
       );
-      assertTechnicalProjectSourceAnchorsEqual(
-        projectSource,
-        reopened.document.projectSource,
-        "$persistedTechnicalSource.projectSource",
+      assertTechnicalSourceAttachmentProvenanceEqual(
+        attachment,
+        reopened.document.attachment,
+        "$persistedTechnicalSource.attachment",
       );
-      if (reopened.document.source.id !== record.fileId) {
-        throw new TypeError("Capture document source.id must equal fileId.");
+      assertTechnicalSourceClosureProvenanceEqual(
+        sourceClosure,
+        reopened.document.sourceClosure,
+        "$persistedTechnicalSource.sourceClosure",
+      );
+      if (reopened.document.source.id !== root.fileId) {
+        throw new TypeError("Capture document source.id must equal the root fileId.");
       }
       return assembleTechnicalSourceCaptureReview(
         locator,
@@ -216,16 +279,21 @@ export class CaptureProjectTechnicalSource
 function parseCommand(value: unknown): ProjectTechnicalSourceCaptureCommand {
   const command = exactRecord(
     value,
-    ["projectId", "workspaceRevision", "fileId", "fileRevision"],
+    ["projectId", "workspaceRevision", "attachmentId", "attachmentRevision"],
     "$technicalSourceCapture",
   );
   const projectId = safeId(command.projectId, "$technicalSourceCapture.projectId");
   if (projectId.toLowerCase() === "latest") {
     throw new TypeError("$technicalSourceCapture.projectId cannot use a latest alias.");
   }
-  const fileId = safeId(command.fileId, "$technicalSourceCapture.fileId");
-  if (fileId.toLowerCase() === "latest") {
-    throw new TypeError("$technicalSourceCapture.fileId cannot use a latest alias.");
+  const attachmentId = safeId(
+    command.attachmentId,
+    "$technicalSourceCapture.attachmentId",
+  );
+  if (attachmentId.toLowerCase() === "latest") {
+    throw new TypeError(
+      "$technicalSourceCapture.attachmentId cannot use a latest alias.",
+    );
   }
   return {
     projectId,
@@ -233,10 +301,10 @@ function parseCommand(value: unknown): ProjectTechnicalSourceCaptureCommand {
       command.workspaceRevision,
       "$technicalSourceCapture.workspaceRevision",
     ),
-    fileId,
-    fileRevision: positiveInteger(
-      command.fileRevision,
-      "$technicalSourceCapture.fileRevision",
+    attachmentId,
+    attachmentRevision: positiveInteger(
+      command.attachmentRevision,
+      "$technicalSourceCapture.attachmentRevision",
     ),
   };
 }
@@ -268,6 +336,34 @@ function mapWorkspaceLoadError(
   return captureError(
     "workspace_integrity_failed",
     "The exact workspace snapshot could not be reopened.",
+    cause,
+  );
+}
+
+function mapClosureError(cause: unknown): ProjectTechnicalSourceCaptureError {
+  if (cause instanceof ProjectSourceClosureError) {
+    const mapped: Partial<
+      Record<
+        ProjectSourceClosureError["code"],
+        ProjectTechnicalSourceCaptureError["code"]
+      >
+    > = {
+      attachment_not_found: "attachment_not_found",
+      attachment_not_active: "attachment_not_active",
+      attachment_revision_not_head: "attachment_revision_not_head",
+      source_removed: "source_removed",
+      root_not_active: "file_revision_not_active",
+      event_fingerprint_missing: "workspace_integrity_failed",
+    };
+    return captureError(
+      mapped[cause.code] ?? "closure_unresolved",
+      cause.message,
+      cause,
+    );
+  }
+  return captureError(
+    "closure_unresolved",
+    "The exact attachment source closure could not be resolved.",
     cause,
   );
 }

@@ -3,7 +3,7 @@
 Audience: both · Diátaxis: reference · Kind: contract
 
 `simulate.run-admitted-modelica@1` reopens the exact bytes sealed by
-`compile.seal-admission@2` under `modelica-closed-subset-v2` / `2.0.0`. Callers supply
+`compile.seal-admission@3` under `modelica-closed-subset-v2` / `2.0.0`. Callers supply
 neither source text, scenario, solver, image, nor provider choice.
 
 ## Direct OMC worker

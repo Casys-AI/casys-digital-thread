@@ -100,7 +100,7 @@ export function registerProjectTechnicalCompilationTools(
       const result = await exportAdmitted.execute(command);
       return {
         content:
-          `Admitted geometry export for sealed admission ${command.artifactId} completed as a geometry draft ${result.draftDigest}. Exact admitted bytes were reopened from compile.seal-admission@2 and sent to the private sandbox; callers supplied no source text, provider, tool, path or image. The result is not Thread state. Construct a later design.write-geometry@1 proposal only from the returned decisionParameters.`,
+          `Admitted geometry export for sealed admission ${command.artifactId} completed as a geometry draft ${result.draftDigest}. Exact admitted bytes were reopened from compile.seal-admission@3 and sent to the private sandbox; callers supplied no source text, provider, tool, path or image. The result is not Thread state. Construct a later design.write-geometry@1 proposal only from the returned decisionParameters.`,
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -248,16 +248,16 @@ const TECHNICAL_SOURCE_CAPTURE_REVIEW_OUTPUT_SCHEMA = {
 const projectTechnicalSourceCaptureTool: MCPTool = {
   name: "project_technical_source_capture",
   description:
-    "Capture one exact project source workspace file revision as immutable technical-source analysis. Name only projectId, workspaceRevision, fileId and fileRevision. The named fileRevision must be the active content revision in that workspace snapshot, with captureRequest.profileId and role equal to the registered profile. parser.status is the closed-subset parser only; it is not admission. levers.status is the behave-CAD handle diagnosis. Pass result.reference, never this whole review object or the capture document, to project_technical_compilation_preview. Language, analyzer, policy, resource bytes and profile remain server-owned. MIME, path, sourceText, profileId, sourceId and resourceRef are refused. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
+    "Capture one exact project source workspace attachment head as immutable technical-source analysis. Name only projectId, workspaceRevision, attachmentId and attachmentRevision. The named attachmentRevision must be the unique active head at that workspace snapshot. The server resolves the root file, registered profile and dependency closure. parser.status is the closed-subset parser only; it is not admission. levers.status is the behave-CAD handle diagnosis. Pass result.reference, never this whole review object or the capture document, to project_technical_compilation_preview. Language, analyzer, policy, resource bytes, fileId, fileRevision and profile remain server-owned. MIME, path, sourceText, profileId, sourceId, fileId, fileRevision and resourceRef are refused. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
   inputSchema: {
     type: "object",
     properties: {
       projectId: TECHNICAL_ID_SCHEMA,
       workspaceRevision: { type: "integer", minimum: 1 },
-      fileId: TECHNICAL_ID_SCHEMA,
-      fileRevision: { type: "integer", minimum: 1 },
+      attachmentId: TECHNICAL_ID_SCHEMA,
+      attachmentRevision: { type: "integer", minimum: 1 },
     },
-    required: ["projectId", "workspaceRevision", "fileId", "fileRevision"],
+    required: ["projectId", "workspaceRevision", "attachmentId", "attachmentRevision"],
     additionalProperties: false,
   },
   outputSchema: TECHNICAL_SOURCE_CAPTURE_REVIEW_OUTPUT_SCHEMA,
@@ -293,7 +293,7 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
 const projectAdmittedGeometryExportTool: MCPTool = {
   name: "project_admitted_geometry_export",
   description:
-    "Reopen one sealed compile.seal-admission@2 Build123d compilation and export its exact admitted source bytes through the private build123d sandbox. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; source text, provider, tool, path, image and formats remain server-owned. The result is a geometry DRAFT plus decisionParameters for a later design.write-geometry@1 proposal. This writes no Thread state, grants no MRTR decision, and does not invoke design.execute-build123d@1.",
+    "Reopen one sealed compile.seal-admission@3 Build123d compilation and export its exact admitted source bytes through the private build123d sandbox. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; source text, provider, tool, path, image and formats remain server-owned. The result is a geometry DRAFT plus decisionParameters for a later design.write-geometry@1 proposal. This writes no Thread state, grants no MRTR decision, and does not invoke design.execute-build123d@1.",
   inputSchema: {
     type: "object",
     properties: {
@@ -352,7 +352,7 @@ function technicalSourceCaptureCommand(
 ): ProjectTechnicalSourceCaptureCommand {
   exactKeys(
     value,
-    ["projectId", "workspaceRevision", "fileId", "fileRevision"],
+    ["projectId", "workspaceRevision", "attachmentId", "attachmentRevision"],
     [],
     "technicalSourceCapture",
   );
@@ -362,8 +362,11 @@ function technicalSourceCaptureCommand(
       value.workspaceRevision,
       "workspaceRevision",
     ),
-    fileId: technicalId(value.fileId, "fileId"),
-    fileRevision: positiveInteger(value.fileRevision, "fileRevision"),
+    attachmentId: technicalId(value.attachmentId, "attachmentId"),
+    attachmentRevision: positiveInteger(
+      value.attachmentRevision,
+      "attachmentRevision",
+    ),
   };
 }
 

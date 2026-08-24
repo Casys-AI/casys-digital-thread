@@ -1,11 +1,10 @@
 /**
- * Opaque technical-source capture locator and exact project-source anchor.
- *
- * The locator is the only public replay handle. The full capture document
- * never crosses the MCP surface. `fileId` is the technical source id.
+ * Opaque technical-source capture locator and sealed attachment/closure
+ * provenance. The locator is the only public replay handle.
  */
 
 import {
+  closedRecord,
   deepFreeze,
   exactRecord,
   literalValue,
@@ -20,18 +19,32 @@ import {
   agentResourceReferencesEqual,
   parseAgentResourceReference,
 } from "../../resource/agent-resource-reference.ts";
+import {
+  PROJECT_SOURCE_CLOSURE_LOCATOR_KIND,
+  PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
+  type ProjectSourceClosureLocator,
+  validateProjectSourceClosureLocator,
+} from "../../project-source-workspace/closure.ts";
 import type {
+  ProjectSourceAttachmentDeclaredAgainst,
+  ProjectSourceAttachmentRole,
+  ProjectSourceAttachmentTarget,
   ProjectSourceFileRevision,
   ProjectSourceWorkspaceState,
 } from "../../project-source-workspace/types.ts";
-import { ProjectSourceWorkspaceError } from "../../project-source-workspace/types.ts";
+import {
+  parseAttachmentDeclaredAgainst,
+  parseAttachmentRole,
+  parseAttachmentTarget,
+} from "../../project-source-workspace/validation.ts";
+import type { TechnicalCompilationBasis } from "./technical-compilation.ts";
 
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA =
-  "technical-source-analysis-capture/2.0" as const;
+  "technical-source-analysis-capture/3.0" as const;
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND =
   "technical-source-analysis" as const;
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA =
-  "technical-source-analysis-capture-locator/2.0" as const;
+  "technical-source-analysis-capture-locator/3.0" as const;
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND =
   "technical-source-analysis-capture-locator" as const;
 export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PREFIX =
@@ -42,14 +55,31 @@ export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PATTERN =
 const SHA256_HEX = /^[a-f0-9]{64}$/;
 const CAS_URI = /^casys:\/\/[a-z0-9][a-z0-9.-]{0,62}\/sha256\/[a-f0-9]{64}$/;
 
-export interface TechnicalProjectSourceAnchor {
-  readonly projectId: string;
-  readonly workspaceRevision: number;
-  readonly workspaceEventFingerprint: ContentFingerprint;
+export interface TechnicalSourceAttachmentProvenance {
+  readonly attachmentId: string;
+  readonly attachmentRevision: number;
+  readonly predecessorAttachmentRevision?: number;
+  readonly fingerprint: ContentFingerprint;
+  readonly fileId: string;
+  readonly role: ProjectSourceAttachmentRole;
+  readonly target: ProjectSourceAttachmentTarget;
+  readonly declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+}
+
+export interface TechnicalSourceClosureRoot {
   readonly fileId: string;
   readonly fileRevision: number;
   readonly fileFingerprint: ContentFingerprint;
   readonly resourceRef: AgentResourceReference;
+}
+
+export interface TechnicalSourceClosureProvenance {
+  readonly locator: ProjectSourceClosureLocator;
+  readonly fingerprint: ContentFingerprint;
+  readonly projectId: string;
+  readonly workspaceRevision: number;
+  readonly workspaceEventFingerprint: ContentFingerprint;
+  readonly root: TechnicalSourceClosureRoot;
 }
 
 export interface TechnicalSourceAnalysisCaptureLocator {
@@ -60,11 +90,6 @@ export interface TechnicalSourceAnalysisCaptureLocator {
   readonly casUri: string;
 }
 
-/**
- * Complete public provenance of one technical source: the workspace anchor,
- * opaque locator, capture handle, and registered source/profile/analyzer
- * identities. Every recross compares this record field-for-field.
- */
 export interface TechnicalSourceProvenanceIdentity {
   readonly sourceId: string;
   readonly role: string;
@@ -79,7 +104,8 @@ export interface TechnicalSourceProvenanceIdentity {
   readonly sourceFingerprint: ContentFingerprint;
   readonly captureFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
-  readonly projectSource: TechnicalProjectSourceAnchor;
+  readonly attachment: TechnicalSourceAttachmentProvenance;
+  readonly sourceClosure: TechnicalSourceClosureProvenance;
   readonly locator: TechnicalSourceAnalysisCaptureLocator;
 }
 
@@ -87,6 +113,11 @@ export type TechnicalSourceWorkspaceRecrossErrorCode =
   | "project_mismatch"
   | "workspace_revision_mismatch"
   | "workspace_event_fingerprint_mismatch"
+  | "attachment_not_found"
+  | "attachment_not_active"
+  | "attachment_revision_not_head"
+  | "attachment_fingerprint_mismatch"
+  | "source_removed"
   | "file_not_found"
   | "file_revision_not_active"
   | "file_fingerprint_mismatch"
@@ -104,6 +135,11 @@ export class TechnicalSourceWorkspaceRecrossError extends Error {
     this.name = "TechnicalSourceWorkspaceRecrossError";
   }
 }
+
+export type TechnicalSourceAttachmentAlignment =
+  | "exact"
+  | "different-basis"
+  | "target-missing";
 
 export function validateTechnicalSourceAnalysisCaptureLocator(
   value: unknown,
@@ -135,24 +171,98 @@ export function validateTechnicalSourceAnalysisCaptureLocator(
   });
 }
 
-export function validateTechnicalProjectSourceAnchor(
+export function validateTechnicalSourceAttachmentProvenance(
   value: unknown,
-  path = "$projectSource",
-): TechnicalProjectSourceAnchor {
-  const root = exactRecord(
+  path = "$attachment",
+): TechnicalSourceAttachmentProvenance {
+  const root = closedRecord(
     value,
     [
-      "projectId",
-      "workspaceRevision",
-      "workspaceEventFingerprint",
+      "attachmentId",
+      "attachmentRevision",
+      "predecessorAttachmentRevision",
+      "fingerprint",
       "fileId",
-      "fileRevision",
-      "fileFingerprint",
-      "resourceRef",
+      "role",
+      "target",
+      "declaredAgainst",
+    ],
+    [
+      "attachmentId",
+      "attachmentRevision",
+      "fingerprint",
+      "fileId",
+      "role",
+      "target",
+      "declaredAgainst",
     ],
     path,
   );
+  let role: ProjectSourceAttachmentRole;
+  let target: ProjectSourceAttachmentTarget;
+  let declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+  try {
+    role = parseAttachmentRole(root.role, `${path}.role`);
+    target = parseAttachmentTarget(root.target, `${path}.target`);
+    declaredAgainst = parseAttachmentDeclaredAgainst(
+      root.declaredAgainst,
+      `${path}.declaredAgainst`,
+    );
+  } catch (cause) {
+    throw new TypeError(
+      cause instanceof Error
+        ? cause.message
+        : `${path} is not an exact attachment head.`,
+    );
+  }
   return deepFreeze({
+    attachmentId: exactProjectId(root.attachmentId, `${path}.attachmentId`),
+    attachmentRevision: positiveInteger(
+      root.attachmentRevision,
+      `${path}.attachmentRevision`,
+    ),
+    ...(Object.hasOwn(root, "predecessorAttachmentRevision")
+      ? {
+        predecessorAttachmentRevision: positiveInteger(
+          root.predecessorAttachmentRevision,
+          `${path}.predecessorAttachmentRevision`,
+        ),
+      }
+      : {}),
+    fingerprint: parseFingerprint(root.fingerprint, `${path}.fingerprint`),
+    fileId: exactProjectId(root.fileId, `${path}.fileId`),
+    role,
+    target,
+    declaredAgainst,
+  });
+}
+
+export function validateTechnicalSourceClosureProvenance(
+  value: unknown,
+  path = "$sourceClosure",
+): TechnicalSourceClosureProvenance {
+  const root = exactRecord(
+    value,
+    [
+      "locator",
+      "fingerprint",
+      "projectId",
+      "workspaceRevision",
+      "workspaceEventFingerprint",
+      "root",
+    ],
+    path,
+  );
+  const locator = validateProjectSourceClosureLocator(root.locator, `${path}.locator`);
+  const fingerprint = parseFingerprint(root.fingerprint, `${path}.fingerprint`);
+  const closureRoot = exactRecord(
+    root.root,
+    ["fileId", "fileRevision", "fileFingerprint", "resourceRef"],
+    `${path}.root`,
+  );
+  return deepFreeze({
+    locator,
+    fingerprint,
     projectId: exactProjectId(root.projectId, `${path}.projectId`),
     workspaceRevision: positiveInteger(
       root.workspaceRevision,
@@ -162,13 +272,21 @@ export function validateTechnicalProjectSourceAnchor(
       root.workspaceEventFingerprint,
       `${path}.workspaceEventFingerprint`,
     ),
-    fileId: exactProjectId(root.fileId, `${path}.fileId`),
-    fileRevision: positiveInteger(root.fileRevision, `${path}.fileRevision`),
-    fileFingerprint: parseFingerprint(
-      root.fileFingerprint,
-      `${path}.fileFingerprint`,
-    ),
-    resourceRef: parseAgentResourceReference(root.resourceRef, `${path}.resourceRef`),
+    root: {
+      fileId: exactProjectId(closureRoot.fileId, `${path}.root.fileId`),
+      fileRevision: positiveInteger(
+        closureRoot.fileRevision,
+        `${path}.root.fileRevision`,
+      ),
+      fileFingerprint: parseFingerprint(
+        closureRoot.fileFingerprint,
+        `${path}.root.fileFingerprint`,
+      ),
+      resourceRef: parseAgentResourceReference(
+        closureRoot.resourceRef,
+        `${path}.root.resourceRef`,
+      ),
+    },
   });
 }
 
@@ -204,20 +322,23 @@ export function requireActiveTechnicalSourceFile(
   return record;
 }
 
-export function recrossTechnicalSourceWorkspace(
+export function recrossTechnicalSourceAuthority(
   state: ProjectSourceWorkspaceState,
-  expected: TechnicalProjectSourceAnchor & {
+  expected: {
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
     readonly profileId: string;
     readonly role: string;
   },
 ): ProjectSourceFileRevision {
-  if (state.projectId !== expected.projectId) {
+  const { attachment, sourceClosure } = expected;
+  if (state.projectId !== sourceClosure.projectId) {
     throw new TechnicalSourceWorkspaceRecrossError(
       "project_mismatch",
       "Technical source capture is foreign to the requested project.",
     );
   }
-  if (state.workspaceRevision !== expected.workspaceRevision) {
+  if (state.workspaceRevision !== sourceClosure.workspaceRevision) {
     throw new TechnicalSourceWorkspaceRecrossError(
       "workspace_revision_mismatch",
       "Technical source capture does not name the exact workspace revision.",
@@ -227,35 +348,41 @@ export function recrossTechnicalSourceWorkspace(
     state.lastEventFingerprint === undefined ||
     !fingerprintsEqual(
       state.lastEventFingerprint,
-      expected.workspaceEventFingerprint,
+      sourceClosure.workspaceEventFingerprint,
     )
   ) {
     throw new TechnicalSourceWorkspaceRecrossError(
       "workspace_event_fingerprint_mismatch",
-      "Workspace head fingerprint does not match the captured project-source anchor.",
+      "Workspace head fingerprint does not match the captured source closure.",
     );
   }
+  recrossAttachmentHead(state, attachment, sourceClosure.root.fileId);
   const record = requireActiveTechnicalSourceFile(
     state,
-    expected.fileId,
-    expected.fileRevision,
+    sourceClosure.root.fileId,
+    sourceClosure.root.fileRevision,
   );
-  if (!fingerprintsEqual(record.fingerprint, expected.fileFingerprint)) {
+  if (!fingerprintsEqual(record.fingerprint, sourceClosure.root.fileFingerprint)) {
     throw new TechnicalSourceWorkspaceRecrossError(
       "file_fingerprint_mismatch",
-      "Workspace file fingerprint does not match the captured project-source anchor.",
+      "Workspace file fingerprint does not match the captured source closure root.",
     );
   }
-  if (!agentResourceReferencesEqual(record.resourceRef, expected.resourceRef)) {
+  if (
+    !agentResourceReferencesEqual(
+      record.resourceRef,
+      sourceClosure.root.resourceRef,
+    )
+  ) {
     throw new TechnicalSourceWorkspaceRecrossError(
       "resource_ref_mismatch",
-      "Workspace AgentResourceReference does not match the captured project-source anchor.",
+      "Workspace AgentResourceReference does not match the captured source closure root.",
     );
   }
   if (record.captureRequest === undefined) {
     throw new TechnicalSourceWorkspaceRecrossError(
       "capture_request_missing",
-      `File ${expected.fileId} has no captureRequest.profileId at the named workspace revision.`,
+      `File ${sourceClosure.root.fileId} has no captureRequest.profileId at the named workspace revision.`,
     );
   }
   if (record.captureRequest.profileId !== expected.profileId) {
@@ -273,41 +400,79 @@ export function recrossTechnicalSourceWorkspace(
   return record;
 }
 
-export function projectSourceAnchorFromActiveFile(
-  state: ProjectSourceWorkspaceState,
-  record: ProjectSourceFileRevision,
-): TechnicalProjectSourceAnchor {
-  if (state.lastEventFingerprint === undefined) {
-    throw new ProjectSourceWorkspaceError(
-      "event_chain_mismatch",
-      "A technical-source capture requires a hash-chained workspace event fingerprint.",
-    );
+export function assessAttachmentAgainstCompilationBasis(
+  attachment: TechnicalSourceAttachmentProvenance,
+  basis: TechnicalCompilationBasis,
+): TechnicalSourceAttachmentAlignment {
+  const declared = attachment.declaredAgainst;
+  if (
+    declared.thread.snapshotId !== basis.thread.snapshotId ||
+    declared.thread.revision !== basis.thread.revision ||
+    declared.thread.subjectId !== basis.thread.subjectId ||
+    declared.architecture.artifactId !== basis.sysmlAnchor.artifactId ||
+    !fingerprintsEqual(
+      declared.architecture.fingerprint,
+      basis.sysmlAnchor.artifactFingerprint,
+    )
+  ) {
+    return "different-basis";
   }
-  return deepFreeze({
-    projectId: state.projectId,
-    workspaceRevision: state.workspaceRevision,
-    workspaceEventFingerprint: state.lastEventFingerprint,
-    fileId: record.fileId,
-    fileRevision: record.fileRevision,
-    fileFingerprint: record.fingerprint,
-    resourceRef: record.resourceRef,
-  });
+  const target = basis.sysmlAnchor.elements.find((element) =>
+    element.id === attachment.target.elementId &&
+    element.kind === attachment.target.elementKind
+  );
+  if (!target) return "target-missing";
+  return "exact";
 }
 
-export function technicalProjectSourceAnchorsEqual(
-  left: TechnicalProjectSourceAnchor,
-  right: TechnicalProjectSourceAnchor,
+export function technicalSourceAttachmentProvenanceEqual(
+  left: TechnicalSourceAttachmentProvenance,
+  right: TechnicalSourceAttachmentProvenance,
 ): boolean {
-  return left.projectId === right.projectId &&
+  return left.attachmentId === right.attachmentId &&
+    left.attachmentRevision === right.attachmentRevision &&
+    left.predecessorAttachmentRevision === right.predecessorAttachmentRevision &&
+    fingerprintsEqual(left.fingerprint, right.fingerprint) &&
+    left.fileId === right.fileId &&
+    left.role.id === right.role.id &&
+    left.role.version === right.role.version &&
+    left.target.elementId === right.target.elementId &&
+    left.target.elementKind === right.target.elementKind &&
+    left.declaredAgainst.thread.snapshotId ===
+      right.declaredAgainst.thread.snapshotId &&
+    left.declaredAgainst.thread.revision === right.declaredAgainst.thread.revision &&
+    left.declaredAgainst.thread.subjectId ===
+      right.declaredAgainst.thread.subjectId &&
+    left.declaredAgainst.architecture.artifactId ===
+      right.declaredAgainst.architecture.artifactId &&
+    fingerprintsEqual(
+      left.declaredAgainst.architecture.fingerprint,
+      right.declaredAgainst.architecture.fingerprint,
+    ) &&
+    left.declaredAgainst.architecture.captureSchema ===
+      right.declaredAgainst.architecture.captureSchema;
+}
+
+export function technicalSourceClosureProvenanceEqual(
+  left: TechnicalSourceClosureProvenance,
+  right: TechnicalSourceClosureProvenance,
+): boolean {
+  return left.locator.schemaVersion === right.locator.schemaVersion &&
+    left.locator.kind === right.locator.kind &&
+    fingerprintsEqual(left.locator.fingerprint, right.locator.fingerprint) &&
+    left.locator.byteCount === right.locator.byteCount &&
+    left.locator.casUri === right.locator.casUri &&
+    fingerprintsEqual(left.fingerprint, right.fingerprint) &&
+    left.projectId === right.projectId &&
     left.workspaceRevision === right.workspaceRevision &&
     fingerprintsEqual(
       left.workspaceEventFingerprint,
       right.workspaceEventFingerprint,
     ) &&
-    left.fileId === right.fileId &&
-    left.fileRevision === right.fileRevision &&
-    fingerprintsEqual(left.fileFingerprint, right.fileFingerprint) &&
-    agentResourceReferencesEqual(left.resourceRef, right.resourceRef);
+    left.root.fileId === right.root.fileId &&
+    left.root.fileRevision === right.root.fileRevision &&
+    fingerprintsEqual(left.root.fileFingerprint, right.root.fileFingerprint) &&
+    agentResourceReferencesEqual(left.root.resourceRef, right.root.resourceRef);
 }
 
 export function technicalSourceAnalysisCaptureLocatorsEqual(
@@ -336,18 +501,29 @@ export function technicalSourceProvenanceIdentitiesEqual(
     fingerprintsEqual(left.sourceFingerprint, right.sourceFingerprint) &&
     fingerprintsEqual(left.captureFingerprint, right.captureFingerprint) &&
     fingerprintsEqual(left.analysisFingerprint, right.analysisFingerprint) &&
-    technicalProjectSourceAnchorsEqual(left.projectSource, right.projectSource) &&
+    technicalSourceAttachmentProvenanceEqual(left.attachment, right.attachment) &&
+    technicalSourceClosureProvenanceEqual(left.sourceClosure, right.sourceClosure) &&
     technicalSourceAnalysisCaptureLocatorsEqual(left.locator, right.locator);
 }
 
-export function assertTechnicalProjectSourceAnchorsEqual(
-  expected: TechnicalProjectSourceAnchor,
-  observed: TechnicalProjectSourceAnchor,
+export function assertTechnicalSourceAttachmentProvenanceEqual(
+  expected: TechnicalSourceAttachmentProvenance,
+  observed: TechnicalSourceAttachmentProvenance,
   path: string,
 ): void {
-  if (!technicalProjectSourceAnchorsEqual(expected, observed)) {
+  if (!technicalSourceAttachmentProvenanceEqual(expected, observed)) {
+    throw new TypeError(`${path} does not match the complete attachment provenance.`);
+  }
+}
+
+export function assertTechnicalSourceClosureProvenanceEqual(
+  expected: TechnicalSourceClosureProvenance,
+  observed: TechnicalSourceClosureProvenance,
+  path: string,
+): void {
+  if (!technicalSourceClosureProvenanceEqual(expected, observed)) {
     throw new TypeError(
-      `${path} does not match the complete project-source anchor.`,
+      `${path} does not match the complete source-closure provenance.`,
     );
   }
 }
@@ -380,34 +556,32 @@ export function assertTechnicalSourceProvenanceIdentitiesEqual(
  * Every source in one preview or admission bundle names the command/draft
  * project, one identical workspaceRevision, and one identical
  * workspaceEventFingerprint. Mixed projects and mixed workspace snapshots
- * are rejected. An unchanged sibling is recaptured at the common revision
- * rather than mixed in; a later sibling bump does not reuse an earlier
- * fingerprint at the same numeric revision.
+ * are rejected.
  */
 export function assertTechnicalCompilationSourcesShareExactWorkspace(
-  sources: readonly { readonly projectSource: TechnicalProjectSourceAnchor }[],
+  sources: readonly { readonly sourceClosure: TechnicalSourceClosureProvenance }[],
   projectId: string,
   path: string,
 ): number {
   if (sources.length === 0) {
     throw new TypeError(`${path} must contain at least one technical source.`);
   }
-  const workspaceRevision = sources[0]!.projectSource.workspaceRevision;
-  const workspaceEventFingerprint = sources[0]!.projectSource.workspaceEventFingerprint;
+  const workspaceRevision = sources[0]!.sourceClosure.workspaceRevision;
+  const workspaceEventFingerprint = sources[0]!.sourceClosure.workspaceEventFingerprint;
   for (const [index, source] of sources.entries()) {
-    if (source.projectSource.projectId !== projectId) {
+    if (source.sourceClosure.projectId !== projectId) {
       throw new TypeError(
-        `${path}[${index}].projectSource.projectId must equal the exact project ${projectId}.`,
+        `${path}[${index}].sourceClosure.projectId must equal the exact project ${projectId}.`,
       );
     }
-    if (source.projectSource.workspaceRevision !== workspaceRevision) {
+    if (source.sourceClosure.workspaceRevision !== workspaceRevision) {
       throw new TypeError(
         `${path} must name one identical workspaceRevision; mixed workspace snapshots are rejected.`,
       );
     }
     if (
       !fingerprintsEqual(
-        source.projectSource.workspaceEventFingerprint,
+        source.sourceClosure.workspaceEventFingerprint,
         workspaceEventFingerprint,
       )
     ) {
@@ -417,6 +591,94 @@ export function assertTechnicalCompilationSourcesShareExactWorkspace(
     }
   }
   return workspaceRevision;
+}
+
+export function sourceClosureProvenanceFrom(
+  locator: ProjectSourceClosureLocator,
+  closure: {
+    readonly fingerprint: ContentFingerprint;
+    readonly projectId: string;
+    readonly workspaceRevision: number;
+    readonly workspaceEventFingerprint: ContentFingerprint;
+    readonly root: {
+      readonly fileId: string;
+      readonly fileRevision: number;
+      readonly fingerprint: ContentFingerprint;
+      readonly resourceRef: AgentResourceReference;
+    };
+  },
+): TechnicalSourceClosureProvenance {
+  return deepFreeze({
+    locator,
+    fingerprint: closure.fingerprint,
+    projectId: closure.projectId,
+    workspaceRevision: closure.workspaceRevision,
+    workspaceEventFingerprint: closure.workspaceEventFingerprint,
+    root: {
+      fileId: closure.root.fileId,
+      fileRevision: closure.root.fileRevision,
+      fileFingerprint: closure.root.fingerprint,
+      resourceRef: closure.root.resourceRef,
+    },
+  });
+}
+
+export function attachmentProvenanceFrom(attachment: {
+  readonly attachmentId: string;
+  readonly attachmentRevision: number;
+  readonly predecessorAttachmentRevision?: number;
+  readonly fingerprint: ContentFingerprint;
+  readonly fileId: string;
+  readonly role: ProjectSourceAttachmentRole;
+  readonly target: ProjectSourceAttachmentTarget;
+  readonly declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+}): TechnicalSourceAttachmentProvenance {
+  return validateTechnicalSourceAttachmentProvenance(attachment);
+}
+
+function recrossAttachmentHead(
+  state: ProjectSourceWorkspaceState,
+  expected: TechnicalSourceAttachmentProvenance,
+  rootFileId: string,
+): void {
+  const record = state.attachments.get(expected.attachmentId);
+  if (!record) {
+    throw new TechnicalSourceWorkspaceRecrossError(
+      "attachment_not_found",
+      `Attachment ${expected.attachmentId} is not present in workspace revision ${state.workspaceRevision}.`,
+    );
+  }
+  const revision = record.revisions.get(expected.attachmentRevision);
+  if (!revision) {
+    throw new TechnicalSourceWorkspaceRecrossError(
+      "attachment_not_found",
+      `Attachment ${expected.attachmentId}@${expected.attachmentRevision} is not present in workspace revision ${state.workspaceRevision}.`,
+    );
+  }
+  if (record.status === "detached" || revision.kind !== "content") {
+    throw new TechnicalSourceWorkspaceRecrossError(
+      "attachment_not_active",
+      `Attachment ${expected.attachmentId}@${expected.attachmentRevision} is not an active head.`,
+    );
+  }
+  if (record.headRevision !== expected.attachmentRevision) {
+    throw new TechnicalSourceWorkspaceRecrossError(
+      "attachment_revision_not_head",
+      `Attachment ${expected.attachmentId}@${expected.attachmentRevision} is not the unique active head.`,
+    );
+  }
+  if (record.status !== "active" || record.fileId !== rootFileId) {
+    throw new TechnicalSourceWorkspaceRecrossError(
+      "source_removed",
+      `Attachment ${expected.attachmentId} source file is not the captured root.`,
+    );
+  }
+  if (!fingerprintsEqual(revision.fingerprint, expected.fingerprint)) {
+    throw new TechnicalSourceWorkspaceRecrossError(
+      "attachment_fingerprint_mismatch",
+      "Attachment fingerprint does not match the captured attachment head.",
+    );
+  }
 }
 
 function exactProjectId(value: unknown, path: string): string {
@@ -438,14 +700,6 @@ function parseFingerprint(value: unknown, path: string): ContentFingerprint {
   return { algorithm: "sha256", digest: fingerprint.digest };
 }
 
-function canonicalCasUri(value: unknown, digest: string, path: string): string {
-  const uri = nonEmptyText(value, path);
-  if (!CAS_URI.test(uri) || !uri.endsWith(`/sha256/${digest}`)) {
-    throw new TypeError(`${path} must be a canonical CAS URI for its sha256.`);
-  }
-  return uri;
-}
-
 function locatorCasUri(value: unknown, digest: string, path: string): string {
   const uri = canonicalCasUri(value, digest, path);
   if (
@@ -459,9 +713,19 @@ function locatorCasUri(value: unknown, digest: string, path: string): string {
   return uri;
 }
 
+function canonicalCasUri(value: unknown, digest: string, path: string): string {
+  const uri = nonEmptyText(value, path);
+  if (!CAS_URI.test(uri) || !uri.endsWith(`/sha256/${digest}`)) {
+    throw new TypeError(`${path} must be a canonical CAS URI for its sha256.`);
+  }
+  return uri;
+}
+
 function nonNegativeSafeInteger(value: unknown, path: string): number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) {
     throw new TypeError(`${path} must be a non-negative safe integer.`);
   }
   return Number(value);
 }
+
+export { PROJECT_SOURCE_CLOSURE_LOCATOR_KIND, PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA };

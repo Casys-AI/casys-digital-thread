@@ -10,6 +10,9 @@ import type { EngineeringProjectCommandService } from "../../application/use-cas
 import { PreviewProjectTechnicalCompilation } from "../../application/use-cases/compile/admission/preview-project-technical-compilation.ts";
 import type { ProjectTechnicalSourceCaptureUseCase } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import { CaptureProjectTechnicalSource } from "../../application/use-cases/compile/admission/capture-project-technical-source.ts";
+import type { ProjectSourceAttachmentRoleCatalog } from "../../application/ports/out/project-source-workspace/project-source-attachment-role-catalog.ts";
+import { FileProjectSourceClosureStore } from "../project-source-workspace/file-project-source-closure-store.ts";
+import { FixedProjectSourceAttachmentRoleCatalog } from "../project-source-workspace/fixed-project-source-attachment-role-catalog.ts";
 import type { ReopenAgentResource } from "../../application/use-cases/resource/reopen-agent-resource.ts";
 import type { ProjectSourceWorkspaceEventStore } from "../../application/ports/out/project-source-workspace/project-source-workspace-event-store.ts";
 import type { ThermalMethodSheetCompilationJoin } from "../../application/ports/out/compile/admission/thermal-method-sheet-compilation-join.ts";
@@ -42,6 +45,7 @@ export interface TechnicalCompilationFoundationOptions {
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
   readonly resources: ReopenAgentResource;
   readonly workspace: ProjectSourceWorkspaceEventStore;
+  readonly roles?: ProjectSourceAttachmentRoleCatalog;
 }
 
 export interface TechnicalCompilationFoundation {
@@ -112,9 +116,20 @@ export function createTechnicalCompilationFoundation(
   });
   const technicalCompilationProfiles =
     new FixedTechnicalCompilationProfileCatalogProvider();
+  const projectSourceClosures = new FileProjectSourceClosureStore(
+    new FileByteStore({
+      kind: "project-source-closure",
+      directory: `${technicalCompilationDirectory}/closures`,
+      uriNamespace: "project-source-closure",
+      label: "Project source dependency closure",
+    }),
+  );
+  const attachmentRoles = options.roles ??
+    new FixedProjectSourceAttachmentRoleCatalog();
   const technicalCompilationSources = new CaptureBackedTechnicalCompilationSourceReader(
     {
       captures: technicalSourceAnalysis,
+      closures: projectSourceClosures,
       workspace: options.workspace,
       resources: options.resources,
       profiles: technicalCompilationProfiles,
@@ -125,6 +140,8 @@ export function createTechnicalCompilationFoundation(
       workspace: options.workspace,
       resources: options.resources,
       captures: technicalSourceAnalysis,
+      closures: projectSourceClosures,
+      roles: attachmentRoles,
     });
   const technicalCompilationDrafts = new FileTechnicalCompilationDraftStore(
     new FileByteStore({

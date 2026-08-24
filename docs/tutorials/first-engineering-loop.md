@@ -94,8 +94,8 @@ From r2 the generic route continues only through registered operations:
 model.write-architecture@1     # server-rendered SysML → SysON
 model.write-requirements@1     # integer scalars → SysON
 design.write-geometry@1        # seal a reviewed draft (legacy MCP path)
-  or compile.seal-admission@2 + design.execute-build123d@1  # isolated CAD draft
-  or compile.seal-admission@2 + simulate.run-admitted-modelica@1  # isolated .mo
+  or compile.seal-admission@3 + design.execute-build123d@1  # isolated CAD draft
+  or compile.seal-admission@3 + simulate.run-admitted-modelica@1  # isolated .mo
 verify.seal-proof-case@1       # seal the proof declaration
 verify.run-fea-static-proof@3  # isolated CalculiX microVM + SysON oracle
 ```
@@ -133,7 +133,7 @@ Isolated proof `@3` evaluations stay a different authority.
 can authorize `project_vector_correction_review` / `design.apply-vector-correction@1`.
 That seal is not a CAD loop and does not rewrite a Build123d literal. Corrections return
 through `project_resource_capture` plus a successor workspace file revision, then a new
-technical-source capture and `compile.seal-admission@2` / `design.execute-build123d@1` /
+technical-source capture and `compile.seal-admission@3` / `design.execute-build123d@1` /
 proof steps. Each stays its own MRTR.
 
 The STEP then has **three** judgement branches: behave (this tutorial and the post-proof

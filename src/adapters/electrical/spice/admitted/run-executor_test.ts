@@ -828,7 +828,12 @@ async function harness() {
     schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
     basis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
-    sources: [{ sourceText, analysis, analysisFingerprint }],
+    sources: [{
+      sourceText,
+      analysis,
+      analysisFingerprint,
+      closedDependencyCount: 0,
+    }],
     bindings: [],
     profileRequests: [{
       profileId: compilationProfile.id,
@@ -921,7 +926,7 @@ async function harness() {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/2.0",
+    schemaVersion: "technical-compilation-admission-capture/3.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",
@@ -1298,7 +1303,7 @@ async function admittedThreadLineage(
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@2",
+      tool: "compile.seal-admission@3",
       runId: "run.compile.seal",
     },
     inputArtifactIds: [],

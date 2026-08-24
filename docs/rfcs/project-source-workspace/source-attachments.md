@@ -1,8 +1,8 @@
 # Versioned source attachments
 
-Status: aggregate, workspace MCP, and product-navigation authoring-attachment reads
-implemented · source closure/admission recross of attachment revisions and real-project
-proof remain pending
+Status: aggregate, workspace MCP, product-navigation authoring-attachment reads, and
+attachment-rooted source closure/admission recross implemented · MCS-01 real-project
+proof remains pending
 
 ## Purpose
 
@@ -46,10 +46,10 @@ technical authority by itself.
 
 The edge points to `fileId`, not `fileId@fileRevision`. At a named workspace revision,
 the read side resolves that stable identity to its exact active file head. Editing a
-file therefore preserves its product attachment without a second bookkeeping mutation. A
-later technical admission, not this vertical, is expected to be stricter: it would seal
-the exact resolved file revision, resource fingerprint, attachment revision, workspace
-basis, and architecture basis.
+file therefore preserves its product attachment without a second bookkeeping mutation.
+Technical admission seals the exact resolved file revision, resource fingerprint,
+attachment revision, workspace basis, architecture basis and
+`project-source-closure/1.0`.
 
 ## Lifecycle
 
@@ -94,19 +94,18 @@ not a compiler relation such as `represents` or `parameterizes`. Attaching a Mod
 CAD, SPICE, or supporting document still grants no execution right. Moving a file in the
 module tree does not retarget the edge; updating file bytes preserves it.
 
-`project_technical_source_capture` and `compile.seal-admission` still ignore
-`state.attachments`. A later admission vertical may reopen an exact active attachment,
-resolve its file head, and seal parser bindings separately from the authoring edge.
-Product navigation now exposes authoring heads as a distinct collection from Thread
-evidence: `project_product_navigation_authoring_attachments` and Workbench GET
-`view=authoring-attachments`. `project_product_navigation_context` and
-`project_product_source_closure` still read only Thread/admission evidence. Graphology
-may later index the relation for bounded reads; it must never own or repair it.
+`project_technical_source_capture` and `compile.seal-admission@3` reopen the exact
+active attachment head and persist a `project-source-closure/1.0`. Product navigation
+exposes authoring heads as a distinct collection from Thread evidence:
+`project_product_navigation_authoring_attachments` and Workbench GET
+`view=authoring-attachments`. `project_product_navigation_context` still reads
+Thread/admission evidence. `project_product_source_closure` recrosses the named
+authoring attachment, not a free file root. Graphology may later index the relation for
+bounded reads; it must never own or repair it.
 
-A draft edit still does not revoke a historical Thread admission. When admission later
-seals an attachment revision, refusing future use of that sealed admission will require
-an explicit Thread invalidation or archive, not a hidden lookup of the mutable workspace
-head.
+A draft edit still does not revoke a historical Thread admission. Refusing future use of
+a sealed admission requires an explicit Thread invalidation or archive, not a hidden
+lookup of the mutable workspace head.
 
 ## Bounded operations
 
@@ -138,11 +137,10 @@ project authority.
 Pending, not implemented:
 
 - `project_product_navigation_context` / Workbench reading authoring attachments as
-  evidence groups;
-- `project_technical_source_capture` and `compile.seal-admission` recrossing an
-  attachment revision;
-- dependency closure selected by exact attachment identity and workspace revision;
-- MCS-01 / real-project proof of this product-navigation read.
+  evidence groups (authoring stays a distinct collection; an exact attachment may
+  expose a read-only `project_product_source_closure`);
+- MCS-01 / real-project proof of attachment-rooted capture, closure and
+  product-navigation reads.
 
 Fail-closed catalogue decision: the five generic v1 roles (`architecture-source`,
 `design-source`, `behavior-source`, `verification-source`, `supporting-document`) are

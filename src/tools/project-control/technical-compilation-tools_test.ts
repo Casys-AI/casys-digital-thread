@@ -368,7 +368,7 @@ Deno.test("isolated geometry seal review rejects unknown authority fields before
   assertEquals(calls, 0);
 });
 
-Deno.test("technical source capture accepts only fileId,fileRevision,projectId,workspaceRevision", () => {
+Deno.test("technical source capture accepts only attachmentId,attachmentRevision,projectId,workspaceRevision", () => {
   const app = new CapturingApp();
   registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
     technicalSourceCapture: {
@@ -382,13 +382,13 @@ Deno.test("technical source capture accepts only fileId,fileRevision,projectId,w
   const captureInput = capture.inputSchema as Record<string, unknown>;
   assertEquals(
     Object.keys(captureInput.properties as Record<string, unknown>).sort(),
-    ["fileId", "fileRevision", "projectId", "workspaceRevision"],
+    ["attachmentId", "attachmentRevision", "projectId", "workspaceRevision"],
   );
   assertEquals(captureInput.required, [
     "projectId",
     "workspaceRevision",
-    "fileId",
-    "fileRevision",
+    "attachmentId",
+    "attachmentRevision",
   ]);
   assertEquals(captureInput.additionalProperties, false);
   assertEquals(
@@ -406,6 +406,8 @@ Deno.test("technical source capture accepts only fileId,fileRevision,projectId,w
         "profileId",
         "sourceId",
         "resourceRef",
+        "fileId",
+        "fileRevision",
       ].includes(key)
     ),
     false,
@@ -430,7 +432,7 @@ Deno.test("technical source capture accepts only fileId,fileRevision,projectId,w
   }).properties.reference.properties;
   assertEquals(
     reference.schemaVersion.const,
-    "technical-source-analysis-capture-locator/2.0",
+    "technical-source-analysis-capture-locator/3.0",
   );
   assertEquals(
     reference.kind.const,

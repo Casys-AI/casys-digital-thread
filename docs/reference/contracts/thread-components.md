@@ -70,7 +70,7 @@ The architecture artifact anchors the root `PartDefinition`. Each parent definit
 `contains` its exact usage, each usage is `typed_by` its definition, each definition
 `contains` its exact `AttributeUsage` rows when the catalog recorded them, and each
 definition may be `represented_by` its authoritative STEP and exact GLB presentation
-derivative. A sealed `compile.seal-admission@2` may add a `cad-lever` that
+derivative. A sealed `compile.seal-admission@3` may add a `cad-lever` that
 `parameterizes` that AttributeUsage; a missing unique bind adds nothing. The GLB remains
 inspectable presentation evidence, not CAD authority. A reused definition therefore
 keeps several usage occurrences but one exact pair of definition assets; the browser

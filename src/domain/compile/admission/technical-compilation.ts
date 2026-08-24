@@ -71,7 +71,8 @@ export type TechnicalCompilationDiagnosticCode =
   | "source.no-named-numeric-lever"
   | "source.profile-incompatible"
   | "source.policy-rejected"
-  | "source.unresolved-construct";
+  | "source.unresolved-construct"
+  | "source.dependency-lowering-unavailable";
 
 export interface TechnicalThreadBasis {
   readonly projectId: string;
@@ -134,6 +135,12 @@ export interface TechnicalCompilationSource {
   readonly sourceText: string;
   readonly analysis: SourceAnalysisBundle;
   readonly analysisFingerprint: ContentFingerprint;
+  /**
+   * Count of non-root files in the sealed project-source closure.
+   * Zero is the executable root-only path. A positive count is unresolved
+   * until a language-specific deterministic lowering exists.
+   */
+  readonly closedDependencyCount: number;
 }
 
 export interface TechnicalSemanticBinding {
@@ -838,6 +845,7 @@ async function parseProjectionSource(
     sourceText: source.sourceText,
     analysis: source.analysis,
     analysisFingerprint: source.analysisFingerprint,
+    closedDependencyCount: 0,
   }, path);
   const bindings = arrayOf(source.bindings, `${path}.bindings`)
     .map((binding, index) => parseBinding(binding, `${path}.bindings[${index}]`))
@@ -850,7 +858,12 @@ async function parseProjectionSource(
       );
     }
   }
-  return { ...parsed, bindings };
+  return {
+    sourceText: parsed.sourceText,
+    analysis: parsed.analysis,
+    analysisFingerprint: parsed.analysisFingerprint,
+    bindings,
+  };
 }
 
 function parseDiagnostics(
@@ -1153,7 +1166,7 @@ async function parseSource(
 ): Promise<TechnicalCompilationSource> {
   const source = exactRecord(
     value,
-    ["sourceText", "analysis", "analysisFingerprint"],
+    ["sourceText", "analysis", "analysisFingerprint", "closedDependencyCount"],
     path,
   );
   const sourceText = utf8SourceText(source.sourceText, `${path}.sourceText`);
@@ -1175,7 +1188,20 @@ async function parseSource(
     observedAnalysisFingerprint,
     `${path}.analysisFingerprint`,
   );
-  return { sourceText, analysis, analysisFingerprint };
+  if (
+    !Number.isSafeInteger(source.closedDependencyCount) ||
+    Number(source.closedDependencyCount) < 0
+  ) {
+    throw new TypeError(
+      `${path}.closedDependencyCount must be a non-negative safe integer.`,
+    );
+  }
+  return {
+    sourceText,
+    analysis,
+    analysisFingerprint,
+    closedDependencyCount: Number(source.closedDependencyCount),
+  };
 }
 
 function assertTechnicalSourceKind(
@@ -1452,6 +1478,13 @@ function diagnoseSource(
       subjectRef: sourceFacts.id,
     });
   }
+  if (source.closedDependencyCount > 0) {
+    diagnostics.push({
+      code: "source.dependency-lowering-unavailable",
+      profileRef: requestedProfileRef,
+      subjectRef: sourceFacts.id,
+    });
+  }
 }
 
 function statusFromDiagnostics(
@@ -1494,6 +1527,7 @@ const DIAGNOSTIC_CODES = new Set<TechnicalCompilationDiagnosticCode>([
   "source.profile-incompatible",
   "source.policy-rejected",
   "source.unresolved-construct",
+  "source.dependency-lowering-unavailable",
 ]);
 
 function diagnosticCode(

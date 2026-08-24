@@ -2,7 +2,7 @@
  * Closed MRTR grammar for sealing one agent-authored architecture SysML analysis.
  *
  * The signed parameters name exact CAS identities only. They grant no SysON
- * insertion, no provider dispatch, and no `compile.seal-admission@2` authority.
+ * insertion, no provider dispatch, and no `compile.seal-admission@3` authority.
  * Bindings later consumed from the sealed document are symbol ids, never labels.
  */
 

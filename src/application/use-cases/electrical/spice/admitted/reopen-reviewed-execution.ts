@@ -3,7 +3,7 @@
  *
  * Revalidates human MRTR, admission scope, and sealed compilation source.
  * Profiles come from `profiles.initial()`. Source bytes come only from
- * `compile.seal-admission@2`. Callers never supply SPICE text.
+ * `compile.seal-admission@3`. Callers never supply SPICE text.
  */
 
 import type { IsolatedCodeExecutionRequest } from "../../../../../domain/compile/isolation/isolated-code-execution.ts";

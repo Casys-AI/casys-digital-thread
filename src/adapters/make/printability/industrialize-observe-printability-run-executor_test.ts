@@ -125,13 +125,13 @@ Deno.test("observe printability refuses an isolated-geometry binding", async () 
 
 Deno.test("observe printability refuses a compilation-admission binding", async () => {
   const fixture = await createFixture({
-    geometryTool: "compile.seal-admission@2",
+    geometryTool: "compile.seal-admission@3",
   });
   try {
     await assertRejects(
       () => fixture.executor.execute(AGENT, fixture.command),
       EngineeringProjectCommandError,
-      "compile.seal-admission@2",
+      "compile.seal-admission@3",
     );
   } finally {
     await fixture.cleanup();

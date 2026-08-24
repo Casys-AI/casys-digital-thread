@@ -20,13 +20,7 @@ import type { EngineeringProjectSnapshot } from "../../../domain/project/enginee
 import { selectCurrentThreadTip } from "../../../domain/project/thread-tip.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
-import { requireActiveTechnicalSourceFile } from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
-import { PROJECT_SOURCE_WORKSPACE_BOUNDS } from "../../../domain/project-source-workspace/types.ts";
-import type {
-  ProjectSourceFileRevision,
-  ProjectSourceWorkspaceState,
-} from "../../../domain/project-source-workspace/types.ts";
-import { contentRevisionAt } from "../../../domain/project-source-workspace/transitions.ts";
+import { resolveProjectSourceClosure } from "../../../domain/project-source-workspace/closure.ts";
 import type { ProductNavigationAuthoringAttachmentReader } from "../../ports/out/product-navigation/product-navigation-authoring-attachment-reader.ts";
 import type { ProductNavigationEvidenceAttachmentReader } from "../../ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
 import { fingerprintsEqual } from "../../../domain/kernel/deterministic-json.ts";
@@ -278,8 +272,9 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
   async sourceClosure(
     query: ProductNavigationScope & {
       readonly node: ProductNavigationNodeQuery;
-      readonly fileId: string;
-      readonly fileRevision: number;
+      readonly workspaceRevision: number;
+      readonly attachmentId: string;
+      readonly attachmentRevision: number;
     },
   ): Promise<ProductNavigationSourceClosure> {
     const opened = await this.open(query);
@@ -292,42 +287,33 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
         status: "unattached",
       };
     }
-    const facts = this.#evidenceAttachments
-      ? await this.#evidenceAttachments.read(opened.snapshot, {
-        projectId: query.projectId,
-      })
-      : undefined;
-    const attached = facts
-      ? attachmentsForDefinition(
-        facts,
-        node.definitionId,
-        facts.sourceFileIds,
-      ).sources.some((item) => item.id === `${query.fileId}@${query.fileRevision}`)
-      : false;
-    if (!attached) {
-      return {
-        ...unavailableClosure(),
-        basis: opened.basis,
-        status: "unattached",
-      };
-    }
-    const record = facts?.sourceFiles?.find((file) =>
-      file.fileId === query.fileId && file.fileRevision === query.fileRevision
-    );
-    if (!record) {
-      return {
-        ...unavailableClosure(),
-        basis: opened.basis,
-        status: "unattached",
-      };
-    }
     try {
       const named = await this.#workspace.loadAtFresh(
         query.projectId,
-        record.workspaceRevision,
+        query.workspaceRevision,
       );
-      const walked = walkSourceClosure(named, query.fileId, query.fileRevision);
-      if (!walked) {
+      const closure = await resolveProjectSourceClosure(named, {
+        attachmentId: query.attachmentId,
+        attachmentRevision: query.attachmentRevision,
+      });
+      const target = exactAuthoringTarget(node);
+      if (
+        closure.attachment.target.elementId !== target.elementId ||
+        closure.attachment.target.elementKind !== target.elementKind
+      ) {
+        return {
+          ...unavailableClosure(),
+          basis: opened.basis,
+          status: "unattached",
+        };
+      }
+      if (
+        authoringBasisStatus(
+          closure.attachment.declaredAgainst,
+          opened.basis,
+          opened.snapshot,
+        ) !== "exact-basis"
+      ) {
         return { ...unavailableClosure(), basis: opened.basis };
       }
       return {
@@ -338,8 +324,22 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
         workspaceEventFingerprint: named.lastEventFingerprint
           ? `${named.lastEventFingerprint.algorithm}:${named.lastEventFingerprint.digest}`
           : undefined,
-        files: walked.files,
-        edges: walked.edges,
+        attachmentId: closure.attachment.attachmentId,
+        attachmentRevision: closure.attachment.attachmentRevision,
+        closureFingerprint:
+          `${closure.fingerprint.algorithm}:${closure.fingerprint.digest}`,
+        files: closure.files.map((file) => ({
+          fileId: file.fileId,
+          fileRevision: file.fileRevision,
+          role: file.role,
+          resourceUri: file.resourceRef.uri,
+          resourceFingerprint:
+            `${file.resourceRef.fingerprint.algorithm}:${file.resourceRef.fingerprint.digest}`,
+        })),
+        edges: closure.edges.map((edge) => ({
+          from: { fileId: edge.from.fileId, fileRevision: edge.from.fileRevision },
+          to: { fileId: edge.to.fileId, fileRevision: edge.to.fileRevision },
+        })),
       };
     } catch {
       return { ...unavailableClosure(), basis: opened.basis };
@@ -587,84 +587,4 @@ function fingerprintFromRef(value: string): {
   const match = /^sha256:([a-f0-9]{64})$/.exec(value);
   if (!match) return undefined;
   return { algorithm: "sha256", digest: match[1]! };
-}
-
-function walkSourceClosure(
-  state: ProjectSourceWorkspaceState,
-  fileId: string,
-  fileRevision: number,
-): {
-  files: ProductNavigationSourceClosure["files"];
-  edges: ProductNavigationSourceClosure["edges"];
-} | undefined {
-  const files: ProductNavigationSourceClosure["files"] = [];
-  const edges: ProductNavigationSourceClosure["edges"] = [];
-  const seen = new Set<string>();
-  const queue: { fileId: string; fileRevision: number }[] = [{
-    fileId,
-    fileRevision,
-  }];
-  let bound = 0;
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const key = `${current.fileId}@${current.fileRevision}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    bound += 1;
-    if (bound > PROJECT_SOURCE_WORKSPACE_BOUNDS.maxPageSize) return undefined;
-    const root = bound === 1 &&
-      current.fileId === fileId &&
-      current.fileRevision === fileRevision;
-    let record: ProjectSourceFileRevision;
-    try {
-      record = root
-        ? requireActiveTechnicalSourceFile(
-          state,
-          current.fileId,
-          current.fileRevision,
-        )
-        : namedContentRevision(state, current.fileId, current.fileRevision);
-    } catch {
-      return undefined;
-    }
-    if (
-      record.dependencies.length >
-        PROJECT_SOURCE_WORKSPACE_BOUNDS.maxDependencyFanout
-    ) {
-      return undefined;
-    }
-    files.push({
-      fileId: record.fileId,
-      fileRevision: record.fileRevision,
-      role: record.role,
-      resourceUri: record.resourceRef.uri,
-      resourceFingerprint:
-        `${record.resourceRef.fingerprint.algorithm}:${record.resourceRef.fingerprint.digest}`,
-    });
-    for (const dependency of record.dependencies) {
-      edges.push({
-        from: { fileId: record.fileId, fileRevision: record.fileRevision },
-        to: {
-          fileId: dependency.fileId,
-          fileRevision: dependency.fileRevision,
-        },
-      });
-      queue.push(dependency);
-    }
-  }
-  return { files, edges };
-}
-
-function namedContentRevision(
-  state: ProjectSourceWorkspaceState,
-  fileId: string,
-  fileRevision: number,
-): ProjectSourceFileRevision {
-  const record = contentRevisionAt(state, fileId, fileRevision);
-  if (record.kind !== "content") {
-    throw new Error(
-      `File ${fileId}@${fileRevision} is not a content revision at workspace ${state.workspaceRevision}.`,
-    );
-  }
-  return record;
 }

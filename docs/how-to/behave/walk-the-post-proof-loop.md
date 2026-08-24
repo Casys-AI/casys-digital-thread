@@ -76,7 +76,7 @@ project_sensitivity_study_seal_review   # JSON manifest case or signed offer →
   → project_source_file_put                # successor workspace file revision
   → project_technical_source_capture       # quadruplet at the common workspace
   → project_technical_compilation_preview
-  → compile.seal-admission@2
+  → compile.seal-admission@3
   → design.execute-build123d@1
   → verify.seal-proof-case@1 + verify.run-fea-static-proof@3
 
@@ -107,7 +107,7 @@ Authorities stay in sibling folders — do not merge them:
 | `model.write-sensitivity-edges@1`    | [`src/adapters/sensitivity/edges/`](../../../src/adapters/sensitivity/edges)                         |
 | `design.apply-vector-correction@1`   | [`src/adapters/sensitivity/vector-correction/`](../../../src/adapters/sensitivity/vector-correction) |
 
-`compile.seal-admission@2` stays under `src/adapters/compile/`. A proof-run evaluation
+`compile.seal-admission@3` stays under `src/adapters/compile/`. A proof-run evaluation
 does not authorize the vector-correction folder. Corrections return through
 `AgentResource` plus a successor workspace file revision.
 

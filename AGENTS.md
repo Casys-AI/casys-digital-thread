@@ -45,27 +45,30 @@ from UI copy or tool descriptions.
   `architecture-sysml-source-analysis-capture/1.0` is the agent-authored CAS. They are
   not interchangeable.
 - `project_admitted_geometry_export` + `design.write-geometry@1` is the canonical STEP
-  path. It reopens parameterized `compile.seal-admission@2` bytes.
+  path. It reopens parameterized `compile.seal-admission@3` bytes.
   `project_geometry_preview` and `design.preview-geometry@1` are not registered.
-  `compile.seal-admission@2` + `design.execute-build123d@1` is the local microVM path. A
+  `compile.seal-admission@3` + `design.execute-build123d@1` is the local microVM path. A
   successful isolated execution is **not** canonical geometry.
   `design.seal-isolated-geometry@1` seals that CAD execution as a Thread document only.
-  `compile.seal-admission@2` + `simulate.run-admitted-modelica@1` is the CAD analog for
+  `compile.seal-admission@3` + `simulate.run-admitted-modelica@1` is the CAD analog for
   Modelica closed-subset source. Both use `ReopenAdmittedCompilationSource` then
   `IsolatedCodeRunner`. `simulate.run-qualified-modelica-kit@1` is the pinned kit. They
-  are not interchangeable. `compile.seal-admission@2` + `simulate.run-admitted-spice@1`
+  are not interchangeable. `compile.seal-admission@3` + `simulate.run-admitted-spice@1`
   is the same pattern for circuit-only SPICE (`spice-circuit-source`). It is not
   mcp-spice and not the LED-driver fiche. Pattern:
   [admitted source isolated execution](docs/reference/pipeline/admitted-source-isolated-execution.md).
 - `project_technical_source_capture` names only `projectId`, `workspaceRevision`,
-  `fileId` and `fileRevision`. The named file revision must be the active content at
-  that exact workspace snapshot, with `captureRequest` exactly `{profileId}` and role
-  equal to the registered profile. It returns `technical-source-capture-review/2.0`:
-  `parser`, `levers`, and an opaque `technical-source-analysis-capture-locator/2.0`.
-  `parser.status` is not admission. Pass `result.reference` only. A constructor photo is
-  `levers.unresolved`. A reachable literal without `parameterizes` is compile
-  `binding.missing`, not `source.no-named-numeric-lever`. MIME, path, `sourceText`,
-  `profileId`, `sourceId` and `resourceRef` are refused.
+  `attachmentId` and `attachmentRevision`. The named attachment revision must be the
+  unique active head at that exact workspace snapshot. The server resolves the root
+  file, registered profile and deterministic `project-source-closure/1.0`. It returns
+  `technical-source-capture-review/3.0`: `parser`, `levers`, and an opaque
+  `technical-source-analysis-capture-locator/3.0`. `parser.status` is not admission.
+  Pass `result.reference` only. A constructor photo is `levers.unresolved`. A reachable
+  literal without `parameterizes` is compile `binding.missing`, not
+  `source.no-named-numeric-lever`. MIME, path, `sourceText`, `profileId`, `sourceId`,
+  `fileId`, `fileRevision` and `resourceRef` are refused. A multi-file closure may
+  capture; preview and admission stay `unresolved` /
+  `source.dependency-lowering-unavailable` until language-specific lowering exists.
 - `project_technical_compilation_preview` takes `projectId` + `result.reference`. The
   server selects the current Thread tip, the unique catalog profile, and unique SysML
   joins. Do not pass bindings or profileRequests. Unresolved previews hoist `gaps`

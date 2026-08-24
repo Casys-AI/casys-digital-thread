@@ -94,7 +94,7 @@ async function basisSnapshot(): Promise<ThreadSnapshot> {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@2",
+      tool: "compile.seal-admission@3",
       runId: "run.compile.seal",
     },
     inputArtifactIds: [],
@@ -252,11 +252,11 @@ Deno.test("documentary successor uses the explicit capturedAt and rejects a seco
   );
 });
 
-Deno.test("exact admission artifact stays compile.seal-admission@2 and rejects producer drift", async () => {
+Deno.test("exact admission artifact stays compile.seal-admission@3 and rejects producer drift", async () => {
   const basis = await basisSnapshot();
   assertEquals(
     exactAdmissionArtifact(basis, ADMISSION_ID, ADMISSION_FINGERPRINT).producer.tool,
-    "compile.seal-admission@2",
+    "compile.seal-admission@3",
   );
   const drifted = {
     ...basis,

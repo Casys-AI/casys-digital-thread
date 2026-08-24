@@ -152,10 +152,26 @@ Deno.test("product navigation tools are read-only and refuse latest in their sch
     assertEquals(schema.properties.projectId.not, { const: "latest" });
     assertEquals(schema.additionalProperties, false);
     assertEquals("snapshotId" in schema.properties, false);
-    assertEquals("workspaceRevision" in schema.properties, false);
     assertEquals("provider" in schema.properties, false);
     assertEquals("runtime" in schema.properties, false);
+    if (name !== "project_product_source_closure") {
+      assertEquals("workspaceRevision" in schema.properties, false);
+    }
   }
+  const closure = app.tool("project_product_source_closure").inputSchema as {
+    required: string[];
+    additionalProperties: boolean;
+    properties: Record<string, unknown>;
+  };
+  assertEquals(closure.required, [
+    "projectId",
+    "node",
+    "workspaceRevision",
+    "attachmentId",
+    "attachmentRevision",
+  ]);
+  assertEquals("fileId" in closure.properties, false);
+  assertEquals("fileRevision" in closure.properties, false);
   const authoring = app.tool("project_product_navigation_authoring_attachments")
     .inputSchema as {
       required: string[];

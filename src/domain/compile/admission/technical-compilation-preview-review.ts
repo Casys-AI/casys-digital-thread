@@ -32,6 +32,12 @@ export const TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY = {
     "The thermal method sheet parameter must recross the unique v2 parameterizes binding for that exact source symbol and AttributeUsage. Do not invent a binding.",
   thermalOutputRequirement:
     "The thermal method sheet output must name an exact source symbol and RequirementUsage. Do not invent a requirement or observation.",
+  dependencyLowering:
+    "No language-specific deterministic lowering exists for this multi-file closure. Root-only closures remain the executable path.",
+  differentBasis:
+    "The attachment declaredAgainst Thread and architecture must equal this exact compilation basis. Do not pretend carried-forward without an explicit lineage proof.",
+  targetMissing:
+    "The attachment target element id and kind must exist exactly in this compilation basis.",
 } as const;
 
 export type TechnicalCompilationJoinGap =
@@ -79,6 +85,23 @@ export type TechnicalCompilationJoinGap =
     readonly reason: "symbol-absent" | "requirement-absent";
     readonly recovery:
       typeof TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalOutputRequirement;
+  }
+  | {
+    readonly code: "source.dependency-lowering-unavailable";
+    readonly sourceId: string;
+    readonly closedDependencyCount: number;
+    readonly recovery:
+      typeof TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.dependencyLowering;
+  }
+  | {
+    readonly code: "attachment.different-basis";
+    readonly sourceId: string;
+    readonly recovery: typeof TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.differentBasis;
+  }
+  | {
+    readonly code: "attachment.target-missing";
+    readonly sourceId: string;
+    readonly recovery: typeof TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.targetMissing;
   };
 
 /**
@@ -95,6 +118,21 @@ export function assembleTechnicalCompilationJoinGaps(
 ): readonly TechnicalCompilationJoinGap[] {
   const gaps: TechnicalCompilationJoinGap[] = [];
   for (const diagnostic of diagnostics) {
+    if (diagnostic.code === "source.dependency-lowering-unavailable") {
+      const source = resolveSource(diagnostic.subjectRef, sources);
+      if (!source || source.analysis.source.id !== diagnostic.subjectRef) {
+        throw new TypeError(
+          `Join gap ${diagnostic.code} subjectRef must name an exact reopened source.`,
+        );
+      }
+      gaps.push({
+        code: "source.dependency-lowering-unavailable",
+        sourceId: source.analysis.source.id,
+        closedDependencyCount: source.closedDependencyCount ?? 0,
+        recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.dependencyLowering,
+      });
+      continue;
+    }
     if (diagnostic.code === "source.no-named-numeric-lever") {
       const source = resolveSource(diagnostic.subjectRef, sources);
       if (!source || source.analysis.source.id !== diagnostic.subjectRef) {
@@ -165,6 +203,30 @@ export function assembleTechnicalCompilationJoinGaps(
     throw new TypeError(
       `Join gap binding.missing cannot explain symbol kind ${symbol.kind}.`,
     );
+  }
+  gaps.sort(compareGaps);
+  return deepFreeze(gaps);
+}
+
+export function assembleAttachmentAlignmentGaps(
+  sources: readonly TechnicalCompilationJoinSource[],
+): readonly TechnicalCompilationJoinGap[] {
+  const gaps: TechnicalCompilationJoinGap[] = [];
+  for (const source of sources) {
+    if (source.attachmentAlignment === "different-basis") {
+      gaps.push({
+        code: "attachment.different-basis",
+        sourceId: source.analysis.source.id,
+        recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.differentBasis,
+      });
+    }
+    if (source.attachmentAlignment === "target-missing") {
+      gaps.push({
+        code: "attachment.target-missing",
+        sourceId: source.analysis.source.id,
+        recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.targetMissing,
+      });
+    }
   }
   gaps.sort(compareGaps);
   return deepFreeze(gaps);
@@ -283,8 +345,17 @@ export function compilationPreviewContent(input: {
 }
 
 function gapSentence(gap: TechnicalCompilationJoinGap): string {
-  if (gap.code === "source.no-named-numeric-lever") {
+  if (
+    gap.code === "source.no-named-numeric-lever" ||
+    gap.code === "attachment.different-basis" ||
+    gap.code === "attachment.target-missing"
+  ) {
     return `${gap.code} on ${gap.sourceId}: ${gap.recovery}`;
+  }
+  if (gap.code === "source.dependency-lowering-unavailable") {
+    return (
+      `${gap.code} on ${gap.sourceId} (${gap.closedDependencyCount} non-root file(s)): ${gap.recovery}`
+    );
   }
   if (gap.code === "thermal-method-sheet.parameter.unresolved") {
     return (
@@ -343,7 +414,12 @@ function compareGaps(
 }
 
 function gapSortKey(gap: TechnicalCompilationJoinGap): string {
-  if (gap.code === "source.no-named-numeric-lever") {
+  if (
+    gap.code === "source.no-named-numeric-lever" ||
+    gap.code === "source.dependency-lowering-unavailable" ||
+    gap.code === "attachment.different-basis" ||
+    gap.code === "attachment.target-missing"
+  ) {
     return `${gap.code}\u0000${gap.sourceId}`;
   }
   if (gap.code === "thermal-method-sheet.parameter.unresolved") {

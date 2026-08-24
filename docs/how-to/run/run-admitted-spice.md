@@ -45,11 +45,11 @@ required after composing `--local-execution` so the review tool and executor are
 
 ## 1. Capture
 
-Call `project_resource_capture` with the `.cir` UTF-8, then
-`project_technical_source_capture` with `profileId` `spice-circuit-closed-subset-v1`,
-`sourceId`, and that full `resourceRef`. The source must satisfy the v1 circuit-only
-grammar. Ordinary numeric netlists without `.param` are admissible. There is no inline
-`sourceText`.
+Call `project_resource_capture` with the `.cir` UTF-8, put that resource as a workspace
+file, attach it, then `project_technical_source_capture` with only `projectId`,
+`workspaceRevision`, `attachmentId` and `attachmentRevision`. The source must satisfy
+the v1 circuit-only grammar. Ordinary numeric netlists without `.param` are admissible.
+There is no inline `sourceText`, `profileId`, `sourceId` or `resourceRef`.
 
 Read the result fields separately:
 
@@ -69,7 +69,7 @@ bindings for every `.param` symbol. A netlist with zero named levers does not ne
 Unresolved previews hoist `gaps`. A missing or ambiguous `.param` bind is
 `binding.missing`.
 
-Obtain human MRTR, queue, then execute `compile.seal-admission@2`.
+Obtain human MRTR, queue, then execute `compile.seal-admission@3`.
 
 ## 3. Review and run
 
@@ -77,7 +77,7 @@ Call `project_admitted_spice_run_review` with `projectId` only. Do not derive or
 Thread basis, admission id, fingerprint, provider, solver, image, args, path, or
 observations. The server reopens the current Thread tip and selects exactly one fresh,
 non-archived canonical `document` produced by `digital-thread` /
-`compile.seal-admission@2` whose compilation target and source are
+`compile.seal-admission@3` whose compilation target and source are
 `spice-circuit-source`. Concurrent CAD or Modelica admissions are not candidates.
 
 Zero SPICE candidates — including stale, archived, malformed, foreign-producer
@@ -136,7 +136,7 @@ always derived. Execute exactly one of `decide.accept-admitted-spice-evaluation@
 | Caller `.op` / `.end` / `.control` / `.include` | Closed subset rejects analysis and control; the worker owns them       |
 | Extra netlist, image, args, path, observations  | Registry and review refuse them                                        |
 | Caller Thread/admission identity                | Review accepts `projectId` only; server selects the exact current join |
-| Stale or wrong-producer admission               | Not a fresh `digital-thread` `compile.seal-admission@2` candidate      |
+| Stale or wrong-producer admission               | Not a fresh `digital-thread` `compile.seal-admission@3` candidate      |
 | Two fresh SPICE admissions on the current tip   | Ambiguous; a concurrent CAD or Modelica admission is not a candidate   |
 | SPICE success used as an L4/L5 verdict          | Documentary L3 observations only; L4 is the method-sheet evaluator     |
 | L4 `pass` treated as L5                         | Human closeout of the exact L4; review always offers accept and reject |

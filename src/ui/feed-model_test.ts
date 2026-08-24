@@ -1050,7 +1050,8 @@ function canonicalResultRef(
     reference.kind === "part-usage" ||
     reference.kind === "attribute-usage" ||
     reference.kind === "cad-lever" ||
-    reference.kind === "cad-unnamed-literal"
+    reference.kind === "cad-unnamed-literal" ||
+    reference.kind === "source-file"
   ) {
     throw new Error(
       "A browser-only analysis or SysML element cannot be review result evidence.",

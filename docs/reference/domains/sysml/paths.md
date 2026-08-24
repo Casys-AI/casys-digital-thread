@@ -16,7 +16,7 @@ Lookalike table: [lookalike traps](../../agent/lookalike-traps.md).
 | Operation      | `model.write-architecture@1`                                                                                                               | `model.seal-architecture-sysml@1`                                                                                                                                          |
 | SysON          | `syson_element_insert_sysml` then reread                                                                                                   | Never called                                                                                                                                                               |
 | Thread         | `architecture-capture/4.0` plus `sysml-model` artifact                                                                                     | Documentary Thread **document** plus `architecture-sysml-seal-capture/1.0`                                                                                                 |
-| Success is not | Agent-authored SysML, compilation admission, a verdict                                                                                     | SysON write, `compile.seal-admission@2`, renderer envelope, Product Structure                                                                                              |
+| Success is not | Agent-authored SysML, compilation admission, a verdict                                                                                     | SysON write, `compile.seal-admission@3`, renderer envelope, Product Structure                                                                                              |
 
 ```text
 human MRTR (flat architecture.* / component.* / attribute.*)
@@ -49,9 +49,9 @@ These three identities stay distinct:
 
 Same payload SHA-256 does not make them the same object. The seal executor reopens the
 capture identities; it does not insert into SysON and it does not reuse
-`compile.seal-admission@2`. Workbench authority on that document is `documentary`.
+`compile.seal-admission@3`. Workbench authority on that document is `documentary`.
 
-`compile.seal-admission@2` admits closed-language CAD / Modelica / SPICE bytes for later
+`compile.seal-admission@3` admits closed-language CAD / Modelica / SPICE bytes for later
 isolated execution. It is not an architecture SysML seal and does not write SysON.
 
 ## Adjacent writers (links only)

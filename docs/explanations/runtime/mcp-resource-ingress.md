@@ -63,6 +63,6 @@ through those JSON codecs.
 ## Authority that does not move
 
 Raw CAS never goes to a microVM. Technical source still goes through capture analysis,
-`compile.seal-admission@2`, `ReopenAdmittedCompilationSource`, and `IsolatedCodeRunner`.
+`compile.seal-admission@3`, `ReopenAdmittedCompilationSource`, and `IsolatedCodeRunner`.
 Seal reviews stay read-only. Operation/MRTR ownership is unchanged. `grants: none` on
 draft capture.

@@ -78,7 +78,7 @@ and recovery never redispatches a completed solve
 
 #### [`src/domain/modelica/admitted/run-proposal.ts`](../../../src/domain/modelica/admitted/run-proposal.ts)
 
-Closed MRTR for `simulate.run-admitted-modelica@1`; binds one `compile.seal-admission@2`
+Closed MRTR for `simulate.run-admitted-modelica@1`; binds one `compile.seal-admission@3`
 artifact and the server-owned isolation contract. No Modelica text
 
 #### [`src/application/use-cases/modelica/admitted/reopen-reviewed-execution.ts`](../../../src/application/use-cases/modelica/admitted/reopen-reviewed-execution.ts)

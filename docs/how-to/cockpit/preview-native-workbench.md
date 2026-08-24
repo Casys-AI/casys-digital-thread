@@ -272,7 +272,7 @@ ordered interaction:
 8. A later reviewed change may queue `model.write-requirements@1` against that exact
    architecture. It records and re-extracts the approved integer scalar constraints
    without inventing observations, evaluations, or a verdict.
-9. Geometry remains a separate two-step decision. Capture and `compile.seal-admission@2`
+9. Geometry remains a separate two-step decision. Capture and `compile.seal-admission@3`
    admit parameterized CAD; `project_admitted_geometry_export` creates the hash-attested
    draft; `design.write-geometry@1` seals those exact bytes. A preview-only draft is
    refused. Binary glTF exports are served and published as `.glb`, never as JSON

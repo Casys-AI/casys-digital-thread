@@ -139,7 +139,7 @@ entry-point registry contains:
 | Human-reviewed architecture; exact generic SysON basis required               | `model.write-architecture@1`            |
 | Passed agent-authored closed-subset SysML capture; Thread document only       | `model.seal-architecture-sysml@1`       |
 | Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`            |
-| Ready compilation draft; exact Thread/SysML basis; no provider                | `compile.seal-admission@2`              |
+| Ready compilation draft; exact Thread/SysML basis; no provider                | `compile.seal-admission@3`              |
 | Sealed compilation admission; local isolation runtime composed                | `design.execute-build123d@1`            |
 | Documentary isolated execution capture; published STEP stays gated            | `design.seal-isolated-geometry@1`       |
 | Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`               |
@@ -202,7 +202,7 @@ separate SysON constraint evaluation. Historical MCP FEA `@1`/`@2` are rejection
 identities. Domain contract:
 [isolated CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 
-Admitted Modelica `@1` reopens sealed `compile.seal-admission@2` bytes into the local
+Admitted Modelica `@1` reopens sealed `compile.seal-admission@3` bytes into the local
 microVM. It is not the pinned kit. Pattern:
 [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md).
 How-to: [run admitted Modelica](../../how-to/run/run-admitted-modelica.md).
@@ -245,7 +245,7 @@ captures UTF-8 that matches the locked closed subset, previews the analysis, and
 proposes only the `decisionParameters` returned from a reopened passed capture. After
 human MRTR the executor reopens those CAS identities and writes one Thread document
 (`architecture-sysml-seal-capture/1.0`). It does not insert into SysON, does not reuse
-`compile.seal-admission@2`, and does not treat renderer `sysml-source-capture/1.0`
+`compile.seal-admission@3`, and does not treat renderer `sysml-source-capture/1.0`
 envelopes as agent-authored authority. Procedure:
 [author architecture SysML](../../how-to/compile/author-architecture-sysml.md).
 
@@ -260,7 +260,7 @@ lineage. This operation records model requirements; it does not evaluate them, i
 measurements, or publish a pass/fail verdict.
 
 Geometry is a two-step boundary. Canonical drafts come from
-`project_admitted_geometry_export` after `compile.seal-admission@2`.
+`project_admitted_geometry_export` after `compile.seal-admission@3`.
 `project_geometry_preview` is not a product entry. The current assembly draft is
 `geometry-draft-capture/1.2` and requires exact `sourceAnalysis`. A complete bundle uses
 `geometry-draft-capture/2.1`: one exact assembly source plus one exact source per unique

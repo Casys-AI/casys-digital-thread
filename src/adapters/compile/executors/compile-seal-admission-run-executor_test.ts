@@ -43,12 +43,9 @@ import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { computeArchiveCascade } from "../../../domain/thread/thread-retirement.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import {
-  sampleTechnicalProjectSourceAnchor,
   technicalSourceAnalysisCaptureStores,
   technicalSourceCaptureInput,
 } from "../../../testing/technical-source-capture-test-support.ts";
-import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
-
 import {
   INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG,
 } from "../admission/fixed-technical-compilation-profile-catalog-provider.ts";
@@ -212,6 +209,7 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
         sourceText: item.sourceText,
         analysis: item.analysis,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(item.analysis),
+        closedDependencyCount: 0,
       }))),
       bindings,
       profileRequests: [{
@@ -271,7 +269,7 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
           anchorFingerprint: basis.sysmlAnchorFingerprint,
         },
       },
-      sources: await Promise.all(reopened.map(async (item, index) => ({
+      sources: await Promise.all(reopened.map(async (item) => ({
         id: item.analysis.source.id,
         role: item.analysis.source.role,
         language: item.analysis.source.language,
@@ -284,7 +282,8 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
           capture.sourceId === item.analysis.source.id
         )!.referenceFingerprint,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(item.analysis),
-        projectSource: item.document.projectSource,
+        attachment: item.document.attachment,
+        sourceClosure: item.document.sourceClosure,
         locator: item.locator,
       }))),
       bindings: compiled.document.inputManifest.bindings,
@@ -363,6 +362,8 @@ interface ExecuteFixtureOptions {
   readonly sourceProvenanceDrift?: boolean;
   readonly unresolvedDraft?: boolean;
   readonly forgedPhotoDraft?: boolean;
+  readonly attachmentMisaligned?: boolean;
+  readonly multiFileClosure?: boolean;
   readonly resolverDrift?: "missing" | "root" | "editing-context" | "elements";
   readonly ackLostOnce?: boolean;
   readonly freshMissOnce?: boolean;
@@ -514,6 +515,26 @@ Deno.test("compile seal refuses foreign MRTR, source provenance drift, and unres
     });
   }
 });
+
+Deno.test(
+  "compile seal refuses different-basis alignment and multi-file closures independently of a ready draft",
+  async () => {
+    for (
+      const options of [
+        { attachmentMisaligned: true },
+        { multiFileClosure: true },
+      ]
+    ) {
+      await withExecuteFixture(options, async (fixture) => {
+        await assertRejects(() =>
+          fixture.executor.execute(EXEC_AGENT, fixture.command)
+        );
+        assertEquals(fixture.snapshots.successorIds, []);
+        assertEquals(fixture.captures.saves, 0);
+      });
+    }
+  },
+);
 
 Deno.test(
   "compile seal re-derives the lever diagnostic and rejects a forged ready photo draft",
@@ -766,6 +787,7 @@ async function buildExecuteFixture(
     sourceText: reopened.sourceText,
     analysis: reopened.analysis,
     analysisFingerprint: await fingerprintSourceAnalysisBundle(reopened.analysis),
+    closedDependencyCount: 0,
   };
   const sysmlFingerprint = await sha256Fingerprint({ capture: "sysml.fixture" });
   const sysmlArtifact = {
@@ -996,7 +1018,8 @@ async function buildExecuteFixture(
       sourceFingerprint: source.analysis.source.fingerprint,
       captureFingerprint: referenceFingerprint,
       analysisFingerprint: source.analysisFingerprint,
-      projectSource: persisted.document.projectSource,
+      attachment: persisted.document.attachment,
+      sourceClosure: persisted.document.sourceClosure,
       locator: persisted.locator,
     }],
     bindings,
@@ -1183,19 +1206,32 @@ async function buildExecuteFixture(
     },
   };
   const exactSourceReader = locatorBackedSourceReader(captureService);
-  const sourceReader: TechnicalCompilationSourceReader = options.sourceProvenanceDrift
+  const sourceReader: TechnicalCompilationSourceReader = options
+      .sourceProvenanceDrift ||
+      options.attachmentMisaligned ||
+      options.multiFileClosure
     ? {
       read: async (request) => {
         const exact = await exactSourceReader.read(request);
         if (!exact) return undefined;
         return {
           ...exact,
+          source: options.multiFileClosure
+            ? { ...exact.source, closedDependencyCount: 1 }
+            : exact.source,
           provenance: {
             ...exact.provenance,
-            analyzer: {
-              ...exact.provenance.analyzer,
-              version: "foreign-version",
-            },
+            ...(options.sourceProvenanceDrift
+              ? {
+                analyzer: {
+                  ...exact.provenance.analyzer,
+                  version: "foreign-version",
+                },
+              }
+              : {}),
+            ...(options.attachmentMisaligned
+              ? { attachmentAlignment: "different-basis" as const }
+              : {}),
           },
         };
       },
@@ -1262,6 +1298,7 @@ function locatorBackedSourceReader(
           sourceText: reopened.sourceText,
           analysis: reopened.analysis,
           analysisFingerprint,
+          closedDependencyCount: 0,
         },
         provenance: {
           profile: reopened.document.profile,
@@ -1272,8 +1309,10 @@ function locatorBackedSourceReader(
           },
           captureFingerprint: request.referenceFingerprint,
           analysisFingerprint,
-          projectSource: reopened.document.projectSource,
+          attachment: reopened.document.attachment,
+          sourceClosure: reopened.document.sourceClosure,
           locator: reopened.locator,
+          attachmentAlignment: "exact",
         },
       };
     },

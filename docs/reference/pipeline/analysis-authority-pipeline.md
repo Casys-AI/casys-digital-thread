@@ -148,7 +148,7 @@ The source, assertion, graph, admission and resolved-plan contracts live in
 storage, provider, UI, Graphology or SysML code. Language frontends and provider
 lowerings are adapters. The agent-facing project-control tools validate MCP input and
 call inward-facing use cases; they do not own provider clients or CAS stores. Capture
-returns `technical-source-capture-review/2.0` (`parser`, `levers`, opaque locator
+returns `technical-source-capture-review/3.0` (`parser`, `levers`, opaque locator
 `reference`). Compilation preview accepts only `result.reference`. Unresolved previews
 hoist join `gaps` beside the closed compilation document. Exact operation dispatch lives
 under `src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
@@ -160,7 +160,7 @@ only components allowed to call private provider MCP clients for admitted projec
 
 The following MCP-backed CAD path remains the current generic sandbox export used by
 `project_admitted_geometry_export`. `project_geometry_preview` is not a product entry.
-`design.write-geometry@1` seals only a draft stamped from `compile.seal-admission@2`. It
+`design.write-geometry@1` seals only a draft stamped from `compile.seal-admission@3`. It
 is not the local microVM execution path and must not be used as evidence that isolated
 execution produced canonical geometry. The backend performs this exact order:
 
@@ -269,7 +269,7 @@ CAS-captures the exact bytes, and analyses them under
 never omitted. Bindings published by the analyzer are symbol ids, never labels.
 
 This slice is deliberately not `model.write-architecture@2`, not
-`compile.seal-admission@2`, and not `sysml-source-capture/1.0`. The renderer envelope
+`compile.seal-admission@3`, and not `sysml-source-capture/1.0`. The renderer envelope
 remains the authority for the existing SysON insertion operation. The new
 `model.seal-architecture-sysml@1` operation writes a Thread document only and never
 calls a provider.
@@ -359,7 +359,7 @@ assertion occurrences without changing semantic identity. The live producer is
 `analyze.run-fea-sensitivity@1` after `analyze.seal-sensitivity-study@1`. Seal
 parameters come from the read-only `project_sensitivity_study_seal_review` compiler
 (catalog template, or unique signed catalog-offer + its signed
-`compile.seal-admission@2` admission when the catalog does not uniquely select).
+`compile.seal-admission@3` admission when the catalog does not uniquely select).
 `analyze.seal-sensitivity-study@1` reopens that same unique offer; it does not invent a
 catalog JSON. The caller never invents `sensitivity.case.*` or a `cadSource`. A project
 without a reviewed catalog JSON and without a unique signed offer (`desk-lamp-dl06`
@@ -386,7 +386,7 @@ a different authority and cannot authorize a correction.
 proposal. The capture declares `grants: none`. It is not a CAD admission, a SysON write,
 or a mandate for a successor execution. Corrections return through `AgentResource` plus
 a successor workspace file revision, then a new technical-source capture and
-`compile.seal-admission@2`. That later admission stays its own MRTR. The AnalysisGraph
+`compile.seal-admission@3`. That later admission stays its own MRTR. The AnalysisGraph
 edge `measured-local-sensitivity` remains an inspectable fact, not an execution gate.
 Thread-entity bindings are identities only: `assertPlanBindingsResolve` does not resolve
 them at plan publication, so the executor fail-closes if the named evaluation or study
@@ -444,7 +444,7 @@ not a hole in the current authority boundary.
 
 The capture → analysis → MRTR → dispatch spine on this page is live. Only
 `ready-for-review` compilation output is persisted as a content-addressed draft. After
-exact replay the sealer publishes a `technical-compilation-admission-capture/2.0`
+exact replay the sealer publishes a `technical-compilation-admission-capture/3.0`
 document artifact into the Thread. That artifact still grants no execution authority.
 
 Isolated CAD / Modelica / CalculiX composition, bootstrap flags, worker gates, host

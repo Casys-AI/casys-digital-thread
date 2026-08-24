@@ -7,8 +7,9 @@
 
 import {
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
-  type TechnicalProjectSourceAnchor,
   type TechnicalSourceAnalysisCaptureLocator,
+  type TechnicalSourceAttachmentProvenance,
+  type TechnicalSourceClosureProvenance,
 } from "../../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { SourceAnalysisBundle } from "../../../../../domain/compile/source/source-analysis.ts";
 
@@ -47,7 +48,8 @@ export interface PersistedTechnicalSourceAnalysis {
   readonly sourceText: string;
   readonly analysis: SourceAnalysisBundle;
   readonly document: {
-    readonly projectSource: TechnicalProjectSourceAnchor;
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
     readonly source: { readonly id: string };
   };
 }
@@ -58,7 +60,8 @@ export interface ReopenedTechnicalSourceAnalysisLocator {
   readonly analysis: SourceAnalysisBundle;
   readonly document: {
     readonly schemaVersion: typeof TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA;
-    readonly projectSource: TechnicalProjectSourceAnchor;
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
     readonly source: {
       readonly id: string;
       readonly role: TechnicalSourceCaptureProfile["role"];
@@ -108,7 +111,8 @@ export interface TechnicalSourceAnalysisCapture {
     readonly profileId: string;
     readonly sourceId: string;
     readonly sourceText: string;
-    readonly projectSource: TechnicalProjectSourceAnchor;
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
   }): Promise<PersistedTechnicalSourceAnalysis>;
   reopenLocator(
     value: unknown,

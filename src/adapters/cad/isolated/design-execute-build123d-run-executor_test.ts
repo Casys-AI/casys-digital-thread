@@ -583,7 +583,12 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
     basis: compilationBasis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(compilationBasis),
-    sources: [{ sourceText, analysis, analysisFingerprint }],
+    sources: [{
+      sourceText,
+      analysis,
+      analysisFingerprint,
+      closedDependencyCount: 0,
+    }],
     bindings: [
       {
         id: "binding.result",
@@ -741,7 +746,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@2",
+      tool: "compile.seal-admission@3",
       runId: "run.compile.seal",
     },
     inputArtifactIds: [sysmlArtifact.id],
@@ -811,7 +816,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     admissions: {
       read: () =>
         Promise.resolve({
-          schemaVersion: "technical-compilation-admission-capture/2.0",
+          schemaVersion: "technical-compilation-admission-capture/3.0",
           operation: COMPILE_SEAL_ADMISSION_OPERATION,
           trustedRunId: "run.compile.seal",
           decisionId: "decision.compile.seal",
@@ -979,7 +984,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
   const admissions: TechnicalCompilationAdmissionReader = {
     read: () =>
       Promise.resolve({
-        schemaVersion: "technical-compilation-admission-capture/2.0",
+        schemaVersion: "technical-compilation-admission-capture/3.0",
         operation: COMPILE_SEAL_ADMISSION_OPERATION,
         trustedRunId: "run.compile.seal",
         decisionId: "decision.compile.seal",

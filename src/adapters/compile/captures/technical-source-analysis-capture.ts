@@ -49,10 +49,12 @@ import {
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PREFIX,
-  type TechnicalProjectSourceAnchor,
   type TechnicalSourceAnalysisCaptureLocator,
-  validateTechnicalProjectSourceAnchor,
+  type TechnicalSourceAttachmentProvenance,
+  type TechnicalSourceClosureProvenance,
   validateTechnicalSourceAnalysisCaptureLocator,
+  validateTechnicalSourceAttachmentProvenance,
+  validateTechnicalSourceClosureProvenance,
 } from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 
 export {
@@ -174,7 +176,8 @@ export class FixedTechnicalSourceAnalysisProfileRegistry
 export interface TechnicalSourceAnalysisCaptureDocument {
   readonly schemaVersion: typeof TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA;
   readonly kind: typeof TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND;
-  readonly projectSource: TechnicalProjectSourceAnchor;
+  readonly attachment: TechnicalSourceAttachmentProvenance;
+  readonly sourceClosure: TechnicalSourceClosureProvenance;
   readonly profile: {
     readonly id: string;
     readonly version: string;
@@ -247,7 +250,8 @@ export class TechnicalSourceAnalysisCaptureService
     readonly profileId: string;
     readonly sourceId: string;
     readonly sourceText: string;
-    readonly projectSource: TechnicalProjectSourceAnchor;
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
   }): Promise<{
     readonly locator: TechnicalSourceAnalysisCaptureLocator;
     readonly sourceText: string;
@@ -269,11 +273,12 @@ export class TechnicalSourceAnalysisCaptureService
     /** Assigned by the server before this boundary; never derived from a label. */
     readonly sourceId: string;
     readonly sourceText: string;
-    readonly projectSource: TechnicalProjectSourceAnchor;
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
   }): Promise<TechnicalSourceAnalysisCaptureLocator> {
     const input = exactRecord(
       inputValue,
-      ["profileId", "sourceId", "sourceText", "projectSource"],
+      ["profileId", "sourceId", "sourceText", "attachment", "sourceClosure"],
       "$technicalSourceCaptureInput",
     );
     const registration = this.#profiles.requireForCapture(
@@ -287,13 +292,20 @@ export class TechnicalSourceAnalysisCaptureService
       input.sourceId,
       "$technicalSourceCaptureInput.sourceId",
     );
-    const projectSource = validateTechnicalProjectSourceAnchor(
-      input.projectSource,
-      "$technicalSourceCaptureInput.projectSource",
+    const attachment = validateTechnicalSourceAttachmentProvenance(
+      input.attachment,
+      "$technicalSourceCaptureInput.attachment",
     );
-    if (sourceId !== projectSource.fileId) {
+    const sourceClosure = validateTechnicalSourceClosureProvenance(
+      input.sourceClosure,
+      "$technicalSourceCaptureInput.sourceClosure",
+    );
+    if (
+      sourceId !== attachment.fileId ||
+      sourceId !== sourceClosure.root.fileId
+    ) {
       throw new TypeError(
-        "$technicalSourceCaptureInput.sourceId must equal projectSource.fileId.",
+        "$technicalSourceCaptureInput.sourceId must equal the captured attachment fileId and closure root.",
       );
     }
     const sourceText = requireSourceText(
@@ -369,7 +381,8 @@ export class TechnicalSourceAnalysisCaptureService
     const document = await validateTechnicalSourceAnalysisCaptureDocument({
       schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
       kind: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
-      projectSource,
+      attachment,
+      sourceClosure,
       profile: {
         id: profile.id,
         version: profile.version,
@@ -690,7 +703,15 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
 ): TechnicalSourceAnalysisCaptureDocument {
   const root = exactRecord(
     value,
-    ["schemaVersion", "kind", "projectSource", "profile", "source", "analysis"],
+    [
+      "schemaVersion",
+      "kind",
+      "attachment",
+      "sourceClosure",
+      "profile",
+      "source",
+      "analysis",
+    ],
     path,
   );
   literalValue(
@@ -703,9 +724,13 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
     TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
     `${path}.kind`,
   );
-  const projectSource = validateTechnicalProjectSourceAnchor(
-    root.projectSource,
-    `${path}.projectSource`,
+  const attachment = validateTechnicalSourceAttachmentProvenance(
+    root.attachment,
+    `${path}.attachment`,
+  );
+  const sourceClosure = validateTechnicalSourceClosureProvenance(
+    root.sourceClosure,
+    `${path}.sourceClosure`,
   );
 
   const profileInput = exactRecord(
@@ -779,16 +804,19 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
     `${path}.analysis.policy.status`,
   );
   const sourceId = safeId(sourceInput.id, `${path}.source.id`);
-  if (sourceId !== projectSource.fileId) {
+  if (
+    sourceId !== attachment.fileId || sourceId !== sourceClosure.root.fileId
+  ) {
     throw new TypeError(
-      `${path}.source.id must equal projectSource.fileId.`,
+      `${path}.source.id must equal the captured attachment fileId and closure root.`,
     );
   }
 
   return deepFreeze({
     schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
     kind: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
-    projectSource,
+    attachment,
+    sourceClosure,
     profile: {
       id: profile.id,
       version: profile.version,

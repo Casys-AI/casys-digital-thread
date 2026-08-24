@@ -703,7 +703,12 @@ async function harness(): Promise<Harness> {
     schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
     basis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
-    sources: [{ sourceText: admittedSource, analysis, analysisFingerprint }],
+    sources: [{
+      sourceText: admittedSource,
+      analysis,
+      analysisFingerprint,
+      closedDependencyCount: 0,
+    }],
     bindings: [
       {
         id: "binding.result",
@@ -804,7 +809,7 @@ async function harness(): Promise<Harness> {
     }),
   );
   const artifactFingerprint = await sha256Fingerprint({
-    schemaVersion: "technical-compilation-admission-capture/2.0",
+    schemaVersion: "technical-compilation-admission-capture/3.0",
     projectId: "project.box",
     compilation: compiled.fingerprint,
   });
@@ -820,7 +825,7 @@ async function harness(): Promise<Harness> {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/2.0",
+    schemaVersion: "technical-compilation-admission-capture/3.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

@@ -18,8 +18,9 @@ import type {
 } from "../../../ports/out/compile/admission/technical-compilation-source-reader.ts";
 import {
   assertTechnicalCompilationSourcesShareExactWorkspace,
-  validateTechnicalProjectSourceAnchor,
   validateTechnicalSourceAnalysisCaptureLocator,
+  validateTechnicalSourceAttachmentProvenance,
+  validateTechnicalSourceClosureProvenance,
 } from "../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import {
   encodeTechnicalCompilationAdmissionParameters,
@@ -45,6 +46,7 @@ import {
   deriveUniqueTechnicalCompilationBindings,
 } from "../../../../domain/compile/admission/technical-compilation-join.ts";
 import {
+  assembleAttachmentAlignmentGaps,
   assembleTechnicalCompilationJoinGaps,
   assembleThermalMethodSheetCompilationGaps,
 } from "../../../../domain/compile/admission/technical-compilation-preview-review.ts";
@@ -225,7 +227,7 @@ export class PreviewProjectTechnicalCompilation
         try {
           reopened = await this.#sourceReader.read({
             projectId: command.projectId,
-            basis: requestedBasis,
+            basis,
             reference,
             referenceFingerprint: sourceReferenceFingerprints[index],
           });
@@ -286,7 +288,13 @@ export class PreviewProjectTechnicalCompilation
       );
     }
 
-    const joinSources = reopenedSources.map((item) => item.source);
+    const joinSources = reopenedSources.map((item) => ({
+      sourceText: item.source.sourceText,
+      analysis: item.source.analysis,
+      attachmentTarget: item.provenance.attachment.target,
+      attachmentAlignment: item.provenance.attachmentAlignment,
+      closedDependencyCount: item.source.closedDependencyCount,
+    }));
     let profileRequests: ReturnType<typeof deriveTechnicalCompilationProfileRequests>;
     let bindings: ReturnType<typeof deriveUniqueTechnicalCompilationBindings>;
     try {
@@ -311,7 +319,7 @@ export class PreviewProjectTechnicalCompilation
       schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
       basis,
       basisFingerprint,
-      sources: joinSources,
+      sources: reopenedSources.map((item) => item.source),
       bindings,
       profileRequests,
     };
@@ -367,6 +375,7 @@ export class PreviewProjectTechnicalCompilation
         joinSources,
         basis.sysmlAnchor.elements,
       ),
+      ...assembleAttachmentAlignmentGaps(joinSources),
       ...assembleThermalMethodSheetCompilationGaps(
         methodSheet,
         joinSources,
@@ -692,8 +701,10 @@ function parseSourceProvenance(
       "sourceFingerprint",
       "captureFingerprint",
       "analysisFingerprint",
-      "projectSource",
+      "attachment",
+      "sourceClosure",
       "locator",
+      "attachmentAlignment",
     ],
     path,
   );
@@ -732,15 +743,35 @@ function parseSourceProvenance(
       provenance.analysisFingerprint,
       `${path}.analysisFingerprint`,
     ),
-    projectSource: validateTechnicalProjectSourceAnchor(
-      provenance.projectSource,
-      `${path}.projectSource`,
+    attachment: validateTechnicalSourceAttachmentProvenance(
+      provenance.attachment,
+      `${path}.attachment`,
+    ),
+    sourceClosure: validateTechnicalSourceClosureProvenance(
+      provenance.sourceClosure,
+      `${path}.sourceClosure`,
     ),
     locator: validateTechnicalSourceAnalysisCaptureLocator(
       provenance.locator,
       `${path}.locator`,
     ),
+    attachmentAlignment: attachmentAlignment(
+      provenance.attachmentAlignment,
+      `${path}.attachmentAlignment`,
+    ),
   });
+}
+
+function attachmentAlignment(
+  value: unknown,
+  path: string,
+): TechnicalCompilationSourceProvenance["attachmentAlignment"] {
+  if (
+    value !== "exact" && value !== "different-basis" && value !== "target-missing"
+  ) {
+    throw new TypeError(`${path} must be exact, different-basis, or target-missing.`);
+  }
+  return value;
 }
 
 function assertDerivedReferencesResolve(
@@ -860,7 +891,8 @@ function deriveAdmissionParameters(
           sourceFingerprint: reopened.provenance.sourceFingerprint,
           captureFingerprint: reopened.provenance.captureFingerprint,
           analysisFingerprint: reopened.provenance.analysisFingerprint,
-          projectSource: reopened.provenance.projectSource,
+          attachment: reopened.provenance.attachment,
+          sourceClosure: reopened.provenance.sourceClosure,
           locator: reopened.provenance.locator,
         };
       }),

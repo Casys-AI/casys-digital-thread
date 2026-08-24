@@ -135,7 +135,7 @@ reviewed component catalog: `part-definition`, `part-usage`, `attribute-usage`,
 `contains`, `typed_by`, and `represented_by`. They are emitted only from unique verified
 provider identities, an exact active STEP, and—when declared—its hash-matched GLB
 presentation derivative. AttributeUsage nodes are the catalog `attributes[]` of that
-PartDefinition. A sealed `compile.seal-admission@2` may add `cad-lever` nodes and a
+PartDefinition. A sealed `compile.seal-admission@3` may add `cad-lever` nodes and a
 `parameterizes` edge onto an existing AttributeUsage; a missing unique bind adds
 nothing. The STEP remains authoritative. These nodes do not extend the canonical
 ThreadSnapshot entity vocabulary, create causal provenance, or introduce a second graph

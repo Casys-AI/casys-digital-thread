@@ -193,7 +193,7 @@ export interface NativeWorkbenchHandlerOptions {
   architectureSysmlSeals?: ArchitectureSysmlSealCaptureReader;
   architectureSysmlSources?: ArchitectureSysmlSourceAnalysisReader;
   /**
-   * Optional CAS reopen of `compile.seal-admission@2` Thread documents.
+   * Optional CAS reopen of `compile.seal-admission@3` Thread documents.
    * The pure projector never reads this store.
    */
   technicalCompilationAdmissions?: SealedCadLeverAdmissionReader;

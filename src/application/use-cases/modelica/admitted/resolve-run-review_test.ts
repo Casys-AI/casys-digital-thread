@@ -694,7 +694,7 @@ function admissionArtifact(
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@2",
+      tool: "compile.seal-admission@3",
       runId: "run.compile",
     },
     inputArtifactIds: [],

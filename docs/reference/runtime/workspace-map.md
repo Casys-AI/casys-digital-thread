@@ -201,7 +201,7 @@ re-extracts human-approved integer scalar constraints against an exact architect
 basis; decimal literals are rejected before SysON until the provider can round-trip
 `LiteralRational`. The generic `design.write-geometry@1` seals the hashes from a
 separately previewed and human-approved MCP sandbox draft; it never re-executes
-build123d. The isolated sibling is `compile.seal-admission@2` then
+build123d. The isolated sibling is `compile.seal-admission@3` then
 `design.execute-build123d@1`, which publishes a documentary capture and a noncanonical
 draft only. These operations are product-independent but deliberately bounded: they do
 not provide a generic simulator, measurement source, requirement evaluator,

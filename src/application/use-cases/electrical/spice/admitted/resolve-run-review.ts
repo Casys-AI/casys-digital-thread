@@ -2,7 +2,7 @@
  * Public, provider-free resolution of an admitted SPICE run review.
  *
  * The caller names only a project. The server reopens the project's unique
- * current Thread tip, selects its unique fresh compile.seal-admission@2
+ * current Thread tip, selects its unique fresh compile.seal-admission@3
  * document whose compilation target/source is SPICE, then delegates those
  * exact identities to the sealed-admission validator. Classification does not
  * cache execution bytes; the validator rereads. No caller-selected identity
@@ -210,13 +210,13 @@ export class ResolveProjectAdmittedSpiceRunReview
     if (candidates.length === 0) {
       throw resolutionError(
         "admission_not_found",
-        "The current Thread tip has no fresh digital-thread compile.seal-admission@2 SPICE compilation.",
+        "The current Thread tip has no fresh digital-thread compile.seal-admission@3 SPICE compilation.",
       );
     }
     if (candidates.length !== 1) {
       throw resolutionError(
         "admission_ambiguous",
-        `The current Thread tip has ${candidates.length} fresh digital-thread compile.seal-admission@2 SPICE compilations; the server will not choose one.`,
+        `The current Thread tip has ${candidates.length} fresh digital-thread compile.seal-admission@3 SPICE compilations; the server will not choose one.`,
       );
     }
     return candidates[0]!;

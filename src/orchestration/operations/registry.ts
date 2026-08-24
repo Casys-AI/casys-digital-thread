@@ -195,7 +195,7 @@ const OPERATIONS = [
     description:
       "Reopen the exact captured agent-authored architecture SysML source and its " +
       "closed-subset analysis, then seal that document into the evidence thread. " +
-      "No SysON insertion, provider call, or compile.seal-admission@2 authority is granted.",
+      "No SysON insertion, provider call, or compile.seal-admission@3 authority is granted.",
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
@@ -241,7 +241,7 @@ const OPERATIONS = [
   },
   /**
    * Technical-compilation admission seal — trusted boundary
-   * `compile.seal-admission@2`.
+   * `compile.seal-admission@3`.
    *
    * The MRTR proposal seals the exact ready-for-review compilation draft,
    * source analyses, semantic bindings, compiler profiles and SysML basis. The
@@ -362,7 +362,7 @@ const OPERATIONS = [
    * Admitted Modelica closed-subset execution — trusted executor
    * `simulate.run-admitted-modelica@1`.
    *
-   * The signed proposal names one exact `compile.seal-admission@2` Modelica
+   * The signed proposal names one exact `compile.seal-admission@3` Modelica
    * compilation and one server-owned isolation profile. Execution reopens
    * those admitted `.mo` bytes. It is not the pinned kit, not recorded `@2`,
    * and not a caller-supplied `modelicaText`.
@@ -392,7 +392,7 @@ const OPERATIONS = [
    * Admitted SPICE closed-subset operating-point execution — trusted executor
    * `simulate.run-admitted-spice@1`.
    *
-   * The signed proposal names one exact `compile.seal-admission@2` SPICE
+   * The signed proposal names one exact `compile.seal-admission@3` SPICE
    * compilation and one server-owned isolation profile. Execution reopens
    * those admitted `.cir` bytes. It is not mcp-spice, not the LED-driver
    * fiche, and not a caller-supplied netlist, image, path or observation list.

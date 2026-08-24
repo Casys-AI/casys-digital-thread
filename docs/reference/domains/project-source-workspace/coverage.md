@@ -26,17 +26,19 @@ This surface gives an agent a scalable project source tree. It does **not** make
 bytes admitted product evidence.
 
 Vertical 2 is the only public technical-source authority for CAD, Modelica and SPICE:
-`project_technical_source_capture` names `projectId`, `workspaceRevision`, `fileId` and
-`fileRevision`. The server resolves `captureRequest.profileId` and role against the
-registered catalogue, persists a private `technical-source-analysis-capture/2.0`
-document, and returns only `technical-source-analysis-capture-locator/2.0`. Preview,
-MRTR, `compile.seal-admission@2`, admission read and reopen recross the complete
-`projectSource` anchor at that historical workspace revision. Preview and admission
-bundles require one common workspace basis: the same `projectId`, `workspaceRevision`
-and `workspaceEventFingerprint`. An unchanged sibling is recaptured at that common
-revision rather than mixed in. A later sibling or head bump does not invalidate a sealed
-historical locator. Corrections return only through `AgentResource` plus a successor
-file revision.
+`project_technical_source_capture` names `projectId`, `workspaceRevision`, `attachmentId`
+and `attachmentRevision`. The server resolves the active attachment head, root file,
+`captureRequest.profileId` and role against the registered catalogues, persists a
+private `project-source-closure/1.0` plus `technical-source-analysis-capture/3.0`
+document, and returns only `technical-source-analysis-capture-locator/3.0`. Preview,
+MRTR, `compile.seal-admission@3`, admission read and reopen recross the exact attachment
+and closure at that historical workspace revision. Preview and admission bundles require
+one common workspace basis: the same `projectId`, `workspaceRevision` and
+`workspaceEventFingerprint`. A multi-file closure may capture; preview and executable
+admission stay `unresolved` / `source.dependency-lowering-unavailable` until
+language-specific deterministic lowering exists. A later sibling or head bump does not
+invalidate a sealed historical locator. Corrections return only through `AgentResource`
+plus a successor file revision.
 
 ## Current runtime proof
 
@@ -51,7 +53,7 @@ execution.
 | Vertical | Missing capability                                                                                                 | Why it remains separate                                                                                                                                      |
 | -------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 3        | MCS-01 CAD, FEA, Modelica and SPICE sources executed from workspace entries                                        | It is the first real-product proof of the bridge, not a workspace invariant                                                                                  |
-| 3b       | Source closure and admission recross of an attachment revision; MCS-01 proof of product-navigation authoring reads | Authoring heads are projected from exact SysML nodes (MCP + Workbench GET). Context/closure still use Thread evidence only. An authoring edge is not sealed. |
+| 3b       | MCS-01 proof of attachment-rooted capture, closure CAS and product-navigation authoring reads | Authoring heads and `project_product_source_closure` are attachment-rooted. Capture/admission recross the sealed closure. MCS-01 has not yet walked that MCP path. |
 | 4        | Multi-file CAD bundle, placements and hierarchical assembly evidence                                               | Large assemblies must stay modular and bounded; one flat product manifest is rejected                                                                        |
 
 Cross-file language imports, unlimited provider execution, and a mutable Workbench tree

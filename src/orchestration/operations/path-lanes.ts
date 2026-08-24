@@ -32,7 +32,7 @@ const PATH_LANE_BY_OPERATION: Readonly<
   "model.capture-part-definitions@1": fixed("system-model"),
   "model.seal-architecture-sysml@1": fixed("system-model"),
   "model.write-requirements@1": fixed("requirements"),
-  "compile.seal-admission@2": contextual(
+  "compile.seal-admission@3": contextual(
     ["geometry", "physics"],
     "system-model",
   ),

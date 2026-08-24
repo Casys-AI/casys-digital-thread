@@ -36,10 +36,11 @@ These states must remain literal: they are not degraded success.
   0.11.1 inventory does not. It is not executable capability.
 - A successful parser/capture, a `levers` result, or isolated execution is not
   admission, canonical geometry, DFM/FEA input, observation, evaluation, or verdict.
-- CAD `.py` enters through `project_resource_capture` then
-  `project_technical_source_capture` (`profileId` + `sourceId` + full `resourceRef`).
-  Public capture does not accept `sourceText`. Isolated execution still starts from
-  `compile.seal-admission@2`.
+- CAD `.py` enters through `project_resource_capture`, a workspace file + attachment,
+  then `project_technical_source_capture` (`projectId` + `workspaceRevision` +
+  `attachmentId` + `attachmentRevision`). Public capture does not accept `sourceText`,
+  `fileId`, `profileId` or `resourceRef`. Isolated execution still starts from
+  `compile.seal-admission@3`.
 
 ## Candidates and non-goals
 
@@ -60,7 +61,7 @@ no new agent, Workbench, or provider command for it.
 `geometry-part-manifest/1.0` and `geometry-part-draft-capture/1.0` are a separate
 target-only review family. Promotion remains exclusively `design.write-geometry@1`: it
 reopens the human-signed target MRTR and the exact capture-backed
-`compile.seal-admission@2` artifact named by the v2 target-bound stamp, re-crossing
+`compile.seal-admission@3` artifact named by the v2 target-bound stamp, re-crossing
 admitted source bytes/hash plus the unique P1 `represents` PartDefinition, passive
 source analysis and exact reviewed assets. It never reruns Build123d. The resulting
 `geometry-part-capture/1.0` repeats the exact PartDefinition element ID, architecture

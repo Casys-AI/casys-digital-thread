@@ -58,6 +58,7 @@ import { FileEngineeringProjectRunLease } from "../../shared/stores/file-enginee
 import { FileThreadSnapshotStore } from "../../shared/stores/file-thread-snapshot-store.ts";
 import { ApprovedBriefBaselineRunExecutor } from "../../project/approved-brief-baseline-run-executor.ts";
 import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-brief-source-analysis-fixture.ts";
+import { sampleAdmissionSourceWorkspaceFields } from "../../../testing/technical-source-capture-test-support.ts";
 import { ExactThreadCompletionEvidenceValidator } from "../../validators/engineering-project-completion-evidence-validator.ts";
 import { ExactInitialBaselineEvidenceValidator } from "../../project/engineering-project-initial-baseline-evidence-validator.ts";
 import type {
@@ -142,8 +143,7 @@ import { resolveThreadComponentCatalog } from "../../../domain/thread/thread-com
 
 const HEX64 = "a".repeat(64);
 const HEX64_B = "b".repeat(64);
-const EMPTY_SHA256 =
-  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 const AGENT = { kind: "agent" as const, actorId: "mcp:paired-chat@1" };
 const HUMAN = {
   kind: "human" as const,
@@ -303,9 +303,12 @@ class FakeTargetPartAdmissionReader
       sysmlElementKind: "PartDefinition",
       relation: "represents" as const,
     }];
+    const identity = sampleAdmissionSourceWorkspaceFields("source:target-cad", {
+      projectId: record.projectId,
+    });
     return Promise.resolve({
-      schemaVersion: "technical-compilation-admission-capture/2.0",
-      operation: { id: "compile.seal-admission", version: "2" },
+      schemaVersion: "technical-compilation-admission-capture/3.0",
+      operation: { id: "compile.seal-admission", version: "3" },
       trustedRunId: "run:compile-target-admission",
       decisionId: "decision:compile-target-admission",
       sealedAt: "2026-08-08T12:19:00.000Z",
@@ -322,26 +325,9 @@ class FakeTargetPartAdmissionReader
           id: "source:target-cad",
           sourceFingerprint: record.sourceFingerprint,
           analysisFingerprint,
-          projectSource: {
-            projectId: record.projectId,
-            workspaceRevision: 2,
-            workspaceEventFingerprint: {
-              algorithm: "sha256",
-              digest: "e".repeat(64),
-            },
-            fileId: "source:target-cad",
-            fileRevision: 1,
-            fileFingerprint: record.sourceFingerprint,
-          },
-          locator: {
-            schemaVersion: "technical-source-analysis-capture-locator/2.0",
-            kind: "technical-source-analysis-capture-locator",
-            fingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
-            byteCount: 128,
-            casUri: `casys://technical-source-analysis-capture/sha256/${
-              "4".repeat(64)
-            }`,
-          },
+          attachment: identity.attachment,
+          sourceClosure: identity.sourceClosure,
+          locator: identity.locator,
         }],
         bindings,
         compilation: { status: "ready-for-review" },
@@ -438,8 +424,7 @@ Deno.test("the geometry monotony ratchet refuses an incompatible lineage record"
     revision: 9,
   });
   await assertRejects(
-    () =>
-      assertGeometryArtifactNotRemoved(basis, memoryStore([ancestor, basis])),
+    () => assertGeometryArtifactNotRemoved(basis, memoryStore([ancestor, basis])),
     GeometryLineageReviewRequiredError,
     "incompatible record",
   );
@@ -891,9 +876,7 @@ function withArchitectureAttestationDefect(
   const consumption = mutated.consumptions.find((candidate) =>
     candidate.id === consumptionId
   );
-  const uses = mutated.provenance.find((link) =>
-    link.id === `uses-${consumptionId}`
-  );
+  const uses = mutated.provenance.find((link) => link.id === `uses-${consumptionId}`);
   const derived = mutated.provenance.find((link) =>
     link.relation === "derived_from" && link.from.kind === "artifact" &&
     link.from.id === primary.id && link.to.kind === "artifact" &&
@@ -1475,8 +1458,7 @@ async function buildGeoFixture(
       {
         id: "success",
         kind: "success-criterion",
-        statement:
-          "Geometry artifact appears in the ThreadSnapshot and validates.",
+        statement: "Geometry artifact appears in the ThreadSnapshot and validates.",
         sourceRefs: [{ kind: "intent", reference: "conversation:test" }],
         dependsOnItemIds: [],
       },
@@ -1775,8 +1757,7 @@ async function buildGeoFixture(
       architectureFingerprint,
       deterministicJson(architectureCapture),
     );
-    const architectureArtifactId =
-      `architecture-${architectureFingerprint.digest}`;
+    const architectureArtifactId = `architecture-${architectureFingerprint.digest}`;
     const architectureProducer = {
       serverId: opts.architectureArtifactDefect === "producer"
         ? "untrusted-syson"
@@ -2147,13 +2128,10 @@ async function buildGeoFixture(
           components: draft.components,
           assemblyFiles: draft.assemblyFiles.map((file) => ({
             ...file,
-            containerPath:
-              `/exports/geometry-preview-assembly.${opts.legacyDraftPath}`,
+            containerPath: `/exports/geometry-preview-assembly.${opts.legacyDraftPath}`,
           })),
           partMeshes: draft.partMeshes,
-          ...(draft.admission === undefined
-            ? {}
-            : { admission: draft.admission }),
+          ...(draft.admission === undefined ? {} : { admission: draft.admission }),
         };
         const legacyFingerprint = await sha256Fingerprint(legacyDraft);
         await draftCaptures.save(
@@ -2286,16 +2264,14 @@ async function buildGeoFixture(
           id: "decision:geo-params",
           phaseId: "geometry",
           title: "Geometry sealing parameters",
-          question:
-            "Which draft and manifest should be sealed into the thread?",
+          question: "Which draft and manifest should be sealed into the thread?",
         },
         ...(opts.includeParallelSibling
           ? [{
             id: "decision:geo-params-parallel",
             phaseId: "geometry",
             title: "Parallel geometry sealing parameters",
-            question:
-              "Should the same-basis geometry draft be sealed in parallel?",
+            question: "Should the same-basis geometry draft be sealed in parallel?",
           }]
           : []),
       ],
@@ -2495,9 +2471,7 @@ async function queueSuccessiveGeometrySeal(
   fixture: GeoFixture,
   completed: Awaited<ReturnType<DesignWriteGeometryRunExecutor["execute"]>>,
 ): Promise<GeoFixture> {
-  const firstRun = completed.agentRuns.find((run) =>
-    run.id === fixture.queued.runId
-  );
+  const firstRun = completed.agentRuns.find((run) => run.id === fixture.queued.runId);
   assertExists(firstRun?.resultSnapshot);
   const basis = await fixture.snapshots.get(firstRun.resultSnapshot.snapshotId);
   assertExists(basis);
@@ -2592,8 +2566,7 @@ async function queueSuccessiveGeometrySeal(
     phases: [{
       id: "geometry-second",
       name: "Geometry second context",
-      description:
-        "Seal the same binary bytes from a new reviewed draft context.",
+      description: "Seal the same binary bytes from a new reviewed draft context.",
     }],
     workItems: [{
       id: "wi:geometry-second",
@@ -2684,9 +2657,7 @@ async function queueGeometryBundleUpgrade(
   completed: Awaited<ReturnType<DesignWriteGeometryRunExecutor["execute"]>>,
   options: { readonly omitPredecessor?: boolean } = {},
 ): Promise<GeoFixture> {
-  const firstRun = completed.agentRuns.find((run) =>
-    run.id === fixture.queued.runId
-  );
+  const firstRun = completed.agentRuns.find((run) => run.id === fixture.queued.runId);
   assertExists(firstRun?.resultSnapshot);
   const basis = await fixture.snapshots.get(firstRun.resultSnapshot.snapshotId);
   assertExists(basis);
@@ -2838,8 +2809,7 @@ async function queueGeometryBundleUpgrade(
       id: "decision:geometry-bundle-upgrade",
       phaseId: "geometry-bundle-upgrade",
       title: "Geometry bundle v2",
-      question:
-        "Replace the exact current assembly geometry tip with this bundle?",
+      question: "Replace the exact current assembly geometry tip with this bundle?",
     }],
   });
   project = await fixture.commands.proposeDecision(AGENT, {
@@ -3161,8 +3131,7 @@ async function queueGeometryPartSeal(
     expectedRevision: project.revision,
     issuedAt: "2026-08-08T12:20:30.000Z",
     decisionId: `decision:target-geometry-${options.suffix}`,
-    rationale:
-      "The exact target, admitted source, STEP and predecessor were reviewed.",
+    rationale: "The exact target, admitted source, STEP and predecessor were reviewed.",
     inputFingerprint: approval.inputFingerprint,
   });
   const runId = `run:geometry-part-${options.suffix}`;
@@ -3276,8 +3245,7 @@ Deno.test(
       ]> = [
         ["summary", (decision) => {
           const proposal = decision.proposal as Record<string, unknown>;
-          proposal.summary =
-            "Persisted geometry summary changed after approval";
+          proposal.summary = "Persisted geometry summary changed after approval";
         }],
         ["parameters", (decision) => {
           const proposal = decision.proposal as Record<string, unknown>;
@@ -3415,9 +3383,8 @@ Deno.test("geometry sealing refuses a missing passive source analysis before cla
     const before = await fixture.projects.get(PROJECT_ID);
     assertExists(before);
     const analysisDirectory = `${tmpDir}/source-analysis-captures`;
-    const analysisFiles =
-      (await Array.fromAsync(Deno.readDir(analysisDirectory)))
-        .filter((entry) => entry.isFile);
+    const analysisFiles = (await Array.fromAsync(Deno.readDir(analysisDirectory)))
+      .filter((entry) => entry.isFile);
     const cadAnalysisFiles = (await Promise.all(
       analysisFiles.map(async (entry) => ({
         entry,
@@ -3761,9 +3728,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     assertEquals(
       projectedPreviews.filter((item) =>
         item.definitionId === "part-definition:frame"
-      ).map((item) =>
-        item.preview
-      ),
+      ).map((item) => item.preview),
       Array.from({ length: 2 }, () => ({
         provider: "build123d" as const,
         artifactId: definitionGlb.id,
@@ -3773,9 +3738,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       })),
     );
     assertEquals(
-      projectedPreviews.filter((item) =>
-        item.definitionId === "part-definition:bolt"
-      )
+      projectedPreviews.filter((item) => item.definitionId === "part-definition:bolt")
         .map((item) => item.preview),
       Array.from({ length: 2 }, () => ({
         provider: "build123d" as const,
@@ -3808,9 +3771,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       assertExists(unavailable);
       assertEquals(
         unavailable.components.flatMap((component) =>
-          component.bindings.filter((binding) =>
-            binding.provider === "digital-thread"
-          )
+          component.bindings.filter((binding) => binding.provider === "digital-thread")
         ).length,
         0,
       );
@@ -3831,8 +3792,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     const extraLegacyMeshFamilyArtifact = mutableClone(published);
     extraLegacyMeshFamilyArtifact.artifacts.push({
       ...mutableClone(definitionStl),
-      id:
-        `mesh-${geometry.fingerprint.digest}-${definitionStl.fingerprint.digest}`,
+      id: `mesh-${geometry.fingerprint.digest}-${definitionStl.fingerprint.digest}`,
     });
     await assertNoProjectedCad(
       extraLegacyMeshFamilyArtifact,
@@ -3849,8 +3809,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     });
     await assertNoProjectedCad(archivedDefinitionStep, "incomplete");
 
-    const publicationConsumptionId =
-      `consume-${geometry.id}-by-${definitionStep.id}`;
+    const publicationConsumptionId = `consume-${geometry.id}-by-${definitionStep.id}`;
     const missingPublicationConsumption = mutableClone(published);
     missingPublicationConsumption.consumptions = missingPublicationConsumption
       .consumptions.filter((consumption) =>
@@ -3913,12 +3872,9 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       ] as const
     ) {
       const wrongRationale = mutableClone(source);
-      const link = wrongRationale.provenance.find((candidate) =>
-        candidate.id === id
-      );
+      const link = wrongRationale.provenance.find((candidate) => candidate.id === id);
       assertExists(link);
-      link.rationale =
-        "Structurally valid but unverified adversarial rationale.";
+      link.rationale = "Structurally valid but unverified adversarial rationale.";
       await assertNoProjectedCad(wrongRationale, reason);
     }
 
@@ -3953,9 +3909,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     );
     assertEquals(
       missingCaptureCatalog.components.flatMap((component) =>
-        component.bindings.filter((binding) =>
-          binding.provider === "digital-thread"
-        )
+        component.bindings.filter((binding) => binding.provider === "digital-thread")
       ).length,
       0,
     );
@@ -3982,9 +3936,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
     assertEquals(ambiguousCatalog.components.length, catalog.components.length);
     assertEquals(
       ambiguousCatalog.components.flatMap((component) =>
-        component.bindings.filter((binding) =>
-          binding.provider === "digital-thread"
-        )
+        component.bindings.filter((binding) => binding.provider === "digital-thread")
       ).length,
       0,
     );
@@ -4028,9 +3980,7 @@ Deno.test("geometry bundle v2 keeps STEP-only PartDefinitions viewer-free", asyn
       fixture.sysmlSourceAnalysis,
     );
     assertExists(catalog);
-    const parts = catalog.components.filter((component) =>
-      component.kind === "part"
-    );
+    const parts = catalog.components.filter((component) => component.kind === "part");
     assertEquals(parts.length, 4);
     assertEquals(
       parts.every((component) =>
@@ -4493,9 +4443,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact current assembly
     assertExists(upgradedCatalog);
     assertEquals(
       upgradedCatalog.components.some((component) =>
-        component.bindings.some((binding) =>
-          binding.provider === "digital-thread"
-        )
+        component.bindings.some((binding) => binding.provider === "digital-thread")
       ),
       true,
     );
@@ -4512,9 +4460,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact current assembly
       assertExists(unavailable);
       assertEquals(
         unavailable.components.some((component) =>
-          component.bindings.some((binding) =>
-            binding.provider === "digital-thread"
-          )
+          component.bindings.some((binding) => binding.provider === "digital-thread")
         ),
         false,
       );
@@ -4698,10 +4644,8 @@ Deno.test("a third geometry generation refuses a v2 predecessor with broken own 
             nextParams,
             upgradeFixture.geoCaptures,
             {
-              geometrySourceCaptures:
-                upgradeFixture.sourceAnalysis.sourceCaptures,
-              sourceAnalysisCaptures:
-                upgradeFixture.sourceAnalysis.analysisCaptures,
+              geometrySourceCaptures: upgradeFixture.sourceAnalysis.sourceCaptures,
+              sourceAnalysisCaptures: upgradeFixture.sourceAnalysis.analysisCaptures,
             },
           ),
         EngineeringProjectCommandError,
@@ -4723,10 +4667,8 @@ Deno.test("a third geometry generation refuses a v2 predecessor with broken own 
             nextParams,
             upgradeFixture.geoCaptures,
             {
-              geometrySourceCaptures:
-                upgradeFixture.sourceAnalysis.sourceCaptures,
-              sourceAnalysisCaptures:
-                upgradeFixture.sourceAnalysis.analysisCaptures,
+              geometrySourceCaptures: upgradeFixture.sourceAnalysis.sourceCaptures,
+              sourceAnalysisCaptures: upgradeFixture.sourceAnalysis.analysisCaptures,
             },
           ),
         EngineeringProjectCommandError,
@@ -4945,9 +4887,7 @@ Deno.test("geometry bundle v2 refuses non-canonical predecessor binary trace and
       assertEquals(snapshotWrites, 0, defect);
       const unchanged = await upgradeFixture.projects.get(PROJECT_ID);
       assertEquals(
-        unchanged?.agentRuns.find((run) =>
-          run.id === upgradeFixture.queued.runId
-        )
+        unchanged?.agentRuns.find((run) => run.id === upgradeFixture.queued.runId)
           ?.status,
         "queued",
         defect,
@@ -5016,8 +4956,7 @@ for (
         };
         let captureWrites = 0;
         const trackingCaptureStore: GeometryCaptureStore = {
-          uriFor: (fingerprint) =>
-            upgradeFixture.geoCaptures.uriFor(fingerprint),
+          uriFor: (fingerprint) => upgradeFixture.geoCaptures.uriFor(fingerprint),
           read: (fingerprint) => upgradeFixture.geoCaptures.read(fingerprint),
           save: () => {
             captureWrites += 1;
@@ -6051,8 +5990,7 @@ Deno.test("target seal rejects a forged P1 represents binding for another PartDe
       target: "frame",
       suffix: "admission-binding",
     });
-    queued.fixture.admissions.representedTargetOverride =
-      "part-definition:forged";
+    queued.fixture.admissions.representedTargetOverride = "part-definition:forged";
     await assertRejects(
       () =>
         makeExecutor(queued.fixture, tmpDir).execute(

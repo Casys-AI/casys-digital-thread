@@ -1,5 +1,5 @@
 /**
- * Shared fixtures for technical-source V2 locators and project-source anchors.
+ * Shared fixtures for technical-source V3 locators, attachments and closures.
  */
 
 import { FileByteStore } from "../adapters/shared/cas/file-byte-store.ts";
@@ -7,37 +7,91 @@ import {
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PREFIX,
-  type TechnicalProjectSourceAnchor,
   type TechnicalSourceAnalysisCaptureLocator,
-  validateTechnicalProjectSourceAnchor,
+  type TechnicalSourceAttachmentProvenance,
+  type TechnicalSourceClosureProvenance,
   validateTechnicalSourceAnalysisCaptureLocator,
+  validateTechnicalSourceAttachmentProvenance,
+  validateTechnicalSourceClosureProvenance,
 } from "../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import {
+  PROJECT_SOURCE_CLOSURE_LOCATOR_KIND,
+  PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
+  PROJECT_SOURCE_CLOSURE_URI_PREFIX,
+  type ProjectSourceClosureLocator,
+  validateProjectSourceClosureLocator,
+} from "../domain/project-source-workspace/closure.ts";
 import { sampleAgentResourceReference } from "./agent-resource-test-support.ts";
 
-export function sampleTechnicalProjectSourceAnchor(
+export function sampleTechnicalSourceAttachmentProvenance(
   fileId: string,
-  overrides: Partial<TechnicalProjectSourceAnchor> = {},
-): TechnicalProjectSourceAnchor {
-  const digest = overrides.resourceRef?.fingerprint.digest ?? "c".repeat(64);
-  return validateTechnicalProjectSourceAnchor({
+  overrides: Partial<TechnicalSourceAttachmentProvenance> = {},
+): TechnicalSourceAttachmentProvenance {
+  return validateTechnicalSourceAttachmentProvenance({
+    attachmentId: `att.${fileId}`,
+    attachmentRevision: 1,
+    fingerprint: { algorithm: "sha256", digest: "aa".repeat(32) },
+    fileId,
+    role: { id: "design-source", version: 1 },
+    target: { elementId: `def.${fileId}`, elementKind: "PartDefinition" },
+    declaredAgainst: {
+      thread: {
+        snapshotId: "thread.snapshot.1",
+        revision: 1,
+        subjectId: "subject.support",
+      },
+      architecture: {
+        artifactId: "architecture-" + "a".repeat(64),
+        fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+        captureSchema: "architecture-capture/4.0",
+      },
+    },
+    ...overrides,
+  });
+}
+
+export function sampleProjectSourceClosureLocator(
+  digest = "b".repeat(64),
+  byteCount = 256,
+): ProjectSourceClosureLocator {
+  return validateProjectSourceClosureLocator({
+    schemaVersion: PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
+    kind: PROJECT_SOURCE_CLOSURE_LOCATOR_KIND,
+    fingerprint: { algorithm: "sha256", digest },
+    byteCount,
+    casUri: `${PROJECT_SOURCE_CLOSURE_URI_PREFIX}${digest}`,
+  });
+}
+
+export function sampleTechnicalSourceClosureProvenance(
+  fileId: string,
+  overrides: Partial<TechnicalSourceClosureProvenance> = {},
+): TechnicalSourceClosureProvenance {
+  const digest = overrides.root?.resourceRef.fingerprint.digest ?? "c".repeat(64);
+  return validateTechnicalSourceClosureProvenance({
+    locator: sampleProjectSourceClosureLocator(),
+    fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
     projectId: "project.support",
     workspaceRevision: 2,
     workspaceEventFingerprint: {
       algorithm: "sha256",
       digest: "e".repeat(64),
     },
-    fileId,
-    fileRevision: 1,
-    fileFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
-    resourceRef: sampleAgentResourceReference({
-      name: `${fileId}.py`,
-      mimeType: "text/x-python",
-      byteCount: 40,
-      fingerprint: { algorithm: "sha256", digest },
-      uri: `casys://agent-resource-capture/sha256/${digest}`,
-    }),
+    root: {
+      fileId,
+      fileRevision: 1,
+      fileFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+      resourceRef: sampleAgentResourceReference({
+        name: `${fileId}.py`,
+        mimeType: "text/x-python",
+        byteCount: 40,
+        fingerprint: { algorithm: "sha256", digest },
+        uri: `casys://agent-resource-capture/sha256/${digest}`,
+      }),
+    },
     ...overrides,
-    ...(overrides.resourceRef ? { resourceRef: overrides.resourceRef } : {}),
+    ...(overrides.root ? { root: overrides.root } : {}),
+    ...(overrides.locator ? { locator: overrides.locator } : {}),
   });
 }
 
@@ -74,6 +128,12 @@ export function technicalSourceAnalysisCaptureStores(directory: string) {
       uriNamespace: "technical-source-analysis-capture",
       label: "technical source capture document",
     }),
+    closureDocuments: new FileByteStore({
+      kind: "project-source-closure" as const,
+      directory: `${directory}/closures`,
+      uriNamespace: "project-source-closure",
+      label: "project source closure",
+    }),
   };
 }
 
@@ -86,7 +146,8 @@ export function sampleAdmissionSourceWorkspaceFields(
 ) {
   const digest = options.locatorDigest ?? "4".repeat(64);
   return {
-    projectSource: sampleTechnicalProjectSourceAnchor(fileId, {
+    attachment: sampleTechnicalSourceAttachmentProvenance(fileId),
+    sourceClosure: sampleTechnicalSourceClosureProvenance(fileId, {
       ...(options.projectId ? { projectId: options.projectId } : {}),
     }),
     locator: sampleTechnicalSourceAnalysisCaptureLocator(digest),
@@ -98,14 +159,17 @@ export function technicalSourceCaptureInput(input: {
   readonly sourceId: string;
   readonly sourceText: string;
   readonly projectId?: string;
-  readonly projectSource?: TechnicalProjectSourceAnchor;
+  readonly attachment?: TechnicalSourceAttachmentProvenance;
+  readonly sourceClosure?: TechnicalSourceClosureProvenance;
 }) {
   return {
     profileId: input.profileId,
     sourceId: input.sourceId,
     sourceText: input.sourceText,
-    projectSource: input.projectSource ??
-      sampleTechnicalProjectSourceAnchor(input.sourceId, {
+    attachment: input.attachment ??
+      sampleTechnicalSourceAttachmentProvenance(input.sourceId),
+    sourceClosure: input.sourceClosure ??
+      sampleTechnicalSourceClosureProvenance(input.sourceId, {
         ...(input.projectId ? { projectId: input.projectId } : {}),
       }),
   };

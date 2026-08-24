@@ -1,7 +1,7 @@
 /**
  * Closed MRTR grammar for one admitted Modelica closed-subset execution.
  *
- * The signed proposal names one `compile.seal-admission@2` artifact and one
+ * The signed proposal names one `compile.seal-admission@3` artifact and one
  * server-owned isolation contract. It carries no Modelica text, provider
  * capability, executable, or caller-selected runtime. Parsing never grants
  * dispatch: the executor must reopen the admission bytes.

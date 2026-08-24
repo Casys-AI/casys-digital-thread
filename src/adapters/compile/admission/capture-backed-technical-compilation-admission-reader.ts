@@ -229,7 +229,7 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
       try {
         reopened = await this.dependencies.sources.read({
           projectId: request.projectId,
-          basis: request.basis,
+          basis: capture.document.basis,
           reference: captureRef.reference,
           referenceFingerprint: captureRef.referenceFingerprint,
         });
@@ -245,6 +245,16 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
           `admitted source ${expected.id} could not be recrossed from its locator`,
         );
       }
+      if (reopened.provenance.attachmentAlignment !== "exact") {
+        throw new TechnicalCompilationAdmissionReadError(
+          `admitted source ${expected.id} is not exact against the sealed compilation basis`,
+        );
+      }
+      if (reopened.source.closedDependencyCount !== 0) {
+        throw new TechnicalCompilationAdmissionReadError(
+          `admitted source ${expected.id} has no language-specific dependency lowering`,
+        );
+      }
       try {
         assertTechnicalSourceProvenanceIdentitiesEqual(
           {
@@ -258,7 +268,8 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
             sourceFingerprint: expected.sourceFingerprint,
             captureFingerprint: expected.captureFingerprint,
             analysisFingerprint: expected.analysisFingerprint,
-            projectSource: expected.projectSource,
+            attachment: expected.attachment,
+            sourceClosure: expected.sourceClosure,
             locator: expected.locator,
           },
           {
@@ -272,7 +283,8 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
             sourceFingerprint: reopened.provenance.sourceFingerprint,
             captureFingerprint: reopened.provenance.captureFingerprint,
             analysisFingerprint: reopened.provenance.analysisFingerprint,
-            projectSource: reopened.provenance.projectSource,
+            attachment: reopened.provenance.attachment,
+            sourceClosure: reopened.provenance.sourceClosure,
             locator: reopened.provenance.locator,
           } satisfies TechnicalSourceProvenanceIdentity,
           `$admission.sources.${expected.id}`,

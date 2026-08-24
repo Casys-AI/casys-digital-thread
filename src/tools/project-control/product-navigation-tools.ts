@@ -149,8 +149,9 @@ export function registerProjectProductNavigationTools(
     const result = await navigation.sourceClosure({
       projectId: String(args.projectId),
       node: nodeArg(args.node),
-      fileId: String(args.fileId),
-      fileRevision: Number(args.fileRevision),
+      workspaceRevision: Number(args.workspaceRevision),
+      attachmentId: String(args.attachmentId),
+      attachmentRevision: Number(args.attachmentRevision),
     });
     return {
       content: contentFor(result.status, "source closure"),
@@ -325,16 +326,23 @@ const projectProductNavigationContextTool: MCPTool = {
 const projectProductSourceClosureTool: MCPTool = {
   name: "project_product_source_closure",
   description:
-    "Read the technical dependency closure of one source file after it is an exact attachment of a selected SysML node. Name projectId, the semantic node, fileId and fileRevision from context attachments. The server recrosses the current architecture and workspace; a file that is not attached stays unattached. The workspace DAG is not product navigation. Grants none.",
+    "Read the technical dependency closure of one versioned authoring attachment. Name projectId, the semantic node, workspaceRevision, attachmentId and attachmentRevision. PartUsage keeps its usage id and is never reduced to a definition. The server recrosses that exact workspace snapshot; a detached, source-removed or foreign-target attachment stays unattached or unavailable. Grants none. Not admission.",
   inputSchema: {
     type: "object",
     properties: {
       projectId: PROJECT_ID,
       node: NODE_QUERY,
-      fileId: ELEMENT_ID,
-      fileRevision: { type: "integer", minimum: 1 },
+      workspaceRevision: { type: "integer", minimum: 1 },
+      attachmentId: ELEMENT_ID,
+      attachmentRevision: { type: "integer", minimum: 1 },
     },
-    required: ["projectId", "node", "fileId", "fileRevision"],
+    required: [
+      "projectId",
+      "node",
+      "workspaceRevision",
+      "attachmentId",
+      "attachmentRevision",
+    ],
     additionalProperties: false,
   },
   outputSchema: QUERY_OUTPUT,

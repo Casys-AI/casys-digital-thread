@@ -340,7 +340,12 @@ async function harness() {
     schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
     basis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
-    sources: [{ sourceText, analysis, analysisFingerprint }],
+    sources: [{
+      sourceText,
+      analysis,
+      analysisFingerprint,
+      closedDependencyCount: 0,
+    }],
     bindings: [
       {
         id: "binding.model",
@@ -459,7 +464,7 @@ async function harness() {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/2.0",
+    schemaVersion: "technical-compilation-admission-capture/3.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

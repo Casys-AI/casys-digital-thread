@@ -44,7 +44,7 @@ const COMMON = {
 const TECHNICAL_SOURCE_REFERENCE = sampleTechnicalSourceAnalysisCaptureLocator();
 
 const TECHNICAL_SOURCE_CAPTURE_REVIEW = {
-  schemaVersion: "technical-source-capture-review/2.0",
+  schemaVersion: "technical-source-capture-review/3.0",
   reference: TECHNICAL_SOURCE_REFERENCE,
   parser: { status: "passed", profile: "profile.build123d" },
   levers: {
@@ -106,8 +106,8 @@ Deno.test("technical source capture is conditional, exact, and has no project au
   const captureCommand = {
     projectId: "project.drip-tray",
     workspaceRevision: 2,
-    fileId: "source.cad",
-    fileRevision: 1,
+    attachmentId: "att.source.cad",
+    attachmentRevision: 1,
   };
   const result = await app.handler("project_technical_source_capture")(
     captureCommand,
@@ -143,8 +143,8 @@ Deno.test("technical source capture is conditional, exact, and has no project au
   );
   const schema = tool.inputSchema as Record<string, unknown>;
   assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
-    "fileId",
-    "fileRevision",
+    "attachmentId",
+    "attachmentRevision",
     "projectId",
     "workspaceRevision",
   ]);

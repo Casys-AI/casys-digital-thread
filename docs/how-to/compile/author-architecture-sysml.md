@@ -107,7 +107,7 @@ fails. It is not Product Structure and not a SysON model.
 It does **not**:
 
 - insert into SysON
-- reuse `compile.seal-admission@2`
+- reuse `compile.seal-admission@3`
 - accept a renderer `sysml-source-capture/1.0` envelope as agent-authored authority
 
 ## Fail closed

@@ -4,7 +4,11 @@ import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import type { OpenedProductStructure } from "../../ports/out/product-navigation/product-structure-traversal.ts";
 import type { ProductNavigationNode } from "../../ports/in/product-navigation/product-navigation-read-model.ts";
 import type { ProductNavigationEvidenceAttachmentFacts } from "../../ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
-import type { ProjectSourceWorkspaceState } from "../../../domain/project-source-workspace/types.ts";
+import type {
+  ProjectSourceAttachmentRecord,
+  ProjectSourceAttachmentTarget,
+  ProjectSourceWorkspaceState,
+} from "../../../domain/project-source-workspace/types.ts";
 import { sampleAgentResourceReference } from "../../../testing/agent-resource-test-support.ts";
 import { ProjectProductNavigation } from "./project-product-navigation.ts";
 
@@ -133,13 +137,14 @@ Deno.test("product navigation source closure keeps an exact historical dependenc
   }).sourceClosure({
     projectId: PROJECT,
     node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
-    fileId: "source.cad",
-    fileRevision: 1,
+    workspaceRevision: 2,
+    attachmentId: "att-rail",
+    attachmentRevision: 1,
   });
   assertEquals(result.status, "observed");
   assertEquals(
     result.files.map((file) => `${file.fileId}@${file.fileRevision}`),
-    ["source.cad@1", "source.lib@1"],
+    ["source.lib@1", "source.cad@1"],
   );
   assertEquals(result.edges, [{
     from: { fileId: "source.cad", fileRevision: 1 },
@@ -147,12 +152,36 @@ Deno.test("product navigation source closure keeps an exact historical dependenc
   }]);
 });
 
-Deno.test("product navigation source closure refuses a file that is not attached to the node", async () => {
-  const result = await service().sourceClosure({
+Deno.test("product navigation source closure refuses a different-basis attachment without carried-forward inference", async () => {
+  const result = await service({
+    workspace: {
+      load: () => Promise.reject(new Error("must not load head")),
+      loadAtFresh: () => Promise.resolve(workspaceWithHistoricalDependency()),
+    },
+  }).sourceClosure({
     projectId: PROJECT,
     node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
-    fileId: "source.foreign",
-    fileRevision: 1,
+    workspaceRevision: 2,
+    attachmentId: "att-stale",
+    attachmentRevision: 1,
+  });
+  assertEquals(result.status, "unavailable");
+  assertEquals(result.files, []);
+  assertEquals(result.edges, []);
+});
+
+Deno.test("product navigation source closure refuses an attachment that is not attached to the node", async () => {
+  const result = await service({
+    workspace: {
+      load: () => Promise.reject(new Error("must not load head")),
+      loadAtFresh: () => Promise.resolve(workspaceWithHistoricalDependency()),
+    },
+  }).sourceClosure({
+    projectId: PROJECT,
+    node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
+    workspaceRevision: 2,
+    attachmentId: "att-foreign",
+    attachmentRevision: 1,
   });
   assertEquals(result.status, "unattached");
   assertEquals(result.files, []);
@@ -282,7 +311,33 @@ function workspaceWithHistoricalDependency(): ProjectSourceWorkspaceState {
     lastEventFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
     modules: new Map(),
     mutations: new Map(),
-    attachments: new Map(),
+    attachments: new Map([
+      [
+        "att-rail",
+        attachmentRecord("att-rail", {
+          elementId: "usage-left",
+          elementKind: "PartUsage",
+        }),
+      ],
+      [
+        "att-foreign",
+        attachmentRecord("att-foreign", {
+          elementId: "def-system",
+          elementKind: "PartDefinition",
+        }),
+      ],
+      [
+        "att-stale",
+        attachmentRecord("att-stale", {
+          elementId: "usage-left",
+          elementKind: "PartUsage",
+        }, {
+          snapshotId: "thread:other",
+          revision: 9,
+          subjectId: "subject.slider",
+        }),
+      ],
+    ]),
     files: new Map([
       ["source.cad", {
         fileId: "source.cad",
@@ -334,6 +389,44 @@ function workspaceWithHistoricalDependency(): ProjectSourceWorkspaceState {
         ]),
       }],
     ]),
+  };
+}
+
+function attachmentRecord(
+  attachmentId: string,
+  target: ProjectSourceAttachmentTarget,
+  thread: {
+    snapshotId: string;
+    revision: number;
+    subjectId: string;
+  } = {
+    snapshotId: SNAPSHOT,
+    revision: 4,
+    subjectId: "subject.slider",
+  },
+): ProjectSourceAttachmentRecord {
+  return {
+    attachmentId,
+    fileId: "source.cad",
+    headRevision: 1,
+    status: "active",
+    revisions: new Map([[1, {
+      kind: "content",
+      attachmentId,
+      attachmentRevision: 1,
+      fileId: "source.cad",
+      role: { id: "design-source", version: 1 },
+      target,
+      declaredAgainst: {
+        thread,
+        architecture: {
+          artifactId: "architecture-" + "1".repeat(64),
+          fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+          captureSchema: "architecture-capture/4.0",
+        },
+      },
+      fingerprint: { algorithm: "sha256", digest: "c".repeat(64) },
+    }]]),
   };
 }
 

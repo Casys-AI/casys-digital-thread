@@ -1,5 +1,5 @@
 /**
- * BFF-only reopen of sealed compile.seal-admission@2 documents.
+ * BFF-only reopen of sealed compile.seal-admission@3 documents.
  *
  * The thread-workbench projector stays pure. This enricher rereads CAS after
  * projection, paints uniquely parameterized CAD levers, and recrosses exact
@@ -83,7 +83,7 @@ export async function enrichThreadWorkbenchWithTechnicalAdmissions(
     levers.push(...opened.levers);
     unnamed.push(...opened.unnamed);
     attemptedSourceRecross = true;
-    const named = opened.capture.admission.sources[0]?.projectSource;
+    const named = opened.capture.admission.sources[0]?.sourceClosure;
     const workspace = await loadExactWorkspace(
       dependencies.workspace,
       named?.projectId ?? context.projectId,
@@ -100,7 +100,8 @@ export async function enrichThreadWorkbenchWithTechnicalAdmissions(
             role: source.role,
             language: source.language,
             profileId: source.profileId,
-            projectSource: source.projectSource,
+            attachment: source.attachment,
+            sourceClosure: source.sourceClosure,
           })),
           bindings: opened.capture.admission.bindings,
         },

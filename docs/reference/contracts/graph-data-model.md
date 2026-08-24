@@ -90,7 +90,7 @@ catalog. Geometry is optional. They are not promoted back into `ThreadSnapshot`.
 default value. The painted label includes the owning PartDefinition (`Arm · thickness`)
 so two homonymous attributes stay distinct.
 
-`cad-lever` is BFF-only, reopened from a `compile.seal-admission@2` capture. It is
+`cad-lever` is BFF-only, reopened from a `compile.seal-admission@3` capture. It is
 emitted only when that admission uniquely `parameterizes` an AttributeUsage already
 present in the graph. `cad-unnamed-literal` is the constructor-photo hole: a bare
 numeric argument that reaches `result`, hung on the unique `represents` PartDefinition.

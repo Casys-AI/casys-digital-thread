@@ -589,7 +589,7 @@ async function walFixture() {
   let admission = validateBuild123dExecutionAdmission({
     schemaVersion: "build123d-execution-admission/2.0",
     admissionArtifact: {
-      schemaVersion: "technical-compilation-admission-capture/2.0",
+      schemaVersion: "technical-compilation-admission-capture/3.0",
       id: `technical-compilation-admission-${"1".repeat(64)}`,
       fingerprint: hash("1"),
     },

@@ -18,7 +18,15 @@ import {
 } from "../../testing/agent-resource-test-support.ts";
 import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "../cad/source/qualified-build123d-source-analyzer.ts";
 import { FileProjectSourceWorkspaceStore } from "../project-source-workspace/file-project-source-workspace-store.ts";
+import { FixedProjectSourceAttachmentRoleCatalog } from "../project-source-workspace/fixed-project-source-attachment-role-catalog.ts";
 import { ProjectSourceWorkspaceUseCases } from "../../application/use-cases/project-source-workspace/project-source-workspace-use-cases.ts";
+import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import type { OpenedProductStructure } from "../../application/ports/out/product-navigation/product-structure-traversal.ts";
+import {
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+} from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import { TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA } from "../../domain/compile/admission/technical-source-capture-review.ts";
 
 Deno.test("compilation composition shares one admission CAS and keeps preview off the seal path", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-compile-composition-" });
@@ -100,7 +108,7 @@ Deno.test("compilation composition shares one admission CAS and keeps preview of
   }
 });
 
-Deno.test("technical source capture reopens a workspace file revision then uses the existing analyzer", async () => {
+Deno.test("technical source capture reopens a workspace attachment head then uses the existing analyzer", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-compile-resource-ref-" });
   try {
     const snapshots = new FileThreadSnapshotStore(`${root}/snapshots`);
@@ -117,15 +125,52 @@ Deno.test("technical source capture reopens a workspace file revision then uses 
       workspace,
     });
     const projectId = "project.cad";
+    const subjectId = "subject.cad";
+    const snapshotId = "snapshot.1";
+    const architectureId = "architecture-" + "a".repeat(64);
+    const architectureFingerprint = {
+      algorithm: "sha256" as const,
+      digest: "a".repeat(64),
+    };
     const files = new ProjectSourceWorkspaceUseCases({
       projects: {
-        get: (id) => Promise.resolve(id === projectId ? { id } : undefined),
+        get: (id) =>
+          Promise.resolve(
+            id === projectId
+              ? {
+                project: { id: projectId, name: "Cad", subjectId },
+                threadSnapshots: [{
+                  snapshotId,
+                  revision: 1,
+                  subjectId,
+                }],
+              } as unknown as EngineeringProjectSnapshot
+              : undefined,
+          ),
       },
       workspace,
       resources: persisted.reopen,
-      snapshots: { get: () => Promise.resolve(undefined) },
-      traversal: { open: () => Promise.resolve(undefined) },
-      roles: { accept: () => false },
+      snapshots: {
+        get: () =>
+          Promise.resolve({
+            id: snapshotId,
+            revision: 1,
+            subject: { id: subjectId },
+            artifacts: [{
+              id: architectureId,
+              fingerprint: architectureFingerprint,
+            }],
+          } as unknown as ThreadSnapshot),
+      },
+      traversal: {
+        open: () =>
+          Promise.resolve({
+            architectureArtifactId: architectureId,
+            architectureFingerprint,
+            hasElement: () => true,
+          } as unknown as OpenedProductStructure),
+      },
+      roles: new FixedProjectSourceAttachmentRoleCatalog(),
     });
     await files.putModule({
       projectId,
@@ -153,16 +198,36 @@ Deno.test("technical source capture reopens a workspace file revision then uses 
         captureRequest: { profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE },
       },
     });
+    await files.putAttachment({
+      projectId,
+      mutationId: "att-source.cad",
+      expectedWorkspaceRevision: 2,
+      mutation: {
+        kind: "attachment_put",
+        attachmentId: "att.source.cad",
+        fileId: "source.cad",
+        role: { id: "design-source", version: 1 },
+        target: { elementId: "def.cad", elementKind: "PartDefinition" },
+        declaredAgainst: {
+          thread: { snapshotId, revision: 1, subjectId },
+          architecture: {
+            artifactId: architectureId,
+            fingerprint: architectureFingerprint,
+            captureSchema: "architecture-capture/4.0",
+          },
+        },
+      },
+    });
     const review = await foundation.technicalSourceCapture.capture({
       projectId,
-      workspaceRevision: 2,
-      fileId: "source.cad",
-      fileRevision: 1,
+      workspaceRevision: 3,
+      attachmentId: "att.source.cad",
+      attachmentRevision: 1,
     });
-    assertEquals(review.schemaVersion, "technical-source-capture-review/2.0");
+    assertEquals(review.schemaVersion, TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA);
     assertEquals(
       review.reference.schemaVersion,
-      "technical-source-analysis-capture-locator/2.0",
+      TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
     );
     assertEquals(review.parser.status, "passed");
     assertEquals(review.parser.profile, QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE);

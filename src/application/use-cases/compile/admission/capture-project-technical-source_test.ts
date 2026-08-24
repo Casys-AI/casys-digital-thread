@@ -9,10 +9,13 @@ import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "../../../../adapter
 import { SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE } from "../../../../adapters/electrical/spice/circuit-source-analyzer.ts";
 import { QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE } from "../../../../adapters/modelica/source/qualified-source-analyzer.ts";
 import { FileProjectSourceWorkspaceStore } from "../../../../adapters/project-source-workspace/file-project-source-workspace-store.ts";
+import { FileProjectSourceClosureStore } from "../../../../adapters/project-source-workspace/file-project-source-closure-store.ts";
+import { FixedProjectSourceAttachmentRoleCatalog } from "../../../../adapters/project-source-workspace/fixed-project-source-attachment-role-catalog.ts";
 import {
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
   validateTechnicalSourceAnalysisCaptureLocator,
 } from "../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import type { TechnicalCompilationBasis } from "../../../../domain/compile/admission/technical-compilation.ts";
 import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
 import { FileAgentResourceStore } from "../../../../adapters/resource/file-agent-resource-store.ts";
 import { parseAgentResourceEnvelope } from "../../../../domain/resource/agent-resource-envelope.ts";
@@ -21,8 +24,15 @@ import { ReopenAgentResource } from "../../resource/reopen-agent-resource.ts";
 import { ProjectSourceWorkspaceUseCases } from "../../project-source-workspace/project-source-workspace-use-cases.ts";
 import { ProjectTechnicalSourceCaptureError } from "../../../ports/in/compile/admission/project-technical-source-capture.ts";
 import { CaptureProjectTechnicalSource } from "./capture-project-technical-source.ts";
+import type { OpenedProductStructure } from "../../../ports/out/product-navigation/product-structure-traversal.ts";
+import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
+import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 
 const PROJECT = "project.vertical-two";
+const SUBJECT = "subject.vertical-two";
+const SNAPSHOT_ID = "snapshot.1";
+const ARCHITECTURE_ID = "architecture-" + "a".repeat(64);
+const ARCHITECTURE_FP = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 const CAD_SOURCE = [
   "from build123d import Box",
   "length = 20",
@@ -40,14 +50,35 @@ annotation(experiment(StartTime = 0, StopTime = 1, Interval = 0.1, Tolerance = 1
 end CaptureTemperatureTrial;
 `;
 const SPICE_SOURCE = "Vin in 0 5\nRload in 0 1k\n";
-const BASIS = {
-  kind: "thread-snapshot" as const,
-  snapshotId: "snapshot.1",
-  revision: 1,
-  subjectId: "subject.vertical-two",
+const COMPILATION_BASIS: TechnicalCompilationBasis = {
+  thread: {
+    projectId: PROJECT,
+    subjectId: SUBJECT,
+    snapshotId: SNAPSHOT_ID,
+    revision: 1,
+    snapshotFingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
+  },
+  sysmlAnchor: {
+    artifactId: ARCHITECTURE_ID,
+    artifactFingerprint: ARCHITECTURE_FP,
+    captureId: "capture.syson",
+    editingContextId: "editing-context.main",
+    rootElementId: "pkg",
+    rootElementKind: "Package",
+    elements: [{
+      id: "def.cad",
+      kind: "PartDefinition",
+      provenance: {
+        artifactId: ARCHITECTURE_ID,
+        artifactFingerprint: ARCHITECTURE_FP,
+        captureId: "capture.syson",
+      },
+    }],
+  },
+  sysmlAnchorFingerprint: { algorithm: "sha256", digest: "2".repeat(64) },
 };
 
-Deno.test("CAD, Modelica and SPICE captures bind the exact workspace file revision", async () => {
+Deno.test("CAD, Modelica and SPICE captures bind the exact workspace attachment head", async () => {
   await withWorkspace(async (harness) => {
     const cad = await harness.captureFile({
       fileId: "file.cad",
@@ -88,9 +119,9 @@ Deno.test("CAD, Modelica and SPICE captures bind the exact workspace file revisi
   });
 });
 
-Deno.test("capture refuses missing, unknown and role-mismatched profiles plus inactive revisions", async () => {
+Deno.test("public capture refuses free-root file fields and missing attachments", async () => {
   await withWorkspace(async (harness) => {
-    const missing = await assertRejects(
+    const extra = await assertRejects(
       () =>
         harness.capture.capture({
           projectId: PROJECT,
@@ -100,9 +131,25 @@ Deno.test("capture refuses missing, unknown and role-mismatched profiles plus in
         }),
       ProjectTechnicalSourceCaptureError,
     );
-    assertEquals(missing.code, "file_not_found");
+    assertEquals(extra.code, "invalid_request");
 
-    await harness.putFile({
+    const missing = await assertRejects(
+      () =>
+        harness.capture.capture({
+          projectId: PROJECT,
+          workspaceRevision: harness.revision,
+          attachmentId: "att.missing",
+          attachmentRevision: 1,
+        }),
+      ProjectTechnicalSourceCaptureError,
+    );
+    assertEquals(missing.code, "attachment_not_found");
+  });
+});
+
+Deno.test("capture refuses unknown profiles, role mismatch and source-removed attachments", async () => {
+  await withWorkspace(async (harness) => {
+    const unknown = await harness.putAttachedFile({
       fileId: "file.unknown",
       role: "cad-script",
       profileId: "no-such-profile",
@@ -110,19 +157,19 @@ Deno.test("capture refuses missing, unknown and role-mismatched profiles plus in
       mimeType: "text/x-python",
       text: CAD_SOURCE,
     });
-    const unknown = await assertRejects(
+    const unknownCapture = await assertRejects(
       () =>
         harness.capture.capture({
           projectId: PROJECT,
           workspaceRevision: harness.revision,
-          fileId: "file.unknown",
-          fileRevision: 1,
+          attachmentId: unknown.attachmentId,
+          attachmentRevision: unknown.attachmentRevision,
         }),
       ProjectTechnicalSourceCaptureError,
     );
-    assertEquals(unknown.code, "profile_not_registered");
+    assertEquals(unknownCapture.code, "profile_not_registered");
 
-    await harness.putFile({
+    const role = await harness.putAttachedFile({
       fileId: "file.role",
       role: "script",
       profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
@@ -130,17 +177,17 @@ Deno.test("capture refuses missing, unknown and role-mismatched profiles plus in
       mimeType: "text/x-python",
       text: CAD_SOURCE,
     });
-    const role = await assertRejects(
+    const roleCapture = await assertRejects(
       () =>
         harness.capture.capture({
           projectId: PROJECT,
           workspaceRevision: harness.revision,
-          fileId: "file.role",
-          fileRevision: 1,
+          attachmentId: role.attachmentId,
+          attachmentRevision: role.attachmentRevision,
         }),
       ProjectTechnicalSourceCaptureError,
     );
-    assertEquals(role.code, "role_mismatch");
+    assertEquals(roleCapture.code, "role_mismatch");
 
     const seeded = await harness.captureFile({
       fileId: "file.tombstone",
@@ -166,16 +213,16 @@ Deno.test("capture refuses missing, unknown and role-mismatched profiles plus in
         harness.capture.capture({
           projectId: PROJECT,
           workspaceRevision: harness.revision,
-          fileId: "file.tombstone",
-          fileRevision: seeded.fileRevision,
+          attachmentId: seeded.attachmentId,
+          attachmentRevision: seeded.attachmentRevision,
         }),
       ProjectTechnicalSourceCaptureError,
     );
-    assertEquals(tombstone.code, "file_revision_not_active");
+    assertEquals(tombstone.code, "source_removed");
   });
 });
 
-Deno.test("a sibling workspace bump still reopens the historical capture and a successor never substitutes", async () => {
+Deno.test("a later workspace edit does not rewrite a historical capture reopen", async () => {
   await withWorkspace(async (harness) => {
     const original = await harness.captureFile({
       fileId: "file.cad",
@@ -207,21 +254,89 @@ Deno.test("a sibling workspace bump still reopens the historical capture and a s
     const fingerprint = await sha256Fingerprint(original.review.reference);
     const reopened = await harness.reader.read({
       projectId: PROJECT,
-      basis: BASIS,
+      basis: COMPILATION_BASIS,
       reference: original.review.reference,
       referenceFingerprint: fingerprint,
     });
     assertEquals(reopened.source.sourceText.includes("height = 2"), true);
     assertEquals(
-      reopened.provenance.projectSource.workspaceRevision,
+      reopened.provenance.sourceClosure.workspaceRevision,
       historicalRevision,
     );
-    assertEquals(reopened.provenance.projectSource.fileRevision, original.fileRevision);
+    assertEquals(
+      reopened.provenance.sourceClosure.root.fileRevision,
+      original.fileRevision,
+    );
     assertEquals(reopened.source.sourceText.includes("height = 8"), false);
+    assertEquals(reopened.source.closedDependencyCount, 0);
   });
 });
 
-Deno.test("cross-project reuse and V1 locators are rejected", async () => {
+Deno.test("source reader refuses a capture that mixes another file's root-only closure", async () => {
+  await withWorkspace(async (harness) => {
+    const alone = await harness.captureFile({
+      fileId: "file.alone",
+      role: "cad-script",
+      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      name: "alone.py",
+      mimeType: "text/x-python",
+      text: CAD_SOURCE,
+    });
+    const mixed = await harness.captureFile({
+      fileId: "file.cad",
+      role: "cad-script",
+      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      name: "assembly.py",
+      mimeType: "text/x-python",
+      text: CAD_SOURCE,
+    });
+    const aloneCapture = await harness.captures.reopenLocator(
+      alone.review.reference,
+    );
+    const mixedReader = new CaptureBackedTechnicalCompilationSourceReader({
+      captures: {
+        requireCaptureProfile: (profileId) =>
+          harness.captures.requireCaptureProfile(profileId),
+        persist: (input) => harness.captures.persist(input),
+        reopenLocator: async (value) => {
+          const reopened = await harness.captures.reopenLocator(value);
+          if (
+            reopened.locator.casUri !== mixed.review.reference.casUri
+          ) return reopened;
+          return {
+            ...reopened,
+            document: {
+              ...reopened.document,
+              sourceClosure: {
+                ...reopened.document.sourceClosure,
+                locator: aloneCapture.document.sourceClosure.locator,
+                fingerprint: aloneCapture.document.sourceClosure.fingerprint,
+              },
+            },
+          };
+        },
+      },
+      closures: harness.closures,
+      workspace: harness.store,
+      resources: harness.resources,
+      profiles: new FixedTechnicalCompilationProfileCatalogProvider(),
+    });
+    const fingerprint = await sha256Fingerprint(mixed.review.reference);
+    const error = await assertRejects(
+      () =>
+        mixedReader.read({
+          projectId: PROJECT,
+          basis: COMPILATION_BASIS,
+          reference: mixed.review.reference,
+          referenceFingerprint: fingerprint,
+        }),
+      TechnicalCompilationSourceReadError,
+    );
+    assertEquals(error.code, "closure_mismatch");
+  });
+});
+
+Deno.test("cross-project reuse and v2 locators are rejected", async () => {
   await withWorkspace(async (harness) => {
     const captured = await harness.captureFile({
       fileId: "file.cad",
@@ -236,7 +351,7 @@ Deno.test("cross-project reuse and V1 locators are rejected", async () => {
       () =>
         harness.reader.read({
           projectId: "project.foreign",
-          basis: BASIS,
+          basis: COMPILATION_BASIS,
           reference: captured.review.reference,
           referenceFingerprint: fingerprint,
         }),
@@ -247,10 +362,10 @@ Deno.test("cross-project reuse and V1 locators are rejected", async () => {
       () =>
         harness.reader.read({
           projectId: PROJECT,
-          basis: BASIS,
+          basis: COMPILATION_BASIS,
           reference: {
-            schemaVersion: "technical-source-analysis-capture/1.0",
-            kind: "technical-source-analysis",
+            schemaVersion: "technical-source-analysis-capture-locator/2.0",
+            kind: "technical-source-analysis-capture-locator",
             fingerprint: captured.review.reference.fingerprint,
             byteCount: captured.review.reference.byteCount,
             casUri: captured.review.reference.casUri,
@@ -278,13 +393,41 @@ async function withWorkspace(
     const resourceStore = new FileAgentResourceStore(`${directory}/resources`);
     const reopen = new ReopenAgentResource(resourceStore);
     const store = new FileProjectSourceWorkspaceStore(`${directory}/workspace`);
+    const roles = new FixedProjectSourceAttachmentRoleCatalog();
     const workspace = new ProjectSourceWorkspaceUseCases({
-      projects: { get: (id) => Promise.resolve(id === PROJECT ? { id } : undefined) },
+      projects: {
+        get: (id) =>
+          Promise.resolve(
+            id === PROJECT
+              ? {
+                project: { id: PROJECT, name: "P", subjectId: SUBJECT },
+                threadSnapshots: [{
+                  snapshotId: SNAPSHOT_ID,
+                  revision: 1,
+                  subjectId: SUBJECT,
+                }],
+              } as unknown as EngineeringProjectSnapshot
+              : undefined,
+          ),
+      },
       workspace: store,
       resources: reopen,
-      snapshots: { get: () => Promise.resolve(undefined) },
-      traversal: { open: () => Promise.resolve(undefined) },
-      roles: { accept: () => false },
+      snapshots: {
+        get: () =>
+          Promise.resolve({
+            id: SNAPSHOT_ID,
+            revision: 1,
+            subject: { id: SUBJECT },
+            artifacts: [{
+              id: ARCHITECTURE_ID,
+              fingerprint: ARCHITECTURE_FP,
+            }],
+          } as unknown as ThreadSnapshot),
+      },
+      traversal: {
+        open: () => Promise.resolve(openedStructure()),
+      },
+      roles,
     });
     await workspace.putModule({
       projectId: PROJECT,
@@ -297,16 +440,19 @@ async function withWorkspace(
         displayName: "Sources",
       },
     });
-    const captures = createInitialTechnicalSourceAnalysisCaptureService(
-      technicalSourceAnalysisCaptureStores(`${directory}/captures`),
-    );
+    const stores = technicalSourceAnalysisCaptureStores(`${directory}/captures`);
+    const captures = createInitialTechnicalSourceAnalysisCaptureService(stores);
+    const closures = new FileProjectSourceClosureStore(stores.closureDocuments);
     const capture = new CaptureProjectTechnicalSource({
       workspace: store,
       resources: reopen,
       captures,
+      closures,
+      roles,
     });
     const reader = new CaptureBackedTechnicalCompilationSourceReader({
       captures,
+      closures,
       workspace: store,
       resources: reopen,
       profiles: new FixedTechnicalCompilationProfileCatalogProvider(),
@@ -316,6 +462,9 @@ async function withWorkspace(
       workspace,
       store,
       capture,
+      captures,
+      closures,
+      resources: reopen,
       reader,
       async putFile(input) {
         const stored = await resourceStore.save(parseAgentResourceEnvelope({
@@ -350,13 +499,51 @@ async function withWorkspace(
           fileRevision: file.headRevision,
         };
       },
-      async captureFile(input) {
+      async putAttachedFile(input) {
         const put = await this.putFile(input);
+        const attachmentId = `att.${input.fileId}`;
+        const snapshot = await workspace.putAttachment({
+          projectId: PROJECT,
+          mutationId: `att-${input.fileId}-${this.revision + 1}`,
+          expectedWorkspaceRevision: this.revision,
+          mutation: {
+            kind: "attachment_put",
+            attachmentId,
+            fileId: input.fileId,
+            role: { id: "design-source", version: 1 },
+            target: {
+              elementId: `def.${input.fileId}`,
+              elementKind: "PartDefinition",
+            },
+            declaredAgainst: {
+              thread: {
+                snapshotId: SNAPSHOT_ID,
+                revision: 1,
+                subjectId: SUBJECT,
+              },
+              architecture: {
+                artifactId: ARCHITECTURE_ID,
+                fingerprint: ARCHITECTURE_FP,
+                captureSchema: "architecture-capture/4.0",
+              },
+            },
+          },
+        });
+        this.revision = snapshot.workspaceRevision;
+        return {
+          ...put,
+          workspaceRevision: snapshot.workspaceRevision,
+          attachmentId,
+          attachmentRevision: 1,
+        };
+      },
+      async captureFile(input) {
+        const put = await this.putAttachedFile(input);
         const review = await capture.capture({
           projectId: PROJECT,
           workspaceRevision: put.workspaceRevision,
-          fileId: input.fileId,
-          fileRevision: put.fileRevision,
+          attachmentId: put.attachmentId,
+          attachmentRevision: put.attachmentRevision,
         });
         return { ...put, review };
       },
@@ -367,11 +554,28 @@ async function withWorkspace(
   }
 }
 
+function openedStructure(): OpenedProductStructure {
+  return {
+    architectureArtifactId: ARCHITECTURE_ID,
+    architectureFingerprint: ARCHITECTURE_FP,
+    root: () => undefined,
+    childrenOf: () => [],
+    path: () => undefined,
+    locate: () => [],
+    neighborhood: () => ({ siblings: [], children: [] }),
+    hasDefinition: () => false,
+    hasElement: () => true,
+  };
+}
+
 interface WorkspaceHarness {
   revision: number;
   workspace: ProjectSourceWorkspaceUseCases;
   store: FileProjectSourceWorkspaceStore;
   capture: CaptureProjectTechnicalSource;
+  captures: ReturnType<typeof createInitialTechnicalSourceAnalysisCaptureService>;
+  closures: FileProjectSourceClosureStore;
+  resources: ReopenAgentResource;
   reader: CaptureBackedTechnicalCompilationSourceReader;
   putFile(input: {
     fileId: string;
@@ -382,6 +586,20 @@ interface WorkspaceHarness {
     text: string;
     predecessorFileRevision?: number;
   }): Promise<{ workspaceRevision: number; fileRevision: number }>;
+  putAttachedFile(input: {
+    fileId: string;
+    role: string;
+    profileId: string;
+    name: string;
+    mimeType: string;
+    text: string;
+    predecessorFileRevision?: number;
+  }): Promise<{
+    workspaceRevision: number;
+    fileRevision: number;
+    attachmentId: string;
+    attachmentRevision: number;
+  }>;
   captureFile(input: {
     fileId: string;
     role: string;
@@ -393,6 +611,8 @@ interface WorkspaceHarness {
   }): Promise<{
     workspaceRevision: number;
     fileRevision: number;
+    attachmentId: string;
+    attachmentRevision: number;
     review: Awaited<ReturnType<CaptureProjectTechnicalSource["capture"]>>;
   }>;
 }

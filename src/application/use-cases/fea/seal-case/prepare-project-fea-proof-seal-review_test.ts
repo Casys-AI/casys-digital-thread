@@ -440,7 +440,7 @@ function basisSnapshot(
           uri:
             `casys://technical-compilation-admission-capture/sha256/${ADMISSION_DIGEST}`,
           mediaType: "application/json",
-          tool: "compile.seal-admission@2",
+          tool: "compile.seal-admission@3",
         }),
       ]
       : []),

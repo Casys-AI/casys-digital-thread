@@ -1,8 +1,9 @@
 /**
  * Reopens one opaque technical-source locator for the pure compiler.
  *
- * Recrosses the exact project-source workspace snapshot. Captures cannot
- * be reused across projects and cannot be inferred from MIME, path or name.
+ * Recrosses the exact historical workspace snapshot, sealed closure and
+ * attachment named by the capture. Captures cannot be reused across
+ * projects and cannot be inferred from MIME, path or name.
  */
 
 import type {
@@ -12,14 +13,28 @@ import type {
 } from "../../../application/ports/out/compile/admission/technical-compilation-source-reader.ts";
 import type { TechnicalCompilationProfileCatalogProvider } from "../../../application/ports/out/compile/admission/technical-compilation-profile-catalog-provider.ts";
 import type { ProjectSourceWorkspaceEventStore } from "../../../application/ports/out/project-source-workspace/project-source-workspace-event-store.ts";
+import type { ProjectSourceClosureStore } from "../../../application/ports/out/project-source-workspace/project-source-closure-store.ts";
+import {
+  ProjectSourceClosureStoreError,
+} from "../../../application/ports/out/project-source-workspace/project-source-closure-store.ts";
 import type { TechnicalSourceAnalysisCapture } from "../../../application/ports/out/compile/admission/technical-source-analysis-capture.ts";
 import { TechnicalSourceAnalysisCaptureError } from "../../../application/ports/out/compile/admission/technical-source-analysis-capture.ts";
 import {
-  recrossTechnicalSourceWorkspace,
+  assertTechnicalSourceAttachmentProvenanceEqual,
+  assertTechnicalSourceClosureProvenanceEqual,
+  assessAttachmentAgainstCompilationBasis,
+  attachmentProvenanceFrom,
+  recrossTechnicalSourceAuthority,
+  sourceClosureProvenanceFrom,
   TechnicalSourceWorkspaceRecrossError,
   validateTechnicalSourceAnalysisCaptureLocator,
 } from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import {
+  ProjectSourceClosureError,
+  recrossProjectSourceClosure,
+} from "../../../domain/project-source-workspace/closure.ts";
 import { fingerprintSourceAnalysisBundle } from "../../../domain/compile/source/source-analysis.ts";
+import type { TechnicalCompilationBasis } from "../../../domain/compile/admission/technical-compilation.ts";
 import {
   validateTechnicalCompilationProfileCatalog,
 } from "../../../domain/compile/admission/technical-compilation.ts";
@@ -27,7 +42,6 @@ import {
   deepFreeze,
   exactRecord,
   literalValue,
-  positiveInteger,
   safeId,
 } from "../../../domain/kernel/case-validation.ts";
 import {
@@ -55,7 +69,13 @@ export type TechnicalCompilationSourceReadErrorCode =
   | "role_mismatch"
   | "bytes_mismatch"
   | "profile_identity_mismatch"
-  | "catalog_alignment_mismatch";
+  | "catalog_alignment_mismatch"
+  | "attachment_not_found"
+  | "attachment_not_active"
+  | "attachment_revision_not_head"
+  | "attachment_fingerprint_mismatch"
+  | "source_removed"
+  | "closure_mismatch";
 
 export class TechnicalCompilationSourceReadError extends Error {
   constructor(
@@ -70,6 +90,7 @@ export class TechnicalCompilationSourceReadError extends Error {
 
 export interface CaptureBackedTechnicalCompilationSourceReaderDependencies {
   readonly captures: TechnicalSourceAnalysisCapture;
+  readonly closures: ProjectSourceClosureStore;
   readonly workspace: ProjectSourceWorkspaceEventStore;
   readonly resources: ReopenAgentResource;
   readonly profiles: TechnicalCompilationProfileCatalogProvider;
@@ -78,6 +99,7 @@ export interface CaptureBackedTechnicalCompilationSourceReaderDependencies {
 export class CaptureBackedTechnicalCompilationSourceReader
   implements TechnicalCompilationSourceReader {
   readonly #captures: TechnicalSourceAnalysisCapture;
+  readonly #closures: ProjectSourceClosureStore;
   readonly #workspace: ProjectSourceWorkspaceEventStore;
   readonly #resources: ReopenAgentResource;
   readonly #profiles: TechnicalCompilationProfileCatalogProvider;
@@ -86,6 +108,7 @@ export class CaptureBackedTechnicalCompilationSourceReader
     dependencies: CaptureBackedTechnicalCompilationSourceReaderDependencies,
   ) {
     this.#captures = dependencies.captures;
+    this.#closures = dependencies.closures;
     this.#workspace = dependencies.workspace;
     this.#resources = dependencies.resources;
     this.#profiles = dependencies.profiles;
@@ -104,7 +127,7 @@ export class CaptureBackedTechnicalCompilationSourceReader
     } catch (cause) {
       throw readError(
         "locator_invalid",
-        "Technical source capture reference is not an opaque locator/2.0.",
+        "Technical source capture reference is not an opaque locator/3.0.",
         cause,
       );
     }
@@ -128,18 +151,58 @@ export class CaptureBackedTechnicalCompilationSourceReader
       throw mapLocatorReopenError(cause);
     }
 
-    if (reopened.document.projectSource.projectId !== request.projectId) {
+    if (reopened.document.sourceClosure.projectId !== request.projectId) {
       throw readError(
         "project_mismatch",
         "Technical source capture is foreign to the requested project.",
       );
     }
 
+    let sealedClosure;
+    try {
+      sealedClosure = await this.#closures.reopenLocator(
+        reopened.document.sourceClosure.locator,
+      );
+    } catch (cause) {
+      if (
+        cause instanceof ProjectSourceClosureStoreError &&
+        cause.code === "locator_cas_tampered"
+      ) {
+        throw readError("locator_cas_tampered", cause.message, cause);
+      }
+      throw readError(
+        "capture_document_invalid",
+        "The captured project source closure could not be reopened.",
+        cause,
+      );
+    }
+    try {
+      assertTechnicalSourceClosureProvenanceEqual(
+        sourceClosureProvenanceFrom(
+          sealedClosure.locator,
+          sealedClosure.document,
+        ),
+        reopened.document.sourceClosure,
+        "$technicalCompilationSourceRead.sourceClosure",
+      );
+      assertTechnicalSourceAttachmentProvenanceEqual(
+        attachmentProvenanceFrom(sealedClosure.document.attachment),
+        reopened.document.attachment,
+        "$technicalCompilationSourceRead.attachment",
+      );
+    } catch (cause) {
+      throw readError(
+        "closure_mismatch",
+        "Reopened project source closure does not match the capture attachment and closure provenance.",
+        cause,
+      );
+    }
+
     let state;
     try {
       state = await this.#workspace.loadAtFresh(
-        reopened.document.projectSource.projectId,
-        reopened.document.projectSource.workspaceRevision,
+        reopened.document.sourceClosure.projectId,
+        reopened.document.sourceClosure.workspaceRevision,
       );
     } catch (cause) {
       throw readError(
@@ -150,8 +213,10 @@ export class CaptureBackedTechnicalCompilationSourceReader
     }
 
     try {
-      recrossTechnicalSourceWorkspace(state, {
-        ...reopened.document.projectSource,
+      await recrossProjectSourceClosure(state, sealedClosure.document);
+      recrossTechnicalSourceAuthority(state, {
+        attachment: reopened.document.attachment,
+        sourceClosure: reopened.document.sourceClosure,
         profileId: reopened.document.profile.id,
         role: reopened.document.source.role,
       });
@@ -159,10 +224,22 @@ export class CaptureBackedTechnicalCompilationSourceReader
       throw mapRecrossError(cause);
     }
 
+    for (const file of sealedClosure.document.files) {
+      try {
+        await this.#resources.reopenExact(file.resourceRef);
+      } catch (cause) {
+        throw readError(
+          "bytes_mismatch",
+          `Workspace AgentResource bytes could not be reopened for ${file.fileId}@${file.fileRevision}.`,
+          cause,
+        );
+      }
+    }
+
     let resourceText: string;
     try {
       resourceText = (await this.#resources.reopenUtf8Text(
-        reopened.document.projectSource.resourceRef,
+        reopened.document.sourceClosure.root.resourceRef,
         {
           acceptedMimeTypes: acceptedMimeTypesForTechnicalLanguage(
             reopened.document.source.language,
@@ -217,12 +294,17 @@ export class CaptureBackedTechnicalCompilationSourceReader
         "Reopened technical source provenance does not match its captured analysis.",
       );
     }
+    const closedDependencyCount = Math.max(
+      0,
+      sealedClosure.document.files.length - 1,
+    );
     return deepFreeze({
       referenceFingerprint: observedReferenceFingerprint,
       source: {
         sourceText: reopened.sourceText,
         analysis: reopened.analysis,
         analysisFingerprint,
+        closedDependencyCount,
       },
       provenance: {
         profile: {
@@ -234,8 +316,13 @@ export class CaptureBackedTechnicalCompilationSourceReader
         sourceFingerprint,
         captureFingerprint: observedReferenceFingerprint,
         analysisFingerprint,
-        projectSource: reopened.document.projectSource,
+        attachment: reopened.document.attachment,
+        sourceClosure: reopened.document.sourceClosure,
         locator: reopened.locator,
+        attachmentAlignment: assessAttachmentAgainstCompilationBasis(
+          reopened.document.attachment,
+          request.basis,
+        ),
       },
     });
   }
@@ -275,41 +362,26 @@ export class CaptureBackedTechnicalCompilationSourceReader
 }
 
 function parseRequest(
-  value: unknown,
+  value: TechnicalCompilationSourceReadRequest,
 ): TechnicalCompilationSourceReadRequest {
   const request = exactRecord(
     value,
     ["projectId", "basis", "reference", "referenceFingerprint"],
     "$technicalCompilationSourceRead",
   );
-  safeId(request.projectId, "$technicalCompilationSourceRead.projectId");
-  const basis = exactRecord(
-    request.basis,
-    ["kind", "snapshotId", "revision", "subjectId"],
-    "$technicalCompilationSourceRead.basis",
+  const projectId = safeId(
+    request.projectId,
+    "$technicalCompilationSourceRead.projectId",
   );
-  literalValue(
-    basis.kind,
-    "thread-snapshot",
-    "$technicalCompilationSourceRead.basis.kind",
-  );
-  const snapshotId = safeId(
-    basis.snapshotId,
-    "$technicalCompilationSourceRead.basis.snapshotId",
-  );
-  if (snapshotId.toLowerCase() === "latest") {
+  const basis = request.basis as TechnicalCompilationBasis;
+  if (
+    basis?.thread?.snapshotId === undefined ||
+    String(basis.thread.snapshotId).toLowerCase() === "latest"
+  ) {
     throw new TypeError(
-      "Technical compilation source reads require an exact snapshot id.",
+      "Technical compilation source reads require an exact Thread/SysML compilation basis.",
     );
   }
-  positiveInteger(
-    basis.revision,
-    "$technicalCompilationSourceRead.basis.revision",
-  );
-  safeId(
-    basis.subjectId,
-    "$technicalCompilationSourceRead.basis.subjectId",
-  );
   if (
     request.reference === null || typeof request.reference !== "object" ||
     Array.isArray(request.reference) || Object.keys(request.reference).length === 0
@@ -323,8 +395,8 @@ function parseRequest(
     "$technicalCompilationSourceRead.referenceFingerprint",
   );
   return {
-    projectId: request.projectId as string,
-    basis: request.basis as TechnicalCompilationSourceReadRequest["basis"],
+    projectId,
+    basis,
     reference: request.reference as TechnicalCompilationSourceReadRequest["reference"],
     referenceFingerprint,
   };
@@ -368,6 +440,11 @@ function mapRecrossError(cause: unknown): TechnicalCompilationSourceReadError {
       project_mismatch: "project_mismatch",
       workspace_revision_mismatch: "workspace_integrity_failed",
       workspace_event_fingerprint_mismatch: "workspace_event_fingerprint_mismatch",
+      attachment_not_found: "attachment_not_found",
+      attachment_not_active: "attachment_not_active",
+      attachment_revision_not_head: "attachment_revision_not_head",
+      attachment_fingerprint_mismatch: "attachment_fingerprint_mismatch",
+      source_removed: "source_removed",
       file_not_found: "file_revision_not_active",
       file_revision_not_active: "file_revision_not_active",
       file_fingerprint_mismatch: "file_fingerprint_mismatch",
@@ -377,6 +454,15 @@ function mapRecrossError(cause: unknown): TechnicalCompilationSourceReadError {
       role_mismatch: "role_mismatch",
     };
     return readError(mapped[cause.code], cause.message, cause);
+  }
+  if (cause instanceof ProjectSourceClosureError) {
+    return readError(
+      cause.code === "closure_mismatch" || cause.code === "workspace_mismatch"
+        ? "closure_mismatch"
+        : "workspace_integrity_failed",
+      cause.message,
+      cause,
+    );
   }
   return readError(
     "workspace_integrity_failed",

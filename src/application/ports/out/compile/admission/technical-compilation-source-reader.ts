@@ -1,14 +1,15 @@
-import type { TechnicalCompilationSource } from "../../../../../domain/compile/admission/technical-compilation.ts";
+import type { TechnicalCompilationBasis, TechnicalCompilationSource } from "../../../../../domain/compile/admission/technical-compilation.ts";
 import type {
-  TechnicalProjectSourceAnchor,
   TechnicalSourceAnalysisCaptureLocator,
+  TechnicalSourceAttachmentAlignment,
+  TechnicalSourceAttachmentProvenance,
+  TechnicalSourceClosureProvenance,
 } from "../../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../../../../domain/project/engineering-project.ts";
 
 export interface TechnicalCompilationSourceReadRequest {
   readonly projectId: string;
-  readonly basis: EngineeringThreadSnapshotBasis;
+  readonly basis: TechnicalCompilationBasis;
   /** Treated only as a capture-store locator, never as source facts. */
   readonly reference: TechnicalSourceAnalysisCaptureLocator;
   readonly referenceFingerprint: ContentFingerprint;
@@ -39,8 +40,10 @@ export interface TechnicalCompilationSourceProvenance {
   /** Fingerprint of the complete opaque capture locator. */
   readonly captureFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
-  readonly projectSource: TechnicalProjectSourceAnchor;
+  readonly attachment: TechnicalSourceAttachmentProvenance;
+  readonly sourceClosure: TechnicalSourceClosureProvenance;
   readonly locator: TechnicalSourceAnalysisCaptureLocator;
+  readonly attachmentAlignment: TechnicalSourceAttachmentAlignment;
 }
 
 /** Reopens source bytes and parser facts from their immutable captures. */

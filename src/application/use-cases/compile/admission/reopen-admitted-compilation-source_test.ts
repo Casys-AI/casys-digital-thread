@@ -27,8 +27,7 @@ import {
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
 } from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import {
-  sampleTechnicalProjectSourceAnchor,
-  sampleTechnicalSourceAnalysisCaptureLocator,
+  sampleAdmissionSourceWorkspaceFields,
 } from "../../../../testing/technical-source-capture-test-support.ts";
 import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
 import {
@@ -199,7 +198,12 @@ async function harness() {
     schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
     basis,
     basisFingerprint: await fingerprintTechnicalCompilationBasis(basis),
-    sources: [{ sourceText, analysis, analysisFingerprint }],
+    sources: [{
+      sourceText,
+      analysis,
+      analysisFingerprint,
+      closedDependencyCount: 0,
+    }],
     bindings: [
       {
         id: "binding.model",
@@ -285,10 +289,10 @@ async function harness() {
         sourceFingerprint,
         captureFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
         analysisFingerprint,
-        projectSource: sampleTechnicalProjectSourceAnchor(analysis.source.id, {
+        ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
           projectId: "project.ramp",
+          locatorDigest: "4".repeat(64),
         }),
-        locator: sampleTechnicalSourceAnalysisCaptureLocator("4".repeat(64)),
       }],
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -305,12 +309,12 @@ async function harness() {
     }),
   );
   const artifactFingerprint = await sha256Fingerprint({
-    schemaVersion: "technical-compilation-admission-capture/2.0",
+    schemaVersion: "technical-compilation-admission-capture/3.0",
     projectId: "project.ramp",
     compilation: compiled.fingerprint,
   });
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/2.0",
+    schemaVersion: "technical-compilation-admission-capture/3.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

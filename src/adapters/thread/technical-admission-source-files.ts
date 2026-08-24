@@ -8,8 +8,11 @@
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import { fingerprintsEqual } from "../../domain/kernel/deterministic-json.ts";
 import type { TechnicalCompilationAdmissionBinding } from "../../domain/compile/admission/technical-compilation-proposal.ts";
-import type { TechnicalProjectSourceAnchor } from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
-import { recrossTechnicalSourceWorkspace } from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import type {
+  TechnicalSourceAttachmentProvenance,
+  TechnicalSourceClosureProvenance,
+} from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import { recrossTechnicalSourceAuthority } from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { ProjectSourceWorkspaceState } from "../../domain/project-source-workspace/types.ts";
 import { derivedFilePath } from "../../domain/project-source-workspace/validation.ts";
 import type { ThreadSourceFileRecord } from "../../presentation/workbench/thread/source-files.ts";
@@ -25,7 +28,8 @@ export interface TechnicalAdmissionSourceFileFacts {
     readonly role: "cad-script" | "modelica-model" | "spice-circuit";
     readonly language: "python" | "modelica" | "spice";
     readonly profileId: string;
-    readonly projectSource: TechnicalProjectSourceAnchor;
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
   }[];
   readonly bindings: readonly TechnicalCompilationAdmissionBinding[];
 }
@@ -62,8 +66,9 @@ export function recrossTechnicalAdmissionSourceFiles(input: {
   const files: ThreadSourceFileRecord[] = [];
   for (const source of facts.sources) {
     try {
-      const record = recrossTechnicalSourceWorkspace(namedState, {
-        ...source.projectSource,
+      const record = recrossTechnicalSourceAuthority(namedState, {
+        attachment: source.attachment,
+        sourceClosure: source.sourceClosure,
         profileId: source.profileId,
         role: source.role,
       });
@@ -72,7 +77,7 @@ export function recrossTechnicalAdmissionSourceFiles(input: {
         fileRevision: record.fileRevision,
         workspaceRevision: namedState.workspaceRevision,
         workspaceEventFingerprint: fingerprintText(
-          source.projectSource.workspaceEventFingerprint,
+          source.sourceClosure.workspaceEventFingerprint,
         ),
         fileFingerprint: fingerprintText(record.fingerprint),
         resourceFingerprint: fingerprintText(record.resourceRef.fingerprint),
@@ -121,11 +126,11 @@ function sameArchitecture(
 
 function uniqueNamedWorkspace(
   sources: TechnicalAdmissionSourceFileFacts["sources"],
-): TechnicalProjectSourceAnchor | undefined {
-  const first = sources[0]?.projectSource;
+): TechnicalSourceClosureProvenance | undefined {
+  const first = sources[0]?.sourceClosure;
   if (!first) return undefined;
   for (const source of sources) {
-    const item = source.projectSource;
+    const item = source.sourceClosure;
     if (
       item.projectId !== first.projectId ||
       item.workspaceRevision !== first.workspaceRevision ||
@@ -142,7 +147,7 @@ function uniqueNamedWorkspace(
 
 function sameWorkspaceHead(
   state: ProjectSourceWorkspaceState,
-  expected: TechnicalProjectSourceAnchor,
+  expected: TechnicalSourceClosureProvenance,
 ): boolean {
   return state.projectId === expected.projectId &&
     state.workspaceRevision === expected.workspaceRevision &&

@@ -119,6 +119,9 @@ export interface ProductNavigationSourceClosure {
   basis?: ProductNavigationBasis;
   workspaceRevision?: number;
   workspaceEventFingerprint?: string;
+  attachmentId?: string;
+  attachmentRevision?: number;
+  closureFingerprint?: string;
   files: ProductNavigationSourceClosureFile[];
   edges: ProductNavigationSourceClosureEdge[];
 }

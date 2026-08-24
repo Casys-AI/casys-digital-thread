@@ -234,6 +234,7 @@ async function admittedSource(): Promise<{
     sourceText: SOURCE,
     analysis,
     analysisFingerprint: await sha256Fingerprint(analysis),
+    closedDependencyCount: 0,
   };
   const profileFingerprint = { algorithm: "sha256" as const, digest: DIGEST_A };
   const compilationProfile = {

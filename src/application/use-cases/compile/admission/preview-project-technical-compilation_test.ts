@@ -34,7 +34,7 @@ import { TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY } from "../../../../domain/comp
 import { validateModelicaThermalMethodSheet } from "../../../../domain/modelica/thermal-method-sheet.ts";
 import { validThermalMethodSheetPlaceholder } from "../../../../testing/modelica-thermal-method-sheet-fixtures.ts";
 import {
-  sampleTechnicalProjectSourceAnchor,
+  sampleAdmissionSourceWorkspaceFields,
   sampleTechnicalSourceAnalysisCaptureLocator,
 } from "../../../../testing/technical-source-capture-test-support.ts";
 import {
@@ -111,11 +111,11 @@ class FakeSourceReader implements TechnicalCompilationSourceReader {
         ? { algorithm: "sha256" as const, digest: "e".repeat(64) }
         : request.referenceFingerprint,
       analysisFingerprint: this.source.analysisFingerprint,
-      projectSource: sampleTechnicalProjectSourceAnchor(
-        this.source.analysis.source.id,
-        { projectId: request.projectId },
-      ),
+      ...sampleAdmissionSourceWorkspaceFields(this.source.analysis.source.id, {
+        projectId: request.projectId,
+      }),
       locator: request.reference,
+      attachmentAlignment: "exact" as const,
     };
     return Promise.resolve({
       referenceFingerprint: this.mismatchedReference
@@ -189,6 +189,7 @@ async function harness(
   options: {
     readonly photo?: boolean;
     readonly unmatchedAttribute?: boolean;
+    readonly closedDependencies?: number;
   } = {},
 ): Promise<Harness> {
   const sourceText = options.photo
@@ -241,6 +242,7 @@ async function harness(
     sourceText,
     analysis,
     analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+    closedDependencyCount: options.closedDependencies ?? 0,
   };
   const sysmlArtifactFingerprint = {
     algorithm: "sha256" as const,
@@ -687,6 +689,29 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "multi-file closure preview stays unresolved with a literal dependency-lowering gap",
+  async () => {
+    const fixture = await harness({ closedDependencies: 1 });
+    const result = await fixture.service.execute(fixture.command);
+    assertEquals(result.status, "unresolved");
+    assert(
+      result.document.diagnostics.some((diagnostic) =>
+        diagnostic.code === "source.dependency-lowering-unavailable"
+      ),
+    );
+    assertEquals(result.gaps, [{
+      code: "source.dependency-lowering-unavailable",
+      sourceId: "source.cad",
+      closedDependencyCount: 1,
+      recovery: TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.dependencyLowering,
+    }]);
+    assert(!Object.hasOwn(result, "draft"));
+    assert(!Object.hasOwn(result, "decisionParameters"));
+    assertEquals(fixture.draftStore.saves, 0);
+  },
+);
+
 Deno.test("preview fails closed when save receipt or exact CAS reread drifts", async () => {
   const wrongReceipt = await harness();
   wrongReceipt.draftStore.wrongSaveReference = true;
@@ -857,6 +882,7 @@ Deno.test("preview selects the unique SPICE catalogue profile and rejects caller
     sourceText,
     analysis,
     analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+    closedDependencyCount: 0,
   };
   const sysmlProvenance = {
     artifactId: "artifact.sysml",
@@ -1094,11 +1120,13 @@ async function crossDomainMethodSheetPreview(): Promise<{
       sourceText: cadText,
       analysis: cadAnalysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(cadAnalysis),
+      closedDependencyCount: 0,
     },
     [SPICE_LOCATOR.fingerprint.digest]: {
       sourceText: spiceText,
       analysis: spiceAnalysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(spiceAnalysis),
+      closedDependencyCount: 0,
     },
     [MODELICA_LOCATOR.fingerprint.digest]: {
       sourceText: modelicaText,
@@ -1106,6 +1134,7 @@ async function crossDomainMethodSheetPreview(): Promise<{
       analysisFingerprint: await fingerprintSourceAnalysisBundle(
         modelicaAnalysis,
       ),
+      closedDependencyCount: 0,
     },
   };
 
@@ -1254,11 +1283,11 @@ class MappingSourceReader implements TechnicalCompilationSourceReader {
         sourceFingerprint: source.analysis.source.fingerprint,
         captureFingerprint: request.referenceFingerprint,
         analysisFingerprint: source.analysisFingerprint,
-        projectSource: sampleTechnicalProjectSourceAnchor(
-          source.analysis.source.id,
-          { projectId: request.projectId },
-        ),
+        ...sampleAdmissionSourceWorkspaceFields(source.analysis.source.id, {
+          projectId: request.projectId,
+        }),
         locator: request.reference,
+        attachmentAlignment: "exact" as const,
       },
     });
   }

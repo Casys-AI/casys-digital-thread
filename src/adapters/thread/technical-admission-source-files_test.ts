@@ -1,7 +1,12 @@
 import { assertEquals } from "@std/assert";
-import { sampleTechnicalProjectSourceAnchor } from "../../testing/technical-source-capture-test-support.ts";
+import {
+  sampleAdmissionSourceWorkspaceFields,
+} from "../../testing/technical-source-capture-test-support.ts";
 import type { TechnicalCompilationAdmissionBinding } from "../../domain/compile/admission/technical-compilation-proposal.ts";
-import type { TechnicalProjectSourceAnchor } from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import type {
+  TechnicalSourceAttachmentProvenance,
+  TechnicalSourceClosureProvenance,
+} from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type {
   ProjectSourceFileRecord,
   ProjectSourceModule,
@@ -22,10 +27,10 @@ const PROFILE = "build123d-closed-subset-v1";
 Deno.test(
   "recross projects exact source bindings against the named workspace revision",
   () => {
-    const anchor = sampleTechnicalProjectSourceAnchor("source.cad");
-    const workspace = matchingWorkspace(anchor);
+    const identity = sampleAdmissionSourceWorkspaceFields("source.cad");
+    const workspace = matchingWorkspace(identity);
     const files = recrossTechnicalAdmissionSourceFiles({
-      facts: facts(anchor, [
+      facts: facts(identity, [
         binding("represents", "artifact.result", "def-hook", "PartDefinition"),
         binding(
           "parameterizes",
@@ -59,11 +64,11 @@ Deno.test(
 Deno.test(
   "recross fails closed when the current architecture artifact is not the admission basis",
   () => {
-    const anchor = sampleTechnicalProjectSourceAnchor("source.cad");
-    const workspace = matchingWorkspace(anchor);
+    const identity = sampleAdmissionSourceWorkspaceFields("source.cad");
+    const workspace = matchingWorkspace(identity);
     assertEquals(
       recrossTechnicalAdmissionSourceFiles({
-        facts: facts(anchor, []),
+        facts: facts(identity, []),
         currentArchitecture: {
           artifactId: "architecture-other",
           fingerprint: ARCHITECTURE.fingerprint,
@@ -75,7 +80,7 @@ Deno.test(
     );
     assertEquals(
       recrossTechnicalAdmissionSourceFiles({
-        facts: facts(anchor, []),
+        facts: facts(identity, []),
         currentArchitecture: {
           artifactId: ARCHITECTURE.artifactId,
           fingerprint: `sha256:${"9".repeat(64)}`,
@@ -87,7 +92,7 @@ Deno.test(
     );
     assertEquals(
       recrossTechnicalAdmissionSourceFiles({
-        facts: facts(anchor, []),
+        facts: facts(identity, []),
         currentArchitecture: undefined,
         workspaceHead: workspace,
         workspaceAtNamedRevision: workspace,
@@ -100,8 +105,8 @@ Deno.test(
 Deno.test(
   "recross fails closed when the current workspace head is stale relative to the admission",
   () => {
-    const anchor = sampleTechnicalProjectSourceAnchor("source.cad");
-    const named = matchingWorkspace(anchor);
+    const identity = sampleAdmissionSourceWorkspaceFields("source.cad");
+    const named = matchingWorkspace(identity);
     const staleHead: ProjectSourceWorkspaceState = {
       ...named,
       workspaceRevision: 9,
@@ -112,7 +117,7 @@ Deno.test(
     };
     assertEquals(
       recrossTechnicalAdmissionSourceFiles({
-        facts: facts(anchor, []),
+        facts: facts(identity, []),
         currentArchitecture: ARCHITECTURE,
         workspaceHead: staleHead,
         workspaceAtNamedRevision: named,
@@ -125,8 +130,8 @@ Deno.test(
 Deno.test(
   "recross fails closed when the named workspace revision cannot recross the file identity",
   () => {
-    const anchor = sampleTechnicalProjectSourceAnchor("source.cad");
-    const workspace = matchingWorkspace(anchor);
+    const identity = sampleAdmissionSourceWorkspaceFields("source.cad");
+    const workspace = matchingWorkspace(identity);
     const original = workspace.files.get("source.cad")!;
     const originalRevision = original.revisions.get(1);
     if (!originalRevision || originalRevision.kind !== "content") {
@@ -153,7 +158,7 @@ Deno.test(
     };
     assertEquals(
       recrossTechnicalAdmissionSourceFiles({
-        facts: facts(anchor, []),
+        facts: facts(identity, []),
         currentArchitecture: ARCHITECTURE,
         workspaceHead: mismatched,
         workspaceAtNamedRevision: mismatched,
@@ -166,11 +171,11 @@ Deno.test(
 Deno.test(
   "recross fails closed without a workspace or when the admission project is foreign",
   () => {
-    const anchor = sampleTechnicalProjectSourceAnchor("source.cad");
-    const workspace = matchingWorkspace(anchor);
+    const identity = sampleAdmissionSourceWorkspaceFields("source.cad");
+    const workspace = matchingWorkspace(identity);
     assertEquals(
       recrossTechnicalAdmissionSourceFiles({
-        facts: facts(anchor, []),
+        facts: facts(identity, []),
         currentArchitecture: ARCHITECTURE,
         workspaceHead: undefined,
         workspaceAtNamedRevision: workspace,
@@ -179,7 +184,7 @@ Deno.test(
     );
     assertEquals(
       recrossTechnicalAdmissionSourceFiles({
-        facts: facts(anchor, []),
+        facts: facts(identity, []),
         currentArchitecture: ARCHITECTURE,
         workspaceHead: workspace,
         workspaceAtNamedRevision: undefined,
@@ -191,7 +196,10 @@ Deno.test(
 );
 
 function facts(
-  anchor: TechnicalProjectSourceAnchor,
+  identity: {
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
+  },
   bindings: readonly TechnicalCompilationAdmissionBinding[],
 ): TechnicalAdmissionSourceFileFacts {
   return {
@@ -204,11 +212,12 @@ function facts(
       },
     },
     sources: [{
-      id: anchor.fileId,
+      id: identity.sourceClosure.root.fileId,
       role: "cad-script",
       language: "python",
       profileId: PROFILE,
-      projectSource: anchor,
+      attachment: identity.attachment,
+      sourceClosure: identity.sourceClosure,
     }],
     bindings,
   };
@@ -231,8 +240,13 @@ function binding(
 }
 
 function matchingWorkspace(
-  anchor: TechnicalProjectSourceAnchor,
+  identity: {
+    readonly attachment: TechnicalSourceAttachmentProvenance;
+    readonly sourceClosure: TechnicalSourceClosureProvenance;
+  },
 ): ProjectSourceWorkspaceState {
+  const { attachment, sourceClosure } = identity;
+  const root = sourceClosure.root;
   const modules = new Map<string, ProjectSourceModule>([
     ["mod-mech", {
       moduleId: "mod-mech",
@@ -241,31 +255,48 @@ function matchingWorkspace(
     }],
   ]);
   const files = new Map<string, ProjectSourceFileRecord>([
-    [anchor.fileId, {
-      fileId: anchor.fileId,
-      headRevision: anchor.fileRevision,
+    [root.fileId, {
+      fileId: root.fileId,
+      headRevision: root.fileRevision,
       status: "active",
-      revisions: new Map([[anchor.fileRevision, {
+      revisions: new Map([[root.fileRevision, {
         kind: "content",
-        fileId: anchor.fileId,
-        fileRevision: anchor.fileRevision,
-        resourceRef: anchor.resourceRef,
+        fileId: root.fileId,
+        fileRevision: root.fileRevision,
+        resourceRef: root.resourceRef,
         moduleId: "mod-mech",
         logicalName: "hook.py",
         role: "cad-script",
         captureRequest: { profileId: PROFILE },
         dependencies: [],
-        fingerprint: anchor.fileFingerprint,
+        fingerprint: root.fileFingerprint,
       }]]),
     }],
   ]);
   return {
-    projectId: anchor.projectId,
-    workspaceRevision: anchor.workspaceRevision,
-    lastEventFingerprint: anchor.workspaceEventFingerprint,
+    projectId: sourceClosure.projectId,
+    workspaceRevision: sourceClosure.workspaceRevision,
+    lastEventFingerprint: sourceClosure.workspaceEventFingerprint,
     modules,
     files,
-    attachments: new Map(),
+    attachments: new Map([
+      [attachment.attachmentId, {
+        attachmentId: attachment.attachmentId,
+        fileId: attachment.fileId,
+        headRevision: attachment.attachmentRevision,
+        status: "active",
+        revisions: new Map([[attachment.attachmentRevision, {
+          kind: "content",
+          attachmentId: attachment.attachmentId,
+          attachmentRevision: attachment.attachmentRevision,
+          fileId: attachment.fileId,
+          role: attachment.role,
+          target: attachment.target,
+          declaredAgainst: attachment.declaredAgainst,
+          fingerprint: attachment.fingerprint,
+        }]]),
+      }],
+    ]),
     mutations: new Map(),
   };
 }

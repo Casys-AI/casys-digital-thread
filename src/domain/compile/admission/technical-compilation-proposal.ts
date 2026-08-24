@@ -21,6 +21,7 @@ import {
 } from "../../kernel/case-validation.ts";
 import type { EngineeringDecisionProposalParameter } from "../../project/engineering-project.ts";
 import { AGENT_RESOURCE_CAPTURE_SCHEMA } from "../../resource/agent-resource-envelope.ts";
+import { PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA } from "../../project-source-workspace/types.ts";
 import type {
   TechnicalBindingRelation,
   TechnicalCompilationProfile,
@@ -28,28 +29,32 @@ import type {
 } from "./technical-compilation.ts";
 import {
   assertTechnicalCompilationSourcesShareExactWorkspace,
+  PROJECT_SOURCE_CLOSURE_LOCATOR_KIND,
+  PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
-  type TechnicalProjectSourceAnchor,
   type TechnicalSourceAnalysisCaptureLocator,
-  validateTechnicalProjectSourceAnchor,
+  type TechnicalSourceAttachmentProvenance,
+  type TechnicalSourceClosureProvenance,
   validateTechnicalSourceAnalysisCaptureLocator,
+  validateTechnicalSourceAttachmentProvenance,
+  validateTechnicalSourceClosureProvenance,
 } from "./technical-source-analysis-capture-locator.ts";
 
 /** Human-reviewed operation identity. It confers no execution authority. */
 export const COMPILE_SEAL_ADMISSION_OPERATION = {
   id: "compile.seal-admission",
-  version: "2",
+  version: "3",
 } as const;
 
 export const COMPILE_SEAL_ADMISSION_PRODUCER_TOOL =
   `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}` as const;
 
 export const TECHNICAL_COMPILATION_ADMISSION_SCHEMA =
-  "technical-compilation-admission/2.0" as const;
+  "technical-compilation-admission/3.0" as const;
 
 export const TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA =
-  "technical-compilation-admission-capture/2.0" as const;
+  "technical-compilation-admission-capture/3.0" as const;
 
 export const TECHNICAL_COMPILATION_ADMISSION_LIMITS = {
   maxSources: 32,
@@ -73,7 +78,8 @@ export interface TechnicalCompilationAdmissionSource {
   readonly sourceFingerprint: ContentFingerprint;
   readonly captureFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
-  readonly projectSource: TechnicalProjectSourceAnchor;
+  readonly attachment: TechnicalSourceAttachmentProvenance;
+  readonly sourceClosure: TechnicalSourceClosureProvenance;
   readonly locator: TechnicalSourceAnalysisCaptureLocator;
 }
 
@@ -172,7 +178,7 @@ const TARGET_SOURCE_CONTRACT: Readonly<
 };
 
 const FIXED_PARAMETER_COUNT = 24;
-const SOURCE_PARAMETER_COUNT = 29;
+const SOURCE_PARAMETER_COUNT = 49;
 const BINDING_PARAMETER_COUNT = 6;
 const PROFILE_REQUEST_FIXED_PARAMETER_COUNT = 5;
 const MAX_PARAMETER_COUNT = FIXED_PARAMETER_COUNT +
@@ -381,63 +387,8 @@ export function parseTechnicalCompilationAdmissionParameters(
         values,
         `compile.admission.sources.${index}.analysisSha256`,
       ),
-      projectSource: {
-        projectId: requireId(
-          values,
-          `compile.admission.sources.${index}.projectSource.projectId`,
-        ),
-        workspaceRevision: requirePositiveInteger(
-          values,
-          `compile.admission.sources.${index}.projectSource.workspaceRevision`,
-        ),
-        workspaceEventFingerprint: requireFingerprint(
-          values,
-          `compile.admission.sources.${index}.projectSource.workspaceEventSha256`,
-        ),
-        fileId: requireId(
-          values,
-          `compile.admission.sources.${index}.projectSource.fileId`,
-        ),
-        fileRevision: requirePositiveInteger(
-          values,
-          `compile.admission.sources.${index}.projectSource.fileRevision`,
-        ),
-        fileFingerprint: requireFingerprint(
-          values,
-          `compile.admission.sources.${index}.projectSource.fileSha256`,
-        ),
-        resourceRef: {
-          schemaVersion: requireLiteralString(
-            values,
-            `compile.admission.sources.${index}.projectSource.resource.schemaVersion`,
-            AGENT_RESOURCE_CAPTURE_SCHEMA,
-          ),
-          uri: requireText(
-            values,
-            `compile.admission.sources.${index}.projectSource.resource.uri`,
-          ),
-          name: requireText(
-            values,
-            `compile.admission.sources.${index}.projectSource.resource.name`,
-          ),
-          mimeType: requireText(
-            values,
-            `compile.admission.sources.${index}.projectSource.resource.mimeType`,
-          ),
-          representation: requireResourceRepresentation(
-            values,
-            `compile.admission.sources.${index}.projectSource.resource.representation`,
-          ),
-          byteCount: requirePositiveInteger(
-            values,
-            `compile.admission.sources.${index}.projectSource.resource.byteCount`,
-          ),
-          fingerprint: requireFingerprint(
-            values,
-            `compile.admission.sources.${index}.projectSource.resource.sha256`,
-          ),
-        },
-      },
+      attachment: parseAdmissionAttachment(values, index),
+      sourceClosure: parseAdmissionSourceClosure(values, index),
       locator: {
         schemaVersion: requireLiteralString(
           values,
@@ -653,23 +604,28 @@ function validateAdmission(
         "sourceFingerprint",
         "captureFingerprint",
         "analysisFingerprint",
-        "projectSource",
+        "attachment",
+        "sourceClosure",
         "locator",
       ],
       `${path}.sources[${index}]`,
     );
-    const projectSource = validateTechnicalProjectSourceAnchor(
-      source.projectSource,
-      `${path}.sources[${index}].projectSource`,
+    const attachment = validateTechnicalSourceAttachmentProvenance(
+      source.attachment,
+      `${path}.sources[${index}].attachment`,
+    );
+    const sourceClosure = validateTechnicalSourceClosureProvenance(
+      source.sourceClosure,
+      `${path}.sources[${index}].sourceClosure`,
     );
     const locator = validateTechnicalSourceAnalysisCaptureLocator(
       source.locator,
       `${path}.sources[${index}].locator`,
     );
     const id = safeId(source.id, `${path}.sources[${index}].id`);
-    if (id !== projectSource.fileId) {
+    if (id !== sourceClosure.root.fileId || id !== attachment.fileId) {
       throw new TypeError(
-        `${path}.sources[${index}].id must equal projectSource.fileId.`,
+        `${path}.sources[${index}].id must equal the captured attachment fileId and closure root.`,
       );
     }
     return {
@@ -710,7 +666,8 @@ function validateAdmission(
         source.analysisFingerprint,
         `${path}.sources[${index}].analysisFingerprint`,
       ),
-      projectSource,
+      attachment,
+      sourceClosure,
       locator,
     };
   }).sort(compareSources);
@@ -1147,71 +1104,8 @@ function parameterSpecs(admission: TechnicalCompilationAdmission): ParameterSpec
       `Source ${index} analysis SHA-256`,
       source.analysisFingerprint.digest,
     );
-    p(
-      `compile.admission.sources.${index}.projectSource.projectId`,
-      `Source ${index} project ID`,
-      source.projectSource.projectId,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.workspaceRevision`,
-      `Source ${index} workspace revision`,
-      source.projectSource.workspaceRevision,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.workspaceEventSha256`,
-      `Source ${index} workspace event SHA-256`,
-      source.projectSource.workspaceEventFingerprint.digest,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.fileId`,
-      `Source ${index} file ID`,
-      source.projectSource.fileId,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.fileRevision`,
-      `Source ${index} file revision`,
-      source.projectSource.fileRevision,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.fileSha256`,
-      `Source ${index} file SHA-256`,
-      source.projectSource.fileFingerprint.digest,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.resource.schemaVersion`,
-      `Source ${index} resource schema version`,
-      source.projectSource.resourceRef.schemaVersion,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.resource.uri`,
-      `Source ${index} resource URI`,
-      source.projectSource.resourceRef.uri,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.resource.name`,
-      `Source ${index} resource name`,
-      source.projectSource.resourceRef.name,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.resource.mimeType`,
-      `Source ${index} resource MIME type`,
-      source.projectSource.resourceRef.mimeType,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.resource.representation`,
-      `Source ${index} resource representation`,
-      source.projectSource.resourceRef.representation,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.resource.byteCount`,
-      `Source ${index} resource byte count`,
-      source.projectSource.resourceRef.byteCount,
-    );
-    p(
-      `compile.admission.sources.${index}.projectSource.resource.sha256`,
-      `Source ${index} resource SHA-256`,
-      source.projectSource.resourceRef.fingerprint.digest,
-    );
+    encodeAdmissionAttachment(p, index, source.attachment);
+    encodeAdmissionSourceClosure(p, index, source.sourceClosure);
     p(
       `compile.admission.sources.${index}.locator.schemaVersion`,
       `Source ${index} locator schema version`,
@@ -1380,6 +1274,371 @@ function requireLabel(value: unknown, path: string): string {
   ) {
     throw new TypeError(
       `${path} must be a non-empty label of at most 128 characters without edge whitespace.`,
+    );
+  }
+  return value;
+}
+
+function encodeAdmissionAttachment(
+  p: (key: string, label: string, value: ParameterValue) => void,
+  index: number,
+  attachment: TechnicalSourceAttachmentProvenance,
+): void {
+  p(
+    `compile.admission.sources.${index}.attachment.attachmentId`,
+    `Source ${index} attachment ID`,
+    attachment.attachmentId,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.attachmentRevision`,
+    `Source ${index} attachment revision`,
+    attachment.attachmentRevision,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.predecessorAttachmentRevision`,
+    `Source ${index} attachment predecessor revision`,
+    attachment.predecessorAttachmentRevision ?? 0,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.sha256`,
+    `Source ${index} attachment SHA-256`,
+    attachment.fingerprint.digest,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.roleId`,
+    `Source ${index} attachment role ID`,
+    attachment.role.id,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.roleVersion`,
+    `Source ${index} attachment role version`,
+    attachment.role.version,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.targetElementId`,
+    `Source ${index} attachment target element ID`,
+    attachment.target.elementId,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.targetElementKind`,
+    `Source ${index} attachment target element kind`,
+    attachment.target.elementKind,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.declaredAgainst.thread.snapshotId`,
+    `Source ${index} attachment Thread snapshot ID`,
+    attachment.declaredAgainst.thread.snapshotId,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.declaredAgainst.thread.revision`,
+    `Source ${index} attachment Thread revision`,
+    attachment.declaredAgainst.thread.revision,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.declaredAgainst.thread.subjectId`,
+    `Source ${index} attachment Thread subject ID`,
+    attachment.declaredAgainst.thread.subjectId,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.declaredAgainst.architecture.artifactId`,
+    `Source ${index} attachment architecture artifact ID`,
+    attachment.declaredAgainst.architecture.artifactId,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.declaredAgainst.architecture.artifactSha256`,
+    `Source ${index} attachment architecture SHA-256`,
+    attachment.declaredAgainst.architecture.fingerprint.digest,
+  );
+  p(
+    `compile.admission.sources.${index}.attachment.declaredAgainst.architecture.captureSchema`,
+    `Source ${index} attachment architecture capture schema`,
+    attachment.declaredAgainst.architecture.captureSchema,
+  );
+}
+
+function encodeAdmissionSourceClosure(
+  p: (key: string, label: string, value: ParameterValue) => void,
+  index: number,
+  sourceClosure: TechnicalSourceClosureProvenance,
+): void {
+  p(
+    `compile.admission.sources.${index}.sourceClosure.locator.schemaVersion`,
+    `Source ${index} closure locator schema version`,
+    sourceClosure.locator.schemaVersion,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.locator.kind`,
+    `Source ${index} closure locator kind`,
+    sourceClosure.locator.kind,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.locator.sha256`,
+    `Source ${index} closure locator SHA-256`,
+    sourceClosure.locator.fingerprint.digest,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.locator.byteCount`,
+    `Source ${index} closure locator byte count`,
+    sourceClosure.locator.byteCount,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.locator.casUri`,
+    `Source ${index} closure locator CAS URI`,
+    sourceClosure.locator.casUri,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.sha256`,
+    `Source ${index} closure SHA-256`,
+    sourceClosure.fingerprint.digest,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.projectId`,
+    `Source ${index} project ID`,
+    sourceClosure.projectId,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.workspaceRevision`,
+    `Source ${index} workspace revision`,
+    sourceClosure.workspaceRevision,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.workspaceEventSha256`,
+    `Source ${index} workspace event SHA-256`,
+    sourceClosure.workspaceEventFingerprint.digest,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.fileId`,
+    `Source ${index} root file ID`,
+    sourceClosure.root.fileId,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.fileRevision`,
+    `Source ${index} root file revision`,
+    sourceClosure.root.fileRevision,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.fileSha256`,
+    `Source ${index} root file SHA-256`,
+    sourceClosure.root.fileFingerprint.digest,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.resource.schemaVersion`,
+    `Source ${index} root resource schema version`,
+    sourceClosure.root.resourceRef.schemaVersion,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.resource.uri`,
+    `Source ${index} root resource URI`,
+    sourceClosure.root.resourceRef.uri,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.resource.name`,
+    `Source ${index} root resource name`,
+    sourceClosure.root.resourceRef.name,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.resource.mimeType`,
+    `Source ${index} root resource MIME type`,
+    sourceClosure.root.resourceRef.mimeType,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.resource.representation`,
+    `Source ${index} root resource representation`,
+    sourceClosure.root.resourceRef.representation,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.resource.byteCount`,
+    `Source ${index} root resource byte count`,
+    sourceClosure.root.resourceRef.byteCount,
+  );
+  p(
+    `compile.admission.sources.${index}.sourceClosure.root.resource.sha256`,
+    `Source ${index} root resource SHA-256`,
+    sourceClosure.root.resourceRef.fingerprint.digest,
+  );
+}
+
+function parseAdmissionAttachment(
+  values: ReadonlyMap<string, ParameterValue>,
+  index: number,
+): TechnicalSourceAttachmentProvenance {
+  const predecessor = requireNonNegativeInteger(
+    values,
+    `compile.admission.sources.${index}.attachment.predecessorAttachmentRevision`,
+  );
+  return validateTechnicalSourceAttachmentProvenance({
+    attachmentId: requireId(
+      values,
+      `compile.admission.sources.${index}.attachment.attachmentId`,
+    ),
+    attachmentRevision: requirePositiveInteger(
+      values,
+      `compile.admission.sources.${index}.attachment.attachmentRevision`,
+    ),
+    ...(predecessor === 0 ? {} : { predecessorAttachmentRevision: predecessor }),
+    fingerprint: requireFingerprint(
+      values,
+      `compile.admission.sources.${index}.attachment.sha256`,
+    ),
+    fileId: requireId(
+      values,
+      `compile.admission.sources.${index}.sourceClosure.root.fileId`,
+    ),
+    role: {
+      id: requireId(
+        values,
+        `compile.admission.sources.${index}.attachment.roleId`,
+      ),
+      version: requirePositiveInteger(
+        values,
+        `compile.admission.sources.${index}.attachment.roleVersion`,
+      ),
+    },
+    target: {
+      elementId: requireId(
+        values,
+        `compile.admission.sources.${index}.attachment.targetElementId`,
+      ),
+      elementKind: requireAttachmentElementKind(
+        values,
+        `compile.admission.sources.${index}.attachment.targetElementKind`,
+      ),
+    },
+    declaredAgainst: {
+      thread: {
+        snapshotId: requireExactSnapshotId(
+          values,
+          `compile.admission.sources.${index}.attachment.declaredAgainst.thread.snapshotId`,
+        ),
+        revision: requirePositiveInteger(
+          values,
+          `compile.admission.sources.${index}.attachment.declaredAgainst.thread.revision`,
+        ),
+        subjectId: requireId(
+          values,
+          `compile.admission.sources.${index}.attachment.declaredAgainst.thread.subjectId`,
+        ),
+      },
+      architecture: {
+        artifactId: requireId(
+          values,
+          `compile.admission.sources.${index}.attachment.declaredAgainst.architecture.artifactId`,
+        ),
+        fingerprint: requireFingerprint(
+          values,
+          `compile.admission.sources.${index}.attachment.declaredAgainst.architecture.artifactSha256`,
+        ),
+        captureSchema: requireLiteralString(
+          values,
+          `compile.admission.sources.${index}.attachment.declaredAgainst.architecture.captureSchema`,
+          PROJECT_SOURCE_ATTACHMENT_CAPTURE_SCHEMA,
+        ),
+      },
+    },
+  });
+}
+
+function parseAdmissionSourceClosure(
+  values: ReadonlyMap<string, ParameterValue>,
+  index: number,
+): TechnicalSourceClosureProvenance {
+  return validateTechnicalSourceClosureProvenance({
+    locator: {
+      schemaVersion: requireLiteralString(
+        values,
+        `compile.admission.sources.${index}.sourceClosure.locator.schemaVersion`,
+        PROJECT_SOURCE_CLOSURE_LOCATOR_SCHEMA,
+      ),
+      kind: requireLiteralString(
+        values,
+        `compile.admission.sources.${index}.sourceClosure.locator.kind`,
+        PROJECT_SOURCE_CLOSURE_LOCATOR_KIND,
+      ),
+      fingerprint: requireFingerprint(
+        values,
+        `compile.admission.sources.${index}.sourceClosure.locator.sha256`,
+      ),
+      byteCount: requireNonNegativeInteger(
+        values,
+        `compile.admission.sources.${index}.sourceClosure.locator.byteCount`,
+      ),
+      casUri: requireText(
+        values,
+        `compile.admission.sources.${index}.sourceClosure.locator.casUri`,
+      ),
+    },
+    fingerprint: requireFingerprint(
+      values,
+      `compile.admission.sources.${index}.sourceClosure.sha256`,
+    ),
+    projectId: requireId(
+      values,
+      `compile.admission.sources.${index}.sourceClosure.projectId`,
+    ),
+    workspaceRevision: requirePositiveInteger(
+      values,
+      `compile.admission.sources.${index}.sourceClosure.workspaceRevision`,
+    ),
+    workspaceEventFingerprint: requireFingerprint(
+      values,
+      `compile.admission.sources.${index}.sourceClosure.workspaceEventSha256`,
+    ),
+    root: {
+      fileId: requireId(
+        values,
+        `compile.admission.sources.${index}.sourceClosure.root.fileId`,
+      ),
+      fileRevision: requirePositiveInteger(
+        values,
+        `compile.admission.sources.${index}.sourceClosure.root.fileRevision`,
+      ),
+      fileFingerprint: requireFingerprint(
+        values,
+        `compile.admission.sources.${index}.sourceClosure.root.fileSha256`,
+      ),
+      resourceRef: {
+        schemaVersion: requireLiteralString(
+          values,
+          `compile.admission.sources.${index}.sourceClosure.root.resource.schemaVersion`,
+          AGENT_RESOURCE_CAPTURE_SCHEMA,
+        ),
+        uri: requireText(
+          values,
+          `compile.admission.sources.${index}.sourceClosure.root.resource.uri`,
+        ),
+        name: requireText(
+          values,
+          `compile.admission.sources.${index}.sourceClosure.root.resource.name`,
+        ),
+        mimeType: requireText(
+          values,
+          `compile.admission.sources.${index}.sourceClosure.root.resource.mimeType`,
+        ),
+        representation: requireResourceRepresentation(
+          values,
+          `compile.admission.sources.${index}.sourceClosure.root.resource.representation`,
+        ),
+        byteCount: requirePositiveInteger(
+          values,
+          `compile.admission.sources.${index}.sourceClosure.root.resource.byteCount`,
+        ),
+        fingerprint: requireFingerprint(
+          values,
+          `compile.admission.sources.${index}.sourceClosure.root.resource.sha256`,
+        ),
+      },
+    },
+  });
+}
+
+function requireAttachmentElementKind(
+  values: ReadonlyMap<string, ParameterValue>,
+  key: string,
+): "PartDefinition" | "PartUsage" {
+  const value = requireValue(values, key);
+  if (value !== "PartDefinition" && value !== "PartUsage") {
+    throw new TypeError(
+      `$parameters.${key} must be PartDefinition or PartUsage.`,
     );
   }
   return value;

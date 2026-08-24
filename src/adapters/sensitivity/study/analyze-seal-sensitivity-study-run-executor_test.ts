@@ -184,7 +184,7 @@ Deno.test(
 );
 
 Deno.test(
-  "cadSource that is not a compile.seal-admission@2 admission is rejected",
+  "cadSource that is not a compile.seal-admission@3 admission is rejected",
   async () => {
     const fixture = await createOfferFixture({
       admissionTool: "design.execute-build123d@1",
@@ -192,7 +192,7 @@ Deno.test(
     await assertRejects(
       () => fixture.executor.execute(AGENT, fixture.command),
       EngineeringProjectCommandError,
-      "compile.seal-admission@2",
+      "compile.seal-admission@3",
     );
   },
 );

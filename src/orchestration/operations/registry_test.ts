@@ -564,11 +564,18 @@ Deno.test("admitted SPICE execution binds one compilation admission and refuses 
   assertEquals(extraBinding.code, "invalid_bindings");
 });
 
-Deno.test("compile.seal-admission@1 and compile.capture-corrected-source@1 are unknown operations", () => {
+Deno.test("compile.seal-admission@1, compile.seal-admission@2 and compile.capture-corrected-source@1 are unknown operations", () => {
   assertEquals(
     getRegisteredEngineeringOperation({
       id: "compile.seal-admission",
       version: "1",
+    }),
+    undefined,
+  );
+  assertEquals(
+    getRegisteredEngineeringOperation({
+      id: "compile.seal-admission",
+      version: "2",
     }),
     undefined,
   );

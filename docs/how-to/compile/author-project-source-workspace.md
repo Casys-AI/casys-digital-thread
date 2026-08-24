@@ -52,13 +52,14 @@ another revision or filter.
 
 ## Technical capture
 
-Call `project_technical_source_capture` with `projectId`, `workspaceRevision`, `fileId`
-and `fileRevision` only. The named revision must be the active content at that snapshot.
-The server resolves `captureRequest.profileId` and role; it refuses MIME, path,
-`sourceText`, caller `profileId`/`sourceId`/`resourceRef`. Pass `result.reference` to
-`project_technical_compilation_preview`. Never infer admission from workspace
-membership, MIME, path or a successful isolated run. A later correction is a new
-`project_resource_capture` plus a successor file revision, then a new capture.
+Call `project_technical_source_capture` with `projectId`, `workspaceRevision`,
+`attachmentId` and `attachmentRevision` only. The named attachment revision must be the
+unique active head at that snapshot. The server resolves the root file, registered
+profile and `project-source-closure/1.0`; it refuses MIME, path, `sourceText`,
+`fileId`/`fileRevision`, caller `profileId`/`sourceId`/`resourceRef`. Pass
+`result.reference` to `project_technical_compilation_preview`. Never infer admission
+from workspace membership, MIME, path or a successful isolated run. A later correction
+is a new `project_resource_capture` plus a successor file revision, then a new capture.
 
 ## Common workspace basis
 

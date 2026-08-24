@@ -15,7 +15,7 @@ bytes but produce different authority. They are not substitutes.
 ```text
 project_technical_source_capture
   → project_technical_compilation_preview
-  → compile.seal-admission@2
+  → compile.seal-admission@3
   → project_admitted_geometry_export
   → human MRTR
   → design.write-geometry@1
@@ -40,7 +40,7 @@ occurrence, placement, or `partDefinitions` array, makes one server-fixed export
 and does not write Thread state.
 
 The same canonical sealer accepts that strict target family. It reopens the exact
-capture-backed `compile.seal-admission@2` artefact named by the
+capture-backed `compile.seal-admission@3` artefact named by the
 `geometry-draft-admission/2.0` stamp, then re-crosses its admitted source bytes/hash and
 unique P1 `represents` PartDefinition against the target draft, passive source analysis,
 architecture PartDefinition and signed STEP bytes before it writes a capture or promotes
@@ -68,7 +68,7 @@ and
 ## Isolated documentary execution
 
 ```text
-compile.seal-admission@2
+compile.seal-admission@3
   → project_build123d_execution_review
   → human MRTR
   → design.execute-build123d@1

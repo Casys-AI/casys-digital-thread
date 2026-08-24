@@ -1,17 +1,15 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
-  sampleTechnicalProjectSourceAnchor,
   sampleTechnicalSourceAnalysisCaptureLocator,
+  sampleTechnicalSourceAttachmentProvenance,
+  sampleTechnicalSourceClosureProvenance,
 } from "../../../testing/technical-source-capture-test-support.ts";
 import {
   assertTechnicalCompilationSourcesShareExactWorkspace,
-  assertTechnicalProjectSourceAnchorsEqual,
   assertTechnicalSourceAnalysisCaptureLocatorsEqual,
   assertTechnicalSourceProvenanceIdentitiesEqual,
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
   TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
-  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
-  technicalProjectSourceAnchorsEqual,
   technicalSourceAnalysisCaptureLocatorsEqual,
   technicalSourceProvenanceIdentitiesEqual,
   type TechnicalSourceProvenanceIdentity,
@@ -22,7 +20,8 @@ function identity(
   overrides: Partial<TechnicalSourceProvenanceIdentity> = {},
 ): TechnicalSourceProvenanceIdentity {
   const locator = sampleTechnicalSourceAnalysisCaptureLocator();
-  const projectSource = sampleTechnicalProjectSourceAnchor("source.cad");
+  const attachment = sampleTechnicalSourceAttachmentProvenance("source.cad");
+  const sourceClosure = sampleTechnicalSourceClosureProvenance("source.cad");
   return {
     sourceId: "source.cad",
     role: "cad-script",
@@ -34,13 +33,14 @@ function identity(
     sourceFingerprint: { algorithm: "sha256", digest: "2".repeat(64) },
     captureFingerprint: { algorithm: "sha256", digest: "3".repeat(64) },
     analysisFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
-    projectSource,
+    attachment,
+    sourceClosure,
     locator,
     ...overrides,
   };
 }
 
-Deno.test("opaque locator/2.0 is the only accepted technical-source replay handle", () => {
+Deno.test("opaque locator/3.0 is the only accepted technical-source replay handle", () => {
   const locator = sampleTechnicalSourceAnalysisCaptureLocator();
   assertEquals(
     validateTechnicalSourceAnalysisCaptureLocator(locator),
@@ -49,7 +49,15 @@ Deno.test("opaque locator/2.0 is the only accepted technical-source replay handl
   assertThrows(
     () =>
       validateTechnicalSourceAnalysisCaptureLocator({
-        schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
+        ...locator,
+        schemaVersion: "technical-source-analysis-capture-locator/2.0",
+      }),
+    TypeError,
+  );
+  assertThrows(
+    () =>
+      validateTechnicalSourceAnalysisCaptureLocator({
+        schemaVersion: "technical-source-analysis-capture/1.0",
         kind: "technical-source-analysis",
         fingerprint: locator.fingerprint,
         byteCount: locator.byteCount,
@@ -57,87 +65,42 @@ Deno.test("opaque locator/2.0 is the only accepted technical-source replay handl
       }),
     TypeError,
   );
-  assertThrows(
-    () =>
-      validateTechnicalSourceAnalysisCaptureLocator({
-        schemaVersion: "technical-source-analysis-capture-locator/1.0",
-        kind: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
-        fingerprint: locator.fingerprint,
-        byteCount: locator.byteCount,
-        casUri: locator.casUri,
-      }),
-    TypeError,
-  );
-  assertThrows(
-    () =>
-      validateTechnicalSourceAnalysisCaptureLocator({
-        ...locator,
-        casUri: `casys://technical-source/sha256/${locator.fingerprint.digest}`,
-      }),
-    TypeError,
-    "casys://technical-source-analysis-capture/sha256/",
-  );
 });
 
-Deno.test("complete project-source and locator identity compares every field", () => {
+Deno.test("complete attachment, closure and locator identity compares every field", () => {
   const expected = identity();
   assertEquals(technicalSourceProvenanceIdentitiesEqual(expected, expected), true);
   assertTechnicalSourceProvenanceIdentitiesEqual(expected, expected, "$identity");
 
-  const projectMutations: Array<
-    (
-      anchor: ReturnType<typeof sampleTechnicalProjectSourceAnchor>,
-    ) => ReturnType<typeof sampleTechnicalProjectSourceAnchor>
-  > = [
-    (anchor) => ({ ...anchor, projectId: "project.foreign" }),
-    (anchor) => ({ ...anchor, workspaceRevision: 9 }),
-    (anchor) => ({
-      ...anchor,
-      workspaceEventFingerprint: { algorithm: "sha256", digest: "9".repeat(64) },
+  const observedAttachment = identity({
+    attachment: sampleTechnicalSourceAttachmentProvenance("source.cad", {
+      attachmentRevision: 9,
     }),
-    (anchor) => ({ ...anchor, fileId: "source.other" }),
-    (anchor) => ({ ...anchor, fileRevision: 8 }),
-    (anchor) => ({
-      ...anchor,
-      fileFingerprint: { algorithm: "sha256", digest: "8".repeat(64) },
-    }),
-    (anchor) => ({
-      ...anchor,
-      resourceRef: {
-        ...anchor.resourceRef,
-        name: "other.py",
-      },
-    }),
-    (anchor) => ({
-      ...anchor,
-      resourceRef: {
-        ...anchor.resourceRef,
-        mimeType: "text/plain",
-      },
-    }),
-  ];
-  for (const mutate of projectMutations) {
-    const observed = identity({
-      projectSource: mutate(expected.projectSource),
-    });
-    assertEquals(
-      technicalProjectSourceAnchorsEqual(
-        expected.projectSource,
-        observed.projectSource,
+  });
+  assertEquals(
+    technicalSourceProvenanceIdentitiesEqual(expected, observedAttachment),
+    false,
+  );
+  assertThrows(
+    () =>
+      assertTechnicalSourceProvenanceIdentitiesEqual(
+        expected,
+        observedAttachment,
+        "$identity",
       ),
-      false,
-    );
-    assertThrows(
-      () =>
-        assertTechnicalProjectSourceAnchorsEqual(
-          expected.projectSource,
-          observed.projectSource,
-          "$projectSource",
-        ),
-      TypeError,
-      "complete project-source anchor",
-    );
-  }
+    TypeError,
+    "complete technical-source provenance identity",
+  );
+
+  const observedClosure = identity({
+    sourceClosure: sampleTechnicalSourceClosureProvenance("source.cad", {
+      workspaceRevision: 9,
+    }),
+  });
+  assertEquals(
+    technicalSourceProvenanceIdentitiesEqual(expected, observedClosure),
+    false,
+  );
 
   const locatorMutations = [
     (locator: ReturnType<typeof sampleTechnicalSourceAnalysisCaptureLocator>) => ({
@@ -217,17 +180,17 @@ Deno.test("complete project-source and locator identity compares every field", (
 });
 
 Deno.test("a preview or admission bundle rejects mixed projects, revisions, and event fingerprints", () => {
-  const cad = sampleTechnicalProjectSourceAnchor("source.cad", {
+  const cad = sampleTechnicalSourceClosureProvenance("source.cad", {
     workspaceRevision: 4,
   });
-  const spice = sampleTechnicalProjectSourceAnchor("source.spice", {
+  const spice = sampleTechnicalSourceClosureProvenance("source.spice", {
     projectId: cad.projectId,
     workspaceRevision: 4,
     workspaceEventFingerprint: cad.workspaceEventFingerprint,
   });
   assertEquals(
     assertTechnicalCompilationSourcesShareExactWorkspace(
-      [{ projectSource: cad }, { projectSource: spice }],
+      [{ sourceClosure: cad }, { sourceClosure: spice }],
       cad.projectId,
       "$sources",
     ),
@@ -237,28 +200,9 @@ Deno.test("a preview or admission bundle rejects mixed projects, revisions, and 
     () =>
       assertTechnicalCompilationSourcesShareExactWorkspace(
         [
-          { projectSource: cad },
+          { sourceClosure: cad },
           {
-            projectSource: sampleTechnicalProjectSourceAnchor("source.spice", {
-              projectId: "project.foreign",
-              workspaceRevision: 4,
-              workspaceEventFingerprint: cad.workspaceEventFingerprint,
-            }),
-          },
-        ],
-        cad.projectId,
-        "$sources",
-      ),
-    TypeError,
-    "exact project",
-  );
-  assertThrows(
-    () =>
-      assertTechnicalCompilationSourcesShareExactWorkspace(
-        [
-          { projectSource: cad },
-          {
-            projectSource: sampleTechnicalProjectSourceAnchor("source.spice", {
+            sourceClosure: sampleTechnicalSourceClosureProvenance("source.spice", {
               projectId: cad.projectId,
               workspaceRevision: 5,
               workspaceEventFingerprint: cad.workspaceEventFingerprint,
@@ -275,9 +219,9 @@ Deno.test("a preview or admission bundle rejects mixed projects, revisions, and 
     () =>
       assertTechnicalCompilationSourcesShareExactWorkspace(
         [
-          { projectSource: cad },
+          { sourceClosure: cad },
           {
-            projectSource: sampleTechnicalProjectSourceAnchor("source.spice", {
+            sourceClosure: sampleTechnicalSourceClosureProvenance("source.spice", {
               projectId: cad.projectId,
               workspaceRevision: 4,
               workspaceEventFingerprint: {
@@ -292,5 +236,13 @@ Deno.test("a preview or admission bundle rejects mixed projects, revisions, and 
       ),
     TypeError,
     "identical workspaceEventFingerprint",
+  );
+  assertEquals(
+    TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+    "technical-source-analysis-capture-locator/3.0",
+  );
+  assertEquals(
+    TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
+    "technical-source-analysis-capture-locator",
   );
 });

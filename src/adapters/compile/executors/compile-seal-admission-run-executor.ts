@@ -1,5 +1,5 @@
 /**
- * Provider-free executor for `compile.seal-admission@2`.
+ * Provider-free executor for `compile.seal-admission@3`.
  *
  * A preview is not authority. This executor reopens the exact human-reviewed
  * draft, Thread/SysML basis, source captures, and code-owned profiles before it
@@ -497,7 +497,7 @@ export class CompileSealAdmissionRunExecutor {
       await verifySources(
         this.#sources,
         command.projectId,
-        currentBasis,
+        document.basis,
         admission,
         draft,
         document,
@@ -1336,8 +1336,8 @@ function assertCaptureSourceCoverage(
         capture.referenceFingerprint,
         expected.captureFingerprint,
       ) ||
-      expected.id !== expected.projectSource.fileId ||
-      expected.projectSource.fileId !== documentSource.analysis.source.id ||
+      expected.id !== expected.sourceClosure.root.fileId ||
+      expected.sourceClosure.root.fileId !== documentSource.analysis.source.id ||
       documentSource.analysis.source.role !== expected.role ||
       documentSource.analysis.source.language !== expected.language ||
       !fingerprintsEqual(
@@ -1361,7 +1361,7 @@ function assertCaptureSourceCoverage(
 async function verifySources(
   reader: TechnicalCompilationSourceReader,
   projectId: string,
-  basis: EngineeringThreadSnapshotBasis,
+  basis: TechnicalCompilationDocument["basis"],
   admission: TechnicalCompilationAdmission,
   draft: TechnicalCompilationDraft,
   document: TechnicalCompilationDocument,
@@ -1393,6 +1393,16 @@ async function verifySources(
     });
     if (!reopened) {
       throw invalidTransition(`Admission source ${expected.id} was not found.`);
+    }
+    if (reopened.provenance.attachmentAlignment !== "exact") {
+      throw invalidTransition(
+        `Admission source ${expected.id} is not exact against the reviewed compilation basis.`,
+      );
+    }
+    if (reopened.source.closedDependencyCount !== 0) {
+      throw invalidTransition(
+        `Admission source ${expected.id} has no language-specific dependency lowering.`,
+      );
     }
     const sourceFingerprint = await fingerprintTechnicalSourceText(
       reopened.source.sourceText,
@@ -1706,7 +1716,8 @@ function admissionSourceProvenance(
     sourceFingerprint: source.sourceFingerprint,
     captureFingerprint: source.captureFingerprint,
     analysisFingerprint: source.analysisFingerprint,
-    projectSource: source.projectSource,
+    attachment: source.attachment,
+    sourceClosure: source.sourceClosure,
     locator: source.locator,
   };
 }
@@ -1732,7 +1743,8 @@ function reopenedSourceProvenance(
       readonly sourceFingerprint: ContentFingerprint;
       readonly captureFingerprint: ContentFingerprint;
       readonly analysisFingerprint: ContentFingerprint;
-      readonly projectSource: TechnicalSourceProvenanceIdentity["projectSource"];
+      readonly attachment: TechnicalSourceProvenanceIdentity["attachment"];
+      readonly sourceClosure: TechnicalSourceProvenanceIdentity["sourceClosure"];
       readonly locator: TechnicalSourceProvenanceIdentity["locator"];
     };
   },
@@ -1748,7 +1760,8 @@ function reopenedSourceProvenance(
     sourceFingerprint: reopened.provenance.sourceFingerprint,
     captureFingerprint: reopened.provenance.captureFingerprint,
     analysisFingerprint: reopened.provenance.analysisFingerprint,
-    projectSource: reopened.provenance.projectSource,
+    attachment: reopened.provenance.attachment,
+    sourceClosure: reopened.provenance.sourceClosure,
     locator: reopened.provenance.locator,
   };
 }

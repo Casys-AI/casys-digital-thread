@@ -146,14 +146,14 @@ Deno.test("authoring attachments refuse a tampered or foreign-filter cursor", as
   });
   const sealed = first.nextCursor!;
   const [prefix, payload, mac] = sealed.split(".");
-  const flipped = mac!.endsWith("A") ? "B" : "A";
+  const flipped = mac![0] === "A" ? "B" : "A";
   await assertRejects(
     () =>
       navigation.authoringAttachments({
         projectId: PROJECT,
         node: { kind: "part-definition", id: "def-system" },
         pageSize: 1,
-        cursor: `${prefix}.${payload}.${mac!.slice(0, -1)}${flipped}`,
+        cursor: `${prefix}.${payload}.${flipped}${mac!.slice(1)}`,
       }),
     ProjectSourceWorkspaceError,
     "not a valid opaque cursor",
@@ -188,13 +188,14 @@ Deno.test("authoring attachments refuse a tampered or foreign-filter cursor", as
   );
 });
 
-Deno.test("authoring attachments never create evidence, admission, or sourceClosure", async () => {
+Deno.test("authoring attachments stay out of evidence and admission; an exact attachment exposes a read-only closure", async () => {
   const seeded = await seedAuthoringWorkspace();
   const navigation = navigationWith(seeded.head, seeded.revisions);
   const authoring = await navigation.authoringAttachments({
     projectId: PROJECT,
     node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
   });
+  assertEquals(authoring.grants, "none");
   assertEquals(authoring.attachments.map((item) => item.fileId), ["file-usage"]);
   const context = await navigation.context({
     projectId: PROJECT,
@@ -210,11 +211,17 @@ Deno.test("authoring attachments never create evidence, admission, or sourceClos
   const closure = await navigation.sourceClosure({
     projectId: PROJECT,
     node: { kind: "part-usage", id: "usage-left", path: ["usage-left"] },
-    fileId: "file-usage",
-    fileRevision: 1,
+    workspaceRevision: authoring.workspaceRevision ?? seeded.head.workspaceRevision,
+    attachmentId: "att-usage",
+    attachmentRevision: 1,
   });
-  assertEquals(closure.status, "unattached");
-  assertEquals(closure.files, []);
+  assertEquals(closure.status, "observed");
+  assertEquals(
+    closure.files.map((file) => `${file.fileId}@${file.fileRevision}`),
+    ["file-usage@1"],
+  );
+  assertEquals(closure.attachmentId, "att-usage");
+  assertEquals(closure.attachmentRevision, 1);
 });
 
 function navigationWith(

@@ -22,12 +22,13 @@ from the real MCP and runtime path, not fixtures or UI copy.
 - Implemented: stable, separately revisioned `ProjectSourceWorkspace` edge from `fileId`
   to one exact captured SysML element, with workspace MCP put/detach/read/list. Preserve
   it across file edits and never infer a retarget from labels.
-- Pending: from exact `System`, `PartUsage` and `PartDefinition` nodes, expose attached
-  source, geometry, physics and verdict references with their exact bases.
-- Pending: resolve a bounded technical dependency closure only after selecting an
+- Implemented: from exact `PartDefinition` and `PartUsage` nodes, expose authoring
+  attachment heads and an attachment-rooted read-only source closure. Context evidence
+  groups stay Thread/admission, not authoring.
+- Implemented: resolve a bounded technical dependency closure only after selecting an
   attached source root from an exact semantic target.
-- Pending: return an opaque locator and bounded diagnostics; keep the closure
-  non-authoritative and permission-free.
+- Implemented: persist an opaque `project-source-closure/1.0` locator; the closure
+  grants no compile, execute, seal or judge permission.
 - Pending: prove cycle, stale edge, missing resource, bound and recovery behavior on the
   proving vehicle.
 

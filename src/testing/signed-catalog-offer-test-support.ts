@@ -123,7 +123,7 @@ export async function signedCatalogOfferFixture(
         uri:
           `casys://technical-compilation-admission-capture/sha256/${SIGNED_OFFER_ADMISSION_DIGEST}`,
         mediaType: "application/json",
-        tool: "compile.seal-admission@2",
+        tool: "compile.seal-admission@3",
       },
     ),
     offerArtifact(proofArtifactId, "FEA proof", "document", proofCaptureFp.digest, {

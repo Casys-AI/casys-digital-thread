@@ -1,6 +1,7 @@
 # Server-resolved source dependency closure
 
-Status: proposed · not implemented
+Status: implemented for attachment-rooted capture, CAS persist, admission recross and
+product-navigation MCP · MCS-01 real-project proof remains pending
 
 ## Purpose
 

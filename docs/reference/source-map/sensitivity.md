@@ -78,7 +78,7 @@ canonical descendant confinement of catalog.json and every declared case file
 
 #### [`src/domain/sensitivity/study/sensitivity-study-seal-bindings.ts`](../../../src/domain/sensitivity/study/sensitivity-study-seal-bindings.ts)
 
-Pure admission / lookalike classification for `cadSource`; `compile.seal-admission@2`
+Pure admission / lookalike classification for `cadSource`; `compile.seal-admission@3`
 only
 
 #### [`src/application/ports/in/sensitivity/study/project-sensitivity-study-seal-review.ts`](../../../src/application/ports/in/sensitivity/study/project-sensitivity-study-seal-review.ts)

@@ -167,7 +167,7 @@ const projectArchitectureSysmlSourceCaptureTool: MCPTool = {
 const projectArchitectureSysmlPreviewTool: MCPTool = {
   name: "project_architecture_sysml_preview",
   description:
-    "Tokenize, parse and analyse one captured architecture SysML closed-subset source without writing Thread state. Supply the opaque architecture-sysml-source-analysis-capture/1.0 reference from project_architecture_sysml_source_capture. Unresolved constructs are first-class and are never omitted. A ready captured result may include decisionParameters for a later model.seal-architecture-sysml@1 proposal. This does not call SysON and does not reuse compile.seal-admission@2.",
+    "Tokenize, parse and analyse one captured architecture SysML closed-subset source without writing Thread state. Supply the opaque architecture-sysml-source-analysis-capture/1.0 reference from project_architecture_sysml_source_capture. Unresolved constructs are first-class and are never omitted. A ready captured result may include decisionParameters for a later model.seal-architecture-sysml@1 proposal. This does not call SysON and does not reuse compile.seal-admission@3.",
   inputSchema: {
     type: "object",
     properties: {

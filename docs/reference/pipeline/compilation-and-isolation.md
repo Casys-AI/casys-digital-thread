@@ -227,7 +227,7 @@ never an implicit requirement verdict, evaluation, violation or action. Replay r
 the durable claim, inner WAL, evidence and Thread successor without another solver call.
 
 `simulate.run-admitted-modelica@1` is the CAD analog: it reopens
-`compile.seal-admission@2` Modelica v2 closed-subset bytes and executes those bytes. It
+`compile.seal-admission@3` Modelica v2 closed-subset bytes and executes those bytes. It
 is not the pinned qualified-kit V1, not recorded `@2`, and does not accept caller
 `modelicaText`. Both CAD execute and admitted Modelica share
 `ReopenAdmittedCompilationSource` → `IsolatedCodeRunner`. One Modelica image family

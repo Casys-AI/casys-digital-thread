@@ -18,7 +18,7 @@ import {
 } from "./technical-source-analysis-capture-locator.ts";
 
 export const TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA =
-  "technical-source-capture-review/2.0" as const;
+  "technical-source-capture-review/3.0" as const;
 
 export interface TechnicalSourceCaptureReview {
   readonly schemaVersion: typeof TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA;
@@ -73,7 +73,7 @@ export function captureReviewContent(review: TechnicalSourceCaptureReview): stri
     ? `CAD levers: unresolved (${review.levers.code}). A constructor photo is not admission-ready.`
     : "CAD levers: not-applicable for this source role.";
   return (
-    `Technical source was captured from the exact project source workspace file revision ` +
+    `Technical source was captured from the exact project source workspace attachment ` +
     `as exact UTF-8 bytes and analysed under parser status ${review.parser.status}. ${leverText} ` +
     `Pass result.reference verbatim to project_technical_compilation_preview. ` +
     `parser.status is the closed-subset parser, not admission. ` +

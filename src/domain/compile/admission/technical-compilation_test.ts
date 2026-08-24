@@ -287,6 +287,7 @@ async function sourceUnit(options: {
     sourceText: options.sourceText,
     analysis,
     analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+    closedDependencyCount: 0,
   };
 }
 
@@ -990,6 +991,7 @@ Deno.test(
         sourceText,
         analysis,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+        closedDependencyCount: 0,
       }],
       bindings: [{
         id: "binding:source.modelica:parameter.power:parameterizes",
@@ -1372,6 +1374,7 @@ result = Box(width, height, 3)
         sourceText,
         analysis,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+        closedDependencyCount: 0,
       }],
       bindings: variables.map((symbol, index) => ({
         id: `binding.real.${index + 1}`,
@@ -1689,6 +1692,7 @@ Deno.test(
         sourceText,
         analysis,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+        closedDependencyCount: 0,
       }],
       bindings: [],
       profileRequests: [{
@@ -1774,6 +1778,7 @@ Deno.test("SPICE .param without unique parameterizes stays binding.missing", asy
       sourceText,
       analysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(analysis),
+      closedDependencyCount: 0,
     }],
     bindings: [],
     profileRequests: [{

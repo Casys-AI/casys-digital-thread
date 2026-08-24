@@ -225,7 +225,8 @@ async function materializeReadySource(
     sourceText: source.sourceText,
     sourceFingerprint,
     analysisFingerprint: source.analysisFingerprint,
-    projectSource: admissionSource.projectSource,
+    attachment: admissionSource.attachment,
+    sourceClosure: admissionSource.sourceClosure,
     locator: admissionSource.locator,
   });
 }

@@ -14,7 +14,7 @@ microVM:
 | This                                                | Is                                                           | Is not                                                                  |
 | --------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
 | `model.write-architecture@1`                        | Server-rendered SysML inserted into SysON                    | An agent-authored SysML parser path                                     |
-| `model.seal-architecture-sysml@1`                   | Provider-free Thread-document seal of closed-subset analysis | SysON insertion, `@2` architecture write, or `compile.seal-admission@2` |
+| `model.seal-architecture-sysml@1`                   | Provider-free Thread-document seal of closed-subset analysis | SysON insertion, `@2` architecture write, or `compile.seal-admission@3` |
 | `sysml-source-capture/1.0`                          | Renderer envelope for the SysON write                        | Agent-authored UTF-8 authority                                          |
 | `architecture.author-inspection-drone@3`            | Retired product-specific SysON insert. Not registered        | Generic `model.write-architecture@1`                                    |
 | `model.capture-inspection-drone-part-definitions@1` | Retired product-specific r4 read. Not registered             | Generic `model.capture-part-definitions@1`                              |
@@ -30,7 +30,7 @@ command surface. Graphology is a disposable index, never domain or authority.
 | `project_product_navigation_*`                     | Server read-side index over exact `architecture-capture/4.0` + ThreadGraph            | Direct SysON tools, `project_source_tree`, or a UI Graphology walk    |
 | `project_product_navigation_context`               | Exact node plus grouped Thread/admission evidence (`unattached` stays literal)        | Workspace authoring heads or a Workbench POST                         |
 | `project_product_navigation_authoring_attachments` | Active workspace authoring heads of one exact SysML target. Grants none               | Thread evidence, `represented_by`, admission, or source closure       |
-| `project_product_source_closure`                   | Technical file dependencies **after** an exact Thread/admission `fileId@fileRevision` | Product structure, an authoring-only attachment, or a label/path join |
+| `project_product_source_closure`                   | Technical dependency closure of one versioned authoring attachment (`attachmentId` + `attachmentRevision` at an exact workspace revision). `PartUsage` keeps its usage id | Product structure, a free `fileId`/`fileRevision` root, or a definition reduction |
 | Graphology                                         | Algorithmic navigation index in server/application adapters                           | Domain authority or a second Workbench product-structure browser      |
 
 ## Engineering Case catalog
@@ -47,7 +47,7 @@ of that catalog.
 | `printability-check-case/1.0`                                                | Exact FDM printability-case identity (`industrialize.seal-printability-case@1`) | A DFM payload or a STEP                      |
 | `print-estimate-case/1.0`                                                    | Exact FFF print-estimate identity (`industrialize.seal-print-estimate-case@1`)  | A price, slicer log, or CAD admission        |
 | `dfm-check-case/1.0`                                                         | Exact measured DFM-case identity (`industrialize.seal-dfm-case@1`)              | Printability thresholds or mcp-dfm by itself |
-| `compile.seal-admission@2` / `technical-compilation-admission-capture/2.0`   | Closed-subset admission bytes                                                   | An Engineering Case                          |
+| `compile.seal-admission@3` / `technical-compilation-admission-capture/3.0`   | Closed-subset admission bytes                                                   | An Engineering Case                          |
 | `design.execute-build123d@1` / `design.seal-isolated-geometry@1`             | Isolated CAD execution / documentary seal of that execution                     | An Engineering Case or canonical STEP        |
 | `simulate.run-admitted-modelica@1` / `simulate.run-qualified-modelica-kit@1` | Admitted `.mo` run or pinned kit                                                | An Engineering Case                          |
 | `simulate.run-admitted-spice@1`                                              | Circuit-only admitted SPICE                                                     | An Engineering Case or mcp-spice             |
@@ -63,9 +63,9 @@ Domain contracts: [closed subset](../domains/cad/build123d-closed-subset-v1.md) 
 | `project_geometry_preview` + `design.write-geometry@1`    | Retired product entry. Preview is not registered. `write-geometry` refuses a draft without an admission stamp | Isolated compiler execution or a photo STEP                  |
 | `design.preview-geometry@1`                               | Retired identity. Not registered                                                                              | A product CAD verb or sandbox entry                          |
 | `parser.status` on a technical capture                    | Closed-subset parser fact                                                                                     | Admission, a named lever, or a SysML bind                    |
-| `levers.status` on a technical capture                    | Reachable named numeric literals                                                                              | A SysML `parameterizes` bind or `compile.seal-admission@2`   |
+| `levers.status` on a technical capture                    | Reachable named numeric literals                                                                              | A SysML `parameterizes` bind or `compile.seal-admission@3`   |
 | `source.no-named-numeric-lever`                           | No reachable named literal (constructor photo or dead assignment)                                             | Missing `parameterizes` (`binding.missing`)                  |
-| `compile.seal-admission@2` + `design.execute-build123d@1` | Provider-free admission then local microVM draft execution                                                    | Canonical geometry promotion                                 |
+| `compile.seal-admission@3` + `design.execute-build123d@1` | Provider-free admission then local microVM draft execution                                                    | Canonical geometry promotion                                 |
 | `design.seal-isolated-geometry@1`                         | Provider-free Thread-document seal of isolated execution                                                      | Canonical STEP, cad-model, `write-geometry`, or FEA geometry |
 
 ## Modelica
@@ -78,12 +78,12 @@ Domain contracts: [language](../domains/modelica/language.md) and
 | `simulate.seal-simulation-case@1` / `@2` and `simulate.run-modelica-scenario@1` / `@2` | Retired recorded-provider route. Not registered                                   | Admitted `@1`, the pinned kit, L4, or L5                          |
 | Port 3016 `mcp-modelica` sidecar / `ModelicaRunObserver`                               | Retired fleet/Compose observed-run surface. Not required.                         | Local admitted/kit microVM Modelica                               |
 | `simulate.run-qualified-modelica-kit@1`                                                | Separate code-owned LinearThermalRamp qualified-kit V1 smoke in the local microVM | Admitted `.mo` execution or recorded `@2`                         |
-| `simulate.run-admitted-modelica@1`                                                     | Reopen `compile.seal-admission@2` Modelica bytes and run them in isolation        | The pinned kit, `@2`, or caller `modelicaText`                    |
+| `simulate.run-admitted-modelica@1`                                                     | Reopen `compile.seal-admission@3` Modelica bytes and run them in isolation        | The pinned kit, `@2`, or caller `modelicaText`                    |
 | `project_admitted_modelica_evaluation_review`                                          | Provider-free L4 MRTR prep from unique sheet + admitted evidence                  | L5 closeout, an L4 verdict, or OMC/SysON                          |
 | `project_admitted_modelica_evaluation_closeout_review`                                 | Provider-free L5 accept/reject of the unique current L4                           | L4 evaluation, implicit L5 from an L4 `pass`, or a provider grant |
 
 Product Modelica: capture (`modelica-closed-subset-v2`) → compilation preview →
-`compile.seal-admission@2` → `project_admitted_modelica_run_review` →
+`compile.seal-admission@3` → `project_admitted_modelica_run_review` →
 `simulate.run-admitted-modelica@1`. How-to:
 [run admitted Modelica](../../how-to/run/run-admitted-modelica.md). The kit is image
 smoke, not the product `.mo`. Same image family `casys/modelica-microsandbox-worker`;
@@ -98,7 +98,7 @@ Domain contracts: [electrical index](../domains/electrical/README.md) and
 | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `project_led_driver_source_capture`                                                       | Draft CAS write of exact `led-driver-human-source/1.0` UTF-8                      | Circuit-only SPICE, D1, ngspice, or a Thread write            |
 | `project_led_driver_source_review`                                                        | Reference-only reopen of one `led-driver-source-capture/1.0` locator              | A capture command, `sourceText`, or the capture review object |
-| `simulate.run-admitted-spice@1`                                                           | Reopen `compile.seal-admission@2` circuit-only bytes and run ngspice in isolation | mcp-spice, the LED-driver fiche, L4, or L5                    |
+| `simulate.run-admitted-spice@1`                                                           | Reopen `compile.seal-admission@3` circuit-only bytes and run ngspice in isolation | mcp-spice, the LED-driver fiche, L4, or L5                    |
 | `verify.seal-electrical-observation-method-sheet@1`                                       | Provider-free seal of the reviewed method sheet                                   | An admitted run, L4, or ngspice                               |
 | `verify.evaluate-admitted-spice-observations@1`                                           | Server-owned comparator of exact admitted observations against that sheet         | ngspice, SysON, or L5                                         |
 | `decide.accept-admitted-spice-evaluation@1` / `decide.reject-admitted-spice-evaluation@1` | Human closeout of that exact L4                                                   | Implicit L5 from an L4 `pass`, mcp-spice, or a safety claim   |
@@ -144,7 +144,7 @@ Domain contracts:
 | `renderSensitivityEdgeSetSysml`          | Flat PartDef renderer for measured edges                                                            | `renderSensitivityRelationsSysml`                                                                 |
 | `sensitivity-study-case/2.0` `cadSource` | Sealed compilation-admission artifact URI + sha256                                                  | `recipeSource` 1.0 or a STEP artifact                                                             |
 | `design.apply-vector-correction@1`       | Provider-free Thread-document seal of a bounded correction proposal (`grants: none`)                | CAD write, SysON insert, provider run, or execution admission                                     |
-| `compile.capture-corrected-source@1`     | Not registered. Corrections return through `AgentResource` plus a successor workspace file revision | `compile.seal-admission@2` or `design.execute-build123d@1`                                        |
+| `compile.capture-corrected-source@1`     | Not registered. Corrections return through `AgentResource` plus a successor workspace file revision | `compile.seal-admission@3` or `design.execute-build123d@1`                                        |
 | Binding `studyCapture`                   | Fresh `sensitivity-study-capture/1.0` or target-local `sensitivity-study-reuse-result/1.0`          | Source-project capture, `sensitivity-edges-capture/1.0`, or a SysON PartDef                       |
 
 CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.

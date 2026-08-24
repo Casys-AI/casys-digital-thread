@@ -345,7 +345,7 @@ async function createHarness() {
       const admissionArtifact = artifact({
         id: `admission-${projectId}`,
         fingerprint: fingerprint(ADMISSION_DIGEST),
-        tool: "compile.seal-admission@2",
+        tool: "compile.seal-admission@3",
         runId: `admit-${projectId}`,
       });
       const caseArtifact = artifact({

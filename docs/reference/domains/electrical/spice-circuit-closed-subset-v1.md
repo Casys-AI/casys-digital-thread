@@ -8,7 +8,7 @@ capture frontend authorizes the same grammar a later isolated worker would accep
 circuit source. Analysis commands and `.end` are refused because a later server-owned
 worker would own them.
 
-This page is capture → analysis → compilation preview → `compile.seal-admission@2` plus
+This page is capture → analysis → compilation preview → `compile.seal-admission@3` plus
 the generic ngspice Microsandbox worker contract. Product IsolatedCodeRunner wiring is
 `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review`. It is
 documentary L3 evidence only. mcp-spice and the LED-driver fiche are not this path.
