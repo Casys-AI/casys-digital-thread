@@ -10,7 +10,7 @@ import type { AgentResourceReference } from "../resource/agent-resource-capture.
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 
 export const PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA =
-  "project-source-workspace-event/1.0" as const;
+  "project-source-workspace-event/2.0" as const;
 export const PROJECT_SOURCE_WORKSPACE_SNAPSHOT_SCHEMA =
   "project-source-workspace-snapshot/1.0" as const;
 
@@ -43,7 +43,8 @@ export type ProjectSourceWorkspaceErrorCode =
   | "cursor_mismatch"
   | "bound_exceeded"
   | "event_fingerprint_mismatch"
-  | "event_sequence_mismatch";
+  | "event_sequence_mismatch"
+  | "event_chain_mismatch";
 
 export class ProjectSourceWorkspaceError extends Error {
   constructor(
@@ -160,6 +161,7 @@ export interface ProjectSourceWorkspaceEvent {
   readonly projectId: string;
   readonly workspaceRevision: number;
   readonly previousWorkspaceRevision: number;
+  readonly previousEventFingerprint: ContentFingerprint | null;
   readonly mutationId: string;
   readonly mutation: ProjectSourceWorkspaceMutation;
   readonly fingerprint: ContentFingerprint;

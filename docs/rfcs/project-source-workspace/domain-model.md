@@ -8,7 +8,11 @@ persisted log contains one small event per accepted mutation; it does not copy t
 tree on every revision.
 
 The aggregate exposes a materialised read model for navigation, but the event log is the
-recovery authority.
+recovery authority. Each accepted mutation publishes one
+`project-source-workspace-event/2.0` record. Revision 1 has
+`previousEventFingerprint: null`. Later revisions name the exact prior event
+fingerprint, which is part of the hashed event body. A broken chain is refused. `/1.0`
+events are not accepted.
 
 ## Stable entities
 

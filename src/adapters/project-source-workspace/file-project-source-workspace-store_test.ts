@@ -1,5 +1,8 @@
 import { assertEquals, assertRejects } from "@std/assert";
-import { FileProjectSourceWorkspaceStore } from "./file-project-source-workspace-store.ts";
+import {
+  FileProjectSourceWorkspaceStore,
+  type ProjectSourceWorkspaceRevisionFileIo,
+} from "./file-project-source-workspace-store.ts";
 import { ProjectSourceWorkspaceStoreError } from "../../application/ports/out/project-source-workspace/project-source-workspace-event-store.ts";
 import {
   applyProjectSourceWorkspaceCommand,
@@ -239,6 +242,98 @@ Deno.test("an invalid successor event is refused before a claim is created", asy
   }
 });
 
+Deno.test("fresh reload fails when a historical event is tampered and individually rehashed", async () => {
+  const root = await Deno.makeTempDir({ prefix: "psw-history-tamper-" });
+  try {
+    const cached = new FileProjectSourceWorkspaceStore(root);
+    const first = await eventFor(
+      emptyProjectSourceWorkspace(PROJECT),
+      modulePut("m1", 0),
+    );
+    await cached.append(first);
+    const second = await eventFor(
+      await cached.load(PROJECT),
+      modulePut("m2", 1, "mod-b", "drive"),
+    );
+    await cached.append(second);
+    assertEquals((await cached.load(PROJECT)).workspaceRevision, 2);
+
+    const raw = JSON.parse(
+      await Deno.readTextFile(`${root}/${PROJECT}/0000000001.json`),
+    );
+    const { fingerprint: _ignored, ...tamperedBody } = {
+      ...raw,
+      mutation: { ...raw.mutation, displayName: "Tampered" },
+    };
+    const tampered = {
+      ...tamperedBody,
+      fingerprint: await eventBodyFingerprint(tamperedBody),
+    };
+    await Deno.writeTextFile(
+      `${root}/${PROJECT}/0000000001.json`,
+      `${deterministicJson(tampered)}\n`,
+    );
+
+    assertEquals((await cached.load(PROJECT)).workspaceRevision, 2);
+    const fresh = await assertRejects(
+      () => new FileProjectSourceWorkspaceStore(root).load(PROJECT),
+      ProjectSourceWorkspaceStoreError,
+    );
+    assertEquals(fresh.code, "corrupt_log");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("append refuses a durable predecessor fingerprint mismatch", async () => {
+  const root = await Deno.makeTempDir({ prefix: "psw-pred-mismatch-" });
+  try {
+    let revision1Reads = 0;
+    const store = new FileProjectSourceWorkspaceStore(
+      root,
+      denoFileIo(async (path) => {
+        const text = await Deno.readTextFile(path);
+        if (!path.endsWith("0000000001.json")) return text;
+        revision1Reads += 1;
+        if (revision1Reads < 2) return text;
+        const event = JSON.parse(text);
+        return `${
+          deterministicJson({
+            ...event,
+            fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+          })
+        }\n`;
+      }),
+    );
+    const first = await eventFor(
+      emptyProjectSourceWorkspace(PROJECT),
+      modulePut("m1", 0),
+    );
+    await store.append(first);
+    const firstState = (await applyProjectSourceWorkspaceCommand(
+      emptyProjectSourceWorkspace(PROJECT),
+      modulePut("m1", 0),
+    )).state;
+    const second = await eventFor(
+      firstState,
+      modulePut("m2", 1, "mod-b", "drive"),
+    );
+    const error = await assertRejects(
+      () => store.append(second),
+      ProjectSourceWorkspaceError,
+    );
+    assertEquals(error.code, "event_chain_mismatch");
+    const names = [];
+    for await (const entry of Deno.readDir(`${root}/${PROJECT}`)) {
+      names.push(entry.name);
+    }
+    names.sort();
+    assertEquals(names, ["0000000001.claim", "0000000001.json"]);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("concurrent append at the same revision admits only one event", async () => {
   const root = await Deno.makeTempDir({ prefix: "psw-cas-" });
   try {
@@ -286,4 +381,21 @@ async function eventFor(
   command: unknown,
 ): Promise<ProjectSourceWorkspaceEvent> {
   return (await applyProjectSourceWorkspaceCommand(state, command)).event;
+}
+
+function denoFileIo(
+  readTextFile: (path: string) => Promise<string>,
+): ProjectSourceWorkspaceRevisionFileIo {
+  return {
+    mkdir: (path) => Deno.mkdir(path, { recursive: true }),
+    readTextFile,
+    writeTextFileCreateNew: (path, contents) =>
+      Deno.writeTextFile(path, contents, { createNew: true }),
+    rename: (from, to) => Deno.rename(from, to),
+    readDir: async function* (path) {
+      for await (const entry of Deno.readDir(path)) {
+        yield { name: entry.name, isFile: entry.isFile };
+      }
+    },
+  };
 }

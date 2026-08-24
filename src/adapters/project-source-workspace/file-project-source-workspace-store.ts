@@ -14,6 +14,7 @@ import {
   applyProjectSourceWorkspaceEvent,
   cloneProjectSourceWorkspaceState,
   emptyProjectSourceWorkspace,
+  eventChainFingerprintsEqual,
   replayProjectSourceWorkspaceEvents,
 } from "../../domain/project-source-workspace/transitions.ts";
 import {
@@ -119,7 +120,14 @@ export class FileProjectSourceWorkspaceStore
         `Workspace event ${event.workspaceRevision} is not a valid successor for ${projectId}.`,
       );
     }
-    if (event.workspaceRevision > 1) {
+    if (event.workspaceRevision === 1) {
+      if (event.previousEventFingerprint !== null) {
+        throw new ProjectSourceWorkspaceError(
+          "event_chain_mismatch",
+          "Workspace revision 1 requires previousEventFingerprint null.",
+        );
+      }
+    } else {
       const previous = await this.readEventFile(
         projectId,
         event.workspaceRevision - 1,
@@ -130,6 +138,17 @@ export class FileProjectSourceWorkspaceStore
           `Workspace event ${event.workspaceRevision} cannot be published without predecessor ${
             event.workspaceRevision - 1
           }.`,
+        );
+      }
+      if (
+        !eventChainFingerprintsEqual(
+          event.previousEventFingerprint,
+          previous.fingerprint,
+        )
+      ) {
+        throw new ProjectSourceWorkspaceError(
+          "event_chain_mismatch",
+          `Workspace event ${event.workspaceRevision} previousEventFingerprint does not match durable predecessor ${previous.workspaceRevision}.`,
         );
       }
     }

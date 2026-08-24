@@ -15,6 +15,7 @@ import {
   safeId,
 } from "../kernel/case-validation.ts";
 import { parseAgentResourceReference } from "../resource/agent-resource-reference.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { AgentResourceReference } from "../resource/agent-resource-capture.ts";
 import {
   PROJECT_SOURCE_WORKSPACE_BOUNDS as BOUNDS,
@@ -523,6 +524,7 @@ export function parseWorkspaceEvent(
         "projectId",
         "workspaceRevision",
         "previousWorkspaceRevision",
+        "previousEventFingerprint",
         "mutationId",
         "mutation",
         "fingerprint",
@@ -532,6 +534,7 @@ export function parseWorkspaceEvent(
         "projectId",
         "workspaceRevision",
         "previousWorkspaceRevision",
+        "previousEventFingerprint",
         "mutationId",
         "mutation",
         "fingerprint",
@@ -543,20 +546,6 @@ export function parseWorkspaceEvent(
       PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
       `${path}.schemaVersion`,
     );
-    const fingerprint = exactClosed(
-      rec.fingerprint,
-      ["algorithm", "digest"],
-      ["algorithm", "digest"],
-      `${path}.fingerprint`,
-    );
-    literalValue(fingerprint.algorithm, "sha256", `${path}.fingerprint.algorithm`);
-    const digest = nonEmptyText(fingerprint.digest, `${path}.fingerprint.digest`);
-    if (!/^[a-f0-9]{64}$/.test(digest)) {
-      workspaceError(
-        "invalid_request",
-        `${path}.fingerprint.digest must be lowercase sha256 hex.`,
-      );
-    }
     const workspaceRevision = parseWorkspaceRevision(
       rec.workspaceRevision,
       `${path}.workspaceRevision`,
@@ -575,9 +564,16 @@ export function parseWorkspaceEvent(
         rec.previousWorkspaceRevision,
         `${path}.previousWorkspaceRevision`,
       ),
+      previousEventFingerprint: parsePreviousEventFingerprint(
+        rec.previousEventFingerprint,
+        `${path}.previousEventFingerprint`,
+      ),
       mutationId: parseMutationId(rec.mutationId, `${path}.mutationId`),
       mutation: parseMutation(rec.mutation, `${path}.mutation`),
-      fingerprint: { algorithm: "sha256" as const, digest },
+      fingerprint: parseContentFingerprint(
+        rec.fingerprint,
+        `${path}.fingerprint`,
+      ),
     });
   } catch (cause) {
     asWorkspaceError(cause, path);
@@ -775,6 +771,35 @@ export function dependencyGraphHasCycle(
     if (visit(node)) return true;
   }
   return false;
+}
+
+function parseContentFingerprint(
+  value: unknown,
+  path: string,
+): ContentFingerprint {
+  const fingerprint = exactClosed(
+    value,
+    ["algorithm", "digest"],
+    ["algorithm", "digest"],
+    path,
+  );
+  literalValue(fingerprint.algorithm, "sha256", `${path}.algorithm`);
+  const digest = nonEmptyText(fingerprint.digest, `${path}.digest`);
+  if (!/^[a-f0-9]{64}$/.test(digest)) {
+    workspaceError(
+      "invalid_request",
+      `${path}.digest must be lowercase sha256 hex.`,
+    );
+  }
+  return { algorithm: "sha256", digest };
+}
+
+function parsePreviousEventFingerprint(
+  value: unknown,
+  path: string,
+): ContentFingerprint | null {
+  if (value === null) return null;
+  return parseContentFingerprint(value, path);
 }
 
 function exactClosed(

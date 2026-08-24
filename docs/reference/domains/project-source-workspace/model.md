@@ -4,7 +4,10 @@ Audience: agent · Diátaxis: reference · Kind: contract
 
 `ProjectSourceWorkspace` is the consistency boundary for one project source tree. Every
 mutation carries an exact `expectedWorkspaceRevision` and a stable `mutationId`. The log
-stores one bounded event per accepted mutation.
+stores one bounded `project-source-workspace-event/2.0` record per accepted mutation.
+Events are hash-chained: revision 1 has `previousEventFingerprint: null`; later
+revisions name the exact prior event fingerprint, which is included in the event body
+fingerprint. `/1.0` events are not accepted.
 
 ## Modules and files
 
@@ -37,6 +40,9 @@ CAS bytes remain.
 - Resource URI, digest, size, representation, name and MIME are reopened exactly before
   a `file_put` is accepted.
 - Closed server-owned bounds constrain one operation, not the total file count.
+- Event revision 1 requires `previousEventFingerprint: null`. Later events require the
+  Object.is-equivalent prior event fingerprint. A broken chain is
+  `event_chain_mismatch`.
 
 Replaying the same `mutationId` with the same canonical command returns the snapshot at
 that mutation's accepted `event.workspaceRevision`, even if later events now exist.

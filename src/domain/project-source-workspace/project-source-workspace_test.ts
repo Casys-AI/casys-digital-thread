@@ -10,12 +10,15 @@ import {
   applyProjectSourceWorkspaceCommand,
   applyProjectSourceWorkspaceEvent,
   emptyProjectSourceWorkspace,
+  eventBodyFingerprint,
   replayProjectSourceWorkspaceEvents,
 } from "./transitions.ts";
 import {
   PROJECT_SOURCE_WORKSPACE_BOUNDS,
+  PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA,
   type ProjectSourceFileRevision,
   ProjectSourceWorkspaceError,
+  type ProjectSourceWorkspaceEvent,
   type ProjectSourceWorkspaceState,
 } from "./types.ts";
 import {
@@ -23,6 +26,7 @@ import {
   parseSearchQuery,
   parseTreeQuery,
   parseWorkspaceCommand,
+  parseWorkspaceEvent,
 } from "./validation.ts";
 
 const PROJECT = "generic-project";
@@ -706,6 +710,111 @@ Deno.test("canonical event fingerprint is exact; a tampered event fails replay",
   );
 });
 
+Deno.test("revision 1 previousEventFingerprint is null; later events name the exact prior fingerprint", async () => {
+  const first = await apply(
+    emptyProjectSourceWorkspace(PROJECT),
+    modulePut("m1", 0, {
+      moduleId: "mod-a",
+      slug: "a",
+      displayName: "A",
+    }),
+  );
+  assertEquals(first.event.schemaVersion, PROJECT_SOURCE_WORKSPACE_EVENT_SCHEMA);
+  assertEquals(first.event.previousEventFingerprint, null);
+  assertEquals(first.state.lastEventFingerprint, first.event.fingerprint);
+  const second = await apply(
+    first.state,
+    modulePut("m2", 1, {
+      moduleId: "mod-b",
+      slug: "b",
+      displayName: "B",
+    }),
+  );
+  assertEquals(second.event.previousEventFingerprint, first.event.fingerprint);
+  assertEquals(
+    Object.is(
+      second.event.previousEventFingerprint?.algorithm,
+      first.event.fingerprint.algorithm,
+    ),
+    true,
+  );
+  assertEquals(
+    Object.is(
+      second.event.previousEventFingerprint?.digest,
+      first.event.fingerprint.digest,
+    ),
+    true,
+  );
+  const replayed = await replayProjectSourceWorkspaceEvents(PROJECT, [
+    first.event,
+    second.event,
+  ]);
+  assertEquals(replayed.workspaceRevision, 2);
+  assertEquals(replayed.lastEventFingerprint, second.event.fingerprint);
+});
+
+Deno.test("wrong or null previousEventFingerprint is refused as event_chain_mismatch", async () => {
+  const first = await apply(
+    emptyProjectSourceWorkspace(PROJECT),
+    modulePut("m1", 0, {
+      moduleId: "mod-a",
+      slug: "a",
+      displayName: "A",
+    }),
+  );
+  const second = await apply(
+    first.state,
+    modulePut("m2", 1, {
+      moduleId: "mod-b",
+      slug: "b",
+      displayName: "B",
+    }),
+  );
+  await assertCode(
+    applyProjectSourceWorkspaceEvent(
+      emptyProjectSourceWorkspace(PROJECT),
+      await rehashedEvent(first.event, {
+        previousEventFingerprint: {
+          algorithm: "sha256",
+          digest: "a".repeat(64),
+        },
+      }),
+    ),
+    "event_chain_mismatch",
+  );
+  await assertCode(
+    applyProjectSourceWorkspaceEvent(
+      first.state,
+      await rehashedEvent(second.event, { previousEventFingerprint: null }),
+    ),
+    "event_chain_mismatch",
+  );
+  await assertCode(
+    applyProjectSourceWorkspaceEvent(
+      first.state,
+      await rehashedEvent(second.event, {
+        previousEventFingerprint: {
+          algorithm: "sha256",
+          digest: "c".repeat(64),
+        },
+      }),
+    ),
+    "event_chain_mismatch",
+  );
+  const { previousEventFingerprint: _dropped, ...legacy } = first.event;
+  assertEquals(
+    assertThrows(
+      () =>
+        parseWorkspaceEvent({
+          ...legacy,
+          schemaVersion: "project-source-workspace-event/1.0",
+        }),
+      ProjectSourceWorkspaceError,
+    ).code,
+    "invalid_request",
+  );
+});
+
 Deno.test("exact historical file read returns the predecessor resource after a later revision", async () => {
   let state = emptyProjectSourceWorkspace(PROJECT);
   const first = await seedFile(state);
@@ -1069,6 +1178,17 @@ async function apply(
   command: unknown,
 ) {
   return await applyProjectSourceWorkspaceCommand(state, command);
+}
+
+async function rehashedEvent(
+  event: ProjectSourceWorkspaceEvent,
+  patch: Partial<Omit<ProjectSourceWorkspaceEvent, "fingerprint">>,
+): Promise<ProjectSourceWorkspaceEvent> {
+  const { fingerprint: _ignored, ...body } = { ...event, ...patch };
+  return {
+    ...body,
+    fingerprint: await eventBodyFingerprint(body),
+  };
 }
 
 async function seedFile(state: ProjectSourceWorkspaceState) {

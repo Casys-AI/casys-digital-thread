@@ -8,6 +8,9 @@ Audience: both · Diátaxis: reference · Kind: coverage
 - Stable module and file identities with derived logical paths.
 - Exact append-only revisions, predecessor chains, tombstones, dependencies and mutation
   replay.
+- Hash-chained `project-source-workspace-event/2.0` events: `previousEventFingerprint`
+  is null at revision 1 and the exact prior event fingerprint thereafter. `/1.0` is not
+  accepted.
 - Exact `AgentResourceReference` reopening before a file revision is accepted.
 - Revision-anchored snapshot, tree, search and file reads with bounded pagination.
 - Fail-closed recovery for gaps, corruption, incomplete claims and concurrent writers.

@@ -68,9 +68,21 @@ export async function eventBodyFingerprint(
     projectId: event.projectId,
     workspaceRevision: event.workspaceRevision,
     previousWorkspaceRevision: event.previousWorkspaceRevision,
+    previousEventFingerprint: event.previousEventFingerprint,
     mutationId: event.mutationId,
     mutation: event.mutation,
   });
+}
+
+export function eventChainFingerprintsEqual(
+  left: ContentFingerprint | null,
+  right: ContentFingerprint | null,
+): boolean {
+  if (left === null || right === null) {
+    return left === null && right === null;
+  }
+  return Object.is(left.algorithm, right.algorithm) &&
+    Object.is(left.digest, right.digest);
 }
 
 export async function applyProjectSourceWorkspaceCommand(
@@ -109,6 +121,7 @@ export async function applyProjectSourceWorkspaceCommand(
     projectId: command.projectId,
     workspaceRevision: nextRevision,
     previousWorkspaceRevision: state.workspaceRevision,
+    previousEventFingerprint: state.lastEventFingerprint ?? null,
     mutationId: command.mutationId,
     mutation: command.mutation,
   };
@@ -159,6 +172,7 @@ export async function applyProjectSourceWorkspaceEvent(
       `Event revision ${event.workspaceRevision} is not the next workspace revision.`,
     );
   }
+  assertEventChain(state, event);
   if (state.mutations.has(event.mutationId)) {
     workspaceError(
       "mutation_id_conflict",
@@ -415,6 +429,36 @@ function assertDependencyAcyclic(state: ProjectSourceWorkspaceState): void {
   }
   if (dependencyGraphHasCycle(edges)) {
     workspaceError("dependency_cycle", "File dependency graph is cyclic.");
+  }
+}
+
+function assertEventChain(
+  state: ProjectSourceWorkspaceState,
+  event: ProjectSourceWorkspaceEvent,
+): void {
+  if (event.workspaceRevision === 1) {
+    if (event.previousEventFingerprint !== null) {
+      workspaceError(
+        "event_chain_mismatch",
+        "Workspace revision 1 requires previousEventFingerprint null.",
+      );
+    }
+  } else if (event.previousEventFingerprint === null) {
+    workspaceError(
+      "event_chain_mismatch",
+      `Workspace event ${event.workspaceRevision} requires the exact previous event fingerprint.`,
+    );
+  }
+  if (
+    !eventChainFingerprintsEqual(
+      event.previousEventFingerprint,
+      state.lastEventFingerprint ?? null,
+    )
+  ) {
+    workspaceError(
+      "event_chain_mismatch",
+      `Workspace event ${event.workspaceRevision} previousEventFingerprint does not match the prior event.`,
+    );
   }
 }
 
