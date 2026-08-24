@@ -1010,7 +1010,7 @@ Deno.test("search profileId filters captureRequest.profileId and refuses capture
       moduleId: "mod-a",
       logicalName: "a.py",
       role: "script",
-      captureRequest: { profileId: "python-source", sourceId: "rail" },
+      captureRequest: { profileId: "python-source" },
     }),
   )).state;
   state = (await apply(
@@ -1021,7 +1021,7 @@ Deno.test("search profileId filters captureRequest.profileId and refuses capture
       logicalName: "b.py",
       role: "script",
       resourceName: "b.py",
-      captureRequest: { profileId: "modelica-source", sourceId: "plant" },
+      captureRequest: { profileId: "modelica-source" },
     }),
   )).state;
   const hits = projectSourceWorkspaceSearchPage(state, {
@@ -1031,7 +1031,6 @@ Deno.test("search profileId filters captureRequest.profileId and refuses capture
   assertEquals(hits.entries.map((hit) => hit.fileId), ["file-a"]);
   assertEquals(hits.entries[0]?.captureRequest, {
     profileId: "python-source",
-    sourceId: "rail",
   });
   assertEquals(
     assertThrows(
@@ -1040,6 +1039,18 @@ Deno.test("search profileId filters captureRequest.profileId and refuses capture
           projectId: PROJECT,
           workspaceRevision: 3,
           captureProfileId: "python-source",
+        }),
+      ProjectSourceWorkspaceError,
+    ).code,
+    "invalid_request",
+  );
+  assertEquals(
+    assertThrows(
+      () =>
+        parseSearchQuery({
+          projectId: PROJECT,
+          workspaceRevision: 3,
+          sourceId: "rail",
         }),
       ProjectSourceWorkspaceError,
     ).code,
@@ -1150,7 +1161,7 @@ function filePut(
     predecessorFileRevision?: number;
     resourceName?: string;
     dependencies?: { fileId: string; fileRevision: number }[];
-    captureRequest?: { profileId: string; sourceId: string };
+    captureRequest?: { profileId: string };
   },
 ) {
   return {

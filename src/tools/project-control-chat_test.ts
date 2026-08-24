@@ -24,7 +24,7 @@ import {
   uncertainWriterBasisReleaseText,
 } from "../domain/record/uncertain-writer-basis-release.ts";
 import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
-import { sampleAgentResourceReference } from "../testing/agent-resource-test-support.ts";
+import { sampleTechnicalSourceAnalysisCaptureLocator } from "../testing/technical-source-capture-test-support.ts";
 import {
   collectEngineeringActivities,
   stampEngineeringActivityIdentity,
@@ -41,33 +41,10 @@ const COMMON = {
   issuedAt: "2026-08-03T12:00:00.000Z",
 };
 
-const TECHNICAL_SOURCE_REFERENCE = {
-  schemaVersion: "technical-source-analysis-capture/1.0",
-  kind: "technical-source-analysis",
-  profile: {
-    id: "profile.build123d",
-    version: "1.0.0",
-    fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-  },
-  source: {
-    id: "source.cad",
-    role: "cad-script",
-    language: "python",
-    sha256: "2".repeat(64),
-    byteCount: 54,
-    casUri: `casys://technical-source/sha256/${"2".repeat(64)}`,
-  },
-  analysis: {
-    analyzer: { id: "python-cad-lezer", version: "1.0.0" },
-    policy: { profile: "profile.build123d", status: "passed" },
-    sha256: "3".repeat(64),
-    byteCount: 412,
-    casUri: `casys://technical-source-analysis/sha256/${"3".repeat(64)}`,
-  },
-} as const;
+const TECHNICAL_SOURCE_REFERENCE = sampleTechnicalSourceAnalysisCaptureLocator();
 
 const TECHNICAL_SOURCE_CAPTURE_REVIEW = {
-  schemaVersion: "technical-source-capture-review/1.0",
+  schemaVersion: "technical-source-capture-review/2.0",
   reference: TECHNICAL_SOURCE_REFERENCE,
   parser: { status: "passed", profile: "profile.build123d" },
   levers: {
@@ -126,22 +103,17 @@ Deno.test("technical source capture is conditional, exact, and has no project au
 
   assertEquals(app.hasTool("project_technical_source_capture"), true);
   assertEquals(app.hasTool("project_technical_compilation_preview"), false);
-  const resourceRef = sampleAgentResourceReference({
-    name: "part.py",
-    mimeType: "text/x-python",
-    byteCount: 12,
-  });
-  const result = await app.handler("project_technical_source_capture")({
-    profileId: "profile.build123d",
-    sourceId: "source.cad",
-    resourceRef,
-  }) as Record<string, unknown>;
+  const captureCommand = {
+    projectId: "project.drip-tray",
+    workspaceRevision: 2,
+    fileId: "source.cad",
+    fileRevision: 1,
+  };
+  const result = await app.handler("project_technical_source_capture")(
+    captureCommand,
+  ) as Record<string, unknown>;
   assert(result.structuredContent === TECHNICAL_SOURCE_CAPTURE_REVIEW);
-  assertEquals(calls, [{
-    profileId: "profile.build123d",
-    sourceId: "source.cad",
-    resourceRef,
-  }]);
+  assertEquals(calls, [captureCommand]);
   assertEquals(projectReads, 0);
   assertStringIncludes(result.content as string, "parser status passed");
   assertStringIncludes(result.content as string, "CAD levers: unresolved");
@@ -171,9 +143,10 @@ Deno.test("technical source capture is conditional, exact, and has no project au
   );
   const schema = tool.inputSchema as Record<string, unknown>;
   assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
-    "profileId",
-    "resourceRef",
-    "sourceId",
+    "fileId",
+    "fileRevision",
+    "projectId",
+    "workspaceRevision",
   ]);
   assertEquals(schema.additionalProperties, false);
   assertEquals("sourceText" in (schema.properties as Record<string, unknown>), false);
@@ -182,9 +155,7 @@ Deno.test("technical source capture is conditional, exact, and has no project au
   await assertRejects(
     () =>
       app.handler("project_technical_source_capture")({
-        profileId: "profile.build123d",
-        sourceId: "source.cad",
-        resourceRef,
+        ...captureCommand,
         provider: "mcp-build123d",
       }) as Promise<unknown>,
     TypeError,
@@ -298,14 +269,15 @@ Deno.test("technical compilation preview forwards exact closed facts and passes 
     "unsupported field(s): bindings",
   );
   const foreignReference = structuredClone(TECHNICAL_COMPILATION_ARGS);
-  (foreignReference.sourceRefs[0] as Record<string, unknown>).path = "/tmp/code.py";
+  (foreignReference.sourceRefs[0] as unknown as Record<string, unknown>).path =
+    "/tmp/code.py";
   await assertRejects(
     () =>
       app.handler("project_technical_compilation_preview")(
         foreignReference,
       ) as Promise<unknown>,
     TypeError,
-    "unsupported field(s): path",
+    "unsupported field path",
   );
   const reviewAsReference = {
     ...structuredClone(TECHNICAL_COMPILATION_ARGS),
@@ -317,7 +289,7 @@ Deno.test("technical compilation preview forwards exact closed facts and passes 
         reviewAsReference,
       ) as Promise<unknown>,
     TypeError,
-    "technical-source-capture-review/1.0 envelope. Pass result.reference",
+    "technical-source-capture-review envelope. Pass result.reference",
   );
   assertEquals(calls.length, 1);
 });

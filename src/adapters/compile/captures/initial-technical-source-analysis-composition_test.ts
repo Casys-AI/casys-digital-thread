@@ -10,6 +10,10 @@ import {
 import {
   TechnicalSourceAnalysisProfileNotRegisteredError,
 } from "./technical-source-analysis-capture.ts";
+import {
+  technicalSourceAnalysisCaptureStores,
+  technicalSourceCaptureInput,
+} from "../../../testing/technical-source-capture-test-support.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import {
   INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG,
@@ -101,38 +105,30 @@ Deno.test("initial capture service persists and replays the exact qualified fron
     prefix: "initial-technical-source-analysis-",
   });
   try {
-    const service = createInitialTechnicalSourceAnalysisCaptureService({
-      sourceCaptures: new FileByteStore({
-        kind: "technical-source",
-        directory: `${directory}/source`,
-        uriNamespace: "initial-technical-source-test",
-        label: "initial technical source",
-      }),
-      analysisCaptures: new FileByteStore({
-        kind: "technical-source-analysis",
-        directory: `${directory}/analysis`,
-        uriNamespace: "initial-technical-analysis-test",
-        label: "initial technical source analysis",
-      }),
-    });
-    const reference = await service.capture({
+    const service = createInitialTechnicalSourceAnalysisCaptureService(
+      technicalSourceAnalysisCaptureStores(directory),
+    );
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
       sourceId: "source.support",
       sourceText: SOURCE_TEXT,
-    });
-    const reopened = await service.reopen(reference);
+    }));
+    const reopened = await service.reopenLocator(persisted.locator);
 
     assertEquals(reopened.sourceText, SOURCE_TEXT);
-    assertEquals(reference.profile.id, QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE);
     assertEquals(
-      reference.profile.version,
+      persisted.document.profile.id,
+      QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+    );
+    assertEquals(
+      persisted.document.profile.version,
       INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.version,
     );
-    assertEquals(reference.analysis.analyzer, {
+    assertEquals(persisted.document.analysis.analyzer, {
       id: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.analyzer.id,
       version: INITIAL_QUALIFIED_BUILD123D_TECHNICAL_SOURCE_PROFILE.analyzer.version,
     });
-    assertEquals(reference.analysis.policy, {
+    assertEquals(persisted.document.analysis.policy, {
       profile: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
       status: "passed",
     });

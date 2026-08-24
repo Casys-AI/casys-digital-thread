@@ -1,5 +1,5 @@
 /**
- * Provider-free executor for `compile.seal-admission@1`.
+ * Provider-free executor for `compile.seal-admission@2`.
  *
  * A preview is not authority. This executor reopens the exact human-reviewed
  * draft, Thread/SysML basis, source captures, and code-owned profiles before it
@@ -40,10 +40,18 @@ import {
 } from "../../../domain/compile/admission/technical-compilation.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
+  COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
   encodeTechnicalCompilationAdmissionParameters,
   parseTechnicalCompilationAdmissionParameters,
+  TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA,
   type TechnicalCompilationAdmission,
 } from "../../../domain/compile/admission/technical-compilation-proposal.ts";
+import {
+  assertTechnicalSourceAnalysisCaptureLocatorsEqual,
+  assertTechnicalSourceProvenanceIdentitiesEqual,
+  type TechnicalSourceProvenanceIdentity,
+  validateTechnicalSourceAnalysisCaptureLocator,
+} from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import {
   arrayOf,
   deepFreeze,
@@ -81,7 +89,7 @@ import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import { assertThreadSnapshotLineageIntact } from "../../shared/stores/thread-snapshot-lineage.ts";
-import { validateTechnicalSourceAnalysisCaptureDocument } from "../captures/technical-source-analysis-capture.ts";
+
 import {
   requireBasis,
   requiredStart,
@@ -94,10 +102,9 @@ import {
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
 
-export { COMPILE_SEAL_ADMISSION_OPERATION };
+export { COMPILE_SEAL_ADMISSION_OPERATION, COMPILE_SEAL_ADMISSION_PRODUCER_TOOL };
 
-export const TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA =
-  "technical-compilation-admission-capture/1.0" as const;
+export { TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA };
 export const TECHNICAL_COMPILATION_ADMISSION_CAPTURE_URI_PREFIX =
   "casys://technical-compilation-admission-capture/sha256/" as const;
 
@@ -266,33 +273,28 @@ export async function validateTechnicalCompilationAdmissionCapture(
         ["sourceId", "reference", "referenceFingerprint"],
         path,
       );
-      const reference = exactRecord(
+      const locator = validateTechnicalSourceAnalysisCaptureLocator(
         capture.reference,
-        ["schemaVersion", "kind", "profile", "source", "analysis"],
         `${path}.reference`,
       );
       const referenceFingerprint = parseFingerprint(
         capture.referenceFingerprint,
         `${path}.referenceFingerprint`,
       );
-      const observed = await sha256Fingerprint(reference);
+      const observed = await sha256Fingerprint(locator);
       if (!fingerprintsEqual(observed, referenceFingerprint)) {
         throw new TypeError(`${path}.reference fingerprint does not match.`);
       }
-      await validateTechnicalSourceAnalysisCaptureDocument(
-        reference,
-        `${path}.reference`,
-      );
       return {
         sourceId: safeId(capture.sourceId, `${path}.sourceId`),
-        reference,
+        reference: locator,
         referenceFingerprint,
       };
     }),
   );
   sourceCaptures.sort((left, right) => compareText(left.sourceId, right.sourceId));
   const document = await validateTechnicalCompilationDocument(root.document);
-  await assertCaptureSourceCoverage(admission, sourceCaptures, document);
+  assertCaptureSourceCoverage(admission, sourceCaptures, document);
   const draft: TechnicalCompilationDraft = {
     projectId: admission.draft.projectId,
     document,
@@ -841,8 +843,7 @@ function buildTechnicalCompilationAdmissionSuccessor(input: {
     `technical-compilation-admission-${input.captureFingerprint.digest}`;
   const operationRef = {
     serverId: "digital-thread",
-    tool:
-      `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}`,
+    tool: COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
     runId: input.run.id,
   };
   const artifact: ThreadArtifact = {
@@ -1285,11 +1286,11 @@ function assertEmbeddedProfileRequests(
   }
 }
 
-async function assertCaptureSourceCoverage(
+function assertCaptureSourceCoverage(
   admission: TechnicalCompilationAdmission,
   sourceCaptures: TechnicalCompilationDraft["sourceCaptures"],
   document: TechnicalCompilationDocument,
-): Promise<void> {
+): void {
   const sourceIds = sourceCaptures.map((capture) => capture.sourceId);
   const referenceDigests = sourceCaptures.map((capture) =>
     capture.referenceFingerprint.digest
@@ -1321,39 +1322,24 @@ async function assertCaptureSourceCoverage(
         `$technicalCompilationAdmissionCapture source ${expected.id} is not exactly covered.`,
       );
     }
-    const reference = await validateTechnicalSourceAnalysisCaptureDocument(
+    const locator = validateTechnicalSourceAnalysisCaptureLocator(
       capture.reference,
       `$technicalCompilationAdmissionCapture.sourceCaptures.${expected.id}.reference`,
     );
-    const sourceByteCount = new TextEncoder().encode(documentSource.sourceText)
-      .byteLength;
-    const analysisByteCount = new TextEncoder().encode(
-      deterministicJson(documentSource.analysis),
-    ).byteLength;
+    assertTechnicalSourceAnalysisCaptureLocatorsEqual(
+      expected.locator,
+      locator,
+      `$technicalCompilationAdmissionCapture.sourceCaptures.${expected.id}.locator`,
+    );
     if (
       !fingerprintsEqual(
         capture.referenceFingerprint,
         expected.captureFingerprint,
       ) ||
-      reference.profile.id !== expected.profileId ||
-      reference.profile.version !== expected.profileVersion ||
-      !fingerprintsEqual(
-        reference.profile.fingerprint,
-        expected.profileFingerprint,
-      ) ||
-      reference.source.id !== expected.id ||
-      reference.source.role !== expected.role ||
-      reference.source.language !== expected.language ||
-      reference.source.role !== documentSource.analysis.source.role ||
-      reference.source.language !== documentSource.analysis.source.language ||
-      reference.source.sha256 !== expected.sourceFingerprint.digest ||
-      reference.source.byteCount !== sourceByteCount ||
-      reference.analysis.analyzer.id !== expected.analyzer.id ||
-      reference.analysis.analyzer.version !== expected.analyzer.version ||
-      reference.analysis.policy.profile !== documentSource.analysis.policy.profile ||
-      reference.analysis.policy.status !== documentSource.analysis.policy.status ||
-      reference.analysis.sha256 !== expected.analysisFingerprint.digest ||
-      reference.analysis.byteCount !== analysisByteCount ||
+      expected.id !== expected.projectSource.fileId ||
+      expected.projectSource.fileId !== documentSource.analysis.source.id ||
+      documentSource.analysis.source.role !== expected.role ||
+      documentSource.analysis.source.language !== expected.language ||
       !fingerprintsEqual(
         documentSource.analysis.source.fingerprint,
         expected.sourceFingerprint,
@@ -1363,9 +1349,7 @@ async function assertCaptureSourceCoverage(
         expected.analysisFingerprint,
       ) ||
       documentSource.analysis.analyzer.id !== expected.analyzer.id ||
-      documentSource.analysis.analyzer.version !== expected.analyzer.version ||
-      documentSource.analysis.source.role !== expected.role ||
-      documentSource.analysis.source.language !== expected.language
+      documentSource.analysis.analyzer.version !== expected.analyzer.version
     ) {
       throw new TypeError(
         `$technicalCompilationAdmissionCapture source ${expected.id} disagrees with its exact admission, capture, or document identity.`,
@@ -1416,45 +1400,19 @@ async function verifySources(
     const analysisFingerprint = await fingerprintSourceAnalysisBundle(
       reopened.source.analysis,
     );
-    const captureDocument = await validateTechnicalSourceAnalysisCaptureDocument(
-      capture.reference,
-    );
+    try {
+      assertTechnicalSourceProvenanceIdentitiesEqual(
+        admissionSourceProvenance(expected),
+        reopenedSourceProvenance(reopened),
+        `$admission.sources.${expected.id}`,
+      );
+    } catch {
+      throw invalidTransition(
+        `Admission source ${expected.id} differs from its reviewed capture identity.`,
+      );
+    }
     if (
       !fingerprintsEqual(reopened.referenceFingerprint, capture.referenceFingerprint) ||
-      !fingerprintsEqual(capture.referenceFingerprint, expected.captureFingerprint) ||
-      captureDocument.profile.id !== expected.profileId ||
-      captureDocument.profile.version !== expected.profileVersion ||
-      !fingerprintsEqual(
-        captureDocument.profile.fingerprint,
-        expected.profileFingerprint,
-      ) ||
-      captureDocument.source.id !== expected.id ||
-      captureDocument.source.role !== expected.role ||
-      captureDocument.source.language !== expected.language ||
-      captureDocument.source.sha256 !== expected.sourceFingerprint.digest ||
-      captureDocument.analysis.sha256 !== expected.analysisFingerprint.digest ||
-      captureDocument.analysis.analyzer.id !== expected.analyzer.id ||
-      captureDocument.analysis.analyzer.version !== expected.analyzer.version ||
-      reopened.provenance.profile.id !== expected.profileId ||
-      reopened.provenance.profile.version !== expected.profileVersion ||
-      !fingerprintsEqual(
-        reopened.provenance.profile.fingerprint,
-        expected.profileFingerprint,
-      ) ||
-      reopened.provenance.analyzer.id !== expected.analyzer.id ||
-      reopened.provenance.analyzer.version !== expected.analyzer.version ||
-      !fingerprintsEqual(
-        reopened.provenance.sourceFingerprint,
-        expected.sourceFingerprint,
-      ) ||
-      !fingerprintsEqual(
-        reopened.provenance.captureFingerprint,
-        expected.captureFingerprint,
-      ) ||
-      !fingerprintsEqual(
-        reopened.provenance.analysisFingerprint,
-        expected.analysisFingerprint,
-      ) ||
       !fingerprintsEqual(sourceFingerprint, expected.sourceFingerprint) ||
       !fingerprintsEqual(
         reopened.source.analysis.source.fingerprint,
@@ -1462,11 +1420,6 @@ async function verifySources(
       ) ||
       !fingerprintsEqual(analysisFingerprint, expected.analysisFingerprint) ||
       !fingerprintsEqual(reopened.source.analysisFingerprint, analysisFingerprint) ||
-      reopened.source.analysis.source.id !== expected.id ||
-      reopened.source.analysis.source.role !== expected.role ||
-      reopened.source.analysis.source.language !== expected.language ||
-      reopened.source.analysis.analyzer.id !== expected.analyzer.id ||
-      reopened.source.analysis.analyzer.version !== expected.analyzer.version ||
       deterministicJson(reopened.source) !== deterministicJson(stored)
     ) {
       throw invalidTransition(
@@ -1737,6 +1690,67 @@ export function technicalCompilationEvidenceRefsEqualForTest(
   right: readonly EngineeringThreadEntityRef[],
 ): boolean {
   return sameEvidenceRefs(left, right);
+}
+
+function admissionSourceProvenance(
+  source: TechnicalCompilationAdmission["sources"][number],
+): TechnicalSourceProvenanceIdentity {
+  return {
+    sourceId: source.id,
+    role: source.role,
+    language: source.language,
+    profileId: source.profileId,
+    profileVersion: source.profileVersion,
+    profileFingerprint: source.profileFingerprint,
+    analyzer: source.analyzer,
+    sourceFingerprint: source.sourceFingerprint,
+    captureFingerprint: source.captureFingerprint,
+    analysisFingerprint: source.analysisFingerprint,
+    projectSource: source.projectSource,
+    locator: source.locator,
+  };
+}
+
+function reopenedSourceProvenance(
+  reopened: {
+    readonly source: {
+      readonly analysis: {
+        readonly source: {
+          readonly id: string;
+          readonly role: string;
+          readonly language: string;
+        };
+      };
+    };
+    readonly provenance: {
+      readonly profile: {
+        readonly id: string;
+        readonly version: string;
+        readonly fingerprint: ContentFingerprint;
+      };
+      readonly analyzer: { readonly id: string; readonly version: string };
+      readonly sourceFingerprint: ContentFingerprint;
+      readonly captureFingerprint: ContentFingerprint;
+      readonly analysisFingerprint: ContentFingerprint;
+      readonly projectSource: TechnicalSourceProvenanceIdentity["projectSource"];
+      readonly locator: TechnicalSourceProvenanceIdentity["locator"];
+    };
+  },
+): TechnicalSourceProvenanceIdentity {
+  return {
+    sourceId: reopened.source.analysis.source.id,
+    role: reopened.source.analysis.source.role,
+    language: reopened.source.analysis.source.language,
+    profileId: reopened.provenance.profile.id,
+    profileVersion: reopened.provenance.profile.version,
+    profileFingerprint: reopened.provenance.profile.fingerprint,
+    analyzer: reopened.provenance.analyzer,
+    sourceFingerprint: reopened.provenance.sourceFingerprint,
+    captureFingerprint: reopened.provenance.captureFingerprint,
+    analysisFingerprint: reopened.provenance.analysisFingerprint,
+    projectSource: reopened.provenance.projectSource,
+    locator: reopened.provenance.locator,
+  };
 }
 
 function invalidTransition(message: string): EngineeringProjectCommandError {

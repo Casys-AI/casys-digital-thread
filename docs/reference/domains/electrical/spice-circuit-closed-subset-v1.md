@@ -8,12 +8,12 @@ capture frontend authorizes the same grammar a later isolated worker would accep
 circuit source. Analysis commands and `.end` are refused because a later server-owned
 worker would own them.
 
-This page is capture → analysis → compilation preview → `compile.seal-admission@1` plus
+This page is capture → analysis → compilation preview → `compile.seal-admission@2` plus
 the generic ngspice Microsandbox worker contract. Product IsolatedCodeRunner wiring is
 `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review`. It is
 documentary L3 evidence only. mcp-spice and the LED-driver fiche are not this path.
-Derived power, L4, and L5 are later registered operations on a sealed electrical
-method sheet; they are not granted by this worker. Safety remains `unavailable`.
+Derived power, L4, and L5 are later registered operations on a sealed electrical method
+sheet; they are not granted by this worker. Safety remains `unavailable`.
 
 ## Accepted form
 
@@ -75,16 +75,16 @@ provider envelope, paths, or observation list.
 
 Docker smoke, Microsandbox cache preparation, and the product run are not substitutes:
 
-| Surface | Owner | What it is not |
-| ------- | ----- | -------------- |
-| Docker smoke | `scripts/gates/verify-ngspice-microsandbox-worker.ts` | IsolatedCodeRunner, Microsandbox cache, product evidence |
-| Cache preparation | `deno task prepare:ngspice:microsandbox` | A pull, a product run, a caller-selected image |
-| Product run | `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review` | mcp-spice, the LED-driver fiche, a verdict |
+| Surface           | Owner                                                                     | What it is not                                           |
+| ----------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts`                     | IsolatedCodeRunner, Microsandbox cache, product evidence |
+| Cache preparation | `deno task prepare:ngspice:microsandbox`                                  | A pull, a product run, a caller-selected image           |
+| Product run       | `simulate.run-admitted-spice@1` after `project_admitted_spice_run_review` | mcp-spice, the LED-driver fiche, a verdict               |
 
-The Docker source/index digest (`62748f195c86…`) and the Microsandbox runtime
-manifest digest (`3350527ceba0…`) are related but distinct profile-owned constants.
-Product inspect requires `imageReference` digest == attested `manifestDigest`.
-`pullPolicy` stays `never`.
+The Docker source/index digest (`62748f195c86…`) and the Microsandbox runtime manifest
+digest (`3350527ceba0…`) are related but distinct profile-owned constants. Product
+inspect requires `imageReference` digest == attested `manifestDigest`. `pullPolicy`
+stays `never`.
 
 Filesystem contract, analogous to admitted Modelica:
 

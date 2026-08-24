@@ -185,20 +185,13 @@ Deno.test(
   },
 );
 
-Deno.test("activity feed promotes measured DFM and corrected-source documents", () => {
+Deno.test("activity feed promotes measured DFM and study-base evaluation documents", () => {
   const digest = "b".repeat(64);
   const dfm = node(
     `dfm-check-${digest}`,
     "artifact",
     "2026-08-15T10:00:00.000Z",
     "evidence",
-    "digital-thread",
-  );
-  const corrected = node(
-    `corrected-source-${digest}`,
-    "artifact",
-    "2026-08-15T10:01:00.000Z",
-    "document",
     "digital-thread",
   );
   const join = node(
@@ -209,11 +202,10 @@ Deno.test("activity feed promotes measured DFM and corrected-source documents", 
     "digital-thread",
   );
   assertEquals(
-    activityFeedNodes([dfm, corrected, join]).map((item) => item.ref.id),
-    [join.ref.id, corrected.ref.id, dfm.ref.id],
+    activityFeedNodes([dfm, join]).map((item) => item.ref.id),
+    [join.ref.id, dfm.ref.id],
   );
   assertEquals(activityKindLabel(dfm), "measured DFM");
-  assertEquals(activityKindLabel(corrected), "corrected source");
   assertEquals(activityKindLabel(join), "study-base evaluation");
   const joinEval: ThreadGraphNode = {
     ...node(

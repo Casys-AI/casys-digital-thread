@@ -28,8 +28,9 @@ An exact healthy hit publishes a target-local reuse review, receipt, observation
 either solver call. The reused result contains target study facts, measurements,
 derivatives, and its receipt fingerprint, but no CAD claim or readable source origin.
 Fresh execution still publishes `sensitivity-study-capture/1.0`. Base evaluation,
-sensitivity edges, vector correction, and corrected-source preparation accept this
-closed scientific-result union without changing their existing freshness or MRTR rules.
+sensitivity edges, and vector correction accept this closed scientific-result union
+without changing their existing freshness or MRTR rules. A later CAD correction is a new
+`project_resource_capture` plus a successor workspace file revision.
 
 An `exact` review is the only hit. A scientific-key miss is `incompatible`; provenance,
 lineage, freshness, runtime, or index that cannot be proven is `unavailable`; divergent

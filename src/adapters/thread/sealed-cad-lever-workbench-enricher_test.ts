@@ -23,7 +23,7 @@ Deno.test("enrichThreadWorkbenchWithSealedCadLevers skips an unreadable sealed a
   const snapshot = emptySnapshot({
     id: ADMISSION,
     kind: "document",
-    producedBy: "compile.seal-admission@1",
+    producedBy: "compile.seal-admission@2",
     uri: `casys://technical-compilation-admission-capture/sha256/${DIGEST}`,
     fingerprint: `sha256:${DIGEST}`,
   });

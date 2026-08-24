@@ -20,20 +20,19 @@ Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain 
 
 Three operator surfaces. They are not substitutes.
 
-| Surface | Command | What it proves |
-| ------- | ------- | -------------- |
-| Docker smoke | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run` | Container contract outside IsolatedCodeRunner. Not the Microsandbox cache. |
-| Cache preparation | `deno task prepare:ngspice:microsandbox` | Idempotent import of the Docker source digest into the local Microsandbox cache under the runtime manifest pin. No pull. Not a product run. |
-| Product run | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution after `--local-execution`. |
+| Surface           | Command                                                                  | What it proves                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Docker smoke      | `scripts/gates/verify-ngspice-microsandbox-worker.ts --run`              | Container contract outside IsolatedCodeRunner. Not the Microsandbox cache.                                                                  |
+| Cache preparation | `deno task prepare:ngspice:microsandbox`                                 | Idempotent import of the Docker source digest into the local Microsandbox cache under the runtime manifest pin. No pull. Not a product run. |
+| Product run       | `project_admitted_spice_run_review` then `simulate.run-admitted-spice@1` | Documentary isolated execution after `--local-execution`.                                                                                   |
 
 The Docker distribution/index digest
 `casys/ngspice-microsandbox-worker@sha256:62748f195c86751c5fc565ea8e0ac5ab6bd283ddcae2426918d697b25ce6d392`
 is the `docker image save` source. The executable Microsandbox manifest
 `casys/ngspice-microsandbox-worker@sha256:3350527ceba0dbe8f2e31e435e834f962978e800134b83d6ee8f4875b7ffb79a`
-is the runtime `imageReference`. Backend inspect requires
-`imageReference` digest == attested `manifestDigest`. Do not pin the Docker index
-digest as the runtime image. `pullPolicy` stays `never`. Server startup does not
-pull or import.
+is the runtime `imageReference`. Backend inspect requires `imageReference` digest ==
+attested `manifestDigest`. Do not pin the Docker index digest as the runtime image.
+`pullPolicy` stays `never`. Server startup does not pull or import.
 
 ```bash
 docker compose up -d
@@ -70,7 +69,7 @@ bindings for every `.param` symbol. A netlist with zero named levers does not ne
 Unresolved previews hoist `gaps`. A missing or ambiguous `.param` bind is
 `binding.missing`.
 
-Obtain human MRTR, queue, then execute `compile.seal-admission@1`.
+Obtain human MRTR, queue, then execute `compile.seal-admission@2`.
 
 ## 3. Review and run
 
@@ -78,7 +77,7 @@ Call `project_admitted_spice_run_review` with `projectId` only. Do not derive or
 Thread basis, admission id, fingerprint, provider, solver, image, args, path, or
 observations. The server reopens the current Thread tip and selects exactly one fresh,
 non-archived canonical `document` produced by `digital-thread` /
-`compile.seal-admission@1` whose compilation target and source are
+`compile.seal-admission@2` whose compilation target and source are
 `spice-circuit-source`. Concurrent CAD or Modelica admissions are not candidates.
 
 Zero SPICE candidates — including stale, archived, malformed, foreign-producer
@@ -137,7 +136,7 @@ always derived. Execute exactly one of `decide.accept-admitted-spice-evaluation@
 | Caller `.op` / `.end` / `.control` / `.include` | Closed subset rejects analysis and control; the worker owns them       |
 | Extra netlist, image, args, path, observations  | Registry and review refuse them                                        |
 | Caller Thread/admission identity                | Review accepts `projectId` only; server selects the exact current join |
-| Stale or wrong-producer admission               | Not a fresh `digital-thread` `compile.seal-admission@1` candidate      |
+| Stale or wrong-producer admission               | Not a fresh `digital-thread` `compile.seal-admission@2` candidate      |
 | Two fresh SPICE admissions on the current tip   | Ambiguous; a concurrent CAD or Modelica admission is not a candidate   |
 | SPICE success used as an L4/L5 verdict          | Documentary L3 observations only; L4 is the method-sheet evaluator     |
 | L4 `pass` treated as L5                         | Human closeout of the exact L4; review always offers accept and reject |

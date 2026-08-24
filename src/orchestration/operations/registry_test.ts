@@ -13,7 +13,7 @@ import {
   VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
 } from "./fea-isolated-static-proof.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
-import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/sensitivity/correction-source/apply-correction-source.ts";
+
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
@@ -564,16 +564,21 @@ Deno.test("admitted SPICE execution binds one compilation admission and refuses 
   assertEquals(extraBinding.code, "invalid_bindings");
 });
 
-Deno.test("compile.capture-corrected-source@1 is a trusted source capture, not an admission or execution", () => {
-  const registered = getRegisteredEngineeringOperation(
-    COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
-  )!;
-  assertEquals(registered.execution, "trusted");
-  assertEquals(registered.workItemKind, "design");
-  assertEquals(registered.resolvedOperationPlan, undefined);
-  assertEquals(registered.bindings.map((binding) => binding.name), [
-    "correctionProposal",
-  ]);
+Deno.test("compile.seal-admission@1 and compile.capture-corrected-source@1 are unknown operations", () => {
+  assertEquals(
+    getRegisteredEngineeringOperation({
+      id: "compile.seal-admission",
+      version: "1",
+    }),
+    undefined,
+  );
+  assertEquals(
+    getRegisteredEngineeringOperation({
+      id: "compile.capture-corrected-source",
+      version: "1",
+    }),
+    undefined,
+  );
 });
 
 Deno.test("technical compilation admission is one consequential trusted Thread operation", () => {

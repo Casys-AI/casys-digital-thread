@@ -62,7 +62,6 @@ import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "./src/domain/imp
 import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "./src/domain/impact/cross-domain-impact-decision-proposal.ts";
 import { ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION } from "./src/domain/impact/cross-domain-impact-mechanical-preservation-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "./src/adapters/sensitivity/vector-correction/design-apply-vector-correction-run-executor.ts";
-import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "./src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts";
 import { FixedSourceAnalysisFrontendRegistry } from "./src/domain/compile/source/source-analysis-frontend-registry.ts";
 import { ExactInitialBaselineEvidenceValidator } from "./src/adapters/project/engineering-project-initial-baseline-evidence-validator.ts";
 import { ApprovedBriefBaselineRunExecutor } from "./src/adapters/project/approved-brief-baseline-run-executor.ts";
@@ -196,6 +195,7 @@ import {
   createProjectSourceWorkspaceComposition,
   DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY,
 } from "./src/adapters/project-source-workspace/server-composition.ts";
+import { FileProjectSourceWorkspaceStore } from "./src/adapters/project-source-workspace/file-project-source-workspace-store.ts";
 import { ProjectSourceWorkspaceError } from "./src/domain/project-source-workspace/types.ts";
 import { ProjectSourceWorkspaceStoreError } from "./src/application/ports/out/project-source-workspace/project-source-workspace-event-store.ts";
 import { ProjectSourceWorkspaceApplicationError } from "./src/application/use-cases/project-source-workspace/project-source-workspace-use-cases.ts";
@@ -719,10 +719,15 @@ async function createProjectControl(
       DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
     resources: reopenAgentResource,
   });
+  const sourceWorkspaceStore = new FileProjectSourceWorkspaceStore(
+    options.projectSourceWorkspaceDirectory ??
+      DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY,
+  );
   const compilationFoundation = createTechnicalCompilationFoundation({
     recordedAnalysisDirectory,
     snapshots: build123dThreadSnapshots,
     resources: reopenAgentResource,
+    workspace: sourceWorkspaceStore,
   });
 
   const build123dCapability = await createBuild123dCapability({
@@ -889,7 +894,6 @@ async function createProjectControl(
     lease,
     admissions: compilationFoundation.technicalCompilationAdmissions,
     technicalCompilationPreview,
-    technicalSourceCapture: compilationFoundation.technicalSourceAnalysis,
     feaProofCaptures: feaFoundation.feaProofCaptures,
     sensitivityCatalogOfferCaptures: feaFoundation.sensitivityCatalogOfferCaptures,
     sysonModelSeedCaptures: architectureFoundation.sysonModelSeedCaptures,
@@ -930,8 +934,7 @@ async function createProjectControl(
   });
 
   const sourceWorkspace = createProjectSourceWorkspaceComposition({
-    directory: options.projectSourceWorkspaceDirectory ??
-      DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY,
+    store: sourceWorkspaceStore,
     projects: runtime.projects,
     resources: reopenAgentResource,
   });
@@ -1105,7 +1108,6 @@ async function createProjectControl(
       isolatedGeometrySealReview: build123dCapability.isolatedGeometrySealReview,
       vectorCorrectionReview: sensitivity.vectorCorrectionReview,
       sensitivityBaseEvaluationReview: sensitivity.sensitivityBaseEvaluationReview,
-      correctedAdmissionReview: sensitivity.correctedAdmissionReview,
       modelicaQualifiedKitRunReview: modelicaProject.modelicaQualifiedKitRunReview,
       admittedModelicaRunReview: modelicaProject.admittedModelicaRunReview,
       admittedModelicaEvaluationReview:
@@ -1339,10 +1341,6 @@ async function createProjectControl(
           {
             operation: DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
             executor: sensitivity.designApplyVectorCorrection,
-          },
-          {
-            operation: COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
-            executor: sensitivity.compileCaptureCorrectedSource,
           },
         ],
       }),

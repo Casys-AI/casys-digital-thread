@@ -118,11 +118,6 @@ append-only admissions/invalidations, deterministic index, and fail-closed pre-d
 reuse WAL (ancestor symlinks and cross-tuple transplants rejected); never a Workbench,
 team-sharing, marketplace, or caller-selection surface
 
-#### `state/local/corrected-source-captures/`
-
-Content-addressed `corrected-source-capture/1.0` documents for
-`compile.capture-corrected-source@1`
-
 #### `state/local/dfm-exports/`
 
 Staged STEP bytes for mcp-dfm `/exports`; identity is the sha256, not the path

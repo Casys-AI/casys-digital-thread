@@ -1215,8 +1215,7 @@ function graphNodeId(reference: ThreadGraphRef): string {
 
 function isDemoLoopPrimaryArtifact(id: string): boolean {
   return id.startsWith("dfm-check-") ||
-    id.startsWith("sensitivity-base-evaluation-") ||
-    id.startsWith("corrected-source-");
+    id.startsWith("sensitivity-base-evaluation-");
 }
 
 function graphActionSelection(

@@ -53,7 +53,6 @@ interface SearchFilter {
   readonly domain?: string;
   readonly role?: string;
   readonly profileId?: string;
-  readonly sourceId?: string;
 }
 
 export function projectSourceWorkspaceSnapshot(
@@ -244,9 +243,6 @@ function collectSearchHits(
     ) {
       continue;
     }
-    if (filter.sourceId && head.captureRequest?.sourceId !== filter.sourceId) {
-      continue;
-    }
     hits.push({
       fileId: file.fileId,
       fileRevision: head.fileRevision,
@@ -302,12 +298,6 @@ function parseSearchFilter(query: ProjectSourceSearchQuery): SearchFilter {
     (filter as { profileId: string }).profileId = parseProjectId(
       query.profileId,
       "$query.profileId",
-    );
-  }
-  if (query.sourceId !== undefined) {
-    (filter as { sourceId: string }).sourceId = parseProjectId(
-      query.sourceId,
-      "$query.sourceId",
     );
   }
   return filter;

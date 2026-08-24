@@ -21,6 +21,7 @@ import {
   PythonCadSourceAnalyzer,
 } from "../../cad/source/python-cad-source-analyzer.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
+import { technicalSourceCaptureInput } from "../../../testing/technical-source-capture-test-support.ts";
 import {
   fingerprintTechnicalSourceAnalysisProfile,
   FixedTechnicalSourceAnalysisProfileRegistry,
@@ -66,43 +67,43 @@ Deno.test("technical source capture persists exact Python bytes and replays the 
       frontend,
     }]);
 
-    const reference = await service.capture({
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: PYTHON_PROFILE.id,
       sourceId: "source:cad:assembly",
       sourceText: SOURCE_TEXT,
-    });
+    }));
 
     assertEquals(sourceExistedBeforeAnalysis, true);
-    // One initial analysis and one deterministic readback replay.
-    assertEquals(frontendCalls, 2);
-    assertEquals(reference.source.role, "cad-script");
-    assertEquals(reference.source.language, "python");
-    assertEquals(reference.analysis.analyzer, PYTHON_PROFILE.analyzer);
-    assertEquals(reference.analysis.policy, {
+    // Capture analyses once, replays once, then persist reopens the locator.
+    assertEquals(frontendCalls, 3);
+    assertEquals(persisted.document.source.role, "cad-script");
+    assertEquals(persisted.document.source.language, "python");
+    assertEquals(persisted.document.analysis.analyzer, PYTHON_PROFILE.analyzer);
+    assertEquals(persisted.document.analysis.policy, {
       profile: PYTHON_PROFILE.id,
       status: "passed",
     });
     assertEquals(
-      reference.source.casUri,
-      `casys://technical-source-test/sha256/${reference.source.sha256}`,
+      persisted.document.source.casUri,
+      `casys://technical-source-test/sha256/${persisted.document.source.sha256}`,
     );
     assertEquals(
-      reference.analysis.casUri,
-      `casys://technical-source-analysis-test/sha256/${reference.analysis.sha256}`,
+      persisted.document.analysis.casUri,
+      `casys://technical-source-analysis-test/sha256/${persisted.document.analysis.sha256}`,
     );
 
     const sourceBytes = await harness.sourceCaptures.read({
       algorithm: "sha256",
-      digest: reference.source.sha256,
+      digest: persisted.document.source.sha256,
     });
     assertEquals(sourceBytes?.copy(), new TextEncoder().encode(SOURCE_TEXT));
-    assertEquals(sourceBytes?.byteLength, reference.source.byteCount);
+    assertEquals(sourceBytes?.byteLength, persisted.document.source.byteCount);
 
-    const reopened = await service.reopen(reference);
-    assertEquals(frontendCalls, 3);
+    const reopened = await service.reopenLocator(persisted.locator);
+    assertEquals(frontendCalls, 4);
     assertEquals(reopened.sourceText, SOURCE_TEXT);
     assertEquals(reopened.analysis.source.id, "source:cad:assembly");
-    assertEquals(reopened.reference, reference);
+    assertEquals(reopened.locator, persisted.locator);
   });
 });
 
@@ -123,14 +124,14 @@ Deno.test("technical source byte cap accepts N and rejects N plus one before CAS
       },
     };
     const service = harness.service([{ profile, frontend }]);
-    const reference = await service.capture({
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: profile.id,
       sourceId: "source:cap:exact",
       sourceText: "12345678",
-    });
+    }));
 
-    assertEquals(reference.source.byteCount, 8);
-    assertEquals(frontendCalls, 2);
+    assertEquals(persisted.document.source.byteCount, 8);
+    assertEquals(frontendCalls, 3);
     assertEquals(await directoryFileCount(harness.sourceDirectory), 1);
     assertEquals(await directoryFileCount(harness.analysisDirectory), 1);
   });
@@ -147,11 +148,11 @@ Deno.test("technical source byte cap accepts N and rejects N plus one before CAS
     const service = harness.service([{ profile, frontend }]);
     const error = await assertRejects(
       () =>
-        service.capture({
+        service.capture(technicalSourceCaptureInput({
           profileId: profile.id,
           sourceId: "source:cap:oversize",
           sourceText: "123456789",
-        }),
+        })),
       TechnicalSourceAnalysisCaptureError,
     );
 
@@ -175,12 +176,12 @@ Deno.test("technical source cap counts exact UTF-8 bytes for multibyte text", as
       profile,
       frontend: fixedFrontend(profile),
     }]);
-    const reference = await service.capture({
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: profile.id,
       sourceId: "source:cap:utf8-exact",
       sourceText: "éé",
-    });
-    assertEquals(reference.source.byteCount, 4);
+    }));
+    assertEquals(persisted.document.source.byteCount, 4);
   });
 
   await withHarness(async (harness) => {
@@ -197,11 +198,11 @@ Deno.test("technical source cap counts exact UTF-8 bytes for multibyte text", as
     }]);
     const error = await assertRejects(
       () =>
-        service.capture({
+        service.capture(technicalSourceCaptureInput({
           profileId: profile.id,
           sourceId: "source:cap:utf8-oversize",
           sourceText: "ééa",
-        }),
+        })),
       TechnicalSourceAnalysisCaptureError,
     );
     assertEquals(error.code, "source_size_limit_exceeded");
@@ -246,18 +247,18 @@ Deno.test("technical source profile cap is bounded and sealed into its fingerpri
 Deno.test("technical source replay rejects raw source byte drift", async () => {
   await withHarness(async (harness) => {
     const service = harness.service([pythonRegistration()]);
-    const reference = await service.capture({
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: PYTHON_PROFILE.id,
       sourceId: "source:cad:drift",
       sourceText: SOURCE_TEXT,
-    });
+    }));
     await Deno.writeFile(
-      `${harness.sourceDirectory}/${reference.source.sha256}`,
+      `${harness.sourceDirectory}/${persisted.document.source.sha256}`,
       new TextEncoder().encode(`${SOURCE_TEXT}# drift\n`),
     );
 
     const error = await assertRejects(
-      () => service.reopen(reference),
+      () => service.reopenLocator(persisted.locator),
       TechnicalSourceAnalysisCaptureError,
     );
     assertInstanceOf(error, TechnicalSourceAnalysisCaptureError);
@@ -265,21 +266,41 @@ Deno.test("technical source replay rejects raw source byte drift", async () => {
   });
 });
 
+Deno.test("technical source replay rejects locator CAS tampering", async () => {
+  await withHarness(async (harness) => {
+    const service = harness.service([pythonRegistration()]);
+    const persisted = await service.persist(technicalSourceCaptureInput({
+      profileId: PYTHON_PROFILE.id,
+      sourceId: "source:cad:locator-tamper",
+      sourceText: SOURCE_TEXT,
+    }));
+    await Deno.writeTextFile(
+      `${harness.captureDirectory}/${persisted.locator.fingerprint.digest}`,
+      "{}",
+    );
+    const error = await assertRejects(
+      () => service.reopenLocator(persisted.locator),
+      TechnicalSourceAnalysisCaptureError,
+    );
+    assertEquals(error.code, "locator_cas_tampered");
+  });
+});
+
 Deno.test("technical source replay rejects analysis CAS tampering", async () => {
   await withHarness(async (harness) => {
     const service = harness.service([pythonRegistration()]);
-    const reference = await service.capture({
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: PYTHON_PROFILE.id,
       sourceId: "source:cad:analysis-tamper",
       sourceText: SOURCE_TEXT,
-    });
+    }));
     await Deno.writeFile(
-      `${harness.analysisDirectory}/${reference.analysis.sha256}`,
+      `${harness.analysisDirectory}/${persisted.document.analysis.sha256}`,
       new TextEncoder().encode("{}"),
     );
 
     const error = await assertRejects(
-      () => service.reopen(reference),
+      () => service.reopenLocator(persisted.locator),
       TechnicalSourceAnalysisCaptureError,
     );
     assertInstanceOf(error, TechnicalSourceAnalysisCaptureError);
@@ -295,11 +316,11 @@ Deno.test("technical source capture rejects analyzer and policy-profile mismatch
 
       const error = await assertRejects(
         () =>
-          service.capture({
+          service.capture(technicalSourceCaptureInput({
             profileId: PYTHON_PROFILE.id,
             sourceId: `source:cad:mismatch:${mismatch}`,
             sourceText: SOURCE_TEXT,
-          }),
+          })),
         TechnicalSourceAnalysisCaptureError,
       );
       assertInstanceOf(error, TechnicalSourceAnalysisCaptureError);
@@ -316,11 +337,11 @@ Deno.test("technical source capture refuses an unregistered caller profile", asy
 
     await assertRejects(
       () =>
-        service.capture({
+        service.capture(technicalSourceCaptureInput({
           profileId: PYTHON_PROFILE.id,
           sourceId: "source:cad:unregistered",
           sourceText: SOURCE_TEXT,
-        }),
+        })),
       TechnicalSourceAnalysisProfileNotRegisteredError,
       PYTHON_PROFILE.id,
     );
@@ -338,48 +359,42 @@ Deno.test("technical source capture persists a rejected policy before returning 
 
     const error = await assertRejects(
       () =>
-        service.capture({
+        service.capture(technicalSourceCaptureInput({
           profileId: PYTHON_PROFILE.id,
           sourceId: "source:cad:rejected",
           sourceText: SOURCE_TEXT,
-        }),
+        })),
       TechnicalSourceAnalysisCaptureError,
     );
     assertInstanceOf(error, TechnicalSourceAnalysisCaptureError);
     assertEquals(error.code, "analysis_rejected");
-    assertEquals(error.reference?.analysis.policy.status, "rejected");
     assertEquals(
-      error.message.includes(error.reference!.analysis.sha256),
+      typeof error.reference === "object" && error.reference !== null,
       true,
     );
-    assertEquals(
-      await Deno.readFile(
-        `${harness.analysisDirectory}/${error.reference!.analysis.sha256}`,
-      ).then((bytes) => bytes.byteLength),
-      error.reference!.analysis.byteCount,
-    );
-
     const replayError = await assertRejects(
-      () => service.reopen(error.reference),
+      () => service.reopenLocator(error.reference),
       TechnicalSourceAnalysisCaptureError,
     );
     assertEquals(replayError.code, "analysis_rejected");
+    const rejected = await service.reopenLocator(error.reference, true);
+    assertEquals(rejected.analysis.policy.status, "rejected");
   });
 });
 
 Deno.test("technical source reference and capture input reject unknown fields", async () => {
   await withHarness(async (harness) => {
     const service = harness.service([pythonRegistration()]);
-    const reference = await service.capture({
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: PYTHON_PROFILE.id,
       sourceId: "source:cad:closed-schema",
       sourceText: SOURCE_TEXT,
-    });
+    }));
 
     assertThrows(
       () =>
         validateTechnicalSourceAnalysisCaptureDocument({
-          ...reference,
+          ...persisted.document,
           callerTool: "calculix.run",
         }),
       TypeError,
@@ -388,8 +403,8 @@ Deno.test("technical source reference and capture input reject unknown fields", 
     assertThrows(
       () =>
         validateTechnicalSourceAnalysisCaptureDocument({
-          ...reference,
-          source: { ...reference.source, providerArgs: ["--unsafe"] },
+          ...persisted.document,
+          source: { ...persisted.document.source, providerArgs: ["--unsafe"] },
         }),
       TypeError,
       "unsupported field providerArgs",
@@ -411,11 +426,11 @@ Deno.test("technical source reference and capture input reject unknown fields", 
 Deno.test("technical source capture is deterministic for the same exact profile, identity, and bytes", async () => {
   await withHarness(async (harness) => {
     const service = harness.service([pythonRegistration()]);
-    const input = {
+    const input = technicalSourceCaptureInput({
       profileId: PYTHON_PROFILE.id,
       sourceId: "source:cad:deterministic",
       sourceText: SOURCE_TEXT,
-    } as const;
+    });
 
     const first = await service.capture(input);
     const second = await service.capture(input);
@@ -476,13 +491,13 @@ Deno.test("technical source profiles accept only Python CAD, Modelica, and circu
       profile: modelicaProfile,
       frontend: fixedFrontend(modelicaProfile),
     }]);
-    const reference = await service.capture({
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: modelicaProfile.id,
       sourceId: "source:modelica:thermal",
       sourceText: "model Thermal\n  Real t;\nend Thermal;\n",
-    });
-    assertEquals(reference.source.role, "modelica-model");
-    assertEquals(reference.source.language, "modelica");
+    }));
+    assertEquals(persisted.document.source.role, "modelica-model");
+    assertEquals(persisted.document.source.language, "modelica");
   });
 
   const spiceProfile: TechnicalSourceAnalysisProfile = {
@@ -498,13 +513,13 @@ Deno.test("technical source profiles accept only Python CAD, Modelica, and circu
       profile: spiceProfile,
       frontend: fixedFrontend(spiceProfile),
     }]);
-    const reference = await service.capture({
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: spiceProfile.id,
       sourceId: "source:spice:clamp",
       sourceText: "Vin in 0 5\nRload in 0 1k\n",
-    });
-    assertEquals(reference.source.role, "spice-circuit");
-    assertEquals(reference.source.language, "spice");
+    }));
+    assertEquals(persisted.document.source.role, "spice-circuit");
+    assertEquals(persisted.document.source.language, "spice");
   });
 });
 
@@ -588,8 +603,10 @@ async function utf8Fingerprint(text: string) {
 interface Harness {
   readonly sourceCaptures: FileByteStore<"technical-source">;
   readonly analysisCaptures: FileByteStore<"technical-source-analysis">;
+  readonly captureDocuments: FileByteStore<"technical-source-analysis-capture">;
   readonly sourceDirectory: string;
   readonly analysisDirectory: string;
+  readonly captureDirectory: string;
   service(
     registrations: readonly TechnicalSourceAnalysisProfileRegistration[],
   ): TechnicalSourceAnalysisCaptureService;
@@ -603,6 +620,7 @@ async function withHarness(
   });
   const sourceDirectory = `${directory}/sources`;
   const analysisDirectory = `${directory}/analyses`;
+  const captureDirectory = `${directory}/capture-documents`;
   try {
     const sourceCaptures = new FileByteStore({
       kind: "technical-source",
@@ -616,15 +634,24 @@ async function withHarness(
       uriNamespace: "technical-source-analysis-test",
       label: "Technical source analysis test",
     });
+    const captureDocuments = new FileByteStore({
+      kind: "technical-source-analysis-capture",
+      directory: captureDirectory,
+      uriNamespace: "technical-source-analysis-capture",
+      label: "Technical source capture document test",
+    });
     await action({
       sourceCaptures,
       analysisCaptures,
+      captureDocuments,
       sourceDirectory,
       analysisDirectory,
+      captureDirectory,
       service: (registrations) =>
         new TechnicalSourceAnalysisCaptureService({
           sourceCaptures,
           analysisCaptures,
+          captureDocuments,
           profiles: new FixedTechnicalSourceAnalysisProfileRegistry(
             registrations,
           ),

@@ -64,6 +64,7 @@ import {
   type EngineeringProjectRevisionStore,
 } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../application/ports/out/compile/admission/technical-compilation-admission-reader.ts";
+import { COMPILE_SEAL_ADMISSION_PRODUCER_TOOL } from "../../../domain/compile/admission/technical-compilation-proposal.ts";
 import type { FeaProofCaseSourceCaptureReader } from "../../../application/ports/out/fea/seal-case/fea-proof-case-source-capture-reader.ts";
 import type {
   EngineeringAgentRun,
@@ -992,7 +993,7 @@ export class VerifySealProofCaseRunExecutor {
     if (
       !admissionArtifact ||
       admissionArtifact.kind !== "document" ||
-      admissionArtifact.producer.tool !== "compile.seal-admission@1" ||
+      admissionArtifact.producer.tool !== COMPILE_SEAL_ADMISSION_PRODUCER_TOOL ||
       !fingerprintsEqual(
         admissionArtifact.fingerprint,
         signed.admissionArtifact.fingerprint,

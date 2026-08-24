@@ -23,10 +23,7 @@ Deno.test("demo-loop review tools register only when their use cases are compose
     sensitivityBaseEvaluationReview: {
       execute: () => Promise.reject(new Error("not called")),
     },
-    correctedAdmissionReview: {
-      execute: () => Promise.reject(new Error("not called")),
-    },
   });
   assertEquals(present.hasTool("project_sensitivity_base_evaluation_review"), true);
-  assertEquals(present.hasTool("project_corrected_admission_review"), true);
+  assertEquals(present.hasTool("project_corrected_admission_review"), false);
 });

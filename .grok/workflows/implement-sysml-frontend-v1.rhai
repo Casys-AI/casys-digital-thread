@@ -29,7 +29,7 @@ impl += "LOCKED: subset = exactly the 3 renderer forms (package block, part def 
 impl += "Agent writes SysML UTF-8. Digital Thread tokenizes fail-closed, parses, CAS-captures, analyses. ";
 impl += "unresolved is first-class, never omitted. Bindings are ids, never labels. ";
 impl += "Keep model.write-architecture@1 flat renderer. Do NOT insert into SysON. ";
-impl += "Do NOT add model.write-architecture@2. Do NOT reuse compile.seal-admission@1. ";
+impl += "Do NOT add model.write-architecture@2. Do NOT reuse compile.seal-admission@2. ";
 impl += "Do NOT reuse sysml-source-capture/1.0 renderer envelopes as agent-authored authority. ";
 impl += "Do NOT call providers. No LLM. No attributes/constraints/requirements/imports/comments. ";
 impl += "Need: lexical guard, QualifiedArchitectureSysmlAnalyzer, profile sysml-architecture-closed-subset-v1, ";

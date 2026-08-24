@@ -32,6 +32,7 @@ import {
   verifySensitivityStudyParametersMatchCase,
 } from "../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { locateModuleLevelNumericBinding } from "../../../domain/sensitivity/study/sensitivity-source-substitution.ts";
+import { SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL } from "../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
 import {
   assembleSensitivityStudyCaseV2,
   type SensitivityStudyCaseTemplate,
@@ -611,10 +612,10 @@ function findAdmissionArtifact(
   }
   if (
     artifact.kind !== "document" ||
-    artifact.producer.tool !== "compile.seal-admission@1"
+    artifact.producer.tool !== SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL
   ) {
     throw invalidTransition(
-      "cadSource is not a compile.seal-admission@1 admission document.",
+      `cadSource is not a ${SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL} admission document.`,
     );
   }
   return artifact;

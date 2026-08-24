@@ -17,6 +17,10 @@ import {
   encodeTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
 } from "../../domain/compile/admission/technical-compilation-proposal.ts";
+import {
+  sampleTechnicalProjectSourceAnchor,
+  sampleTechnicalSourceAnalysisCaptureLocator,
+} from "../../testing/technical-source-capture-test-support.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 
 const VALID_ARCHITECTURE = [
@@ -72,6 +76,10 @@ function validTechnicalCompilationAdmissionParameters() {
       sourceFingerprint: fingerprint("2"),
       captureFingerprint: fingerprint("3"),
       analysisFingerprint: fingerprint("4"),
+      projectSource: sampleTechnicalProjectSourceAnchor("source.cad", {
+        projectId,
+      }),
+      locator: sampleTechnicalSourceAnalysisCaptureLocator(),
     }],
     bindings: [{
       id: "binding.cad-result-to-sysml-part",
@@ -250,7 +258,7 @@ Deno.test("technical compilation admission rejects malformed or extra fields bef
         ),
       ProposalGrammarError,
     );
-    assertEquals(error.operationKey, "compile.seal-admission@1");
+    assertEquals(error.operationKey, "compile.seal-admission@2");
     assert(error.message.includes("nothing was recorded"));
   }
 });
@@ -330,7 +338,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
   assertEquals(gatedProposalOperations(), [
     "analyze.seal-sensitivity-study@1",
     "architecture.seed-syson-model@2",
-    "compile.seal-admission@1",
+    "compile.seal-admission@2",
     "decide.accept-admitted-modelica-evaluation@1",
     "decide.accept-admitted-spice-evaluation@1",
     "decide.accept-cross-domain-impact@1",

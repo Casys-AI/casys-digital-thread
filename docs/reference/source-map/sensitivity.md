@@ -2,8 +2,9 @@
 
 Audience: agent · Diátaxis: reference · Kind: contract
 
-Census of study, edges, base evaluation, vector correction, corrected source, and
-live-FEA observation files. Those authorities are not interchangeable.
+Census of study, edges, base evaluation, vector correction, and live-FEA observation
+files. Those authorities are not interchangeable. Corrections return through
+`AgentResource` plus a successor workspace file revision.
 
 Index: [workspace source map](../runtime/workspace-source-map.md). Domain coverage stays
 on [engineering domains](../domains/README.md).
@@ -16,14 +17,13 @@ Sensitivity authorities: `study/` (`analyze.seal-sensitivity-study@1`) ≠ `edge
 (`model.write-sensitivity-edges@1`) ≠ `base-evaluation/`
 (`verify.evaluate-sensitivity-base@1`, join `sensitivity-base-<metric>-<digest>` only) ≠
 `vector-correction/` (`design.apply-vector-correction@1`; a proof-run evaluation does
-not authorize this) ≠ `correction-source/` (`compile.capture-corrected-source@1`, not
-`compile.seal-admission@1`) ≠ `live-fea/` (`analyze.run-fea-sensitivity@1`, observations
-only). Not interchangeable
+not authorize this) ≠ `live-fea/` (`analyze.run-fea-sensitivity@1`, observations only).
+`compile.capture-corrected-source@1` is not registered. Not interchangeable
 
 #### [`src/application/ports/in/sensitivity/`](../../../src/application/ports/in/sensitivity)
 
 Inbound sensitivity ports split by authority: study seal-review ≠ base-evaluation review
-≠ vector-correction review ≠ corrected-admission review
+≠ vector-correction review
 
 #### [`src/application/ports/out/sensitivity/`](../../../src/application/ports/out/sensitivity)
 
@@ -32,21 +32,21 @@ proof runner
 
 #### [`src/application/use-cases/sensitivity/`](../../../src/application/use-cases/sensitivity)
 
-Sensitivity reviews by authority: study seal, base-evaluation join, vector-correction,
-corrected-admission replay. Tools stay under `src/tools/project-control/`
+Sensitivity reviews by authority: study seal, base-evaluation join, vector-correction.
+Tools stay under `src/tools/project-control/`
 
 #### [`src/adapters/sensitivity/`](../../../src/adapters/sensitivity)
 
 Sensitivity adapters by authority: `study/`, `edges/`, `base-evaluation/`,
-`vector-correction/`, `correction-source/`, `live-fea/` (WAL + CalculiX solver + wire
-parser). Not a flat `captures/` / `executors/` dump. Not `fea/seal-case` or
-`fea/isolated-v3`
+`vector-correction/`, `live-fea/` (WAL + CalculiX solver + wire parser). Not a flat
+`captures/` / `executors/` dump. Not `fea/seal-case` or `fea/isolated-v3`
 
 #### [`src/adapters/sensitivity/server-composition.ts`](../../../src/adapters/sensitivity/server-composition.ts)
 
-Sensitivity/correction composition. Live FEA requires isolated Build123d plus CalculiX;
-base evaluation and edges require SysON. Vector correction is not authorized by a
-proof-run evaluation. Corrected-source capture is not admission seal.
+Sensitivity composition. Live FEA requires isolated Build123d plus CalculiX; base
+evaluation and edges require SysON. Vector correction is not authorized by a proof-run
+evaluation. Corrections return through `AgentResource` plus a successor workspace file
+revision, not an admission seal.
 
 #### [`src/domain/sensitivity/study/sensitivity-study.ts`](../../../src/domain/sensitivity/study/sensitivity-study.ts)
 
@@ -78,7 +78,7 @@ canonical descendant confinement of catalog.json and every declared case file
 
 #### [`src/domain/sensitivity/study/sensitivity-study-seal-bindings.ts`](../../../src/domain/sensitivity/study/sensitivity-study-seal-bindings.ts)
 
-Pure admission / lookalike classification for `cadSource`; `compile.seal-admission@1`
+Pure admission / lookalike classification for `cadSource`; `compile.seal-admission@2`
 only
 
 #### [`src/application/ports/in/sensitivity/study/project-sensitivity-study-seal-review.ts`](../../../src/application/ports/in/sensitivity/study/project-sensitivity-study-seal-review.ts)
@@ -172,24 +172,6 @@ Provider-free join check; writes no Thread state and invents no metric mapping
 #### [`src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts`](../../../src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts)
 
 SysON evaluation of `sensitivity-base-<metric>-<digest>` only; not a proof-run remap
-
-#### [`src/domain/sensitivity/correction-source/apply-correction-source.ts`](../../../src/domain/sensitivity/correction-source/apply-correction-source.ts)
-
-Substitute a signed `z*` into one admitted module-level literal; not an admission or CAD
-write
-
-#### [`src/domain/sensitivity/correction-source/corrected-source-capture.ts`](../../../src/domain/sensitivity/correction-source/corrected-source-capture.ts)
-
-`corrected-source-capture/1.0` document schema for `compile.capture-corrected-source@1`
-
-#### [`src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts`](../../../src/adapters/sensitivity/correction-source/compile-capture-corrected-source-run-executor.ts)
-
-Provider-free source capture after a sealed correction; later reseal stays
-`compile.seal-admission@1`
-
-#### [`src/application/use-cases/sensitivity/correction-source/prepare-project-corrected-admission-review.ts`](../../../src/application/use-cases/sensitivity/correction-source/prepare-project-corrected-admission-review.ts)
-
-Replay the existing technical preview on a corrected-source document
 
 #### [`src/domain/sensitivity/live-fea/sensitivity-analysis-graph.ts`](../../../src/domain/sensitivity/live-fea/sensitivity-analysis-graph.ts)
 

@@ -17,6 +17,8 @@ import {
   testReopenAgentResource,
 } from "../../testing/agent-resource-test-support.ts";
 import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "../cad/source/qualified-build123d-source-analyzer.ts";
+import { FileProjectSourceWorkspaceStore } from "../project-source-workspace/file-project-source-workspace-store.ts";
+import { ProjectSourceWorkspaceUseCases } from "../../application/use-cases/project-source-workspace/project-source-workspace-use-cases.ts";
 
 Deno.test("compilation composition shares one admission CAS and keeps preview off the seal path", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-compile-composition-" });
@@ -44,6 +46,7 @@ Deno.test("compilation composition shares one admission CAS and keeps preview of
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
       resources: testReopenAgentResource(`${root}/agent-resources-compile`),
+      workspace: new FileProjectSourceWorkspaceStore(`${root}/workspace`),
     });
     const project = createTechnicalCompilationProject({
       projects: runtime.projects,
@@ -97,7 +100,7 @@ Deno.test("compilation composition shares one admission CAS and keeps preview of
   }
 });
 
-Deno.test("technical source capture reopens resourceRef then uses the existing analyzer", async () => {
+Deno.test("technical source capture reopens a workspace file revision then uses the existing analyzer", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-compile-resource-ref-" });
   try {
     const snapshots = new FileThreadSnapshotStore(`${root}/snapshots`);
@@ -106,23 +109,60 @@ Deno.test("technical source capture reopens resourceRef then uses the existing a
       mimeType: "text/x-python",
       text: "from build123d import Box\nresult = Box(1, 2, 3)\n",
     });
+    const workspace = new FileProjectSourceWorkspaceStore(`${root}/workspace`);
     const foundation = createTechnicalCompilationFoundation({
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
       resources: persisted.reopen,
+      workspace,
+    });
+    const projectId = "project.cad";
+    const files = new ProjectSourceWorkspaceUseCases({
+      projects: {
+        get: (id) => Promise.resolve(id === projectId ? { id } : undefined),
+      },
+      workspace,
+      resources: persisted.reopen,
+    });
+    await files.putModule({
+      projectId,
+      mutationId: "module-root",
+      expectedWorkspaceRevision: 0,
+      mutation: {
+        kind: "module_put",
+        moduleId: "mod.root",
+        slug: "src",
+        displayName: "Sources",
+      },
+    });
+    await files.putFile({
+      projectId,
+      mutationId: "put-source.cad",
+      expectedWorkspaceRevision: 1,
+      mutation: {
+        kind: "file_put",
+        fileId: "source.cad",
+        moduleId: "mod.root",
+        logicalName: "part.py",
+        role: "cad-script",
+        dependencies: [],
+        resourceRef: persisted.reference,
+        captureRequest: { profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE },
+      },
     });
     const review = await foundation.technicalSourceCapture.capture({
-      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-      sourceId: "source.cad",
-      resourceRef: persisted.reference,
+      projectId,
+      workspaceRevision: 2,
+      fileId: "source.cad",
+      fileRevision: 1,
     });
-    assertEquals(review.schemaVersion, "technical-source-capture-review/1.0");
-    const source = review.reference.source as {
-      language: string;
-      sha256: string;
-    };
-    assertEquals(source.language, "python");
-    assertEquals(source.sha256, persisted.reference.fingerprint.digest);
+    assertEquals(review.schemaVersion, "technical-source-capture-review/2.0");
+    assertEquals(
+      review.reference.schemaVersion,
+      "technical-source-analysis-capture-locator/2.0",
+    );
+    assertEquals(review.parser.status, "passed");
+    assertEquals(review.parser.profile, QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

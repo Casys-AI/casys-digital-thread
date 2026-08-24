@@ -51,19 +51,17 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import { closedRecord, exactRecord } from "../../../domain/kernel/case-validation.ts";
 import {
-  closedRecord,
-  exactRecord,
-} from "../../../domain/kernel/case-validation.ts";
-import {
+  type GeometryPartDraftAdmission,
+  parseGeometryPartDraftAdmission,
   requireCanonicalGeometryDraftAdmission,
   requireCanonicalGeometryPartDraftAdmission,
-  parseGeometryPartDraftAdmission,
   requireNamedCadLeverInDraftScript,
-  type GeometryPartDraftAdmission,
 } from "../../../domain/cad/canonical/geometry-draft-admission.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
+  TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA,
 } from "../../../domain/compile/admission/technical-compilation-proposal.ts";
 import {
   fingerprintTechnicalSourceText,
@@ -93,9 +91,9 @@ import {
   GeometryBundleError,
 } from "../../../domain/cad/canonical/geometry-bundle.ts";
 import {
+  encodeGeometryPartDecisionParameters,
   GEOMETRY_PART_CAPTURE_SCHEMA,
   GEOMETRY_PART_MANIFEST_SCHEMA,
-  encodeGeometryPartDecisionParameters,
   type GeometryPartManifest,
   parseGeometryPartManifest,
 } from "../../../domain/cad/canonical/geometry-part-manifest.ts";
@@ -133,10 +131,10 @@ import {
 } from "./geometry-draft-capture.ts";
 import {
   assertGeometryPartDraftPaths,
-  geometryPartDraftAssetMetadata,
-  geometryPartManifestFromDraft,
   GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA,
+  geometryPartDraftAssetMetadata,
   type GeometryPartDraftCapture,
+  geometryPartManifestFromDraft,
 } from "./geometry-part-draft-capture.ts";
 import {
   type GeometrySourceAnalysisReference,
@@ -216,13 +214,18 @@ function geometryCaptureSchema(
 
 function geometryManifestPredecessor(
   manifest: AnyGeometryManifest,
-): { readonly artifactId: string; readonly fingerprint: ContentFingerprint } | undefined {
+):
+  | { readonly artifactId: string; readonly fingerprint: ContentFingerprint }
+  | undefined {
   if (
     manifest.schemaVersion === "geometry-manifest/2.0" ||
     manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
   ) {
     return (manifest as GeometryPartManifest & {
-      readonly predecessor?: { readonly artifactId: string; readonly fingerprint: ContentFingerprint };
+      readonly predecessor?: {
+        readonly artifactId: string;
+        readonly fingerprint: ContentFingerprint;
+      };
     }).predecessor;
   }
   return undefined;
@@ -424,7 +427,7 @@ export interface DesignWriteGeometryRunExecutorDependencies {
   readonly geometryCaptures: GeometryCaptureStore;
   /**
    * P2 target drafts retain only an admission locator. The canonical seal
-   * reopens the actual `compile.seal-admission@1` evidence through this port.
+   * reopens the actual `compile.seal-admission@2` evidence through this port.
    */
   readonly admissions: Pick<TechnicalCompilationAdmissionReader, "read">;
   readonly lease: EngineeringProjectRunLease;
@@ -801,8 +804,7 @@ export class DesignWriteGeometryRunExecutor {
           await promoteAssetNamedByCapture({
             captureFp,
             assetFingerprint: file.fingerprint,
-            name:
-              `PartDefinition ${params.manifest.target.partDefinitionElementId} ` +
+            name: `PartDefinition ${params.manifest.target.partDefinitionElementId} ` +
               `${file.format}`,
             identity: {
               scope: "target-part-definition",
@@ -1034,9 +1036,7 @@ export class DesignWriteGeometryRunExecutor {
         `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}` ||
       primary.producer.runId !== run.id ||
       primary.inputArtifactIds.length !==
-        (geometryManifestPredecessor(params.manifest)
-          ? 2
-          : 1)
+        (geometryManifestPredecessor(params.manifest) ? 2 : 1)
     ) {
       throw completedGeometryIntegrityError(
         "the primary geometry artifact identity, URI, media type, producer, or inputs are not exact",
@@ -1279,8 +1279,8 @@ export {
   requireArchitectureArtifact,
   requireDraftAssemblyPaths,
   requireDraftPreviewProducer,
-  requireGeometryPredecessor,
   requireGeometryBundlePredecessor,
+  requireGeometryPredecessor,
 };
 
 // ── D5: architecture artifact requirement ─────────────────────────────────────
@@ -1482,17 +1482,15 @@ async function assertComponentBindingsMatchArchitecture(
     if (matches.length !== 1) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `D5 violation: target PartDefinition elementId "${
-          targetManifest.target.partDefinitionElementId
-        }" is not uniquely present in the architecture capture.`,
+        `D5 violation: target PartDefinition elementId "${targetManifest.target.partDefinitionElementId}" is not uniquely present in the architecture capture.`,
       );
     }
     if (matches[0]!.label !== params.manifest.target.label) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `D5 violation: target PartDefinition elementId "${
-          params.manifest.target.partDefinitionElementId
-        }" has label "${matches[0]!.label}" in the architecture capture, not ` +
+        `D5 violation: target PartDefinition elementId "${params.manifest.target.partDefinitionElementId}" has label "${
+          matches[0]!.label
+        }" in the architecture capture, not ` +
           `"${targetManifest.target.label}" from the signed target draft.`,
       );
     }
@@ -1776,7 +1774,9 @@ async function requireGeometryPartPredecessor(
       // context, not target-chain predecessors.
       continue;
     }
-    invalidGeometryPredecessor("active canonical geometry capture has an unsupported schema");
+    invalidGeometryPredecessor(
+      "active canonical geometry capture has an unsupported schema",
+    );
   }
 
   if (candidates.length > 1) {
@@ -1888,21 +1888,35 @@ async function requireExactGeometryPartPredecessorCapture(
   if (record.schemaVersion !== GEOMETRY_PART_CAPTURE_SCHEMA) {
     invalidGeometryPredecessor("target capture schema is unsupported");
   }
-  const operation = geometryPredecessorObject(record.operation, "target capture.operation");
-  exactGeometryPredecessorKeys(operation, ["id", "version"], "target capture.operation");
+  const operation = geometryPredecessorObject(
+    record.operation,
+    "target capture.operation",
+  );
+  exactGeometryPredecessorKeys(
+    operation,
+    ["id", "version"],
+    "target capture.operation",
+  );
   if (
     operation.id !== DESIGN_WRITE_GEOMETRY_OPERATION.id ||
     operation.version !== DESIGN_WRITE_GEOMETRY_OPERATION.version
   ) {
-    invalidGeometryPredecessor("target capture operation is not design.write-geometry@1");
+    invalidGeometryPredecessor(
+      "target capture operation is not design.write-geometry@1",
+    );
   }
   if (
     geometryPredecessorString(record.trustedRunId, "target capture.trustedRunId") !==
       primary.producer.runId
   ) {
-    invalidGeometryPredecessor("target capture trusted run does not match the artifact producer");
+    invalidGeometryPredecessor(
+      "target capture trusted run does not match the artifact producer",
+    );
   }
-  const draftDigest = geometryPredecessorDigest(record.draftDigest, "target capture.draftDigest");
+  const draftDigest = geometryPredecessorDigest(
+    record.draftDigest,
+    "target capture.draftDigest",
+  );
   let manifest: GeometryPartManifest;
   try {
     manifest = parseGeometryPartManifest(record.manifest, { requireCompleted: true });
@@ -1915,7 +1929,9 @@ async function requireExactGeometryPartPredecessorCapture(
   } catch (error) {
     if (error instanceof EngineeringProjectCommandError) throw error;
     invalidGeometryPredecessor(
-      `target manifest is incomplete or invalid: ${error instanceof Error ? error.message : String(error)}`,
+      `target manifest is incomplete or invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
 
@@ -1947,7 +1963,10 @@ async function requireExactGeometryPartPredecessorCapture(
   );
   if (
     architecture.length !== 1 ||
-    !fingerprintsEqual(manifest.architectureBasis.artifactFingerprint, architectureFingerprint)
+    !fingerprintsEqual(
+      manifest.architectureBasis.artifactFingerprint,
+      architectureFingerprint,
+    )
   ) {
     invalidGeometryPredecessor("target architecture basis is absent or inexact");
   }
@@ -1955,8 +1974,12 @@ async function requireExactGeometryPartPredecessorCapture(
     architectureId,
     ...(manifest.predecessor ? [manifest.predecessor.artifactId] : []),
   ];
-  if (deterministicJson(primary.inputArtifactIds) !== deterministicJson(expectedInputs)) {
-    invalidGeometryPredecessor("target artifact inputs do not match the sealed manifest");
+  if (
+    deterministicJson(primary.inputArtifactIds) !== deterministicJson(expectedInputs)
+  ) {
+    invalidGeometryPredecessor(
+      "target artifact inputs do not match the sealed manifest",
+    );
   }
   let ownPredecessor: ThreadArtifact | undefined;
   if (manifest.predecessor) {
@@ -1968,14 +1991,19 @@ async function requireExactGeometryPartPredecessorCapture(
       matches.length !== 1 ||
       !archivedRefKeys(base).has(`artifact:${manifest.predecessor.artifactId}`)
     ) {
-      invalidGeometryPredecessor("target capture own predecessor is absent, active, or inexact");
+      invalidGeometryPredecessor(
+        "target capture own predecessor is absent, active, or inexact",
+      );
     }
     ownPredecessor = matches[0]!;
   }
   const previewProducer = geometryPredecessorPreviewProducer(
     record.previewProducer,
   );
-  const sealedAt = geometryPredecessorInstant(record.sealedAt, "target capture.sealedAt");
+  const sealedAt = geometryPredecessorInstant(
+    record.sealedAt,
+    "target capture.sealedAt",
+  );
   requireExactGeometryPredecessorArchitectureAttestation(
     base,
     primary,
@@ -1993,7 +2021,10 @@ async function requireExactGeometryPartPredecessorCapture(
     invalidGeometryPredecessor("target artifact freshness does not match sealedAt");
   }
 
-  const source = geometryPredecessorObject(record.sourceScript, "target capture.sourceScript");
+  const source = geometryPredecessorObject(
+    record.sourceScript,
+    "target capture.sourceScript",
+  );
   exactGeometryPredecessorKeys(
     source,
     [
@@ -2010,8 +2041,14 @@ async function requireExactGeometryPartPredecessorCapture(
     source.partDefinitionElementId,
     "target capture.sourceScript.partDefinitionElementId",
   );
-  const targetLabel = geometryPredecessorString(source.label, "target capture.sourceScript.label");
-  const script = geometryPredecessorString(source.script, "target capture.sourceScript.script");
+  const targetLabel = geometryPredecessorString(
+    source.label,
+    "target capture.sourceScript.label",
+  );
+  const script = geometryPredecessorString(
+    source.script,
+    "target capture.sourceScript.script",
+  );
   const scriptHash = geometryPredecessorFingerprint(
     source.scriptHash,
     "target capture.sourceScript.scriptHash",
@@ -2022,10 +2059,15 @@ async function requireExactGeometryPartPredecessorCapture(
       source.admission,
       "$geometryPartCapture.sourceScript.admission",
     );
-    requireNamedCadLeverInDraftScript(script, "$geometryPartCapture.sourceScript.script");
+    requireNamedCadLeverInDraftScript(
+      script,
+      "$geometryPartCapture.sourceScript.script",
+    );
   } catch (error) {
     invalidGeometryPredecessor(
-      `target source admission or named lever is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      `target source admission or named lever is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
   if (
@@ -2037,7 +2079,9 @@ async function requireExactGeometryPartPredecessorCapture(
     admission.target.label !== targetLabel ||
     !fingerprintsEqual(await geometryPredecessorTextFingerprint(script), scriptHash)
   ) {
-    invalidGeometryPredecessor("target source identity, admission, or script hash is not exact");
+    invalidGeometryPredecessor(
+      "target source identity, admission, or script hash is not exact",
+    );
   }
   const step = geometryPredecessorObject(
     source.authoritativeStep,
@@ -2053,7 +2097,9 @@ async function requireExactGeometryPartPredecessorCapture(
     step.fileIndex < 0 || typeof step.bytes !== "number" ||
     !Number.isSafeInteger(step.bytes) || step.bytes <= 0
   ) {
-    invalidGeometryPredecessor("target authoritative STEP index or byte count is invalid");
+    invalidGeometryPredecessor(
+      "target authoritative STEP index or byte count is invalid",
+    );
   }
   const targetStep = manifest.target.files![step.fileIndex];
   if (
@@ -2069,7 +2115,9 @@ async function requireExactGeometryPartPredecessorCapture(
     invalidGeometryPredecessor("target authoritative STEP is not the signed STEP file");
   }
   if (!sourceAnalysisStores) {
-    invalidGeometryPredecessor("source-analysis stores are unavailable for target capture");
+    invalidGeometryPredecessor(
+      "source-analysis stores are unavailable for target capture",
+    );
   }
   try {
     const verified = await requireGeometrySourceAnalysis(record.sourceAnalysis, {
@@ -2086,7 +2134,9 @@ async function requireExactGeometryPartPredecessorCapture(
   } catch (error) {
     if (error instanceof EngineeringProjectCommandError) throw error;
     invalidGeometryPredecessor(
-      `target source analysis is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      `target source analysis is invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
   return { manifest, previewProducer, sealedAt };
@@ -2102,14 +2152,19 @@ function requireExactGeometryPartPredecessorFamily(
   const archived = archivedRefKeys(base);
   const expected = capture.manifest.target.files!.map((file, index) => ({
     id: `cad-asset-${digest}-target-${index}-${file.fingerprint.digest}`,
-    name: `${file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()}: ${capture.manifest.target.label}`,
-    kind: (file.format === "step"
-      ? "step"
-      : file.format === "stl"
-      ? "mesh"
-      : "cad-model") as ThreadArtifact["kind"],
+    name: `${
+      file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()
+    }: ${capture.manifest.target.label}`,
+    kind:
+      (file.format === "step"
+        ? "step"
+        : file.format === "stl"
+        ? "mesh"
+        : "cad-model") as ThreadArtifact["kind"],
     fingerprint: file.fingerprint,
-    uri: `/api/thread/assets/${file.fingerprint.digest}.${geometryAssetExtension(file.format)}`,
+    uri: `/api/thread/assets/${file.fingerprint.digest}.${
+      geometryAssetExtension(file.format)
+    }`,
     mediaType: geometryAssetMediaType(file.format),
   }));
   const family = base.artifacts.filter((artifact) =>
@@ -2118,22 +2173,28 @@ function requireExactGeometryPartPredecessorFamily(
       artifact.id.startsWith(`mesh-${digest}-`))
   );
   if (family.length !== expected.length + 1) {
-    invalidGeometryPredecessor("target binary family is incomplete or makes an assembly/extra-asset claim");
+    invalidGeometryPredecessor(
+      "target binary family is incomplete or makes an assembly/extra-asset claim",
+    );
   }
   const binaryProducer = capture.previewProducer;
   for (const descriptor of expected) {
     const artifact = family.find((candidate) => candidate.id === descriptor.id);
     if (
-      !artifact || artifact.name !== descriptor.name || artifact.kind !== descriptor.kind ||
+      !artifact || artifact.name !== descriptor.name ||
+      artifact.kind !== descriptor.kind ||
       artifact.version !== descriptor.fingerprint.digest ||
       !fingerprintsEqual(artifact.fingerprint, descriptor.fingerprint) ||
       artifact.uri !== descriptor.uri || artifact.mediaType !== descriptor.mediaType ||
       deterministicJson(artifact.producer) !== deterministicJson(binaryProducer) ||
       deterministicJson(artifact.inputArtifactIds) !== deterministicJson([]) ||
-      artifact.freshness.status !== "fresh" || artifact.freshness.changedAt !== capture.sealedAt ||
+      artifact.freshness.status !== "fresh" ||
+      artifact.freshness.changedAt !== capture.sealedAt ||
       artifact.freshness.invalidatedByChangeIds.length !== 0
     ) {
-      invalidGeometryPredecessor(`target binary artifact ${descriptor.id} metadata is not exact`);
+      invalidGeometryPredecessor(
+        `target binary artifact ${descriptor.id} metadata is not exact`,
+      );
     }
     const consumptionId = `consume-${primary.id}-by-${artifact.id}`;
     const trace = base.provenance.find((link) =>
@@ -2155,7 +2216,9 @@ function requireExactGeometryPartPredecessorFamily(
       link.rationale === GEOMETRY_BINARY_CAPTURE_USE_RATIONALE
     );
     if (!trace || !consumption || !uses) {
-      invalidGeometryPredecessor(`target binary artifact ${descriptor.id} trace or consumption is not exact`);
+      invalidGeometryPredecessor(
+        `target binary artifact ${descriptor.id} trace or consumption is not exact`,
+      );
     }
   }
   return family;
@@ -3017,7 +3080,7 @@ interface TargetPartAdmissionReopenContext {
 
 /**
  * A targeted draft's admission stamp is only a transport locator produced by
- * P2a. Reopen the capture-backed `compile.seal-admission@1` artefact and
+ * P2a. Reopen the capture-backed `compile.seal-admission@2` artefact and
  * re-cross the actual admitted Build123d source and its P1 `represents`
  * binding before that locator can authorize canonical promotion.
  *
@@ -3041,24 +3104,24 @@ async function requireReopenedTargetPartAdmission(
     });
   } catch (error) {
     throw new TypeError(
-      `Target compile.seal-admission@1 artefact could not be reopened: ${
+      `Target compile.seal-admission@2 artefact could not be reopened: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
   }
   if (!reopened) {
     throw new TypeError(
-      "Target compile.seal-admission@1 artefact is unavailable for the exact project and Thread basis.",
+      "Target compile.seal-admission@2 artefact is unavailable for the exact project and Thread basis.",
     );
   }
   if (
-    reopened.schemaVersion !== "technical-compilation-admission-capture/1.0" ||
+    reopened.schemaVersion !== TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA ||
     reopened.operation.id !== COMPILE_SEAL_ADMISSION_OPERATION.id ||
     reopened.operation.version !== COMPILE_SEAL_ADMISSION_OPERATION.version ||
     reopened.trustedRunId.trim() === ""
   ) {
     throw new TypeError(
-      "Reopened target admission is not an exact compile.seal-admission@1 capture.",
+      "Reopened target admission is not an exact compile.seal-admission@2 capture.",
     );
   }
 
@@ -3101,10 +3164,20 @@ async function requireReopenedTargetPartAdmission(
     source.analysis.source.id !== admissionSource.id ||
     projectedSource.analysis.source.id !== admissionSource.id ||
     source.sourceText !== projectedSource.sourceText ||
-    deterministicJson(source.analysis) !== deterministicJson(projectedSource.analysis) ||
-    !fingerprintsEqual(source.analysisFingerprint, projectedSource.analysisFingerprint) ||
-    !fingerprintsEqual(source.analysis.source.fingerprint, admissionSource.sourceFingerprint) ||
-    !fingerprintsEqual(source.analysisFingerprint, admissionSource.analysisFingerprint) ||
+    deterministicJson(source.analysis) !==
+      deterministicJson(projectedSource.analysis) ||
+    !fingerprintsEqual(
+      source.analysisFingerprint,
+      projectedSource.analysisFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      source.analysis.source.fingerprint,
+      admissionSource.sourceFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      source.analysisFingerprint,
+      admissionSource.analysisFingerprint,
+    ) ||
     deterministicJson(document.inputManifest.bindings) !==
       deterministicJson(technicalAdmission.bindings) ||
     deterministicJson(projectedSource.bindings) !==
@@ -3187,7 +3260,7 @@ async function loadReviewedGeometryDraft(
     if (!targetAdmissionContext) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "Target PartDefinition sealing requires an exact compile.seal-admission@1 reader.",
+        "Target PartDefinition sealing requires an exact compile.seal-admission@2 reader.",
       );
     }
     return await loadReviewedGeometryPartDraft(
@@ -3204,7 +3277,7 @@ async function loadReviewedGeometryDraft(
   } catch (error) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      `admission_required: design.write-geometry@1 can only seal a draft exported from compile.seal-admission@1 with a named numeric CAD lever. ${
+      `admission_required: design.write-geometry@1 can only seal a draft exported from compile.seal-admission@2 with a named numeric CAD lever. ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -3319,7 +3392,11 @@ async function loadReviewedGeometryPartDraft(
       throw new TypeError("target draft schema or kind is not exact");
     }
     geometryPredecessorInstant(root.capturedAt, "$geometryPartDraft.capturedAt");
-    exactRecord(root.producer, ["serverId", "tool", "runId"], "$geometryPartDraft.producer");
+    exactRecord(
+      root.producer,
+      ["serverId", "tool", "runId"],
+      "$geometryPartDraft.producer",
+    );
     const target = exactRecord(
       root.target,
       ["partDefinitionElementId", "label", "script", "scriptHash", "files"],
@@ -3362,7 +3439,7 @@ async function loadReviewedGeometryPartDraft(
     }
     if (!admissionContext) {
       throw new TypeError(
-        "target draft has no exact compile.seal-admission@1 reopen context",
+        "target draft has no exact compile.seal-admission@2 reopen context",
       );
     }
     await requireReopenedTargetPartAdmission(
@@ -3443,7 +3520,9 @@ function geometryPartCaptureRecord(options: {
   const { params, runId, capturedAt, architectureArtifact, previewProducer, draft } =
     options;
   if (params.manifest.schemaVersion !== GEOMETRY_PART_MANIFEST_SCHEMA) {
-    throw new TypeError("Target capture requires a geometry-part-manifest/1.0 decision.");
+    throw new TypeError(
+      "Target capture requires a geometry-part-manifest/1.0 decision.",
+    );
   }
   const target = params.manifest.target;
   const stepIndex = target.files!.findIndex((file) => file.format === "step");
@@ -3457,7 +3536,9 @@ function geometryPartCaptureRecord(options: {
     !fingerprintsEqual(draftStep.fingerprint, step.fingerprint) ||
     !Number.isSafeInteger(draftStep.bytes) || draftStep.bytes <= 0
   ) {
-    throw new TypeError("Target capture STEP metadata is not exactly re-opened from the draft.");
+    throw new TypeError(
+      "Target capture STEP metadata is not exactly re-opened from the draft.",
+    );
   }
   return {
     schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
@@ -4359,11 +4440,12 @@ function buildExtension(options: {
       ? {
         archived: predecessor.archiveEntries.map((entry) => ({
           target: entry.ref,
-          summary: `Retired by ${
-            params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
-              ? "canonical PartDefinition geometry"
-              : "geometry bundle"
-          } ${captureFp.digest.slice(0, 16)}; ` +
+          summary:
+            `Retired by ${
+              params.manifest.schemaVersion === GEOMETRY_PART_MANIFEST_SCHEMA
+                ? "canonical PartDefinition geometry"
+                : "geometry bundle"
+            } ${captureFp.digest.slice(0, 16)}; ` +
             `cascade source ${entry.because}.`,
         })),
       }

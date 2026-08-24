@@ -2,7 +2,11 @@ import type {
   TechnicalCompilationDraftReference,
 } from "./technical-compilation-draft-store.ts";
 import type { TechnicalCompilationDocument } from "../../../../../domain/compile/admission/technical-compilation.ts";
-import type { TechnicalCompilationAdmission } from "../../../../../domain/compile/admission/technical-compilation-proposal.ts";
+import {
+  COMPILE_SEAL_ADMISSION_OPERATION,
+  TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA,
+  type TechnicalCompilationAdmission,
+} from "../../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../../domain/project/engineering-project.ts";
 
@@ -21,11 +25,8 @@ export interface TechnicalCompilationAdmissionReadRequest {
  * returned value is the validated evidence document itself.
  */
 export interface ReopenedTechnicalCompilationAdmission {
-  readonly schemaVersion: "technical-compilation-admission-capture/1.0";
-  readonly operation: {
-    readonly id: "compile.seal-admission";
-    readonly version: "1";
-  };
+  readonly schemaVersion: typeof TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA;
+  readonly operation: typeof COMPILE_SEAL_ADMISSION_OPERATION;
   readonly trustedRunId: string;
   readonly decisionId: string;
   readonly sealedAt: string;

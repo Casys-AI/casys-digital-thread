@@ -42,8 +42,13 @@ import type {
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { computeArchiveCascade } from "../../../domain/thread/thread-retirement.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
+import {
+  sampleTechnicalProjectSourceAnchor,
+  technicalSourceAnalysisCaptureStores,
+  technicalSourceCaptureInput,
+} from "../../../testing/technical-source-capture-test-support.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
-import { CaptureBackedTechnicalCompilationSourceReader } from "../admission/capture-backed-technical-compilation-source-reader.ts";
+
 import {
   INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG,
 } from "../admission/fixed-technical-compilation-profile-catalog-provider.ts";
@@ -129,32 +134,20 @@ Deno.test("SysML anchor artifact closure is codepoint-ordered, unique, and finge
 Deno.test("sealed admission capture uses codepoint order and exact source coverage", async () => {
   const directory = await Deno.makeTempDir({ prefix: "compile-seal-capture-" });
   try {
-    const captures = createInitialTechnicalSourceAnalysisCaptureService({
-      sourceCaptures: new FileByteStore({
-        kind: "technical-source",
-        directory: `${directory}/sources`,
-        uriNamespace: "compile-seal-source-test",
-        label: "compile seal source test",
-      }),
-      analysisCaptures: new FileByteStore({
-        kind: "technical-source-analysis",
-        directory: `${directory}/analyses`,
-        uriNamespace: "compile-seal-analysis-test",
-        label: "compile seal analysis test",
-      }),
-    });
-    const references = await Promise.all(
+    const captures = createInitialTechnicalSourceAnalysisCaptureService(
+      technicalSourceAnalysisCaptureStores(directory),
+    );
+    const persisted = await Promise.all(
       ["source.Z", "source.a"].map((sourceId) =>
-        captures.capture({
+        captures.persist(technicalSourceCaptureInput({
           profileId: INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0].id,
           sourceId,
           sourceText: SOURCE_TEXT,
-        })
+        }))
       ),
     );
-    const reopened = await Promise.all(
-      references.map((reference) => captures.reopen(reference)),
-    );
+    const references = persisted.map((item) => item.locator);
+    const reopened = persisted;
     const sysmlArtifactFingerprint = {
       algorithm: "sha256" as const,
       digest: "2".repeat(64),
@@ -233,7 +226,7 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
 
     const sourceCaptures = await Promise.all(reopened.map(async (item, index) => ({
       sourceId: item.analysis.source.id,
-      reference: references[index] as unknown as Readonly<Record<string, unknown>>,
+      reference: references[index]!,
       referenceFingerprint: await sha256Fingerprint(references[index]),
     })));
     sourceCaptures.sort((left, right) => left.sourceId < right.sourceId ? -1 : 1);
@@ -252,7 +245,7 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
     };
     const projection = compiled.document.projections[0];
     const admission = {
-      schemaVersion: "technical-compilation-admission/1.0" as const,
+      schemaVersion: TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
       draft: {
         draftId: draftReference.draftId,
         projectId: draftReference.projectId,
@@ -282,15 +275,17 @@ Deno.test("sealed admission capture uses codepoint order and exact source covera
         id: item.analysis.source.id,
         role: item.analysis.source.role,
         language: item.analysis.source.language,
-        profileId: references[index].profile.id,
-        profileVersion: references[index].profile.version,
-        profileFingerprint: references[index].profile.fingerprint,
-        analyzer: references[index].analysis.analyzer,
+        profileId: item.document.profile.id,
+        profileVersion: item.document.profile.version,
+        profileFingerprint: item.document.profile.fingerprint,
+        analyzer: item.document.analysis.analyzer,
         sourceFingerprint: item.analysis.source.fingerprint,
         captureFingerprint: sourceCaptures.find((capture) =>
           capture.sourceId === item.analysis.source.id
         )!.referenceFingerprint,
         analysisFingerprint: await fingerprintSourceAnalysisBundle(item.analysis),
+        projectSource: item.document.projectSource,
+        locator: item.locator,
       }))),
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -754,28 +749,19 @@ async function buildExecuteFixture(
   options: ExecuteFixtureOptions,
   directory: string,
 ): Promise<ExecuteFixture> {
-  const captureService = createInitialTechnicalSourceAnalysisCaptureService({
-    sourceCaptures: new FileByteStore({
-      kind: "technical-source",
-      directory: `${directory}/sources`,
-      uriNamespace: "technical-source",
-      label: "technical source",
-    }),
-    analysisCaptures: new FileByteStore({
-      kind: "technical-source-analysis",
-      directory: `${directory}/analyses`,
-      uriNamespace: "technical-source-analysis",
-      label: "technical analysis",
-    }),
-  });
-  const reference = await captureService.capture({
+  const captureService = createInitialTechnicalSourceAnalysisCaptureService(
+    technicalSourceAnalysisCaptureStores(directory),
+  );
+  const persisted = await captureService.persist(technicalSourceCaptureInput({
     profileId: INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0].id,
     sourceId: "source.cad",
+    projectId: EXEC_PROJECT_ID,
     sourceText: options.forgedPhotoDraft
       ? "from build123d import Box\nresult = Box(20, 10, 2)\n"
       : SOURCE_TEXT,
-  });
-  const reopened = await captureService.reopen(reference);
+  }));
+  const reference = persisted.locator;
+  const reopened = persisted;
   const source: TechnicalCompilationSource = {
     sourceText: reopened.sourceText,
     analysis: reopened.analysis,
@@ -960,7 +946,7 @@ async function buildExecuteFixture(
     fingerprint: compiled.fingerprint,
     sourceCaptures: [{
       sourceId: source.analysis.source.id,
-      reference: reference as unknown as Readonly<Record<string, unknown>>,
+      reference,
       referenceFingerprint,
     }],
   };
@@ -1003,13 +989,15 @@ async function buildExecuteFixture(
       id: source.analysis.source.id,
       role: source.analysis.source.role as "cad-script",
       language: source.analysis.source.language as "python",
-      profileId: reference.profile.id,
-      profileVersion: reference.profile.version,
-      profileFingerprint: reference.profile.fingerprint,
-      analyzer: reference.analysis.analyzer,
+      profileId: persisted.document.profile.id,
+      profileVersion: persisted.document.profile.version,
+      profileFingerprint: persisted.document.profile.fingerprint,
+      analyzer: persisted.document.analysis.analyzer,
       sourceFingerprint: source.analysis.source.fingerprint,
       captureFingerprint: referenceFingerprint,
       analysisFingerprint: source.analysisFingerprint,
+      projectSource: persisted.document.projectSource,
+      locator: persisted.locator,
     }],
     bindings,
     compilationProfileRequests: [{
@@ -1194,13 +1182,12 @@ async function buildExecuteFixture(
       });
     },
   };
-  const exactSourceReader = new CaptureBackedTechnicalCompilationSourceReader(
-    captureService,
-  );
+  const exactSourceReader = locatorBackedSourceReader(captureService);
   const sourceReader: TechnicalCompilationSourceReader = options.sourceProvenanceDrift
     ? {
       read: async (request) => {
         const exact = await exactSourceReader.read(request);
+        if (!exact) return undefined;
         return {
           ...exact,
           provenance: {
@@ -1249,6 +1236,47 @@ async function buildExecuteFixture(
     admission,
     sysmlInputArtifactIds: [requirementsArtifact.id, sysmlArtifact.id],
     dispose: () => removeExecuteFixtureDirectory(directory),
+  };
+}
+
+function locatorBackedSourceReader(
+  captures: {
+    reopenLocator(
+      value: unknown,
+    ): ReturnType<
+      import("../captures/technical-source-analysis-capture.ts").TechnicalSourceAnalysisCaptureService[
+        "reopenLocator"
+      ]
+    >;
+  },
+): TechnicalCompilationSourceReader {
+  return {
+    async read(request) {
+      const reopened = await captures.reopenLocator(request.reference);
+      const analysisFingerprint = await fingerprintSourceAnalysisBundle(
+        reopened.analysis,
+      );
+      return {
+        referenceFingerprint: request.referenceFingerprint,
+        source: {
+          sourceText: reopened.sourceText,
+          analysis: reopened.analysis,
+          analysisFingerprint,
+        },
+        provenance: {
+          profile: reopened.document.profile,
+          analyzer: reopened.document.analysis.analyzer,
+          sourceFingerprint: {
+            algorithm: "sha256",
+            digest: reopened.document.source.sha256,
+          },
+          captureFingerprint: request.referenceFingerprint,
+          analysisFingerprint,
+          projectSource: reopened.document.projectSource,
+          locator: reopened.locator,
+        },
+      };
+    },
   };
 }
 

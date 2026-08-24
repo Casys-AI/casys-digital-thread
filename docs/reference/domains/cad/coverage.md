@@ -11,15 +11,15 @@ The detailed grammar and the authority of each path remain in
 
 ## Covered now
 
-| Area               | Exact covered surface                                                                                                                                                                                                       |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Values             | Module-level finite decimal values, unary/binary arithmetic, earlier values, `pi`/`e`/`tau`, and reviewed flat lists.                                                                                                       |
-| Solids             | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Wedge`.                                                                                                                                                                      |
-| Sketches           | `Rectangle`, `Circle`, `Ellipse`, `RegularPolygon`. A sketch cannot be `result`.                                                                                                                                            |
-| Placement          | `Pos`, `Rot`, prior placements and their left-associative products; `Plane.XY`, `XZ`, `YZ`, `YX`, `ZX`, `ZY` applied to a solid or sketch.                                                                                  |
-| Shape algebra      | Same-kind `+` and `-`; `scale` on a solid; reviewed `fillet`/`chamfer`, including reviewed `solid.edges()` forms; `extrude`, `offset`, `revolve` about `Axis.X`, `Y`, or `Z`; `Compound(children=[...])` over prior solids. |
-| Result             | One module-level `result`, resolving to a solid.                                                                                                                                                                            |
-| Admission          | No unresolved construct; unique server-derived `represents` artifact binding and `parameterizes` bindings; at least one finite named numeric literal must causally reach `result`.                                          |
+| Area               | Exact covered surface                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Values             | Module-level finite decimal values, unary/binary arithmetic, earlier values, `pi`/`e`/`tau`, and reviewed flat lists.                                                                                                                                                                                                                                                                            |
+| Solids             | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Wedge`.                                                                                                                                                                                                                                                                                                                                           |
+| Sketches           | `Rectangle`, `Circle`, `Ellipse`, `RegularPolygon`. A sketch cannot be `result`.                                                                                                                                                                                                                                                                                                                 |
+| Placement          | `Pos`, `Rot`, prior placements and their left-associative products; `Plane.XY`, `XZ`, `YZ`, `YX`, `ZX`, `ZY` applied to a solid or sketch.                                                                                                                                                                                                                                                       |
+| Shape algebra      | Same-kind `+` and `-`; `scale` on a solid; reviewed `fillet`/`chamfer`, including reviewed `solid.edges()` forms; `extrude`, `offset`, `revolve` about `Axis.X`, `Y`, or `Z`; `Compound(children=[...])` over prior solids.                                                                                                                                                                      |
+| Result             | One module-level `result`, resolving to a solid.                                                                                                                                                                                                                                                                                                                                                 |
+| Admission          | No unresolved construct; unique server-derived `represents` artifact binding and `parameterizes` bindings; at least one finite named numeric literal must causally reach `result`.                                                                                                                                                                                                               |
 | Geometry authority | A system/bundle admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. A target admitted export can seal exactly one PartDefinition through `geometry-part-capture/1.0`; it makes no assembly, component, occurrence or placement claim. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
 
 ## Not covered
@@ -39,7 +39,7 @@ These states must remain literal: they are not degraded success.
 - CAD `.py` enters through `project_resource_capture` then
   `project_technical_source_capture` (`profileId` + `sourceId` + full `resourceRef`).
   Public capture does not accept `sourceText`. Isolated execution still starts from
-  `compile.seal-admission@1`.
+  `compile.seal-admission@2`.
 
 ## Candidates and non-goals
 
@@ -58,15 +58,14 @@ no new agent, Workbench, or provider command for it.
 ## Targeted PartDefinition seal
 
 `geometry-part-manifest/1.0` and `geometry-part-draft-capture/1.0` are a separate
-target-only review family. Promotion remains exclusively
-`design.write-geometry@1`: it reopens the human-signed target MRTR and the exact
-capture-backed `compile.seal-admission@1` artifact named by the v2 target-bound stamp,
-re-crossing admitted source bytes/hash plus the unique P1 `represents` PartDefinition,
-passive source analysis and exact reviewed assets. It never reruns Build123d. The resulting
-`geometry-part-capture/1.0` repeats the
-exact PartDefinition element ID, architecture basis, admission/source hash and one
-authoritative STEP hash. It has no `assembly`, `components`, `occurrences`, `placements`
-or `partDefinitions` array.
+target-only review family. Promotion remains exclusively `design.write-geometry@1`: it
+reopens the human-signed target MRTR and the exact capture-backed
+`compile.seal-admission@2` artifact named by the v2 target-bound stamp, re-crossing
+admitted source bytes/hash plus the unique P1 `represents` PartDefinition, passive
+source analysis and exact reviewed assets. It never reruns Build123d. The resulting
+`geometry-part-capture/1.0` repeats the exact PartDefinition element ID, architecture
+basis, admission/source hash and one authoritative STEP hash. It has no `assembly`,
+`components`, `occurrences`, `placements` or `partDefinitions` array.
 
 Each target STEP asset uses the deterministic capture-scoped identity
 `cad-asset-<captureDigest>-target-<fileIndex>-<fileDigest>`. Different PartDefinitions
@@ -75,5 +74,5 @@ files; an active V2 bundle that covers that target is a fail-closed conflict, ne
 partial V2 archive. Product projection therefore does not infer complete assembly
 coverage from this evidence. It may nevertheless attach the target STEP and reviewed GLB
 to every Product occurrence whose SysON `part-definition` binding has the exact signed
-element ID. That remains a PartDefinition surface only: the projector creates no assembly,
-occurrence, placement, or complete-product coverage claim.
+element ID. That remains a PartDefinition surface only: the projector creates no
+assembly, occurrence, placement, or complete-product coverage claim.

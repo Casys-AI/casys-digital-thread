@@ -18,6 +18,7 @@ import { DesignApplyVectorCorrectionRunExecutor } from "./vector-correction/desi
 import { VerifyEvaluateSensitivityBaseRunExecutor } from "./base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts";
 import { createSensitivityComposition } from "./server-composition.ts";
 import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
+import { FileProjectSourceWorkspaceStore } from "../project-source-workspace/file-project-source-workspace-store.ts";
 
 Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correction is not a proof-run grant", async () => {
   const root = await Deno.makeTempDir({
@@ -47,6 +48,7 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
       resources: testReopenAgentResource(`${root}/agent-resources-compile`),
+      workspace: new FileProjectSourceWorkspaceStore(`${root}/workspace`),
     });
     const compilationProject = createTechnicalCompilationProject({
       projects: runtime.projects,
@@ -72,7 +74,6 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
       lease: new FileEngineeringProjectRunLease(`${root}/sensitivity-leases`),
       admissions: compilation.technicalCompilationAdmissions,
       technicalCompilationPreview: preview,
-      technicalSourceCapture: compilation.technicalSourceAnalysis,
       feaProofCaptures: fea.feaProofCaptures,
       sensitivityCatalogOfferCaptures: fea.sensitivityCatalogOfferCaptures,
       sysonModelSeedCaptures: architecture.sysonModelSeedCaptures,

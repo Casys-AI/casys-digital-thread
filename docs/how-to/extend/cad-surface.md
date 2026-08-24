@@ -58,7 +58,7 @@ compiler implicitly.
    parameter needs `parameterizes`; a finite module-level named numeric literal must
    causally reach `result`. A constructor photo is not a lever.
 4. Test `ready-for-review`, `binding.missing`, `source.no-named-numeric-lever`, and
-   `source.unresolved-construct` outcomes before allowing `compile.seal-admission@1`.
+   `source.unresolved-construct` outcomes before allowing `compile.seal-admission@2`.
 
 ## 4. Prove both lowerings from the sealed bytes
 

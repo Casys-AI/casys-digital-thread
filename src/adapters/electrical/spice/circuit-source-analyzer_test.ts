@@ -1,7 +1,10 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { TechnicalSourceAnalysisCaptureError } from "../../compile/captures/technical-source-analysis-capture.ts";
-import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import { createInitialTechnicalSourceAnalysisCaptureService } from "../../compile/captures/initial-technical-source-analysis-composition.ts";
+import {
+  technicalSourceAnalysisCaptureStores,
+  technicalSourceCaptureInput,
+} from "../../../testing/technical-source-capture-test-support.ts";
 import { SPICE_CIRCUIT_MAX_SOURCE_BYTES } from "./source-analysis-composition.ts";
 import {
   SOURCE_ANALYSIS_SCHEMA,
@@ -190,36 +193,28 @@ Deno.test("capture persists and reopens exact SPICE UTF-8 bytes under the unique
     prefix: "spice-circuit-source-cap-",
   });
   try {
-    const service = createInitialTechnicalSourceAnalysisCaptureService({
-      sourceCaptures: new FileByteStore({
-        kind: "technical-source",
-        directory: `${directory}/source`,
-        uriNamespace: "spice-source-cap-test",
-        label: "spice source cap",
-      }),
-      analysisCaptures: new FileByteStore({
-        kind: "technical-source-analysis",
-        directory: `${directory}/analysis`,
-        uriNamespace: "spice-analysis-cap-test",
-        label: "spice analysis cap",
-      }),
-    });
-    const reference = await service.capture({
+    const service = createInitialTechnicalSourceAnalysisCaptureService(
+      technicalSourceAnalysisCaptureStores(directory),
+    );
+    const persisted = await service.persist(technicalSourceCaptureInput({
       profileId: SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE,
       sourceId: SOURCE_ID,
       sourceText: GENERIC_CLAMP,
-    });
-    const reopened = await service.reopen(reference);
+    }));
+    const reopened = await service.reopenLocator(persisted.locator);
     assertEquals(reopened.sourceText, GENERIC_CLAMP);
-    assertEquals(reference.profile.id, SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE);
-    assertEquals(reference.source.role, "spice-circuit");
-    assertEquals(reference.source.language, "spice");
-    assertEquals(reference.analysis.analyzer, {
+    assertEquals(
+      persisted.document.profile.id,
+      SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE,
+    );
+    assertEquals(persisted.document.source.role, "spice-circuit");
+    assertEquals(persisted.document.source.language, "spice");
+    assertEquals(persisted.document.analysis.analyzer, {
       id: SPICE_CIRCUIT_SOURCE_ANALYZER_ID,
       version: SPICE_CIRCUIT_SOURCE_ANALYZER_VERSION,
     });
     assertEquals(
-      Object.keys(reference).some((key) =>
+      Object.keys(persisted.locator).some((key) =>
         ["provider", "tool", "runtime", "image"].includes(key)
       ),
       false,
@@ -228,26 +223,27 @@ Deno.test("capture persists and reopens exact SPICE UTF-8 bytes under the unique
     const oversized = `${"x".repeat(SPICE_CIRCUIT_MAX_SOURCE_BYTES + 1)}`;
     const error = await assertRejects(
       () =>
-        service.capture({
+        service.capture(technicalSourceCaptureInput({
           profileId: SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE,
           sourceId: SOURCE_ID,
           sourceText: oversized,
-        }),
+        })),
       TechnicalSourceAnalysisCaptureError,
     );
     assertEquals(error.code, "source_size_limit_exceeded");
 
     const rejected = await assertRejects(
       () =>
-        service.capture({
+        service.capture(technicalSourceCaptureInput({
           profileId: SPICE_CIRCUIT_SOURCE_ANALYSIS_PROFILE,
           sourceId: SOURCE_ID,
           sourceText: "R1 1 0 1k\n.op\n.end\n",
-        }),
+        })),
       TechnicalSourceAnalysisCaptureError,
     );
     assertEquals(rejected.code, "analysis_rejected");
-    assertEquals(rejected.reference?.analysis.policy.status, "rejected");
+    const rejectedReplay = await service.reopenLocator(rejected.reference, true);
+    assertEquals(rejectedReplay.analysis.policy.status, "rejected");
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

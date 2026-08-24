@@ -2,7 +2,7 @@
  * Reopen one sealed Build123d compilation and export its exact admitted bytes.
  *
  * Callers cannot supply Python, provider, tool, path, image or formats. The
- * use case reopens `compile.seal-admission@1`, extracts the singular admitted
+ * use case reopens `compile.seal-admission@2`, extracts the singular admitted
  * source, and hands those exact bytes to the server-owned exporter. The
  * product is a geometry DRAFT; `design.write-geometry@1` remains the sealer.
  */
@@ -954,10 +954,10 @@ async function readAttestedCanonicalGeometryCapture(
       !isNonEmptyText(architectureBasis.artifactId) ||
       !isNonEmptyText(architectureBasis.producerRunId) ||
       snapshot.artifacts.filter((candidate) =>
-        candidate.id === architectureBasis.artifactId &&
-        fingerprintsEqual(candidate.fingerprint, architectureFingerprint) &&
-        candidate.producer.runId === architectureBasis.producerRunId
-      ).length !== 1 ||
+          candidate.id === architectureBasis.artifactId &&
+          fingerprintsEqual(candidate.fingerprint, architectureFingerprint) &&
+          candidate.producer.runId === architectureBasis.producerRunId
+        ).length !== 1 ||
       !Array.isArray(artifact.inputArtifactIds) ||
       artifact.inputArtifactIds[0] !== architectureBasis.artifactId
     ) {

@@ -1,4 +1,5 @@
 import type { TechnicalCompilationDocument } from "../../../../../domain/compile/admission/technical-compilation.ts";
+import type { TechnicalSourceAnalysisCaptureLocator } from "../../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 
 export const TECHNICAL_COMPILATION_DRAFT_REFERENCE_SCHEMA =
@@ -25,7 +26,7 @@ export interface TechnicalCompilationDraft {
 
 export interface TechnicalCompilationDraftSourceCapture {
   readonly sourceId: string;
-  readonly reference: Readonly<Record<string, unknown>>;
+  readonly reference: TechnicalSourceAnalysisCaptureLocator;
   readonly referenceFingerprint: ContentFingerprint;
 }
 

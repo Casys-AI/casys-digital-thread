@@ -28,6 +28,11 @@ import type {
 } from "../../../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtension } from "../../../domain/thread/thread-snapshot-extension.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
+import type { TechnicalCompilationSourceReader } from "../../../application/ports/out/compile/admission/technical-compilation-source-reader.ts";
+import {
+  technicalSourceAnalysisCaptureStores,
+  technicalSourceCaptureInput,
+} from "../../../testing/technical-source-capture-test-support.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import {
   TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA,
@@ -278,6 +283,9 @@ Deno.test("capture-backed admission reader reconstructs hostile store failures w
       const reader = new CaptureBackedTechnicalCompilationAdmissionReader({
         snapshots,
         captures,
+        sources: {
+          read: () => Promise.resolve(undefined),
+        },
       });
       const error = await assertRejects(
         () => reader.read(fixture.request),
@@ -305,6 +313,47 @@ interface Fixture {
   readonly request: TechnicalCompilationAdmissionReadRequest;
 }
 
+function locatorBackedSourceReader(
+  captures: {
+    reopenLocator(
+      value: unknown,
+    ): ReturnType<
+      import("../captures/technical-source-analysis-capture.ts").TechnicalSourceAnalysisCaptureService[
+        "reopenLocator"
+      ]
+    >;
+  },
+): TechnicalCompilationSourceReader {
+  return {
+    async read(request) {
+      const reopened = await captures.reopenLocator(request.reference);
+      const analysisFingerprint = await fingerprintSourceAnalysisBundle(
+        reopened.analysis,
+      );
+      return {
+        referenceFingerprint: request.referenceFingerprint,
+        source: {
+          sourceText: reopened.sourceText,
+          analysis: reopened.analysis,
+          analysisFingerprint,
+        },
+        provenance: {
+          profile: reopened.document.profile,
+          analyzer: reopened.document.analysis.analyzer,
+          sourceFingerprint: {
+            algorithm: "sha256",
+            digest: reopened.document.source.sha256,
+          },
+          captureFingerprint: request.referenceFingerprint,
+          analysisFingerprint,
+          projectSource: reopened.document.projectSource,
+          locator: reopened.locator,
+        },
+      };
+    },
+  };
+}
+
 async function withFixture(run: (fixture: Fixture) => Promise<void>): Promise<void> {
   const directory = await Deno.makeTempDir({ prefix: "admission-reader-" });
   try {
@@ -315,28 +364,19 @@ async function withFixture(run: (fixture: Fixture) => Promise<void>): Promise<vo
 }
 
 async function buildFixture(directory: string): Promise<Fixture> {
-  const sourceCaptures = new FileByteStore({
-    kind: "technical-source",
-    directory: `${directory}/sources`,
-    uriNamespace: "technical-source",
-    label: "technical source",
-  });
-  const analysisCaptures = new FileByteStore({
-    kind: "technical-source-analysis",
-    directory: `${directory}/analyses`,
-    uriNamespace: "technical-source-analysis",
-    label: "technical source analysis",
-  });
-  const sourceCaptureService = createInitialTechnicalSourceAnalysisCaptureService({
-    sourceCaptures,
-    analysisCaptures,
-  });
-  const sourceReference = await sourceCaptureService.capture({
-    profileId: INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0].id,
-    sourceId: "source.cad",
-    sourceText: SOURCE_TEXT,
-  });
-  const reopenedSource = await sourceCaptureService.reopen(sourceReference);
+  const sourceCaptureService = createInitialTechnicalSourceAnalysisCaptureService(
+    technicalSourceAnalysisCaptureStores(directory),
+  );
+  const persistedSource = await sourceCaptureService.persist(
+    technicalSourceCaptureInput({
+      profileId: INITIAL_TECHNICAL_COMPILATION_PROFILE_CATALOG.profiles[0].id,
+      sourceId: "source.cad",
+      projectId: PROJECT_ID,
+      sourceText: SOURCE_TEXT,
+    }),
+  );
+  const sourceReference = persistedSource.locator;
+  const reopenedSource = persistedSource;
   const source: TechnicalCompilationSource = {
     sourceText: reopenedSource.sourceText,
     analysis: reopenedSource.analysis,
@@ -513,7 +553,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
     fingerprint: compiled.fingerprint,
     sourceCaptures: [{
       sourceId: source.analysis.source.id,
-      reference: sourceReference as unknown as Readonly<Record<string, unknown>>,
+      reference: sourceReference,
       referenceFingerprint: sourceReferenceFingerprint,
     }],
   };
@@ -556,13 +596,15 @@ async function buildFixture(directory: string): Promise<Fixture> {
       id: source.analysis.source.id,
       role: "cad-script",
       language: "python",
-      profileId: sourceReference.profile.id,
-      profileVersion: sourceReference.profile.version,
-      profileFingerprint: sourceReference.profile.fingerprint,
-      analyzer: sourceReference.analysis.analyzer,
+      profileId: persistedSource.document.profile.id,
+      profileVersion: persistedSource.document.profile.version,
+      profileFingerprint: persistedSource.document.profile.fingerprint,
+      analyzer: persistedSource.document.analysis.analyzer,
       sourceFingerprint: source.analysis.source.fingerprint,
       captureFingerprint: sourceReferenceFingerprint,
       analysisFingerprint: source.analysisFingerprint,
+      projectSource: persistedSource.document.projectSource,
+      locator: persistedSource.locator,
     }],
     bindings,
     compilationProfileRequests: [{
@@ -600,7 +642,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@1",
+      tool: "compile.seal-admission@2",
       runId: capture.trustedRunId,
     },
     inputArtifactIds: [requirementsArtifact.id, sysmlArtifact.id],
@@ -666,6 +708,7 @@ async function buildFixture(directory: string): Promise<Fixture> {
               : undefined,
           ),
       },
+      sources: locatorBackedSourceReader(sourceCaptureService),
     });
   const request: TechnicalCompilationAdmissionReadRequest = {
     projectId: PROJECT_ID,
@@ -731,7 +774,14 @@ function assertNoStorageLocator(value: unknown, path = "$result"): void {
     return;
   }
   for (const [key, child] of Object.entries(value)) {
-    if (["path", "uri", "casUri", "directory"].includes(key)) {
+    if (key === "path" || key === "directory") {
+      throw new Error(`${path}.${key} exposes a storage locator`);
+    }
+    if (
+      (key === "uri" || key === "casUri") &&
+      typeof child === "string" &&
+      !child.startsWith("casys://")
+    ) {
       throw new Error(`${path}.${key} exposes a storage locator`);
     }
     assertNoStorageLocator(child, `${path}.${key}`);

@@ -2,7 +2,7 @@
 
 Audience: both · Diátaxis: reference · Kind: coverage
 
-## Implemented in Vertical 1
+## Implemented in Vertical 1 and Vertical 2
 
 - One independent workspace per Engineering Project, outside Project and Thread state.
 - Stable module and file identities with derived logical paths.
@@ -18,6 +18,19 @@ Audience: both · Diátaxis: reference · Kind: coverage
 This surface gives an agent a scalable project source tree. It does **not** make draft
 bytes admitted product evidence.
 
+Vertical 2 is the only public technical-source authority for CAD, Modelica and SPICE:
+`project_technical_source_capture` names `projectId`, `workspaceRevision`, `fileId` and
+`fileRevision`. The server resolves `captureRequest.profileId` and role against the
+registered catalogue, persists a private `technical-source-analysis-capture/2.0`
+document, and returns only `technical-source-analysis-capture-locator/2.0`. Preview,
+MRTR, `compile.seal-admission@2`, admission read and reopen recross the complete
+`projectSource` anchor at that historical workspace revision. Preview and admission
+bundles require one common workspace basis: the same `projectId`, `workspaceRevision`
+and `workspaceEventFingerprint`. An unchanged sibling is recaptured at that common
+revision rather than mixed in. A later sibling or head bump does not invalidate a sealed
+historical locator. Corrections return only through `AgentResource` plus a successor
+file revision.
+
 ## Current runtime proof
 
 MCS-01 reached workspace revision 12 through the loopback MCP on 2026-08-24: eight
@@ -28,11 +41,10 @@ execution.
 
 ## Not implemented yet
 
-| Vertical | Missing capability                                                                   | Why it remains separate                                                               |
-| -------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| 2        | Exact workspace file revision → registered technical capture → compilation admission | Parser/profile resolution and provenance belong to the server admission boundary      |
-| 3        | MCS-01 CAD, FEA, Modelica and SPICE sources executed from workspace entries          | It is the first real-product proof of the bridge, not a workspace invariant           |
-| 4        | Multi-file CAD bundle, placements and hierarchical assembly evidence                 | Large assemblies must stay modular and bounded; one flat product manifest is rejected |
+| Vertical | Missing capability                                                          | Why it remains separate                                                               |
+| -------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 3        | MCS-01 CAD, FEA, Modelica and SPICE sources executed from workspace entries | It is the first real-product proof of the bridge, not a workspace invariant           |
+| 4        | Multi-file CAD bundle, placements and hierarchical assembly evidence        | Large assemblies must stay modular and bounded; one flat product manifest is rejected |
 
 Cross-file language imports, unlimited provider execution, and a mutable Workbench tree
 are outside current coverage.

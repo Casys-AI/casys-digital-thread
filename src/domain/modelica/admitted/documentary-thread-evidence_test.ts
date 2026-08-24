@@ -94,7 +94,7 @@ async function basisSnapshot(): Promise<ThreadSnapshot> {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@1",
+      tool: "compile.seal-admission@2",
       runId: "run.compile.seal",
     },
     inputArtifactIds: [],
@@ -167,7 +167,8 @@ Deno.test("documentary successor records exact three artifacts, observations, an
     capturedAt: CAPTURED_AT,
     capture: capture(),
     captureFingerprint,
-    captureUri: `casys://modelica-admitted-execution/sha256/${captureFingerprint.digest}`,
+    captureUri:
+      `casys://modelica-admitted-execution/sha256/${captureFingerprint.digest}`,
     receipt: receipt(),
   });
   assertEquals(expected.artifacts.map((artifact) => artifact.kind), [
@@ -230,7 +231,9 @@ Deno.test("documentary successor uses the explicit capturedAt and rejects a seco
   };
   const first = buildDocumentarySuccessor(input);
   assertEquals(
-    first.artifacts.every((artifact) => artifact.freshness.changedAt === input.capturedAt),
+    first.artifacts.every((artifact) =>
+      artifact.freshness.changedAt === input.capturedAt
+    ),
     true,
   );
   assertThrows(
@@ -249,11 +252,11 @@ Deno.test("documentary successor uses the explicit capturedAt and rejects a seco
   );
 });
 
-Deno.test("exact admission artifact stays compile.seal-admission@1 and rejects producer drift", async () => {
+Deno.test("exact admission artifact stays compile.seal-admission@2 and rejects producer drift", async () => {
   const basis = await basisSnapshot();
   assertEquals(
     exactAdmissionArtifact(basis, ADMISSION_ID, ADMISSION_FINGERPRINT).producer.tool,
-    "compile.seal-admission@1",
+    "compile.seal-admission@2",
   );
   const drifted = {
     ...basis,

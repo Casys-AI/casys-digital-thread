@@ -1,35 +1,13 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import type { SourceAnalysisBundle } from "../source/source-analysis.ts";
+import { sampleTechnicalSourceAnalysisCaptureLocator } from "../../../testing/technical-source-capture-test-support.ts";
 import {
   assembleTechnicalSourceCaptureReview,
   captureReviewContent,
   TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA,
 } from "./technical-source-capture-review.ts";
 
-const REFERENCE = {
-  schemaVersion: "technical-source-analysis-capture/1.0",
-  kind: "technical-source-analysis",
-  profile: {
-    id: "profile.build123d",
-    version: "2.0.0",
-    fingerprint: { algorithm: "sha256", digest: "1".repeat(64) },
-  },
-  source: {
-    id: "source.cad",
-    role: "cad-script",
-    language: "python",
-    sha256: "2".repeat(64),
-    byteCount: 54,
-    casUri: `casys://technical-source/sha256/${"2".repeat(64)}`,
-  },
-  analysis: {
-    analyzer: { id: "python-cad-lezer", version: "1.0.0" },
-    policy: { profile: "profile.build123d", status: "passed" },
-    sha256: "3".repeat(64),
-    byteCount: 412,
-    casUri: `casys://technical-source-analysis/sha256/${"3".repeat(64)}`,
-  },
-} as const;
+const REFERENCE = sampleTechnicalSourceAnalysisCaptureLocator();
 
 Deno.test(
   "photo CAD capture review keeps parser passed apart from unresolved levers",
@@ -44,7 +22,7 @@ Deno.test(
     assertEquals(review.reference, REFERENCE);
     assertEquals(review.parser, {
       status: "passed",
-      profile: "profile.build123d",
+      profile: "build123d-closed-subset-v1",
     });
     assertEquals(review.levers.status, "unresolved");
     if (review.levers.status !== "unresolved") return;
@@ -152,6 +130,24 @@ Deno.test(
     );
   },
 );
+
+Deno.test("capture review refuses a V1 capture document as the opaque locator", () => {
+  assertThrows(
+    () =>
+      assembleTechnicalSourceCaptureReview(
+        {
+          schemaVersion: "technical-source-analysis-capture/1.0",
+          kind: "technical-source-analysis",
+          fingerprint: REFERENCE.fingerprint,
+          byteCount: REFERENCE.byteCount,
+          casUri: REFERENCE.casUri,
+        },
+        "from build123d import Box\nresult = Box(1, 2, 3)\n",
+        analysis([artifactSymbol()], []),
+      ),
+    TypeError,
+  );
+});
 
 function analysis(
   symbols: SourceAnalysisBundle["symbols"],

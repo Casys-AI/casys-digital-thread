@@ -76,6 +76,7 @@ import {
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
 } from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
+import { sampleAdmissionSourceWorkspaceFields } from "../../../../testing/technical-source-capture-test-support.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -885,6 +886,9 @@ async function harness() {
         sourceFingerprint,
         captureFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
         analysisFingerprint,
+        ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
+          projectId: "project.ramp",
+        }),
       }],
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -917,7 +921,7 @@ async function harness() {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/1.0",
+    schemaVersion: "technical-compilation-admission-capture/2.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",
@@ -1294,7 +1298,7 @@ async function admittedThreadLineage(
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@1",
+      tool: "compile.seal-admission@2",
       runId: "run.compile.seal",
     },
     inputArtifactIds: [],

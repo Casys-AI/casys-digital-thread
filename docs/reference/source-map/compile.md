@@ -18,7 +18,7 @@ verticals, extracted from the authority pipeline
 
 #### [`docs/reference/pipeline/admitted-source-isolated-execution.md`](../pipeline/admitted-source-isolated-execution.md)
 
-Recurrent hexagonal pattern: `compile.seal-admission@1` →
+Recurrent hexagonal pattern: `compile.seal-admission@2` →
 `ReopenAdmittedCompilationSource` → `IsolatedCodeRunner`. CAD execute and admitted
 Modelica. Not the Modelica kit, not CalculiX `@3`
 
@@ -30,7 +30,7 @@ content or native override drift before loading Microsandbox
 #### [`src/domain/compile/`](../../../src/domain/compile)
 
 Compile kernel: `isolation/` (request/receipt + local runtime identity), `admission/`
-(`technical-compilation/1.0` + `compile.seal-admission@1`), `source/` (language-neutral
+(`technical-compilation/1.0` + `compile.seal-admission@2`), `source/` (language-neutral
 analysis + named CAD levers), `rop/` (`resolved-operation-plan`), `brief/`
 (approved-brief graph). Used by CAD and Modelica. Not a CAD tree
 
@@ -96,8 +96,9 @@ and geometry-affecting levers (reachable + unique `parameterizes`). Missing bind
 
 #### [`src/domain/compile/admission/technical-source-capture-review.ts`](../../../src/domain/compile/admission/technical-source-capture-review.ts)
 
-Agent-facing `technical-source-capture-review/1.0`: hoists `parser` and `levers` beside
-the opaque CAS `reference`. Compilation accepts only `result.reference`
+Agent-facing `technical-source-capture-review/2.0`: hoists `parser` and `levers` beside
+the opaque `technical-source-analysis-capture-locator/2.0`. Compilation accepts only
+`result.reference`
 
 #### [`src/domain/compile/admission/technical-compilation-join.ts`](../../../src/domain/compile/admission/technical-compilation-join.ts)
 
@@ -143,7 +144,7 @@ qualified closed subset
 named `Pos`/`Rot` bindings and `Plane.XY\|…\|ZY *` shape, `scale`, `fillet`, `chamfer`,
 `extrude`, `offset`, `revolve`, math `pi`/`e`/`tau`) plus the causal named-lever
 admission invariant. Modelica `modelica-closed-subset-v2` compiles bounded generic `.mo`
-source with its exact experiment annotation for `compile.seal-admission@1`. CalculiX
+source with its exact experiment annotation for `compile.seal-admission@2`. CalculiX
 compilation stays fail-closed: the agent never writes `.inp`
 
 #### [`src/adapters/compile/captures/initial-technical-source-analysis-composition.ts`](../../../src/adapters/compile/captures/initial-technical-source-analysis-composition.ts)
@@ -155,7 +156,7 @@ parser identity
 #### [`src/adapters/compile/server-composition.ts`](../../../src/adapters/compile/server-composition.ts)
 
 Technical compilation foundation, basis/seal, and preview. One admission CAS is shared
-by the reopen reader and `compile.seal-admission@1`. Preview is not admission authority.
+by the reopen reader and `compile.seal-admission@2`. Preview is not admission authority.
 
 #### [`src/adapters/compile/admission/file-technical-compilation-draft-store.ts`](../../../src/adapters/compile/admission/file-technical-compilation-draft-store.ts)
 
@@ -165,7 +166,7 @@ outside application contracts
 
 #### [`src/domain/compile/admission/technical-compilation-proposal.ts`](../../../src/domain/compile/admission/technical-compilation-proposal.ts)
 
-Closed canonical MRTR grammar for registered `compile.seal-admission@1`; signs the exact
+Closed canonical MRTR grammar for registered `compile.seal-admission@2`; signs the exact
 draft, basis, source-capture references, bindings and profile identities without
 granting execution authority
 
@@ -221,7 +222,7 @@ run-label cleanup proven by zero remaining sandboxes
 #### [`src/application/ports/in/compile/admission/reopen-admitted-compilation-source.ts`](../../../src/application/ports/in/compile/admission/reopen-admitted-compilation-source.ts)
 
 Inward port for the recurrent admitted-file microVM entry: reopen
-`compile.seal-admission@1` as exact source bytes for one compilation target. No worker,
+`compile.seal-admission@2` as exact source bytes for one compilation target. No worker,
 image, or caller source text
 
 #### [`src/application/use-cases/compile/admission/reopen-admitted-compilation-source.ts`](../../../src/application/use-cases/compile/admission/reopen-admitted-compilation-source.ts)

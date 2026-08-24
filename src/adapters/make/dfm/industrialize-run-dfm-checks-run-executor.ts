@@ -15,6 +15,7 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import { COMPILE_SEAL_ADMISSION_PRODUCER_TOOL } from "../../../domain/compile/admission/technical-compilation-proposal.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   DFM_ENVELOPE_TOOL,
@@ -95,7 +96,7 @@ export { DFM_CHECK_CAPTURE_URI_PREFIX };
 const FORBIDDEN_GEOMETRY_TOOLS = [
   "design.seal-isolated-geometry@1",
   "design.execute-build123d@1",
-  "compile.seal-admission@1",
+  COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
 ] as const;
 
 export interface DfmRunThreadSnapshotStore extends ThreadSnapshotStore {

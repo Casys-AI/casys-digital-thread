@@ -13,11 +13,18 @@ A workspace `current` file revision is current only inside that workspace. Produ
 authority begins only when a later reviewed operation names and re-opens exact workspace
 file revisions.
 
-`captureRequest` is a caller-authored requested parser/source identity (`profileId` +
-`sourceId`). Vertical 1 stores it inertly and grants nothing. It is not a registered
-profile, compilation-profile, provider, tool, image, executable, endpoint, credentials,
-or runtime selection. Vertical 2 will resolve it fail-closed against the registry.
-Workspace records cannot represent those fields.
+`captureRequest` is exactly `{profileId}`. Vertical 2 resolves it fail-closed against
+the registered technical-source catalogue and the file role. It is not a
+compilation-profile, provider, tool, image, executable, endpoint, credentials, or
+runtime selection. Workspace records cannot represent those fields.
+
+A multi-file project compiles only from one common workspace basis: the same
+`projectId`, the same `workspaceRevision`, and the same `workspaceEventFingerprint`. An
+unchanged sibling is recaptured at that common revision rather than mixed with an
+earlier snapshot. A later sibling bump does not reuse an earlier fingerprint at the same
+numeric revision.
 
 `project_resource_capture` remains the only byte ingress. File put accepts a full
-`AgentResourceReference` and reopens it exactly before the event is accepted.
+`AgentResourceReference` and reopens it exactly before the event is accepted. A later
+correction is a new resource plus a successor file revision, then a new technical-source
+capture.

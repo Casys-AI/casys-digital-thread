@@ -83,8 +83,8 @@ After the brief is canonical:
 3. Human approves. Agent queues and executes. r2 is a **blank container identity**, not
    an architecture.
 
-See [sequence a SysON seed](../how-to/behave/sequence-seed-work-item.md) if this ordering is
-violated.
+See [sequence a SysON seed](../how-to/behave/sequence-seed-work-item.md) if this
+ordering is violated.
 
 ## 4. Architecture, requirements, geometry, proof
 
@@ -94,8 +94,8 @@ From r2 the generic route continues only through registered operations:
 model.write-architecture@1     # server-rendered SysML → SysON
 model.write-requirements@1     # integer scalars → SysON
 design.write-geometry@1        # seal a reviewed draft (legacy MCP path)
-  or compile.seal-admission@1 + design.execute-build123d@1  # isolated CAD draft
-  or compile.seal-admission@1 + simulate.run-admitted-modelica@1  # isolated .mo
+  or compile.seal-admission@2 + design.execute-build123d@1  # isolated CAD draft
+  or compile.seal-admission@2 + simulate.run-admitted-modelica@1  # isolated .mo
 verify.seal-proof-case@1       # seal the proof declaration
 verify.run-fea-static-proof@3  # isolated CalculiX microVM + SysON oracle
 ```
@@ -114,38 +114,34 @@ Every consequential step is: append work + decision → propose → human MRTR �
 execute. The agent supplies no provider name, tool, path, or SysML text on the renderer
 path.
 
-Do not type `sensitivity.case.*`. Call
-`project_sensitivity_study_seal_review` first — catalog id and the current
-Thread admission become the seal parameters. `desk-lamp-dl06` is
-`catalog-absent` until a reviewed template exists. How-to:
+Do not type `sensitivity.case.*`. Call `project_sensitivity_study_seal_review` first —
+catalog id and the current Thread admission become the seal parameters. `desk-lamp-dl06`
+is `catalog-absent` until a reviewed template exists. How-to:
 [Compile sensitivity-study parameters](../how-to/compile/compile-sensitivity-parameters.md).
 
-After a sealed sensitivity study, check the join **before** queueing an
-evaluation. `project_sensitivity_base_evaluation_review` is ready only when
-each study metric Object.is-equals one Thread requirement. Historical
-`desk-lamp-dl05` r16 published `assembly_max_*` against Thread
-`maxDisplacement` / `maxVonMises` — that is `UNLINKED`, not a mapping the
-agent may invent. A later isolated reseal on that atelier joined. A new
-project starts at
+After a sealed sensitivity study, check the join **before** queueing an evaluation.
+`project_sensitivity_base_evaluation_review` is ready only when each study metric
+Object.is-equals one Thread requirement. Historical `desk-lamp-dl05` r16 published
+`assembly_max_*` against Thread `maxDisplacement` / `maxVonMises` — that is `UNLINKED`,
+not a mapping the agent may invent. A later isolated reseal on that atelier joined. A
+new project starts at
 [Run the behave loop from zero](../how-to/behave/run-the-behave-loop-from-zero.md).
 Isolated proof `@3` evaluations stay a different authority.
 
 `verify.evaluate-sensitivity-base@1` then asks SysON to evaluate the
-`sensitivity-base-<metric>-<digest>` observations. Only a **fail** of those
-evaluations can authorize `project_vector_correction_review` /
-`design.apply-vector-correction@1`. That seal is not a CAD loop and does not
-rewrite a Build123d literal. `compile.capture-corrected-source@1` substitutes
-the signed `z*` into the parent admission source.
-`project_corrected_admission_review` then feeds the existing
-`compile.seal-admission@1` / `design.execute-build123d@1` / proof steps. Each
-stays its own MRTR.
+`sensitivity-base-<metric>-<digest>` observations. Only a **fail** of those evaluations
+can authorize `project_vector_correction_review` / `design.apply-vector-correction@1`.
+That seal is not a CAD loop and does not rewrite a Build123d literal. Corrections return
+through `project_resource_capture` plus a successor workspace file revision, then a new
+technical-source capture and `compile.seal-admission@2` / `design.execute-build123d@1` /
+proof steps. Each stays its own MRTR.
 
-The STEP then has **three** judgement branches: behave (this tutorial and the
-post-proof walk), make (measured DFM), buy (BOM / cost, not registered yet).
-They share the geometry identity, not verdicts. Measured DFM is
-`industrialize.seal-dfm-case@1` then `industrialize.run-dfm-checks@1` on
-canonical `design.write-geometry@1` STEP only. Isolated geometry is not a DFM
-target. Do not open make or buy to complete a behave head.
+The STEP then has **three** judgement branches: behave (this tutorial and the post-proof
+walk), make (measured DFM), buy (BOM / cost, not registered yet). They share the
+geometry identity, not verdicts. Measured DFM is `industrialize.seal-dfm-case@1` then
+`industrialize.run-dfm-checks@1` on canonical `design.write-geometry@1` STEP only.
+Isolated geometry is not a DFM target. Do not open make or buy to complete a behave
+head.
 
 Exact ids, the local r16 facts, and the fail-closed exits:
 [Walk the post-proof loop](../how-to/behave/walk-the-post-proof-loop.md).
@@ -180,5 +176,5 @@ Opening the page does not run FEA, Modelica, or SysON. A documentary baseline is
 system model. A SysON seed is not an architecture. An isolated Build123d execution is
 not canonical geometry. A `succeeded` Modelica run is not a requirement verdict.
 
-When in doubt, read [agent workspace](../reference/agent/agent-workspace.md) before calling a
-tool that looks similar to another.
+When in doubt, read [agent workspace](../reference/agent/agent-workspace.md) before
+calling a tool that looks similar to another.

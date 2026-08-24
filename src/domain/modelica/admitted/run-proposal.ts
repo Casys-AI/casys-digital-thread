@@ -1,7 +1,7 @@
 /**
  * Closed MRTR grammar for one admitted Modelica closed-subset execution.
  *
- * The signed proposal names one `compile.seal-admission@1` artifact and one
+ * The signed proposal names one `compile.seal-admission@2` artifact and one
  * server-owned isolation contract. It carries no Modelica text, provider
  * capability, executable, or caller-selected runtime. Parsing never grants
  * dispatch: the executor must reopen the admission bytes.
@@ -24,6 +24,7 @@ import {
   safeVersion,
 } from "../../kernel/case-validation.ts";
 import type { EngineeringDecisionProposalParameter } from "../../project/engineering-project.ts";
+import { TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA } from "../../compile/admission/technical-compilation-proposal.ts";
 
 export const SIMULATE_RUN_ADMITTED_MODELICA_OPERATION = Object.freeze(
   {
@@ -33,11 +34,11 @@ export const SIMULATE_RUN_ADMITTED_MODELICA_OPERATION = Object.freeze(
 );
 
 export const MODELICA_ADMITTED_RUN_ADMISSION_SCHEMA =
-  "modelica-admitted-run-admission/2.0" as const;
+  "modelica-admitted-run-admission/3.0" as const;
 export const MODELICA_ADMITTED_COMPILATION_SCHEMA =
   "technical-compilation/1.0" as const;
 export const MODELICA_ADMITTED_COMPILED_ADMISSION_SCHEMA =
-  "technical-compilation-admission-capture/1.0" as const;
+  TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA;
 
 export const MODELICA_ADMITTED_EXECUTION_PROFILE = Object.freeze(
   {

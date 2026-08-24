@@ -25,20 +25,14 @@ import {
   fingerprintSourceAnalysisBundle,
 } from "../../../domain/compile/source/source-analysis.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import { sampleTechnicalSourceAnalysisCaptureLocator } from "../../../testing/technical-source-capture-test-support.ts";
 import {
   QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
   QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID,
   QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
   QualifiedBuild123dSourceAnalyzer,
 } from "../../cad/source/qualified-build123d-source-analyzer.ts";
-import {
-  FixedTechnicalSourceAnalysisProfileRegistry,
-  TechnicalSourceAnalysisCaptureService,
-} from "../captures/technical-source-analysis-capture.ts";
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
-import {
-  CaptureBackedTechnicalCompilationSourceReader,
-} from "./capture-backed-technical-compilation-source-reader.ts";
 import {
   FileTechnicalCompilationDraftStore,
 } from "./file-technical-compilation-draft-store.ts";
@@ -62,129 +56,6 @@ const THREAD_BASIS = {
   revision: 1,
   subjectId: "subject.support",
 };
-
-Deno.test("capture-backed source reader reopens exact bytes and externally fingerprints analysis", async () => {
-  await withCaptureHarness(async ({ service }) => {
-    const reference = await service.capture({
-      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-      sourceId: "source.support",
-      sourceText: SOURCE_TEXT,
-    });
-    const referenceFingerprint = await sha256Fingerprint(reference);
-    const opaqueReference = structuredClone(reference) as unknown as Readonly<
-      Record<string, unknown>
-    >;
-    const reader = new CaptureBackedTechnicalCompilationSourceReader(service);
-    const reopened = await reader.read({
-      projectId: "project.support",
-      basis: THREAD_BASIS,
-      reference: opaqueReference,
-      referenceFingerprint,
-    });
-
-    assertEquals(reopened.referenceFingerprint, referenceFingerprint);
-    assertEquals(reopened.source.sourceText, SOURCE_TEXT);
-    assertEquals(
-      reopened.source.analysisFingerprint,
-      await fingerprintSourceAnalysisBundle(reopened.source.analysis),
-    );
-    assertEquals(
-      reopened.source.analysis.analyzer,
-      {
-        id: QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID,
-        version: QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
-      },
-    );
-    assertEquals(reopened.provenance, {
-      profile: reference.profile,
-      analyzer: reference.analysis.analyzer,
-      sourceFingerprint: reopened.source.analysis.source.fingerprint,
-      captureFingerprint: referenceFingerprint,
-      analysisFingerprint: reopened.source.analysisFingerprint,
-    });
-  });
-});
-
-Deno.test("capture-backed source reader rejects reference drift and non-exact context", async () => {
-  await withCaptureHarness(async ({ service }) => {
-    const reference = await service.capture({
-      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-      sourceId: "source.support",
-      sourceText: SOURCE_TEXT,
-    });
-    const reader = new CaptureBackedTechnicalCompilationSourceReader(service);
-    const opaqueReference = structuredClone(reference) as unknown as Readonly<
-      Record<string, unknown>
-    >;
-
-    await assertRejects(
-      () =>
-        reader.read({
-          projectId: "project.support",
-          basis: THREAD_BASIS,
-          reference: opaqueReference,
-          referenceFingerprint: {
-            algorithm: "sha256",
-            digest: "f".repeat(64),
-          },
-        }),
-      TypeError,
-      "fingerprint",
-    );
-
-    const tampered = {
-      ...structuredClone(reference),
-      source: {
-        ...structuredClone(reference.source),
-        byteCount: reference.source.byteCount + 1,
-      },
-    };
-    const tamperedFingerprint = await sha256Fingerprint(tampered);
-    await assertRejects(
-      () =>
-        reader.read({
-          projectId: "project.support",
-          basis: THREAD_BASIS,
-          reference: tampered as unknown as Readonly<Record<string, unknown>>,
-          referenceFingerprint: tamperedFingerprint,
-        }),
-      Error,
-    );
-
-    const tamperedProfile = {
-      ...structuredClone(reference),
-      profile: {
-        ...structuredClone(reference.profile),
-        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
-      },
-    };
-    const tamperedProfileFingerprint = await sha256Fingerprint(tamperedProfile);
-    await assertRejects(
-      () =>
-        reader.read({
-          projectId: "project.support",
-          basis: THREAD_BASIS,
-          reference: tamperedProfile as unknown as Readonly<Record<string, unknown>>,
-          referenceFingerprint: tamperedProfileFingerprint,
-        }),
-      Error,
-      "profile",
-    );
-
-    const exactFingerprint = await sha256Fingerprint(opaqueReference);
-    await assertRejects(
-      () =>
-        reader.read({
-          projectId: "project.support",
-          basis: { ...THREAD_BASIS, snapshotId: "latest" },
-          reference: opaqueReference,
-          referenceFingerprint: exactFingerprint,
-        }),
-      TypeError,
-      "exact snapshot",
-    );
-  });
-});
 
 Deno.test("fixed catalogue exposes only the registered build123d, Modelica v2 and SPICE v1 frontends", async () => {
   const provider = new FixedTechnicalCompilationProfileCatalogProvider();
@@ -345,7 +216,7 @@ Deno.test("file draft store rejects drift, omission, and duplication in source c
     await assertRejects(
       () => store.save(driftedReference, driftedDraft),
       TypeError,
-      "fingerprint",
+      "unsupported field",
     );
 
     const omittedDraft = { ...draft, sourceCaptures: [] };
@@ -425,49 +296,6 @@ Deno.test("file draft store detects altered CAS bytes and refuses non-ready docu
     );
   });
 });
-
-async function withCaptureHarness(
-  run: (harness: {
-    readonly service: TechnicalSourceAnalysisCaptureService;
-  }) => Promise<void>,
-): Promise<void> {
-  const directory = await Deno.makeTempDir({
-    prefix: "technical-compilation-source-reader-",
-  });
-  try {
-    const service = new TechnicalSourceAnalysisCaptureService({
-      sourceCaptures: new FileByteStore({
-        kind: "technical-source",
-        directory: `${directory}/source`,
-        uriNamespace: "technical-compilation-source-test",
-        label: "technical source test",
-      }),
-      analysisCaptures: new FileByteStore({
-        kind: "technical-source-analysis",
-        directory: `${directory}/analysis`,
-        uriNamespace: "technical-compilation-analysis-test",
-        label: "technical source analysis test",
-      }),
-      profiles: new FixedTechnicalSourceAnalysisProfileRegistry([{
-        profile: {
-          id: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-          version: "1.0.0",
-          role: "cad-script",
-          language: "python",
-          analyzer: {
-            id: QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID,
-            version: QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
-          },
-          maxSourceBytes: 262_144,
-        },
-        frontend: new QualifiedBuild123dSourceAnalyzer(),
-      }]),
-    });
-    await run({ service });
-  } finally {
-    await Deno.remove(directory, { recursive: true });
-  }
-}
 
 async function withDraftHarness(
   run: (harness: {
@@ -574,10 +402,7 @@ async function draftFrom(
     throw new Error(`Fixture unexpectedly compiled as ${compiled.document.status}.`);
   }
   const sourceId = compiled.document.inputManifest.sources[0].analysis.source.id;
-  const reference = {
-    schemaVersion: "test-source-reference/1.0",
-    sourceId,
-  };
+  const reference = sampleTechnicalSourceAnalysisCaptureLocator();
   return {
     projectId: compiled.document.basis.thread.projectId,
     document: compiled.document,

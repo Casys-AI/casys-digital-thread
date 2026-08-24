@@ -37,9 +37,28 @@ import {
   FileByteStore,
   type VerifiedStoredBytes,
 } from "../../shared/cas/file-byte-store.ts";
+import type { TechnicalSourceAnalysisCapture } from "../../../application/ports/out/compile/admission/technical-source-analysis-capture.ts";
+import {
+  TechnicalSourceAnalysisCaptureError,
+  type TechnicalSourceAnalysisCaptureErrorCode,
+  TechnicalSourceCaptureProfileNotRegisteredError,
+} from "../../../application/ports/out/compile/admission/technical-source-analysis-capture.ts";
+import {
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PREFIX,
+  type TechnicalProjectSourceAnchor,
+  type TechnicalSourceAnalysisCaptureLocator,
+  validateTechnicalProjectSourceAnchor,
+  validateTechnicalSourceAnalysisCaptureLocator,
+} from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 
-export const TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA =
-  "technical-source-analysis-capture/1.0" as const;
+export {
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
+};
 
 /** Hard ceiling for every code-owned technical-source capture profile. */
 export const MAX_TECHNICAL_SOURCE_PROFILE_BYTES = 1024 * 1024;
@@ -80,19 +99,7 @@ export interface TechnicalSourceAnalysisProfileRegistry {
   }): TechnicalSourceAnalysisProfileRegistration;
 }
 
-export class TechnicalSourceAnalysisProfileNotRegisteredError extends Error {
-  constructor(
-    readonly profileId: string,
-    readonly profileVersion?: string,
-  ) {
-    super(
-      profileVersion === undefined
-        ? `No technical source-analysis profile is registered for ${profileId}.`
-        : `No technical source-analysis profile is registered for ${profileId}@${profileVersion}.`,
-    );
-    this.name = "TechnicalSourceAnalysisProfileNotRegisteredError";
-  }
-}
+export { TechnicalSourceCaptureProfileNotRegisteredError as TechnicalSourceAnalysisProfileNotRegisteredError };
 
 /**
  * Small sealed registry suitable for composition-root registrations.
@@ -142,7 +149,7 @@ export class FixedTechnicalSourceAnalysisProfileRegistry
     const profileId = safeId(profileIdValue, "$profileId");
     const registration = this.#registrations.get(profileId);
     if (registration === undefined) {
-      throw new TechnicalSourceAnalysisProfileNotRegisteredError(profileId);
+      throw new TechnicalSourceCaptureProfileNotRegisteredError(profileId);
     }
     return registration;
   }
@@ -158,7 +165,7 @@ export class FixedTechnicalSourceAnalysisProfileRegistry
     if (
       registration === undefined || registration.profile.version !== version
     ) {
-      throw new TechnicalSourceAnalysisProfileNotRegisteredError(id, version);
+      throw new TechnicalSourceCaptureProfileNotRegisteredError(id, version);
     }
     return registration;
   }
@@ -166,7 +173,8 @@ export class FixedTechnicalSourceAnalysisProfileRegistry
 
 export interface TechnicalSourceAnalysisCaptureDocument {
   readonly schemaVersion: typeof TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA;
-  readonly kind: "technical-source-analysis";
+  readonly kind: typeof TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND;
+  readonly projectSource: TechnicalProjectSourceAnchor;
   readonly profile: {
     readonly id: string;
     readonly version: string;
@@ -192,53 +200,42 @@ export interface TechnicalSourceAnalysisCaptureDocument {
   };
 }
 
-/** The returned document is itself the closed replay reference. */
-export type TechnicalSourceAnalysisReference = TechnicalSourceAnalysisCaptureDocument;
+export type TechnicalSourceAnalysisReference = TechnicalSourceAnalysisCaptureLocator;
 
 export interface TechnicalSourceAnalysisCaptureDependencies {
   readonly sourceCaptures: FileByteStore<"technical-source">;
   readonly analysisCaptures: FileByteStore<"technical-source-analysis">;
+  readonly captureDocuments: FileByteStore<"technical-source-analysis-capture">;
   readonly profiles: TechnicalSourceAnalysisProfileRegistry;
 }
 
 export interface VerifiedTechnicalSourceAnalysis {
-  readonly reference: TechnicalSourceAnalysisReference;
+  readonly locator: TechnicalSourceAnalysisCaptureLocator;
+  readonly document: TechnicalSourceAnalysisCaptureDocument;
   readonly sourceText: string;
   readonly analysis: SourceAnalysisBundle;
 }
 
-export type TechnicalSourceAnalysisCaptureErrorCode =
-  | "source_size_limit_exceeded"
-  | "source_capture_readback_failed"
-  | "analysis_identity_mismatch"
-  | "analysis_capture_readback_failed"
-  | "source_capture_invalid"
-  | "analysis_capture_invalid"
-  | "analysis_rejected";
-
-export class TechnicalSourceAnalysisCaptureError extends Error {
-  constructor(
-    readonly code: TechnicalSourceAnalysisCaptureErrorCode,
-    message: string,
-    readonly reference?: TechnicalSourceAnalysisReference,
-  ) {
-    super(message);
-    this.name = "TechnicalSourceAnalysisCaptureError";
-  }
-}
+export {
+  TechnicalSourceAnalysisCaptureError,
+  type TechnicalSourceAnalysisCaptureErrorCode,
+};
 
 /**
  * Persist exact UTF-8 source bytes, analyze those bytes locally, persist the
  * canonical bundle, and prove both CAS entries through a deterministic replay.
  */
-export class TechnicalSourceAnalysisCaptureService {
+export class TechnicalSourceAnalysisCaptureService
+  implements TechnicalSourceAnalysisCapture {
   readonly #sourceCaptures: FileByteStore<"technical-source">;
   readonly #analysisCaptures: FileByteStore<"technical-source-analysis">;
+  readonly #captureDocuments: FileByteStore<"technical-source-analysis-capture">;
   readonly #profiles: TechnicalSourceAnalysisProfileRegistry;
 
   constructor(dependencies: TechnicalSourceAnalysisCaptureDependencies) {
     this.#sourceCaptures = dependencies.sourceCaptures;
     this.#analysisCaptures = dependencies.analysisCaptures;
+    this.#captureDocuments = dependencies.captureDocuments;
     this.#profiles = dependencies.profiles;
   }
 
@@ -246,15 +243,37 @@ export class TechnicalSourceAnalysisCaptureService {
     return this.#profiles.requireForCapture(profileId).profile;
   }
 
+  async persist(inputValue: {
+    readonly profileId: string;
+    readonly sourceId: string;
+    readonly sourceText: string;
+    readonly projectSource: TechnicalProjectSourceAnchor;
+  }): Promise<{
+    readonly locator: TechnicalSourceAnalysisCaptureLocator;
+    readonly sourceText: string;
+    readonly analysis: SourceAnalysisBundle;
+    readonly document: TechnicalSourceAnalysisCaptureDocument;
+  }> {
+    const locator = await this.capture(inputValue);
+    const reopened = await this.reopenLocator(locator);
+    return {
+      locator,
+      sourceText: reopened.sourceText,
+      analysis: reopened.analysis,
+      document: reopened.document,
+    };
+  }
+
   async capture(inputValue: {
     readonly profileId: string;
     /** Assigned by the server before this boundary; never derived from a label. */
     readonly sourceId: string;
     readonly sourceText: string;
-  }): Promise<TechnicalSourceAnalysisReference> {
+    readonly projectSource: TechnicalProjectSourceAnchor;
+  }): Promise<TechnicalSourceAnalysisCaptureLocator> {
     const input = exactRecord(
       inputValue,
-      ["profileId", "sourceId", "sourceText"],
+      ["profileId", "sourceId", "sourceText", "projectSource"],
       "$technicalSourceCaptureInput",
     );
     const registration = this.#profiles.requireForCapture(
@@ -268,6 +287,15 @@ export class TechnicalSourceAnalysisCaptureService {
       input.sourceId,
       "$technicalSourceCaptureInput.sourceId",
     );
+    const projectSource = validateTechnicalProjectSourceAnchor(
+      input.projectSource,
+      "$technicalSourceCaptureInput.projectSource",
+    );
+    if (sourceId !== projectSource.fileId) {
+      throw new TypeError(
+        "$technicalSourceCaptureInput.sourceId must equal projectSource.fileId.",
+      );
+    }
     const sourceText = requireSourceText(
       input.sourceText,
       "$technicalSourceCaptureInput.sourceText",
@@ -338,9 +366,10 @@ export class TechnicalSourceAnalysisCaptureService {
     const profileFingerprint = await fingerprintTechnicalSourceAnalysisProfile(
       profile,
     );
-    const reference = await validateTechnicalSourceAnalysisCaptureDocument({
+    const document = await validateTechnicalSourceAnalysisCaptureDocument({
       schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
-      kind: "technical-source-analysis",
+      kind: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
+      projectSource,
       profile: {
         id: profile.id,
         version: profile.version,
@@ -365,16 +394,16 @@ export class TechnicalSourceAnalysisCaptureService {
         casUri: analysisStored.uri,
       },
     });
+    const locator = await this.#persistDocumentLocator(document);
 
-    // Reopen through the public evidence path before returning any reference.
-    await this.#reopen(reference, true).catch((error) => {
+    await this.reopenLocator(locator, true).catch((error) => {
       if (error instanceof TechnicalSourceAnalysisCaptureError) throw error;
       throw new TechnicalSourceAnalysisCaptureError(
         "analysis_capture_readback_failed",
         `Technical source analysis failed exact replay after capture: ${
           errorMessage(error)
         }`,
-        reference,
+        locator,
       );
     });
 
@@ -382,23 +411,127 @@ export class TechnicalSourceAnalysisCaptureService {
       throw new TechnicalSourceAnalysisCaptureError(
         "analysis_rejected",
         `Technical source analysis rejected ${sourceId}; persisted analysis sha256 ${analysisFingerprint.digest}.`,
-        reference,
+        locator,
       );
     }
-    return reference;
+    return locator;
   }
 
-  /** Reopen both CAS objects and reproduce the exact registered analysis. */
-  reopen(
+  async reopenLocator(
     value: unknown,
+    allowRejected = false,
   ): Promise<VerifiedTechnicalSourceAnalysis> {
-    return this.#reopen(value, false);
+    const locator = validateTechnicalSourceAnalysisCaptureLocator(
+      value,
+      "$technicalSourceAnalysisCaptureLocator",
+    );
+    if (
+      this.#captureDocuments.uriFor(locator.fingerprint) !== locator.casUri ||
+      !locator.casUri.startsWith(TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PREFIX)
+    ) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "locator_cas_tampered",
+        "Technical source locator names a foreign CAS URI.",
+        locator,
+      );
+    }
+    let documentBytes: ImmutableBytes | undefined;
+    try {
+      documentBytes = await this.#captureDocuments.read(locator.fingerprint);
+    } catch (error) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "locator_cas_tampered",
+        `Technical source capture document failed content-addressed readback: ${
+          errorMessage(error)
+        }`,
+        locator,
+      );
+    }
+    if (
+      documentBytes === undefined ||
+      documentBytes.byteLength !== locator.byteCount
+    ) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "locator_cas_tampered",
+        "Technical source capture document byte count does not match its locator.",
+        locator,
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(
+        decodeExactUtf8(documentBytes.copy(), "technical source capture"),
+      );
+    } catch (error) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "capture_document_invalid",
+        `Technical source capture document is not exact JSON: ${errorMessage(error)}`,
+        locator,
+      );
+    }
+    const verified = await this.#reopenDocument(parsed, allowRejected);
+    const canonical = deterministicJson(verified.document);
+    if (
+      canonical !== decodeExactUtf8(documentBytes.copy(), "technical source capture") ||
+      (await fingerprintBytes(documentBytes.copy())).digest !==
+        locator.fingerprint.digest
+    ) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "locator_cas_tampered",
+        "Technical source capture document does not match its locator fingerprint.",
+        locator,
+      );
+    }
+    return Object.freeze({
+      locator,
+      document: verified.document,
+      sourceText: verified.sourceText,
+      analysis: verified.analysis,
+    });
   }
 
-  async #reopen(
+  async #persistDocumentLocator(
+    document: TechnicalSourceAnalysisCaptureDocument,
+  ): Promise<TechnicalSourceAnalysisCaptureLocator> {
+    const documentText = deterministicJson(document);
+    const documentBytes = new TextEncoder().encode(documentText);
+    const documentFingerprint = await fingerprintBytes(documentBytes);
+    try {
+      const stored = await this.#captureDocuments.save(
+        documentFingerprint,
+        documentBytes,
+      );
+      await requireExactStoredBytes(
+        this.#captureDocuments,
+        stored,
+        documentBytes,
+        "Technical source capture document",
+      );
+      return validateTechnicalSourceAnalysisCaptureLocator({
+        schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+        kind: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
+        fingerprint: stored.fingerprint,
+        byteCount: stored.byteCount,
+        casUri: stored.uri,
+      });
+    } catch (error) {
+      throw new TechnicalSourceAnalysisCaptureError(
+        "analysis_capture_readback_failed",
+        `Technical source capture document was not durably readable after capture: ${
+          errorMessage(error)
+        }`,
+      );
+    }
+  }
+
+  async #reopenDocument(
     value: unknown,
     allowRejected: boolean,
-  ): Promise<VerifiedTechnicalSourceAnalysis> {
+  ): Promise<{
+    readonly document: TechnicalSourceAnalysisCaptureDocument;
+    readonly sourceText: string;
+    readonly analysis: SourceAnalysisBundle;
+  }> {
     const reference = await validateTechnicalSourceAnalysisCaptureDocument(value);
     const registration = this.#profiles.requireExact({
       id: reference.profile.id,
@@ -546,7 +679,7 @@ export class TechnicalSourceAnalysisCaptureService {
         reference,
       );
     }
-    return Object.freeze({ reference, sourceText, analysis });
+    return Object.freeze({ document: reference, sourceText, analysis });
   }
 }
 
@@ -557,7 +690,7 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
 ): TechnicalSourceAnalysisCaptureDocument {
   const root = exactRecord(
     value,
-    ["schemaVersion", "kind", "profile", "source", "analysis"],
+    ["schemaVersion", "kind", "projectSource", "profile", "source", "analysis"],
     path,
   );
   literalValue(
@@ -565,7 +698,15 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
     TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
     `${path}.schemaVersion`,
   );
-  literalValue(root.kind, "technical-source-analysis", `${path}.kind`);
+  literalValue(
+    root.kind,
+    TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
+    `${path}.kind`,
+  );
+  const projectSource = validateTechnicalProjectSourceAnchor(
+    root.projectSource,
+    `${path}.projectSource`,
+  );
 
   const profileInput = exactRecord(
     root.profile,
@@ -637,17 +778,24 @@ export function validateTechnicalSourceAnalysisCaptureDocument(
     policyInput.status,
     `${path}.analysis.policy.status`,
   );
+  const sourceId = safeId(sourceInput.id, `${path}.source.id`);
+  if (sourceId !== projectSource.fileId) {
+    throw new TypeError(
+      `${path}.source.id must equal projectSource.fileId.`,
+    );
+  }
 
   return deepFreeze({
     schemaVersion: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
-    kind: "technical-source-analysis",
+    kind: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
+    projectSource,
     profile: {
       id: profile.id,
       version: profile.version,
       fingerprint: persistedProfileFingerprint,
     },
     source: {
-      id: safeId(sourceInput.id, `${path}.source.id`),
+      id: sourceId,
       role: profile.role,
       language: profile.language,
       sha256: sourceSha256,

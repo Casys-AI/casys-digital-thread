@@ -1,6 +1,10 @@
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import type { EngineeringDecisionProposalParameter } from "../../project/engineering-project.ts";
 import {
+  sampleTechnicalProjectSourceAnchor,
+  sampleTechnicalSourceAnalysisCaptureLocator,
+} from "../../../testing/technical-source-capture-test-support.ts";
+import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
   parseTechnicalCompilationAdmissionParameters,
@@ -54,6 +58,10 @@ function admission(): Record<string, unknown> {
         sourceFingerprint: fingerprint("7"),
         captureFingerprint: fingerprint("8"),
         analysisFingerprint: fingerprint("9"),
+        projectSource: sampleTechnicalProjectSourceAnchor("source.modelica", {
+          projectId,
+        }),
+        locator: sampleTechnicalSourceAnalysisCaptureLocator("8".repeat(64)),
       },
       {
         id: "source.cad",
@@ -66,6 +74,10 @@ function admission(): Record<string, unknown> {
         sourceFingerprint: fingerprint("4"),
         captureFingerprint: fingerprint("5"),
         analysisFingerprint: fingerprint("6"),
+        projectSource: sampleTechnicalProjectSourceAnchor("source.cad", {
+          projectId,
+        }),
+        locator: sampleTechnicalSourceAnalysisCaptureLocator("5".repeat(64)),
       },
     ],
     bindings: [
@@ -242,7 +254,7 @@ Deno.test("technical compilation admission rejects every malformed signed digest
   const digestKeys = mutableParameters()
     .filter((item) => item.key.endsWith("sha256") || item.key.endsWith("Sha256"))
     .map((item) => item.key);
-  assertEquals(digestKeys.length, 18);
+  assertEquals(digestKeys.length, 26);
 
   for (const key of digestKeys) {
     const parameters = mutableParameters();
@@ -258,7 +270,7 @@ Deno.test("technical compilation admission rejects every malformed signed digest
 
 Deno.test("technical compilation admission rejects mutated basis and identity references", () => {
   const invalidMutations: ReadonlyArray<readonly [string, string | number]> = [
-    ["compile.admission.operation", "compile.seal-admission@2"],
+    ["compile.admission.operation", "compile.seal-admission@1"],
     ["compile.admission.draft.draftId", "draft with prose"],
     ["compile.admission.draft.projectId", "project with prose"],
     ["compile.admission.basis.thread.projectId", "project with prose"],
@@ -530,10 +542,14 @@ Deno.test("technical compilation admission rejects value permutations hidden beh
 
   const multipleSourceIds = structuredClone(admission());
   const candidateSources = multipleSourceIds.sources as Array<Record<string, unknown>>;
-  candidateSources.push({
-    ...structuredClone(candidateSources.find((source) => source.id === "source.cad")!),
-    id: "source.cad.second",
+  const cadSource = structuredClone(
+    candidateSources.find((source) => source.id === "source.cad")!,
+  );
+  cadSource.id = "source.cad.second";
+  cadSource.projectSource = sampleTechnicalProjectSourceAnchor("source.cad.second", {
+    projectId: "project.drip-tray",
   });
+  candidateSources.push(cadSource);
   const requests = multipleSourceIds.compilationProfileRequests as Array<
     { profileId: string; sourceIds: string[] }
   >;
@@ -688,6 +704,10 @@ Deno.test("technical compilation admission round-trips spice-circuit-source", ()
     sourceFingerprint: fingerprint("7"),
     captureFingerprint: fingerprint("8"),
     analysisFingerprint: fingerprint("9"),
+    projectSource: sampleTechnicalProjectSourceAnchor("source.spice", {
+      projectId: "project.drip-tray",
+    }),
+    locator: sampleTechnicalSourceAnalysisCaptureLocator("8".repeat(64)),
   }];
   candidate.bindings = [{
     id: "binding.spice.rseries",
@@ -720,9 +740,18 @@ Deno.test("technical compilation admission round-trips spice-circuit-source", ()
 
 Deno.test("technical compilation admission treats colon-bearing binding tuples injectively", () => {
   const candidate = structuredClone(admission());
-  const sources = candidate.sources as Array<{ id: string }>;
+  const sources = candidate.sources as Array<{
+    id: string;
+    projectSource: ReturnType<typeof sampleTechnicalProjectSourceAnchor>;
+  }>;
   sources[0].id = "a:b";
+  sources[0].projectSource = sampleTechnicalProjectSourceAnchor("a:b", {
+    projectId: "project.drip-tray",
+  });
   sources[1].id = "a";
+  sources[1].projectSource = sampleTechnicalProjectSourceAnchor("a", {
+    projectId: "project.drip-tray",
+  });
   const bindings = candidate.bindings as Array<{
     sourceId: string;
     sourceSymbolId: string;
@@ -755,6 +784,16 @@ Deno.test("technical compilation admission supports the full project-id bound in
   const thread = basis.thread as Record<string, unknown>;
   draft.projectId = projectId;
   thread.projectId = projectId;
+  for (
+    const source of candidate.sources as Array<{
+      id: string;
+      projectSource: ReturnType<typeof sampleTechnicalProjectSourceAnchor>;
+    }>
+  ) {
+    source.projectSource = sampleTechnicalProjectSourceAnchor(source.id, {
+      projectId,
+    });
+  }
   draft.draftId = `technical-compilation:${projectId}:${
     (draft.documentFingerprint as { digest: string }).digest
   }`;

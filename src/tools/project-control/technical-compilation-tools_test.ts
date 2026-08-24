@@ -368,7 +368,7 @@ Deno.test("isolated geometry seal review rejects unknown authority fields before
   assertEquals(calls, 0);
 });
 
-Deno.test("technical source capture accepts only profileId/sourceId/resourceRef and spice role on references", () => {
+Deno.test("technical source capture accepts only fileId,fileRevision,projectId,workspaceRevision", () => {
   const app = new CapturingApp();
   registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
     technicalSourceCapture: {
@@ -382,8 +382,14 @@ Deno.test("technical source capture accepts only profileId/sourceId/resourceRef 
   const captureInput = capture.inputSchema as Record<string, unknown>;
   assertEquals(
     Object.keys(captureInput.properties as Record<string, unknown>).sort(),
-    ["profileId", "resourceRef", "sourceId"],
+    ["fileId", "fileRevision", "projectId", "workspaceRevision"],
   );
+  assertEquals(captureInput.required, [
+    "projectId",
+    "workspaceRevision",
+    "fileId",
+    "fileRevision",
+  ]);
   assertEquals(captureInput.additionalProperties, false);
   assertEquals(
     "sourceText" in (captureInput.properties as Record<string, unknown>),
@@ -391,7 +397,16 @@ Deno.test("technical source capture accepts only profileId/sourceId/resourceRef 
   );
   assertEquals(
     Object.keys(captureInput.properties as Record<string, unknown>).some((key) =>
-      ["provider", "tool", "runtime", "image", "ngspice"].includes(key)
+      [
+        "provider",
+        "tool",
+        "runtime",
+        "image",
+        "ngspice",
+        "profileId",
+        "sourceId",
+        "resourceRef",
+      ].includes(key)
     ),
     false,
   );
@@ -407,19 +422,20 @@ Deno.test("technical source capture accepts only profileId/sourceId/resourceRef 
     properties: {
       reference: {
         properties: {
-          source: {
-            properties: { role: { enum: string[] }; language: { enum: string[] } };
-          };
+          schemaVersion: { const: string };
+          kind: { const: string };
         };
       };
     };
-  }).properties.reference.properties.source.properties;
-  assertEquals(reference.role.enum, [
-    "cad-script",
-    "modelica-model",
-    "spice-circuit",
-  ]);
-  assertEquals(reference.language.enum, ["python", "modelica", "spice"]);
+  }).properties.reference.properties;
+  assertEquals(
+    reference.schemaVersion.const,
+    "technical-source-analysis-capture-locator/2.0",
+  );
+  assertEquals(
+    reference.kind.const,
+    "technical-source-analysis-capture-locator",
+  );
 });
 
 function assertClosedObjectSchemas(schema: Record<string, unknown>): void {

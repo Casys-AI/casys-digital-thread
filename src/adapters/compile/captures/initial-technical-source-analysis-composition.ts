@@ -55,11 +55,12 @@ export function createInitialTechnicalSourceAnalysisProfileRegistry(): FixedTech
 export interface InitialTechnicalSourceAnalysisCaptureStores {
   readonly sourceCaptures: FileByteStore<"technical-source">;
   readonly analysisCaptures: FileByteStore<"technical-source-analysis">;
+  readonly captureDocuments: FileByteStore<"technical-source-analysis-capture">;
 }
 
 /**
  * Construct the capture service with the closed registry above. Callers own
- * only the two CAS stores; they cannot substitute analyzer identities.
+ * the CAS stores; they cannot substitute analyzer identities.
  */
 export function createInitialTechnicalSourceAnalysisCaptureService(
   stores: InitialTechnicalSourceAnalysisCaptureStores,
@@ -67,6 +68,7 @@ export function createInitialTechnicalSourceAnalysisCaptureService(
   return new TechnicalSourceAnalysisCaptureService({
     sourceCaptures: stores.sourceCaptures,
     analysisCaptures: stores.analysisCaptures,
+    captureDocuments: stores.captureDocuments,
     profiles: createInitialTechnicalSourceAnalysisProfileRegistry(),
   });
 }

@@ -2125,7 +2125,7 @@ function makeAdmissionArtifact(digest: string): ThreadArtifact {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@1",
+      tool: "compile.seal-admission@2",
       runId: "run-admission-test",
     },
     inputArtifactIds: [],

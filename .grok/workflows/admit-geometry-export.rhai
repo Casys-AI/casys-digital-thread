@@ -1,11 +1,11 @@
 let meta = #{
     name: "admit-geometry-export",
-    description: "Implement, verify, then YOLO-test admitted CAD export to mcp-build123d",
-    when_to_use: "When wiring sealed compile.seal-admission to private mcp-build123d without replacing isolated execute",
+    description: "Implement, verify, then live-test admitted CAD export from sealed compile.seal-admission@2",
+    when_to_use: "When wiring sealed compile.seal-admission@2 to private mcp-build123d without replacing isolated execute",
     phases: [
         #{ title: "Implement", detail: "ports, use case, adapter, MCP tool, server wiring" },
         #{ title: "Verify", detail: "targeted tests plus authority review" },
-        #{ title: "Yolo", detail: "live capture and compilation preview on desk-lamp-dl04" },
+        #{ title: "Yolo", detail: "caller-supplied project/workspace/file coordinates, never DL04 repair" },
     ],
 };
 
@@ -27,20 +27,16 @@ log("admit-geometry-export mode=" + mode);
 
 phase("Implement");
 let implement_prompt = "Implement admitted-geometry MCP export in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
-implement_prompt += "Read CLAUDE.md, src/adapters/captures/geometry-draft-capture.ts, ";
-implement_prompt += "src/application/use-cases/prepare-project-build123d-execution-review.ts, ";
+implement_prompt += "Read CLAUDE.md, docs/reference/agent/agent-workspace.md, ";
 implement_prompt += "src/tools/project-control/technical-compilation-tools.ts, and server.ts before writing. ";
-implement_prompt += "Goal: after compile.seal-admission@1, callers cannot pass Python. ";
-implement_prompt += "The server reopens the sealed admission and sends exact admitted bytes to private mcp-build123d via existing build123d_export / geometry-draft-capture. ";
+implement_prompt += "Goal: after compile.seal-admission@2, callers cannot pass Python. ";
+implement_prompt += "Ingress is AgentResource plus a ProjectSourceWorkspace exact file revision. ";
+implement_prompt += "Capture names only projectId, workspaceRevision, fileId and fileRevision. ";
+implement_prompt += "Preview takes projectId plus result.reference locators. Then compile.seal-admission@2. ";
+implement_prompt += "The server reopens the sealed admission and sends exact admitted bytes to private mcp-build123d. ";
 implement_prompt += "Output is a geometry DRAFT, not Thread. design.write-geometry@1 remains the sealer. ";
 implement_prompt += "Do NOT change design.execute-build123d@1. Do NOT let callers select provider, tool, path, image, or source text. ";
-implement_prompt += "Create: src/application/ports/out/admitted-geometry-exporter.ts, ";
-implement_prompt += "src/application/ports/in/project-admitted-geometry-export.ts, ";
-implement_prompt += "src/application/use-cases/export-admitted-project-geometry.ts plus _test.ts, ";
-implement_prompt += "src/adapters/captures/admission-backed-geometry-export-adapter.ts plus _test.ts, ";
-implement_prompt += "tool project_admitted_geometry_export in technical-compilation-tools.ts, ";
-implement_prompt += "server.ts wiring using the same private build123d MCP client as geometry preview, ";
-implement_prompt += "and add every new non-test module to deno.json check. ";
+implement_prompt += "Do NOT inline Python into MCP capture. ";
 implement_prompt += "Register the tool only when the use case is composed. Do not require --local-execution. ";
 implement_prompt += "Hexagonal, exactRecord, fail-closed, colocated tests with @std/assert. ";
 implement_prompt += "Run targeted deno tests and fix them. Do not commit. ";
@@ -59,18 +55,18 @@ if implemented == () || !implemented.success {
 
 phase("Verify");
 let test_prompt = "In /Users/erwanpesle/Documents/GitHub/casys-digital-thread run targeted deno tests for ";
-test_prompt += "src/application/use-cases/export-admitted-project-geometry_test.ts, ";
-test_prompt += "src/adapters/captures/admission-backed-geometry-export-adapter_test.ts, ";
+test_prompt += "src/application/use-cases/cad/canonical/export-admitted-project-geometry_test.ts, ";
 test_prompt += "src/tools/project-control/technical-compilation-tools_test.ts, ";
-test_prompt += "and src/adapters/analyzers/qualified-build123d-source-analyzer_test.ts. ";
+test_prompt += "and src/adapters/compile/server-composition_test.ts. ";
 test_prompt += "Use deno test --allow-read --allow-write --allow-net=127.0.0.1,localhost --allow-env and those paths. ";
-test_prompt += "If tests fail, fix the code and rerun. Confirm deno.json check lists every new non-test module. ";
+test_prompt += "If tests fail, fix the code and rerun. ";
 test_prompt += "Return ok=true only if those tests passed. Summarize failures if any.";
 
 let review_prompt = "Read-only authority review in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
-review_prompt += "Use read_file and grep on the new admitted-geometry export files. ";
+review_prompt += "Use read_file and grep on the admitted-geometry export files. ";
 review_prompt += "Confirm: no caller sourceText reaches MCP; no provider/tool/path selection; ";
-review_prompt += "design.execute-build123d@1 is untouched; domain/application import no adapters. ";
+review_prompt += "capture names only the workspace quadruplet; design.execute-build123d@1 is untouched; ";
+review_prompt += "only compile.seal-admission@2 is the live compile operation. ";
 review_prompt += "Set ok=true only after reading the files. If a leak exists, set ok=false and describe it in summary.";
 
 let verified = parallel([
@@ -106,17 +102,23 @@ if mode == "skip-yolo" {
 
 phase("Yolo");
 let yolo_prompt = "Live-test admitted CAD compilation in /Users/erwanpesle/Documents/GitHub/casys-digital-thread. ";
-yolo_prompt += "Use curl or python against http://127.0.0.1:3020/mcp with mcp-protocol-version 2026-07-28. ";
-yolo_prompt += "If the server is not up, start deno task start:yolo in the background and wait until Tools available. ";
-yolo_prompt += "1) Call project_technical_source_capture with profileId build123d-closed-subset-v1 and the exact DL-04 fused-arm script: ";
-yolo_prompt += "from build123d import Box, Pos then column = Pos(0, 0, 190) * Box(28, 28, 340) then arm = Pos(180, 0, 346) * Box(360, 28, 28) then result = column + arm. ";
-yolo_prompt += "2) Call project_snapshot for desk-lamp-dl04, then project_technical_compilation_preview against that exact current thread basis. Never use latest. ";
-yolo_prompt += "3) If project_admitted_geometry_export exists and a sealed admission artifact exists, call it. Otherwise say export needs a sealed admission. ";
+yolo_prompt += "Do not start servers. Do not auto-repair desk-lamp-dl04 or any historical project. ";
+yolo_prompt += "Caller must supply exact live coordinates: projectId, workspaceRevision, fileId, fileRevision. ";
+if args != () && args.projectId != () {
+    yolo_prompt += "projectId=" + args.projectId + " workspaceRevision=" + args.workspaceRevision + " ";
+    yolo_prompt += "fileId=" + args.fileId + " fileRevision=" + args.fileRevision + ". ";
+} else {
+    yolo_prompt += "If those coordinates are missing from workflow args, fail closed and report they are required. ";
+}
+yolo_prompt += "Use curl against an already-running http://127.0.0.1:3020/mcp with mcp-protocol-version 2026-07-28. ";
+yolo_prompt += "1) Call project_technical_source_capture with only that quadruplet. Never pass sourceText, profileId, sourceId or resourceRef. ";
+yolo_prompt += "2) Call project_technical_compilation_preview with projectId and sourceRefs = [result.reference]. Never use latest. ";
+yolo_prompt += "3) If a sealed compile.seal-admission@2 artifact exists, call project_admitted_geometry_export. Otherwise say export needs that sealed admission. ";
 yolo_prompt += "Do not invent source as authority. Do not commit. ";
 yolo_prompt += "Return ok=true if capture and preview ran and you report ready-for-review or the exact unresolved diagnostics.";
 
 let yolo = agent(yolo_prompt, #{
-    label: "yolo-dl04",
+    label: "yolo-caller-coordinates",
     capability_mode: "all",
     output_schema: status_schema,
 });

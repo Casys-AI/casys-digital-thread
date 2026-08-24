@@ -15,7 +15,7 @@ bytes but produce different authority. They are not substitutes.
 ```text
 project_technical_source_capture
   → project_technical_compilation_preview
-  → compile.seal-admission@1
+  → compile.seal-admission@2
   → project_admitted_geometry_export
   → human MRTR
   → design.write-geometry@1
@@ -33,13 +33,14 @@ the product proof and measured-DFM paths.
 
 The system-only admitted export requires one uniquely represented PartDefinition and no
 PartUsage occurrences. It retains the `geometry-manifest/2.0` bundle draft and the
-canonical-write review path. In a multi-part architecture, the same public command instead
-derives that exact represented definition and produces one `geometry-part-manifest/1.0`
-target draft. That draft has no assembly, component, occurrence, placement, or
-`partDefinitions` array, makes one server-fixed export call, and does not write Thread state.
+canonical-write review path. In a multi-part architecture, the same public command
+instead derives that exact represented definition and produces one
+`geometry-part-manifest/1.0` target draft. That draft has no assembly, component,
+occurrence, placement, or `partDefinitions` array, makes one server-fixed export call,
+and does not write Thread state.
 
 The same canonical sealer accepts that strict target family. It reopens the exact
-capture-backed `compile.seal-admission@1` artefact named by the
+capture-backed `compile.seal-admission@2` artefact named by the
 `geometry-draft-admission/2.0` stamp, then re-crosses its admitted source bytes/hash and
 unique P1 `represents` PartDefinition against the target draft, passive source analysis,
 architecture PartDefinition and signed STEP bytes before it writes a capture or promotes
@@ -50,13 +51,13 @@ and authoritative STEP hash. It never calls Build123d during promotion or replay
 Target capture succession is scoped to the exact PartDefinition element ID: different
 targets coexist, while a same-target successor archives only the previous target capture
 and its `cad-asset-<captureDigest>-target-<fileIndex>-<fileDigest>` files. An active V2
-bundle covering the requested target is a fail-closed conflict; the sealer never partially
-archives a V2 assembly family. The Product catalog maps a verified target capture only to
-occurrences carrying the exact signed SysON PartDefinition identity, with STEP authoritative
-and GLB presentational; it never projects that target as an assembly. FEA source admission
-accepts its STEP only when the proof target
-equals that captured PartDefinition and the target artifact's kind, media type, digest and
-byte count are exact; a `cad-model` capture is never proof geometry.
+bundle covering the requested target is a fail-closed conflict; the sealer never
+partially archives a V2 assembly family. The Product catalog maps a verified target
+capture only to occurrences carrying the exact signed SysON PartDefinition identity,
+with STEP authoritative and GLB presentational; it never projects that target as an
+assembly. FEA source admission accepts its STEP only when the proof target equals that
+captured PartDefinition and the target artifact's kind, media type, digest and byte
+count are exact; a `cad-model` capture is never proof geometry.
 
 Code:
 [admitted export use case](../../../../src/application/use-cases/cad/canonical/export-admitted-project-geometry.ts),
@@ -67,7 +68,7 @@ and
 ## Isolated documentary execution
 
 ```text
-compile.seal-admission@1
+compile.seal-admission@2
   → project_build123d_execution_review
   → human MRTR
   → design.execute-build123d@1

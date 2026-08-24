@@ -45,24 +45,27 @@ from UI copy or tool descriptions.
   `architecture-sysml-source-analysis-capture/1.0` is the agent-authored CAS. They are
   not interchangeable.
 - `project_admitted_geometry_export` + `design.write-geometry@1` is the canonical STEP
-  path. It reopens parameterized `compile.seal-admission@1` bytes.
+  path. It reopens parameterized `compile.seal-admission@2` bytes.
   `project_geometry_preview` and `design.preview-geometry@1` are not registered.
-  `compile.seal-admission@1` + `design.execute-build123d@1` is the local microVM path. A
+  `compile.seal-admission@2` + `design.execute-build123d@1` is the local microVM path. A
   successful isolated execution is **not** canonical geometry.
   `design.seal-isolated-geometry@1` seals that CAD execution as a Thread document only.
-  `compile.seal-admission@1` + `simulate.run-admitted-modelica@1` is the CAD analog for
+  `compile.seal-admission@2` + `simulate.run-admitted-modelica@1` is the CAD analog for
   Modelica closed-subset source. Both use `ReopenAdmittedCompilationSource` then
   `IsolatedCodeRunner`. `simulate.run-qualified-modelica-kit@1` is the pinned kit. They
-  are not interchangeable. `compile.seal-admission@1` + `simulate.run-admitted-spice@1`
+  are not interchangeable. `compile.seal-admission@2` + `simulate.run-admitted-spice@1`
   is the same pattern for circuit-only SPICE (`spice-circuit-source`). It is not
   mcp-spice and not the LED-driver fiche. Pattern:
   [admitted source isolated execution](docs/reference/pipeline/admitted-source-isolated-execution.md).
-- `project_technical_source_capture` takes `profileId`, `sourceId`, and a full
-  `resourceRef` from `project_resource_capture`. It does not accept `sourceText`. It
-  returns `technical-source-capture-review/1.0`: `parser`, `levers`, and an opaque
-  `reference`. `parser.status` is not admission. Pass `result.reference` only. A
-  constructor photo is `levers.unresolved`. A reachable literal without `parameterizes`
-  is compile `binding.missing`, not `source.no-named-numeric-lever`.
+- `project_technical_source_capture` names only `projectId`, `workspaceRevision`,
+  `fileId` and `fileRevision`. The named file revision must be the active content at
+  that exact workspace snapshot, with `captureRequest` exactly `{profileId}` and role
+  equal to the registered profile. It returns `technical-source-capture-review/2.0`:
+  `parser`, `levers`, and an opaque `technical-source-analysis-capture-locator/2.0`.
+  `parser.status` is not admission. Pass `result.reference` only. A constructor photo is
+  `levers.unresolved`. A reachable literal without `parameterizes` is compile
+  `binding.missing`, not `source.no-named-numeric-lever`. MIME, path, `sourceText`,
+  `profileId`, `sourceId` and `resourceRef` are refused.
 - `project_technical_compilation_preview` takes `projectId` + `result.reference`. The
   server selects the current Thread tip, the unique catalog profile, and unique SysML
   joins. Do not pass bindings or profileRequests. Unresolved previews hoist `gaps`
@@ -74,7 +77,9 @@ from UI copy or tool descriptions.
   `@1`/`@2` are not registered. Do not queue them.
 - `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>` only.
   A proof-run evaluation cannot authorize `design.apply-vector-correction@1`.
-  `compile.capture-corrected-source@1` is not `compile.seal-admission@1`.
+  Corrections return only through `project_resource_capture` plus a successor
+  ProjectSourceWorkspace file revision. `compile.capture-corrected-source@1` is not
+  registered.
 - CM-01 is retired. Do not replay retired fixtures as live evidence.
 - `deno task check` type-checks Deno sources by glob. Do not add a per-file census. Vite
   UI (`src/ui/src`) is `deno task check:ui`, not that graph.

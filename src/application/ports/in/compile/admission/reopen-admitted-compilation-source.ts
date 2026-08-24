@@ -10,6 +10,10 @@ import type {
   TechnicalCompilationProjection,
   TechnicalCompilationTarget,
 } from "../../../../../domain/compile/admission/technical-compilation.ts";
+import type {
+  TechnicalProjectSourceAnchor,
+  TechnicalSourceAnalysisCaptureLocator,
+} from "../../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../../domain/project/engineering-project.ts";
 import type { ReopenedTechnicalCompilationAdmission } from "../../../out/compile/admission/technical-compilation-admission-reader.ts";
@@ -31,6 +35,8 @@ export interface ReopenedAdmittedCompilationSource {
   readonly sourceText: string;
   readonly sourceFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
+  readonly projectSource: TechnicalProjectSourceAnchor;
+  readonly locator: TechnicalSourceAnalysisCaptureLocator;
 }
 
 export type ReopenAdmittedCompilationSourceErrorCode =

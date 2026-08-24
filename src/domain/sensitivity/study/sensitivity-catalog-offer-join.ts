@@ -18,6 +18,7 @@ import type { MechanicalProofCase } from "../../fea/seal-case/mechanical-proof-c
 import type { SensitivityCatalogOffer } from "./sensitivity-catalog-from-proof.ts";
 import {
   isCompileAdmissionArtifact,
+  SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL,
   sensitivityCadSourceUri,
   type SensitivityStudySealDiagnostic,
 } from "./sensitivity-study-seal-bindings.ts";
@@ -157,7 +158,7 @@ export function bindSignedOfferAdmissionArtifact(input: {
         code: "catalog-offer-admission-unlinked",
         artifactId: artifact.id,
         message:
-          "The signed catalog-offer admission is not a compile.seal-admission@1 document.",
+          `The signed catalog-offer admission is not a ${SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL} document.`,
       },
     };
   }

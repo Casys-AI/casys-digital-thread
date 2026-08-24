@@ -472,7 +472,7 @@ function basisSnapshot(
         uri:
           `casys://technical-compilation-admission-capture/sha256/${ADMISSION_DIGEST}`,
         mediaType: "application/json",
-        tool: "compile.seal-admission@1",
+        tool: "compile.seal-admission@2",
       }),
       ...(options.extraOffer
         ? [artifact(

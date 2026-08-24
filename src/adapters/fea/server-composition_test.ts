@@ -5,6 +5,7 @@ import { FileEngineeringProjectRunLease } from "../shared/stores/file-engineerin
 import { FileThreadSnapshotStore } from "../shared/stores/file-thread-snapshot-store.ts";
 import { createArchitectureFoundation } from "../architecture/server-composition.ts";
 import { createTechnicalCompilationFoundation } from "../compile/server-composition.ts";
+import { FileProjectSourceWorkspaceStore } from "../project-source-workspace/file-project-source-workspace-store.ts";
 import { createRecordedOperationPlanComposition } from "../compile/plans/server-composition.ts";
 import type { CalculixIsolatedExecutionComposition } from "./isolated-v3/calculix-isolated-execution-composition.ts";
 import { VerifyRunFeaStaticProofV3RunExecutor } from "./isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts";
@@ -38,6 +39,7 @@ Deno.test("FEA @3 requires SysON plus CalculiX runtime and keeps the historical 
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
       resources: testReopenAgentResource(`${root}/agent-resources-compile`),
+      workspace: new FileProjectSourceWorkspaceStore(`${root}/workspace`),
     });
     const foundation = createFeaFoundation();
     const probe = { algorithm: "sha256" as const, digest: "0".repeat(64) };

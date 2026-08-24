@@ -30,5 +30,13 @@ export interface ProjectSourceWorkspaceEventStore {
     projectId: string,
     workspaceRevision: number,
   ): Promise<ProjectSourceWorkspaceState>;
+  /**
+   * Authority read: ignore the in-memory index and directory census, then
+   * fully replay the hash-chained V2 event files through the named revision.
+   */
+  loadAtFresh(
+    projectId: string,
+    workspaceRevision: number,
+  ): Promise<ProjectSourceWorkspaceState>;
   append(event: ProjectSourceWorkspaceEvent): Promise<void>;
 }

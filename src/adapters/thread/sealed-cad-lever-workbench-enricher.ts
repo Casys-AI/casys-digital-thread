@@ -1,5 +1,5 @@
 /**
- * BFF-only reopen of sealed compile.seal-admission@1 documents.
+ * BFF-only reopen of sealed compile.seal-admission@2 documents.
  *
  * The thread-workbench projector stays pure. This enricher rereads CAS after
  * projection and paints uniquely parameterized CAD levers onto existing

@@ -40,6 +40,7 @@ import {
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
 } from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
+import { sampleAdmissionSourceWorkspaceFields } from "../../../../testing/technical-source-capture-test-support.ts";
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
@@ -423,6 +424,9 @@ async function harness() {
         sourceFingerprint,
         captureFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
         analysisFingerprint,
+        ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
+          projectId: "project.ramp",
+        }),
       }],
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -455,7 +459,7 @@ async function harness() {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/1.0",
+    schemaVersion: "technical-compilation-admission-capture/2.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

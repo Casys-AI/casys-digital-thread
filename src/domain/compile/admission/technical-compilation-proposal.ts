@@ -20,20 +20,36 @@ import {
   safeVersion,
 } from "../../kernel/case-validation.ts";
 import type { EngineeringDecisionProposalParameter } from "../../project/engineering-project.ts";
+import { AGENT_RESOURCE_CAPTURE_SCHEMA } from "../../resource/agent-resource-envelope.ts";
 import type {
   TechnicalBindingRelation,
   TechnicalCompilationProfile,
   TechnicalCompilationTarget,
 } from "./technical-compilation.ts";
+import {
+  assertTechnicalCompilationSourcesShareExactWorkspace,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+  type TechnicalProjectSourceAnchor,
+  type TechnicalSourceAnalysisCaptureLocator,
+  validateTechnicalProjectSourceAnchor,
+  validateTechnicalSourceAnalysisCaptureLocator,
+} from "./technical-source-analysis-capture-locator.ts";
 
 /** Human-reviewed operation identity. It confers no execution authority. */
 export const COMPILE_SEAL_ADMISSION_OPERATION = {
   id: "compile.seal-admission",
-  version: "1",
+  version: "2",
 } as const;
 
+export const COMPILE_SEAL_ADMISSION_PRODUCER_TOOL =
+  `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}` as const;
+
 export const TECHNICAL_COMPILATION_ADMISSION_SCHEMA =
-  "technical-compilation-admission/1.0" as const;
+  "technical-compilation-admission/2.0" as const;
+
+export const TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA =
+  "technical-compilation-admission-capture/2.0" as const;
 
 export const TECHNICAL_COMPILATION_ADMISSION_LIMITS = {
   maxSources: 32,
@@ -57,6 +73,8 @@ export interface TechnicalCompilationAdmissionSource {
   readonly sourceFingerprint: ContentFingerprint;
   readonly captureFingerprint: ContentFingerprint;
   readonly analysisFingerprint: ContentFingerprint;
+  readonly projectSource: TechnicalProjectSourceAnchor;
+  readonly locator: TechnicalSourceAnalysisCaptureLocator;
 }
 
 export interface TechnicalCompilationAdmissionBinding {
@@ -154,7 +172,7 @@ const TARGET_SOURCE_CONTRACT: Readonly<
 };
 
 const FIXED_PARAMETER_COUNT = 24;
-const SOURCE_PARAMETER_COUNT = 11;
+const SOURCE_PARAMETER_COUNT = 29;
 const BINDING_PARAMETER_COUNT = 6;
 const PROFILE_REQUEST_FIXED_PARAMETER_COUNT = 5;
 const MAX_PARAMETER_COUNT = FIXED_PARAMETER_COUNT +
@@ -363,6 +381,87 @@ export function parseTechnicalCompilationAdmissionParameters(
         values,
         `compile.admission.sources.${index}.analysisSha256`,
       ),
+      projectSource: {
+        projectId: requireId(
+          values,
+          `compile.admission.sources.${index}.projectSource.projectId`,
+        ),
+        workspaceRevision: requirePositiveInteger(
+          values,
+          `compile.admission.sources.${index}.projectSource.workspaceRevision`,
+        ),
+        workspaceEventFingerprint: requireFingerprint(
+          values,
+          `compile.admission.sources.${index}.projectSource.workspaceEventSha256`,
+        ),
+        fileId: requireId(
+          values,
+          `compile.admission.sources.${index}.projectSource.fileId`,
+        ),
+        fileRevision: requirePositiveInteger(
+          values,
+          `compile.admission.sources.${index}.projectSource.fileRevision`,
+        ),
+        fileFingerprint: requireFingerprint(
+          values,
+          `compile.admission.sources.${index}.projectSource.fileSha256`,
+        ),
+        resourceRef: {
+          schemaVersion: requireLiteralString(
+            values,
+            `compile.admission.sources.${index}.projectSource.resource.schemaVersion`,
+            AGENT_RESOURCE_CAPTURE_SCHEMA,
+          ),
+          uri: requireText(
+            values,
+            `compile.admission.sources.${index}.projectSource.resource.uri`,
+          ),
+          name: requireText(
+            values,
+            `compile.admission.sources.${index}.projectSource.resource.name`,
+          ),
+          mimeType: requireText(
+            values,
+            `compile.admission.sources.${index}.projectSource.resource.mimeType`,
+          ),
+          representation: requireResourceRepresentation(
+            values,
+            `compile.admission.sources.${index}.projectSource.resource.representation`,
+          ),
+          byteCount: requirePositiveInteger(
+            values,
+            `compile.admission.sources.${index}.projectSource.resource.byteCount`,
+          ),
+          fingerprint: requireFingerprint(
+            values,
+            `compile.admission.sources.${index}.projectSource.resource.sha256`,
+          ),
+        },
+      },
+      locator: {
+        schemaVersion: requireLiteralString(
+          values,
+          `compile.admission.sources.${index}.locator.schemaVersion`,
+          TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+        ),
+        kind: requireLiteralString(
+          values,
+          `compile.admission.sources.${index}.locator.kind`,
+          TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
+        ),
+        fingerprint: requireFingerprint(
+          values,
+          `compile.admission.sources.${index}.locator.sha256`,
+        ),
+        byteCount: requireNonNegativeInteger(
+          values,
+          `compile.admission.sources.${index}.locator.byteCount`,
+        ),
+        casUri: requireText(
+          values,
+          `compile.admission.sources.${index}.locator.casUri`,
+        ),
+      },
     })),
     bindings: Array.from({ length: bindingCount }, (_, index) => ({
       id: requireId(
@@ -443,7 +542,7 @@ export function parseTechnicalCompilationAdmissionParameters(
   requireLiteralString(
     values,
     "compile.admission.operation",
-    `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}`,
+    COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
   );
 
   const admission = validateAdmission(parsed, "$parameters");
@@ -554,11 +653,27 @@ function validateAdmission(
         "sourceFingerprint",
         "captureFingerprint",
         "analysisFingerprint",
+        "projectSource",
+        "locator",
       ],
       `${path}.sources[${index}]`,
     );
+    const projectSource = validateTechnicalProjectSourceAnchor(
+      source.projectSource,
+      `${path}.sources[${index}].projectSource`,
+    );
+    const locator = validateTechnicalSourceAnalysisCaptureLocator(
+      source.locator,
+      `${path}.sources[${index}].locator`,
+    );
+    const id = safeId(source.id, `${path}.sources[${index}].id`);
+    if (id !== projectSource.fileId) {
+      throw new TypeError(
+        `${path}.sources[${index}].id must equal projectSource.fileId.`,
+      );
+    }
     return {
-      id: safeId(source.id, `${path}.sources[${index}].id`),
+      id,
       role: technicalSourceRole(
         source.role,
         `${path}.sources[${index}].role`,
@@ -595,6 +710,8 @@ function validateAdmission(
         source.analysisFingerprint,
         `${path}.sources[${index}].analysisFingerprint`,
       ),
+      projectSource,
+      locator,
     };
   }).sort(compareSources);
   rejectDuplicates(sources.map((source) => source.id), `${path}.sources ids`);
@@ -788,6 +905,11 @@ function validateAdmission(
       `${path}.draft.documentFingerprint must equal the final compilation fingerprint.`,
     );
   }
+  assertTechnicalCompilationSourcesShareExactWorkspace(
+    sources,
+    draftProjectId,
+    `${path}.sources`,
+  );
 
   return deepFreeze({
     schemaVersion: TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
@@ -881,7 +1003,7 @@ function parameterSpecs(admission: TechnicalCompilationAdmission): ParameterSpec
   p(
     "compile.admission.operation",
     "Reviewed operation",
-    `${COMPILE_SEAL_ADMISSION_OPERATION.id}@${COMPILE_SEAL_ADMISSION_OPERATION.version}`,
+    COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
   );
   p(
     "compile.admission.draft.draftId",
@@ -1024,6 +1146,96 @@ function parameterSpecs(admission: TechnicalCompilationAdmission): ParameterSpec
       `compile.admission.sources.${index}.analysisSha256`,
       `Source ${index} analysis SHA-256`,
       source.analysisFingerprint.digest,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.projectId`,
+      `Source ${index} project ID`,
+      source.projectSource.projectId,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.workspaceRevision`,
+      `Source ${index} workspace revision`,
+      source.projectSource.workspaceRevision,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.workspaceEventSha256`,
+      `Source ${index} workspace event SHA-256`,
+      source.projectSource.workspaceEventFingerprint.digest,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.fileId`,
+      `Source ${index} file ID`,
+      source.projectSource.fileId,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.fileRevision`,
+      `Source ${index} file revision`,
+      source.projectSource.fileRevision,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.fileSha256`,
+      `Source ${index} file SHA-256`,
+      source.projectSource.fileFingerprint.digest,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.resource.schemaVersion`,
+      `Source ${index} resource schema version`,
+      source.projectSource.resourceRef.schemaVersion,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.resource.uri`,
+      `Source ${index} resource URI`,
+      source.projectSource.resourceRef.uri,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.resource.name`,
+      `Source ${index} resource name`,
+      source.projectSource.resourceRef.name,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.resource.mimeType`,
+      `Source ${index} resource MIME type`,
+      source.projectSource.resourceRef.mimeType,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.resource.representation`,
+      `Source ${index} resource representation`,
+      source.projectSource.resourceRef.representation,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.resource.byteCount`,
+      `Source ${index} resource byte count`,
+      source.projectSource.resourceRef.byteCount,
+    );
+    p(
+      `compile.admission.sources.${index}.projectSource.resource.sha256`,
+      `Source ${index} resource SHA-256`,
+      source.projectSource.resourceRef.fingerprint.digest,
+    );
+    p(
+      `compile.admission.sources.${index}.locator.schemaVersion`,
+      `Source ${index} locator schema version`,
+      source.locator.schemaVersion,
+    );
+    p(
+      `compile.admission.sources.${index}.locator.kind`,
+      `Source ${index} locator kind`,
+      source.locator.kind,
+    );
+    p(
+      `compile.admission.sources.${index}.locator.sha256`,
+      `Source ${index} locator SHA-256`,
+      source.locator.fingerprint.digest,
+    );
+    p(
+      `compile.admission.sources.${index}.locator.byteCount`,
+      `Source ${index} locator byte count`,
+      source.locator.byteCount,
+    );
+    p(
+      `compile.admission.sources.${index}.locator.casUri`,
+      `Source ${index} locator CAS URI`,
+      source.locator.casUri,
     );
   });
   p(
@@ -1290,6 +1502,28 @@ function requirePositiveInteger(
   key: string,
 ): number {
   return positiveInteger(requireValue(values, key), `$parameters.${key}`);
+}
+
+function requireNonNegativeInteger(
+  values: ReadonlyMap<string, ParameterValue>,
+  key: string,
+): number {
+  const value = requireValue(values, key);
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw new TypeError(`$parameters.${key} must be a non-negative safe integer.`);
+  }
+  return Number(value);
+}
+
+function requireResourceRepresentation(
+  values: ReadonlyMap<string, ParameterValue>,
+  key: string,
+): "text" | "blob" {
+  const value = requireValue(values, key);
+  if (value !== "text" && value !== "blob") {
+    throw new TypeError(`$parameters.${key} must be text or blob.`);
+  }
+  return value;
 }
 
 function requireBoundedCount(

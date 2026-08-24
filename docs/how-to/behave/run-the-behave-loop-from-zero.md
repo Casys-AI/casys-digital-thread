@@ -3,9 +3,9 @@
 Audience: both · Diátaxis: how-to · Kind: how-to
 
 Start a **new** project and walk the **behave** branch only: intent → brief → SysON →
-canonical CAD → isolated CalculiX `@3` → optional joined sensitivity. Stop on `pass`. Do not open
-make (DFM / printability) or buy (BOM). Do not "repair" `desk-lamp-dl05`. Optional
-product Modelica is a separate capture → admission → admitted microVM walk
+canonical CAD → isolated CalculiX `@3` → optional joined sensitivity. Stop on `pass`. Do
+not open make (DFM / printability) or buy (BOM). Do not "repair" `desk-lamp-dl05`.
+Optional product Modelica is a separate capture → admission → admitted microVM walk
 ([run admitted Modelica](../run/run-admitted-modelica.md)), never the pinned kit.
 
 The paired conversation commands. The Workbench is read-only. The person never types a
@@ -23,16 +23,16 @@ Without it an agent typically: picks CalculiX/`latest`, writes SysML by hand, al
 applies a correction on a `pass`, or runs printability to "finish" the demo. Each row
 below is a **typed refusal** or a lookalike. Surface it. Do not work around it.
 
-| Unharnessed move                          | Harness                                                                                                |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Seed in `project_plan_publish`            | Seed only via `project_change_append` ([sequence the seed](sequence-seed-work-item.md))                |
-| Agent-authored SysML on the renderer path | `model.write-architecture@1` / `model.write-requirements@1`                                            |
-| Isolated seal as FEA geometry             | `design.seal-isolated-geometry@1` is a Thread **document**. Proof binds `design.write-geometry@1` STEP |
+| Unharnessed move                          | Harness                                                                                                                           |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Seed in `project_plan_publish`            | Seed only via `project_change_append` ([sequence the seed](sequence-seed-work-item.md))                                           |
+| Agent-authored SysML on the renderer path | `model.write-architecture@1` / `model.write-requirements@1`                                                                       |
+| Isolated seal as FEA geometry             | `design.seal-isolated-geometry@1` is a Thread **document**. Proof binds `design.write-geometry@1` STEP                            |
 | `@1` / `@2` / `@3` swapped                | Distinct authorities. Product FEA is isolated `@3`. Historical MCP `@1`/`@2` are rejected identities, not routes or prerequisites |
-| Study metrics aliased to requirement ids  | `UNLINKED`. Reseal from a template whose metric ids Object.is-equal. Never map                         |
-| `z*` after a `pass`                       | `design.apply-vector-correction@1` accepts only a study-base **fail**                                  |
-| Printability or DFM to complete the loop  | Other judgement branch. Stop.                                                                          |
-| Kit `@1` for product Modelica `.mo`       | [Run admitted Modelica](../run/run-admitted-modelica.md). Kit worker pins image source                        |
+| Study metrics aliased to requirement ids  | `UNLINKED`. Reseal from a template whose metric ids Object.is-equal. Never map                                                    |
+| `z*` after a `pass`                       | `design.apply-vector-correction@1` accepts only a study-base **fail**                                                             |
+| Printability or DFM to complete the loop  | Other judgement branch. Stop.                                                                                                     |
+| Kit `@1` for product Modelica `.mo`       | [Run admitted Modelica](../run/run-admitted-modelica.md). Kit worker pins image source                                            |
 
 ## 0. Surfaces
 
@@ -83,13 +83,13 @@ recorded in provenance. Do not invent another.
 
 ## 5. Geometry
 
-Two paths. They are not substitutes.
-Contract: [CAD execution paths](../../reference/domains/cad/execution-paths.md).
+Two paths. They are not substitutes. Contract:
+[CAD execution paths](../../reference/domains/cad/execution-paths.md).
 
 | Path                    | Ops                                                                                                                         | What a success is        |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| Canonical (proof input) | capture → compilation preview → `compile.seal-admission@1` → `project_admitted_geometry_export` → `design.write-geometry@1` | Thread STEP / cad-model  |
-| Isolated draft          | `compile.seal-admission@1` + `design.execute-build123d@1` + `design.seal-isolated-geometry@1`                               | Thread **document** only |
+| Canonical (proof input) | capture → compilation preview → `compile.seal-admission@2` → `project_admitted_geometry_export` → `design.write-geometry@1` | Thread STEP / cad-model  |
+| Isolated draft          | `compile.seal-admission@2` + `design.execute-build123d@1` + `design.seal-isolated-geometry@1`                               | Thread **document** only |
 
 The proof case must name the canonical STEP. A successful isolated run is not Product
 authority and not a DFM target.
@@ -101,17 +101,17 @@ Not required to close behave. When walked, it is the CAD analog for `.mo`, not t
 ```text
 project_technical_source_capture          # modelica-closed-subset-v2
   → project_technical_compilation_preview
-  → compile.seal-admission@1
+  → compile.seal-admission@2
   → project_admitted_modelica_run_review
   → simulate.run-admitted-modelica@1
 ```
 
-How-to: [run admitted Modelica](../run/run-admitted-modelica.md). Do not walk it on a vehicle
-that already has a joined `pass`.
+How-to: [run admitted Modelica](../run/run-admitted-modelica.md). Do not walk it on a
+vehicle that already has a joined `pass`.
 
-Optional product circuit-only SPICE is a separate capture → admission → admitted
-microVM walk ([run admitted SPICE](../run/run-admitted-spice.md)). It is not mcp-spice
-and not the LED-driver fiche.
+Optional product circuit-only SPICE is a separate capture → admission → admitted microVM
+walk ([run admitted SPICE](../run/run-admitted-spice.md)). It is not mcp-spice and not
+the LED-driver fiche.
 
 A local AL01 walk of those optional verticals is tracking evidence, not this from-zero
 script: [AL01 status](../../projects/articulated-led-desk-lamp/status.md). Do not clone
@@ -146,12 +146,12 @@ separate facts. `parser.status: passed` is not admission. A constructor photo is
 `project_technical_compilation_preview`. The server joins the current Thread tip and
 unique SysML names. Unresolved previews name those joins in `gaps`. It does not invent a
 lever or an AttributeUsage. `design.write-geometry@1` refuses a draft that was not
-exported from a parameterized `compile.seal-admission@1`.
+exported from a parameterized `compile.seal-admission@2`.
 
-Oracle `pass` or publishable `fail` stay literal. Human L5 over that exact `@3`
-branch is a separate walk:
-[Review static-mechanical closeout](review-static-mechanical-closeout.md). An L4
-`pass` is never L5.
+Oracle `pass` or publishable `fail` stay literal. Human L5 over that exact `@3` branch
+is a separate walk:
+[Review static-mechanical closeout](review-static-mechanical-closeout.md). An L4 `pass`
+is never L5.
 
 Optional experience, not a second proof:
 
@@ -165,7 +165,8 @@ project_sensitivity_study_seal_review   # signed offer or catalog id → sensiti
 
 The signed catalog offer is the precursor. The same review tool compiles the missing
 `step` from the sealed proof mesh; it does not invent the case and it is not retired.
-How-to: [Compile sensitivity-study parameters](../compile/compile-sensitivity-parameters.md).
+How-to:
+[Compile sensitivity-study parameters](../compile/compile-sensitivity-parameters.md).
 Without that unique offer, `desk-lamp-dl06` stays `catalog-absent`. Restart `:3020` so a
 newly registered compiler is listed.
 
@@ -195,9 +196,9 @@ They must not be the same view.
 - Modelica. Other product family. Product Modelica is admitted `@1`, not a recorded
   scenario.
 - Cross-domain impact. After a closed manifest already exists:
-  [Walk cross-domain impact judgement](walk-cross-domain-impact-judgement.md).
-  Public capture is `project_cross_domain_impact_manifest_capture`; there is no generic
-  X10 rerun planner.
+  [Walk cross-domain impact judgement](walk-cross-domain-impact-judgement.md). Public
+  capture is `project_cross_domain_impact_manifest_capture`; there is no generic X10
+  rerun planner.
 
 When two operations look similar, read
 [agent workspace](../../reference/agent/agent-workspace.md) before calling either.

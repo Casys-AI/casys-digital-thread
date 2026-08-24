@@ -141,7 +141,7 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
   );
 });
 
-Deno.test("Activity marks measured DFM, study-base evaluation and corrected source as milestones", () => {
+Deno.test("Activity marks measured DFM and study-base evaluation as milestones", () => {
   const canonical = clone(linkedSnapshot());
   const extras = [
     { id: `dfm-check-${"c".repeat(64)}`, name: "Measured DFM" },
@@ -149,7 +149,6 @@ Deno.test("Activity marks measured DFM, study-base evaluation and corrected sour
       id: `sensitivity-base-evaluation-${"d".repeat(64)}`,
       name: "Study-base evaluation",
     },
-    { id: `corrected-source-${"e".repeat(64)}`, name: "Corrected source" },
   ];
   for (const extra of extras) {
     const digest = extra.id.split("-").at(-1)!;
@@ -161,7 +160,9 @@ Deno.test("Activity marks measured DFM, study-base evaluation and corrected sour
       fingerprint: { algorithm: "sha256", digest },
       producer: operation(
         "digital-thread",
-        "compile.capture-corrected-source@1",
+        extra.id.startsWith("dfm-check-")
+          ? "industrialize.run-dfm-checks@1"
+          : "verify.evaluate-sensitivity-base@1",
         "run-demo",
       ),
       inputArtifactIds: ["step-r2"],
@@ -179,7 +180,9 @@ Deno.test("Activity marks measured DFM, study-base evaluation and corrected sour
       artifactId: "step-r2",
       consumer: operation(
         "digital-thread",
-        "compile.capture-corrected-source@1",
+        extra.id.startsWith("dfm-check-")
+          ? "industrialize.run-dfm-checks@1"
+          : "verify.evaluate-sensitivity-base@1",
         "run-demo",
       ),
       observedFingerprint: fingerprint("a"),

@@ -74,10 +74,10 @@ This creates no `EngineeringProject`, no Thread revision, no MRTR, and no SysON 
 
 ## 2. Preview
 
-Call `project_architecture_sysml_preview` with the opaque `sourceRef` from that
-capture. A reopened passed capture may include `decisionParameters`. Those are the only
-values allowed in a later `model.seal-architecture-sysml@1` proposal. This path does
-not call SysON. `model.write-architecture@1` remains the renderer path.
+Call `project_architecture_sysml_preview` with the opaque `sourceRef` from that capture.
+A reopened passed capture may include `decisionParameters`. Those are the only values
+allowed in a later `model.seal-architecture-sysml@1` proposal. This path does not call
+SysON. `model.write-architecture@1` remains the renderer path.
 
 Treat `status !== "ready-for-review"` as diagnostic. Do not invent missing parameters.
 
@@ -107,7 +107,7 @@ fails. It is not Product Structure and not a SysON model.
 It does **not**:
 
 - insert into SysON
-- reuse `compile.seal-admission@1`
+- reuse `compile.seal-admission@2`
 - accept a renderer `sysml-source-capture/1.0` envelope as agent-authored authority
 
 ## Fail closed

@@ -2,7 +2,10 @@ import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import {
   TechnicalSourceAnalysisCaptureError,
 } from "../../compile/captures/technical-source-analysis-capture.ts";
-import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
+import {
+  technicalSourceAnalysisCaptureStores,
+  technicalSourceCaptureInput,
+} from "../../../testing/technical-source-capture-test-support.ts";
 import {
   createInitialTechnicalSourceAnalysisCaptureService,
 } from "../../compile/captures/initial-technical-source-analysis-composition.ts";
@@ -315,28 +318,17 @@ Deno.test("Un source qui dépasse 262 144 octets est rejeté avant l'analyse par
     prefix: "qualified-modelica-source-cap-",
   });
   try {
-    const service = createInitialTechnicalSourceAnalysisCaptureService({
-      sourceCaptures: new FileByteStore({
-        kind: "technical-source",
-        directory: `${directory}/source`,
-        uriNamespace: "modelica-source-cap-test",
-        label: "modelica source cap",
-      }),
-      analysisCaptures: new FileByteStore({
-        kind: "technical-source-analysis",
-        directory: `${directory}/analysis`,
-        uriNamespace: "modelica-analysis-cap-test",
-        label: "modelica analysis cap",
-      }),
-    });
+    const service = createInitialTechnicalSourceAnalysisCaptureService(
+      technicalSourceAnalysisCaptureStores(directory),
+    );
     const oversized = `${"x".repeat(QUALIFIED_MODELICA_MAX_SOURCE_BYTES + 1)}`;
     const error = await assertRejects(
       () =>
-        service.capture({
+        service.capture(technicalSourceCaptureInput({
           profileId: QUALIFIED_MODELICA_SOURCE_ANALYSIS_PROFILE,
           sourceId: SOURCE_ID,
           sourceText: oversized,
-        }),
+        })),
       TechnicalSourceAnalysisCaptureError,
     );
     assertEquals(error.code, "source_size_limit_exceeded");

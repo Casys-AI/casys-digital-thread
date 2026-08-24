@@ -272,10 +272,10 @@ Deno.test("Build123d execution admission rejects non-canonical MRTR records, lab
 Deno.test("Build123d execution admission fixes operation, schemas, target, profiles, output, and review state", () => {
   const mutations: ReadonlyArray<readonly [string, string]> = [
     [`${PREFIX}.operation`, "design.execute-build123d@2"],
-    [`${PREFIX}.schemaVersion`, "build123d-execution-admission/2.0"],
+    [`${PREFIX}.schemaVersion`, "build123d-execution-admission/3.0"],
     [
       `${PREFIX}.admissionArtifact.schemaVersion`,
-      "technical-compilation-admission-capture/2.0",
+      "technical-compilation-admission-capture/1.0",
     ],
     [`${PREFIX}.compilation.document.schemaVersion`, "technical-compilation/2.0"],
     [`${PREFIX}.compilation.document.status`, "unresolved"],

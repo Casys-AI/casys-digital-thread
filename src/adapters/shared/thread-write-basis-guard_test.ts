@@ -37,7 +37,6 @@ import {
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
-import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/sensitivity/correction-source/apply-correction-source.ts";
 
 const BASIS = {
   kind: "thread-snapshot" as const,
@@ -303,12 +302,11 @@ Deno.test("a running sensitivity writer blocks every sibling on the same Thread 
   }
 });
 
-Deno.test("join and corrected-source writers share the same Thread-basis exclusion", async () => {
+Deno.test("join writers share the same Thread-basis exclusion", async () => {
   const current = run("architecture", "queued");
   for (
     const operation of [
       VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
-      COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
     ]
   ) {
     const sibling = {

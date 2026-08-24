@@ -12,7 +12,6 @@ import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architectu
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/cad/canonical/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
-import { COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION } from "../../domain/sensitivity/correction-source/apply-correction-source.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import { DESIGN_APPLY_VECTOR_CORRECTION_OPERATION } from "../../domain/sensitivity/vector-correction/vector-correction-proposal.ts";
@@ -196,7 +195,7 @@ const OPERATIONS = [
     description:
       "Reopen the exact captured agent-authored architecture SysML source and its " +
       "closed-subset analysis, then seal that document into the evidence thread. " +
-      "No SysON insertion, provider call, or compile.seal-admission@1 authority is granted.",
+      "No SysON insertion, provider call, or compile.seal-admission@2 authority is granted.",
     workItemKind: "architect",
     riskClass: "consequential",
     execution: "trusted",
@@ -242,7 +241,7 @@ const OPERATIONS = [
   },
   /**
    * Technical-compilation admission seal — trusted boundary
-   * `compile.seal-admission@1`.
+   * `compile.seal-admission@2`.
    *
    * The MRTR proposal seals the exact ready-for-review compilation draft,
    * source analyses, semantic bindings, compiler profiles and SysML basis. The
@@ -272,32 +271,7 @@ const OPERATIONS = [
       allowedThreadEntityKinds: ["artifact"],
     }],
   },
-  /**
-   * Substitute the sealed z* into the parent admission source and capture
-   * those bytes. Not compile.seal-admission@1 and not a Build123d execution.
-   */
-  {
-    id: COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.id,
-    version: COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION.version,
-    startingPoint: "idea-or-spec",
-    allowedBasisKinds: ["thread-snapshot"],
-    title: "Capture the corrected admitted source",
-    description:
-      "Reopen one sealed vector-correction document and the study admission it " +
-      "cites, substitute the signed z* into the admitted module-level literal, " +
-      "and publish a Thread document plus an opaque source reference for a later " +
-      "compile.seal-admission@1. No CAD execution is granted.",
-    workItemKind: "design",
-    riskClass: "consequential",
-    execution: "trusted",
-    decisionEvidenceScope: "thread-entity-bindings",
-    bindings: [{
-      name: "correctionProposal",
-      allowedSourceKinds: ["thread-entity"],
-      cardinality: "one",
-      allowedThreadEntityKinds: ["artifact"],
-    }],
-  },
+
   /**
    * Qualified Build123d execution — trusted executor
    * `design.execute-build123d@1`.
@@ -388,7 +362,7 @@ const OPERATIONS = [
    * Admitted Modelica closed-subset execution — trusted executor
    * `simulate.run-admitted-modelica@1`.
    *
-   * The signed proposal names one exact `compile.seal-admission@1` Modelica
+   * The signed proposal names one exact `compile.seal-admission@2` Modelica
    * compilation and one server-owned isolation profile. Execution reopens
    * those admitted `.mo` bytes. It is not the pinned kit, not recorded `@2`,
    * and not a caller-supplied `modelicaText`.
@@ -418,7 +392,7 @@ const OPERATIONS = [
    * Admitted SPICE closed-subset operating-point execution — trusted executor
    * `simulate.run-admitted-spice@1`.
    *
-   * The signed proposal names one exact `compile.seal-admission@1` SPICE
+   * The signed proposal names one exact `compile.seal-admission@2` SPICE
    * compilation and one server-owned isolation profile. Execution reopens
    * those admitted `.cir` bytes. It is not mcp-spice, not the LED-driver
    * fiche, and not a caller-supplied netlist, image, path or observation list.

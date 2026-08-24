@@ -148,10 +148,10 @@ The source, assertion, graph, admission and resolved-plan contracts live in
 storage, provider, UI, Graphology or SysML code. Language frontends and provider
 lowerings are adapters. The agent-facing project-control tools validate MCP input and
 call inward-facing use cases; they do not own provider clients or CAS stores. Capture
-returns `technical-source-capture-review/1.0` (`parser`, `levers`, opaque `reference`).
-Compilation preview accepts only `result.reference`. Unresolved previews hoist join
-`gaps` beside the closed compilation document. Exact operation dispatch lives under
-`src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
+returns `technical-source-capture-review/2.0` (`parser`, `levers`, opaque locator
+`reference`). Compilation preview accepts only `result.reference`. Unresolved previews
+hoist join `gaps` beside the closed compilation document. Exact operation dispatch lives
+under `src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
 contract in `src/application/ports/in/project-run-executor.ts`. Canonical CAD drafts
 come from `project_admitted_geometry_export`. Concrete registered executors remain the
 only components allowed to call private provider MCP clients for admitted project runs.
@@ -160,7 +160,7 @@ only components allowed to call private provider MCP clients for admitted projec
 
 The following MCP-backed CAD path remains the current generic sandbox export used by
 `project_admitted_geometry_export`. `project_geometry_preview` is not a product entry.
-`design.write-geometry@1` seals only a draft stamped from `compile.seal-admission@1`. It
+`design.write-geometry@1` seals only a draft stamped from `compile.seal-admission@2`. It
 is not the local microVM execution path and must not be used as evidence that isolated
 execution produced canonical geometry. The backend performs this exact order:
 
@@ -189,8 +189,8 @@ response exposes the source, source-capture and analysis digests. The draft dige
 those references; the geometry seal and completed replay re-read every record and fail
 before canonical writes if one is missing or divergent.
 
-Older draft schemas `1.0`, `1.1` and `2.0`, and older canonical capture schemas `1.1` and
-`2.0`, are unsupported and are rejected. They are not migrated, dual-read, or given
+Older draft schemas `1.0`, `1.1` and `2.0`, and older canonical capture schemas `1.1`
+and `2.0`, are unsupported and are rejected. They are not migrated, dual-read, or given
 fictional analyses. Downstream Product Structure and FEA readers accept only the current
 assembly, bundle, and target-part forms.
 
@@ -269,7 +269,7 @@ CAS-captures the exact bytes, and analyses them under
 never omitted. Bindings published by the analyzer are symbol ids, never labels.
 
 This slice is deliberately not `model.write-architecture@2`, not
-`compile.seal-admission@1`, and not `sysml-source-capture/1.0`. The renderer envelope
+`compile.seal-admission@2`, and not `sysml-source-capture/1.0`. The renderer envelope
 remains the authority for the existing SysON insertion operation. The new
 `model.seal-architecture-sysml@1` operation writes a Thread document only and never
 calls a provider.
@@ -322,12 +322,13 @@ reviewed declaration
   -> measured local response, when an experiment exists
 ```
 
-A `mechanical-proof-case/1.0` remains a reviewed declaration, not a generic native-source
-AST. Isolated CalculiX V3 reopens sealed ROP2, the exact proof and STEP, runs a
-digest-pinned local microVM, and publishes the closed nine outputs plus an immutable
-SysON evaluation capture. Historical MCP FEA `@1`/`@2` are rejection identities.
-Live-FEA sensitivity uses fleet `mcp-calculix`; that is not product static `@3`
-provenance. Historical `simulation-case/1.0`/`2.0` seals are retired and not registered.
+A `mechanical-proof-case/1.0` remains a reviewed declaration, not a generic
+native-source AST. Isolated CalculiX V3 reopens sealed ROP2, the exact proof and STEP,
+runs a digest-pinned local microVM, and publishes the closed nine outputs plus an
+immutable SysON evaluation capture. Historical MCP FEA `@1`/`@2` are rejection
+identities. Live-FEA sensitivity uses fleet `mcp-calculix`; that is not product static
+`@3` provenance. Historical `simulation-case/1.0`/`2.0` seals are retired and not
+registered.
 
 For a mechanical proof, this vertical deliberately has two non-substitutable admissions.
 The declaration's `authorization` is a **seal authorization**: it names the reviewed
@@ -343,10 +344,9 @@ Historical `simulate.seal-simulation-case@1`/`@2` and
 `simulate.run-modelica-scenario@1`/`@2` are not registered and are not fallbacks.
 
 Isolated CalculiX `@3`, admitted CAD/Modelica microVM runs, and the closed-subset
-catalogue:
-[compilation and isolation](compilation-and-isolation.md). Those bytes make runtime
-provenance inspectable; they do not claim that an agent-authored arbitrary `.inp` deck
-is accepted or parsed. Historical MCP FEA `@1`/`@2` are not registered.
+catalogue: [compilation and isolation](compilation-and-isolation.md). Those bytes make
+runtime provenance inspectable; they do not claim that an agent-authored arbitrary
+`.inp` deck is accepted or parsed. Historical MCP FEA `@1`/`@2` are not registered.
 
 ## Current authority boundary
 
@@ -356,16 +356,16 @@ baseline, the CalculiX proof-case seal and retained legacy observations. Calculi
 declaration nodes and scopes use the stable proof digest; each seal assertion keeps its
 run-scoped capture fingerprint only as evidence, so repeated seals can merge as parallel
 assertion occurrences without changing semantic identity. The live producer is
-`analyze.run-fea-sensitivity@1` after
-`analyze.seal-sensitivity-study@1`. Seal parameters come from the read-only
-`project_sensitivity_study_seal_review` compiler (catalog template, or unique signed
-catalog-offer + its signed `compile.seal-admission@1` admission when the catalog does
-not uniquely select). `analyze.seal-sensitivity-study@1` reopens that same unique offer;
-it does not invent a catalog JSON. The caller never invents `sensitivity.case.*` or a
-`cadSource`. A project without a reviewed catalog JSON and without a unique signed offer
-(`desk-lamp-dl06` before the FEA opt-in) stays `catalog-absent`. After its two solver
-runs, the sensitivity path creates one observed `measured-local-sensitivity` assertion
-per declared response metric, including the reviewed finite-difference case, base and
+`analyze.run-fea-sensitivity@1` after `analyze.seal-sensitivity-study@1`. Seal
+parameters come from the read-only `project_sensitivity_study_seal_review` compiler
+(catalog template, or unique signed catalog-offer + its signed
+`compile.seal-admission@2` admission when the catalog does not uniquely select).
+`analyze.seal-sensitivity-study@1` reopens that same unique offer; it does not invent a
+catalog JSON. The caller never invents `sensitivity.case.*` or a `cadSource`. A project
+without a reviewed catalog JSON and without a unique signed offer (`desk-lamp-dl06`
+before the FEA opt-in) stays `catalog-absent`. After its two solver runs, the
+sensitivity path creates one observed `measured-local-sensitivity` assertion per
+declared response metric, including the reviewed finite-difference case, base and
 stepped results, derivative, local scope and the one exact persisted sensitivity-capture
 fingerprint. The provider responses and STEP handoff digests are normalized inside that
 capture; they are not represented as synthetic `solver-result` artifacts or as
@@ -384,10 +384,10 @@ a different authority and cannot authorize a correction.
 
 `design.apply-vector-correction@1` seals a Thread document of one bounded first-order
 proposal. The capture declares `grants: none`. It is not a CAD admission, a SysON write,
-or a mandate for a successor execution. `compile.capture-corrected-source@1` then
-substitutes the signed `z*` into the parent admission source. The later
-`compile.seal-admission@1` stays its own MRTR. The AnalysisGraph edge
-`measured-local-sensitivity` remains an inspectable fact, not an execution gate.
+or a mandate for a successor execution. Corrections return through `AgentResource` plus
+a successor workspace file revision, then a new technical-source capture and
+`compile.seal-admission@2`. That later admission stays its own MRTR. The AnalysisGraph
+edge `measured-local-sensitivity` remains an inspectable fact, not an execution gate.
 Thread-entity bindings are identities only: `assertPlanBindingsResolve` does not resolve
 them at plan publication, so the executor fail-closes if the named evaluation or study
 capture is absent. `UNIT_NORMALISATION` remains a brief-compilation-boundary table and
@@ -427,7 +427,8 @@ qualified assertions with exact evidence; Graphology remains a read-only project
 Behave, make, and buy share the canonical STEP and part identities. They do not share
 verdicts. Product wording:
 [Three judgement branches](../../explanations/product/product-direction.md#three-judgement-branches).
-Exact ops: [agent workspace golden path](../agent/agent-workspace.md#7-golden-path-generic-v3).
+Exact ops:
+[agent workspace golden path](../agent/agent-workspace.md#7-golden-path-generic-v3).
 
 | This                                                   | Is not                                                      |
 | ------------------------------------------------------ | ----------------------------------------------------------- |
@@ -443,14 +444,13 @@ not a hole in the current authority boundary.
 
 The capture → analysis → MRTR → dispatch spine on this page is live. Only
 `ready-for-review` compilation output is persisted as a content-addressed draft. After
-exact replay the sealer publishes a `technical-compilation-admission-capture/1.0`
+exact replay the sealer publishes a `technical-compilation-admission-capture/2.0`
 document artifact into the Thread. That artifact still grants no execution authority.
 
 Isolated CAD / Modelica / CalculiX composition, bootstrap flags, worker gates, host
 limits and the closed-subset catalogue live on
 [compilation and isolation](compilation-and-isolation.md). The shared reopen → microVM
-pattern is
-[admitted source isolated execution](admitted-source-isolated-execution.md).
+pattern is [admitted source isolated execution](admitted-source-isolated-execution.md).
 
 Historical recorded Modelica `@1`/`@2` and MCP FEA `@1`/`@2` are not registered and
 cannot be queued. They are not fallbacks for `simulate.run-qualified-modelica-kit@1`,

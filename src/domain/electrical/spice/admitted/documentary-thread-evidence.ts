@@ -28,6 +28,7 @@ import {
 } from "../../../thread/thread-snapshot-extension.ts";
 import { validateThreadSnapshot } from "../../../thread/thread-snapshot-validation.ts";
 import type { SpiceAdmittedExecutionCapture } from "./execution-evidence.ts";
+import { COMPILE_SEAL_ADMISSION_PRODUCER_TOOL } from "../../../compile/admission/technical-compilation-proposal.ts";
 import { SIMULATE_RUN_ADMITTED_SPICE_OPERATION } from "./run-proposal.ts";
 
 export interface DocumentarySuccessor {
@@ -251,7 +252,7 @@ export function exactAdmissionArtifact(
     artifact.mediaType === "application/json" &&
     artifact.freshness.status === "fresh" &&
     artifact.producer.serverId === "digital-thread" &&
-    artifact.producer.tool === "compile.seal-admission@1" &&
+    artifact.producer.tool === COMPILE_SEAL_ADMISSION_PRODUCER_TOOL &&
     !archivedRefKeys(snapshot).has(`artifact:${artifact.id}`)
   );
   if (matches.length !== 1) {

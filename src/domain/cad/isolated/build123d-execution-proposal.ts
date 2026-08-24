@@ -25,6 +25,7 @@ import {
   safeVersion,
 } from "../../kernel/case-validation.ts";
 import type { EngineeringDecisionProposalParameter } from "../../project/engineering-project.ts";
+import { TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA } from "../../compile/admission/technical-compilation-proposal.ts";
 
 /** Human-reviewed operation identity. It is not a runtime capability. */
 export const DESIGN_EXECUTE_BUILD123D_OPERATION = Object.freeze(
@@ -38,11 +39,11 @@ export const DESIGN_EXECUTE_BUILD123D_OPERATION = Object.freeze(
 export const BUILD123D_EXECUTION_OPERATION = DESIGN_EXECUTE_BUILD123D_OPERATION;
 
 export const BUILD123D_EXECUTION_ADMISSION_SCHEMA =
-  "build123d-execution-admission/1.0" as const;
+  "build123d-execution-admission/2.0" as const;
 export const BUILD123D_EXECUTION_COMPILATION_SCHEMA =
   "technical-compilation/1.0" as const;
 export const BUILD123D_EXECUTION_COMPILED_ADMISSION_SCHEMA =
-  "technical-compilation-admission-capture/1.0" as const;
+  TECHNICAL_COMPILATION_ADMISSION_CAPTURE_SCHEMA;
 
 export const BUILD123D_EXECUTION_PROFILE = Object.freeze(
   {

@@ -9,10 +9,7 @@ import {
   compactSysmlPartPairs,
   graphRefKey,
 } from "../architecture/sysml-composite-projection.ts";
-import type {
-  PartAnchorageResolution,
-  PartTarget,
-} from "./part-anchorage-model.ts";
+import type { PartAnchorageResolution, PartTarget } from "./part-anchorage-model.ts";
 import type {
   ThreadComponentCatalog,
   ThreadEvidenceFamilyGraph,
@@ -290,8 +287,7 @@ function recordedCorrectionNodes(
 }
 
 /** Server-fixed id prefix of `model.seal-architecture-sysml@1` documents. */
-export const ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX =
-  "architecture-sysml-seal-";
+export const ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX = "architecture-sysml-seal-";
 
 /** Server-fixed id prefix of `industrialize.run-dfm-checks@1` captures. */
 export const DFM_CHECK_ARTIFACT_ID_PREFIX = "dfm-check-";
@@ -299,9 +295,6 @@ export const DFM_CHECK_ARTIFACT_ID_PREFIX = "dfm-check-";
 /** Server-fixed id prefix of `verify.evaluate-sensitivity-base@1` captures. */
 export const SENSITIVITY_BASE_EVALUATION_ARTIFACT_ID_PREFIX =
   "sensitivity-base-evaluation-";
-
-/** Server-fixed id prefix of `compile.capture-corrected-source@1` documents. */
-export const CORRECTED_SOURCE_ARTIFACT_ID_PREFIX = "corrected-source-";
 
 export function isArchitectureSysmlSealArtifactId(id: string): boolean {
   return id.startsWith(ARCHITECTURE_SYSML_SEAL_ARTIFACT_ID_PREFIX);
@@ -313,10 +306,6 @@ export function isMeasuredDfmArtifactId(id: string): boolean {
 
 export function isSensitivityBaseEvaluationArtifactId(id: string): boolean {
   return id.startsWith(SENSITIVITY_BASE_EVALUATION_ARTIFACT_ID_PREFIX);
-}
-
-export function isCorrectedSourceArtifactId(id: string): boolean {
-  return id.startsWith(CORRECTED_SOURCE_ARTIFACT_ID_PREFIX);
 }
 
 /**
@@ -337,9 +326,6 @@ export function activityKindLabel(node: ThreadGraphNode): string {
     if (isSensitivityBaseEvaluationArtifactId(node.ref.id)) {
       return "study-base evaluation";
     }
-    if (isCorrectedSourceArtifactId(node.ref.id)) {
-      return "corrected source";
-    }
     return node.artifactKind;
   }
   if (
@@ -356,8 +342,7 @@ function isPrimaryArtifact(node: ThreadGraphNode): boolean {
     kind === "solver-result" || kind === "bom" ||
     (kind === "document" && isArchitectureSysmlSealArtifactId(node.ref.id)) ||
     isMeasuredDfmArtifactId(node.ref.id) ||
-    isSensitivityBaseEvaluationArtifactId(node.ref.id) ||
-    isCorrectedSourceArtifactId(node.ref.id);
+    isSensitivityBaseEvaluationArtifactId(node.ref.id);
 }
 
 function steps(
@@ -591,9 +576,7 @@ export function filterFeedNodesByScope(
   scope: FeedScope | undefined,
 ): ThreadGraphNode[] {
   if (scope === undefined) return [...feedNodes];
-  return feedNodes.filter((node) =>
-    feedScopeForNode(node, anchorage) === scope
-  );
+  return feedNodes.filter((node) => feedScopeForNode(node, anchorage) === scope);
 }
 
 /**

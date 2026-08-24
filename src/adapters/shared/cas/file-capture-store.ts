@@ -473,15 +473,6 @@ export const CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   label: "Correction proposal",
 };
 
-export const CORRECTED_SOURCE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
-  "corrected-source"
-> = {
-  kind: "corrected-source",
-  directory: "state/local/corrected-source-captures",
-  uriNamespace: "corrected-source-capture",
-  label: "Corrected source",
-};
-
 /**
  * Content-addressed store for `modelica-thermal-method-sheet/1.0`.
  * The sheet is a reviewed method document, not admission or OMC authority.
@@ -575,8 +566,7 @@ export const SPICE_ADMITTED_OBSERVATION_EVALUATION_CAPTURE_URI_PREFIX =
 export const SPICE_ADMITTED_OBSERVATION_EVALUATION_CLOSEOUT_CAPTURE_DESCRIPTOR:
   CaptureStoreDescriptor<"spice-admitted-observation-evaluation-closeout"> = {
     kind: "spice-admitted-observation-evaluation-closeout",
-    directory:
-      "state/local/spice-admitted-observation-evaluation-closeout-captures",
+    directory: "state/local/spice-admitted-observation-evaluation-closeout-captures",
     uriNamespace: "spice-admitted-observation-evaluation-closeout",
     label: "Admitted SPICE observation evaluation closeout",
   };

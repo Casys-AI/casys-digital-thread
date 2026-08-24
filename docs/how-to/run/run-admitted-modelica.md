@@ -2,17 +2,18 @@
 
 Audience: both · Diátaxis: how-to · Kind: how-to
 
-Walk product Modelica as closed-subset source: capture → compile seal → reopen the
-exact bytes in the local microVM. The current and only admitted-source profile is
+Walk product Modelica as closed-subset source: capture → compile seal → reopen the exact
+bytes in the local microVM. The current and only admitted-source profile is
 `modelica-closed-subset-v2`, version `2.0.0`.
 
 Do **not** call `simulate.run-qualified-modelica-kit@1` for project `.mo` source. Do
 **not** call historical `simulate.run-modelica-scenario@1` or `@2`. Do **not** pass
 `modelicaText` to the admitted review or operation.
 
-Contract: [admitted source isolated execution](../../reference/pipeline/admitted-source-isolated-execution.md).
-Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md).
-Domain limits: [language](../../reference/domains/modelica/language.md) and
+Contract:
+[admitted source isolated execution](../../reference/pipeline/admitted-source-isolated-execution.md).
+Lookalikes: [lookalike traps](../../reference/agent/lookalike-traps.md). Domain limits:
+[language](../../reference/domains/modelica/language.md) and
 [execution](../../reference/domains/modelica/execution.md).
 
 ## 0. Surfaces
@@ -43,25 +44,25 @@ fallback.
 
 ## 2. Compile and seal
 
-Call `project_technical_compilation_preview` with `projectId` plus
-`result.reference` only. The server joins the current Thread tip, the unique
-`modelica-closed-subset-v2` / `2.0.0` profile, and the unique SysML
-`parameterizes` bindings for every Modelica parameter symbol. The root model
-artifact does not need `represents`; that relation is CAD geometry identity.
+Call `project_technical_compilation_preview` with `projectId` plus `result.reference`
+only. The server joins the current Thread tip, the unique `modelica-closed-subset-v2` /
+`2.0.0` profile, and the unique SysML `parameterizes` bindings for every Modelica
+parameter symbol. The root model artifact does not need `represents`; that relation is
+CAD geometry identity.
 
 Unresolved previews hoist `gaps`. A missing or ambiguous parameter bind is
-`binding.missing`. Declare required AttributeUsages through
-`model.write-architecture@1` with `attribute.<slug>.name` and
-`attribute.<slug>.parent`; do not invent a bind inside the compiler request.
+`binding.missing`. Declare required AttributeUsages through `model.write-architecture@1`
+with `attribute.<slug>.name` and `attribute.<slug>.parent`; do not invent a bind inside
+the compiler request.
 
-Obtain human MRTR, queue, then execute `compile.seal-admission@1`.
+Obtain human MRTR, queue, then execute `compile.seal-admission@2`.
 
 ## 3. Review and run
 
-Call `project_admitted_modelica_run_review` with `projectId` only. Do not derive or
-pass a Thread basis, admission id, fingerprint, provider, solver or runtime. The server
+Call `project_admitted_modelica_run_review` with `projectId` only. Do not derive or pass
+a Thread basis, admission id, fingerprint, provider, solver or runtime. The server
 reopens the current Thread tip and selects exactly one fresh, non-archived canonical
-`document` produced by `digital-thread` / `compile.seal-admission@1` whose compilation
+`document` produced by `digital-thread` / `compile.seal-admission@2` whose compilation
 target and source are Modelica. A concurrent CAD admission is not a candidate.
 
 Zero Modelica candidates — including stale, archived, malformed, foreign-producer
@@ -100,8 +101,8 @@ MRTR.
 
 Obtain a new human MRTR, queue, then execute
 `verify.evaluate-admitted-modelica-observations@1`. SysON remains the comparator. A
-unit-identity mismatch stays `unresolved`. Published statuses stay literal
-`pass`, `fail`, `unresolved` or `error`. An L4 `pass` is not a product verdict.
+unit-identity mismatch stays `unresolved`. Published statuses stay literal `pass`,
+`fail`, `unresolved` or `error`. An L4 `pass` is not a product verdict.
 
 ## 6. L5 human closeout (generic capability)
 
@@ -109,12 +110,12 @@ This section is the generic walk, not a substitute for persisted AL01 identities
 still requires human G4 and a real `.mo` / L4 capture.
 
 Call `project_admitted_modelica_evaluation_closeout_review` with `projectId` only. Do
-not pass a snapshot, sheet, capture, status, value, unit, Modelica text, provider,
-tool, args, SysON envelope, consequence or approval. The server selects the unique
-current Thread tip with `selectCurrentThreadTip` and the unique fresh, non-archived L4
-document produced by `verify.evaluate-admitted-modelica-observations@1` on that exact
-tip. Zero, multiple, stale, archived, foreign, malformed or inexact captures fail
-closed as `unavailable` or `unresolved`.
+not pass a snapshot, sheet, capture, status, value, unit, Modelica text, provider, tool,
+args, SysON envelope, consequence or approval. The server selects the unique current
+Thread tip with `selectCurrentThreadTip` and the unique fresh, non-archived L4 document
+produced by `verify.evaluate-admitted-modelica-observations@1` on that exact tip. Zero,
+multiple, stale, archived, foreign, malformed or inexact captures fail closed as
+`unavailable` or `unresolved`.
 
 The review returns a bounded read of the exact L4 identities and statuses plus **both**
 accept and reject `decisionParameters`. They bind the same project, subject, basis,
@@ -130,16 +131,16 @@ L4 evidence at execution time. Neither operation calls OMC or SysON.
 
 ## Refusals
 
-| Unharnessed move                                 | Harness                                                               |
-| ------------------------------------------------ | --------------------------------------------------------------------- |
-| v1 admitted profile or worker                    | No compatibility path; author and capture exact v2 source             |
-| Kit `@1` for product `.mo`                       | Kit source is image-owned; product source uses admitted `@1`          |
-| Recorded provider `@1` or `@2`                   | Historical identities are not registered                              |
-| Extra `modelicaText` binding                     | Registry refuses it                                                    |
-| Caller Thread/admission identity                 | Review accepts `projectId` only; server selects the exact current join |
-| Stale or wrong-producer admission                | Not a fresh `digital-thread` `compile.seal-admission@1` candidate      |
-| Two fresh Modelica admissions on the current tip | Ambiguous; a concurrent CAD admission is not a candidate              |
-| Caller solver, scenario or image                 | Sealed source plus server-owned OMC/DASSL worker and digest             |
-| Modelica success used as the FEA verdict         | Documentary observations and static FEA evaluations stay distinct       |
-| L4 `pass` treated as L5                          | Human closeout of the exact L4; review always offers accept and reject  |
+| Unharnessed move                                 | Harness                                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------------------ |
+| v1 admitted profile or worker                    | No compatibility path; author and capture exact v2 source                |
+| Kit `@1` for product `.mo`                       | Kit source is image-owned; product source uses admitted `@1`             |
+| Recorded provider `@1` or `@2`                   | Historical identities are not registered                                 |
+| Extra `modelicaText` binding                     | Registry refuses it                                                      |
+| Caller Thread/admission identity                 | Review accepts `projectId` only; server selects the exact current join   |
+| Stale or wrong-producer admission                | Not a fresh `digital-thread` `compile.seal-admission@2` candidate        |
+| Two fresh Modelica admissions on the current tip | Ambiguous; a concurrent CAD admission is not a candidate                 |
+| Caller solver, scenario or image                 | Sealed source plus server-owned OMC/DASSL worker and digest              |
+| Modelica success used as the FEA verdict         | Documentary observations and static FEA evaluations stay distinct        |
+| L4 `pass` treated as L5                          | Human closeout of the exact L4; review always offers accept and reject   |
 | Caller consequence, capture or sheet             | Closeout review accepts `projectId` only; server recrosses the unique L4 |

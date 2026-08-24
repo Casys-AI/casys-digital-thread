@@ -212,6 +212,10 @@ async function materializeReadySource(
   ) {
     throw new TypeError("Source bytes disagree with the analysis fingerprint.");
   }
+  const admissionSource = reopened.admission.sources[0]!;
+  if (admissionSource.id !== source.analysis.source.id) {
+    throw new TypeError("Admission source id does not match the compilation document.");
+  }
   return deepFreeze({
     reopened,
     document,
@@ -221,6 +225,8 @@ async function materializeReadySource(
     sourceText: source.sourceText,
     sourceFingerprint,
     analysisFingerprint: source.analysisFingerprint,
+    projectSource: admissionSource.projectSource,
+    locator: admissionSource.locator,
   });
 }
 

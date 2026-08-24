@@ -10,6 +10,9 @@ import {
   validateTechnicalCompilationDocument,
 } from "../../../domain/compile/admission/technical-compilation.ts";
 import {
+  validateTechnicalSourceAnalysisCaptureLocator,
+} from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import {
   arrayOf,
   deepFreeze,
   exactRecord,
@@ -210,7 +213,10 @@ async function parseSourceCapture(
     path,
   );
   const sourceId = safeId(capture.sourceId, `${path}.sourceId`);
-  const reference = cloneJsonRecord(capture.reference, `${path}.reference`);
+  const reference = validateTechnicalSourceAnalysisCaptureLocator(
+    capture.reference,
+    `${path}.reference`,
+  );
   const referenceFingerprint = parseFingerprint(
     capture.referenceFingerprint,
     `${path}.referenceFingerprint`,

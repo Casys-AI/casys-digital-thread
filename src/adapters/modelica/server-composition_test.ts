@@ -18,6 +18,7 @@ import {
   createQualifiedModelicaCapability,
 } from "./server-composition.ts";
 import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
+import { FileProjectSourceWorkspaceStore } from "../project-source-workspace/file-project-source-workspace-store.ts";
 
 const LIMITS = Object.freeze<IsolatedCodeExecutionLimits>({
   maxWallTimeMs: 120_000,
@@ -62,6 +63,7 @@ Deno.test("Modelica kit and admitted stay distinct; L4 evaluation requires SysON
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
       resources: testReopenAgentResource(`${root}/agent-resources-compile`),
+      workspace: new FileProjectSourceWorkspaceStore(`${root}/workspace`),
     });
     const compilationProject = createTechnicalCompilationProject({
       projects: runtime.projects,

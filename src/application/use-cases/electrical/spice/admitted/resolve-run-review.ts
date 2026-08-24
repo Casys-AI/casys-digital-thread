@@ -2,7 +2,7 @@
  * Public, provider-free resolution of an admitted SPICE run review.
  *
  * The caller names only a project. The server reopens the project's unique
- * current Thread tip, selects its unique fresh compile.seal-admission@1
+ * current Thread tip, selects its unique fresh compile.seal-admission@2
  * document whose compilation target/source is SPICE, then delegates those
  * exact identities to the sealed-admission validator. Classification does not
  * cache execution bytes; the validator rereads. No caller-selected identity
@@ -17,6 +17,7 @@ import type {
 } from "../../../../ports/in/electrical/spice/admitted-run-review.ts";
 import type { TechnicalCompilationAdmissionReader } from "../../../../ports/out/compile/admission/technical-compilation-admission-reader.ts";
 import { uniqueCompilationAdmissionTarget } from "../../../../../domain/compile/admission/technical-compilation.ts";
+import { COMPILE_SEAL_ADMISSION_PRODUCER_TOOL } from "../../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import {
   deepFreeze,
   exactRecord,
@@ -40,7 +41,7 @@ const ADMISSION_CAPTURE_URI_PREFIX =
   "casys://technical-compilation-admission-capture/sha256/" as const;
 const ADMISSION_MEDIA_TYPE = "application/json" as const;
 const ADMISSION_PRODUCER_SERVER = "digital-thread" as const;
-const ADMISSION_PRODUCER_TOOL = "compile.seal-admission@1" as const;
+const ADMISSION_PRODUCER_TOOL = COMPILE_SEAL_ADMISSION_PRODUCER_TOOL;
 
 export type ResolveProjectAdmittedSpiceRunReviewErrorCode =
   | "invalid_request"
@@ -209,13 +210,13 @@ export class ResolveProjectAdmittedSpiceRunReview
     if (candidates.length === 0) {
       throw resolutionError(
         "admission_not_found",
-        "The current Thread tip has no fresh digital-thread compile.seal-admission@1 SPICE compilation.",
+        "The current Thread tip has no fresh digital-thread compile.seal-admission@2 SPICE compilation.",
       );
     }
     if (candidates.length !== 1) {
       throw resolutionError(
         "admission_ambiguous",
-        `The current Thread tip has ${candidates.length} fresh digital-thread compile.seal-admission@1 SPICE compilations; the server will not choose one.`,
+        `The current Thread tip has ${candidates.length} fresh digital-thread compile.seal-admission@2 SPICE compilations; the server will not choose one.`,
       );
     }
     return candidates[0]!;

@@ -168,13 +168,12 @@ export function parseCaptureRequest(
 ): ProjectSourceCaptureRequest {
   const rec = exactClosed(
     value,
-    ["profileId", "sourceId"],
-    ["profileId", "sourceId"],
+    ["profileId"],
+    ["profileId"],
     path,
   );
   return deepFreeze({
     profileId: parseProjectId(rec.profileId, `${path}.profileId`),
-    sourceId: parseProjectId(rec.sourceId, `${path}.sourceId`),
   });
 }
 
@@ -427,7 +426,6 @@ export function parseSearchQuery(
         "domain",
         "role",
         "profileId",
-        "sourceId",
         "pageSize",
         "cursor",
       ],
@@ -465,9 +463,6 @@ export function parseSearchQuery(
             `${path}.profileId`,
           ),
         }
-        : {}),
-      ...(Object.hasOwn(rec, "sourceId")
-        ? { sourceId: parseProjectId(rec.sourceId, `${path}.sourceId`) }
         : {}),
       ...(Object.hasOwn(rec, "pageSize")
         ? { pageSize: parsePageSize(rec.pageSize, `${path}.pageSize`) }

@@ -139,7 +139,7 @@ entry-point registry contains:
 | Human-reviewed architecture; exact generic SysON basis required               | `model.write-architecture@1`            |
 | Passed agent-authored closed-subset SysML capture; Thread document only       | `model.seal-architecture-sysml@1`       |
 | Human-reviewed integer scalar requirements; exact architecture basis required | `model.write-requirements@1`            |
-| Ready compilation draft; exact Thread/SysML basis; no provider                | `compile.seal-admission@1`              |
+| Ready compilation draft; exact Thread/SysML basis; no provider                | `compile.seal-admission@2`              |
 | Sealed compilation admission; local isolation runtime composed                | `design.execute-build123d@1`            |
 | Documentary isolated execution capture; published STEP stays gated            | `design.seal-isolated-geometry@1`       |
 | Human-reviewed geometry draft; exact architecture basis required              | `design.write-geometry@1`               |
@@ -202,7 +202,7 @@ separate SysON constraint evaluation. Historical MCP FEA `@1`/`@2` are rejection
 identities. Domain contract:
 [isolated CalculiX static proof V3](../domains/fea/calculix-static-proof-v3.md).
 
-Admitted Modelica `@1` reopens sealed `compile.seal-admission@1` bytes into the local
+Admitted Modelica `@1` reopens sealed `compile.seal-admission@2` bytes into the local
 microVM. It is not the pinned kit. Pattern:
 [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md).
 How-to: [run admitted Modelica](../../how-to/run/run-admitted-modelica.md).
@@ -245,7 +245,7 @@ captures UTF-8 that matches the locked closed subset, previews the analysis, and
 proposes only the `decisionParameters` returned from a reopened passed capture. After
 human MRTR the executor reopens those CAS identities and writes one Thread document
 (`architecture-sysml-seal-capture/1.0`). It does not insert into SysON, does not reuse
-`compile.seal-admission@1`, and does not treat renderer `sysml-source-capture/1.0`
+`compile.seal-admission@2`, and does not treat renderer `sysml-source-capture/1.0`
 envelopes as agent-authored authority. Procedure:
 [author architecture SysML](../../how-to/compile/author-architecture-sysml.md).
 
@@ -256,12 +256,11 @@ derives the native `RequirementUsage` below the exact target `PartDefinition`, v
 its `subject target` typing and constraints by provider readback, and persists a
 `requirements-capture/3.0`. The Thread receives one `TracedRequirement` per verified
 integer scalar criterion and preserves the exact architecture and prior-requirements
-lineage.
-This operation records model requirements; it does not evaluate them, invent
+lineage. This operation records model requirements; it does not evaluate them, invent
 measurements, or publish a pass/fail verdict.
 
 Geometry is a two-step boundary. Canonical drafts come from
-`project_admitted_geometry_export` after `compile.seal-admission@1`.
+`project_admitted_geometry_export` after `compile.seal-admission@2`.
 `project_geometry_preview` is not a product entry. The current assembly draft is
 `geometry-draft-capture/1.2` and requires exact `sourceAnalysis`. A complete bundle uses
 `geometry-draft-capture/2.1`: one exact assembly source plus one exact source per unique
@@ -283,12 +282,12 @@ current assembly dialect and produces `geometry-capture/1.2`. The explicit
 `geometry-manifest/2.0` discriminator produces `geometry-capture/2.1`, retains the
 approved editable sources and ordered N+1 provenance, and publishes independent
 definition assets. Older canonical schemas `1.1` and `2.0` are unsupported. The seal
-makes no provider call. An upgrade must name the unique active predecessor, archives
-its exact geometry family, and records `derived_from` plus `supersedes`; ambiguity
-fails before canonical writes. Product projection rereads the current capture and
-attaches the seal-owned authoritative STEP artifact to each exact SysML occurrence.
-Reused definitions share that binding; labels are never joins and no `build123d`
-provider identity is invented.
+makes no provider call. An upgrade must name the unique active predecessor, archives its
+exact geometry family, and records `derived_from` plus `supersedes`; ambiguity fails
+before canonical writes. Product projection rereads the current capture and attaches the
+seal-owned authoritative STEP artifact to each exact SysML occurrence. Reused
+definitions share that binding; labels are never joins and no `build123d` provider
+identity is invented.
 
 `record.archive-lineage@1` is the governed retirement step. No constant in its executor
 names a product: project identity comes from the exact run basis, and the work item

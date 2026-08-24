@@ -11,13 +11,14 @@ import type { TechnicalCompilationJoinGap } from "../../../../../domain/compile/
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../../domain/project/engineering-project.ts";
 import type { EngineeringDecisionProposalParameter } from "../../../../../domain/project/engineering-project.ts";
+import type { TechnicalSourceAnalysisCaptureLocator } from "../../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import type { TechnicalCompilationDraftReference } from "../../../out/compile/admission/technical-compilation-draft-store.ts";
 
 export interface ProjectTechnicalCompilationPreviewCommand {
   readonly projectId: string;
   readonly basis?: EngineeringThreadSnapshotBasis;
   /** Opaque, immutable locators from `project_technical_source_capture` result.reference. */
-  readonly sourceRefs: readonly Readonly<Record<string, unknown>>[];
+  readonly sourceRefs: readonly TechnicalSourceAnalysisCaptureLocator[];
 }
 
 interface ProjectTechnicalCompilationPreviewBaseResult {

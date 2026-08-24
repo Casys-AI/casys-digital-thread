@@ -7,7 +7,7 @@
  * ambiguous), a unique signed `sensitivity-catalog-offer` on the current tip
  * is reopened, recompiled, and lowered into a
  * `sensitivity-study-case-template/2.0` — including the code-owned mesh-sized
- * step. cadSource is that offer's signed `compile.seal-admission@1`
+ * step. cadSource is that offer's signed `compile.seal-admission@2`
  * admission, or the unique readable admission that binds a catalogued
  * semanticKey. The caller never supplies case bytes, hashes or solver
  * numbers. This writes no project or Thread state and grants no MRTR
@@ -412,7 +412,7 @@ export class PrepareProjectSensitivityStudySealReview
             code: "cad-source-lookalike",
             artifactId: lookalikes[0]!.id,
             message:
-              "cadSource must be a compile.seal-admission@1 admission document URI + sha256. " +
+              "cadSource must be a compile.seal-admission@2 admission document URI + sha256. " +
               `Rejected lookalikes: ${names}. ` +
               "Not design.write-geometry@1, a cad-model, a STEP, or design.seal-isolated-geometry@1.",
           },
@@ -424,7 +424,7 @@ export class PrepareProjectSensitivityStudySealReview
           code: "admission-absent",
           artifactId: null,
           message:
-            "The current Thread tip has no compile.seal-admission@1 admission document. " +
+            "The current Thread tip has no compile.seal-admission@2 admission document. " +
             "cadSource cannot be compiled.",
         },
       };
@@ -473,7 +473,7 @@ export class PrepareProjectSensitivityStudySealReview
           code: "admission-ambiguous",
           artifactId: null,
           message:
-            `Several compile.seal-admission@1 admissions bind ${template.target.semanticKey}: ` +
+            `Several compile.seal-admission@2 admissions bind ${template.target.semanticKey}: ` +
             `${
               matched.map((item) => item.id).join(", ")
             }. Name is not enough; uniqueness failed.`,
@@ -487,7 +487,7 @@ export class PrepareProjectSensitivityStudySealReview
           code: "admission-unavailable",
           artifactId: unread[0]!.id,
           message:
-            "A compile.seal-admission@1 admission on the current tip could not be reopened. " +
+            "A compile.seal-admission@2 admission on the current tip could not be reopened. " +
             "Uniqueness of the cadSource join is unproven. No decisionParameters.",
         },
       };

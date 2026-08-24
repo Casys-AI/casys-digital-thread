@@ -312,14 +312,14 @@ export class PrepareProjectFeaProofSealReview
       return {
         status: "admission-absent",
         message:
-          "The current Thread tip has no compile.seal-admission@1 admission. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
+          "The current Thread tip has no compile.seal-admission@2 admission. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
       };
     }
     if (candidates.length > 1) {
       return {
         status: "admission-ambiguous",
         message:
-          "Several compile.seal-admission@1 admissions are on the current tip. The server does not pick a lever source. The proof-case review stays resolved.",
+          "Several compile.seal-admission@2 admissions are on the current tip. The server does not pick a lever source. The proof-case review stays resolved.",
       };
     }
     const artifact = candidates[0]!;
@@ -335,14 +335,14 @@ export class PrepareProjectFeaProofSealReview
       return {
         status: "admission-unavailable",
         message:
-          "The unique compile.seal-admission@1 admission could not be reopened. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
+          "The unique compile.seal-admission@2 admission could not be reopened. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
       };
     }
     if (!reopened) {
       return {
         status: "admission-unavailable",
         message:
-          "The unique compile.seal-admission@1 admission could not be reopened. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
+          "The unique compile.seal-admission@2 admission could not be reopened. The proof-case review stays resolved. No sensitivity catalog opt-in is offered.",
       };
     }
     return compileSensitivityCatalogOfferFromAdmission({

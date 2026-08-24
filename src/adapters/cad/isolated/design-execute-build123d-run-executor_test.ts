@@ -79,6 +79,7 @@ import type {
 } from "../../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
+import { sampleAdmissionSourceWorkspaceFields } from "../../../testing/technical-source-capture-test-support.ts";
 import {
   DesignExecuteBuild123dRunExecutor,
   type DesignExecuteBuild123dRunExecutorDependencies,
@@ -660,6 +661,9 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
       sourceFingerprint,
       captureFingerprint: await sha256Fingerprint({ capture: "source" }),
       analysisFingerprint,
+      ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
+        projectId: COMMAND.projectId,
+      }),
     }],
     bindings: compiled.document.inputManifest.bindings,
     compilationProfileRequests: [{
@@ -737,7 +741,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "compile.seal-admission@1",
+      tool: "compile.seal-admission@2",
       runId: "run.compile.seal",
     },
     inputArtifactIds: [sysmlArtifact.id],
@@ -807,7 +811,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     admissions: {
       read: () =>
         Promise.resolve({
-          schemaVersion: "technical-compilation-admission-capture/1.0",
+          schemaVersion: "technical-compilation-admission-capture/2.0",
           operation: COMPILE_SEAL_ADMISSION_OPERATION,
           trustedRunId: "run.compile.seal",
           decisionId: "decision.compile.seal",
@@ -975,7 +979,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
   const admissions: TechnicalCompilationAdmissionReader = {
     read: () =>
       Promise.resolve({
-        schemaVersion: "technical-compilation-admission-capture/1.0",
+        schemaVersion: "technical-compilation-admission-capture/2.0",
         operation: COMPILE_SEAL_ADMISSION_OPERATION,
         trustedRunId: "run.compile.seal",
         decisionId: "decision.compile.seal",

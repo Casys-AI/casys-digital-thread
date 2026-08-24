@@ -63,6 +63,7 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import { sampleAdmissionSourceWorkspaceFields } from "../../../testing/technical-source-capture-test-support.ts";
 import {
   createIsolatedCodeExecutionReceipt,
   createIsolatedOutputProducerGenerationAdvance,
@@ -203,7 +204,7 @@ async function harness() {
     language: "modelica",
     analyzer: analysis.analyzer,
     analysisPolicyProfile: "modelica-closed-subset-v2",
-    requiredBindingSymbolKinds: ["artifact", "parameter"],
+    requiredBindingSymbolKinds: ["parameter"],
   };
   const artifact = analysis.symbols.find((symbol) => symbol.kind === "artifact")!;
   const parameters = analysis.symbols.filter((symbol) => symbol.kind === "parameter");
@@ -295,6 +296,9 @@ async function harness() {
         sourceFingerprint,
         captureFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
         analysisFingerprint,
+        ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
+          projectId: "project.ramp",
+        }),
       }],
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -327,7 +331,7 @@ async function harness() {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/1.0",
+    schemaVersion: "technical-compilation-admission-capture/2.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",
@@ -1483,7 +1487,7 @@ async function admittedThreadLineage(
       serverId: "digital-thread",
       tool: drift === "artifact-producer"
         ? "foreign.seal@1"
-        : "compile.seal-admission@1",
+        : "compile.seal-admission@2",
       runId: "run.compile.seal",
     },
     inputArtifactIds: [],

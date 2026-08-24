@@ -3,7 +3,7 @@
 Audience: agent · Diátaxis: reference · Kind: contract
 
 This is the recurrent hexagonal pattern for executing **agent-authored closed-subset
-source** that has already been sealed by `compile.seal-admission@1`. It is not a
+source** that has already been sealed by `compile.seal-admission@2`. It is not a
 provider MCP path and not a kit.
 
 Lookalikes: [lookalike traps](../agent/lookalike-traps.md). File locations:
@@ -16,7 +16,7 @@ Lookalikes: [lookalike traps](../agent/lookalike-traps.md). File locations:
 ## Pattern
 
 ```text
-compile.seal-admission@1
+compile.seal-admission@2
   -> ReopenAdmittedCompilationSource
   -> isolatedRequestFromAdmittedSource
   -> IsolatedCodeRunner
@@ -37,7 +37,7 @@ server owns the profile, image digest, wrapper, paths, policy, and limits.
 `project_resource_capture` is draft MCP-resource ingress only. Public small-file
 captures now take that full `resourceRef`, reopen exact UTF-8, then reuse the existing
 parser/canonicalizer. Do not pass its raw CAS URI to a microVM. Isolated execution still
-starts from `compile.seal-admission@1` via `ReopenAdmittedCompilationSource`.
+starts from `compile.seal-admission@2` via `ReopenAdmittedCompilationSource`.
 
 ## Consumers
 
@@ -84,7 +84,7 @@ must update that constant. Do not reuse the kit qualification digest for admitte
 ```text
 project_technical_source_capture          # modelica-closed-subset-v2; pass result.reference
   -> project_technical_compilation_preview
-  -> compile.seal-admission@1
+  -> compile.seal-admission@2
   -> project_admitted_modelica_run_review
   -> simulate.run-admitted-modelica@1
 ```
@@ -100,7 +100,7 @@ not `simulate.run-qualified-modelica-kit@1`.
 ```text
 project_technical_source_capture          # spice-circuit-closed-subset-v1; pass result.reference
   -> project_technical_compilation_preview
-  -> compile.seal-admission@1
+  -> compile.seal-admission@2
   -> project_admitted_spice_run_review
   -> simulate.run-admitted-spice@1
 ```
@@ -136,7 +136,7 @@ not preserve pre-WAL development runs.
 | Adapter     | Profile catalog, Microsandbox backend, language executor, image worker                        | Caller-selected runtime      |
 | Composition | `--local-execution` wires review + executor when the exact profile and runtime exist          | Implicit env-var activation  |
 
-New language verticals that already compile through `compile.seal-admission@1` reuse the
+New language verticals that already compile through `compile.seal-admission@2` reuse the
 reopen port. They add a profile, worker, MRTR, review tool, and executor. They do not
 duplicate admission reopen. CalculiX stays out until the agent writes a closed solver
 language (it does not).

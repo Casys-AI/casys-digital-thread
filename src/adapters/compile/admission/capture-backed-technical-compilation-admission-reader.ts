@@ -33,8 +33,17 @@ import {
 } from "../../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
+import type { TechnicalCompilationSourceReader } from "../../../application/ports/out/compile/admission/technical-compilation-source-reader.ts";
+import {
+  COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
+} from "../../../domain/compile/admission/technical-compilation-proposal.ts";
+import {
+  assertTechnicalSourceProvenanceIdentitiesEqual,
+  type TechnicalSourceProvenanceIdentity,
+} from "../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
 import {
   TECHNICAL_COMPILATION_ADMISSION_CAPTURE_URI_PREFIX,
+  type TechnicalCompilationAdmissionCapture,
   type TechnicalCompilationAdmissionCaptureStore,
   technicalCompilationAnchorArtifactReferences,
   validateTechnicalCompilationAdmissionCapture,
@@ -46,11 +55,12 @@ import {
 
 const ADMISSION_ARTIFACT_ID_PREFIX = "technical-compilation-admission-";
 const ADMISSION_PRODUCER_SERVER = "digital-thread";
-const ADMISSION_PRODUCER_TOOL = "compile.seal-admission@1";
+const ADMISSION_PRODUCER_TOOL = COMPILE_SEAL_ADMISSION_PRODUCER_TOOL;
 
 export interface CaptureBackedTechnicalCompilationAdmissionReaderDependencies {
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
   readonly captures: Pick<TechnicalCompilationAdmissionCaptureStore, "read">;
+  readonly sources: TechnicalCompilationSourceReader;
 }
 
 export class TechnicalCompilationAdmissionReadError extends Error {
@@ -178,6 +188,8 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
     );
     assertInputEvidence(snapshot, artifact, currentSysml, capture.sealedAt);
 
+    await this.#recrossSources(request, capture);
+
     return deepFreeze({
       schemaVersion: capture.schemaVersion,
       operation: capture.operation,
@@ -188,6 +200,96 @@ export class CaptureBackedTechnicalCompilationAdmissionReader
       admission: capture.admission,
       document: capture.document,
     });
+  }
+
+  async #recrossSources(
+    request: TechnicalCompilationAdmissionReadRequest,
+    capture: Pick<
+      TechnicalCompilationAdmissionCapture,
+      "sourceCaptures" | "admission" | "document"
+    >,
+  ): Promise<void> {
+    const documentSourceById = new Map(
+      capture.document.inputManifest.sources.map((source) => [
+        source.analysis.source.id,
+        source,
+      ]),
+    );
+    for (const expected of capture.admission.sources) {
+      const stored = documentSourceById.get(expected.id);
+      const captureRef = capture.sourceCaptures.find((item) =>
+        item.sourceId === expected.id
+      );
+      if (!stored || !captureRef) {
+        throw new TechnicalCompilationAdmissionReadError(
+          `admitted source ${expected.id} is not exactly covered by its locator`,
+        );
+      }
+      let reopened;
+      try {
+        reopened = await this.dependencies.sources.read({
+          projectId: request.projectId,
+          basis: request.basis,
+          reference: captureRef.reference,
+          referenceFingerprint: captureRef.referenceFingerprint,
+        });
+      } catch (cause) {
+        throw new TechnicalCompilationAdmissionReadError(
+          `admitted source ${expected.id} failed exact workspace recross: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+        );
+      }
+      if (!reopened) {
+        throw new TechnicalCompilationAdmissionReadError(
+          `admitted source ${expected.id} could not be recrossed from its locator`,
+        );
+      }
+      try {
+        assertTechnicalSourceProvenanceIdentitiesEqual(
+          {
+            sourceId: expected.id,
+            role: expected.role,
+            language: expected.language,
+            profileId: expected.profileId,
+            profileVersion: expected.profileVersion,
+            profileFingerprint: expected.profileFingerprint,
+            analyzer: expected.analyzer,
+            sourceFingerprint: expected.sourceFingerprint,
+            captureFingerprint: expected.captureFingerprint,
+            analysisFingerprint: expected.analysisFingerprint,
+            projectSource: expected.projectSource,
+            locator: expected.locator,
+          },
+          {
+            sourceId: reopened.source.analysis.source.id,
+            role: reopened.source.analysis.source.role,
+            language: reopened.source.analysis.source.language,
+            profileId: reopened.provenance.profile.id,
+            profileVersion: reopened.provenance.profile.version,
+            profileFingerprint: reopened.provenance.profile.fingerprint,
+            analyzer: reopened.provenance.analyzer,
+            sourceFingerprint: reopened.provenance.sourceFingerprint,
+            captureFingerprint: reopened.provenance.captureFingerprint,
+            analysisFingerprint: reopened.provenance.analysisFingerprint,
+            projectSource: reopened.provenance.projectSource,
+            locator: reopened.provenance.locator,
+          } satisfies TechnicalSourceProvenanceIdentity,
+          `$admission.sources.${expected.id}`,
+        );
+      } catch (cause) {
+        throw new TechnicalCompilationAdmissionReadError(
+          `admitted source ${expected.id} recross does not match the sealed project-source identity: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+        );
+      }
+      if (reopened.source.sourceText !== stored.sourceText) {
+        throw new TechnicalCompilationAdmissionReadError(
+          `admitted source ${expected.id} recross does not match the sealed project-source bytes`,
+        );
+      }
+    }
   }
 
   async #reopenAdmissionBasis(

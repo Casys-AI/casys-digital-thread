@@ -14,6 +14,7 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import { COMPILE_SEAL_ADMISSION_PRODUCER_TOOL } from "../../../domain/compile/admission/technical-compilation-proposal.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import { INDUSTRIALIZE_OBSERVE_PRINT_ESTIMATE_OPERATION } from "../../../domain/make/print-estimate/print-estimate-proposal.ts";
 import {
@@ -75,7 +76,7 @@ export { PRINT_ESTIMATE_OBSERVATION_CAPTURE_URI_PREFIX };
 const FORBIDDEN_GEOMETRY_TOOLS = [
   "design.seal-isolated-geometry@1",
   "design.execute-build123d@1",
-  "compile.seal-admission@1",
+  COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
 ] as const;
 
 export interface PrintEstimateObserveThreadSnapshotStore extends ThreadSnapshotStore {

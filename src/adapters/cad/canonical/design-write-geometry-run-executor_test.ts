@@ -298,8 +298,8 @@ class FakeTargetPartAdmissionReader
       relation: "represents" as const,
     }];
     return Promise.resolve({
-      schemaVersion: "technical-compilation-admission-capture/1.0",
-      operation: { id: "compile.seal-admission", version: "1" },
+      schemaVersion: "technical-compilation-admission-capture/2.0",
+      operation: { id: "compile.seal-admission", version: "2" },
       trustedRunId: "run:compile-target-admission",
       decisionId: "decision:compile-target-admission",
       sealedAt: "2026-08-08T12:19:00.000Z",
@@ -316,6 +316,26 @@ class FakeTargetPartAdmissionReader
           id: "source:target-cad",
           sourceFingerprint: record.sourceFingerprint,
           analysisFingerprint,
+          projectSource: {
+            projectId: record.projectId,
+            workspaceRevision: 2,
+            workspaceEventFingerprint: {
+              algorithm: "sha256",
+              digest: "e".repeat(64),
+            },
+            fileId: "source:target-cad",
+            fileRevision: 1,
+            fileFingerprint: record.sourceFingerprint,
+          },
+          locator: {
+            schemaVersion: "technical-source-analysis-capture-locator/2.0",
+            kind: "technical-source-analysis-capture-locator",
+            fingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
+            byteCount: 128,
+            casUri: `casys://technical-source-analysis-capture/sha256/${
+              "4".repeat(64)
+            }`,
+          },
         }],
         bindings,
         compilation: { status: "ready-for-review" },
@@ -546,11 +566,13 @@ Deno.test("GeometryArtifactRemovedError carries the subject ID in its message", 
 });
 
 Deno.test("geometry preview provenance rejects old draft schemas and requires the current preview run", () => {
-  for (const schemaVersion of [
-    "geometry-draft-capture/1.0",
-    "geometry-draft-capture/1.1",
-    "geometry-draft-capture/2.0",
-  ]) {
+  for (
+    const schemaVersion of [
+      "geometry-draft-capture/1.0",
+      "geometry-draft-capture/1.1",
+      "geometry-draft-capture/2.0",
+    ]
+  ) {
     assertThrows(
       () =>
         requireDraftPreviewProducer({
@@ -2857,10 +2879,12 @@ async function queueGeometryPartSeal(
   const glbBytes = new TextEncoder().encode(
     `${options.target} target GLB ${options.suffix}\n`,
   );
-  const bytesByFormat = new Map([
-    ["step", stepBytes],
-    ["gltf", glbBytes],
-  ] as const);
+  const bytesByFormat = new Map(
+    [
+      ["step", stepBytes],
+      ["gltf", glbBytes],
+    ] as const,
+  );
   const digestByFormat = new Map<string, string>();
   for (const [format, bytes] of bytesByFormat) {
     digestByFormat.set(format, await sha256Bytes(bytes));
@@ -2993,7 +3017,8 @@ async function queueGeometryPartSeal(
       subjectId: basis.subject.id,
     },
     proposal: {
-      summary: "Seal the exact admitted PartDefinition draft without an assembly claim.",
+      summary:
+        "Seal the exact admitted PartDefinition draft without an assembly claim.",
       parameters: encodeGeometryPartDecisionParameters(
         reviewedDraft.fingerprint.digest,
         manifest,
@@ -5450,13 +5475,15 @@ Deno.test("target PartDefinition seal reopens one admitted draft, promotes deter
     assertExists(captureText);
     const capture = JSON.parse(captureText) as Record<string, unknown>;
     assertEquals(capture.schemaVersion, "geometry-part-capture/1.0");
-    for (const forbidden of [
-      "assembly",
-      "components",
-      "occurrences",
-      "placements",
-      "partDefinitions",
-    ]) {
+    for (
+      const forbidden of [
+        "assembly",
+        "components",
+        "occurrences",
+        "placements",
+        "partDefinitions",
+      ]
+    ) {
       assertEquals(Object.hasOwn(capture, forbidden), false, forbidden);
     }
     const targetArtifacts = snapshot.artifacts.filter((artifact) =>
@@ -5511,7 +5538,7 @@ Deno.test("target PartDefinition seal reopens one admitted draft, promotes deter
     assertEquals(
       targetComponents.map((component) =>
         component.bindings.find((binding) =>
-        binding.provider === "digital-thread" && binding.kind === "artifact"
+          binding.provider === "digital-thread" && binding.kind === "artifact"
         )
       ),
       [expectedTargetBinding, expectedTargetBinding],
@@ -5599,9 +5626,14 @@ Deno.test("target seal rejects human MRTR target and source/hash drift from the 
           ...draft,
           target: {
             ...draft.target,
-            files: draft.target.files.map((file, index) => index === 0
-              ? { ...file, fingerprint: { algorithm: "sha256", digest: "f".repeat(64) } }
-              : file),
+            files: draft.target.files.map((file, index) =>
+              index === 0
+                ? {
+                  ...file,
+                  fingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+                }
+                : file
+            ),
           },
         }),
       EngineeringProjectCommandError,
@@ -5626,10 +5658,14 @@ Deno.test("target seal rejects a self-hashed draft whose source bytes no longer 
       tamperSource: true,
     });
     await assertRejects(
-      () => makeExecutor(queued.fixture, tmpDir).execute(
-        AGENT,
-        { ...executionCommand(queued.fixture), commandId: "exec-target-source-tamper" },
-      ),
+      () =>
+        makeExecutor(queued.fixture, tmpDir).execute(
+          AGENT,
+          {
+            ...executionCommand(queued.fixture),
+            commandId: "exec-target-source-tamper",
+          },
+        ),
       EngineeringProjectCommandError,
       "target source bytes do not match their signed scriptHash",
     );
@@ -5652,10 +5688,14 @@ Deno.test("target seal refuses a missing exact compile admission before claim", 
     });
     queued.fixture.admissions.missing = true;
     await assertRejects(
-      () => makeExecutor(queued.fixture, tmpDir).execute(
-        AGENT,
-        { ...executionCommand(queued.fixture), commandId: "exec-target-admission-missing" },
-      ),
+      () =>
+        makeExecutor(queued.fixture, tmpDir).execute(
+          AGENT,
+          {
+            ...executionCommand(queued.fixture),
+            commandId: "exec-target-admission-missing",
+          },
+        ),
       EngineeringProjectCommandError,
       "artefact is unavailable",
     );
@@ -5686,10 +5726,14 @@ Deno.test("target seal rejects an inexact reopened compile admission source", as
     queued.fixture.admissions.sourceTextOverride =
       `${PARAMETERIZED_FRAME}# forged reopened source\n`;
     await assertRejects(
-      () => makeExecutor(queued.fixture, tmpDir).execute(
-        AGENT,
-        { ...executionCommand(queued.fixture), commandId: "exec-target-admission-source" },
-      ),
+      () =>
+        makeExecutor(queued.fixture, tmpDir).execute(
+          AGENT,
+          {
+            ...executionCommand(queued.fixture),
+            commandId: "exec-target-admission-source",
+          },
+        ),
       EngineeringProjectCommandError,
       "source bytes or fingerprint do not equal the target draft",
     );
@@ -5718,10 +5762,14 @@ Deno.test("target seal rejects a forged P1 represents binding for another PartDe
     });
     queued.fixture.admissions.representedTargetOverride = "part-definition:forged";
     await assertRejects(
-      () => makeExecutor(queued.fixture, tmpDir).execute(
-        AGENT,
-        { ...executionCommand(queued.fixture), commandId: "exec-target-admission-binding" },
-      ),
+      () =>
+        makeExecutor(queued.fixture, tmpDir).execute(
+          AGENT,
+          {
+            ...executionCommand(queued.fixture),
+            commandId: "exec-target-admission-binding",
+          },
+        ),
       EngineeringProjectCommandError,
       "does not uniquely represent the target PartDefinition",
     );
@@ -5755,10 +5803,14 @@ Deno.test("same-target target seals supersede only their own files while differe
       AGENT,
       { ...executionCommand(frameQueued.fixture), commandId: "exec-target-frame-one" },
     );
-    const boltQueued = await queueGeometryPartSeal(frameQueued.fixture, frameCompleted, {
-      target: "bolt",
-      suffix: "bolt-one",
-    });
+    const boltQueued = await queueGeometryPartSeal(
+      frameQueued.fixture,
+      frameCompleted,
+      {
+        target: "bolt",
+        suffix: "bolt-one",
+      },
+    );
     const boltCompleted = await makeExecutor(boltQueued.fixture, tmpDir).execute(
       AGENT,
       { ...executionCommand(boltQueued.fixture), commandId: "exec-target-bolt-one" },
@@ -5767,13 +5819,17 @@ Deno.test("same-target target seals supersede only their own files while differe
       run.id === boltQueued.fixture.queued.runId
     );
     assertExists(boltRun?.resultSnapshot);
-    const boltSnapshot = await boltQueued.fixture.snapshots.get(boltRun.resultSnapshot.snapshotId);
+    const boltSnapshot = await boltQueued.fixture.snapshots.get(
+      boltRun.resultSnapshot.snapshotId,
+    );
     assertExists(boltSnapshot);
     const firstFrame = boltSnapshot.artifacts.find((artifact) =>
-      artifact.kind === "cad-model" && artifact.producer.runId === "run:geometry-part-frame-one"
+      artifact.kind === "cad-model" &&
+      artifact.producer.runId === "run:geometry-part-frame-one"
     );
     const firstBolt = boltSnapshot.artifacts.find((artifact) =>
-      artifact.kind === "cad-model" && artifact.producer.runId === "run:geometry-part-bolt-one"
+      artifact.kind === "cad-model" &&
+      artifact.producer.runId === "run:geometry-part-bolt-one"
     );
     assertExists(firstFrame);
     assertExists(firstBolt);
@@ -5796,7 +5852,10 @@ Deno.test("same-target target seals supersede only their own files while differe
       tmpDir,
     ).execute(
       AGENT,
-      { ...executionCommand(successorQueued.fixture), commandId: "exec-target-frame-two" },
+      {
+        ...executionCommand(successorQueued.fixture),
+        commandId: "exec-target-frame-two",
+      },
     );
     const successorRun = successorCompleted.agentRuns.find((run) =>
       run.id === successorQueued.fixture.queued.runId
@@ -5809,14 +5868,18 @@ Deno.test("same-target target seals supersede only their own files while differe
     const archived = archivedRefKeys(snapshot);
     assertEquals(archived.has(`artifact:${firstFrame.id}`), true);
     assertEquals(archived.has(`artifact:${firstBolt.id}`), false);
-    for (const artifact of snapshot.artifacts.filter((artifact) =>
-      artifact.id.startsWith(`cad-asset-${firstFrame.fingerprint.digest}-target-`)
-    )) {
+    for (
+      const artifact of snapshot.artifacts.filter((artifact) =>
+        artifact.id.startsWith(`cad-asset-${firstFrame.fingerprint.digest}-target-`)
+      )
+    ) {
       assertEquals(archived.has(`artifact:${artifact.id}`), true);
     }
-    for (const artifact of snapshot.artifacts.filter((artifact) =>
-      artifact.id.startsWith(`cad-asset-${firstBolt.fingerprint.digest}-target-`)
-    )) {
+    for (
+      const artifact of snapshot.artifacts.filter((artifact) =>
+        artifact.id.startsWith(`cad-asset-${firstBolt.fingerprint.digest}-target-`)
+      )
+    ) {
       assertEquals(archived.has(`artifact:${artifact.id}`), false);
     }
     const catalog = await resolveGenericProductStructureCatalog(
@@ -5855,10 +5918,11 @@ Deno.test("target seal fails closed when an active V2 bundle covers its PartDefi
       suffix: "v2-conflict",
     });
     await assertRejects(
-      () => makeExecutor(queued.fixture, tmpDir).execute(
-        AGENT,
-        { ...executionCommand(queued.fixture), commandId: "exec-target-v2-conflict" },
-      ),
+      () =>
+        makeExecutor(queued.fixture, tmpDir).execute(
+          AGENT,
+          { ...executionCommand(queued.fixture), commandId: "exec-target-v2-conflict" },
+        ),
       EngineeringProjectCommandError,
       "geometry_part_v2_bundle_conflict",
     );

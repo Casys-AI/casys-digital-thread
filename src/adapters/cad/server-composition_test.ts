@@ -7,6 +7,7 @@ import { FileCaptureStore } from "../shared/cas/file-capture-store.ts";
 import { FileThreadSnapshotStore } from "../shared/stores/file-thread-snapshot-store.ts";
 import { createTechnicalCompilationFoundation } from "../compile/server-composition.ts";
 import { testReopenAgentResource } from "../../testing/agent-resource-test-support.ts";
+import { FileProjectSourceWorkspaceStore } from "../project-source-workspace/file-project-source-workspace-store.ts";
 import { PythonCadSourceAnalyzer } from "./source/python-cad-source-analyzer.ts";
 import {
   composePrivateBuild123dGeometrySurfaces,
@@ -41,6 +42,7 @@ Deno.test("Build123d profile-only review stays independent of private sandbox ad
       recordedAnalysisDirectory: `${root}/analysis`,
       snapshots,
       resources: testReopenAgentResource(`${root}/agent-resources`),
+      workspace: new FileProjectSourceWorkspaceStore(`${root}/workspace`),
     });
     const absent = await createBuild123dCapability({
       recordedAnalysisDirectory: `${root}/analysis`,

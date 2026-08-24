@@ -106,12 +106,57 @@ export class FileProjectSourceWorkspaceStore
     );
   }
 
+  async loadAtFresh(
+    projectId: string,
+    workspaceRevision: number,
+  ): Promise<ProjectSourceWorkspaceState> {
+    const id = parseProjectId(projectId);
+    if (workspaceRevision === 0) {
+      return emptyProjectSourceWorkspace(id);
+    }
+    if (!Number.isSafeInteger(workspaceRevision) || workspaceRevision < 0) {
+      throw new ProjectSourceWorkspaceError(
+        "revision_not_found",
+        `Workspace revision ${workspaceRevision} is not present for project ${projectId}.`,
+      );
+    }
+    const events: ProjectSourceWorkspaceEvent[] = [];
+    for (let revision = 1; revision <= workspaceRevision; revision += 1) {
+      const event = await this.readEventFile(id, revision);
+      if (!event) {
+        if (revision === workspaceRevision && events.length === revision - 1) {
+          throw new ProjectSourceWorkspaceError(
+            "revision_not_found",
+            `Workspace revision ${workspaceRevision} is not present for project ${projectId}.`,
+          );
+        }
+        throw new ProjectSourceWorkspaceStoreError(
+          "log_gap",
+          `Project source workspace ${projectId} event log is missing revision ${revision}.`,
+        );
+      }
+      events.push(event);
+    }
+    return cloneProjectSourceWorkspaceState(
+      await this.replayOrCorrupt(id, events),
+    );
+  }
+
   async append(event: ProjectSourceWorkspaceEvent): Promise<void> {
     const projectId = parseProjectId(event.projectId);
     await this.io.mkdir(this.projectDirectory(projectId));
-    const current = await this.loadCache(projectId);
+    const census = await this.readCensus(projectId);
+    this.assertCensusHealthy(projectId, census);
+    // Mutation authority ignores any cached materialization. Census/gap
+    // checks already ran; fully replay the durable head before accepting a
+    // successor, then drop the cache so publication cannot retain stale
+    // historical events.
+    this.#cache.delete(projectId);
+    const currentState = census.highestJson === 0
+      ? emptyProjectSourceWorkspace(projectId)
+      : await this.loadAtFresh(projectId, census.highestJson);
     try {
-      await applyProjectSourceWorkspaceEvent(current.state, event);
+      await applyProjectSourceWorkspaceEvent(currentState, event);
     } catch (cause) {
       if (cause instanceof ProjectSourceWorkspaceStoreError) throw cause;
       if (cause instanceof ProjectSourceWorkspaceError) throw cause;
@@ -170,11 +215,6 @@ export class FileProjectSourceWorkspaceStore
       `${deterministicJson(event)}\n`,
     );
     await this.io.rename(pendingPath, revisionPath);
-    const nextState = await applyProjectSourceWorkspaceEvent(current.state, event);
-    this.#cache.set(projectId, {
-      events: [...current.events, event],
-      state: nextState,
-    });
   }
 
   private async loadCache(projectId: string): Promise<CachedWorkspace> {

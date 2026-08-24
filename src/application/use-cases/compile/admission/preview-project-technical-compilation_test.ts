@@ -34,9 +34,19 @@ import { TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY } from "../../../../domain/comp
 import { validateModelicaThermalMethodSheet } from "../../../../domain/modelica/thermal-method-sheet.ts";
 import { validThermalMethodSheetPlaceholder } from "../../../../testing/modelica-thermal-method-sheet-fixtures.ts";
 import {
+  sampleTechnicalProjectSourceAnchor,
+  sampleTechnicalSourceAnalysisCaptureLocator,
+} from "../../../../testing/technical-source-capture-test-support.ts";
+import {
   PreviewProjectTechnicalCompilation,
   ProjectTechnicalCompilationPreviewError,
 } from "./preview-project-technical-compilation.ts";
+
+const CAD_LOCATOR = sampleTechnicalSourceAnalysisCaptureLocator("c".repeat(64));
+const SPICE_LOCATOR = sampleTechnicalSourceAnalysisCaptureLocator("d".repeat(64));
+const MODELICA_LOCATOR = sampleTechnicalSourceAnalysisCaptureLocator(
+  "e".repeat(64),
+);
 
 interface Harness {
   readonly service: PreviewProjectTechnicalCompilation;
@@ -65,7 +75,10 @@ class FakeSourceReader implements TechnicalCompilationSourceReader {
   failure?: Error;
   provenanceTamper?: "analyzer" | "capture" | "profile";
 
-  constructor(readonly source: TechnicalCompilationSource) {}
+  constructor(
+    readonly source: TechnicalCompilationSource,
+    readonly locator = CAD_LOCATOR,
+  ) {}
 
   read(
     request: TechnicalCompilationSourceReadRequest,
@@ -74,10 +87,10 @@ class FakeSourceReader implements TechnicalCompilationSourceReader {
     if (this.failure) return Promise.reject(this.failure);
     if (this.missing) return Promise.resolve(undefined);
     if (
-      Object.keys(request.reference).sort().join(",") !==
-        "captureId,schemaVersion" ||
-      request.reference.schemaVersion !== "opaque-capture-ref/1.0" ||
-      request.reference.captureId !== "capture.source.cad"
+      request.reference.schemaVersion !== this.locator.schemaVersion ||
+      request.reference.kind !== this.locator.kind ||
+      request.reference.fingerprint.digest !== this.locator.fingerprint.digest ||
+      request.reference.casUri !== this.locator.casUri
     ) {
       return Promise.resolve(undefined);
     }
@@ -98,6 +111,11 @@ class FakeSourceReader implements TechnicalCompilationSourceReader {
         ? { algorithm: "sha256" as const, digest: "e".repeat(64) }
         : request.referenceFingerprint,
       analysisFingerprint: this.source.analysisFingerprint,
+      projectSource: sampleTechnicalProjectSourceAnchor(
+        this.source.analysis.source.id,
+        { projectId: request.projectId },
+      ),
+      locator: request.reference,
     };
     return Promise.resolve({
       referenceFingerprint: this.mismatchedReference
@@ -148,13 +166,12 @@ class FakeDraftStore implements TechnicalCompilationDraftStore {
     }
     if (this.sourceCaptureDriftOnRead) {
       const drifted = structuredClone(this.saved);
-      const capture = drifted.sourceCaptures[0] as unknown as {
-        reference: Record<string, unknown>;
+      const capture = drifted.sourceCaptures[0] as {
+        reference: unknown;
       };
-      capture.reference = {
-        schemaVersion: "opaque-capture-ref/1.0",
-        captureId: "capture.source.foreign",
-      };
+      capture.reference = sampleTechnicalSourceAnalysisCaptureLocator(
+        "f".repeat(64),
+      );
       return Promise.resolve(drifted);
     }
     if (!this.driftOnRead) return Promise.resolve(structuredClone(this.saved));
@@ -287,10 +304,7 @@ async function harness(
       revision: 7,
       subjectId: "subject.drip-tray",
     },
-    sourceRefs: [{
-      schemaVersion: "opaque-capture-ref/1.0",
-      captureId: "capture.source.cad",
-    }],
+    sourceRefs: [CAD_LOCATOR],
   };
   const basisResolver = new FakeBasisResolver(basis);
   const sourceReader = new FakeSourceReader(source);
@@ -353,10 +367,7 @@ Deno.test("preview reopens server facts, saves and rereads a deterministic provi
   );
   assertEquals(fixture.draftStore.saved?.sourceCaptures.length, 1);
   assertEquals(fixture.draftStore.saved?.sourceCaptures[0].sourceId, "source.cad");
-  assertEquals(fixture.draftStore.saved?.sourceCaptures[0].reference, {
-    schemaVersion: "opaque-capture-ref/1.0",
-    captureId: "capture.source.cad",
-  });
+  assertEquals(fixture.draftStore.saved?.sourceCaptures[0].reference, CAD_LOCATOR);
   assertEquals(
     fixture.draftStore.saved?.sourceCaptures[0].referenceFingerprint,
     fixture.sourceReader.calls[0].referenceFingerprint,
@@ -401,8 +412,7 @@ Deno.test("preview request cannot inject raw analysis, compilation basis, or pro
   const forgedReference = await harness();
   const forgedCommand = structuredClone(forgedReference.command);
   forgedCommand.sourceRefs = [{
-    schemaVersion: "opaque-capture-ref/1.0",
-    captureId: "capture.source.cad",
+    ...CAD_LOCATOR,
     analysis: { source: { id: "source.forged" } },
     provider: "caller-selected-provider",
   }];
@@ -410,7 +420,8 @@ Deno.test("preview request cannot inject raw analysis, compilation basis, or pro
     () => forgedReference.service.execute(forgedCommand),
     ProjectTechnicalCompilationPreviewError,
   );
-  assertEquals(forgedError.code, "source_not_found");
+  assertEquals(forgedError.code, "invalid_request");
+  assertEquals(forgedReference.sourceReader.calls.length, 0);
   assertEquals(forgedReference.draftStore.saves, 0);
 
   for (
@@ -447,10 +458,10 @@ Deno.test("preview rejects admission cardinality overflow before resolver or sou
     (command) => {
       command.sourceRefs = Array.from(
         { length: TECHNICAL_COMPILATION_ADMISSION_LIMITS.maxSources + 1 },
-        (_, index) => ({
-          schemaVersion: "opaque-capture-ref/1.0",
-          captureId: `c.${index}`,
-        }),
+        (_, index) =>
+          sampleTechnicalSourceAnalysisCaptureLocator(
+            index.toString(16).padStart(64, "0"),
+          ),
       );
     },
   ];
@@ -470,11 +481,14 @@ Deno.test("preview rejects admission cardinality overflow before resolver or sou
   }
 });
 
-Deno.test("preview preserves an opaque own __proto__ key without prototype mutation", async () => {
+Deno.test("preview rejects an own __proto__ key on a closed locator without prototype mutation", async () => {
   const fixture = await harness();
   const hostileReference: Record<string, unknown> = Object.create(null);
-  hostileReference.schemaVersion = "opaque-capture-ref/1.0";
-  hostileReference.captureId = "capture.source.cad";
+  hostileReference.schemaVersion = CAD_LOCATOR.schemaVersion;
+  hostileReference.kind = CAD_LOCATOR.kind;
+  hostileReference.fingerprint = { ...CAD_LOCATOR.fingerprint };
+  hostileReference.byteCount = CAD_LOCATOR.byteCount;
+  hostileReference.casUri = CAD_LOCATOR.casUri;
   Object.defineProperty(hostileReference, "__proto__", {
     value: { polluted: true },
     enumerable: true,
@@ -488,12 +502,8 @@ Deno.test("preview preserves an opaque own __proto__ key without prototype mutat
     () => fixture.service.execute(candidate),
     ProjectTechnicalCompilationPreviewError,
   );
-  assertEquals(error.code, "source_not_found");
-  assertEquals(fixture.sourceReader.calls.length, 1);
-  const reopenedReference = fixture.sourceReader.calls[0].reference;
-  assertEquals(Object.getPrototypeOf(reopenedReference), null);
-  assert(Object.hasOwn(reopenedReference, "__proto__"));
-  assertEquals(reopenedReference.__proto__, { polluted: true });
+  assertEquals(error.code, "invalid_request");
+  assertEquals(fixture.sourceReader.calls.length, 0);
   assertEquals(({} as { polluted?: boolean }).polluted, undefined);
   assertEquals(fixture.draftStore.saves, 0);
 });
@@ -725,7 +735,10 @@ Deno.test("preview output and content-addressed draft id are deterministic", asy
   const permuted = structuredClone(second.command);
   const reference = (permuted.sourceRefs as Record<string, unknown>[])[0];
   permuted.sourceRefs = [{
-    captureId: reference.captureId,
+    casUri: reference.casUri,
+    byteCount: reference.byteCount,
+    fingerprint: reference.fingerprint,
+    kind: reference.kind,
     schemaVersion: reference.schemaVersion,
   }];
 
@@ -903,21 +916,7 @@ Deno.test("preview selects the unique SPICE catalogue profile and rejects caller
       requiredBindingSymbolKinds: ["parameter"],
     }],
   };
-  class SpiceSourceReader extends FakeSourceReader {
-    override read(request: TechnicalCompilationSourceReadRequest) {
-      if (request.reference.captureId !== "capture.source.spice") {
-        return Promise.resolve(undefined);
-      }
-      return super.read({
-        ...request,
-        reference: {
-          schemaVersion: "opaque-capture-ref/1.0",
-          captureId: "capture.source.cad",
-        },
-      });
-    }
-  }
-  const sourceReader = new SpiceSourceReader(source);
+  const sourceReader = new FakeSourceReader(source, SPICE_LOCATOR);
   const draftStore = new FakeDraftStore();
   const service = new PreviewProjectTechnicalCompilation({
     basisResolver: new FakeBasisResolver(basis),
@@ -933,10 +932,7 @@ Deno.test("preview selects the unique SPICE catalogue profile and rejects caller
       revision: 3,
       subjectId: "subject.clamp",
     },
-    sourceRefs: [{
-      schemaVersion: "opaque-capture-ref/1.0",
-      captureId: "capture.source.spice",
-    }],
+    sourceRefs: [SPICE_LOCATOR],
   });
   assertEquals(result.status, "ready-for-review");
   if (result.status !== "ready-for-review") throw new Error("unreachable");
@@ -1094,17 +1090,17 @@ async function crossDomainMethodSheetPreview(): Promise<{
     unresolvedConstructs: [],
   };
   const sources: Record<string, TechnicalCompilationSource> = {
-    "capture.source.cad": {
+    [CAD_LOCATOR.fingerprint.digest]: {
       sourceText: cadText,
       analysis: cadAnalysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(cadAnalysis),
     },
-    "capture.source.spice": {
+    [SPICE_LOCATOR.fingerprint.digest]: {
       sourceText: spiceText,
       analysis: spiceAnalysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(spiceAnalysis),
     },
-    "capture.source.modelica": {
+    [MODELICA_LOCATOR.fingerprint.digest]: {
       sourceText: modelicaText,
       analysis: modelicaAnalysis,
       analysisFingerprint: await fingerprintSourceAnalysisBundle(
@@ -1209,7 +1205,9 @@ async function crossDomainMethodSheetPreview(): Promise<{
       },
     },
   });
-  const command = (captureId: string) => ({
+  const command = (
+    locator: ReturnType<typeof sampleTechnicalSourceAnalysisCaptureLocator>,
+  ) => ({
     projectId,
     basis: {
       kind: "thread-snapshot" as const,
@@ -1217,16 +1215,13 @@ async function crossDomainMethodSheetPreview(): Promise<{
       revision: 3,
       subjectId,
     },
-    sourceRefs: [{
-      schemaVersion: "opaque-capture-ref/1.0",
-      captureId,
-    }],
+    sourceRefs: [locator],
   });
   return {
     service,
-    spiceCommand: command("capture.source.spice"),
-    cadCommand: command("capture.source.cad"),
-    modelicaCommand: command("capture.source.modelica"),
+    spiceCommand: command(SPICE_LOCATOR),
+    cadCommand: command(CAD_LOCATOR),
+    modelicaCommand: command(MODELICA_LOCATOR),
     get methodSheetReads() {
       return state.methodSheetReads;
     },
@@ -1241,9 +1236,7 @@ class MappingSourceReader implements TechnicalCompilationSourceReader {
   read(
     request: TechnicalCompilationSourceReadRequest,
   ): Promise<ReopenedTechnicalCompilationSource | undefined> {
-    const captureId = request.reference.captureId;
-    if (typeof captureId !== "string") return Promise.resolve(undefined);
-    const source = this.sources[captureId];
+    const source = this.sources[request.reference.fingerprint.digest];
     if (!source) return Promise.resolve(undefined);
     return Promise.resolve({
       referenceFingerprint: request.referenceFingerprint,
@@ -1261,6 +1254,11 @@ class MappingSourceReader implements TechnicalCompilationSourceReader {
         sourceFingerprint: source.analysis.source.fingerprint,
         captureFingerprint: request.referenceFingerprint,
         analysisFingerprint: source.analysisFingerprint,
+        projectSource: sampleTechnicalProjectSourceAnchor(
+          source.analysis.source.id,
+          { projectId: request.projectId },
+        ),
+        locator: request.reference,
       },
     });
   }

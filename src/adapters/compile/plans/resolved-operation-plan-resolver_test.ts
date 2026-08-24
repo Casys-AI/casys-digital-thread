@@ -516,7 +516,7 @@ async function calculixFixture(
         [],
         {
           serverId: "digital-thread",
-          tool: "compile.seal-admission@1",
+          tool: "compile.seal-admission@2",
           runId: "seal-admission",
         },
       ),

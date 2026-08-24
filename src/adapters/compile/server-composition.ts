@@ -9,11 +9,10 @@ import type { EngineeringProjectRevisionStore } from "../../application/ports/ou
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PreviewProjectTechnicalCompilation } from "../../application/use-cases/compile/admission/preview-project-technical-compilation.ts";
 import type { ProjectTechnicalSourceCaptureUseCase } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
+import { CaptureProjectTechnicalSource } from "../../application/use-cases/compile/admission/capture-project-technical-source.ts";
 import type { ReopenAgentResource } from "../../application/use-cases/resource/reopen-agent-resource.ts";
-import { AgentResourceReopenError } from "../../application/use-cases/resource/reopen-agent-resource.ts";
-import { acceptedMimeTypesForTechnicalLanguage } from "../../domain/resource/agent-resource-reference.ts";
+import type { ProjectSourceWorkspaceEventStore } from "../../application/ports/out/project-source-workspace/project-source-workspace-event-store.ts";
 import type { ThermalMethodSheetCompilationJoin } from "../../application/ports/out/compile/admission/thermal-method-sheet-compilation-join.ts";
-import { assembleTechnicalSourceCaptureReview } from "../../domain/compile/admission/technical-source-capture-review.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import { FileByteStore } from "../shared/cas/file-byte-store.ts";
@@ -28,17 +27,21 @@ import { CaptureBackedTechnicalCompilationBasisResolver } from "./captures/techn
 import { createInitialTechnicalSourceAnalysisCaptureService } from "./captures/initial-technical-source-analysis-composition.ts";
 import type { TechnicalSourceAnalysisCaptureService } from "./captures/technical-source-analysis-capture.ts";
 import {
-  COMPILE_SEAL_ADMISSION_OPERATION,
   CompileSealAdmissionRunExecutor,
   type TechnicalCompilationAdmissionCaptureStore,
 } from "./executors/compile-seal-admission-run-executor.ts";
+import {
+  COMPILE_SEAL_ADMISSION_OPERATION,
+  COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
+} from "../../domain/compile/admission/technical-compilation-proposal.ts";
 
-export { COMPILE_SEAL_ADMISSION_OPERATION };
+export { COMPILE_SEAL_ADMISSION_OPERATION, COMPILE_SEAL_ADMISSION_PRODUCER_TOOL };
 
 export interface TechnicalCompilationFoundationOptions {
   readonly recordedAnalysisDirectory: string;
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
   readonly resources: ReopenAgentResource;
+  readonly workspace: ProjectSourceWorkspaceEventStore;
 }
 
 export interface TechnicalCompilationFoundation {
@@ -100,40 +103,29 @@ export function createTechnicalCompilationFoundation(
       label: "Captured technical source",
     }),
     analysisCaptures: technicalSourceAnalysisCaptures,
+    captureDocuments: new FileByteStore({
+      kind: "technical-source-analysis-capture",
+      directory: `${technicalCompilationDirectory}/capture-documents`,
+      uriNamespace: "technical-source-analysis-capture",
+      label: "Captured technical source analysis document",
+    }),
   });
+  const technicalCompilationProfiles =
+    new FixedTechnicalCompilationProfileCatalogProvider();
   const technicalCompilationSources = new CaptureBackedTechnicalCompilationSourceReader(
-    technicalSourceAnalysis,
-  );
-  const technicalSourceCapture: ProjectTechnicalSourceCaptureUseCase = {
-    capture: async (command) => {
-      const profile = technicalSourceAnalysis.requireCaptureProfile(
-        command.profileId,
-      );
-      let sourceText: string;
-      try {
-        sourceText = (await options.resources.reopenUtf8Text(command.resourceRef, {
-          acceptedMimeTypes: acceptedMimeTypesForTechnicalLanguage(
-            profile.language,
-          ),
-          maxBytes: profile.maxSourceBytes,
-        })).text;
-      } catch (error) {
-        if (error instanceof AgentResourceReopenError) throw error;
-        throw error;
-      }
-      const reference = await technicalSourceAnalysis.capture({
-        profileId: command.profileId,
-        sourceId: command.sourceId,
-        sourceText,
-      });
-      const reopened = await technicalSourceAnalysis.reopen(reference);
-      return assembleTechnicalSourceCaptureReview(
-        reference,
-        reopened.sourceText,
-        reopened.analysis,
-      );
+    {
+      captures: technicalSourceAnalysis,
+      workspace: options.workspace,
+      resources: options.resources,
+      profiles: technicalCompilationProfiles,
     },
-  };
+  );
+  const technicalSourceCapture: ProjectTechnicalSourceCaptureUseCase =
+    new CaptureProjectTechnicalSource({
+      workspace: options.workspace,
+      resources: options.resources,
+      captures: technicalSourceAnalysis,
+    });
   const technicalCompilationDrafts = new FileTechnicalCompilationDraftStore(
     new FileByteStore({
       kind: "technical-compilation-draft",
@@ -142,8 +134,6 @@ export function createTechnicalCompilationFoundation(
       label: "Technical compilation review draft",
     }),
   );
-  const technicalCompilationProfiles =
-    new FixedTechnicalCompilationProfileCatalogProvider();
   const technicalCompilationSealBytes = new FileByteStore({
     kind: "technical-compilation-admission-capture",
     directory: `${technicalCompilationDirectory}/seals`,
@@ -157,6 +147,7 @@ export function createTechnicalCompilationFoundation(
     new CaptureBackedTechnicalCompilationAdmissionReader({
       snapshots: options.snapshots,
       captures: technicalCompilationSeals,
+      sources: technicalCompilationSources,
     });
   return {
     technicalSourceAnalysis,

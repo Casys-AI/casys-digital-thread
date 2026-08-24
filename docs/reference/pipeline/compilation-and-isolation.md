@@ -25,8 +25,8 @@ PartUsages. It also admits exact RequirementUsage and ConstraintUsage identities
 active `requirements-capture/3.0` only after the capture bytes, provider identities,
 architecture basis and Thread artifact lineage have all been reread. Each anchor element
 carries the exact capture artifact fingerprint that attests it. An active older
-requirements capture is unsupported and fail-closed; a container, label or capture id
-is never expanded into fictional per-requirement anchors.
+requirements capture is unsupported and fail-closed; a container, label or capture id is
+never expanded into fictional per-requirement anchors.
 
 The compiler consumes only closed, fingerprinted inputs: the reread SysML basis, exact
 native source bytes with their analysis, explicit source-symbol-to-SysML bindings and a
@@ -227,7 +227,7 @@ never an implicit requirement verdict, evaluation, violation or action. Replay r
 the durable claim, inner WAL, evidence and Thread successor without another solver call.
 
 `simulate.run-admitted-modelica@1` is the CAD analog: it reopens
-`compile.seal-admission@1` Modelica v2 closed-subset bytes and executes those bytes. It
+`compile.seal-admission@2` Modelica v2 closed-subset bytes and executes those bytes. It
 is not the pinned qualified-kit V1, not recorded `@2`, and does not accept caller
 `modelicaText`. Both CAD execute and admitted Modelica share
 `ReopenAdmittedCompilationSource` → `IsolatedCodeRunner`. One Modelica image family

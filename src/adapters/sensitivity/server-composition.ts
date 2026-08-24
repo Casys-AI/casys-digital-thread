@@ -3,14 +3,13 @@
  *
  * A proof-run evaluation cannot authorize vector correction. Live FEA
  * observations require isolated Build123d plus CalculiX. Base evaluation and
- * edges require SysON. Corrected-source capture is not admission seal.
+ * edges require SysON. Corrections return through AgentResource plus a
+ * successor workspace file revision.
  */
 
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
-import type { TechnicalSourceCapturePort } from "./correction-source/compile-capture-corrected-source-run-executor.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PreviewProjectTechnicalCompilation } from "../../application/use-cases/compile/admission/preview-project-technical-compilation.ts";
-import { PrepareProjectCorrectedAdmissionReview } from "../../application/use-cases/sensitivity/correction-source/prepare-project-corrected-admission-review.ts";
 import { PrepareProjectSensitivityBaseEvaluationReview } from "../../application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts";
 import { PrepareProjectSensitivityStudySealReview } from "../../application/use-cases/sensitivity/study/prepare-project-sensitivity-study-seal-review.ts";
 import { PrepareProjectVectorCorrectionReview } from "../../application/use-cases/sensitivity/vector-correction/prepare-project-vector-correction-review.ts";
@@ -21,10 +20,9 @@ import { IsolatedStepSolverStager } from "../assets/isolated-step-solver-stager.
 import { DockerVolumeAssetStager } from "../assets/container-asset-stager.ts";
 import { findArchitectureArtifact } from "../architecture/renderer/model-write-architecture-run-executor.ts";
 import type { Build123dExecutionComposition } from "../cad/isolated/build123d-execution-composition.ts";
-import { QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE } from "../cad/source/qualified-build123d-source-analyzer.ts";
+
 import type { CaptureBackedTechnicalCompilationAdmissionReader } from "../compile/admission/capture-backed-technical-compilation-admission-reader.ts";
 import {
-  CORRECTED_SOURCE_CAPTURE_DESCRIPTOR,
   CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
@@ -38,10 +36,7 @@ import {
   VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
   VerifyEvaluateSensitivityBaseRunExecutor,
 } from "./base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts";
-import {
-  COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
-  CompileCaptureCorrectedSourceRunExecutor,
-} from "./correction-source/compile-capture-corrected-source-run-executor.ts";
+
 import {
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
   ModelWriteSensitivityEdgesRunExecutor,
@@ -71,7 +66,6 @@ import { solverRuntimeIdentityFromImageReference } from "../../domain/sensitivit
 export {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
-  COMPILE_CAPTURE_CORRECTED_SOURCE_OPERATION,
   DESIGN_APPLY_VECTOR_CORRECTION_OPERATION,
   MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
   VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
@@ -86,7 +80,6 @@ export interface SensitivityCompositionOptions {
   readonly lease: EngineeringProjectRunLease;
   readonly admissions: CaptureBackedTechnicalCompilationAdmissionReader;
   readonly technicalCompilationPreview: PreviewProjectTechnicalCompilation;
-  readonly technicalSourceCapture: TechnicalSourceCapturePort;
   readonly feaProofCaptures: FileCaptureStore<"fea-proof-case">;
   readonly sensitivityCatalogOfferCaptures: FileCaptureStore<
     "sensitivity-catalog-offer"
@@ -107,9 +100,7 @@ export interface SensitivityComposition {
   readonly sensitivityBaseEvaluationReview:
     PrepareProjectSensitivityBaseEvaluationReview;
   readonly sensitivityStudySealReview: PrepareProjectSensitivityStudySealReview;
-  readonly correctedAdmissionReview: PrepareProjectCorrectedAdmissionReview;
   readonly designApplyVectorCorrection: DesignApplyVectorCorrectionRunExecutor;
-  readonly compileCaptureCorrectedSource: CompileCaptureCorrectedSourceRunExecutor;
   readonly analyzeSealSensitivityStudy: AnalyzeSealSensitivityStudyRunExecutor;
   readonly analyzeRunFeaSensitivity:
     | AnalyzeRunFeaSensitivityRunExecutor
@@ -140,9 +131,6 @@ export function createSensitivityComposition(
   const vectorCorrectionCaptures = new FileCaptureStore(
     CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
   );
-  const correctedSourceCaptures = new FileCaptureStore(
-    CORRECTED_SOURCE_CAPTURE_DESCRIPTOR,
-  );
   const catalogReader = new FileCataloguedSensitivityStudyCaseReader();
   const vectorCorrectionReview = new PrepareProjectVectorCorrectionReview({
     snapshots: options.snapshots,
@@ -163,12 +151,6 @@ export function createSensitivityComposition(
       proofCaptures: options.feaProofCaptures,
     },
   );
-  const correctedAdmissionReview = new PrepareProjectCorrectedAdmissionReview({
-    snapshots: options.snapshots,
-    captures: correctedSourceCaptures,
-    admissions: options.admissions,
-    preview: options.technicalCompilationPreview,
-  });
   const designApplyVectorCorrection = new DesignApplyVectorCorrectionRunExecutor(
     {
       projects: options.projects,
@@ -179,18 +161,6 @@ export function createSensitivityComposition(
       lease: options.lease,
     },
   );
-  const compileCaptureCorrectedSource = new CompileCaptureCorrectedSourceRunExecutor({
-    projects: options.projects,
-    commands: options.commands,
-    snapshots: options.snapshots,
-    corrections: vectorCorrectionCaptures,
-    studyCaptures: sensitivityStudyCaptures,
-    admissions: options.admissions,
-    sourceCaptures: options.technicalSourceCapture,
-    captures: correctedSourceCaptures,
-    lease: options.lease,
-    profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
-  });
   const analyzeSealSensitivityStudy = new AnalyzeSealSensitivityStudyRunExecutor({
     projects: options.projects,
     commands: options.commands,
@@ -327,9 +297,7 @@ export function createSensitivityComposition(
     vectorCorrectionReview,
     sensitivityBaseEvaluationReview,
     sensitivityStudySealReview,
-    correctedAdmissionReview,
     designApplyVectorCorrection,
-    compileCaptureCorrectedSource,
     analyzeSealSensitivityStudy,
     analyzeRunFeaSensitivity,
     verifyEvaluateSensitivityBase,

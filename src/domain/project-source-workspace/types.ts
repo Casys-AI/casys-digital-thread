@@ -2,8 +2,8 @@
  * Generic project source workspace: draft file identities, not product evidence.
  *
  * No provider, tool, runtime, image or path authority is representable. An
- * optional capture request is caller-authored parser/source identity only;
- * Vertical 1 does not register or resolve it.
+ * optional capture request is caller-authored registered-profile identity
+ * only (`profileId`). `fileId` is the sole stable technical source id.
  */
 
 import type { AgentResourceReference } from "../resource/agent-resource-capture.ts";
@@ -57,12 +57,12 @@ export class ProjectSourceWorkspaceError extends Error {
 }
 
 /**
- * Caller-authored requested parser/source identity. Grants nothing.
- * Vertical 2 will resolve it fail-closed against the registry.
+ * Caller-authored requested parser/policy identity. Grants nothing until
+ * technical capture resolves it fail-closed against the registry. `fileId`
+ * is the sole stable technical source id inside one project.
  */
 export interface ProjectSourceCaptureRequest {
   readonly profileId: string;
-  readonly sourceId: string;
 }
 
 export interface ProjectSourceFileRevisionRef {
@@ -207,7 +207,6 @@ export interface ProjectSourceSearchQuery {
   readonly domain?: string;
   readonly role?: string;
   readonly profileId?: string;
-  readonly sourceId?: string;
   readonly pageSize?: number;
   readonly cursor?: string;
 }

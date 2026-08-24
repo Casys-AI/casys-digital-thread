@@ -32,6 +32,8 @@ product, every part, or every analysis in one source file or one flat manifest.
 
 Call `project_source_file_put` with the current workspace revision, stable `fileId`,
 module, logical name, role, exact dependencies, and the full resource reference.
+Optional `captureRequest` is exactly `{profileId}`. `fileId` is the sole technical
+source id.
 
 For a revision, keep the same `fileId`, supply the unique active
 `predecessorFileRevision`, and point to newly captured bytes. Sibling files are not
@@ -48,9 +50,20 @@ tombstone; it does not erase history or CAS bytes.
 Tree and search are paginated. Keep their revision-anchored cursor; do not reuse it with
 another revision or filter.
 
-## Current admission boundary
+## Technical capture
 
-Vertical 1 stores optional `captureRequest` as inert requested identity only. Until the
-exact workspace admission bridge is implemented, domain capture remains a separate call
-using the same full `AgentResourceReference`. Never infer admission from workspace
-membership, MIME, path or a successful isolated run.
+Call `project_technical_source_capture` with `projectId`, `workspaceRevision`, `fileId`
+and `fileRevision` only. The named revision must be the active content at that snapshot.
+The server resolves `captureRequest.profileId` and role; it refuses MIME, path,
+`sourceText`, caller `profileId`/`sourceId`/`resourceRef`. Pass `result.reference` to
+`project_technical_compilation_preview`. Never infer admission from workspace
+membership, MIME, path or a successful isolated run. A later correction is a new
+`project_resource_capture` plus a successor file revision, then a new capture.
+
+## Common workspace basis
+
+Keep sources modular: one file per logical assembly, subsystem, analysis or support
+area. A compilation preview may name several locators only when they share one project
+and one workspace snapshot (`workspaceRevision` plus `workspaceEventFingerprint`). After
+a sibling file is bumped, recapture every included file at the new common revision. Do
+not mix historical locators from different workspace heads.

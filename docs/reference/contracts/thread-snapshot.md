@@ -16,8 +16,7 @@ The current schema version is `1.0`. Every value is JSON-compatible and every re
 uses a stable identifier.
 
 Contents: [Subject identity](#subject-identity-and-extensions) ·
-[Root fields](#root-fields) ·
-[Artifact identity](#artifact-identity-and-consumption) ·
+[Root fields](#root-fields) · [Artifact identity](#artifact-identity-and-consumption) ·
 [Freshness, evaluations, and violations](#freshness-evaluations-and-violations) ·
 [Persistence and UI status](#persistence-and-ui-status)
 
@@ -136,7 +135,7 @@ reviewed component catalog: `part-definition`, `part-usage`, `attribute-usage`,
 `contains`, `typed_by`, and `represented_by`. They are emitted only from unique verified
 provider identities, an exact active STEP, and—when declared—its hash-matched GLB
 presentation derivative. AttributeUsage nodes are the catalog `attributes[]` of that
-PartDefinition. A sealed `compile.seal-admission@1` may add `cad-lever` nodes and a
+PartDefinition. A sealed `compile.seal-admission@2` may add `cad-lever` nodes and a
 `parameterizes` edge onto an existing AttributeUsage; a missing unique bind adds
 nothing. The STEP remains authoritative. These nodes do not extend the canonical
 ThreadSnapshot entity vocabulary, create causal provenance, or introduce a second graph

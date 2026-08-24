@@ -32,7 +32,7 @@ export interface GeometryDraftAdmission {
 
 export interface GeometryPartDraftAdmission {
   readonly schemaVersion: typeof GEOMETRY_PART_DRAFT_ADMISSION_SCHEMA;
-  /** Exact `compile.seal-admission@1` artifact identity. */
+  /** Exact `compile.seal-admission@2` artifact identity. */
   readonly artifactId: string;
   readonly fingerprint: ContentFingerprint;
   /** SHA-256 of the exact sealed Build123d source bytes. */
@@ -98,7 +98,11 @@ export function parseGeometryPartDraftAdmission(
       `${path}.artifactId must derive from the admission fingerprint.`,
     );
   }
-  const target = exactRecord(record.target, ["partDefinitionElementId", "label"], `${path}.target`);
+  const target = exactRecord(
+    record.target,
+    ["partDefinitionElementId", "label"],
+    `${path}.target`,
+  );
   const partDefinitionElementId = safeId(
     target.partDefinitionElementId,
     `${path}.target.partDefinitionElementId`,
@@ -151,7 +155,7 @@ export function requireNamedCadLeverInDraftScript(
 
 /**
  * Fail-closed promotion predicate: the persisted draft must name the exact
- * compile.seal-admission@1 artefact and every sealed script must be coté.
+ * compile.seal-admission@2 artefact and every sealed script must be coté.
  */
 export function requireCanonicalGeometryDraftAdmission(
   draft: unknown,

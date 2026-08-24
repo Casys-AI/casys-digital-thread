@@ -8,8 +8,8 @@ writes nothing and grants no MRTR.
 `analyze.seal-sensitivity-study@1` is a provider-free Thread-document seal. It is not a
 solve and not `verify.seal-proof-case@1`. The review and seal live under
 [`src/application/use-cases/sensitivity/study/`](../../../src/application/use-cases/sensitivity/study)
-and [`src/adapters/sensitivity/study/`](../../../src/adapters/sensitivity/study). They are
-not `compile.seal-admission@1`.
+and [`src/adapters/sensitivity/study/`](../../../src/adapters/sensitivity/study). They
+are not `compile.seal-admission@2`.
 
 The MCP process must be the current `server.ts`. A server started before this tool was
 registered will not list it. Restart with `deno task start` or `deno task start:yolo`,
@@ -22,7 +22,7 @@ deno task mcp:call --name=project_sensitivity_study_seal_review \
   --args='{"projectId":"desk-lamp-dl05","caseId":"dl05-arm-thickness-isolated"}'
 ```
 
-1. After a unique readable `compile.seal-admission@1` admission exists on the current
+1. After a unique readable `compile.seal-admission@2` admission exists on the current
    Thread tip, call `project_sensitivity_study_seal_review`.
 2. Read `selected` first. Paste `next.append.arguments` into `project_change_append`,
    then `next.propose.arguments` into `project_decision_propose`. The server-owned

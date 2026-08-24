@@ -107,8 +107,9 @@ Application use case for project-from-intent and reviewed brief revisions
 
 #### [`src/tools/project-control/demo-loop-tools.ts`](../../../src/tools/project-control/demo-loop-tools.ts)
 
-Read-only `project_sensitivity_base_evaluation_review` and
-`project_corrected_admission_review`
+Read-only `project_sensitivity_base_evaluation_review`. Corrections return through
+`project_resource_capture` plus a successor workspace file revision; there is no
+corrected-admission review tool
 
 #### [`docs/how-to/behave/run-the-behave-loop-from-zero.md`](../../how-to/behave/run-the-behave-loop-from-zero.md)
 

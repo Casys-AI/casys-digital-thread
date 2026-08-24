@@ -1,5 +1,5 @@
 /**
- * Resolve the unique compile.seal-admission@1 cadSource a later
+ * Resolve the unique compile.seal-admission@2 cadSource a later
  * `analyze.seal-sensitivity-study@1` MRTR may bind.
  *
  * cadSource is an admission artifact URI + sha256. A cad-model,
@@ -7,11 +7,12 @@
  * 1.0 is a lookalike and never a cadSource.
  */
 
+import { COMPILE_SEAL_ADMISSION_PRODUCER_TOOL } from "../../compile/admission/technical-compilation-proposal.ts";
 import { locateModuleLevelNumericBinding } from "./sensitivity-source-substitution.ts";
 import type { ThreadArtifact, ThreadSnapshot } from "../../thread/thread-snapshot.ts";
 
 export const SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL =
-  "compile.seal-admission@1" as const;
+  COMPILE_SEAL_ADMISSION_PRODUCER_TOOL;
 
 const REJECTED_CAD_SOURCE_TOOLS = new Set([
   "design.write-geometry@1",

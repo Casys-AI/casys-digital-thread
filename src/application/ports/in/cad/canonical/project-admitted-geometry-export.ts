@@ -1,7 +1,7 @@
 /**
  * Inward port for exporting geometry from one sealed compilation admission.
  *
- * After `compile.seal-admission@1`, callers name only the exact project,
+ * After `compile.seal-admission@2`, callers name only the exact project,
  * Thread basis and admission artefact. They cannot supply source text,
  * provider, tool, path, image or formats. The result is a geometry DRAFT for
  * later `design.write-geometry@1`; it is not Thread state.

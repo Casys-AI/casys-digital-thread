@@ -62,15 +62,15 @@ table auto-confirms positive `project_brief_confirm`, `project_decision_approve`
 `project_agent_run_cancel`, `project_work_item_abandon`, and reviewed human-only
 `project_agent_run_execute`. Those paths still call the canonical command services or
 the registered executor and persist the fixed origin
-`{ kind: "human", actorId: "local-yolo:startup-opt-in" }`
-plus an explicit YOLO rationale; they do not fabricate an MCP elicitation response.
+`{ kind: "human", actorId: "local-yolo:startup-opt-in" }` plus an explicit YOLO
+rationale; they do not fabricate an MCP elicitation response.
 
 This mode does not auto-reject. A human-only run still has to be a reviewed, queued,
 registered operation before YOLO may execute it under that human origin. The mode does
-not bypass compilation admission, qualified execution
-profiles, local microVM isolation, WAL/recovery, content hashing, output validation,
-cleanup or canonical-promotion review. It is an approval-loop convenience, not an
-execution or evidence shortcut; no environment variable enables it implicitly.
+not bypass compilation admission, qualified execution profiles, local microVM isolation,
+WAL/recovery, content hashing, output validation, cleanup or canonical-promotion review.
+It is an approval-loop convenience, not an execution or evidence shortcut; no
+environment variable enables it implicitly.
 
 ## Local endpoints
 
@@ -170,8 +170,8 @@ then delegates over private stdio to a separately packaged Chat Host. That host 
 owns the exact acpx session handles and exact agent adapter; it reaches the same Casys
 server on `127.0.0.1:3020`. It receives one Workbench-projected project identifier per
 conversation and revalidates it. Its retained transcript store is separate from
-Thread/CAS and never becomes engineering truth. ACP permission and server-validated
-MRTR remain distinct interactions.
+Thread/CAS and never becomes engineering truth. ACP permission and server-validated MRTR
+remain distinct interactions.
 
 `deno task start` exposes the MCP project surface used by the paired agent. Agents can
 inspect the same active project, propose an input, elicit an exact human decision in the
@@ -201,7 +201,7 @@ re-extracts human-approved integer scalar constraints against an exact architect
 basis; decimal literals are rejected before SysON until the provider can round-trip
 `LiteralRational`. The generic `design.write-geometry@1` seals the hashes from a
 separately previewed and human-approved MCP sandbox draft; it never re-executes
-build123d. The isolated sibling is `compile.seal-admission@1` then
+build123d. The isolated sibling is `compile.seal-admission@2` then
 `design.execute-build123d@1`, which publishes a documentary capture and a noncanonical
 draft only. These operations are product-independent but deliberately bounded: they do
 not provide a generic simulator, measurement source, requirement evaluator,
@@ -226,12 +226,12 @@ transition, invalidation, proposed work item, or automatic rerun.
 names only `projectId`. Before X09 work exists, the server selects the unique completed
 `analyze.evaluate-cross-domain-impact@1` activity leaf, proves its exact completed
 document on the unique current Thread tip, then recrosses Brief V2 gates and existing
-work-item claims into canonical MRTR parameters.
-`decide.accept-cross-domain-impact@1` is the human-only decision that applies those
-already-proposed gate-claim statuses onto existing work-item claims. X07/X08 records
-`workItemInvalidations` and `rerunProposals` as `none`; this decision does not add,
-invalidate, or queue work items. It writes one documentary Thread successor and mutates
-project gate claims atomically. It queues no rerun and calls no provider.
+work-item claims into canonical MRTR parameters. `decide.accept-cross-domain-impact@1`
+is the human-only decision that applies those already-proposed gate-claim statuses onto
+existing work-item claims. X07/X08 records `workItemInvalidations` and `rerunProposals`
+as `none`; this decision does not add, invalidate, or queue work items. It writes one
+documentary Thread successor and mutates project gate claims atomically. It queues no
+rerun and calls no provider.
 
 `analyze.evaluate-mechanical-preservation@1` is the later provider-free X11 control. The
 caller queues only the registered operation (approvedBrief binding). The X11 work's
@@ -240,21 +240,21 @@ an ancestor of the unique current Thread tip only while exact descendant lineage
 byte-identical, `fresh`, unarchived artifact still hold. The server then recrosses the
 exact X08 evaluation, approved Brief V2, and the reviewed independence assertion before
 selecting the unique accepted L5 closeout whose `inputArtifactIds` name the exact
-mechanical execution
-evidence from that assertion/X08 recross. Unrelated accepted closeouts for other FEA
-executions do not block; zero or multiple closeouts for the same asserted evidence stay
-`impact-unresolved`. That closeout's named identities (`canonicalStep`, `sealedProof`,
-`executionEvidence`, `evaluationCapture`) select the FEA artifacts; a sibling evidence
-from the same FEA run is not an L4 substitute. Canonical STEP is recrossed as the unique
-cad-asset sibling owned by the cad-model attached to a completed
-`design.write-geometry@1` run; the STEP producer is the sandbox export, not that
-write-geometry evidence. An isolated, preview, arbitrary, or ambiguously owned STEP
-stays `impact-unresolved`. Thread consumptions are recrossed from the snapshot
-(`consume-<input>-by-<closeout>`), never invented from the closeout JSON. Producer runs
-are recrossed against the project ledger. `carried-forward` is legal only when there is
-no mechanical causal edge and the assertion still covers those exact FEA inputs;
-otherwise the capture keeps literal `impact-unresolved`. Absence of an edge is never
-proof. X11 does not call CalculiX, mutate claims, or create X10 work items or reruns.
+mechanical execution evidence from that assertion/X08 recross. Unrelated accepted
+closeouts for other FEA executions do not block; zero or multiple closeouts for the same
+asserted evidence stay `impact-unresolved`. That closeout's named identities
+(`canonicalStep`, `sealedProof`, `executionEvidence`, `evaluationCapture`) select the
+FEA artifacts; a sibling evidence from the same FEA run is not an L4 substitute.
+Canonical STEP is recrossed as the unique cad-asset sibling owned by the cad-model
+attached to a completed `design.write-geometry@1` run; the STEP producer is the sandbox
+export, not that write-geometry evidence. An isolated, preview, arbitrary, or
+ambiguously owned STEP stays `impact-unresolved`. Thread consumptions are recrossed from
+the snapshot (`consume-<input>-by-<closeout>`), never invented from the closeout JSON.
+Producer runs are recrossed against the project ledger. `carried-forward` is legal only
+when there is no mechanical causal edge and the assertion still covers those exact FEA
+inputs; otherwise the capture keeps literal `impact-unresolved`. Absence of an edge is
+never proof. X11 does not call CalculiX, mutate claims, or create X10 work items or
+reruns.
 
 Lookalike traps for agents: [lookalike traps](../agent/lookalike-traps.md).
 

@@ -46,6 +46,7 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../../domain/kernel/deterministic-json.ts";
+import { sampleAdmissionSourceWorkspaceFields } from "../../../../testing/technical-source-capture-test-support.ts";
 import {
   PrepareProjectBuild123dExecutionReview,
   ProjectBuild123dExecutionReviewError,
@@ -518,6 +519,9 @@ async function harness(): Promise<Harness> {
           digest: "4".repeat(64),
         },
         analysisFingerprint,
+        ...sampleAdmissionSourceWorkspaceFields(analysis.source.id, {
+          projectId: "project.box",
+        }),
       }],
       bindings: compiled.document.inputManifest.bindings,
       compilationProfileRequests: [{
@@ -534,7 +538,7 @@ async function harness(): Promise<Harness> {
     }),
   );
   const artifactFingerprint = await sha256Fingerprint({
-    schemaVersion: "technical-compilation-admission-capture/1.0",
+    schemaVersion: "technical-compilation-admission-capture/2.0",
     projectId: "project.box",
     compilation: compiled.fingerprint,
   });
@@ -550,7 +554,7 @@ async function harness(): Promise<Harness> {
     artifactFingerprint,
   };
   const reopened: ReopenedTechnicalCompilationAdmission = {
-    schemaVersion: "technical-compilation-admission-capture/1.0",
+    schemaVersion: "technical-compilation-admission-capture/2.0",
     operation: COMPILE_SEAL_ADMISSION_OPERATION,
     trustedRunId: "run.compile.seal",
     decisionId: "decision.compile.seal",

@@ -17,6 +17,11 @@ import type {
   TechnicalCompilationSourceReader,
 } from "../../../ports/out/compile/admission/technical-compilation-source-reader.ts";
 import {
+  assertTechnicalCompilationSourcesShareExactWorkspace,
+  validateTechnicalProjectSourceAnchor,
+  validateTechnicalSourceAnalysisCaptureLocator,
+} from "../../../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import {
   encodeTechnicalCompilationAdmissionParameters,
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_LIMITS,
@@ -62,7 +67,6 @@ import {
   literalValue,
   nonEmptyArray,
   nonEmptyText,
-  positiveInteger,
   rejectDuplicates,
   safeId,
   safeVersion,
@@ -255,10 +259,16 @@ export class PreviewProjectTechnicalCompilation
         reopenedSources.map((item) => item.source.analysis.source.id),
         "$reopenedSources source ids",
       );
+      assertTechnicalCompilationSourcesShareExactWorkspace(
+        reopenedSources.map((item) => item.provenance),
+        command.projectId,
+        "$reopenedSources",
+      );
     } catch (cause) {
+      if (cause instanceof ProjectTechnicalCompilationPreviewError) throw cause;
       throw previewError(
         "source_integrity_failed",
-        "Reopened source captures contain duplicate technical source ids.",
+        "Reopened source captures are not a coherent project-source bundle.",
         cause,
       );
     }
@@ -528,7 +538,10 @@ async function validateDraftSourceCaptures(
         path,
       );
       const sourceId = safeId(capture.sourceId, `${path}.sourceId`);
-      const reference = opaqueReference(capture.reference, `${path}.reference`);
+      const reference = validateTechnicalSourceAnalysisCaptureLocator(
+        capture.reference,
+        `${path}.reference`,
+      );
       const referenceFingerprint = parseFingerprint(
         capture.referenceFingerprint,
         `${path}.referenceFingerprint`,
@@ -580,7 +593,7 @@ function parseCommand(value: unknown): ProjectTechnicalCompilationPreviewCommand
     "$command.sourceRefs",
   )
     .map((reference, index) =>
-      opaqueReference(
+      validateTechnicalSourceAnalysisCaptureLocator(
         reference,
         `$command.sourceRefs[${index}]`,
       )
@@ -592,79 +605,6 @@ function parseCommand(value: unknown): ProjectTechnicalCompilationPreviewCommand
       : { basis: parseExactThreadSnapshotBasis(root.basis, "$command.basis") }),
     sourceRefs,
   });
-}
-
-function opaqueReference(
-  value: unknown,
-  path: string,
-): Readonly<Record<string, unknown>> {
-  if (
-    value === null || typeof value !== "object" || Array.isArray(value) ||
-    Object.keys(value).length === 0
-  ) {
-    throw new TypeError(`${path} must be a non-empty opaque reference object.`);
-  }
-  return cloneJsonReference(value, path, new Set()) as Readonly<
-    Record<string, unknown>
-  >;
-}
-
-function cloneJsonReference(
-  value: unknown,
-  path: string,
-  ancestors: Set<object>,
-): unknown {
-  if (
-    value === null || typeof value === "string" || typeof value === "boolean"
-  ) return value;
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new TypeError(`${path} must be finite.`);
-    return value;
-  }
-  if (typeof value !== "object") {
-    throw new TypeError(`${path} must contain JSON values only.`);
-  }
-  if (ancestors.has(value)) throw new TypeError(`${path} must not be cyclic.`);
-  ancestors.add(value);
-  try {
-    if (Array.isArray(value)) {
-      const ownKeys = Reflect.ownKeys(value);
-      if (
-        ownKeys.length !== value.length + 1 ||
-        !ownKeys.includes("length") ||
-        !Array.from(
-          { length: value.length },
-          (_, index) => Object.hasOwn(value, index),
-        ).every(Boolean) ||
-        ownKeys.some((key) =>
-          key !== "length" &&
-          (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key) ||
-            Number(key) >= value.length)
-        )
-      ) {
-        throw new TypeError(
-          `${path} must be a dense JSON array without custom own properties.`,
-        );
-      }
-      return deepFreeze(
-        value.map((item, index) =>
-          cloneJsonReference(item, `${path}[${index}]`, ancestors)
-        ),
-      );
-    }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new TypeError(`${path} must contain plain JSON records only.`);
-    }
-    const record = value as Record<string, unknown>;
-    const result: Record<string, unknown> = Object.create(null);
-    for (const key of Object.keys(record).sort(compareText)) {
-      result[key] = cloneJsonReference(record[key], `${path}.${key}`, ancestors);
-    }
-    return deepFreeze(result);
-  } finally {
-    ancestors.delete(value);
-  }
 }
 
 function boundedCardinality(
@@ -752,6 +692,8 @@ function parseSourceProvenance(
       "sourceFingerprint",
       "captureFingerprint",
       "analysisFingerprint",
+      "projectSource",
+      "locator",
     ],
     path,
   );
@@ -789,6 +731,14 @@ function parseSourceProvenance(
     analysisFingerprint: parseFingerprint(
       provenance.analysisFingerprint,
       `${path}.analysisFingerprint`,
+    ),
+    projectSource: validateTechnicalProjectSourceAnchor(
+      provenance.projectSource,
+      `${path}.projectSource`,
+    ),
+    locator: validateTechnicalSourceAnalysisCaptureLocator(
+      provenance.locator,
+      `${path}.locator`,
     ),
   });
 }
@@ -910,6 +860,8 @@ function deriveAdmissionParameters(
           sourceFingerprint: reopened.provenance.sourceFingerprint,
           captureFingerprint: reopened.provenance.captureFingerprint,
           analysisFingerprint: reopened.provenance.analysisFingerprint,
+          projectSource: reopened.provenance.projectSource,
+          locator: reopened.provenance.locator,
         };
       }),
       bindings: compiled.document.inputManifest.bindings,

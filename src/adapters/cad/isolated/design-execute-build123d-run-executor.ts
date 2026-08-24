@@ -71,6 +71,7 @@ import {
 import {
   validateTechnicalCompilationDocument,
 } from "../../../domain/compile/admission/technical-compilation.ts";
+import { COMPILE_SEAL_ADMISSION_PRODUCER_TOOL } from "../../../domain/compile/admission/technical-compilation-proposal.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -1236,7 +1237,7 @@ function exactAdmissionArtifact(
     fingerprintsEqual(artifact.fingerprint, fingerprint) &&
     artifact.freshness.status === "fresh" &&
     artifact.producer.serverId === "digital-thread" &&
-    artifact.producer.tool === "compile.seal-admission@1"
+    artifact.producer.tool === COMPILE_SEAL_ADMISSION_PRODUCER_TOOL
   );
   if (matches.length !== 1) {
     throw invalidTransition(

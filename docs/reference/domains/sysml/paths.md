@@ -8,15 +8,15 @@ Lookalike table: [lookalike traps](../../agent/lookalike-traps.md).
 
 ![Renderer path writes SysON; agent-authored path seals a Thread document only.](../../../assets/sysml-two-paths.svg)
 
-| Facet | Server renderer | Agent-authored closed subset |
-| ----- | --------------- | ---------------------------- |
-| Entry | Human-signed flat MRTR: `architecture.package`, `system.name`, `component.<slug>.(name\|usage\|parent)`, `attribute.<slug>.(name\|parent)` | `.sysml` UTF-8 via `project_resource_capture` → full `resourceRef` → `project_architecture_sysml_source_capture` → `project_architecture_sysml_preview` (`sourceRef` only) |
-| Bytes | Server renders SysML; the agent supplies none | Exact reopened UTF-8; public tools take no `sourceText` |
-| Envelope | `sysml-source-capture/1.0` | `architecture-sysml-source-analysis-capture/1.0` |
-| Operation | `model.write-architecture@1` | `model.seal-architecture-sysml@1` |
-| SysON | `syson_element_insert_sysml` then reread | Never called |
-| Thread | `architecture-capture/3.0` plus `sysml-model` artifact | Documentary Thread **document** plus `architecture-sysml-seal-capture/1.0` |
-| Success is not | Agent-authored SysML, compilation admission, a verdict | SysON write, `compile.seal-admission@1`, renderer envelope, Product Structure |
+| Facet          | Server renderer                                                                                                                            | Agent-authored closed subset                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entry          | Human-signed flat MRTR: `architecture.package`, `system.name`, `component.<slug>.(name\|usage\|parent)`, `attribute.<slug>.(name\|parent)` | `.sysml` UTF-8 via `project_resource_capture` → full `resourceRef` → `project_architecture_sysml_source_capture` → `project_architecture_sysml_preview` (`sourceRef` only) |
+| Bytes          | Server renders SysML; the agent supplies none                                                                                              | Exact reopened UTF-8; public tools take no `sourceText`                                                                                                                    |
+| Envelope       | `sysml-source-capture/1.0`                                                                                                                 | `architecture-sysml-source-analysis-capture/1.0`                                                                                                                           |
+| Operation      | `model.write-architecture@1`                                                                                                               | `model.seal-architecture-sysml@1`                                                                                                                                          |
+| SysON          | `syson_element_insert_sysml` then reread                                                                                                   | Never called                                                                                                                                                               |
+| Thread         | `architecture-capture/3.0` plus `sysml-model` artifact                                                                                     | Documentary Thread **document** plus `architecture-sysml-seal-capture/1.0`                                                                                                 |
+| Success is not | Agent-authored SysML, compilation admission, a verdict                                                                                     | SysON write, `compile.seal-admission@2`, renderer envelope, Product Structure                                                                                              |
 
 ```text
 human MRTR (flat architecture.* / component.* / attribute.*)
@@ -41,23 +41,26 @@ How-to for the second path:
 
 These three identities stay distinct:
 
-| Identity | Schema / URI namespace | What it names |
-| -------- | ---------------------- | ------------- |
-| Raw resource digest | `agent-resource-capture/1.0` · `casys://agent-resource-capture/sha256/<digest>` | Exact uploaded bytes |
+| Identity             | Schema / URI namespace                                                                                                | What it names                                                         |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Raw resource digest  | `agent-resource-capture/1.0` · `casys://agent-resource-capture/sha256/<digest>`                                       | Exact uploaded bytes                                                  |
 | Architecture capture | `architecture-sysml-source-analysis-capture/1.0` · `architecture-sysml-source` + `architecture-sysml-source-analysis` | Closed-subset source bytes plus analysis under the registered profile |
-| Thread seal | `architecture-sysml-seal-capture/1.0` · `casys://architecture-sysml-seal-capture/sha256/<digest>` | Documentary document after signed `model.seal-architecture-sysml@1` |
+| Thread seal          | `architecture-sysml-seal-capture/1.0` · `casys://architecture-sysml-seal-capture/sha256/<digest>`                     | Documentary document after signed `model.seal-architecture-sysml@1`   |
 
 Same payload SHA-256 does not make them the same object. The seal executor reopens the
 capture identities; it does not insert into SysON and it does not reuse
-`compile.seal-admission@1`. Workbench authority on that document is `documentary`.
+`compile.seal-admission@2`. Workbench authority on that document is `documentary`.
 
-`compile.seal-admission@1` admits closed-language CAD / Modelica / SPICE bytes for later
+`compile.seal-admission@2` admits closed-language CAD / Modelica / SPICE bytes for later
 isolated execution. It is not an architecture SysML seal and does not write SysON.
 
 ## Adjacent writers (links only)
 
 Not architecture-path substitutes:
 
-- Seed container: [`architecture.seed-syson-model@2`](../../../how-to/behave/sequence-seed-work-item.md)
-- Scalar requirements: [`model.write-requirements@1`](coverage.md#surface-implemented-today)
-- Sensitivity edges: [`model.write-sensitivity-edges@1`](../../agent/lookalike-traps.md#fea-sensitivity-correction)
+- Seed container:
+  [`architecture.seed-syson-model@2`](../../../how-to/behave/sequence-seed-work-item.md)
+- Scalar requirements:
+  [`model.write-requirements@1`](coverage.md#surface-implemented-today)
+- Sensitivity edges:
+  [`model.write-sensitivity-edges@1`](../../agent/lookalike-traps.md#fea-sensitivity-correction)

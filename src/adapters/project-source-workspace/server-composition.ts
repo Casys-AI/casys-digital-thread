@@ -18,6 +18,7 @@ export const DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY =
 
 export interface ProjectSourceWorkspaceCompositionOptions {
   readonly directory?: string;
+  readonly store?: FileProjectSourceWorkspaceStore;
   readonly projects: ProjectExistenceReader;
   readonly resources: AgentResourceExactReopener;
 }
@@ -30,9 +31,10 @@ export interface ProjectSourceWorkspaceComposition {
 export function createProjectSourceWorkspaceComposition(
   options: ProjectSourceWorkspaceCompositionOptions,
 ): ProjectSourceWorkspaceComposition {
-  const store = new FileProjectSourceWorkspaceStore(
-    options.directory ?? DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY,
-  );
+  const store = options.store ??
+    new FileProjectSourceWorkspaceStore(
+      options.directory ?? DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY,
+    );
   return {
     store,
     sourceWorkspace: new ProjectSourceWorkspaceUseCases({

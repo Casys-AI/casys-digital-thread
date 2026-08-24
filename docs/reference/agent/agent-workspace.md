@@ -107,24 +107,24 @@ refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 
 ### Project lifecycle
 
-| Tool                                                               | Authority        | Effect                                                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `project_start`                                                    | Agent mutation   | Create schema-3.0 project from plain-language intent                                                                                                                                                                                                                                 |
-| `project_snapshot`                                                 | Read             | Current project, decisions, runs, receipts. Completed FEA/DFM/sensitivity-base runs carry a read-time `join` from Thread `evaluations[]`. Sensitivity, DFM, printability, print-estimate and FEA runs carry `observations` from Thread `observations[]`. Neither field is persisted. |
-| `project_question_propose`                                         | Agent mutation   | One framing question                                                                                                                                                                                                                                                                 |
-| `project_answer_record`                                            | Agent or human   | Sourced answer or explicit unknown                                                                                                                                                                                                                                                   |
-| `project_brief_propose`                                            | Agent mutation   | Living brief revision; not canonical. Result carries `nextTool`, `briefSnapshotId`, `briefRevision`, `inputFingerprint` for confirm                                                                                                                                                  |
-| `project_brief_confirm`                                            | Human MRTR       | Promote that exact pending brief                                                                                                                                                                                                                                                     |
-| `project_plan_publish`                                             | Agent mutation   | Unexecuted plan from approved brief only                                                                                                                                                                                                                                             |
-| `project_change_append`                                            | Agent mutation   | Append-only next change; never rewrite history. Seed `dependsOnWorkItemIds` must name the unique baseline work item.                                                                                                                                                                 |
-| `project_decision_propose`                                         | Agent mutation   | Typed proposal                                                                                                                                                                                                                                                                       |
-| `project_decision_approve` / `project_decision_reject`             | Human MRTR       | Exact proposal only                                                                                                                                                                                                                                                                  |
-| `project_agent_run_queue`                                          | Bounded mutation | Server derives run id, basis, summary                                                                                                                                                                                                                                                |
-| `project_agent_run_execute`                                        | Server dispatch  | One queued registered operation. Same read-time `join` / `observations` hoist as `project_snapshot`.                                                                                                                                                                                 |
-| `project_agent_run_cancel`                                         | Human MRTR       | Still-queued run only                                                                                                                                                                                                                                                                |
-| `project_work_item_abandon`                                        | Human MRTR       | Ready or waiting work items with no run or evidence, plus pending decisions. No Thread snapshot.                                                                                                                                                                                     |
-| `project_agent_run_plan_get`                                       | Read             | Inspect sealed `resolved-operation-plan/2.0`; does not execute                                                                                                                                                                                                                       |
-| `cockpit_focus_set` / `cockpit_focus_snapshot`                     | UI routing       | Point the cockpit at one durable project                                                                                                                                                                                                                                             |
+| Tool                                                   | Authority        | Effect                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `project_start`                                        | Agent mutation   | Create schema-3.0 project from plain-language intent                                                                                                                                                                                                                                 |
+| `project_snapshot`                                     | Read             | Current project, decisions, runs, receipts. Completed FEA/DFM/sensitivity-base runs carry a read-time `join` from Thread `evaluations[]`. Sensitivity, DFM, printability, print-estimate and FEA runs carry `observations` from Thread `observations[]`. Neither field is persisted. |
+| `project_question_propose`                             | Agent mutation   | One framing question                                                                                                                                                                                                                                                                 |
+| `project_answer_record`                                | Agent or human   | Sourced answer or explicit unknown                                                                                                                                                                                                                                                   |
+| `project_brief_propose`                                | Agent mutation   | Living brief revision; not canonical. Result carries `nextTool`, `briefSnapshotId`, `briefRevision`, `inputFingerprint` for confirm                                                                                                                                                  |
+| `project_brief_confirm`                                | Human MRTR       | Promote that exact pending brief                                                                                                                                                                                                                                                     |
+| `project_plan_publish`                                 | Agent mutation   | Unexecuted plan from approved brief only                                                                                                                                                                                                                                             |
+| `project_change_append`                                | Agent mutation   | Append-only next change; never rewrite history. Seed `dependsOnWorkItemIds` must name the unique baseline work item.                                                                                                                                                                 |
+| `project_decision_propose`                             | Agent mutation   | Typed proposal                                                                                                                                                                                                                                                                       |
+| `project_decision_approve` / `project_decision_reject` | Human MRTR       | Exact proposal only                                                                                                                                                                                                                                                                  |
+| `project_agent_run_queue`                              | Bounded mutation | Server derives run id, basis, summary                                                                                                                                                                                                                                                |
+| `project_agent_run_execute`                            | Server dispatch  | One queued registered operation. Same read-time `join` / `observations` hoist as `project_snapshot`.                                                                                                                                                                                 |
+| `project_agent_run_cancel`                             | Human MRTR       | Still-queued run only                                                                                                                                                                                                                                                                |
+| `project_work_item_abandon`                            | Human MRTR       | Ready or waiting work items with no run or evidence, plus pending decisions. No Thread snapshot.                                                                                                                                                                                     |
+| `project_agent_run_plan_get`                           | Read             | Inspect sealed `resolved-operation-plan/2.0`; does not execute                                                                                                                                                                                                                       |
+| `cockpit_focus_set` / `cockpit_focus_snapshot`         | UI routing       | Point the cockpit at one durable project                                                                                                                                                                                                                                             |
 
 Successor closeout of a leftover ready work item is **not** an MCP tool. Inspect or
 apply with `deno task recover:work-item-successor`. Default is inspect. `--apply` writes
@@ -133,18 +133,18 @@ through the same command service. See
 
 ### Architecture SysML frontend (agent-authored)
 
-| Tool                                        | Writes               | Grant                                                         |
-| ------------------------------------------- | -------------------- | ------------------------------------------------------------- |
+| Tool                                        | Writes               | Grant                                                                                                                                        |
+| ------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `project_architecture_sysml_source_capture` | Draft CAS only       | `profileId` + `sourceId` + full `resourceRef` from `project_resource_capture`. Opaque analysis reference. No project, Thread, MRTR, or SysON |
-| `project_architecture_sysml_preview`        | None (or reopen CAS) | Opaque `sourceRef` from that capture. Diagnostics + optional `decisionParameters`. Not Thread state |
+| `project_architecture_sysml_preview`        | None (or reopen CAS) | Opaque `sourceRef` from that capture. Diagnostics + optional `decisionParameters`. Not Thread state                                          |
 
 How-to: [Author architecture SysML](../../how-to/compile/author-architecture-sysml.md).
 Upload: [Capture an agent resource](../../how-to/compile/capture-an-agent-resource.md).
 
 ### Agent resource ingress (draft MCP resource)
 
-| Tool                       | Writes        | Grant                                                                                                                                                                                                 |
-| -------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tool                       | Writes         | Grant                                                                                                                                                                                                                                              |
+| -------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `project_resource_capture` | Draft CAS only | One small agent-authored file as an MCP resource. Name + MIME + exactly one of UTF-8 `text` or canonical padded `blob`. Opaque `reference` + `resources/read`. Known method-sheet schemas interpret through existing typed stores. `grants: none`. |
 
 The caller never supplies a path, provider, runtime, project, CAS URI, fingerprint or
@@ -154,8 +154,8 @@ full `resourceRef` only — not `sourceText`. Unknown files stay raw. A declared
 `modelica-thermal-method-sheet/1.0` or `electrical-observation-method-sheet/1.0` that
 fails validation stays `unresolved` without a typed reference. A valid known sheet
 yields `interpretation.typed.fingerprint` for the existing seal-review tools. This is
-**not** admission and must not be passed to a microVM;
-`ReopenAdmittedCompilationSource` remains the isolated-execution authority.
+**not** admission and must not be passed to a microVM; `ReopenAdmittedCompilationSource`
+remains the isolated-execution authority.
 
 How-to: [Capture an agent resource](../../how-to/compile/capture-an-agent-resource.md).
 Why: [MCP resource ingress](../../explanations/runtime/mcp-resource-ingress.md).
@@ -165,22 +165,22 @@ Why: [MCP resource ingress](../../explanations/runtime/mcp-resource-ingress.md).
 Draft authoring state for one Engineering Project. Not Thread evidence. `grants: none`.
 Contract: [project source workspace](../domains/project-source-workspace/README.md).
 
-| Tool | Authority | Effect |
-| --- | --- | --- |
-| `project_source_module_put` | Agent mutation | Create or revise one module at an exact workspace revision |
-| `project_source_file_put` | Agent mutation | Create or revise one file after reopening a full `resourceRef` from `project_resource_capture`. Optional `captureRequest` is caller-authored parser/source identity, stored inertly; Vertical 1 does not register it. Never compilation or runtime selection. No path. |
-| `project_source_file_remove` | Agent mutation | Tombstone the unique active file revision. History and CAS bytes remain |
-| `project_source_workspace_snapshot` | Read | Identity, revision, roots, counts. Does not inline every file |
-| `project_source_tree` | Read | Immediate children of one module at an exact revision; bounded page; mismatched cursor fails closed |
-| `project_source_search` | Read | Filter one exact revision; paginated; mismatched cursor fails closed |
-| `project_source_file_read` | Read | Exact file revision: content carries `AgentResourceReference` (bytes via `resources/read`); tombstone has no bytes |
+| Tool                                | Authority      | Effect                                                                                                                                                                                                                                                                 |
+| ----------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project_source_module_put`         | Agent mutation | Create or revise one module at an exact workspace revision                                                                                                                                                                                                             |
+| `project_source_file_put`           | Agent mutation | Create or revise one file after reopening a full `resourceRef` from `project_resource_capture`. Optional `captureRequest` is caller-authored parser/source identity, stored inertly; Vertical 1 does not register it. Never compilation or runtime selection. No path. |
+| `project_source_file_remove`        | Agent mutation | Tombstone the unique active file revision. History and CAS bytes remain                                                                                                                                                                                                |
+| `project_source_workspace_snapshot` | Read           | Identity, revision, roots, counts. Does not inline every file                                                                                                                                                                                                          |
+| `project_source_tree`               | Read           | Immediate children of one module at an exact revision; bounded page; mismatched cursor fails closed                                                                                                                                                                    |
+| `project_source_search`             | Read           | Filter one exact revision; paginated; mismatched cursor fails closed                                                                                                                                                                                                   |
+| `project_source_file_read`          | Read           | Exact file revision: content carries `AgentResourceReference` (bytes via `resources/read`); tombstone has no bytes                                                                                                                                                     |
 
 ### LED-driver human source
 
-| Tool                                 | Writes         | Grant                                                                                                                                      |
-| ------------------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `project_led_driver_source_capture`  | Draft CAS only | Full `resourceRef` from `project_resource_capture`. `led-driver-source-capture-review/1.0`. Pass `result.reference` only. No project, Thread, D1, provider, tool, or ngspice |
-| `project_led_driver_source_review`   | None           | Reopen one opaque `led-driver-source-capture/1.0` locator. Unknowns stay `unresolved`. Grants none. Never pass `sourceText` or the review envelope |
+| Tool                                | Writes         | Grant                                                                                                                                                                        |
+| ----------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project_led_driver_source_capture` | Draft CAS only | Full `resourceRef` from `project_resource_capture`. `led-driver-source-capture-review/1.0`. Pass `result.reference` only. No project, Thread, D1, provider, tool, or ngspice |
+| `project_led_driver_source_review`  | None           | Reopen one opaque `led-driver-source-capture/1.0` locator. Unknowns stay `unresolved`. Grants none. Never pass `sourceText` or the review envelope                           |
 
 ### Brief compilation (approved brief → proposal grammar)
 
@@ -205,8 +205,8 @@ cycle — yields `unresolved` with diagnostics and **no** parameters, never a pa
 compiled proposal.
 
 One code-owned normalisation exists: a threshold declared in `MPa` is rescaled to `Pa`
-and the provenance entry names the transformation (see [Oracle units](../providers/oracle-units.md)).
-SysON cannot round-trip `MPa` (probe
+and the provenance entry names the transformation (see
+[Oracle units](../providers/oracle-units.md)). SysON cannot round-trip `MPa` (probe
 `deno task probe:requirement-units --unit=MPa --type=PressureValue`, 2026-08-14,
 `type_mismatch`), and refusing outright would only move the same conversion into the
 agent's head where nothing records it.
@@ -226,19 +226,18 @@ How-to: [Compile brief parameters](../../how-to/compile/compile-brief-parameters
 | `project_fea_isolated_run_review` | None           | Isolated `@3` bindings plus guarded hops. `geometry` = canonical part STEP              |
 
 Capture takes only a full `resourceRef` from `project_resource_capture`
-(`mechanical-proof-case-source/1.0` JSON). The returned case fingerprint may differ
-from the raw SHA. The seal review
-takes `projectId` + opaque `caseRef.fingerprint` and optional false-by-default
-`sensitivityCatalogOptIn`. The server selects the unique current Thread tip — not
-`latest` — and recrosses unique canonical part STEP, CAD provenance, SysON requirements,
-and derived work/decision identities. There is no `fea.run.*` grammar: numbers stay in
-the sealed proof; the isolated `@3` run admits thread-entity bindings. A true
-sensitivity opt-in is accepted only when the exact admission source matches the proof
-CAD definition and its unique causal lever and `result` bindings join the proof target.
-The same MRTR signs the offer digest and admission artifact. The executor reopens both
-and publishes a separate catalog-offer document derived from the proof and admission; it
-does not invent the still-uncompiled sensitivity step. Production does not select
-preinstalled desk-lamp/dl/CA Git cases.
+(`mechanical-proof-case-source/1.0` JSON). The returned case fingerprint may differ from
+the raw SHA. The seal review takes `projectId` + opaque `caseRef.fingerprint` and
+optional false-by-default `sensitivityCatalogOptIn`. The server selects the unique
+current Thread tip — not `latest` — and recrosses unique canonical part STEP, CAD
+provenance, SysON requirements, and derived work/decision identities. There is no
+`fea.run.*` grammar: numbers stay in the sealed proof; the isolated `@3` run admits
+thread-entity bindings. A true sensitivity opt-in is accepted only when the exact
+admission source matches the proof CAD definition and its unique causal lever and
+`result` bindings join the proof target. The same MRTR signs the offer digest and
+admission artifact. The executor reopens both and publishes a separate catalog-offer
+document derived from the proof and admission; it does not invent the still-uncompiled
+sensitivity step. Production does not select preinstalled desk-lamp/dl/CA Git cases.
 
 The result names `selected` (case, digest, STEP, proof document, work item, decision).
 Only an exact current project head also receives `next.append.arguments` /
@@ -249,8 +248,8 @@ requested sensitivity offer without an exact causal join returns `unavailable` o
 The isolated-run proposal restates the compiled identities so the agent does not invent
 solver numbers.
 
-A missing source capture, a project or subject mismatch, an absent or ambiguous STEP, or a
-cad-model offered as `geometry` yields `unresolved` with diagnostics and **no**
+A missing source capture, a project or subject mismatch, an absent or ambiguous STEP, or
+a cad-model offered as `geometry` yields `unresolved` with diagnostics and **no**
 parameters or bindings. `rejectedLookalikes` names the assembly cad-model (and any
 sibling cad-models in one diagnostic) so they are not copied into a later `@3` proposal.
 
@@ -266,7 +265,7 @@ The caller may name only `projectId`. Omitted `caseId` / `basis` are resolved
 server-side (unique catalog template for that `project.id`, or the unique signed
 catalog-offer when the catalog does not uniquely select — absent or ambiguous; unique
 current Thread tip). That tip is not `latest`. `cadSource` is the
-`compile.seal-admission@1` admission already signed on that offer, or the unique
+`compile.seal-admission@2` admission already signed on that offer, or the unique
 readable admission whose source has exactly one module-level numeric binding equal to
 the template `target.semanticKey`. A cad-model, STEP, `design.write-geometry@1`, or
 `design.seal-isolated-geometry@1` is a lookalike and never `cadSource`. Only an exact
@@ -285,29 +284,28 @@ seal / run tools stay.
 
 ### Technical compilation / isolated execution
 
-| Tool                                         | Writes             | Grant                                                                                                                            |
-| -------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `project_technical_source_capture`           | Draft CAS          | `profileId` + `sourceId` + full `resourceRef`. Review: `parser` + `levers` + opaque `reference`. Pass `result.reference` only     |
-| `project_technical_compilation_preview`      | Review draft CAS   | `projectId` + `result.reference`. Server tip/profile/unique SysML join. `decisionParameters` for `compile.seal-admission@1` only |
-| `project_admitted_geometry_export`           | Geometry **draft** | Parameters for `design.write-geometry@1`. Not isolated execution                                                                 |
-| `project_build123d_execution_review`         | None               | Parameters for `design.execute-build123d@1`. No capability                                                                       |
-| `project_isolated_geometry_seal_review`      | None               | Parameters for `design.seal-isolated-geometry@1`. No STEP bytes                                                                  |
-| `project_vector_correction_review`           | None               | Parameters for `design.apply-vector-correction@1`. No Thread write                                                               |
-| `project_sensitivity_base_evaluation_review` | None               | Ready only if study metrics join Thread requirements exactly                                                                     |
-| `project_corrected_admission_review`         | None               | Parameters for `compile.seal-admission@1` from a corrected source                                                                |
-| `project_evaluation_closeout_review`         | None               | `projectId` only. Server reopens one current static FEA `@3` branch and derives closed human L5 accept/reject parameters; no solver/SysON/CAD/correction grant. Accept is offered only when every L4 criterion is literal `pass`. How-to: [review static-mechanical closeout](../../how-to/behave/review-static-mechanical-closeout.md) |
-| `project_cross_domain_impact_manifest_capture` | Draft CAS only | Full `resourceRef` from `project_resource_capture`. JSON body of `cross-domain-impact-manifest/1.0` without fingerprint. Review: `captured` + opaque `{ fingerprint }` + ids/revision/basis/`changeKinds` + `grants: none`. Pass `result.reference` as `manifestRef`. No project, Thread, MRTR, provider, tool, args, or runtime |
-| `project_cross_domain_impact_manifest_seal_review` | None         | `projectId` + opaque capture `manifestRef`. Canonical MRTR for `verify.seal-cross-domain-impact-manifest@1`. Recrosses project/subject/current Thread/Brief gates/evidence. No evaluation, claim mutation, or recapture of manifest bytes |
-| `project_cross_domain_impact_decision_review` | None              | `projectId` only. Unique current X07/X08 capture → canonical MRTR for `decide.accept-cross-domain-impact@1`. No rerun. How-to: [walk cross-domain impact judgement](../../how-to/behave/walk-cross-domain-impact-judgement.md) |
-| `project_modelica_qualified_kit_run_review`  | None               | Parameters for the one local Modelica kit                                                                                        |
-| `project_admitted_modelica_run_review`       | None               | `projectId` only. Server selects current tip + unique fresh sealed Modelica admission. No `modelicaText`                         |
-| `project_admitted_modelica_evaluation_review` | None              | `projectId` only. Unique current tip + unique sealed thermal method sheet + unique admitted evidence for L4. No L4 verdict      |
-| `project_admitted_modelica_evaluation_closeout_review` | None       | `projectId` only. Unique current L4 from `verify.evaluate-admitted-modelica-observations@1`. Both accept and reject; L4 pass is never implicit L5. No OMC/SysON/CAD/correction/rerun grant |
-| `project_admitted_spice_run_review`          | None               | `projectId` only. Unique current tip + unique fresh sealed SPICE admission. No netlist, image, args, path, or observations. Not mcp-spice |
-| `project_electrical_observation_method_sheet_seal_review` | None | `projectId` + sheet fingerprint. Canonical MRTR for `verify.seal-electrical-observation-method-sheet@1`. No ngspice or L4 |
-| `project_admitted_spice_evaluation_review`   | None               | `projectId` only. Unique sheet + unique admitted SPICE evidence for L4. No L4 verdict, ngspice, or SysON |
-| `project_admitted_spice_evaluation_closeout_review` | None        | `projectId` only. Unique current L4 from `verify.evaluate-admitted-spice-observations@1`. Both accept and reject; L4 pass is never implicit L5 |
-| `project_geometry_preview`                   | None               | Not registered. Not a product entry                                                                                              |
+| Tool                                                      | Writes             | Grant                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project_technical_source_capture`                        | Draft CAS          | `projectId` + `workspaceRevision` + `fileId` + `fileRevision`. Review: `parser` + `levers` + opaque locator/2.0. Pass `result.reference` only                                                                                                                                                                                           |
+| `project_technical_compilation_preview`                   | Review draft CAS   | `projectId` + `result.reference` locators. Server tip/profile/unique SysML join. `decisionParameters` for `compile.seal-admission@2` only                                                                                                                                                                                               |
+| `project_admitted_geometry_export`                        | Geometry **draft** | Parameters for `design.write-geometry@1`. Not isolated execution                                                                                                                                                                                                                                                                        |
+| `project_build123d_execution_review`                      | None               | Parameters for `design.execute-build123d@1`. No capability                                                                                                                                                                                                                                                                              |
+| `project_isolated_geometry_seal_review`                   | None               | Parameters for `design.seal-isolated-geometry@1`. No STEP bytes                                                                                                                                                                                                                                                                         |
+| `project_vector_correction_review`                        | None               | Parameters for `design.apply-vector-correction@1`. No Thread write                                                                                                                                                                                                                                                                      |
+| `project_sensitivity_base_evaluation_review`              | None               | Ready only if study metrics join Thread requirements exactly                                                                                                                                                                                                                                                                            |
+| `project_evaluation_closeout_review`                      | None               | `projectId` only. Server reopens one current static FEA `@3` branch and derives closed human L5 accept/reject parameters; no solver/SysON/CAD/correction grant. Accept is offered only when every L4 criterion is literal `pass`. How-to: [review static-mechanical closeout](../../how-to/behave/review-static-mechanical-closeout.md) |
+| `project_cross_domain_impact_manifest_capture`            | Draft CAS only     | Full `resourceRef` from `project_resource_capture`. JSON body of `cross-domain-impact-manifest/1.0` without fingerprint. Review: `captured` + opaque `{ fingerprint }` + ids/revision/basis/`changeKinds` + `grants: none`. Pass `result.reference` as `manifestRef`. No project, Thread, MRTR, provider, tool, args, or runtime        |
+| `project_cross_domain_impact_manifest_seal_review`        | None               | `projectId` + opaque capture `manifestRef`. Canonical MRTR for `verify.seal-cross-domain-impact-manifest@1`. Recrosses project/subject/current Thread/Brief gates/evidence. No evaluation, claim mutation, or recapture of manifest bytes                                                                                               |
+| `project_cross_domain_impact_decision_review`             | None               | `projectId` only. Unique current X07/X08 capture → canonical MRTR for `decide.accept-cross-domain-impact@1`. No rerun. How-to: [walk cross-domain impact judgement](../../how-to/behave/walk-cross-domain-impact-judgement.md)                                                                                                          |
+| `project_modelica_qualified_kit_run_review`               | None               | Parameters for the one local Modelica kit                                                                                                                                                                                                                                                                                               |
+| `project_admitted_modelica_run_review`                    | None               | `projectId` only. Server selects current tip + unique fresh sealed Modelica admission. No `modelicaText`                                                                                                                                                                                                                                |
+| `project_admitted_modelica_evaluation_review`             | None               | `projectId` only. Unique current tip + unique sealed thermal method sheet + unique admitted evidence for L4. No L4 verdict                                                                                                                                                                                                              |
+| `project_admitted_modelica_evaluation_closeout_review`    | None               | `projectId` only. Unique current L4 from `verify.evaluate-admitted-modelica-observations@1`. Both accept and reject; L4 pass is never implicit L5. No OMC/SysON/CAD/correction/rerun grant                                                                                                                                              |
+| `project_admitted_spice_run_review`                       | None               | `projectId` only. Unique current tip + unique fresh sealed SPICE admission. No netlist, image, args, path, or observations. Not mcp-spice                                                                                                                                                                                               |
+| `project_electrical_observation_method_sheet_seal_review` | None               | `projectId` + sheet fingerprint. Canonical MRTR for `verify.seal-electrical-observation-method-sheet@1`. No ngspice or L4                                                                                                                                                                                                               |
+| `project_admitted_spice_evaluation_review`                | None               | `projectId` only. Unique sheet + unique admitted SPICE evidence for L4. No L4 verdict, ngspice, or SysON                                                                                                                                                                                                                                |
+| `project_admitted_spice_evaluation_closeout_review`       | None               | `projectId` only. Unique current L4 from `verify.evaluate-admitted-spice-observations@1`. Both accept and reject; L4 pass is never implicit L5                                                                                                                                                                                          |
+| `project_geometry_preview`                                | None               | Not registered. Not a product entry                                                                                                                                                                                                                                                                                                     |
 
 `project_technical_compilation_preview` takes `projectId` and `result.reference` only.
 Omitted `basis` is the unique current Thread tip, not `latest`. Profile selection and
@@ -336,12 +334,12 @@ predicate. `project_admitted_geometry_export → design.write-geometry@1` is the
 canonical STEP path. A draft without the admission stamp, or without a named numeric
 lever, is `admission_required`. A system-only admitted export authors
 `geometry-manifest/2.0` with authoritative STEP when the sealed admission has a unique
-`represents` PartDefinition and the architecture has zero PartUsages. Empty components and
-occurrences are valid in that case; the system PartDefinition is the FEA target. For a
-multi-part architecture, the server instead derives the exact represented definition and
-authors one `geometry-part-manifest/1.0` target draft. It contains no assembly, components,
-occurrences, placements, or `partDefinitions` array, and remains a draft rather than a Thread
-write.
+`represents` PartDefinition and the architecture has zero PartUsages. Empty components
+and occurrences are valid in that case; the system PartDefinition is the FEA target. For
+a multi-part architecture, the server instead derives the exact represented definition
+and authors one `geometry-part-manifest/1.0` target draft. It contains no assembly,
+components, occurrences, placements, or `partDefinitions` array, and remains a draft
+rather than a Thread write.
 
 ## 5. Registered operations
 
@@ -349,49 +347,48 @@ Source of truth:
 [`src/orchestration/operations/registry.ts`](../../../src/orchestration/operations/registry.ts).
 Unknown ids/versions are indistinguishable from absent.
 
-| Operation                                           | Execution                 | Provider                     | What a success is                                                                                                       | What it is not                                                       |
-| --------------------------------------------------- | ------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `baseline.from-approved-brief@1`                    | trusted                   | none                         | Documentary Thread r1                                                                                                   | A model or proof                                                     |
-| `architecture.seed-syson-model@2`                   | trusted                   | SysON                        | Blank container identity (r2); closed seed MRTR                                                                         | Architecture or requirements                                         |
-| `model.write-architecture@1`                        | trusted                   | SysON                        | `architecture-capture/3.0` after renderer + readback. Optional `attribute.<slug>.(name\|parent)` becomes AttributeUsage | Agent-supplied SysML                                                 |
-| `model.capture-part-definitions@1`                  | trusted                   | SysON                        | Sealed architecture subgraph bundle                                                                                     | Quantity, CAD, or a new design fact                                  |
-| `model.seal-architecture-sysml@1`                   | trusted                   | none                         | Thread document of closed-subset analysis                                                                               | SysON write or compilation admission                                 |
-| `model.write-requirements@1`                        | trusted                   | SysON                        | Integer scalar requirements (SysON 0.5.1)                                                                               | A verdict                                                            |
-| `compile.seal-admission@1`                          | trusted                   | none                         | Admission capture                                                                                                       | Execution authority                                                  |
-| `compile.capture-corrected-source@1`                | trusted                   | none                         | Substituted source document + preview reference                                                                         | Admission, CAD execution, or rewriting apply-vector-correction       |
-| `design.execute-build123d@1`                        | trusted                   | local microVM                | Documentary capture + noncanonical draft                                                                                | Canonical STEP in Thread                                             |
-| `design.seal-isolated-geometry@1`                   | trusted                   | none                         | Thread document of isolated execution identities                                                                        | STEP artifact, cad-model, or FEA                                     |
-| `design.write-geometry@1`                           | trusted                   | none (seal)                  | Canonical geometry capture                                                                                              | Re-execution of CAD                                                  |
-| `verify.seal-proof-case@1`                          | trusted                   | none                         | Sealed proof-case; optional signed catalog-offer artifact                                                               | A solve or complete sensitivity case                                 |
-| `verify.run-fea-static-proof@3`                     | trusted                   | local microVM + SysON oracle | Isolated CalculiX verdict                                                                                               | Historical MCP FEA, agent `.inp`, or a cad-model as `geometry`       |
-| `verify.seal-cross-domain-impact-manifest@1`        | trusted                   | none                         | Documentary seal of one already-captured closed manifest, Thread lineage, Brief V2 gates, and declared mechanical evidence | An impact evaluation, claim mutation, or the public draft-capture tool |
-| `analyze.evaluate-cross-domain-impact@1`            | trusted                   | none                         | X07 pure recross plus X08 documentary capture; proposes gate-claim statuses; `workItemInvalidations`/`rerunProposals` = `none` | A human decision, applied claims, or X10 rerun |
-| `decide.accept-cross-domain-impact@1`               | trusted, **human origin** | none                         | Apply the exact X07/X08 proposed gate-claim statuses onto existing work-item claims after signed MRTR                   | Work-item invention/invalidation, a rerun, or a provider/solver call |
-| `analyze.evaluate-mechanical-preservation@1`        | trusted                   | none                         | Documentary recross after X09: exact FEA proof/closeout identities and independence assertion → `carried-forward` or literal `impact-unresolved` | CalculiX, X10 work/rerun, thermal/electrical verdict, or claim mutation |
-| `decide.accept-evaluation-closeout@1`               | trusted                   | none                         | Agent-dispatched documentary successor after exact human MRTR; accepts only all literal L4 `pass` criteria              | An implicit L5, solver/SysON call, or CAD/correction grant           |
-| `decide.reject-evaluation-closeout@1`               | trusted                   | none                         | Agent-dispatched documentary successor after exact human MRTR; records only `none` or `mechanical-review-required`      | A correction/CAD/FEA/provider action grant                           |
-| `simulate.run-qualified-modelica-kit@1`             | trusted                   | local microVM                | Separate fixed LinearThermalRamp qualified-kit V1 smoke                                                                | Admitted closed-subset `.mo`                                         |
-| `simulate.run-admitted-modelica@1`                  | trusted                   | local microVM                | Documentary run of sealed `compile.seal-admission@1` Modelica bytes                                                     | The pinned kit or caller `modelicaText`                              |
-| `verify.seal-modelica-thermal-method-sheet@1`       | trusted                   | none                         | Documentary seal of one reviewed thermal method sheet                                                                   | An admitted run, L4, or OMC                                          |
-| `verify.evaluate-admitted-modelica-observations@1`  | trusted                   | SysON                        | L4 comparison of exact admitted observations to that sheet                                                              | L5, kit `@1`, or a whole-lamp verdict                                |
-| `decide.accept-admitted-modelica-evaluation@1` / `decide.reject-admitted-modelica-evaluation@1` | trusted, **human origin** | none | Human closeout of that exact L4; no OMC/SysON call                                                                      | Implicit L5 from an L4 `pass`                                        |
-| `simulate.run-admitted-spice@1`                     | trusted                   | local microVM                | Documentary operating-point run of sealed circuit-only SPICE bytes                                                      | mcp-spice, LED-driver fiche, L4, or L5                               |
-| `verify.seal-electrical-observation-method-sheet@1` | trusted                   | none                         | Documentary seal of one reviewed electrical observation method sheet                                                    | An admitted run, L4, or ngspice                                      |
-| `verify.evaluate-admitted-spice-observations@1`     | trusted                   | none (closed comparator)     | L4 of exact admitted observations against that sheet; may derive named current/power criteria                           | ngspice, SysON, L5, or a safety claim                                |
-| `decide.accept-admitted-spice-evaluation@1` / `decide.reject-admitted-spice-evaluation@1` | trusted, **human origin** | none | Human closeout of that exact L4; no ngspice/SysON call                                                                  | Implicit L5 from an L4 `pass`                                        |
-| `analyze.seal-sensitivity-study@1`                  | trusted                   | none                         | Sealed 2.0 study-case document                                                                                          | A solve or a verdict                                                 |
-| `analyze.run-fea-sensitivity@1`                     | trusted                   | exact private reuse, otherwise isolated CAD + fleet `mcp-calculix` | Dimensioned observations + fresh capture or target-local reuse result; lookup/key/provider/runtime stay server-owned | A caller-selected cache entry, verdict, or product static `@3` |
-| `verify.evaluate-sensitivity-base@1`                | trusted                   | SysON                        | Evaluations that cite `sensitivity-base-<metric>-<digest>`                                                              | A solve, a proof `@3`, or a metric alias                             |
-| `model.write-sensitivity-edges@1`                   | trusted                   | SysON                        | Server-rendered derivative PartDef                                                                                      | Architecture write or agent SysML                                    |
-| `industrialize.seal-printability-case@1`            | trusted                   | none                         | Sealed printability-check-case/1.0 document                                                                             | A DFM dispatch or verdict                                            |
-| `industrialize.observe-printability@1`              | trusted                   | mcp-dfm                      | Unit-carrying FDM observations                                                                                          | A verdict or evaluation                                              |
-| `industrialize.seal-dfm-case@1`                     | trusted                   | none                         | Sealed dfm-check-case/1.0 document                                                                                      | A DFM dispatch or the estimate path                                  |
-| `industrialize.run-dfm-checks@1`                    | trusted                   | mcp-dfm                      | Measured observations + fail-closed evaluations                                                                         | `observe-printability` or a quote                                    |
-| `industrialize.seal-print-estimate-case@1`          | trusted                   | none                         | Sealed print-estimate-case/1.0 document                                                                                 | A slice or a price                                                   |
-| `industrialize.observe-print-estimate@1`            | trusted                   | mcp-prusaslicer              | Time and material observations                                                                                          | A cost quote or verdict                                              |
-| `design.apply-vector-correction@1`                  | trusted                   | none                         | Thread document of a bounded correction proposal (`grants: none`)                                                       | CAD, SysON, provider, admission, or a join of proof-run observations |
-| `record.reconcile-uncertain-writer@1`               | trusted, **human origin** | none                         | Release or inspect an uncertain write                                                                                   | Agent inspection of a provider                                       |
-| `record.archive-lineage@1`                          | trusted                   | none                         | Append-only archive change                                                                                              | SysML deletion                                                       |
+| Operation                                                                                       | Execution                 | Provider                                                           | What a success is                                                                                                                                | What it is not                                                          |
+| ----------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `baseline.from-approved-brief@1`                                                                | trusted                   | none                                                               | Documentary Thread r1                                                                                                                            | A model or proof                                                        |
+| `architecture.seed-syson-model@2`                                                               | trusted                   | SysON                                                              | Blank container identity (r2); closed seed MRTR                                                                                                  | Architecture or requirements                                            |
+| `model.write-architecture@1`                                                                    | trusted                   | SysON                                                              | `architecture-capture/3.0` after renderer + readback. Optional `attribute.<slug>.(name\|parent)` becomes AttributeUsage                          | Agent-supplied SysML                                                    |
+| `model.capture-part-definitions@1`                                                              | trusted                   | SysON                                                              | Sealed architecture subgraph bundle                                                                                                              | Quantity, CAD, or a new design fact                                     |
+| `model.seal-architecture-sysml@1`                                                               | trusted                   | none                                                               | Thread document of closed-subset analysis                                                                                                        | SysON write or compilation admission                                    |
+| `model.write-requirements@1`                                                                    | trusted                   | SysON                                                              | Integer scalar requirements (SysON 0.5.1)                                                                                                        | A verdict                                                               |
+| `compile.seal-admission@2`                                                                      | trusted                   | none                                                               | Admission capture                                                                                                                                | Execution authority                                                     |
+| `design.execute-build123d@1`                                                                    | trusted                   | local microVM                                                      | Documentary capture + noncanonical draft                                                                                                         | Canonical STEP in Thread                                                |
+| `design.seal-isolated-geometry@1`                                                               | trusted                   | none                                                               | Thread document of isolated execution identities                                                                                                 | STEP artifact, cad-model, or FEA                                        |
+| `design.write-geometry@1`                                                                       | trusted                   | none (seal)                                                        | Canonical geometry capture                                                                                                                       | Re-execution of CAD                                                     |
+| `verify.seal-proof-case@1`                                                                      | trusted                   | none                                                               | Sealed proof-case; optional signed catalog-offer artifact                                                                                        | A solve or complete sensitivity case                                    |
+| `verify.run-fea-static-proof@3`                                                                 | trusted                   | local microVM + SysON oracle                                       | Isolated CalculiX verdict                                                                                                                        | Historical MCP FEA, agent `.inp`, or a cad-model as `geometry`          |
+| `verify.seal-cross-domain-impact-manifest@1`                                                    | trusted                   | none                                                               | Documentary seal of one already-captured closed manifest, Thread lineage, Brief V2 gates, and declared mechanical evidence                       | An impact evaluation, claim mutation, or the public draft-capture tool  |
+| `analyze.evaluate-cross-domain-impact@1`                                                        | trusted                   | none                                                               | X07 pure recross plus X08 documentary capture; proposes gate-claim statuses; `workItemInvalidations`/`rerunProposals` = `none`                   | A human decision, applied claims, or X10 rerun                          |
+| `decide.accept-cross-domain-impact@1`                                                           | trusted, **human origin** | none                                                               | Apply the exact X07/X08 proposed gate-claim statuses onto existing work-item claims after signed MRTR                                            | Work-item invention/invalidation, a rerun, or a provider/solver call    |
+| `analyze.evaluate-mechanical-preservation@1`                                                    | trusted                   | none                                                               | Documentary recross after X09: exact FEA proof/closeout identities and independence assertion → `carried-forward` or literal `impact-unresolved` | CalculiX, X10 work/rerun, thermal/electrical verdict, or claim mutation |
+| `decide.accept-evaluation-closeout@1`                                                           | trusted                   | none                                                               | Agent-dispatched documentary successor after exact human MRTR; accepts only all literal L4 `pass` criteria                                       | An implicit L5, solver/SysON call, or CAD/correction grant              |
+| `decide.reject-evaluation-closeout@1`                                                           | trusted                   | none                                                               | Agent-dispatched documentary successor after exact human MRTR; records only `none` or `mechanical-review-required`                               | A correction/CAD/FEA/provider action grant                              |
+| `simulate.run-qualified-modelica-kit@1`                                                         | trusted                   | local microVM                                                      | Separate fixed LinearThermalRamp qualified-kit V1 smoke                                                                                          | Admitted closed-subset `.mo`                                            |
+| `simulate.run-admitted-modelica@1`                                                              | trusted                   | local microVM                                                      | Documentary run of sealed `compile.seal-admission@2` Modelica bytes                                                                              | The pinned kit or caller `modelicaText`                                 |
+| `verify.seal-modelica-thermal-method-sheet@1`                                                   | trusted                   | none                                                               | Documentary seal of one reviewed thermal method sheet                                                                                            | An admitted run, L4, or OMC                                             |
+| `verify.evaluate-admitted-modelica-observations@1`                                              | trusted                   | SysON                                                              | L4 comparison of exact admitted observations to that sheet                                                                                       | L5, kit `@1`, or a whole-lamp verdict                                   |
+| `decide.accept-admitted-modelica-evaluation@1` / `decide.reject-admitted-modelica-evaluation@1` | trusted, **human origin** | none                                                               | Human closeout of that exact L4; no OMC/SysON call                                                                                               | Implicit L5 from an L4 `pass`                                           |
+| `simulate.run-admitted-spice@1`                                                                 | trusted                   | local microVM                                                      | Documentary operating-point run of sealed circuit-only SPICE bytes                                                                               | mcp-spice, LED-driver fiche, L4, or L5                                  |
+| `verify.seal-electrical-observation-method-sheet@1`                                             | trusted                   | none                                                               | Documentary seal of one reviewed electrical observation method sheet                                                                             | An admitted run, L4, or ngspice                                         |
+| `verify.evaluate-admitted-spice-observations@1`                                                 | trusted                   | none (closed comparator)                                           | L4 of exact admitted observations against that sheet; may derive named current/power criteria                                                    | ngspice, SysON, L5, or a safety claim                                   |
+| `decide.accept-admitted-spice-evaluation@1` / `decide.reject-admitted-spice-evaluation@1`       | trusted, **human origin** | none                                                               | Human closeout of that exact L4; no ngspice/SysON call                                                                                           | Implicit L5 from an L4 `pass`                                           |
+| `analyze.seal-sensitivity-study@1`                                                              | trusted                   | none                                                               | Sealed 2.0 study-case document                                                                                                                   | A solve or a verdict                                                    |
+| `analyze.run-fea-sensitivity@1`                                                                 | trusted                   | exact private reuse, otherwise isolated CAD + fleet `mcp-calculix` | Dimensioned observations + fresh capture or target-local reuse result; lookup/key/provider/runtime stay server-owned                             | A caller-selected cache entry, verdict, or product static `@3`          |
+| `verify.evaluate-sensitivity-base@1`                                                            | trusted                   | SysON                                                              | Evaluations that cite `sensitivity-base-<metric>-<digest>`                                                                                       | A solve, a proof `@3`, or a metric alias                                |
+| `model.write-sensitivity-edges@1`                                                               | trusted                   | SysON                                                              | Server-rendered derivative PartDef                                                                                                               | Architecture write or agent SysML                                       |
+| `industrialize.seal-printability-case@1`                                                        | trusted                   | none                                                               | Sealed printability-check-case/1.0 document                                                                                                      | A DFM dispatch or verdict                                               |
+| `industrialize.observe-printability@1`                                                          | trusted                   | mcp-dfm                                                            | Unit-carrying FDM observations                                                                                                                   | A verdict or evaluation                                                 |
+| `industrialize.seal-dfm-case@1`                                                                 | trusted                   | none                                                               | Sealed dfm-check-case/1.0 document                                                                                                               | A DFM dispatch or the estimate path                                     |
+| `industrialize.run-dfm-checks@1`                                                                | trusted                   | mcp-dfm                                                            | Measured observations + fail-closed evaluations                                                                                                  | `observe-printability` or a quote                                       |
+| `industrialize.seal-print-estimate-case@1`                                                      | trusted                   | none                                                               | Sealed print-estimate-case/1.0 document                                                                                                          | A slice or a price                                                      |
+| `industrialize.observe-print-estimate@1`                                                        | trusted                   | mcp-prusaslicer                                                    | Time and material observations                                                                                                                   | A cost quote or verdict                                                 |
+| `design.apply-vector-correction@1`                                                              | trusted                   | none                                                               | Thread document of a bounded correction proposal (`grants: none`)                                                                                | CAD, SysON, provider, admission, or a join of proof-run observations    |
+| `record.reconcile-uncertain-writer@1`                                                           | trusted, **human origin** | none                                                               | Release or inspect an uncertain write                                                                                                            | Agent inspection of a provider                                          |
+| `record.archive-lineage@1`                                                                      | trusted                   | none                                                               | Append-only archive change                                                                                                                       | SysML deletion                                                          |
 
 `architecture.author-inspection-drone@3` and
 `model.capture-inspection-drone-part-definitions@1` are retired and unregistered.
@@ -432,7 +429,7 @@ Observed on the real agent path. Contract facts, not style.
 | Every SysON write names its predecessor work item                | Seed `dependsOnWorkItemIds` **must** include the unique `baseline.from-approved-brief@1` work item. Later SysON writes should name their predecessor the same way for sequencing.                                                              | Seed: `project_change_append` refuses with `invalid_input` (`Operation architecture.seed-syson-model@2 must depend on baseline.from-approved-brief@1 work item <id>`). The executor still refuses historical work items accepted before that guard. Architecture and requirements resolve the predecessor from the Thread (seed capture / architecture tip), not from `dependsOnWorkItemIds`. |
 | Requirement thresholds are integers                              | `requirement.<slug>.threshold` is a safe integer. SysON 0.5.1 cannot round-trip a decimal literal through `syson_constraint_extract` (`LiteralRational`).                                                                                      | Grammar rejects at `project_decision_propose`. Message: threshold must be a safe integer because SysON 0.5.1 cannot round-trip decimal literals through `syson_constraint_extract`.                                                                                                                                                                                                           |
 | Seed MRTR is closed                                              | Allowed keys: `seed.schemaVersion`, `seed.scope`, `seed.operation`, `model.name`. `model.name` is pinned to the server-owned role `system model`. `fingerprintSysonModelSeedProposal` is the envelope digest, not the MRTR `inputFingerprint`. | Grammar rejects a free-form key or any other `model.name` at `project_decision_propose`.                                                                                                                                                                                                                                                                                                      |
-| Study metric ids must Object.is-equal Thread requirement metrics | `analyze.run-fea-sensitivity@1` publishes `sensitivity-base-<metric>-<digest>`. `verify.evaluate-sensitivity-base@1` joins only when `metric` is the Thread requirement metric.                                                                | Historical dl05 r16: study `assembly_max_*` vs requirements `maxDisplacement` / `maxVonMises` → `UNLINKED`. A later isolated reseal on that atelier joined. Do not invent a mapping. Do not replay r16. New project: [run the behave loop from zero](../../how-to/behave/run-the-behave-loop-from-zero.md).                                                                                             |
+| Study metric ids must Object.is-equal Thread requirement metrics | `analyze.run-fea-sensitivity@1` publishes `sensitivity-base-<metric>-<digest>`. `verify.evaluate-sensitivity-base@1` joins only when `metric` is the Thread requirement metric.                                                                | Historical dl05 r16: study `assembly_max_*` vs requirements `maxDisplacement` / `maxVonMises` → `UNLINKED`. A later isolated reseal on that atelier joined. Do not invent a mapping. Do not replay r16. New project: [run the behave loop from zero](../../how-to/behave/run-the-behave-loop-from-zero.md).                                                                                   |
 | Proof-run evaluations do not authorize a correction              | `design.apply-vector-correction@1` accepts only a fail that cites `sensitivity-base-<metric>-<digest>`.                                                                                                                                        | A proof-run `@3` `pass` on `calculix-observation-*` is a different authority. A joined study-base `pass` also does not apply a correction.                                                                                                                                                                                                                                                    |
 
 Limit of the seed grammar: `assertProposalMatchesOperationGrammar` is project-agnostic.
@@ -458,22 +455,22 @@ result depends on engine-internal ordering are compiled too and carry a determin
 _class_ in the evidence instead of being excluded. Why and how:
 [closed-language compilation](../../explanations/product/closed-language-compilation.md).
 
-| Profile / analyzer                                                     | Language               | Boundary | Domain contract |
-| ---------------------------------------------------------------------- | ---------------------- | -------- | --------------- |
-| `sysml-architecture-closed-subset-v1`                                  | SysML v2 closed subset | `package`, `part def`, `part usage`; other constructs stay unresolved | This page |
-| Rendered architecture companion                                        | Server-rendered SysML  | Manifest-attested PartUsage→target only | This page |
-| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.6.0**)   | Python / Build123d     | Finite geometry algebra, numeric parameters, one solid `result` | [CAD closed subset](../domains/cad/build123d-closed-subset-v1.md) |
-| `modelica-closed-subset-v2` (`modelica-qualified-mo-subset` **2.0.0**) | Modelica               | Bounded generic scalar models with exact experiment annotation; no MSL packages | [Modelica language](../domains/modelica/language.md) |
-| Python CAD frontend (generic preview)                                  | Python                 | Conservative bindings into `result` | This page |
-| Project-brief frontend                                                 | Canonical brief JSON   | Item ids + explicit V2 gate dependencies | This page |
+| Profile / analyzer                                                     | Language               | Boundary                                                                        | Domain contract                                                   |
+| ---------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `sysml-architecture-closed-subset-v1`                                  | SysML v2 closed subset | `package`, `part def`, `part usage`; other constructs stay unresolved           | This page                                                         |
+| Rendered architecture companion                                        | Server-rendered SysML  | Manifest-attested PartUsage→target only                                         | This page                                                         |
+| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.6.0**)   | Python / Build123d     | Finite geometry algebra, numeric parameters, one solid `result`                 | [CAD closed subset](../domains/cad/build123d-closed-subset-v1.md) |
+| `modelica-closed-subset-v2` (`modelica-qualified-mo-subset` **2.0.0**) | Modelica               | Bounded generic scalar models with exact experiment annotation; no MSL packages | [Modelica language](../domains/modelica/language.md)              |
+| Python CAD frontend (generic preview)                                  | Python                 | Conservative bindings into `result`                                             | This page                                                         |
+| Project-brief frontend                                                 | Canonical brief JSON   | Item ids + explicit V2 gate dependencies                                        | This page                                                         |
 
 Bindings published by the architecture SysML analyzer are **symbol ids**, never labels.
 Labels are display data.
 
 Exact accepted constructs, exclusions and extension rules live with their bounded
 contexts under [engineering domains](../domains/README.md). Impact judgement:
-[impact coverage](../domains/impact/coverage.md). Inventories under
-`config/*-api/` remain documentary ground truth until a domain compiler consumes them.
+[impact coverage](../domains/impact/coverage.md). Inventories under `config/*-api/`
+remain documentary ground truth until a domain compiler consumes them.
 
 ## 7. Golden path (generic V3)
 
@@ -486,8 +483,8 @@ flowchart TD
   seed --> sealSysml["model.seal-architecture-sysml@1 → Thread document only"]
   arch --> req["model.write-requirements@1"]
   arch --> geomA["admission → admitted export → design.write-geometry@1"]
-  arch --> geomB["compile.seal-admission@1 → design.execute-build123d@1 draft"]
-  arch --> moAdmit["compile.seal-admission@1 → simulate.run-admitted-modelica@1"]
+  arch --> geomB["compile.seal-admission@2 → design.execute-build123d@1 draft"]
+  arch --> moAdmit["compile.seal-admission@2 → simulate.run-admitted-modelica@1"]
   geomB --> sealGeom["design.seal-isolated-geometry@1 → Thread document only"]
   geomA --> proof["verify.seal-proof-case@1"]
   geomB --> proof
@@ -498,8 +495,8 @@ flowchart TD
   join --> passNode["joined pass: no correction"]
   join --> failNode["joined fail"]
   failNode --> corr["design.apply-vector-correction@1"]
-  corr --> zsrc["compile.capture-corrected-source@1"]
-  zsrc --> reseal["compile.seal-admission@1"]
+  corr --> zsrc["project_resource_capture + successor file revision"]
+  zsrc --> reseal["compile.seal-admission@2"]
   geomA --> dfm["industrialize.run-dfm-checks@1"]
 ```
 
@@ -519,25 +516,25 @@ measurement, or a verdict.
 
 Hexagonal. Dependencies point inward. Adapters never become domain authority.
 
-| Layer        | Path                                                  | May import                                 | Must not                                     |
-| ------------ | ----------------------------------------------------- | ------------------------------------------ | -------------------------------------------- |
-| Domain       | `src/domain/`                                         | domain + kernel                            | `Deno.*`, `fetch`, MCP, UI, Graphology       |
-| Application  | `src/application/`                                    | domain + ports + owned read models         | Concrete adapters or presentation            |
-| Presentation | `src/presentation/`                                   | presentation + domain types (`type-only`)  | Use cases, adapters, tools, UI               |
-| Adapters     | `src/adapters/`                                       | ports + domain + read models               | Become the public contract                   |
-| Operations   | `src/orchestration/operations/`                       | domain contracts                           | Provider tool names in the planning registry |
-| Tools        | `src/tools/`                                          | inbound ports + application read models    | Own CAS/provider clients or presentation     |
-| Composition  | `server.ts`                                           | everything                                 | Leak handles into domain                     |
-| UI           | `src/ui/src/`                                         | presentation + application read models     | Command authority, MCP credentials           |
-| Tests        | `*_test.ts` colocated; UI tests at `src/ui/*_test.ts` | `@std/assert`                              | React/DOM render tests                       |
+| Layer        | Path                                                  | May import                                | Must not                                     |
+| ------------ | ----------------------------------------------------- | ----------------------------------------- | -------------------------------------------- |
+| Domain       | `src/domain/`                                         | domain + kernel                           | `Deno.*`, `fetch`, MCP, UI, Graphology       |
+| Application  | `src/application/`                                    | domain + ports + owned read models        | Concrete adapters or presentation            |
+| Presentation | `src/presentation/`                                   | presentation + domain types (`type-only`) | Use cases, adapters, tools, UI               |
+| Adapters     | `src/adapters/`                                       | ports + domain + read models              | Become the public contract                   |
+| Operations   | `src/orchestration/operations/`                       | domain contracts                          | Provider tool names in the planning registry |
+| Tools        | `src/tools/`                                          | inbound ports + application read models   | Own CAS/provider clients or presentation     |
+| Composition  | `server.ts`                                           | everything                                | Leak handles into domain                     |
+| UI           | `src/ui/src/`                                         | presentation + application read models    | Command authority, MCP credentials           |
+| Tests        | `*_test.ts` colocated; UI tests at `src/ui/*_test.ts` | `@std/assert`                             | React/DOM render tests                       |
 
 Second axis: **authority context**, not pipeline verb. Layers stay at
 `src/{domain,application,presentation,adapters}/` so the import gate remains
-prefix-true. Compile
-kernel is `src/domain/compile/` (isolation, admission, source, ROP, brief) — not
-`domain/analysis/`. A new Modelica, CAD, FEA or compile module does **not** land in a
-retired dump (`domain/analysis/`, `adapters/captures/`, `adapters/executors/`). Shared
-adapters go to `src/adapters/shared/`, never `src/infrastructure/`. File census:
+prefix-true. Compile kernel is `src/domain/compile/` (isolation, admission, source, ROP,
+brief) — not `domain/analysis/`. A new Modelica, CAD, FEA or compile module does **not**
+land in a retired dump (`domain/analysis/`, `adapters/captures/`,
+`adapters/executors/`). Shared adapters go to `src/adapters/shared/`, never
+`src/infrastructure/`. File census:
 [workspace source map](../runtime/workspace-source-map.md).
 
 | Context         | Domain root                      | Do not merge                                                                                         |
@@ -586,8 +583,8 @@ MCP App bundle; `preview:browser` refuses.
 | `state/local/dfm-check-captures/`                                           | Measured `dfm-check-capture/1.0` (evaluations included)    |
 | `state/local/dfm-check-attempts/`                                           | WAL for `industrialize.run-dfm-checks@1`                   |
 | `state/local/sensitivity-base-evaluation-captures/`                         | SysON join of study-base observations                      |
-| `state/local/corrected-source-captures/`                                    | `compile.capture-corrected-source@1` documents             |
-| `state/fixtures/retired/`                                                   | CM-01 only. Never replay                                   |
+
+| `state/fixtures/retired/` | CM-01 only. Never replay |
 
 Do not treat a directory listing or “latest file” as authority. Reopen by content
 address.

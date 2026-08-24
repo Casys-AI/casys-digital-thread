@@ -92,15 +92,10 @@ const CAPTURE_REQUEST = {
     profileId: {
       ...ID_SCHEMA,
       description:
-        "Caller-authored requested parser/policy identity. Vertical 1 stores it inertly and grants nothing. Not compilation, runtime, provider, tool, image selection, or a registered profile lookup.",
-    },
-    sourceId: {
-      ...ID_SCHEMA,
-      description:
-        "Caller-authored requested source identity. Grants nothing. Vertical 2 will resolve the pair fail-closed against the registry.",
+        "Caller-authored requested parser/policy identity. Technical capture resolves it fail-closed against the registry. fileId is the sole stable technical source id. Not compilation, runtime, provider, tool, image selection, or a MIME/path selector.",
     },
   },
-  required: ["profileId", "sourceId"],
+  required: ["profileId"],
   additionalProperties: false,
 } as const;
 
@@ -431,7 +426,7 @@ const projectSourceModulePutTool: MCPTool = {
 const projectSourceFilePutTool: MCPTool = {
   name: "project_source_file_put",
   description:
-    "Create or revise one project source file after reopening a full AgentResourceReference from project_resource_capture. Caller supplies no path. Optional captureRequest is caller-authored parser/source identity, stored inertly; Vertical 1 does not register or resolve it. Never compilation or runtime selection. Grants none.",
+    "Create or revise one project source file after reopening a full AgentResourceReference from project_resource_capture. Caller supplies no path. Optional captureRequest is exactly {profileId}. fileId is the sole stable technical source id. Never compilation or runtime selection. Grants none.",
   inputSchema: {
     type: "object",
     properties: {
@@ -535,7 +530,7 @@ const projectSourceTreeTool: MCPTool = {
 const projectSourceSearchTool: MCPTool = {
   name: "project_source_search",
   description:
-    "Search one exact workspace revision by derived path prefix, module, domain, role or requested capture identity. Paginated. A mismatched cursor fails closed. profileId filters captureRequest.profileId; it is not a registry lookup. Grants none.",
+    "Search one exact workspace revision by derived path prefix, module, domain, role or requested capture profileId. Paginated. A mismatched cursor fails closed. profileId filters captureRequest.profileId; it is not a registry lookup. sourceId is not a public filter; fileId is the stable technical source id. Grants none.",
   inputSchema: {
     type: "object",
     properties: {
@@ -557,7 +552,6 @@ const projectSourceSearchTool: MCPTool = {
         description:
           "Filter by the caller-authored captureRequest.profileId. Not a registered profile lookup.",
       },
-      sourceId: ID_SCHEMA,
       pageSize: PAGE_SIZE,
       cursor: {
         type: "string",

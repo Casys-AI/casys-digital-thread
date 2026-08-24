@@ -20,10 +20,19 @@ import type {
   ProjectTechnicalSourceCaptureUseCase,
 } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import { compilationPreviewContent } from "../../domain/compile/admission/technical-compilation-preview-review.ts";
-import { captureReviewContent } from "../../domain/compile/admission/technical-source-capture-review.ts";
-import { parseAgentResourceReference } from "../../domain/resource/agent-resource-reference.ts";
 import {
-  AGENT_RESOURCE_REFERENCE_SCHEMA,
+  captureReviewContent,
+  TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA,
+} from "../../domain/compile/admission/technical-source-capture-review.ts";
+import {
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA,
+  TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PATTERN,
+  validateTechnicalSourceAnalysisCaptureLocator,
+} from "../../domain/compile/admission/technical-source-analysis-capture-locator.ts";
+import {
   FINGERPRINT_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
   READ_ONLY_ANNOTATIONS,
@@ -91,7 +100,7 @@ export function registerProjectTechnicalCompilationTools(
       const result = await exportAdmitted.execute(command);
       return {
         content:
-          `Admitted geometry export for sealed admission ${command.artifactId} completed as a geometry draft ${result.draftDigest}. Exact admitted bytes were reopened from compile.seal-admission@1 and sent to the private sandbox; callers supplied no source text, provider, tool, path or image. The result is not Thread state. Construct a later design.write-geometry@1 proposal only from the returned decisionParameters.`,
+          `Admitted geometry export for sealed admission ${command.artifactId} completed as a geometry draft ${result.draftDigest}. Exact admitted bytes were reopened from compile.seal-admission@2 and sent to the private sandbox; callers supplied no source text, provider, tool, path or image. The result is not Thread state. Construct a later design.write-geometry@1 proposal only from the returned decisionParameters.`,
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -133,89 +142,25 @@ const TECHNICAL_ID_SCHEMA = {
   pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
 } as const;
 
-const TECHNICAL_VERSION_SCHEMA = {
-  type: "string",
-  minLength: 1,
-  maxLength: 256,
-} as const;
-
-const TECHNICAL_ANALYZER_SCHEMA = {
+const TECHNICAL_SOURCE_CAPTURE_LOCATOR_SCHEMA = {
   type: "object",
   properties: {
-    id: TECHNICAL_ID_SCHEMA,
-    version: TECHNICAL_VERSION_SCHEMA,
-  },
-  required: ["id", "version"],
-  additionalProperties: false,
-} as const;
-
-const TECHNICAL_SOURCE_CAPTURE_REFERENCE_SCHEMA = {
-  type: "object",
-  properties: {
-    schemaVersion: { const: "technical-source-analysis-capture/1.0" },
-    kind: { const: "technical-source-analysis" },
-    profile: {
-      type: "object",
-      properties: {
-        id: TECHNICAL_ID_SCHEMA,
-        version: TECHNICAL_VERSION_SCHEMA,
-        fingerprint: FINGERPRINT_SCHEMA,
-      },
-      required: ["id", "version", "fingerprint"],
-      additionalProperties: false,
+    schemaVersion: {
+      const: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
     },
-    source: {
-      type: "object",
-      properties: {
-        id: TECHNICAL_ID_SCHEMA,
-        role: {
-          type: "string",
-          enum: ["cad-script", "modelica-model", "spice-circuit"],
-        },
-        language: { type: "string", enum: ["python", "modelica", "spice"] },
-        sha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
-        byteCount: {
-          type: "integer",
-          minimum: 0,
-          maximum: Number.MAX_SAFE_INTEGER,
-        },
-        casUri: {
-          type: "string",
-          pattern: "^casys://[a-z0-9][a-z0-9.-]{0,62}/sha256/[a-f0-9]{64}$",
-        },
-      },
-      required: ["id", "role", "language", "sha256", "byteCount", "casUri"],
-      additionalProperties: false,
+    kind: { const: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_KIND },
+    fingerprint: FINGERPRINT_SCHEMA,
+    byteCount: {
+      type: "integer",
+      minimum: 0,
+      maximum: Number.MAX_SAFE_INTEGER,
     },
-    analysis: {
-      type: "object",
-      properties: {
-        analyzer: TECHNICAL_ANALYZER_SCHEMA,
-        policy: {
-          type: "object",
-          properties: {
-            profile: TECHNICAL_ID_SCHEMA,
-            status: { type: "string", enum: ["passed", "rejected"] },
-          },
-          required: ["profile", "status"],
-          additionalProperties: false,
-        },
-        sha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
-        byteCount: {
-          type: "integer",
-          minimum: 0,
-          maximum: Number.MAX_SAFE_INTEGER,
-        },
-        casUri: {
-          type: "string",
-          pattern: "^casys://[a-z0-9][a-z0-9.-]{0,62}/sha256/[a-f0-9]{64}$",
-        },
-      },
-      required: ["analyzer", "policy", "sha256", "byteCount", "casUri"],
-      additionalProperties: false,
+    casUri: {
+      type: "string",
+      pattern: TECHNICAL_SOURCE_ANALYSIS_CAPTURE_URI_PATTERN.source,
     },
   },
-  required: ["schemaVersion", "kind", "profile", "source", "analysis"],
+  required: ["schemaVersion", "kind", "fingerprint", "byteCount", "casUri"],
   additionalProperties: false,
 } as const;
 
@@ -280,11 +225,11 @@ const CAD_LEVER_DIAGNOSIS_SCHEMA = {
   ],
 } as const;
 
-const TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA = {
+const TECHNICAL_SOURCE_CAPTURE_REVIEW_OUTPUT_SCHEMA = {
   type: "object",
   properties: {
-    schemaVersion: { const: "technical-source-capture-review/1.0" },
-    reference: TECHNICAL_SOURCE_CAPTURE_REFERENCE_SCHEMA,
+    schemaVersion: { const: TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA },
+    reference: TECHNICAL_SOURCE_CAPTURE_LOCATOR_SCHEMA,
     parser: {
       type: "object",
       properties: {
@@ -303,25 +248,26 @@ const TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA = {
 const projectTechnicalSourceCaptureTool: MCPTool = {
   name: "project_technical_source_capture",
   description:
-    "Capture exact agent-authored technical source bytes and their server-selected parser analysis in immutable draft CAS. parser.status is the closed-subset parser only; it is not admission. levers.status is the behave-CAD handle diagnosis (reachable named numeric literals). Pass result.reference, never this whole review object, to project_technical_compilation_preview. First call project_resource_capture, then supply that full resourceRef plus a registered profile id and source id. Language, analyzer and policy remain server-owned. MIME is a guard, not a parser. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
+    "Capture one exact project source workspace file revision as immutable technical-source analysis. Name only projectId, workspaceRevision, fileId and fileRevision. The named fileRevision must be the active content revision in that workspace snapshot, with captureRequest.profileId and role equal to the registered profile. parser.status is the closed-subset parser only; it is not admission. levers.status is the behave-CAD handle diagnosis. Pass result.reference, never this whole review object or the capture document, to project_technical_compilation_preview. Language, analyzer, policy, resource bytes and profile remain server-owned. MIME, path, sourceText, profileId, sourceId and resourceRef are refused. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no technical execution.",
   inputSchema: {
     type: "object",
     properties: {
-      profileId: TECHNICAL_ID_SCHEMA,
-      sourceId: TECHNICAL_ID_SCHEMA,
-      resourceRef: AGENT_RESOURCE_REFERENCE_SCHEMA,
+      projectId: TECHNICAL_ID_SCHEMA,
+      workspaceRevision: { type: "integer", minimum: 1 },
+      fileId: TECHNICAL_ID_SCHEMA,
+      fileRevision: { type: "integer", minimum: 1 },
     },
-    required: ["profileId", "sourceId", "resourceRef"],
+    required: ["projectId", "workspaceRevision", "fileId", "fileRevision"],
     additionalProperties: false,
   },
-  outputSchema: TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA,
+  outputSchema: TECHNICAL_SOURCE_CAPTURE_REVIEW_OUTPUT_SCHEMA,
   annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
 };
 
 const projectTechnicalCompilationPreviewTool: MCPTool = {
   name: "project_technical_compilation_preview",
   description:
-    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference; never pass the capture review envelope, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft and compilation document. Construct a later MRTR proposal only from decisionParameters returned by the use case; never invent missing parameters. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
+    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft and compilation document. Construct a later MRTR proposal only from decisionParameters returned by the use case; never invent missing parameters. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
   inputSchema: {
     type: "object",
     properties: {
@@ -332,9 +278,9 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
         minItems: 1,
         maxItems: 32,
         uniqueItems: true,
-        items: TECHNICAL_SOURCE_CAPTURE_REFERENCE_SCHEMA,
+        items: TECHNICAL_SOURCE_CAPTURE_LOCATOR_SCHEMA,
         description:
-          "technical-source-analysis-capture/1.0 locators from project_technical_source_capture result.reference. Never pass the capture review envelope.",
+          `${TECHNICAL_SOURCE_ANALYSIS_CAPTURE_LOCATOR_SCHEMA} from project_technical_source_capture result.reference. Never pass the capture review envelope or the capture document.`,
       },
     },
     required: ["projectId", "sourceRefs"],
@@ -347,7 +293,7 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
 const projectAdmittedGeometryExportTool: MCPTool = {
   name: "project_admitted_geometry_export",
   description:
-    "Reopen one sealed compile.seal-admission@1 Build123d compilation and export its exact admitted source bytes through the private build123d sandbox. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; source text, provider, tool, path, image and formats remain server-owned. The result is a geometry DRAFT plus decisionParameters for a later design.write-geometry@1 proposal. This writes no Thread state, grants no MRTR decision, and does not invoke design.execute-build123d@1.",
+    "Reopen one sealed compile.seal-admission@2 Build123d compilation and export its exact admitted source bytes through the private build123d sandbox. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; source text, provider, tool, path, image and formats remain server-owned. The result is a geometry DRAFT plus decisionParameters for a later design.write-geometry@1 proposal. This writes no Thread state, grants no MRTR decision, and does not invoke design.execute-build123d@1.",
   inputSchema: {
     type: "object",
     properties: {
@@ -406,17 +352,18 @@ function technicalSourceCaptureCommand(
 ): ProjectTechnicalSourceCaptureCommand {
   exactKeys(
     value,
-    ["profileId", "sourceId", "resourceRef"],
+    ["projectId", "workspaceRevision", "fileId", "fileRevision"],
     [],
     "technicalSourceCapture",
   );
   return {
-    profileId: technicalId(value.profileId, "profileId"),
-    sourceId: technicalId(value.sourceId, "sourceId"),
-    resourceRef: parseAgentResourceReference(
-      value.resourceRef,
-      "$technicalSourceCapture.resourceRef",
+    projectId: technicalId(value.projectId, "projectId"),
+    workspaceRevision: positiveInteger(
+      value.workspaceRevision,
+      "workspaceRevision",
     ),
+    fileId: technicalId(value.fileId, "fileId"),
+    fileRevision: positiveInteger(value.fileRevision, "fileRevision"),
   };
 }
 
@@ -530,87 +477,26 @@ function technicalThreadBasis(
 function technicalSourceCaptureReference(
   value: unknown,
   name: string,
-): Readonly<Record<string, unknown>> {
+) {
   const reference = exactRecord(value, name);
-  if (reference.schemaVersion === "technical-source-capture-review/1.0") {
+  if (
+    reference.schemaVersion === TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA ||
+    reference.schemaVersion === "technical-source-capture-review/1.0"
+  ) {
     throw new TypeError(
-      `${name} is a technical-source-capture-review/1.0 envelope. Pass result.reference, never the review object.`,
+      `${name} is a technical-source-capture-review envelope. Pass result.reference, never the review object.`,
     );
   }
-  exactKeys(
-    reference,
-    ["schemaVersion", "kind", "profile", "source", "analysis"],
-    [],
-    name,
-  );
   if (
-    reference.schemaVersion !== "technical-source-analysis-capture/1.0" ||
-    reference.kind !== "technical-source-analysis"
+    reference.schemaVersion === TECHNICAL_SOURCE_ANALYSIS_CAPTURE_SCHEMA ||
+    reference.schemaVersion === "technical-source-analysis-capture/1.0" ||
+    reference.kind === TECHNICAL_SOURCE_ANALYSIS_CAPTURE_KIND
   ) {
-    throw new TypeError(`${name} must be a technical source-analysis reference`);
+    throw new TypeError(
+      `${name} is a technical-source-analysis-capture document. Pass the opaque locator, never the capture document.`,
+    );
   }
-  const profile = exactRecord(reference.profile, `${name}.profile`);
-  exactKeys(profile, ["id", "version", "fingerprint"], [], `${name}.profile`);
-  const profileId = technicalId(profile.id, `${name}.profile.id`);
-  exactNonEmptyText(profile.version, `${name}.profile.version`);
-  fingerprintInput(profile.fingerprint, `${name}.profile.fingerprint`);
-
-  const source = exactRecord(reference.source, `${name}.source`);
-  exactKeys(
-    source,
-    ["id", "role", "language", "sha256", "byteCount", "casUri"],
-    [],
-    `${name}.source`,
-  );
-  technicalId(source.id, `${name}.source.id`);
-  const role = oneOf(
-    source.role,
-    ["cad-script", "modelica-model", "spice-circuit"] as const,
-    `${name}.source.role`,
-  );
-  const language = oneOf(
-    source.language,
-    ["python", "modelica", "spice"] as const,
-    `${name}.source.language`,
-  );
-  if (
-    !(
-      (role === "cad-script" && language === "python") ||
-      (role === "modelica-model" && language === "modelica") ||
-      (role === "spice-circuit" && language === "spice")
-    )
-  ) {
-    throw new TypeError(`${name}.source role and language do not match`);
-  }
-  const sourceDigest = hex64(source.sha256, `${name}.source.sha256`);
-  nonNegativeInteger(source.byteCount, `${name}.source.byteCount`);
-  technicalCasUri(source.casUri, sourceDigest, `${name}.source.casUri`);
-
-  const analysis = exactRecord(reference.analysis, `${name}.analysis`);
-  exactKeys(
-    analysis,
-    ["analyzer", "policy", "sha256", "byteCount", "casUri"],
-    [],
-    `${name}.analysis`,
-  );
-  const analyzer = exactRecord(analysis.analyzer, `${name}.analysis.analyzer`);
-  exactKeys(analyzer, ["id", "version"], [], `${name}.analysis.analyzer`);
-  technicalId(analyzer.id, `${name}.analysis.analyzer.id`);
-  exactNonEmptyText(analyzer.version, `${name}.analysis.analyzer.version`);
-  const policy = exactRecord(analysis.policy, `${name}.analysis.policy`);
-  exactKeys(policy, ["profile", "status"], [], `${name}.analysis.policy`);
-  if (technicalId(policy.profile, `${name}.analysis.policy.profile`) !== profileId) {
-    throw new TypeError(`${name}.analysis.policy.profile must match profile.id`);
-  }
-  oneOf(
-    policy.status,
-    ["passed", "rejected"] as const,
-    `${name}.analysis.policy.status`,
-  );
-  const analysisDigest = hex64(analysis.sha256, `${name}.analysis.sha256`);
-  nonNegativeInteger(analysis.byteCount, `${name}.analysis.byteCount`);
-  technicalCasUri(analysis.casUri, analysisDigest, `${name}.analysis.casUri`);
-  return reference;
+  return validateTechnicalSourceAnalysisCaptureLocator(reference, name);
 }
 
 function technicalId(value: unknown, name: string): string {
@@ -628,31 +514,6 @@ function exactNonEmptyText(value: unknown, name: string): string {
     throw new TypeError(`${name} must be non-empty without edge whitespace`);
   }
   return value;
-}
-
-function exactSourceText(value: unknown, name: string): string {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new TypeError(`${name} must be non-empty source text`);
-  }
-  return value;
-}
-
-function nonNegativeInteger(value: unknown, name: string): number {
-  if (!Number.isSafeInteger(value) || Number(value) < 0) {
-    throw new TypeError(`${name} must be a non-negative safe integer`);
-  }
-  return Number(value);
-}
-
-function technicalCasUri(value: unknown, digest: string, name: string): string {
-  const uri = exactNonEmptyText(value, name);
-  if (
-    !/^casys:\/\/[a-z0-9][a-z0-9.-]{0,62}\/sha256\/[a-f0-9]{64}$/.test(uri) ||
-    !uri.endsWith(`/sha256/${digest}`)
-  ) {
-    throw new TypeError(`${name} must be a canonical CAS URI for its digest`);
-  }
-  return uri;
 }
 
 function fingerprintInput(value: unknown, name: string) {
@@ -696,30 +557,4 @@ function positiveInteger(value: unknown, name: string): number {
     throw new TypeError(`${name} must be a positive safe integer`);
   }
   return value as number;
-}
-
-function hex64(value: unknown, name: string): string {
-  const s = requiredString(value, name);
-  if (!/^[a-f0-9]{64}$/.test(s)) {
-    throw new TypeError(`${name} must be a 64-char lowercase hex SHA-256`);
-  }
-  return s;
-}
-
-function requiredString(value: unknown, name: string): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new TypeError(`${name} must be a non-empty string`);
-  }
-  return value.trim();
-}
-
-function oneOf<const T extends readonly string[]>(
-  value: unknown,
-  choices: T,
-  name: string,
-): T[number] {
-  if (typeof value !== "string" || !choices.includes(value)) {
-    throw new TypeError(`${name} must be one of ${choices.join(", ")}`);
-  }
-  return value as T[number];
 }

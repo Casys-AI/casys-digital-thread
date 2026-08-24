@@ -136,7 +136,7 @@ only
 #### [`src/adapters/architecture/agent-seal/model-seal-architecture-sysml-run-executor.ts`](../../../src/adapters/architecture/agent-seal/model-seal-architecture-sysml-run-executor.ts)
 
 Provider-free sealer that writes a Thread document only; no SysON insertion and no
-`compile.seal-admission@1` reuse
+`compile.seal-admission@2` reuse
 
 #### [`src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts`](../../../src/application/ports/out/architecture/agent-seal/architecture-sysml-seal-capture-reader.ts)
 

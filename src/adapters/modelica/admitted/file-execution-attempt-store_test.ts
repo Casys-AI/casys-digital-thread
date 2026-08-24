@@ -848,9 +848,9 @@ async function walFixture() {
     limits,
   }).initial();
   const admission = validateModelicaAdmittedRunAdmission({
-    schemaVersion: "modelica-admitted-run-admission/2.0",
+    schemaVersion: "modelica-admitted-run-admission/3.0",
     admissionArtifact: {
-      schemaVersion: "technical-compilation-admission-capture/1.0",
+      schemaVersion: "technical-compilation-admission-capture/2.0",
       id: `technical-compilation-admission-${"1".repeat(64)}`,
       fingerprint: hash("1"),
     },

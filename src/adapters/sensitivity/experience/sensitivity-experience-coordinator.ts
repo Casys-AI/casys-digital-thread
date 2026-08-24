@@ -34,6 +34,7 @@ import {
 import type { SensitivityStudyCapture } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
 import { validateSensitivityStudyCapture } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
 import type { SensitivityStudyCaseV2 } from "../../../domain/sensitivity/study/sensitivity-study-v2.ts";
+import { SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL } from "../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -436,7 +437,7 @@ export class SensitivityExperienceCoordinator {
         studyArtifact.producer.tool !== "analyze.run-fea-sensitivity@1" ||
         studyArtifact.producer.runId !== origin.source.trustedRunId ||
         caseArtifact.producer.tool !== "analyze.seal-sensitivity-study@1" ||
-        admissionArtifact.producer.tool !== "compile.seal-admission@1"
+        admissionArtifact.producer.tool !== SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL
       ) return undefined;
       const studyText = await this.dependencies.studyCaptures.read(
         studyArtifact.fingerprint,

@@ -242,6 +242,61 @@ Deno.test("an invalid successor event is refused before a claim is created", asy
   }
 });
 
+Deno.test("append with a populated cache refuses a tampered earlier event before creating a claim", async () => {
+  const root = await Deno.makeTempDir({ prefix: "psw-append-history-tamper-" });
+  try {
+    const store = new FileProjectSourceWorkspaceStore(root);
+    const first = await eventFor(
+      emptyProjectSourceWorkspace(PROJECT),
+      modulePut("m1", 0),
+    );
+    await store.append(first);
+    const second = await eventFor(
+      await store.load(PROJECT),
+      modulePut("m2", 1, "mod-b", "drive"),
+    );
+    await store.append(second);
+    const head = await store.load(PROJECT);
+    assertEquals(head.workspaceRevision, 2);
+    const third = await eventFor(head, modulePut("m3", 2, "mod-c", "clamp"));
+
+    const raw = JSON.parse(
+      await Deno.readTextFile(`${root}/${PROJECT}/0000000001.json`),
+    );
+    const { fingerprint: _ignored, ...tamperedBody } = {
+      ...raw,
+      mutation: { ...raw.mutation, displayName: "Tampered" },
+    };
+    const tampered = {
+      ...tamperedBody,
+      fingerprint: await eventBodyFingerprint(tamperedBody),
+    };
+    await Deno.writeTextFile(
+      `${root}/${PROJECT}/0000000001.json`,
+      `${deterministicJson(tampered)}\n`,
+    );
+
+    const error = await assertRejects(
+      () => store.append(third),
+      ProjectSourceWorkspaceStoreError,
+    );
+    assertEquals(error.code, "corrupt_log");
+    const names = [];
+    for await (const entry of Deno.readDir(`${root}/${PROJECT}`)) {
+      names.push(entry.name);
+    }
+    names.sort();
+    assertEquals(names, [
+      "0000000001.claim",
+      "0000000001.json",
+      "0000000002.claim",
+      "0000000002.json",
+    ]);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("fresh reload fails when a historical event is tampered and individually rehashed", async () => {
   const root = await Deno.makeTempDir({ prefix: "psw-history-tamper-" });
   try {
@@ -275,6 +330,11 @@ Deno.test("fresh reload fails when a historical event is tampered and individual
     );
 
     assertEquals((await cached.load(PROJECT)).workspaceRevision, 2);
+    const cachedFresh = await assertRejects(
+      () => cached.loadAtFresh(PROJECT, 2),
+      ProjectSourceWorkspaceStoreError,
+    );
+    assertEquals(cachedFresh.code, "corrupt_log");
     const fresh = await assertRejects(
       () => new FileProjectSourceWorkspaceStore(root).load(PROJECT),
       ProjectSourceWorkspaceStoreError,

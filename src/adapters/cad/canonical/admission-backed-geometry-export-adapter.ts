@@ -1,7 +1,7 @@
 /**
  * Admission-backed geometry export through the private build123d sandbox.
  *
- * WHY THIS ADAPTER — after `compile.seal-admission@1` the application already
+ * WHY THIS ADAPTER — after `compile.seal-admission@2` the application already
  * holds exact admitted bytes. This adapter must not accept a second Python
  * source, provider name, tool, path or image. It reuses `build123d_export` and
  * `captureGeometryDraft` so the product remains a geometry DRAFT, never Thread.
@@ -42,8 +42,8 @@ export const ADMITTED_GEOMETRY_EXPORT_FORMATS: readonly GeometryExportFormat[] =
 export const ADMITTED_GEOMETRY_PART_EXPORT_FORMATS: readonly GeometryExportFormat[] =
   ADMITTED_GEOMETRY_EXPORT_FORMATS;
 /** Dedicated P2a target export profile; server-owned and STEP-authoritative. */
-export const ADMITTED_TARGETED_PART_EXPORT_FORMATS:
-  readonly GeometryExportFormat[] = GEOMETRY_PART_DRAFT_EXPORT_FORMATS;
+export const ADMITTED_TARGETED_PART_EXPORT_FORMATS: readonly GeometryExportFormat[] =
+  GEOMETRY_PART_DRAFT_EXPORT_FORMATS;
 
 export interface AdmissionBackedGeometryExportDependencies {
   readonly client: McpToolClient;
