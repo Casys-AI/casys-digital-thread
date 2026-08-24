@@ -2,54 +2,22 @@ import {
   type EngineeringAgentRun,
   type EngineeringAgentRunStatus,
   type EngineeringAgentRunUncertainWriterReconciliation,
-  type EngineeringApproval,
-  type EngineeringApprovedBriefBasis,
-  type EngineeringBasisRef,
   type EngineeringCancelledRunReceiptBinding,
-  type EngineeringCommandActor,
-  type EngineeringCommandOriginKind,
   type EngineeringDecision,
-  type EngineeringDecisionProposalParameter,
-  type EngineeringGateClaim,
-  type EngineeringOperationInputBinding,
-  type EngineeringOperationRef,
-  type EngineeringProjectChange,
   type EngineeringProjectCommandName,
-  type EngineeringProjectPhase,
-  type EngineeringProjectPlan,
   type EngineeringProjectSnapshot,
-  type EngineeringProjectStartingPoint,
   type EngineeringQueuedRunReceiptBinding,
-  type EngineeringThreadEntityRef,
-  type EngineeringThreadSnapshotRef,
   type EngineeringWorkItem,
-  type EngineeringWorkOwner,
-  queuedRunCancellationSummary,
 } from "../../../domain/project/engineering-project.ts";
-import { stampEngineeringActivityIdentity } from "../../../domain/project/engineering-activity.ts";
-import { collectRequiredDependsOnOperationIssues } from "../../../domain/project/required-depends-on-operation.ts";
-import {
-  engineeringProjectPlanReplacementLock,
-  engineeringProjectPlanReplacementLockMessage,
-} from "../../../domain/project/engineering-project-plan-replaceability.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
-import type { RegisteredRunPlanSealer } from "../../../domain/project/resolved-run-plan-sealer.ts";
-import { validateResolvedOperationPlanRef } from "../../../domain/compile/rop/resolved-operation-plan-v2.ts";
-import { deepFreeze } from "../../../domain/kernel/case-validation.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/thread/thread-snapshot.ts";
-import {
-  currentProjectAnswer,
-  isProjectBriefGateKind,
-  projectBriefContractVersion,
-} from "../../../domain/project/project-brief.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../domain/cad/canonical/geometry-proposal.ts";
 import {
-  type ReconcileUncertainWriterOutcome,
   requireApprovedUncertainWriterReconciliationDecision,
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES,
 } from "../../../domain/record/reconcile-uncertain-writer-proposal.ts";
@@ -57,11 +25,9 @@ import { DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION } from "../../../domain/imp
 import {
   applyCrossDomainImpactWorkItemClaims,
   canonicalizeCrossDomainImpactWorkItemClaims,
-  type CrossDomainImpactWorkItemClaimTransition,
   recrossCrossDomainImpactWorkItemClaims,
 } from "../../../domain/impact/cross-domain-impact-decision.ts";
 import {
-  isReservedUncertainWriterBasisReleaseDecisionId,
   uncertainWriterBasisReleaseIds,
   uncertainWriterBasisReleaseText,
 } from "../../../domain/record/uncertain-writer-basis-release.ts";
@@ -70,143 +36,116 @@ import {
   EngineeringProjectStoreConflictError,
 } from "../../ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectCommandOrigin } from "../../ports/in/engineering-project-command-origin.ts";
+import {
+  EngineeringProjectCommandError,
+  type EngineeringProjectCommandErrorCode,
+} from "./commands/engineering-project-command-error.ts";
+import {
+  assertAllowed,
+  ENGINEERING_PROJECT_COMMAND_POLICY,
+} from "./commands/engineering-project-command-policy.ts";
+import type {
+  AbandonWorkItemsCommand,
+  AcceptCrossDomainImpactDecisionCommand,
+  AppendProjectChangeCommand,
+  CancelQueuedRunCommand,
+  CompleteRunCommand,
+  DecideDecisionCommand,
+  EngineeringDecisionProposalInput,
+  EngineeringProjectCommandInput,
+  EngineeringProjectCompletionEvidenceValidator,
+  EngineeringProjectInitialCompletionEvidenceValidator,
+  EngineeringProjectPlanningDependencies,
+  EngineeringProjectPlanOperationRegistry,
+  EngineeringProjectQueueEligibility,
+  EngineeringProjectReconciliationOperationPolicy,
+  EngineeringProjectReconciliationSnapshotValidator,
+  FailRunCommand,
+  PlannedEngineeringDecision,
+  PlannedEngineeringProjectPhase,
+  PlannedEngineeringWorkItem,
+  ProposeDecisionCommand,
+  PublishProjectPlanCommand,
+  QueueRunCommand,
+  ReconcileAnnotationRunCommand,
+  ReconcileWorkItemWithSuccessorCommand,
+  RunCommand,
+} from "./commands/engineering-project-commands.ts";
+import {
+  applyAppendChange,
+  applyPublishPlan,
+  approvedBriefBasisForProject,
+} from "./commands/project-planning-transitions.ts";
+import {
+  applyDecideDecision,
+  applyProposeDecision,
+} from "./commands/engineering-decision-transitions.ts";
+import {
+  applyCancelQueuedRun,
+  applyClaimRun,
+  applyCompleteRun,
+  applyFailRun,
+  applyOrdinaryRunTransition,
+  applyQueueRun,
+  hasCallerCancelledRunBinding,
+  hasCallerQueuedRunBinding,
+} from "./commands/engineering-run-transitions.ts";
+import {
+  actor,
+  addThreadSnapshot,
+  assertDeclaredSnapshot,
+  assertExactResultEvidence,
+  assertResultAdvancesBase,
+  findDecision,
+  findRun,
+  findWorkItem,
+  invalidInput,
+  invalidTransition,
+  mergeEvidence,
+  type Mutable,
+  nonEmpty,
+  notFound,
+  recomputeWorkReadiness,
+  sameEvidenceReferences,
+  sameSnapshotReference,
+  stale,
+  threadSnapshotReference,
+  transition,
+} from "./commands/engineering-project-transition-values.ts";
 
-export type EngineeringProjectCommandErrorCode =
-  | "project_not_found"
-  | "stale_revision"
-  | "command_id_conflict"
-  | "permission_denied"
-  | "invalid_transition"
-  | "invalid_input"
-  | "approval_scope_mismatch"
-  | "entity_not_found";
-
-export class EngineeringProjectCommandError extends Error {
-  readonly httpStatus: 403 | 404 | 409 | 422;
-
-  constructor(
-    readonly code: EngineeringProjectCommandErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = "EngineeringProjectCommandError";
-    this.httpStatus = code === "permission_denied"
-      ? 403
-      : code === "project_not_found" || code === "entity_not_found"
-      ? 404
-      : code === "stale_revision" || code === "command_id_conflict"
-      ? 409
-      : 422;
-  }
-}
-
-export interface EngineeringDecisionProposalInput {
-  readonly summary: string;
-  readonly parameters: readonly EngineeringDecisionProposalParameter[];
-}
-
-export interface EngineeringProjectCommandInput {
-  readonly commandId: string;
-  readonly projectId: string;
-  readonly expectedRevision: number;
-  /** Client-provided audit metadata; never used as authoritative state time. */
-  readonly issuedAt: string;
-}
-
-export interface ProposeDecisionCommand extends EngineeringProjectCommandInput {
-  readonly decisionId: string;
-  readonly proposal: EngineeringDecisionProposalInput;
-  readonly baseSnapshot: EngineeringThreadSnapshotRef;
-}
-
-export interface DecideDecisionCommand extends EngineeringProjectCommandInput {
-  readonly decisionId: string;
-  readonly rationale: string;
-  /** The exact proposal binding displayed to the human reviewer. */
-  readonly inputFingerprint: ContentFingerprint;
-}
-
-export interface QueueRunCommand extends EngineeringProjectCommandInput {
-  readonly runId: string;
-  readonly workItemId: string;
-  readonly summary: string;
-  /** Historical V1 field. The current schema rejects it rather than queuing. */
-  readonly baseSnapshot?: EngineeringThreadSnapshotRef;
-  /** Exact execution anchor. Callers of the MCP tool never choose this. */
-  readonly basis?: EngineeringBasisRef;
-}
-
-export interface RunCommand extends EngineeringProjectCommandInput {
-  readonly runId: string;
-  readonly summary: string;
-}
-
-export interface CompleteRunCommand extends RunCommand {
-  readonly resultSnapshot: EngineeringThreadSnapshotRef;
-  readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
-}
-
-export interface FailRunCommand extends RunCommand {
-  readonly code: string;
-  readonly message: string;
-}
-
-/**
- * Human-only closeout for a queued run. It deliberately carries no synthetic
- * execution summary, timestamps or failure: the run never started.
- */
-export interface CancelQueuedRunCommand extends EngineeringProjectCommandInput {
-  readonly runId: string;
-  readonly rationale: string;
-}
-
-/**
- * Human-only single-step command that completes the impact-decision run and
- * applies the already-proposed X07/X08 gate-claim statuses onto existing
- * claims. X07/X08 records workItemInvalidations and rerunProposals as `none`;
- * this command does not add, invalidate, or otherwise change work-item
- * lifecycle except completing this decision run.
- */
-export interface AcceptCrossDomainImpactDecisionCommand
-  extends EngineeringProjectCommandInput {
-  readonly runId: string;
-  readonly summary: string;
-  readonly decisionId: string;
-  readonly resultSnapshot: EngineeringThreadSnapshotRef;
-  readonly evidenceRefs: readonly EngineeringThreadEntityRef[];
-  readonly evaluationCapture: {
-    readonly id: string;
-    readonly fingerprint: ContentFingerprint;
-  };
-  readonly appliedGateClaims: readonly CrossDomainImpactWorkItemClaimTransition[];
-  readonly limits: {
-    readonly providerCalls: "none";
-    readonly solverCalls: "none";
-    readonly reruns: "none";
-    readonly newWorkItems: "none";
-  };
-}
-
-/**
- * Human-only single-step command that resolves write-uncertainty on a terminal
- * failed run and completes the reconciliation work item in one atomic write.
- *
- * WHY SINGLE-STEP — unlike evidence-producing runs (which go through claim →
- * publish → complete), the annotation run produces no ThreadSnapshot and no
- * provider call.  The entire reconciliation is a project-level state mutation
- * that a human actor executes directly.  The command is analogous to
- * `agent-run.cancel`: one atomic write, no intermediate "running" state.
- */
-export interface ReconcileAnnotationRunCommand extends EngineeringProjectCommandInput {
-  /** The id of the reconciliation run (for `record.reconcile-uncertain-writer@1`). */
-  readonly reconciliationRunId: string;
-  /** The id of the terminal failed run whose write-uncertainty is being resolved. */
-  readonly failedRunId: string;
-  /** Exact human-approved MRTR decision authorizing this annotation. */
-  readonly decisionId: string;
-  readonly outcome: ReconcileUncertainWriterOutcome;
-  readonly providerInspectionAttestation: string;
-}
+export {
+  approvedBriefBasisForProject,
+  ENGINEERING_PROJECT_COMMAND_POLICY,
+  EngineeringProjectCommandError,
+  type EngineeringProjectCommandErrorCode,
+};
+export type {
+  AbandonWorkItemsCommand,
+  AcceptCrossDomainImpactDecisionCommand,
+  AppendProjectChangeCommand,
+  CancelQueuedRunCommand,
+  CompleteRunCommand,
+  DecideDecisionCommand,
+  EngineeringDecisionProposalInput,
+  EngineeringProjectCommandInput,
+  EngineeringProjectCompletionEvidenceValidator,
+  EngineeringProjectInitialCompletionEvidenceValidator,
+  EngineeringProjectPlanningDependencies,
+  EngineeringProjectPlanOperationRegistry,
+  EngineeringProjectQueueEligibility,
+  EngineeringProjectReconciliationOperationPolicy,
+  EngineeringProjectReconciliationSnapshotValidator,
+  FailRunCommand,
+  PlannedEngineeringDecision,
+  PlannedEngineeringProjectPhase,
+  PlannedEngineeringWorkItem,
+  ProposeDecisionCommand,
+  PublishProjectPlanCommand,
+  QueueRunCommand,
+  ReconcileAnnotationRunCommand,
+  ReconcileWorkItemWithSuccessorCommand,
+  RunCommand,
+};
 
 /**
  * Failure codes that indicate a terminal uncertain write — the provider
@@ -220,296 +159,6 @@ export interface ReconcileAnnotationRunCommand extends EngineeringProjectCommand
  */
 export const ELIGIBLE_UNCERTAIN_WRITE_FAILURE_CODES =
   TERMINAL_UNCERTAIN_WRITE_FAILURE_CODES;
-
-/**
- * Close one failed work item only when an independently completed successor
- * already carries the exact replacement evidence. This is project-state
- * reconciliation, never a provider retry or a claim that the failed work
- * produced evidence.
- */
-export interface ReconcileWorkItemWithSuccessorCommand
-  extends EngineeringProjectCommandInput {
-  readonly failedWorkItemId: string;
-  readonly failedRunId: string;
-  readonly successorRunId: string;
-  readonly successorRunSnapshot: EngineeringThreadSnapshotRef;
-  /**
-   * Absent for a direct reconciliation where the successor run result is
-   * already the project thread head and no separate closeout snapshot is
-   * needed. When present the full closeout path is used instead.
-   */
-  readonly successorSnapshot?: EngineeringThreadSnapshotRef;
-  readonly successorEvidenceRefs: readonly EngineeringThreadEntityRef[];
-  readonly rationale: string;
-}
-
-/**
- * Human-only governed abandonment for work items that never acquired a
- * provider run and their associated pending or required decisions.
- *
- * WHY HUMAN-ONLY — abandonment is an intentional, irreversible editorial act
- * on the project plan. An agent must never mark its own work items as
- * abandoned without explicit human oversight.
- *
- * Guards:
- *  - Each work item must be in `ready` (never queued) or `waiting-for-decision`
- *    (never queued) and must have no associated runs.
- *  - Each decision must be in `required` or `proposed` (not `approved`).
- *  - Evidence-carrying work items are ineligible: abandonment is only for
- *    noise, not for a run that already wrote to the thread.
- */
-export interface AbandonWorkItemsCommand extends EngineeringProjectCommandInput {
-  /** One or more work item IDs to abandon (minimum 1). */
-  readonly workItemIds: readonly string[];
-  /**
-   * Decision IDs to abandon alongside the work items. May be empty, but every
-   * id supplied must be in `required` or `proposed` status.
-   */
-  readonly decisionIds: readonly string[];
-  readonly rationale: string;
-}
-
-export interface PublishProjectPlanCommand extends EngineeringProjectCommandInput {
-  readonly startingPoint: EngineeringProjectStartingPoint;
-  readonly phases: readonly PlannedEngineeringProjectPhase[];
-  readonly workItems: readonly PlannedEngineeringWorkItem[];
-  readonly requiredDecisions: readonly PlannedEngineeringDecision[];
-}
-
-/**
- * An additive, agent-authored change after the initial baseline exists.
- * Existing phases, work, decisions, runs and ThreadSnapshot references are
- * never replaced. New work may join a newly declared phase or append
- * membership onto an existing phase; that is an immutable extension, not a
- * rewrite of the earlier phase record.
- */
-export interface AppendProjectChangeCommand extends EngineeringProjectCommandInput {
-  /** Exact current project ThreadSnapshot that this bounded change extends. */
-  readonly baseSnapshot: EngineeringThreadSnapshotRef;
-  readonly phases: readonly PlannedEngineeringProjectPhase[];
-  readonly workItems: readonly PlannedEngineeringWorkItem[];
-  readonly requiredDecisions: readonly PlannedEngineeringDecision[];
-}
-
-/** The agent declares only structure; the service derives membership and order. */
-export interface PlannedEngineeringProjectPhase {
-  readonly id: string;
-  readonly name: string;
-  readonly description: string;
-}
-
-/** A safe operation reference, not a provider/tool invocation. */
-export interface PlannedEngineeringWorkItem {
-  readonly id: string;
-  readonly phaseId: string;
-  readonly owner: EngineeringWorkOwner;
-  readonly dependsOnWorkItemIds: readonly string[];
-  readonly decisionIds: readonly string[];
-  readonly operation: EngineeringOperationRef;
-  /**
-   * Names an existing or same-batch predecessor revision. Omit to start a
-   * stable activity. Callers never supply activityId.
-   */
-  readonly predecessorRevisionId?: string;
-  /** Optional because a work item may legitimately make no gate claim. */
-  readonly gateClaims?: readonly EngineeringGateClaim[];
-}
-
-export interface PlannedEngineeringDecision {
-  readonly id: string;
-  readonly phaseId: string;
-  readonly title: string;
-  readonly question: string;
-}
-
-/**
- * Narrow adapter over the code-owned operation registry. The plan service
- * cannot receive provider names, tool arguments or executable workflows.
- */
-export interface EngineeringProjectPlanOperationRegistry {
-  validate(
-    input:
-      | {
-        readonly operation: EngineeringOperationRef;
-        /** Plan publication validates only the reviewed descriptor and bindings. */
-        readonly stage: "planning";
-      }
-      | {
-        readonly operation: EngineeringOperationRef;
-        /** Queueing must validate the exact durable basis a run will consume. */
-        readonly stage: "queue";
-        readonly basisKind: EngineeringBasisRef["kind"];
-      },
-  ): {
-    readonly operation: {
-      readonly id: string;
-      readonly version: string;
-      readonly startingPoint: EngineeringProjectStartingPoint;
-      readonly title: string;
-      readonly description: string;
-      readonly workItemKind: EngineeringWorkItem["kind"];
-      /** A queueable run requires a concrete trusted executor. */
-      readonly execution: "trusted" | "planning-only";
-      /** Requires a server-sealed resolved-operation-plan/2.0 before queue commit. */
-      readonly resolvedOperationPlan?: "2.0";
-      readonly decisionEvidenceScope?: "thread-entity-bindings";
-      /**
-       * When true, the operation must arrive via project_change_append, not the
-       * initial plan. publishPlan enforces this at planning time so the agent
-       * learns immediately, before any run has locked the plan against
-       * republication.  See RegisteredEngineeringOperation.requiresAdditiveChange.
-       */
-      readonly requiresAdditiveChange?: true;
-      readonly requiresDependsOnOperation?: {
-        readonly id: string;
-        readonly version: string;
-      };
-      /**
-       * Reviewed human-lifecycle grant. Present only when the executor and
-       * command service must keep the same human origin through claim,
-       * progress, publish, complete, and fail.
-       */
-      readonly mustOrigin?: "human";
-    };
-    readonly bindings: readonly EngineeringOperationInputBinding[];
-  };
-}
-
-/**
- * Optional policy gate for a concrete V3 run after its reviewed operation and
- * exact basis have already been accepted. The command service gives the gate
- * a validated, deeply frozen pre-mutation project snapshot: it can refuse the
- * queue transition, but cannot alter the candidate run or project state.
- */
-export interface EngineeringProjectQueueEligibility {
-  validate(input: {
-    readonly project: EngineeringProjectSnapshot;
-    readonly workItem: EngineeringWorkItem;
-    readonly operation: EngineeringOperationRef;
-    readonly basis: EngineeringBasisRef;
-  }): Promise<void>;
-}
-
-export interface EngineeringProjectPlanningDependencies {
-  readonly operations: EngineeringProjectPlanOperationRegistry;
-  /**
-   * Present only when the deployment can seal and reread registered recorded
-   * plans. It is consulted exclusively for operations marked plan 2.0.
-   */
-  readonly runPlanSealer?: RegisteredRunPlanSealer;
-  /**
-   * Optional, code-owned admission gate for a particular reviewed V3 run.
-   * It is deliberately evaluated before a run, work-item status or receipt is
-   * mutated.
-   */
-  readonly queueEligibility?: EngineeringProjectQueueEligibility;
-}
-
-export interface EngineeringProjectCompletionEvidenceValidator {
-  validate(
-    baseSnapshot: EngineeringThreadSnapshotRef,
-    resultSnapshot: EngineeringThreadSnapshotRef,
-    evidenceRefs: readonly EngineeringThreadEntityRef[],
-  ): Promise<void>;
-}
-
-/**
- * Dedicated trust boundary for the one initial result created from an approved
- * discovery. It intentionally receives no fabricated base ThreadSnapshot and
- * must not validate it as a descendant.
- */
-export interface EngineeringProjectInitialCompletionEvidenceValidator {
-  validateInitial(
-    runId: string,
-    basis: EngineeringApprovedBriefBasis,
-    operation: EngineeringOperationRef,
-    resultSnapshot: EngineeringThreadSnapshotRef,
-    evidenceRefs: readonly EngineeringThreadEntityRef[],
-  ): Promise<void>;
-}
-
-/**
- * Persistence-backed proof that a reconciliation closeout snapshot exists and
- * is the direct immutable child of the completed successor result.  The
- * project command service owns no ThreadSnapshot store, so adapters inject
- * this narrow validator instead of allowing a caller to name a phantom ref.
- */
-export interface EngineeringProjectReconciliationSnapshotValidator {
-  validate(
-    successorRunSnapshot: EngineeringThreadSnapshotRef,
-    successorSnapshot: EngineeringThreadSnapshotRef,
-  ): Promise<void>;
-  /**
-   * Resolve both immutable records and prove that the current project head
-   * descends from the completed successor result without writing a Thread.
-   */
-  validateCurrentHeadDescendsFrom(
-    currentHead: EngineeringThreadSnapshotRef,
-    ancestor: EngineeringThreadSnapshotRef,
-  ): Promise<void>;
-}
-
-/**
- * Injected, code-owned authorization for a full-closeout transition whose
- * successor deliberately carries a different registered operation.
- *
- * The generic command service cannot infer that `repair.*` is a valid
- * replacement for a particular `verify.*`. A bounded caller must therefore
- * prove the exact transition and its closeout snapshot before it is persisted.
- */
-export interface EngineeringProjectReconciliationOperationPolicy {
-  authorize(input: {
-    readonly failedWorkItemId: string;
-    readonly failedOperation: EngineeringOperationRef;
-    readonly successorWorkItemId: string;
-    readonly successorOperation: EngineeringOperationRef | undefined;
-    readonly successorRunSnapshot: EngineeringThreadSnapshotRef;
-    readonly successorSnapshot: EngineeringThreadSnapshotRef;
-  }): Promise<void>;
-}
-
-/**
- * Static origin grants. Humans do not globally receive run claim / progress /
- * publish / complete / fail. Those lifecycle commands stay agent-origin for
- * ordinary registered work. `runTransition` additionally proves the queued
- * operation against the reviewed registry: a human origin may drive them only
- * when that exact operation is `mustOrigin: "human"`, and an agent origin
- * cannot drive that same human-only lifecycle.
- */
-export const ENGINEERING_PROJECT_COMMAND_POLICY = {
-  human: [
-    "decision.propose",
-    "decision.approve",
-    "decision.reject",
-    "agent-run.queue",
-    "agent-run.cancel",
-    "agent-run.reconcile-annotation",
-    "impact-decision.accept",
-    "work-item.abandon",
-  ],
-  agent: [
-    "project.plan-publish",
-    "project.change-append",
-    "work-item.reconcile-successor",
-    "decision.propose",
-    "agent-run.queue",
-    "agent-run.claim",
-    "agent-run.progress",
-    "agent-run.publish",
-    "agent-run.complete",
-    "agent-run.fail",
-  ],
-} as const;
-
-const HUMAN_ORIGIN_RUN_LIFECYCLE_COMMANDS = [
-  "agent-run.claim",
-  "agent-run.progress",
-  "agent-run.publish",
-  "agent-run.complete",
-  "agent-run.fail",
-] as const satisfies readonly EngineeringProjectCommandName[];
-
-type EngineeringProjectCommandType = EngineeringProjectCommandName;
 
 interface CancellationFingerprintInput extends EngineeringProjectCommandInput {
   readonly runId?: string;
@@ -551,132 +200,7 @@ export class EngineeringProjectCommandService {
       "project.plan-publish",
       command,
       (draft, appliedAt) => {
-        const planning = this.planning;
-        if (!planning) {
-          invalidInput(
-            "Project-plan publication is unavailable because no reviewed operation registry is configured.",
-          );
-        }
-        assertPlanningProject(draft);
-        assertPlanningCanChange(draft);
-        validatePlanCommand(command);
-        assertPlanGateClaimsResolve(draft, command.workItems);
-        const basis = planningBasisForProject(draft);
-
-        const phaseIds = new Set(command.phases.map((phase) => phase.id));
-        const workItemIds = new Set(command.workItems.map((workItem) => workItem.id));
-        const decisionsById = new Map(
-          command.requiredDecisions.map((decision) => [decision.id, decision]),
-        );
-        const decisionIds = new Set(
-          command.requiredDecisions.map((decision) => decision.id),
-        );
-        const resolvedWorkItems = command.workItems.map((item) => {
-          const resolved = resolvePlanOperation(planning.operations, item.operation);
-          if (resolved.operation.startingPoint !== command.startingPoint) {
-            invalidInput(
-              `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${command.startingPoint}.`,
-            );
-          }
-          // Fail early: some operations require a planChange lineage that the
-          // initial plan can never provide.  The executor would catch this at
-          // run time, but by then the baseline has completed and
-          // assertPlanningCanChange forbids republication — leaving the agent
-          // with no recovery path.  Rejecting here preserves the plan slot.
-          if (resolved.operation.requiresAdditiveChange) {
-            invalidInput(
-              `Operation ${resolved.operation.id}@${resolved.operation.version} must be introduced ` +
-                "by an additive project change (project_change_append) after the baseline completes " +
-                "— it cannot appear in the initial plan.",
-            );
-          }
-          assertPlanBindingsResolve(draft, resolved.bindings);
-          assertPlanWorkItemReferences(
-            item,
-            phaseIds,
-            workItemIds,
-            decisionIds,
-            decisionsById,
-          );
-          return {
-            ...item,
-            title: resolved.operation.title,
-            description: resolved.operation.description,
-            kind: resolved.operation.workItemKind,
-            decisionEvidenceScope: resolved.operation.decisionEvidenceScope,
-            operation: {
-              id: resolved.operation.id,
-              version: resolved.operation.version,
-              bindings: structuredClone(resolved.bindings) as Mutable<
-                EngineeringOperationInputBinding
-              >[],
-            },
-          };
-        });
-        assertPlanDependenciesAreAcyclic(resolvedWorkItems);
-        const activityIdentity = stampDeclaredActivityIdentity([], resolvedWorkItems);
-
-        const decisions = command.requiredDecisions.map((decision) => ({
-          id: decision.id,
-          phaseId: decision.phaseId,
-          title: decision.title,
-          question: decision.question,
-          status: "required" as const,
-          requestedAt: appliedAt,
-          inputEvidenceRefs: decisionInputEvidenceRefs(decision.id, resolvedWorkItems),
-          approvalIds: [],
-        }));
-        const workItems = resolvedWorkItems.map((item) => ({
-          id: item.id,
-          ...activityIdentity.get(item.id)!,
-          phaseId: item.phaseId,
-          title: item.title,
-          description: item.description,
-          kind: item.kind,
-          operation: item.operation,
-          status: item.decisionIds.length
-            ? "waiting-for-decision" as const
-            : "planned" as const,
-          owner: item.owner,
-          dependsOnWorkItemIds: [...item.dependsOnWorkItemIds],
-          ...(item.gateClaims === undefined
-            ? {}
-            : { gateClaims: item.gateClaims.map((claim) => ({ ...claim })) }),
-          evidenceRefs: [],
-          decisionIds: [...item.decisionIds],
-          blockerIds: [],
-        }));
-        const phases = command.phases.map((phase, index) => ({
-          id: phase.id,
-          name: phase.name,
-          order: index + 1,
-          description: phase.description,
-          workItemIds: workItems.filter((item) => item.phaseId === phase.id).map((
-            item,
-          ) => item.id),
-          requiredDecisionIds: decisions.filter((item) => item.phaseId === phase.id)
-            .map((item) => item.id),
-          evidenceRefs: [],
-        }));
-        assertEveryPhaseHasWork(phases);
-
-        const plan: EngineeringProjectPlan = {
-          startingPoint: command.startingPoint,
-          basis,
-          publishedAt: appliedAt,
-          publishedBy: actor(origin),
-        };
-        draft.plan = plan;
-        draft.phases = phases;
-        draft.workItems = workItems;
-        draft.decisions = decisions;
-        draft.approvals = [];
-        draft.blockers = [];
-        draft.agentRuns = [];
-        // A bounded first-baseline operation without dependencies or decisions
-        // is ready for explicit human queueing immediately. Planning never
-        // queues it itself.
-        recomputeWorkReadiness(draft);
+        applyPublishPlan(draft, appliedAt, origin, command, this.planning);
       },
     );
   }
@@ -696,197 +220,7 @@ export class EngineeringProjectCommandService {
       "project.change-append",
       command,
       (draft, appliedAt) => {
-        const planning = this.planning;
-        if (!planning) {
-          invalidInput(
-            "Project-change publication is unavailable because no reviewed operation registry is configured.",
-          );
-        }
-        assertPlanningProject(draft);
-        assertChangeCanAppend(draft);
-        validateChangeCommand(command);
-        assertPlanGateClaimsResolve(draft, command.workItems);
-        const currentHead = assertCurrentThreadSnapshotHead(
-          draft,
-          command.baseSnapshot,
-        );
-        const approvedBriefBasis = planningBasisForProject(draft);
-        const startingPoint = draft.plan!.startingPoint;
-
-        const existingPhaseIds = new Set(draft.phases.map((phase) => phase.id));
-        const existingWorkItemIds = new Set(draft.workItems.map((item) => item.id));
-        const existingDecisionIds = new Set(
-          draft.decisions.map((decision) => decision.id),
-        );
-        assertNewPlanIds(
-          command.phases.map((phase) => phase.id),
-          existingPhaseIds,
-          "phase",
-        );
-        assertNewPlanIds(
-          command.workItems.map((item) => item.id),
-          existingWorkItemIds,
-          "work item",
-        );
-        assertNewPlanIds(
-          command.requiredDecisions.map((decision) => decision.id),
-          existingDecisionIds,
-          "decision",
-        );
-
-        const newPhaseIds = new Set(command.phases.map((phase) => phase.id));
-        const knownPhaseIds = new Set([...existingPhaseIds, ...newPhaseIds]);
-        const allWorkItemIds = new Set([
-          ...existingWorkItemIds,
-          ...command.workItems.map((item) => item.id),
-        ]);
-        const decisionIds = new Set(
-          command.requiredDecisions.map((decision) => decision.id),
-        );
-        const decisionsById = new Map(
-          command.requiredDecisions.map((decision) => [decision.id, decision]),
-        );
-        for (const [index, decision] of command.requiredDecisions.entries()) {
-          if (!knownPhaseIds.has(decision.phaseId)) {
-            invalidInput(
-              `requiredDecisions[${index}].phaseId must reference an existing project phase or a newly declared phase.`,
-            );
-          }
-        }
-        const activityIdentity = stampDeclaredActivityIdentity(
-          draft.workItems,
-          command.workItems,
-        );
-        const requiredDependsOnRevisions = [
-          ...draft.workItems,
-          ...command.workItems.map((item) => ({
-            id: item.id,
-            ...activityIdentity.get(item.id)!,
-            operation: item.operation,
-          })),
-        ];
-        const resolvedWorkItems = command.workItems.map((item) => {
-          const resolved = resolvePlanOperation(planning.operations, item.operation);
-          if (resolved.operation.startingPoint !== startingPoint) {
-            invalidInput(
-              `Operation ${resolved.operation.id}@${resolved.operation.version} is not registered for ${startingPoint}.`,
-            );
-          }
-          assertPlanBindingsResolve(draft, resolved.bindings);
-          assertChangeWorkItemReferences(
-            item,
-            knownPhaseIds,
-            allWorkItemIds,
-            decisionIds,
-            decisionsById,
-          );
-          assertRequiredDependsOnOperation(
-            item,
-            resolved.operation,
-            requiredDependsOnRevisions,
-          );
-          return {
-            ...item,
-            title: resolved.operation.title,
-            description: resolved.operation.description,
-            kind: resolved.operation.workItemKind,
-            decisionEvidenceScope: resolved.operation.decisionEvidenceScope,
-            operation: {
-              id: resolved.operation.id,
-              version: resolved.operation.version,
-              bindings: structuredClone(resolved.bindings) as Mutable<
-                EngineeringOperationInputBinding
-              >[],
-            },
-          };
-        });
-        assertPlanDependenciesAreAcyclic([
-          ...draft.workItems,
-          ...resolvedWorkItems,
-        ]);
-
-        const decisions = command.requiredDecisions.map((decision) => ({
-          id: decision.id,
-          phaseId: decision.phaseId,
-          title: decision.title,
-          question: decision.question,
-          status: "required" as const,
-          requestedAt: appliedAt,
-          inputEvidenceRefs: decisionInputEvidenceRefs(decision.id, resolvedWorkItems),
-          approvalIds: [],
-        }));
-        const workItems = resolvedWorkItems.map((item) => ({
-          id: item.id,
-          ...activityIdentity.get(item.id)!,
-          phaseId: item.phaseId,
-          title: item.title,
-          description: item.description,
-          kind: item.kind,
-          operation: item.operation,
-          status: item.decisionIds.length
-            ? "waiting-for-decision" as const
-            : "planned" as const,
-          owner: item.owner,
-          dependsOnWorkItemIds: [...item.dependsOnWorkItemIds],
-          ...(item.gateClaims === undefined
-            ? {}
-            : { gateClaims: item.gateClaims.map((claim) => ({ ...claim })) }),
-          evidenceRefs: [],
-          decisionIds: [...item.decisionIds],
-          blockerIds: [],
-        }));
-        const phases = command.phases.map((phase, index) => ({
-          id: phase.id,
-          name: phase.name,
-          order: draft.phases.length + index + 1,
-          description: phase.description,
-          workItemIds: workItems.filter((item) => item.phaseId === phase.id).map((
-            item,
-          ) => item.id),
-          requiredDecisionIds: decisions.filter((item) => item.phaseId === phase.id)
-            .map((item) => item.id),
-          evidenceRefs: [],
-        }));
-        assertEveryPhaseHasWork(phases);
-
-        const change: Mutable<EngineeringProjectChange> = {
-          id: `change:${command.commandId}`,
-          commandId: command.commandId,
-          approvedBriefBasis: structuredClone(approvedBriefBasis),
-          baseSnapshot: structuredClone(currentHead),
-          phaseIds: phases.map((phase) => phase.id),
-          workItemIds: workItems.map((item) => item.id),
-          decisionIds: decisions.map((decision) => decision.id),
-          publishedAt: appliedAt,
-          publishedBy: actor(origin),
-        };
-
-        draft.phases = [
-          ...draft.phases.map((phase) => {
-            const addedWorkIds = workItems
-              .filter((item) => item.phaseId === phase.id)
-              .map((item) => item.id);
-            const addedDecisionIds = decisions
-              .filter((item) => item.phaseId === phase.id)
-              .map((item) => item.id);
-            if (addedWorkIds.length === 0 && addedDecisionIds.length === 0) {
-              return phase;
-            }
-            return {
-              ...phase,
-              workItemIds: [...phase.workItemIds, ...addedWorkIds],
-              requiredDecisionIds: [
-                ...phase.requiredDecisionIds,
-                ...addedDecisionIds,
-              ],
-            };
-          }),
-          ...phases,
-        ];
-        draft.workItems = [...draft.workItems, ...workItems];
-        draft.decisions = [...draft.decisions, ...decisions];
-        draft.planChanges = [...(draft.planChanges ?? []), change];
-        recomputeWorkReadiness(draft);
+        applyAppendChange(draft, appliedAt, origin, command, this.planning);
       },
     );
   }
@@ -896,43 +230,7 @@ export class EngineeringProjectCommandService {
     command: ProposeDecisionCommand,
   ): Promise<EngineeringProjectSnapshot> {
     return this.apply(origin, "decision.propose", command, async (draft, appliedAt) => {
-      const decision = findDecision(draft, command.decisionId);
-      if (!decision) notFound("decision", command.decisionId);
-      if (decision.status !== "required" && decision.status !== "rejected") {
-        invalidTransition(
-          `Decision ${decision.id} cannot be proposed from ${decision.status}.`,
-        );
-      }
-      assertDeclaredSnapshot(draft, command.baseSnapshot);
-      validateProposalInput(command.proposal);
-      const proposal = {
-        summary: command.proposal.summary,
-        parameters: [...structuredClone(command.proposal.parameters)],
-        proposedAt: appliedAt,
-        proposedBy: actor(origin),
-      };
-      const inputFingerprint = await sha256Fingerprint({
-        baseSnapshot: command.baseSnapshot,
-        inputEvidenceRefs: decision.inputEvidenceRefs,
-        proposal: command.proposal,
-      });
-      const approvalId = `approval:${decision.id}:${command.commandId}`;
-      const approval: Mutable<EngineeringApproval> = {
-        id: approvalId,
-        decisionId: decision.id,
-        status: "pending",
-        requestedAt: appliedAt,
-        baseSnapshot: structuredClone(command.baseSnapshot),
-        inputFingerprint,
-        inputEvidenceRefs: structuredClone(decision.inputEvidenceRefs),
-      };
-      draft.approvals.push(approval);
-      decision.status = "proposed";
-      decision.baseSnapshot = structuredClone(command.baseSnapshot);
-      decision.inputFingerprint = inputFingerprint;
-      decision.proposal = proposal;
-      decision.approvalIds.push(approvalId);
-      recomputeWorkReadiness(draft);
+      await applyProposeDecision(draft, appliedAt, origin, command);
     });
   }
 
@@ -963,46 +261,7 @@ export class EngineeringProjectCommandService {
       );
     }
     return this.apply(origin, "agent-run.queue", command, async (draft, appliedAt) => {
-      nonEmpty(command.runId, "runId");
-      nonEmpty(command.summary, "summary");
-      if (draft.agentRuns.some((run) => run.id === command.runId)) {
-        invalidInput(`Agent run id ${command.runId} already exists.`);
-      }
-      const workItem = findWorkItem(draft, command.workItemId);
-      if (!workItem) notFound("work item", command.workItemId);
-      if (workItem.status !== "ready") {
-        invalidTransition(
-          `Work item ${workItem.id} must be ready before a run can be queued.`,
-        );
-      }
-      if (
-        draft.agentRuns.some((run) =>
-          run.workItemId === workItem.id && isActiveRunStatus(run.status)
-        )
-      ) {
-        invalidTransition(`Work item ${workItem.id} already has an active run.`);
-      }
-      const decisionBindings = workItem.decisionIds.map((id) => {
-        const decision = findDecision(draft, id);
-        if (!decision || decision.status !== "approved" || !decision.inputFingerprint) {
-          invalidTransition(`Work item decision ${id} is not approved.`);
-        }
-        return {
-          id,
-          inputFingerprint: structuredClone(decision.inputFingerprint),
-        };
-      });
-      const queued = await queueV3Run(
-        draft,
-        command,
-        workItem,
-        decisionBindings,
-        appliedAt,
-        origin,
-        this.planning,
-      );
-      draft.agentRuns.push(queued);
-      workItem.status = "in-progress";
+      await applyQueueRun(draft, appliedAt, origin, command, this.planning);
     });
   }
 
@@ -1017,9 +276,7 @@ export class EngineeringProjectCommandService {
       ["queued"],
       "running",
       (run, appliedAt) => {
-        run.claimedAt = appliedAt;
-        run.claimedBy = actor(origin);
-        run.startedAt = appliedAt;
+        applyClaimRun(run, appliedAt, origin);
       },
     );
   }
@@ -1061,57 +318,14 @@ export class EngineeringProjectCommandService {
       ["publishing"],
       "completed",
       async (run, appliedAt, draft) => {
-        assertExactResultEvidence(draft, command.resultSnapshot, command.evidenceRefs);
-        {
-          const basis = run.basis;
-          if (!basis) {
-            invalidInput(
-              `V3 agent run ${run.id} has no exact basis; completion is unsafe.`,
-            );
-          }
-          const workItem = findWorkItem(draft, run.workItemId)!;
-          if (basis.kind === "approved-brief") {
-            assertInitialV3CompletionBasis(draft, workItem, basis);
-            if (!this.initialEvidenceValidator) {
-              invalidInput(
-                "Initial completion validation is unavailable; refusing to publish a brief-derived documentary baseline.",
-              );
-            }
-            await this.initialEvidenceValidator.validateInitial(
-              run.id,
-              basis,
-              workItem.operation!,
-              command.resultSnapshot,
-              command.evidenceRefs,
-            );
-          } else {
-            const baseSnapshot = threadSnapshotReference(basis);
-            assertResultAdvancesBase(baseSnapshot, command.resultSnapshot);
-            if (!this.evidenceValidator) {
-              invalidInput(
-                "Completion evidence validation is unavailable; refusing to publish unverified refs.",
-              );
-            }
-            await this.evidenceValidator.validate(
-              baseSnapshot,
-              command.resultSnapshot,
-              command.evidenceRefs,
-            );
-          }
-        }
-        addThreadSnapshot(draft, command.resultSnapshot);
-        run.completedAt = appliedAt;
-        run.resultSnapshot = structuredClone(command.resultSnapshot);
-        run.evidenceRefs = [...structuredClone(command.evidenceRefs)];
-        const workItem = findWorkItem(draft, run.workItemId)!;
-        workItem.status = "completed";
-        workItem.evidenceRefs = [...structuredClone(command.evidenceRefs)];
-        const phase = draft.phases.find((item) => item.id === workItem.phaseId)!;
-        phase.evidenceRefs = mergeEvidence(
-          phase.evidenceRefs,
-          command.evidenceRefs,
+        await applyCompleteRun(
+          run,
+          appliedAt,
+          draft,
+          command,
+          this.evidenceValidator,
+          this.initialEvidenceValidator,
         );
-        recomputeWorkReadiness(draft);
       },
     );
   }
@@ -1127,13 +341,7 @@ export class EngineeringProjectCommandService {
       ["running", "waiting-for-decision", "publishing"],
       "failed",
       (run, appliedAt, draft) => {
-        nonEmpty(command.code, "code");
-        nonEmpty(command.message, "message");
-        run.completedAt = appliedAt;
-        run.failure = { code: command.code, message: command.message };
-        delete run.waitingForDecisionIds;
-        const workItem = findWorkItem(draft, run.workItemId)!;
-        workItem.status = nextIdleWorkStatus(draft, workItem);
+        applyFailRun(run, appliedAt, draft, command);
       },
     );
   }
@@ -1156,42 +364,7 @@ export class EngineeringProjectCommandService {
       );
     }
     return this.apply(origin, "agent-run.cancel", command, (draft, appliedAt) => {
-      nonEmpty(command.runId, "runId");
-      nonEmpty(command.rationale, "rationale");
-      const run = findRun(draft, command.runId);
-      if (!run) notFound("agent run", command.runId);
-      if (run.status !== "queued") {
-        invalidTransition(
-          `Agent run ${run.id} can be cancelled only while queued; it is ${run.status}.`,
-        );
-      }
-      if (
-        run.startedAt || run.completedAt || run.claimedAt || run.claimedBy ||
-        run.waitingForDecisionIds || run.resultSnapshot || run.failure ||
-        run.evidenceRefs.length !== 0
-      ) {
-        invalidTransition(
-          `Queued agent run ${run.id} has execution state and cannot be cancelled safely.`,
-        );
-      }
-      const summary = queuedRunCancellationSummary(command.rationale);
-      run.status = "cancelled";
-      run.summary = summary;
-      run.cancellation = {
-        rationale: command.rationale,
-        cancelledAt: appliedAt,
-        cancelledBy: actor(origin),
-      };
-      run.statusHistory ??= [];
-      run.statusHistory.push(transition(
-        { commandId: command.commandId, summary },
-        origin,
-        "cancelled",
-        appliedAt,
-      ));
-      const workItem = findWorkItem(draft, run.workItemId)!;
-      workItem.status = nextIdleWorkStatus(draft, workItem);
-      recomputeWorkReadiness(draft);
+      applyCancelQueuedRun(draft, appliedAt, origin, command);
     });
   }
 
@@ -1867,38 +1040,13 @@ export class EngineeringProjectCommandService {
     status: "approved" | "rejected",
   ): Promise<EngineeringProjectSnapshot> {
     return this.apply(origin, type, command, (draft, appliedAt) => {
-      nonEmpty(command.rationale, "rationale");
-      const decision = findDecision(draft, command.decisionId);
-      if (!decision) notFound("decision", command.decisionId);
-      if (decision.status !== "proposed" || !decision.inputFingerprint) {
-        invalidTransition(`Decision ${decision.id} is not awaiting approval.`);
-      }
-      if (!fingerprintsEqual(decision.inputFingerprint, command.inputFingerprint)) {
-        throw new EngineeringProjectCommandError(
-          "approval_scope_mismatch",
-          `Decision ${decision.id} proposal fingerprint no longer matches the reviewed input.`,
-        );
-      }
-      const approval = [...decision.approvalIds].reverse().map((id) =>
-        draft.approvals.find((candidate) => candidate.id === id)
-      ).find((candidate) => candidate?.status === "pending");
-      if (!approval) {
-        invalidTransition(`Decision ${decision.id} has no pending approval.`);
-      }
-      approval.status = status;
-      approval.decidedAt = appliedAt;
-      approval.decidedBy = origin.actorId;
-      approval.decidedByOrigin = origin.kind;
-      approval.rationale = command.rationale;
-      decision.status = status;
-      if (status === "approved") resolveSatisfiedBlockers(draft, appliedAt);
-      recomputeWorkReadiness(draft);
+      applyDecideDecision(draft, appliedAt, origin, command, status);
     });
   }
 
   private runTransition(
     origin: EngineeringProjectCommandOrigin,
-    type: EngineeringProjectCommandType,
+    type: EngineeringProjectCommandName,
     command: RunCommand,
     allowed: readonly EngineeringAgentRunStatus[],
     status: EngineeringAgentRunStatus,
@@ -1909,38 +1057,23 @@ export class EngineeringProjectCommandService {
     ) => void | Promise<void> = () => {},
   ): Promise<EngineeringProjectSnapshot> {
     return this.apply(origin, type, command, async (draft, appliedAt) => {
-      nonEmpty(command.summary, "summary");
-      const run = draft.agentRuns.find((candidate) => candidate.id === command.runId);
-      if (!run) notFound("agent run", command.runId);
-      assertRunLifecycleOrigin(origin, this.planning, draft, run, type);
-      if (!allowed.includes(run.status)) {
-        invalidTransition(
-          `Agent run ${run.id} cannot transition from ${run.status} to ${status}.`,
-        );
-      }
-      if (
-        run.status !== "queued" &&
-        (run.claimedBy?.origin !== origin.kind ||
-          run.claimedBy.id !== origin.actorId)
-      ) {
-        throw new EngineeringProjectCommandError(
-          "permission_denied",
-          `Agent run ${run.id} is claimed by ${
-            run.claimedBy?.id ?? "nobody"
-          }; implicit handoff is forbidden.`,
-        );
-      }
-      await update(run, appliedAt, draft);
-      run.status = status;
-      run.summary = command.summary;
-      run.statusHistory ??= [];
-      run.statusHistory.push(transition(command, origin, status, appliedAt));
+      await applyOrdinaryRunTransition(
+        draft,
+        appliedAt,
+        origin,
+        type,
+        command,
+        allowed,
+        status,
+        this.planning,
+        update,
+      );
     });
   }
 
   private async apply<T extends EngineeringProjectCommandInput>(
     origin: EngineeringProjectCommandOrigin,
-    type: EngineeringProjectCommandType,
+    type: EngineeringProjectCommandName,
     command: T,
     update: (
       draft: Mutable<EngineeringProjectSnapshot>,
@@ -2085,7 +1218,7 @@ export class EngineeringProjectCommandService {
  */
 async function reconciliationReplayFingerprints(
   current: EngineeringProjectSnapshot,
-  type: EngineeringProjectCommandType,
+  type: EngineeringProjectCommandName,
   origin: EngineeringProjectCommandOrigin,
   command: EngineeringProjectCommandInput,
   currentFingerprint: ContentFingerprint,
@@ -2119,831 +1252,6 @@ async function reconciliationReplayFingerprints(
     },
   });
   return [currentFingerprint, legacyFingerprint];
-}
-
-function assertPlanningCanChange(draft: EngineeringProjectSnapshot): void {
-  const lock = engineeringProjectPlanReplacementLock(draft);
-  if (lock) invalidTransition(engineeringProjectPlanReplacementLockMessage(lock));
-}
-
-function assertChangeCanAppend(draft: EngineeringProjectSnapshot): void {
-  if (!draft.plan) {
-    invalidTransition(
-      "A project change requires an already published initial project plan.",
-    );
-  }
-  const completedBaseline = draft.agentRuns.some((run) => {
-    const workItem = draft.workItems.find((item) => item.id === run.workItemId);
-    return run.status === "completed" &&
-      run.basis?.kind === "approved-brief" &&
-      workItem?.operation?.id === "baseline.from-approved-brief" &&
-      workItem?.operation?.version === "1";
-  });
-  if (!completedBaseline || draft.threadSnapshots.length === 0) {
-    invalidTransition(
-      "A project change can be appended only after the reviewed initial baseline has completed and produced a ThreadSnapshot.",
-    );
-  }
-  if (draft.agentRuns.some((run) => isActiveRunStatus(run.status))) {
-    invalidTransition(
-      "A project change cannot be appended while an agent run is active.",
-    );
-  }
-}
-
-function assertPlanningProject(
-  draft: EngineeringProjectSnapshot,
-): void {
-  if (
-    !draft.framing?.currentBrief ||
-    draft.framing.currentBriefApproval?.status !== "approved"
-  ) {
-    invalidTransition(
-      "A project plan requires a current human-approved project brief.",
-    );
-  }
-}
-
-interface ApprovedDecisionBinding {
-  readonly id: string;
-  readonly inputFingerprint: ContentFingerprint;
-}
-
-async function queueV3Run(
-  draft: EngineeringProjectSnapshot,
-  command: QueueRunCommand,
-  workItem: EngineeringWorkItem,
-  approvedDecisions: readonly ApprovedDecisionBinding[],
-  appliedAt: string,
-  origin: EngineeringProjectCommandOrigin,
-  planning: EngineeringProjectPlanningDependencies | undefined,
-): Promise<Mutable<EngineeringAgentRun>> {
-  if (command.baseSnapshot !== undefined) {
-    invalidInput("A V3 run must use basis and cannot accept baseSnapshot.");
-  }
-  const basis = assertV3QueueBasis(draft, workItem, command.basis);
-  const operation = workItem.operation;
-  if (!operation) {
-    invalidInput("A V3 run requires a registered operation on its work item.");
-  }
-  const registered = assertRegisteredQueueOperation(planning, operation, basis.kind);
-  await assertQueueEligibility(planning, draft, workItem.id, basis);
-  const inputFingerprint = await sha256Fingerprint({
-    workItemId: workItem.id,
-    basis,
-    operation: {
-      id: operation.id,
-      version: operation.version,
-      bindings: operation.bindings,
-    },
-    approvedDecisions,
-  });
-  const candidate: Mutable<EngineeringAgentRun> = {
-    id: command.runId,
-    workItemId: workItem.id,
-    status: "queued",
-    summary: command.summary,
-    queuedAt: appliedAt,
-    basis: structuredClone(basis),
-    inputFingerprint,
-    evidenceRefs: [],
-    statusHistory: [transition(command, origin, "queued", appliedAt)],
-  };
-  if (registered.operation.resolvedOperationPlan === "2.0") {
-    const sealer = planning?.runPlanSealer;
-    if (!sealer) {
-      invalidInput(
-        `Queued operation ${registered.operation.id}@${registered.operation.version} requires a configured resolved-operation-plan/2.0 sealer.`,
-      );
-    }
-    const project = validateEngineeringProjectSnapshot(draft);
-    const frozenCandidate = deepFreeze(
-      structuredClone(candidate),
-    ) as EngineeringAgentRun;
-    const sealed = await sealer.seal({
-      project,
-      workItem: project.workItems.find((item) => item.id === workItem.id)!,
-      run: frozenCandidate,
-      queueBasisProject: {
-        snapshotId: project.id,
-        revision: project.revision,
-        fingerprint: await sha256Fingerprint(project),
-      },
-    });
-    candidate.resolvedOperationPlan = validateResolvedOperationPlanRef(sealed);
-  }
-  return candidate;
-}
-
-/**
- * A plan is deliberately checked against the approved project brief when it is
- * published. That alone is insufficient once a later work item is queued:
- * the reviewed operation must also explicitly accept the concrete run basis.
- */
-function assertRegisteredQueueOperation(
-  planning: EngineeringProjectPlanningDependencies | undefined,
-  operation: EngineeringOperationRef,
-  basisKind: EngineeringBasisRef["kind"],
-): ReturnType<EngineeringProjectPlanOperationRegistry["validate"]> {
-  if (!planning) {
-    invalidInput(
-      "V3 run queueing is unavailable because no reviewed operation registry is configured.",
-    );
-  }
-  let registered: ReturnType<EngineeringProjectPlanOperationRegistry["validate"]>;
-  try {
-    registered = planning.operations.validate({ operation, stage: "queue", basisKind });
-  } catch (error) {
-    invalidInput(
-      error instanceof Error
-        ? `Queued operation is not accepted by the reviewed registry: ${error.message}`
-        : "Queued operation is not accepted by the reviewed registry.",
-    );
-  }
-  if (registered.operation.execution !== "trusted") {
-    invalidTransition(
-      `Queued operation ${registered.operation.id}@${registered.operation.version} is planning-only and is not backed by a trusted executor.`,
-    );
-  }
-  return registered;
-}
-
-/**
- * Give an optional queue gate a detached, validated snapshot of exactly the
- * state it is deciding about. Nothing below this point mutates `draft` until
- * queueV3Run returns a run, so a rejected promise leaves the durable project
- * untouched.
- */
-async function assertQueueEligibility(
-  planning: EngineeringProjectPlanningDependencies | undefined,
-  draft: EngineeringProjectSnapshot,
-  workItemId: string,
-  basis: EngineeringBasisRef,
-): Promise<void> {
-  const queueEligibility = planning?.queueEligibility;
-  if (!queueEligibility) return;
-
-  const project = validateEngineeringProjectSnapshot(draft);
-  const workItem = project.workItems.find((candidate) => candidate.id === workItemId);
-  if (!workItem || !workItem.operation) {
-    invalidInput(
-      "The reviewed V3 work item is unavailable for queue-eligibility validation.",
-    );
-  }
-
-  try {
-    await queueEligibility.validate({
-      project,
-      workItem,
-      operation: workItem.operation,
-      basis: immutableQueueEligibilityBasis(project, basis),
-    });
-  } catch (error) {
-    invalidTransition(
-      error instanceof Error
-        ? `The requested V3 run is not eligible for queueing: ${error.message}`
-        : "The requested V3 run is not eligible for queueing.",
-    );
-  }
-}
-
-/** Return the same declared basis through the immutable project view. */
-function immutableQueueEligibilityBasis(
-  project: EngineeringProjectSnapshot,
-  basis: EngineeringBasisRef,
-): EngineeringBasisRef {
-  if (basis.kind === "approved-brief") {
-    const plannedBasis = project.plan?.basis;
-    if (
-      !plannedBasis || plannedBasis.kind !== "approved-brief" ||
-      !sameApprovedBriefBasis(basis, plannedBasis)
-    ) {
-      invalidInput(
-        "The reviewed approved-brief basis is unavailable for queue-eligibility validation.",
-      );
-    }
-    return plannedBasis;
-  }
-
-  const snapshot = project.threadSnapshots.find((candidate) =>
-    candidate.snapshotId === basis.snapshotId &&
-    candidate.revision === basis.revision &&
-    candidate.subjectId === basis.subjectId
-  );
-  if (!snapshot) {
-    invalidInput(
-      "The reviewed thread-snapshot basis is unavailable for queue-eligibility validation.",
-    );
-  }
-  return Object.freeze({ kind: "thread-snapshot" as const, ...snapshot });
-}
-
-function assertV3QueueBasis(
-  draft: EngineeringProjectSnapshot,
-  workItem: EngineeringWorkItem,
-  basis: EngineeringBasisRef | undefined,
-): EngineeringBasisRef {
-  if (!basis || typeof basis !== "object") {
-    invalidInput("A V3 run requires an exact basis.");
-  }
-  if (basis.kind === "approved-brief") {
-    const plan = draft.plan;
-    if (
-      !plan || plan.basis.kind !== "approved-brief" ||
-      !sameApprovedBriefBasis(basis, plan.basis)
-    ) {
-      invalidInput(
-        "The approved-brief run basis must exactly match the published project plan basis.",
-      );
-    }
-    if (
-      workItem.operation?.id !== "baseline.from-approved-brief" ||
-      workItem.operation.version !== "1"
-    ) {
-      invalidTransition(
-        "An approved-brief basis is valid only for baseline.from-approved-brief@1.",
-      );
-    }
-    if (draft.threadSnapshots.length !== 0) {
-      invalidTransition(
-        "An approved-brief basis is valid only before the first documentary ThreadSnapshot exists.",
-      );
-    }
-    return structuredClone(basis);
-  }
-  if (basis.kind === "thread-snapshot") {
-    assertThreadSnapshotBasisInput(basis);
-    assertDeclaredSnapshot(draft, basis);
-    return structuredClone(basis);
-  }
-  invalidInput(
-    "basis.kind must be approved-brief or thread-snapshot.",
-  );
-}
-
-function assertThreadSnapshotBasisInput(
-  basis: Extract<EngineeringBasisRef, { kind: "thread-snapshot" }>,
-): void {
-  if (
-    typeof basis.snapshotId !== "string" || !basis.snapshotId.trim() ||
-    basis.snapshotId.toLowerCase() === "latest" ||
-    !Number.isInteger(basis.revision) || basis.revision < 1 ||
-    typeof basis.subjectId !== "string" || !basis.subjectId.trim()
-  ) {
-    invalidInput("A thread-snapshot basis must be an exact non-latest reference.");
-  }
-}
-
-function threadSnapshotReference(
-  basis: Extract<EngineeringBasisRef, { kind: "thread-snapshot" }>,
-): EngineeringThreadSnapshotRef {
-  return {
-    snapshotId: basis.snapshotId,
-    revision: basis.revision,
-    subjectId: basis.subjectId,
-  };
-}
-
-function sameApprovedBriefBasis(
-  left: EngineeringApprovedBriefBasis,
-  right: EngineeringApprovedBriefBasis,
-): boolean {
-  return left.projectId === right.projectId &&
-    left.projectSnapshotId === right.projectSnapshotId &&
-    left.projectRevision === right.projectRevision &&
-    left.briefId === right.briefId &&
-    left.briefSnapshotId === right.briefSnapshotId &&
-    left.briefRevision === right.briefRevision &&
-    fingerprintsEqual(
-      left.approvedBriefFingerprint,
-      right.approvedBriefFingerprint,
-    );
-}
-
-function assertInitialV3CompletionBasis(
-  draft: EngineeringProjectSnapshot,
-  workItem: EngineeringWorkItem,
-  basis: EngineeringApprovedBriefBasis,
-): void {
-  if (
-    !draft.plan || draft.plan.basis.kind !== "approved-brief" ||
-    !sameApprovedBriefBasis(basis, draft.plan.basis) ||
-    workItem.operation?.id !== "baseline.from-approved-brief" ||
-    workItem.operation.version !== "1"
-  ) {
-    invalidInput(
-      "A brief-derived initial result must complete the exact published baseline.from-approved-brief@1 operation.",
-    );
-  }
-  if (draft.threadSnapshots.length !== 0) {
-    invalidTransition(
-      "A brief-derived initial result cannot be published after a documentary ThreadSnapshot exists.",
-    );
-  }
-}
-
-function validatePlanCommand(command: PublishProjectPlanCommand): void {
-  if (
-    command.startingPoint !== "idea-or-spec" &&
-    command.startingPoint !== "existing-cad" &&
-    command.startingPoint !== "existing-product"
-  ) {
-    invalidInput("startingPoint must be an approved project entry path.");
-  }
-  validatePlannedChange(command);
-}
-
-function validateChangeCommand(command: AppendProjectChangeCommand): void {
-  assertThreadSnapshotBasisInput({ kind: "thread-snapshot", ...command.baseSnapshot });
-  validatePlannedChange(command, { allowEmptyPhases: true });
-}
-
-function assertCurrentThreadSnapshotHead(
-  draft: EngineeringProjectSnapshot,
-  baseSnapshot: EngineeringThreadSnapshotRef,
-): EngineeringThreadSnapshotRef {
-  const head = draft.threadSnapshots.reduce<EngineeringThreadSnapshotRef | undefined>(
-    (latest, candidate) =>
-      !latest || candidate.revision > latest.revision ? candidate : latest,
-    undefined,
-  );
-  if (!head) {
-    invalidTransition(
-      "A project change requires an exact completed ThreadSnapshot as its base.",
-    );
-  }
-  if (
-    baseSnapshot.snapshotId !== head.snapshotId ||
-    baseSnapshot.revision !== head.revision ||
-    baseSnapshot.subjectId !== head.subjectId
-  ) {
-    invalidInput(
-      "Project-change baseSnapshot must exactly equal the current project ThreadSnapshot head.",
-    );
-  }
-  return structuredClone(head);
-}
-
-function validatePlannedChange(
-  command: Pick<
-    PublishProjectPlanCommand,
-    "phases" | "workItems" | "requiredDecisions"
-  >,
-  options: { readonly allowEmptyPhases?: boolean } = {},
-): void {
-  if (!Array.isArray(command.phases)) {
-    invalidInput("phases must be an array.");
-  }
-  if (!options.allowEmptyPhases && command.phases.length === 0) {
-    invalidInput("phases must contain at least one declared project phase.");
-  }
-  if (!Array.isArray(command.workItems) || command.workItems.length === 0) {
-    invalidInput("workItems must contain at least one bounded operation.");
-  }
-  if (!Array.isArray(command.requiredDecisions)) {
-    invalidInput("requiredDecisions must be an array.");
-  }
-  uniquePlanIds(command.phases.map((phase) => phase.id), "phase");
-  uniquePlanIds(command.workItems.map((item) => item.id), "work item");
-  uniquePlanIds(command.requiredDecisions.map((decision) => decision.id), "decision");
-  for (const [index, phase] of command.phases.entries()) {
-    nonEmpty(phase.id, `phases[${index}].id`);
-    nonEmpty(phase.name, `phases[${index}].name`);
-    nonEmpty(phase.description, `phases[${index}].description`);
-  }
-  for (const [index, item] of command.workItems.entries()) {
-    nonEmpty(item.id, `workItems[${index}].id`);
-    nonEmpty(item.phaseId, `workItems[${index}].phaseId`);
-    if (!isEngineeringWorkOwner(item.owner)) {
-      invalidInput(`workItems[${index}].owner must be human, agent or shared.`);
-    }
-    if (!Array.isArray(item.dependsOnWorkItemIds) || !Array.isArray(item.decisionIds)) {
-      invalidInput(
-        `workItems[${index}].dependsOnWorkItemIds and decisionIds must be arrays.`,
-      );
-    }
-    uniquePlanIds(item.dependsOnWorkItemIds, `workItems[${index}] dependency`);
-    uniquePlanIds(item.decisionIds, `workItems[${index}] decision`);
-    if (item.predecessorRevisionId !== undefined) {
-      nonEmpty(
-        item.predecessorRevisionId,
-        `workItems[${index}].predecessorRevisionId`,
-      );
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(item, "activityId")
-    ) {
-      invalidInput(
-        `workItems[${index}].activityId is server-stamped and cannot be supplied.`,
-      );
-    }
-  }
-  assertPlannedDecisionScopesAreUnambiguous(command.workItems);
-  for (const [index, decision] of command.requiredDecisions.entries()) {
-    nonEmpty(decision.id, `requiredDecisions[${index}].id`);
-    if (isReservedUncertainWriterBasisReleaseDecisionId(decision.id)) {
-      invalidInput(
-        `requiredDecisions[${index}].id uses the server-reserved uncertain-writer basis-release namespace.`,
-      );
-    }
-    nonEmpty(decision.phaseId, `requiredDecisions[${index}].phaseId`);
-    nonEmpty(decision.title, `requiredDecisions[${index}].title`);
-    nonEmpty(decision.question, `requiredDecisions[${index}].question`);
-  }
-}
-
-/**
- * An MRTR approval is scoped to one concrete operation.  Letting a decision
- * appear on two work items would make one human confirmation silently release
- * multiple actions, even if each individual reference is otherwise valid.
- */
-function assertPlannedDecisionScopesAreUnambiguous(
-  workItems: readonly Pick<PlannedEngineeringWorkItem, "id" | "decisionIds">[],
-): void {
-  const ownerByDecisionId = new Map<string, string>();
-  for (const item of workItems) {
-    for (const decisionId of item.decisionIds) {
-      const existingOwner = ownerByDecisionId.get(decisionId);
-      if (existingOwner !== undefined && existingOwner !== item.id) {
-        invalidInput(
-          `Decision ${decisionId} must be bound to exactly one work item; ` +
-            `it is already bound to ${existingOwner}.`,
-        );
-      }
-      ownerByDecisionId.set(decisionId, item.id);
-    }
-  }
-}
-
-/**
- * Claims are declared coverage of the current reviewed mandate. They are
- * checked separately from operation bindings so no gate becomes a fabricated
- * operation input or evidence-consumption edge.
- */
-function assertPlanGateClaimsResolve(
-  project: EngineeringProjectSnapshot,
-  workItems: readonly PlannedEngineeringWorkItem[],
-): void {
-  if (!workItems.some((item) => item.gateClaims !== undefined)) return;
-  const brief = project.framing?.currentBrief;
-  const approval = project.framing?.currentBriefApproval;
-  if (!brief || approval?.status !== "approved") {
-    invalidInput("Gate claims require the current human-approved canonical brief.");
-  }
-  if (projectBriefContractVersion(brief) !== "2.0") {
-    invalidInput(
-      "Gate claims require a V2 canonical brief with explicit gate dependencies.",
-    );
-  }
-  const briefItems = new Map(brief.items.map((item) => [item.id, item]));
-  for (const [workItemIndex, workItem] of workItems.entries()) {
-    if (workItem.gateClaims === undefined) continue;
-    if (!Array.isArray(workItem.gateClaims)) {
-      invalidInput(`workItems[${workItemIndex}].gateClaims must be an array.`);
-    }
-    const claimedGateIds = new Set<string>();
-    for (const [claimIndex, claim] of workItem.gateClaims.entries()) {
-      nonEmpty(
-        claim.gateItemId,
-        `workItems[${workItemIndex}].gateClaims[${claimIndex}].gateItemId`,
-      );
-      if (claim.role !== "contributes-to" && claim.role !== "satisfies") {
-        invalidInput(
-          `workItems[${workItemIndex}].gateClaims[${claimIndex}].role must be contributes-to or satisfies.`,
-        );
-      }
-      if (
-        claim.status !== "current" && claim.status !== "impact-unresolved" &&
-        claim.status !== "invalidated" && claim.status !== "carried-forward"
-      ) {
-        invalidInput(
-          `workItems[${workItemIndex}].gateClaims[${claimIndex}].status must be a declared gate-link status.`,
-        );
-      }
-      if (claimedGateIds.has(claim.gateItemId)) {
-        invalidInput(
-          `Work item ${workItem.id} may claim gate ${claim.gateItemId} only once.`,
-        );
-      }
-      claimedGateIds.add(claim.gateItemId);
-      const gate = briefItems.get(claim.gateItemId);
-      if (!gate || !isProjectBriefGateKind(gate.kind)) {
-        invalidInput(
-          `Work item ${workItem.id} must claim a success-criterion or verification-activity in the current canonical brief.`,
-        );
-      }
-    }
-  }
-}
-
-function assertRequiredDependsOnOperation(
-  item: {
-    readonly id: string;
-    readonly dependsOnWorkItemIds: readonly string[];
-  },
-  operation: {
-    readonly id: string;
-    readonly version: string;
-    readonly requiresDependsOnOperation?: {
-      readonly id: string;
-      readonly version: string;
-    };
-  },
-  revisions: readonly {
-    readonly id: string;
-    readonly activityId: string;
-    readonly predecessorRevisionId?: string;
-    readonly operation?: { readonly id: string; readonly version: string };
-  }[],
-): void {
-  const issue = collectRequiredDependsOnOperationIssues(
-    item,
-    operation,
-    revisions,
-  )[0];
-  if (issue) invalidInput(issue.message);
-}
-
-function assertNewPlanIds(
-  ids: readonly string[],
-  existing: ReadonlySet<string>,
-  label: string,
-): void {
-  for (const id of ids) {
-    if (existing.has(id)) {
-      invalidInput(`Project change cannot reuse existing ${label} id ${id}.`);
-    }
-  }
-}
-
-function planningBasisForProject(
-  project: EngineeringProjectSnapshot,
-): EngineeringApprovedBriefBasis {
-  return approvedBriefBasisForProject(project);
-}
-
-/**
- * Exported so read surfaces that must name the same approved brief (for
- * example the brief-requirements review) enforce this exact rule rather than
- * a second, drifting copy of it.
- */
-export function approvedBriefBasisForProject(
-  project: EngineeringProjectSnapshot,
-): EngineeringApprovedBriefBasis {
-  const framing = project.framing;
-  const brief = framing?.currentBrief;
-  const review = framing?.currentBriefApproval;
-  if (
-    !brief || !review ||
-    review.status !== "approved" || !review.decidedAt ||
-    review.decidedBy?.origin !== "human" ||
-    review.briefSnapshotId !== brief.id ||
-    review.briefRevision !== brief.revision
-  ) {
-    invalidTransition(
-      "The project has no exact human-approved canonical brief for planning.",
-    );
-  }
-  const receipt = [...(project.commandReceipts ?? [])].reverse().find((item) =>
-    item.type === "project.brief-approve" &&
-    Date.parse(item.appliedAt) === Date.parse(review.decidedAt!) &&
-    item.actor.id === review.decidedBy?.id &&
-    item.actor.origin === "human"
-  );
-  if (!receipt) {
-    invalidTransition(
-      "The canonical brief is not anchored by an exact human approval receipt.",
-    );
-  }
-  const expected: EngineeringApprovedBriefBasis = {
-    kind: "approved-brief",
-    projectId: project.project.id,
-    projectSnapshotId: receipt.resultingSnapshot.snapshotId,
-    projectRevision: receipt.resultingSnapshot.revision,
-    briefId: brief.briefId,
-    briefSnapshotId: brief.id,
-    briefRevision: brief.revision,
-    approvedBriefFingerprint: structuredClone(review.inputFingerprint),
-  };
-  if (
-    !receipt.approvedBriefBasis ||
-    !sameApprovedBriefBasis(receipt.approvedBriefBasis, expected)
-  ) {
-    invalidTransition(
-      "The canonical brief approval receipt does not retain its exact approved brief basis.",
-    );
-  }
-  return structuredClone(receipt.approvedBriefBasis);
-}
-
-function resolvePlanOperation(
-  operations: EngineeringProjectPlanOperationRegistry,
-  operation: EngineeringOperationRef,
-): ReturnType<EngineeringProjectPlanOperationRegistry["validate"]> {
-  try {
-    return operations.validate({ operation, stage: "planning" });
-  } catch (error) {
-    invalidInput(
-      error instanceof Error
-        ? `Project operation is not accepted by the reviewed registry: ${error.message}`
-        : "Project operation is not accepted by the reviewed registry.",
-    );
-  }
-}
-
-function assertPlanBindingsResolve(
-  project: EngineeringProjectSnapshot,
-  bindings: readonly EngineeringOperationInputBinding[],
-): void {
-  for (const binding of bindings) {
-    if (binding.source.kind === "approved-brief") {
-      if (
-        !project.framing?.currentBrief ||
-        project.framing.currentBriefApproval?.status !== "approved"
-      ) {
-        invalidInput(
-          `Operation binding ${binding.name} requires the current human-approved project brief.`,
-        );
-      }
-      continue;
-    }
-    if (binding.source.kind === "project-answer") {
-      const answerId = binding.source.answerId;
-      const answer = project.framing
-        ? project.framing.answers.find((item) =>
-          item.id === answerId &&
-          currentProjectAnswer(project.framing!, item.questionId)?.id === item.id
-        )
-        : undefined;
-      if (!answer || answer.kind !== "provided") {
-        invalidInput(
-          `Operation binding ${binding.name} must reference one current provided project answer.`,
-        );
-      }
-      continue;
-    }
-  }
-}
-
-function decisionInputEvidenceRefs(
-  decisionId: string,
-  workItems: readonly {
-    readonly decisionIds: readonly string[];
-    readonly decisionEvidenceScope?: "thread-entity-bindings";
-    readonly operation: {
-      readonly bindings: readonly EngineeringOperationInputBinding[];
-    };
-  }[],
-): EngineeringThreadEntityRef[] {
-  const refs = workItems
-    .filter((item) =>
-      item.decisionEvidenceScope === "thread-entity-bindings" &&
-      item.decisionIds.includes(decisionId)
-    )
-    .flatMap((item) => item.operation.bindings)
-    .flatMap((binding) =>
-      binding.source.kind === "thread-entity" ? [binding.source.reference] : []
-    );
-  const unique = new Map<string, EngineeringThreadEntityRef>();
-  for (const ref of refs) {
-    unique.set(evidenceKey(ref), structuredClone(ref));
-  }
-  return [...unique.values()].sort((left, right) =>
-    evidenceKey(left).localeCompare(evidenceKey(right))
-  );
-}
-
-function assertPlanWorkItemReferences(
-  item: PlannedEngineeringWorkItem,
-  phaseIds: ReadonlySet<string>,
-  workItemIds: ReadonlySet<string>,
-  decisionIds: ReadonlySet<string>,
-  decisionsById: ReadonlyMap<string, PlannedEngineeringDecision>,
-): void {
-  if (!phaseIds.has(item.phaseId)) {
-    invalidInput(`Work item ${item.id} references an unknown phase ${item.phaseId}.`);
-  }
-  for (const dependencyId of item.dependsOnWorkItemIds) {
-    if (dependencyId === item.id || !workItemIds.has(dependencyId)) {
-      invalidInput(
-        `Work item ${item.id} must depend only on another declared work item.`,
-      );
-    }
-  }
-  for (const decisionId of item.decisionIds) {
-    const decision = decisionsById.get(decisionId);
-    if (
-      !decisionIds.has(decisionId) || !decision || decision.phaseId !== item.phaseId
-    ) {
-      invalidInput(
-        `Work item ${item.id} must reference a declared decision in the same phase.`,
-      );
-    }
-  }
-}
-
-/**
- * A change may depend on completed historical work and may append work onto
- * an existing phase. New decisions remain owned by this command so prior
- * review scope stays immutable.
- */
-function assertChangeWorkItemReferences(
-  item: PlannedEngineeringWorkItem,
-  phaseIds: ReadonlySet<string>,
-  workItemIds: ReadonlySet<string>,
-  decisionIds: ReadonlySet<string>,
-  decisionsById: ReadonlyMap<string, PlannedEngineeringDecision>,
-): void {
-  if (!phaseIds.has(item.phaseId)) {
-    invalidInput(
-      `Project-change work item ${item.id} must reference an existing project phase or a newly declared phase.`,
-    );
-  }
-  for (const dependencyId of item.dependsOnWorkItemIds) {
-    if (dependencyId === item.id || !workItemIds.has(dependencyId)) {
-      invalidInput(
-        `Project-change work item ${item.id} must depend only on declared project work.`,
-      );
-    }
-  }
-  for (const decisionId of item.decisionIds) {
-    const decision = decisionsById.get(decisionId);
-    if (
-      !decisionIds.has(decisionId) || !decision || decision.phaseId !== item.phaseId
-    ) {
-      invalidInput(
-        `Project-change work item ${item.id} must reference a newly declared decision in the same phase.`,
-      );
-    }
-  }
-}
-
-function assertPlanDependenciesAreAcyclic(
-  workItems: readonly Pick<PlannedEngineeringWorkItem, "id" | "dependsOnWorkItemIds">[],
-): void {
-  const byId = new Map(workItems.map((item) => [item.id, item]));
-  const visiting = new Set<string>();
-  const visited = new Set<string>();
-  const visit = (id: string): void => {
-    if (visited.has(id)) return;
-    if (visiting.has(id)) {
-      invalidInput(`Project plan dependency cycle includes work item ${id}.`);
-    }
-    visiting.add(id);
-    for (const dependencyId of byId.get(id)?.dependsOnWorkItemIds ?? []) {
-      visit(dependencyId);
-    }
-    visiting.delete(id);
-    visited.add(id);
-  };
-  for (const item of workItems) visit(item.id);
-}
-
-function assertEveryPhaseHasWork(
-  phases: readonly Pick<EngineeringProjectPhase, "id" | "workItemIds">[],
-): void {
-  for (const phase of phases) {
-    if (phase.workItemIds.length === 0) {
-      invalidInput(`Project phase ${phase.id} must contain at least one work item.`);
-    }
-  }
-}
-
-function stampDeclaredActivityIdentity(
-  existing: readonly EngineeringWorkItem[],
-  declared: readonly PlannedEngineeringWorkItem[],
-): ReadonlyMap<
-  string,
-  { readonly activityId: string; readonly predecessorRevisionId?: string }
-> {
-  const { stamped, issues } = stampEngineeringActivityIdentity(
-    existing,
-    declared,
-  );
-  const first = issues[0];
-  if (first) invalidInput(first.message);
-  return stamped;
-}
-
-function uniquePlanIds(values: readonly string[], label: string): void {
-  const seen = new Set<string>();
-  for (const value of values) {
-    if (typeof value !== "string" || !value.trim()) continue;
-    if (seen.has(value)) invalidInput(`${label} id ${value} is duplicated.`);
-    seen.add(value);
-  }
-}
-
-/** The queue receipt target is derived from the server draft, never input. */
-function hasCallerQueuedRunBinding(command: QueueRunCommand): boolean {
-  return Object.prototype.hasOwnProperty.call(command, "queuedRun") ||
-    Object.prototype.hasOwnProperty.call(command, "resolvedOperationPlan") ||
-    Object.prototype.hasOwnProperty.call(command, "plan");
-}
-
-/** The cancellation receipt target is derived from the server draft, never input. */
-function hasCallerCancelledRunBinding(command: CancelQueuedRunCommand): boolean {
-  return Object.prototype.hasOwnProperty.call(command, "cancelledRun");
 }
 
 /** Keep server-stamped receipt fields outside the caller's idempotency payload. */
@@ -3019,29 +1327,6 @@ function cancelledRunReceiptBinding(
   };
 }
 
-function isEngineeringWorkOwner(value: unknown): value is EngineeringWorkOwner {
-  return value === "human" || value === "agent" || value === "shared";
-}
-
-function transition(
-  command: Pick<RunCommand, "commandId" | "summary">,
-  origin: EngineeringProjectCommandOrigin,
-  status: EngineeringAgentRunStatus,
-  at: string,
-) {
-  return {
-    commandId: command.commandId,
-    status,
-    at,
-    actor: actor(origin),
-    summary: command.summary,
-  };
-}
-
-function actor(origin: EngineeringProjectCommandOrigin): EngineeringCommandActor {
-  return { id: origin.actorId, origin: origin.kind };
-}
-
 function validateCommandContext(
   origin: EngineeringProjectCommandOrigin,
   command: EngineeringProjectCommandInput,
@@ -3057,325 +1342,6 @@ function validateCommandContext(
   }
 }
 
-function validateProposalInput(proposal: EngineeringDecisionProposalInput): void {
-  nonEmpty(proposal.summary, "proposal.summary");
-  if (proposal.parameters.length === 0) {
-    invalidInput("proposal.parameters must contain at least one typed parameter.");
-  }
-  const keys = new Set<string>();
-  for (const [index, parameter] of proposal.parameters.entries()) {
-    nonEmpty(parameter.key, `proposal.parameters[${index}].key`);
-    nonEmpty(parameter.label, `proposal.parameters[${index}].label`);
-    if (keys.has(parameter.key)) {
-      invalidInput(`Proposal parameter key ${parameter.key} is duplicated.`);
-    }
-    keys.add(parameter.key);
-    if (typeof parameter.value === "string") {
-      nonEmpty(parameter.value, `proposal.parameters[${index}].value`);
-    } else if (
-      typeof parameter.value !== "boolean" &&
-      (typeof parameter.value !== "number" || !Number.isFinite(parameter.value))
-    ) {
-      invalidInput(`Proposal parameter ${parameter.key} has an invalid value.`);
-    }
-    if (parameter.unit !== undefined) {
-      nonEmpty(parameter.unit, `proposal.parameters[${index}].unit`);
-      if (typeof parameter.value !== "number") {
-        invalidInput(
-          `Proposal parameter ${parameter.key} can only use a unit when numeric.`,
-        );
-      }
-    }
-  }
-}
-
-function assertAllowed(
-  origin: EngineeringCommandOriginKind,
-  type: EngineeringProjectCommandType,
-): void {
-  const allowed: readonly string[] = ENGINEERING_PROJECT_COMMAND_POLICY[origin];
-  if (allowed.includes(type)) return;
-  if (origin === "human" && isHumanOriginRunLifecycleCommand(type)) {
-    return;
-  }
-  throw new EngineeringProjectCommandError(
-    "permission_denied",
-    `${origin} origin cannot execute ${type}.`,
-  );
-}
-
-function isHumanOriginRunLifecycleCommand(
-  type: EngineeringProjectCommandType,
-): boolean {
-  return (HUMAN_ORIGIN_RUN_LIFECYCLE_COMMANDS as readonly string[]).includes(
-    type,
-  );
-}
-
-/**
- * Separate the static command table from the queued operation's reviewed
- * origin. Lifecycle actor and operation authority stay the same human origin
- * when the registry marks the exact operation `mustOrigin: "human"`. Ordinary
- * runs stay agent-origin; missing registry proof fails closed for humans.
- */
-function assertRunLifecycleOrigin(
-  origin: EngineeringProjectCommandOrigin,
-  planning: EngineeringProjectPlanningDependencies | undefined,
-  project: EngineeringProjectSnapshot,
-  run: EngineeringAgentRun,
-  type: EngineeringProjectCommandType,
-): void {
-  if (registeredRunMustOriginHuman(planning, project, run)) {
-    if (origin.kind === "human") return;
-    throw new EngineeringProjectCommandError(
-      "permission_denied",
-      `${origin.kind} origin cannot execute ${type} on a mustOrigin:human operation.`,
-    );
-  }
-  if (origin.kind === "agent") return;
-  throw new EngineeringProjectCommandError(
-    "permission_denied",
-    `${origin.kind} origin cannot execute ${type}.`,
-  );
-}
-
-function registeredRunMustOriginHuman(
-  planning: EngineeringProjectPlanningDependencies | undefined,
-  project: EngineeringProjectSnapshot,
-  run: EngineeringAgentRun,
-): boolean {
-  if (!planning) return false;
-  const operation = findWorkItem(project, run.workItemId)?.operation;
-  if (!operation) return false;
-  try {
-    return planning.operations.validate({ operation, stage: "planning" })
-      .operation.mustOrigin === "human";
-  } catch {
-    return false;
-  }
-}
-
-function assertDeclaredSnapshot(
-  draft: EngineeringProjectSnapshot,
-  reference: EngineeringThreadSnapshotRef,
-): void {
-  if (reference.snapshotId.toLowerCase() === "latest") {
-    invalidInput("Thread snapshot references cannot use latest aliases.");
-  }
-  if (reference.subjectId !== draft.project.subjectId) {
-    invalidInput("Thread snapshot subject does not match the engineering project.");
-  }
-  if (
-    !draft.threadSnapshots.some((candidate) =>
-      candidate.snapshotId === reference.snapshotId &&
-      candidate.revision === reference.revision &&
-      candidate.subjectId === reference.subjectId
-    )
-  ) {
-    invalidInput("Thread snapshot reference is not declared by this project revision.");
-  }
-}
-
-function assertExactResultEvidence(
-  draft: EngineeringProjectSnapshot,
-  snapshot: EngineeringThreadSnapshotRef,
-  evidenceRefs: readonly EngineeringThreadEntityRef[],
-): void {
-  if (!snapshot.snapshotId.trim() || snapshot.snapshotId.toLowerCase() === "latest") {
-    invalidInput("Result snapshot must be an exact non-latest reference.");
-  }
-  if (!Number.isInteger(snapshot.revision) || snapshot.revision < 1) {
-    invalidInput("Result snapshot revision must be a positive integer.");
-  }
-  if (snapshot.subjectId !== draft.project.subjectId) {
-    invalidInput("Result snapshot subject does not match the engineering project.");
-  }
-  if (evidenceRefs.length === 0) {
-    invalidInput("Completion requires exact evidence refs.");
-  }
-  const seen = new Set<string>();
-  for (const reference of evidenceRefs) {
-    if (
-      reference.snapshotId !== snapshot.snapshotId ||
-      reference.snapshotRevision !== snapshot.revision
-    ) {
-      invalidInput(
-        "Every completion evidence ref must belong to the exact result snapshot.",
-      );
-    }
-    const key = `${reference.kind}\u0000${reference.id}`;
-    if (seen.has(key)) invalidInput("Completion evidence refs must be unique.");
-    seen.add(key);
-  }
-}
-
-function assertResultAdvancesBase(
-  base: EngineeringThreadSnapshotRef,
-  result: EngineeringThreadSnapshotRef,
-): void {
-  if (
-    result.snapshotId === base.snapshotId ||
-    result.revision <= base.revision
-  ) {
-    invalidInput(
-      `Result snapshot ${result.snapshotId}@${result.revision} must be newer than run base ${base.snapshotId}@${base.revision}.`,
-    );
-  }
-}
-
-function addThreadSnapshot(
-  draft: Mutable<EngineeringProjectSnapshot>,
-  snapshot: EngineeringThreadSnapshotRef,
-): void {
-  const sameRevision = draft.threadSnapshots.find((candidate) =>
-    candidate.subjectId === snapshot.subjectId &&
-    candidate.revision === snapshot.revision
-  );
-  if (sameRevision) {
-    if (sameRevision.snapshotId !== snapshot.snapshotId) {
-      invalidInput(
-        `Thread snapshot revision ${snapshot.revision} is already bound to ${sameRevision.snapshotId}.`,
-      );
-    }
-    return;
-  }
-  if (
-    draft.threadSnapshots.some((candidate) =>
-      candidate.snapshotId === snapshot.snapshotId
-    )
-  ) {
-    invalidInput(`Thread snapshot id ${snapshot.snapshotId} is already declared.`);
-  }
-  draft.threadSnapshots.push(structuredClone(snapshot));
-}
-
-function resolveSatisfiedBlockers(
-  draft: Mutable<EngineeringProjectSnapshot>,
-  appliedAt: string,
-): void {
-  for (const blocker of draft.blockers) {
-    if (
-      blocker.status === "open" && blocker.decisionIds.length > 0 &&
-      blocker.decisionIds.every((id) => findDecision(draft, id)?.status === "approved")
-    ) {
-      blocker.status = "resolved";
-      blocker.resolvedAt = appliedAt;
-      blocker.resolution = `Resolved by approved decision${
-        blocker.decisionIds.length === 1 ? "" : "s"
-      }: ${blocker.decisionIds.join(", ")}.`;
-    }
-  }
-}
-
-function recomputeWorkReadiness(draft: Mutable<EngineeringProjectSnapshot>): void {
-  for (const workItem of draft.workItems) {
-    if (
-      workItem.status === "completed" || workItem.status === "cancelled" ||
-      workItem.status === "abandoned" ||
-      draft.agentRuns.some((run) =>
-        run.workItemId === workItem.id && isActiveRunStatus(run.status)
-      )
-    ) continue;
-    workItem.status = nextIdleWorkStatus(draft, workItem);
-  }
-}
-
-function nextIdleWorkStatus(
-  draft: EngineeringProjectSnapshot,
-  workItem: EngineeringWorkItem,
-): "planned" | "ready" | "waiting-for-decision" {
-  const decisionsApproved = workItem.decisionIds.every((id) =>
-    findDecision(draft, id)?.status === "approved"
-  );
-  const blockersResolved = workItem.blockerIds.every((id) =>
-    draft.blockers.find((blocker) => blocker.id === id)?.status === "resolved"
-  );
-  // A cancelled work item is a satisfied dependency only when it carries a
-  // reconciliation record — meaning an independently completed successor has
-  // delivered equivalent evidence.  A naked cancellation (no reconciliation)
-  // still blocks dependents: the work was abandoned, not superseded.
-  // Mirror of deriveEngineeringPhaseStatus in engineering-project.ts:519-523.
-  const dependenciesCompleted = workItem.dependsOnWorkItemIds.every((id) => {
-    const dep = findWorkItem(draft, id);
-    return dep?.status === "completed" ||
-      (dep?.status === "cancelled" && dep.reconciliation !== undefined);
-  });
-  if (decisionsApproved && blockersResolved && dependenciesCompleted) return "ready";
-  if (
-    workItem.decisionIds.some((id) => {
-      const status = findDecision(draft, id)?.status;
-      return status === "required" || status === "proposed" || status === "rejected";
-    })
-  ) return "waiting-for-decision";
-  return "planned";
-}
-
-function mergeEvidence(
-  existing: readonly EngineeringThreadEntityRef[],
-  additions: readonly EngineeringThreadEntityRef[],
-): Mutable<EngineeringThreadEntityRef>[] {
-  const result = structuredClone(existing) as Mutable<EngineeringThreadEntityRef>[];
-  const keys = new Set(result.map(evidenceKey));
-  for (const reference of additions) {
-    if (!keys.has(evidenceKey(reference))) result.push(structuredClone(reference));
-  }
-  return result;
-}
-
-function evidenceKey(reference: EngineeringThreadEntityRef): string {
-  return `${reference.snapshotId}\u0000${reference.snapshotRevision}\u0000${reference.kind}\u0000${reference.id}`;
-}
-
-function findDecision(
-  draft: EngineeringProjectSnapshot,
-  id: string,
-): Mutable<EngineeringDecision> | undefined {
-  return draft.decisions.find((decision) => decision.id === id) as
-    | Mutable<EngineeringDecision>
-    | undefined;
-}
-
-function findWorkItem(
-  draft: EngineeringProjectSnapshot,
-  id: string,
-): Mutable<EngineeringWorkItem> | undefined {
-  return draft.workItems.find((item) => item.id === id) as
-    | Mutable<EngineeringWorkItem>
-    | undefined;
-}
-
-function findRun(
-  draft: EngineeringProjectSnapshot,
-  id: string,
-): Mutable<EngineeringAgentRun> | undefined {
-  return draft.agentRuns.find((run) => run.id === id) as
-    | Mutable<EngineeringAgentRun>
-    | undefined;
-}
-
-function sameSnapshotReference(
-  left: EngineeringThreadSnapshotRef,
-  right: EngineeringThreadSnapshotRef,
-): boolean {
-  return left.snapshotId === right.snapshotId &&
-    left.revision === right.revision &&
-    left.subjectId === right.subjectId;
-}
-
-function sameEvidenceReferences(
-  left: readonly EngineeringThreadEntityRef[],
-  right: readonly EngineeringThreadEntityRef[],
-): boolean {
-  return left.length === right.length &&
-    left.every((reference) =>
-      right.some((candidate) => evidenceKey(reference) === evidenceKey(candidate))
-    );
-}
-
-function isActiveRunStatus(status: EngineeringAgentRunStatus): boolean {
-  return ["queued", "running", "waiting-for-decision", "publishing"].includes(status);
-}
-
 function normalizeIsoDateTime(value: string): string | undefined {
   if (
     typeof value !== "string" ||
@@ -3385,35 +1351,3 @@ function normalizeIsoDateTime(value: string): string | undefined {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
 }
-
-function nonEmpty(value: string, name: string): void {
-  if (typeof value !== "string" || !value.trim()) {
-    invalidInput(`${name} cannot be empty.`);
-  }
-}
-
-function invalidInput(message: string): never {
-  throw new EngineeringProjectCommandError("invalid_input", message);
-}
-
-function invalidTransition(message: string): never {
-  throw new EngineeringProjectCommandError("invalid_transition", message);
-}
-
-function notFound(kind: string, id: string): never {
-  throw new EngineeringProjectCommandError(
-    "entity_not_found",
-    `Engineering ${kind} ${id} does not exist.`,
-  );
-}
-
-function stale(projectId: string, expected: number, actual: number) {
-  return new EngineeringProjectCommandError(
-    "stale_revision",
-    `Engineering project ${projectId} expected revision ${expected}, current revision is ${actual}.`,
-  );
-}
-
-type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
-  : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> }
-  : T;
