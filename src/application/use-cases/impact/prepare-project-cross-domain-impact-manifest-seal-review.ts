@@ -39,6 +39,7 @@ import {
   fingerprintsEqual,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { CrossDomainImpactManifestSealBriefGate } from "../../../domain/impact/cross-domain-impact-manifest-proposal.ts";
+import { canonicalizeBriefGateDependsOnItemIds } from "../../../domain/project/project-brief.ts";
 
 export interface PrepareProjectCrossDomainImpactManifestSealReviewDependencies {
   readonly manifests: CrossDomainImpactManifestReader;
@@ -276,13 +277,7 @@ function recrossBriefGates(
     ) {
       throw new TypeError("Missing explicit Brief V2 gate dependency declaration.");
     }
-    const dependencies = [...gate.dependsOnItemIds].sort((left, right) => left.localeCompare(right));
-    if (deterministicJson(dependencies) !== deterministicJson(gate.dependsOnItemIds)) {
-      throw new TypeError("Brief V2 gate dependencies are not canonically ordered.");
-    }
-    if (new Set(dependencies).size !== dependencies.length) {
-      throw new TypeError("Brief V2 gate dependencies are duplicated.");
-    }
+    const dependencies = canonicalizeBriefGateDependsOnItemIds(gate.dependsOnItemIds);
     return {
       gateItemId: mapping.gateItemId,
       kind: gate.kind,

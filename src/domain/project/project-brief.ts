@@ -125,6 +125,22 @@ export function isProjectBriefGateKind(
   return kind === "success-criterion" || kind === "verification-activity";
 }
 
+/**
+ * Brief V2 `dependsOnItemIds` identity is the unique named set.
+ * Persistence order has no domain semantics.
+ */
+export function canonicalizeBriefGateDependsOnItemIds(
+  dependsOnItemIds: readonly string[],
+): readonly string[] {
+  const canonical = [...dependsOnItemIds].sort((left, right) =>
+    left.localeCompare(right)
+  );
+  if (new Set(canonical).size !== canonical.length) {
+    throw new TypeError("Brief V2 gate dependencies are duplicated.");
+  }
+  return canonical;
+}
+
 export type ProjectBriefSourceKind =
   | "intent"
   | "answer"

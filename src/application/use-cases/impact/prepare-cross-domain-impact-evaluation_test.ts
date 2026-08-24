@@ -1,9 +1,10 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import { PrepareCrossDomainImpactEvaluation } from "./prepare-cross-domain-impact-evaluation.ts";
 import {
   VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
 } from "../../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
+import { canonicalizeBriefGateDependsOnItemIds } from "../../../domain/project/project-brief.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 
@@ -37,6 +38,27 @@ Deno.test("X07 refuses a lookalike X05 document not exactly attached by its comp
 
   assertEquals(result.status, "unavailable");
   assertEquals(result.diagnostics.map((item) => item.code), ["manifest_seal_unavailable"]);
+});
+
+Deno.test("X07 recross accepts unsorted unique Brief V2 dependencies as a canonical copy", () => {
+  const persisted = ["brief.source.thermal", "brief.source.electrical"];
+  assertEquals(
+    canonicalizeBriefGateDependsOnItemIds(persisted),
+    ["brief.source.electrical", "brief.source.thermal"],
+  );
+  assertEquals(persisted, ["brief.source.thermal", "brief.source.electrical"]);
+});
+
+Deno.test("X07 recross rejects duplicate Brief V2 dependencies", () => {
+  assertThrows(
+    () =>
+      canonicalizeBriefGateDependsOnItemIds([
+        "brief.source.impact",
+        "brief.source.impact",
+      ]),
+    TypeError,
+    "duplicated",
+  );
 });
 
 Deno.test("X07 reopens the named X06 dependsOn leaf on a later descendant retry", async () => {

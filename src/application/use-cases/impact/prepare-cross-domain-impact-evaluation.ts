@@ -73,6 +73,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotBasis,
 } from "../../../domain/project/engineering-project.ts";
+import { canonicalizeBriefGateDependsOnItemIds } from "../../../domain/project/project-brief.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
@@ -496,12 +497,7 @@ function recrossCurrentBriefGates(
     if (!gate || gate.dependsOnItemIds === undefined) {
       throw new TypeError("A declared impact gate is absent from current Brief V2.");
     }
-    const dependencies = [...gate.dependsOnItemIds].sort((left, right) => left.localeCompare(right));
-    if (dependencies.some((item, index) => item !== gate.dependsOnItemIds![index]) ||
-      new Set(dependencies).size !== dependencies.length
-    ) {
-      throw new TypeError("Current Brief V2 dependencies are not canonical exact facts.");
-    }
+    const dependencies = canonicalizeBriefGateDependsOnItemIds(gate.dependsOnItemIds);
     return {
       gateItemId: mapping.gateItemId,
       kind: gate.kind,

@@ -79,6 +79,65 @@ Deno.test("impact-manifest review refuses a non-V2 brief, missing gate, or missi
   }
 });
 
+Deno.test("impact-manifest review accepts unsorted unique Brief V2 dependencies as a canonical copy", async () => {
+  const fixture = await reviewFixture();
+  const persisted = ["brief.source.thermal", "brief.source.electrical"];
+  fixture.briefs.value.gates = fixture.briefs.value.gates.map((
+    gate: {
+      id: string;
+      kind: "success-criterion";
+      fingerprint: { algorithm: "sha256"; digest: string };
+      dependsOnItemIds?: readonly string[];
+    },
+    index: number,
+  ) => index === 0 ? gate : { ...gate, dependsOnItemIds: persisted });
+  const result = await fixture.review.execute(fixture.command);
+  assertEquals(result.status, "resolved");
+  assertEquals(
+    result.status === "resolved" &&
+      result.admission.brief.gates
+        .filter((gate) => gate.dependsOnItemIds.length > 0)
+        .every((gate) =>
+          gate.dependsOnItemIds[0] === "brief.source.electrical" &&
+          gate.dependsOnItemIds[1] === "brief.source.thermal" &&
+          gate.dependsOnItemIds.length === 2
+        ),
+    true,
+  );
+  assertEquals(
+    fixture.briefs.value.gates
+      .filter((gate: { dependsOnItemIds?: readonly string[] }) =>
+        (gate.dependsOnItemIds?.length ?? 0) > 0
+      )
+      .map((gate: { dependsOnItemIds?: readonly string[] }) => gate.dependsOnItemIds),
+    [persisted, persisted],
+  );
+});
+
+Deno.test("impact-manifest review keeps duplicate Brief V2 dependencies unresolved", async () => {
+  const fixture = await reviewFixture();
+  fixture.briefs.value.gates = fixture.briefs.value.gates.map((
+    gate: {
+      id: string;
+      kind: "success-criterion";
+      fingerprint: { algorithm: "sha256"; digest: string };
+      dependsOnItemIds?: readonly string[];
+    },
+    index: number,
+  ) =>
+    index === 0
+      ? gate
+      : { ...gate, dependsOnItemIds: ["brief.source.impact", "brief.source.impact"] }
+  );
+  const result = await fixture.review.execute(fixture.command);
+  assertEquals(result.status, "unresolved");
+  assertEquals(
+    result.status !== "resolved" &&
+      result.diagnostics[0]?.code === "brief_gate_unresolved",
+    true,
+  );
+});
+
 Deno.test("impact-manifest review rejects caller-injected branches, edges, artifacts, and provider envelopes", async () => {
   for (const field of ["branch", "edge", "artifact", "provider"] as const) {
     const fixture = await reviewFixture();
