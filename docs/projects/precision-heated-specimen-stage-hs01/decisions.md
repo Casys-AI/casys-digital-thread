@@ -2,7 +2,8 @@
 
 Audience: both · Diátaxis: none · Kind: tracking decisions
 
-Not an MRTR store. Origin on recorded approvals is `local-yolo:startup-opt-in`
+Not an MRTR store. Observation **2026-08-24** (Asia/Taipei), Thread r32 /
+project r223. Origin on recorded approvals is `local-yolo:startup-opt-in`
 (`human`). YOLO is not an execution shortcut and does not turn L3 into L5.
 
 Brief confirm fingerprint
@@ -34,16 +35,32 @@ Identity `precision-heated-specimen-stage-hs01:brief:r1:b4b44a635134d819`.
 | `decision-hs01-evaluate-spice-r18` | recorded approval | r19 electrical L4 | Electrical L5 |
 | `decision-hs01-accept-spice-r19` | recorded approval | r20 electrical L5 accept | Whole-product verdict |
 | `decision-hs01-seal-impact-r20` | recorded approval | r21 impact-manifest seal | Impact decision or X11 |
+| `decision-hs01-archive-superseded-thermal-impact-r22` | `da7c76ac…219fd` | r23 lineage retirement | Rewrite of r17; mechanical or electrical closeouts |
+| `decision-hs01-thermal-method-sheet-r23-r2` | `f42991cf…6cc18` | r24 thermal method-sheet r2 seal | Modelica L4 or L5 |
+| `decision-hs01-evaluate-modelica-r24-r2` | `75a05306…e3376` | r25 Modelica L4 `pass` | Thermal L5 |
+| `decision-hs01-accept-modelica-r25-r2` | `93367fba…f4bd4` | r26 thermal L5 accept | Whole-product verdict |
+| `decision-hs01-seal-impact-r26-r2` | `67e1990b…eaa86` | r27 impact-manifest r2 seal | Impact decision or X11 |
+| `decision-hs01-archive-premature-impact-evaluation-r28` | `ed58a5e2…a5c8c` | r29 archive of r28 evaluation only | r27 seal; history mutation |
+| `decision-hs01-accept-impact-r30` | `224f671e…321d3` | r31 X09 human YOLO accept | Whole-product verdict; X10 |
+
+Unexecuted `decision-hs01-thermal-method-sheet-r22-correction` is `abandoned`
+(YOLO abandon `revoked` the proposal). It did not rewrite r17.
+
+X08 (`analyze.evaluate-cross-domain-impact@1`) at r22, r28 and r30, and X11
+(`analyze.evaluate-mechanical-preservation@1`) at r32, are no-MRTR agent
+executions (`decisionIds: []`). They are not human decisions. r22 was archived
+at r23; r28 at r29. Live X08 is r30: electrical `impact-unresolved`, thermal
+`invalidated`, mechanical `carried-forward`. X11 r32 is `carried-forward`;
+`solverCalls: none`, `providerCalls: none`. X10 remains `unavailable`
+(`rerunProposals: none`). There is no whole-product verdict.
 
 ## Pending
 
 | Decision | Operation | Forbidden shortcut |
 | -------- | --------- | ------------------ |
-| Thermal correction / replay | AX bounded correction, then new L4 review | Calling r17 a failure or an L5 |
-| Impact decision | X09 review after a valid impact evaluation | Treating r22 initial claims as a decision |
-| X11 mechanical preservation | Only after a resolved X09 | Inventing X10 or preservation by omission |
 | Make / Buy | Out of Behave | Opening DFM or BOM to “finish” |
 
 Queue remains `project_change_append` → `project_decision_propose` → approve →
-queue → execute. The resource ingress is now part of the recorded HS01 lineage;
-it does not grant a provider, solver or verdict.
+queue → execute. X08 and X11 skip `project_decision_propose`. The resource
+ingress is part of the recorded HS01 lineage; it does not grant a provider,
+solver or verdict.

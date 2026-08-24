@@ -1,7 +1,7 @@
 {
   "schemaVersion": "cross-domain-impact-manifest/1.0",
-  "id": "hs01-electrical-closeout-impact-r1",
-  "revision": 1,
+  "id": "hs01-thermal-closeout-impact-r2",
+  "revision": 2,
   "project": {
     "id": "precision-heated-specimen-stage-hs01",
     "fingerprint": {
@@ -19,35 +19,35 @@
   "basis": {
     "projectId": "precision-heated-specimen-stage-hs01",
     "subjectId": "project:precision-heated-specimen-stage-hs01",
-    "snapshotId": "project:precision-heated-specimen-stage-hs01:r20:decide-accept-admitted-spice-evaluation-run:hs01-queue-spice-closeout-r139",
-    "revision": 20,
+    "snapshotId": "project:precision-heated-specimen-stage-hs01:r26:decide-accept-admitted-modelica-evaluation-run:hs01-queue-modelica-closeout-r2-r182",
+    "revision": 26,
     "fingerprint": {
       "algorithm": "sha256",
-      "digest": "334a28723d31530a56a256772dd7ccc3d1b90d91372c061443cf358277ae6c66"
+      "digest": "86d037e5ddbc3b14567721f7045b387dd383ed47f5b080857d843b014d01c006"
     }
   },
   "changeKinds": [
-    "electrical-evaluation-closeout"
+    "thermal-evaluation-closeout"
   ],
   "sourceAnchors": [
     {
-      "id": "anchor-electrical-closeout",
-      "changeKind": "electrical-evaluation-closeout",
+      "id": "anchor-thermal-closeout",
+      "changeKind": "thermal-evaluation-closeout",
       "role": "reviewed-change-source",
       "threadChange": {
-        "id": "decide-accept-admitted-spice-evaluation-run:hs01-queue-spice-closeout-r139:created:spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+        "id": "decide-accept-admitted-modelica-evaluation-run:hs01-queue-modelica-closeout-r2-r182:created:modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
         "kind": "created",
         "fingerprint": {
           "algorithm": "sha256",
-          "digest": "4dc5e976f3fce0971856c351bb327d1b8c50408c790576779c486381336033e7"
+          "digest": "99f613d0d4f376337f06361cc1f05fcdc87a13f9b5c2af8c3eb7221cb6e19721"
         }
       },
       "source": {
         "kind": "artifact",
-        "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+        "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
         "fingerprint": {
           "algorithm": "sha256",
-          "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
         }
       }
     }
@@ -87,26 +87,26 @@
       "version": "1.0",
       "inputs": [
         {
-          "id": "modelica-admitted-result-a703437bcf0b98901f5a24d03af4179cd76409b4d5b207d9b4bdd10bf95a1461",
+          "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
           "fingerprint": {
             "algorithm": "sha256",
-            "digest": "a703437bcf0b98901f5a24d03af4179cd76409b4d5b207d9b4bdd10bf95a1461"
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
           }
         }
       ],
       "method": {
-        "id": "modelica-thermal-method-sheet-seal-ba9a0bc7c9c992306e101cf592f323d4f6f79d62f1c862773a3d49af92ba6eda",
+        "id": "modelica-thermal-method-sheet-seal-8a15f3ab64c4adff11ad7084fc8470fa1d0ba5b80f1a17844f92f1ef51bc51b0",
         "fingerprint": {
           "algorithm": "sha256",
-          "digest": "ba9a0bc7c9c992306e101cf592f323d4f6f79d62f1c862773a3d49af92ba6eda"
+          "digest": "8a15f3ab64c4adff11ad7084fc8470fa1d0ba5b80f1a17844f92f1ef51bc51b0"
         }
       },
       "joins": [
         {
-          "id": "modelica-admitted-observation-evaluation-accfccc20a34fd58ebee16d596c930e57cda1ef87b43a325b1d3e00f25ffafbd",
+          "id": "modelica-admitted-observation-evaluation-f61032db00f542eea29da441fc708c7eafd7898c2fc44aa5878328f82a746887",
           "fingerprint": {
             "algorithm": "sha256",
-            "digest": "accfccc20a34fd58ebee16d596c930e57cda1ef87b43a325b1d3e00f25ffafbd"
+            "digest": "f61032db00f542eea29da441fc708c7eafd7898c2fc44aa5878328f82a746887"
           }
         }
       ]
@@ -150,34 +150,34 @@
   ],
   "causalEdges": [
     {
-      "id": "edge-electrical-closeout-to-electrical-branch",
-      "fromAnchorId": "anchor-electrical-closeout",
+      "id": "edge-thermal-closeout-to-thermal-branch",
+      "fromAnchorId": "anchor-thermal-closeout",
       "to": {
-        "branchId": "electrical",
-        "inputId": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+        "branchId": "thermal",
+        "inputId": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
         "inputFingerprint": {
           "algorithm": "sha256",
-          "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
         }
       },
       "relation": "positive-input",
       "assertion": {
         "source": {
-          "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+          "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
           "fingerprint": {
             "algorithm": "sha256",
-            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
           }
         },
-        "justification": "The newly accepted electrical closeout is itself the exact electrical branch input under review."
+        "justification": "The newly accepted thermal closeout is the exact thermal branch input under review."
       },
-      "scope": "Only the evidence-status consequence of the exact HS01 electrical L5 closeout; no electrical value or physical design changed.",
+      "scope": "Only the evidence-status closeout; no physical value, source, CAD or solver input changed.",
       "evidence": [
         {
-          "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+          "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
           "fingerprint": {
             "algorithm": "sha256",
-            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
           }
         }
       ]
@@ -185,7 +185,7 @@
   ],
   "independenceAssertions": [
     {
-      "id": "hs01-mechanical-independent-of-electrical-closeout-r20",
+      "id": "hs01-mechanical-independent-of-thermal-closeout-r26",
       "branchId": "mechanical",
       "assertion": "independent",
       "author": {
@@ -193,23 +193,23 @@
         "id": "local-yolo-startup-opt-in"
       },
       "source": {
-        "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+        "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
         "fingerprint": {
           "algorithm": "sha256",
-          "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+          "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
         }
       },
-      "justification": "The electrical closeout changes only accepted evidence status. The inspected CalculiX execution consumes the exact sealed proof, canonical STEP and reread solver artifacts, none of which is modified by that closeout.",
+      "justification": "The thermal L5 closeout changes documentary accepted evidence status only and does not alter exact CAD/FEA inputs.",
       "inspectedSourceAnchors": [
         {
-          "sourceAnchorId": "anchor-electrical-closeout",
+          "sourceAnchorId": "anchor-thermal-closeout",
           "threadChangeFingerprint": {
             "algorithm": "sha256",
-            "digest": "4dc5e976f3fce0971856c351bb327d1b8c50408c790576779c486381336033e7"
+            "digest": "99f613d0d4f376337f06361cc1f05fcdc87a13f9b5c2af8c3eb7221cb6e19721"
           },
           "sourceFingerprint": {
             "algorithm": "sha256",
-            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
           }
         }
       ],
@@ -354,14 +354,14 @@
       ],
       "review": {
         "trigger": {
-          "id": "spice-admitted-observation-evaluation-closeout-0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb",
+          "id": "modelica-admitted-observation-evaluation-closeout-c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c",
           "fingerprint": {
             "algorithm": "sha256",
-            "digest": "0d9757f742e74ac01011988648a06e7bb9ae817f893def1fda3474da904122bb"
+            "digest": "c6f4fa39ee3587c876bcfa5cc396edb644885466a6d2a570a7045d7138e4f18c"
           }
         },
-        "reviewedAt": "2026-08-23T14:30:17.920Z",
-        "expiresAt": "2026-09-23T14:30:17.920Z"
+        "reviewedAt": "2026-08-24T05:20:00.000Z",
+        "expiresAt": "2026-09-23T05:20:00.000Z"
       }
     }
   ],
@@ -383,9 +383,9 @@
     }
   ],
   "limitations": [
-    "The reviewed change is an electrical evidence-status closeout, not a physical design, source value, CAD or solver-input change.",
-    "The thermal r17 evaluation remains literally unresolved and no impact operation may turn it into pass or L5.",
-    "No absent causal edge proves physical independence; only the exact human mechanical assertion is eligible for the later X11 recross.",
-    "X10 rerun planning remains unavailable and this manifest grants no provider, solver, correction or Workbench command."
+    "Electrical is impact-unresolved because no positive edge is declared from this exact thermal closeout.",
+    "Thermal is invalidated because it is the positive affected input.",
+    "Mechanical can be carried-forward only through the exact human assertion and current FEA evidence; absence of an edge never proves independence.",
+    "X10 remains unavailable and this manifest grants no provider, solver, correction, rerun or Workbench command."
   ]
 }

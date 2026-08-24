@@ -1,6 +1,6 @@
 {
   "schemaVersion": "modelica-thermal-method-sheet/1.0",
-  "id": "hs01-heated-stage-thermal-method-r1",
+  "id": "hs01-heated-stage-thermal-method-r2",
   "project": {
     "id": "precision-heated-specimen-stage-hs01",
     "subjectId": "project:precision-heated-specimen-stage-hs01"
@@ -9,11 +9,11 @@
     "id": "project:precision-heated-specimen-stage-hs01"
   },
   "basis": {
-    "snapshotId": "project:precision-heated-specimen-stage-hs01:r15:decide-accept-evaluation-closeout-run:hs01-queue-mechanical-closeout-r105",
-    "revision": 15,
+    "snapshotId": "project:precision-heated-specimen-stage-hs01:r23:archive-lineage-run:hs01-queue-lineage-retirement-r161",
+    "revision": 23,
     "fingerprint": {
       "algorithm": "sha256",
-      "digest": "a4b08cd4d532c493d515b188b7767e393fff6401aaafe8986b4d2972bb95d59e"
+      "digest": "71fb933ccea7ff4c125ec3805dbbdcfa556e1d9d9ca2d885b0dfa5881071d857"
     }
   },
   "scope": "HS01 isolated HeatedStagePlate lumped scalar thermal scenario from 0 s to 120 s. Evaluate only the final temperature observation against the exact HeatedStagePlate SysML requirement.",
@@ -106,7 +106,7 @@
   },
   "review": {
     "authorId": "local-yolo-startup-opt-in",
-    "reviewedAt": "2026-08-23T14:18:00.000Z",
-    "sealDecisionId": "decision-hs01-thermal-method-sheet-r15"
+    "reviewedAt": "2026-08-24T04:40:16.000Z",
+    "sealDecisionId": "decision-hs01-thermal-method-sheet-r23-r2"
   }
 }

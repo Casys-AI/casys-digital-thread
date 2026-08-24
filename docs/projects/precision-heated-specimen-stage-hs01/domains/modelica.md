@@ -14,28 +14,56 @@ Admitted closed-subset v2 path. Not the qualified kit.
   Parameters used: `298.15 K`, `5 W`, `0.5 W/K`, `50 J/K`.
 
 Thread artifacts: capture `d960c4e4…7fb4`, evidence `cd06eafb…573a`, result
-`a703437b…1461`. Status `succeeded`. Limitations: documentary L3, not L4,
-not a spatial thermal proof.
+`a703437b…1461`. Status `succeeded`. Limitations: documentary L3, not a spatial
+thermal proof.
 
-## Initial evaluation and AX replay
+## Initial evaluation (archived)
 
-The resource-backed [hs01-thermal-method-sheet.json](../sources/hs01-thermal-method-sheet.json)
-was sealed at r16. The initial r17
-`verify.evaluate-admitted-modelica-observations@1` capture is **`unresolved`**,
-not a fail: three criteria share RequirementUsage `c1f…`, while the old
-selector chose the first occurrence. The resulting closeout review is therefore
-ambiguous/unresolved and no thermal L5 exists.
+The first resource-backed method sheet was sealed at r16
+(`modelica-thermal-method-sheet-seal-ba9a0bc7…6eda`, sheet
+`hs01-heated-stage-thermal-method-r1`, typed fingerprint `571d0d47…91d4`).
+The initial r17 `verify.evaluate-admitted-modelica-observations@1` capture
+`accfccc2…afbd` is **`unresolved`**, not a fail: three criteria share
+RequirementUsage `c1f…`, and the old selector chose the first occurrence
+(`maxDisplacement`). That closeout never existed.
 
-AX makes `requirementMetric` breaking-required in both the output and its
-output-requirement binding. Current resolution is the exact pair
-`(requirementElementId, criterion.metric)` and a zero, multiple or ambiguous
-match fails the review before evidence, SysON or MRTR. The checked-in successor
-source identifies `temperature`; it must still be resource-recaptured with a new
-typed fingerprint, sealed, evaluated and closed. Do not promote the initial
-313 K comparison to a verdict or rewrite r17.
+r23 `record.archive-lineage@1` (`hs01-queue-lineage-retirement-r161`) retired
+that method sheet, the r17 evaluation, the ambiguous `maxDisplacement`
+evaluation row, and the first impact seal/evaluation that consumed them.
+Append-only archive; r17 was not rewritten.
+
+## AX successor — r24 / r25 / r26
+
+AX requires `requirementMetric` in each method-sheet output and output
+binding, and resolves the exact `(RequirementUsage, metric)` pair before
+evidence, SysON or MRTR. The r2 source
+[hs01-thermal-method-sheet.json](../sources/hs01-thermal-method-sheet.json)
+identifies `temperature`.
+
+An unexecuted r1-on-r22 correction work item was abandoned
+(`work-hs01-seal-thermal-method-r22-correction`). The live successor is
+`work-hs01-seal-thermal-method-r23-r2` on the r23 Thread basis:
+
+- r24 `verify.seal-modelica-thermal-method-sheet@1` run
+  `hs01-queue-thermal-method-r2-r168` sealed
+  `hs01-heated-stage-thermal-method-r2`, typed fingerprint `6a5aabdd…c42f`,
+  document `modelica-thermal-method-sheet-seal-8a15f3ab…51b0`.
+- r25 `verify.evaluate-admitted-modelica-observations@1` run
+  `hs01-queue-modelica-evaluation-r2-r175` captured
+  `modelica-admitted-observation-evaluation-f61032db…6887`. SysON evaluated
+  `temperature ≤ 313 K` with actual `305.1378579691034 K`, status **`pass`**,
+  margin `7.862142030896621 K`. `unresolved: []`.
+- r26 `decide.accept-admitted-modelica-evaluation@1` run
+  `hs01-queue-modelica-closeout-r2-r182` accepted
+  `modelica-admitted-observation-evaluation-closeout-c6f4fa39…f18c`. Limits
+  include `engineCalls: none` and `l4PassIsNotL5: true`.
+
+This L5 is the sealed lumped scalar method only. It is not spatial
+uniformity, contact, convection, or a whole-stage thermal claim.
 
 ## Friction
 
 Lumped 0-D model. Brief excludes uniformity, convection, contact, coupled
-thermo-mechanics. The `.mo` and method sheet both used generic resource ingress.
-The typed method-sheet fingerprint remains distinct from its raw CAS digest.
+thermo-mechanics. The `.mo` and method sheet both used generic resource
+ingress. The typed method-sheet fingerprint remains distinct from its raw CAS
+digest. Archive of r16/r17 did not mutate those snapshots.
