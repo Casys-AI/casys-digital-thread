@@ -1,8 +1,8 @@
-import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
-import type { ExactThreadSnapshotReader } from "./engineering-thread-snapshot-resolver.ts";
+
+export { threadSnapshotDescendsFrom } from "../../../domain/thread/thread-snapshot-ancestry.ts";
 
 /** Raised when an immutable ThreadSnapshot predecessor chain is not intact. */
 export class ThreadSnapshotLineageIntegrityError extends Error {
@@ -94,44 +94,4 @@ export async function assertThreadSnapshotLineageIntact(
       );
     }
   }
-}
-
-/**
- * Prove lineage by resolving every immutable `previous` reference exactly.
- * A higher revision, matching subject, or familiar ID prefix is never enough.
- */
-export async function threadSnapshotDescendsFrom(
-  descendant: ThreadSnapshot,
-  ancestor: ThreadSnapshot,
-  snapshots: ExactThreadSnapshotReader,
-): Promise<boolean> {
-  if (
-    descendant.subject.id !== ancestor.subject.id ||
-    descendant.revision < ancestor.revision
-  ) return false;
-
-  let cursor = descendant;
-  const visited = new Set<string>();
-  while (
-    cursor.id !== ancestor.id || cursor.revision !== ancestor.revision
-  ) {
-    const key = `${cursor.id}\u0000${cursor.revision}`;
-    if (visited.has(key) || cursor.revision <= ancestor.revision) return false;
-    visited.add(key);
-    const previous = cursor.previous;
-    // A ThreadSnapshot lineage is one immutable revision at a time. Merely
-    // pointing to an older record would let a completion proof skip evidence
-    // revisions that were part of the run's actual causal history.
-    if (!previous || previous.revision !== cursor.revision - 1) return false;
-    const resolved = await snapshots.get(previous.snapshotId);
-    if (
-      !resolved ||
-      resolved.id !== previous.snapshotId ||
-      resolved.revision !== previous.revision ||
-      resolved.subject.id !== ancestor.subject.id
-    ) return false;
-    cursor = resolved;
-  }
-
-  return deterministicJson(cursor) === deterministicJson(ancestor);
 }

@@ -223,9 +223,10 @@ is not the later impact-evaluation capture: it creates no branch outcome, gate-c
 transition, invalidation, proposed work item, or automatic rerun.
 
 `project_cross_domain_impact_decision_review` is the later read-only recross: the caller
-names only `projectId`. The server reopens the unique current Thread tip and unique
-`analyze.evaluate-cross-domain-impact@1` capture, then recrosses Brief V2 gates and
-existing work-item claims into canonical MRTR parameters.
+names only `projectId`. Before X09 work exists, the server selects the unique completed
+`analyze.evaluate-cross-domain-impact@1` activity leaf, proves its exact completed
+document on the unique current Thread tip, then recrosses Brief V2 gates and existing
+work-item claims into canonical MRTR parameters.
 `decide.accept-cross-domain-impact@1` is the human-only decision that applies those
 already-proposed gate-claim statuses onto existing work-item claims. X07/X08 records
 `workItemInvalidations` and `rerunProposals` as `none`; this decision does not add,
@@ -233,10 +234,13 @@ invalidate, or queue work items. It writes one documentary Thread successor and 
 project gate claims atomically. It queues no rerun and calls no provider.
 
 `analyze.evaluate-mechanical-preservation@1` is the later provider-free X11 control. The
-caller queues only the registered operation (approvedBrief binding). The server reopens
-the unique current Thread tip, unique X09 decision capture, exact X08 evaluation,
-approved Brief V2, and the reviewed independence assertion. It then selects the unique
-accepted L5 closeout whose `inputArtifactIds` name the exact mechanical execution
+caller queues only the registered operation (approvedBrief binding). The X11 work's
+required `dependsOn` leaf names the completed X09 decision document. Its result may be
+an ancestor of the unique current Thread tip only while exact descendant lineage and a
+byte-identical, `fresh`, unarchived artifact still hold. The server then recrosses the
+exact X08 evaluation, approved Brief V2, and the reviewed independence assertion before
+selecting the unique accepted L5 closeout whose `inputArtifactIds` name the exact
+mechanical execution
 evidence from that assertion/X08 recross. Unrelated accepted closeouts for other FEA
 executions do not block; zero or multiple closeouts for the same asserted evidence stay
 `impact-unresolved`. That closeout's named identities (`canonicalStep`, `sealedProof`,

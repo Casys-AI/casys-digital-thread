@@ -2,9 +2,10 @@
  * Server-owned X11 mechanical preservation recross.
  *
  * The command has no agent-selected causal input. It starts from the exact
- * queued Thread basis after X09, reopens the unique impact-decision capture
- * and its X08 evaluation, recrosses Brief V2 and the reviewed independence
- * assertion, then selects the unique accepted closeout that names that
+ * queued Thread basis after X09, reopens the X09 decision named by the current
+ * work revision's required dependsOn leaf and its X08 evaluation, recrosses
+ * Brief V2 and the reviewed independence assertion, then selects the unique
+ * accepted closeout that names that
  * asserted mechanical execution evidence. FEA identities come from that
  * closeout. Missing or inexact FEA facts stay impact-unresolved.
  */
@@ -27,6 +28,7 @@ import type {
   MechanicalPreservationCloseoutReader,
 } from "../../ports/out/impact/mechanical-preservation-closeout-reader.ts";
 import {
+  acceptCrossDomainImpactWorkItemOperation,
   DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
 } from "../../../domain/impact/cross-domain-impact-decision-proposal.ts";
 import {
@@ -40,6 +42,9 @@ import {
   ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION,
   MECHANICAL_PRESERVATION_LIMITS,
 } from "../../../domain/impact/cross-domain-impact-mechanical-preservation-proposal.ts";
+import {
+  resolveExactCompletedDependencyDocument,
+} from "../project/resolve-exact-completed-dependency-document.ts";
 import {
   evaluateMechanicalPreservation,
   type MechanicalPreservationCloseoutEvidence,
@@ -73,9 +78,7 @@ import {
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type {
-  EngineeringAgentRun,
   EngineeringProjectSnapshot,
-  EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
 } from "../../../domain/project/engineering-project.ts";
 import {
@@ -169,29 +172,40 @@ export class PrepareMechanicalPreservation
       );
     }
 
-    const decisionArtifact = selectUniqueDecisionArtifact(
+    const selected = await resolveExactCompletedDependencyDocument({
       project,
+      trustedRunId: normalized.trustedRunId,
       head,
-      normalized.basis,
-    );
-    if (!decisionArtifact) {
+      basis: normalized.basis,
+      currentOperation: {
+        id: ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION.id,
+        version: ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION.version,
+        requiresDependsOnOperation: {
+          id: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id,
+          version: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version,
+        },
+      },
+      expectedDependencyOperation: acceptCrossDomainImpactWorkItemOperation(),
+      expectedProducer: {
+        serverId: "digital-thread",
+        tool:
+          `${DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id}@${DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version}`,
+      },
+      snapshots: this.dependencies.snapshots,
+    });
+    if (selected.status !== "resolved") {
+      if (selected.code === "artifact_archived") {
+        return unresolved("decision_capture_archived", selected.reason);
+      }
+      if (selected.status === "unresolved") {
+        return unresolved("decision_capture_mismatch", selected.reason);
+      }
       return unavailable(
         "decision_capture_unavailable",
-        "The current Thread basis has no unique exact cross-domain impact-decision capture.",
+        "The current work revision does not name one exact completed cross-domain impact-decision capture.",
       );
     }
-    if (archivedRefKeys(head).has(`artifact:${decisionArtifact.id}`)) {
-      return unresolved(
-        "decision_capture_archived",
-        "The exact impact-decision capture is archived.",
-      );
-    }
-    if (decisionArtifact.freshness.status !== "fresh") {
-      return unresolved(
-        "decision_capture_mismatch",
-        "The exact impact-decision capture is not fresh.",
-      );
-    }
+    const decisionArtifact = selected.artifact;
 
     let decisionCapture;
     try {
@@ -578,69 +592,6 @@ function sameBasisSnapshot(
     snapshot.subject.id === basis.subjectId;
 }
 
-function selectUniqueDecisionArtifact(
-  project: EngineeringProjectSnapshot,
-  head: ThreadSnapshot,
-  basis: EngineeringThreadSnapshotBasis,
-): ThreadArtifact | undefined {
-  const candidates = head.artifacts.filter((artifact) => {
-    if (
-      artifact.kind !== "document" ||
-      artifact.producer.serverId !== "digital-thread" ||
-      artifact.producer.tool !==
-        `${DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id}@${DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version}`
-    ) return false;
-    const runs = project.agentRuns.filter((candidate) =>
-      candidate.id === artifact.producer.runId
-    );
-    return runs.length === 1 &&
-      isExactDecisionCompletion(project, runs[0]!, artifact, head, basis);
-  });
-  return candidates.length === 1 ? candidates[0] : undefined;
-}
-
-function isExactDecisionCompletion(
-  project: EngineeringProjectSnapshot,
-  run: EngineeringAgentRun,
-  artifact: ThreadArtifact,
-  head: ThreadSnapshot,
-  basis: EngineeringThreadSnapshotBasis,
-): boolean {
-  const workItems = project.workItems.filter((item) => item.id === run.workItemId);
-  const workItem = workItems[0];
-  const operation = workItem?.operation;
-  if (
-    run.status !== "completed" || !run.resultSnapshot || workItems.length !== 1 ||
-    workItem.status !== "completed" || artifact.freshness.status !== "fresh" ||
-    run.resultSnapshot.snapshotId !== basis.snapshotId ||
-    run.resultSnapshot.revision !== basis.revision ||
-    run.resultSnapshot.subjectId !== basis.subjectId ||
-    run.basis?.kind !== "thread-snapshot" || !head.previous ||
-    run.basis.snapshotId !== head.previous.snapshotId ||
-    run.basis.revision !== head.previous.revision ||
-    run.basis.subjectId !== basis.subjectId ||
-    operation?.id !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id ||
-    operation.version !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version ||
-    operation.bindings.length !== 1 ||
-    operation.bindings[0]?.name !== "approvedBrief" ||
-    operation.bindings[0].source.kind !== "approved-brief"
-  ) {
-    return false;
-  }
-  const declared = project.threadSnapshots.filter((reference) =>
-    reference.snapshotId === basis.snapshotId &&
-    reference.revision === basis.revision &&
-    reference.subjectId === basis.subjectId
-  );
-  const evidence = run.evidenceRefs[0];
-  return declared.length === 1 && run.evidenceRefs.length === 1 &&
-    workItem.evidenceRefs.length === 1 &&
-    sameEvidenceRefs(run.evidenceRefs, workItem.evidenceRefs) &&
-    evidence?.snapshotId === basis.snapshotId &&
-    evidence.snapshotRevision === basis.revision &&
-    evidence.kind === "artifact" && evidence.id === artifact.id;
-}
-
 function recrossCurrentBriefGates(
   capture: CrossDomainImpactEvaluationCapture,
   brief: NonNullable<Awaited<ReturnType<CrossDomainImpactBriefGateReader["read"]>>>,
@@ -718,18 +669,6 @@ function recrossArtifactInputs(
       `${right.id}:${right.fingerprint.digest}`,
     )
   );
-}
-
-function sameEvidenceRefs(
-  left: readonly EngineeringThreadEntityRef[],
-  right: readonly EngineeringThreadEntityRef[],
-): boolean {
-  const key = (reference: EngineeringThreadEntityRef) =>
-    `${reference.snapshotId}:${reference.snapshotRevision}:${reference.kind}:${reference.id}`;
-  const leftKeys = [...left.map(key)].sort();
-  const rightKeys = [...right.map(key)].sort();
-  return leftKeys.length === rightKeys.length &&
-    leftKeys.every((item, index) => item === rightKeys[index]);
 }
 
 function sameReference(

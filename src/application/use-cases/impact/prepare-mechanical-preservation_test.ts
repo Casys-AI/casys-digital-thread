@@ -72,6 +72,7 @@ const EVAL_WORK = "work-impact-evaluation";
 const DECISION_RUN = "run-impact-decision";
 const DECISION_WORK = "work-impact-decision";
 const PRESERVATION_RUN = "run-mechanical-preservation";
+const PRESERVATION_WORK = "work-mechanical-preservation";
 const FEA_RUN = "run-fea-static-proof";
 const FEA_WORK = "work-fea-static-proof";
 const CLOSEOUT_RUN = "run-evaluation-closeout";
@@ -1598,6 +1599,7 @@ function projectFixture(
       workItemIds: [
         EVAL_WORK,
         DECISION_WORK,
+        PRESERVATION_WORK,
         "work-mechanical",
         FEA_WORK,
         CLOSEOUT_WORK,
@@ -1650,6 +1652,25 @@ function projectFixture(
           kind: "artifact",
           id: decisionId,
         }],
+        decisionIds: [],
+        blockerIds: [],
+      },
+      {
+        id: PRESERVATION_WORK,
+        activityId: `activity:${PRESERVATION_WORK}`,
+        phaseId: "phase-preservation",
+        title: "Preserve",
+        description: "Preserve",
+        kind: "review" as const,
+        operation: {
+          id: "analyze.evaluate-mechanical-preservation",
+          version: "1",
+          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
+        },
+        status: "in-progress" as const,
+        owner: "agent" as const,
+        dependsOnWorkItemIds: [DECISION_WORK],
+        evidenceRefs: [],
         decisionIds: [],
         blockerIds: [],
       },
@@ -1731,6 +1752,21 @@ function projectFixture(
           kind: "artifact",
           id: decisionId,
         }],
+      },
+      {
+        id: PRESERVATION_RUN,
+        workItemId: PRESERVATION_WORK,
+        status: "running" as const,
+        summary: "Preserve",
+        queuedAt: AT,
+        startedAt: AT,
+        basis: {
+          kind: "thread-snapshot" as const,
+          snapshotId: head.id,
+          revision: head.revision,
+          subjectId: SUBJECT,
+        },
+        evidenceRefs: [],
       },
       producerRun(FEA_RUN, FEA_WORK, r1, [fea.execution.id, fea.l4Evaluation.id]),
       producerRun(CLOSEOUT_RUN, CLOSEOUT_WORK, r1, [CLOSEOUT_ID]),

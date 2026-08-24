@@ -197,6 +197,8 @@ export class DecideAcceptCrossDomainImpactRunExecutor {
         snapshot: basisSnapshot,
         briefGates: this.dependencies.briefGates,
         captures: this.dependencies.evaluationCaptures,
+        snapshots: this.dependencies.snapshots,
+        trustedRunId: run.id,
         excludeWorkItemId: run.workItemId,
       });
       if (

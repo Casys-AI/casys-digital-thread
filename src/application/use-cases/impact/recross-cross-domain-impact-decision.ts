@@ -1,11 +1,13 @@
 /**
  * Shared recross for the human X09 impact decision.
  *
- * It reopens one exact X07/X08 evaluation capture on the named Thread basis
- * and maps its already-proposed gate-claim statuses onto existing work-item
- * claims. X07/X08 records workItemInvalidations and rerunProposals as `none`;
- * this recross does not invent work items, change work-item lifecycle, or
- * queue a rerun.
+ * Runtime execution names the current X09 run; it reopens the X08 evaluation
+ * named by that work revision's required dependsOn leaf. Read-only review
+ * happens before X09 exists: it selects the unique current completed X08
+ * activity leaf, then recrosses that exact work through the same evidence
+ * resolver. Labels, timestamps, recency, and `latest` never select. X07/X08
+ * records workItemInvalidations and rerunProposals as `none`; this recross
+ * does not invent work items, change work-item lifecycle, or queue a rerun.
  */
 
 import type { CrossDomainImpactEvaluationCaptureStore } from "../../ports/out/impact/cross-domain-impact-capture-store.ts";
@@ -16,10 +18,12 @@ import {
 import {
   CROSS_DOMAIN_IMPACT_DECISION_LIMITS,
   type CrossDomainImpactDecisionAdmission,
+  DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
   validateCrossDomainImpactDecisionAdmission,
 } from "../../../domain/impact/cross-domain-impact-decision-proposal.ts";
 import {
   ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
+  evaluateCrossDomainImpactWorkItemOperation,
 } from "../../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
 import {
   type CrossDomainImpactEvaluationCapture,
@@ -32,16 +36,19 @@ import {
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
-  EngineeringAgentRun,
   EngineeringProjectSnapshot,
-  EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
 } from "../../../domain/project/engineering-project.ts";
 import {
-  archivedRefKeys,
   type ThreadArtifact,
   type ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
+import {
+  resolveExactCompletedDependencyDocument,
+  resolveExactCompletedWorkDocument,
+  selectUniqueCompletedOperationLeaf,
+} from "../project/resolve-exact-completed-dependency-document.ts";
 
 export type CrossDomainImpactDecisionRecrossCode =
   | "evaluation_capture_unavailable"
@@ -67,6 +74,8 @@ export interface RecrossCrossDomainImpactDecisionInput {
   readonly snapshot: ThreadSnapshot;
   readonly briefGates: CrossDomainImpactBriefGateReader;
   readonly captures: CrossDomainImpactEvaluationCaptureStore;
+  readonly snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly trustedRunId?: string;
   readonly excludeWorkItemId?: string;
 }
 
@@ -90,29 +99,36 @@ export async function recrossCrossDomainImpactDecision(
       "The exact Thread basis for the impact decision is unavailable.",
     );
   }
-  const artifact = selectUniqueEvaluationArtifact(
-    input.project,
-    input.snapshot,
-    input.basis,
-  );
-  if (!artifact) {
+  const selected = input.trustedRunId
+    ? await resolveExactCompletedDependencyDocument({
+      project: input.project,
+      trustedRunId: input.trustedRunId,
+      head: input.snapshot,
+      basis: input.basis,
+      currentOperation: {
+        id: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.id,
+        version: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version,
+        requiresDependsOnOperation: {
+          id: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id,
+          version: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version,
+        },
+      },
+      expectedDependencyOperation: evaluateCrossDomainImpactWorkItemOperation(),
+      expectedProducer: x08ExpectedProducer(),
+      snapshots: input.snapshots,
+    })
+    : await resolvePreflightX08EvaluationDocument(input);
+  if (selected.status !== "resolved") {
     throw new CrossDomainImpactDecisionRecrossError(
-      "evaluation_capture_unavailable",
-      "The current Thread basis has no unique exact cross-domain impact-evaluation capture.",
+      selected.code === "artifact_archived"
+        ? "evaluation_capture_archived"
+        : selected.status === "unresolved"
+        ? "evaluation_capture_mismatch"
+        : "evaluation_capture_unavailable",
+      selected.reason,
     );
   }
-  if (archivedRefKeys(input.snapshot).has(`artifact:${artifact.id}`)) {
-    throw new CrossDomainImpactDecisionRecrossError(
-      "evaluation_capture_archived",
-      "The exact impact-evaluation capture is archived.",
-    );
-  }
-  if (artifact.freshness.status !== "fresh") {
-    throw new CrossDomainImpactDecisionRecrossError(
-      "evaluation_capture_mismatch",
-      "The exact impact-evaluation capture is not fresh.",
-    );
-  }
+  const artifact = selected.artifact;
   const capture = await input.captures.read(artifact.fingerprint);
   if (!capture) {
     throw new CrossDomainImpactDecisionRecrossError(
@@ -121,9 +137,7 @@ export async function recrossCrossDomainImpactDecision(
     );
   }
   const captureFingerprint = await sha256Fingerprint(capture);
-  const evaluationRun = input.project.agentRuns.find((candidate) =>
-    candidate.id === artifact.producer.runId
-  );
+  const evaluationRun = selected.producerRun;
   if (
     !evaluationRun ||
     evaluationRun.startedAt !== capture.evaluatedAt ||
@@ -265,72 +279,31 @@ export async function recrossCrossDomainImpactDecision(
   return { capture, artifact, admission };
 }
 
-export function selectUniqueEvaluationArtifact(
-  project: EngineeringProjectSnapshot,
-  head: ThreadSnapshot,
-  basis: EngineeringThreadSnapshotBasis,
-): ThreadArtifact | undefined {
-  const candidates = head.artifacts.filter((artifact) => {
-    if (
-      artifact.kind !== "document" ||
-      artifact.producer.serverId !== "digital-thread" ||
-      artifact.producer.tool !==
-        `${ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id}@${ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version}`
-    ) return false;
-    const runs = project.agentRuns.filter((candidate) =>
-      candidate.id === artifact.producer.runId
-    );
-    return runs.length === 1 && isExactEvaluationCompletion(
-      project,
-      runs[0]!,
-      artifact,
-      head,
-      basis,
-    );
+async function resolvePreflightX08EvaluationDocument(
+  input: RecrossCrossDomainImpactDecisionInput,
+) {
+  const leaf = selectUniqueCompletedOperationLeaf(
+    input.project.workItems,
+    ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
+  );
+  if (leaf.status !== "resolved") return leaf;
+  return await resolveExactCompletedWorkDocument({
+    project: input.project,
+    dependencyWork: leaf.work,
+    head: input.snapshot,
+    basis: input.basis,
+    expectedDependencyOperation: evaluateCrossDomainImpactWorkItemOperation(),
+    expectedProducer: x08ExpectedProducer(),
+    snapshots: input.snapshots,
   });
-  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
-function isExactEvaluationCompletion(
-  project: EngineeringProjectSnapshot,
-  run: EngineeringAgentRun,
-  artifact: ThreadArtifact,
-  head: ThreadSnapshot,
-  basis: EngineeringThreadSnapshotBasis,
-): boolean {
-  const workItems = project.workItems.filter((item) => item.id === run.workItemId);
-  const workItem = workItems[0];
-  const operation = workItem?.operation;
-  if (
-    run.status !== "completed" || !run.resultSnapshot || workItems.length !== 1 ||
-    workItem.status !== "completed" ||
-    run.resultSnapshot.snapshotId !== basis.snapshotId ||
-    run.resultSnapshot.revision !== basis.revision ||
-    run.resultSnapshot.subjectId !== basis.subjectId ||
-    run.basis?.kind !== "thread-snapshot" || !head.previous ||
-    run.basis.snapshotId !== head.previous.snapshotId ||
-    run.basis.revision !== head.previous.revision ||
-    run.basis.subjectId !== basis.subjectId ||
-    operation?.id !== ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id ||
-    operation.version !== ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version ||
-    operation.bindings.length !== 1 ||
-    operation.bindings[0]?.name !== "approvedBrief" ||
-    operation.bindings[0].source.kind !== "approved-brief"
-  ) {
-    return false;
-  }
-  const declared = project.threadSnapshots.filter((reference) =>
-    reference.snapshotId === basis.snapshotId &&
-    reference.revision === basis.revision &&
-    reference.subjectId === basis.subjectId
-  );
-  const evidence = run.evidenceRefs[0];
-  return declared.length === 1 && run.evidenceRefs.length === 1 &&
-    workItem.evidenceRefs.length === 1 &&
-    sameEvidenceRefs(run.evidenceRefs, workItem.evidenceRefs) &&
-    evidence?.snapshotId === basis.snapshotId &&
-    evidence.snapshotRevision === basis.revision &&
-    evidence.kind === "artifact" && evidence.id === artifact.id;
+function x08ExpectedProducer() {
+  return {
+    serverId: "digital-thread",
+    tool:
+      `${ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id}@${ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version}`,
+  };
 }
 
 export function expectedX08EvaluationArtifact(
@@ -377,16 +350,4 @@ export function x08EvaluationArtifactIdentity(artifact: ThreadArtifact) {
       invalidatedByChangeIds: artifact.freshness.invalidatedByChangeIds,
     },
   };
-}
-
-function sameEvidenceRefs(
-  left: readonly EngineeringThreadEntityRef[],
-  right: readonly EngineeringThreadEntityRef[],
-): boolean {
-  if (left.length !== right.length) return false;
-  const key = (reference: EngineeringThreadEntityRef) =>
-    `${reference.snapshotId}:${reference.snapshotRevision}:${reference.kind}:${reference.id}`;
-  const leftKeys = [...left.map(key)].sort();
-  const rightKeys = [...right.map(key)].sort();
-  return leftKeys.every((item, index) => item === rightKeys[index]);
 }

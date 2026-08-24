@@ -22,7 +22,7 @@ fixture, or a successful solver call is not a product capability by itself.
 | X04 | Supported | Outbound ports under `src/application/ports/out/impact/`: manifest store (save + opaque read), Thread lineage, Brief V2 gates, capture stores, L5 closeout reader. No MCP provider client, no Workbench write. |
 | X05 | Supported | Draft-capture and recross use cases under `src/application/use-cases/impact/` plus CAS/Thread adapters under `src/adapters/impact/`. Invalid capture fails closed. Recross mismatch stays `unavailable` or `unresolved`. |
 | X06 | Supported | Public `project_cross_domain_impact_manifest_capture` writes draft CAS only (full `resourceRef` → opaque `{ fingerprint }`). Read-only `project_cross_domain_impact_manifest_seal_review` (`projectId` + that reference) then registered `verify.seal-cross-domain-impact-manifest@1`. Every manifest `gateMap` entry must resolve exactly one current work-item `gateClaim` with the same role; missing, mismatched or ambiguous claims stop `unresolved`. Seal publishes identities; it does not evaluate a branch. Capture is not a registered operation. |
-| X07 | Supported | Pure analysis: registered `analyze.evaluate-cross-domain-impact@1`. It rechecks the same current `gateMap`/`gateClaim` relation before analysis. Internal command is not an agent JSON envelope. Proposes branch and gate-claim statuses. Mutates none. |
+| X07 | Supported | Pure analysis: registered `analyze.evaluate-cross-domain-impact@1`. It reopens the X06 seal named by the current work revision's required `dependsOn` leaf (never `latest`/label/recency; archived seals stay history). It rechecks the same current `gateMap`/`gateClaim` relation before analysis. Internal command is not an agent JSON envelope. Proposes branch and gate-claim statuses. Mutates none. |
 | X08 | Supported | Documentary Thread capture of that X07 recross (`cross-domain-impact-evaluation-capture/1.0`). Missing, mismatched or ambiguous gate claims stop before the evaluation capture; `workItemInvalidations` and `rerunProposals` are literal `none`. |
 | X09 | Bounded | Read-only `project_cross_domain_impact_decision_review` (`projectId` only) then human-origin `decide.accept-cross-domain-impact@1`. It recrosses the sealed result before applying already-proposed statuses onto existing work-item claims. No `decide.reject-cross-domain-impact@1`. |
 | X10 | `unavailable` | No registered rerun planner, no public review, no generic thermal/electrical redispatch from impact. X07/X08 keep `rerunProposals: none`. Independent admitted Modelica or admitted SPICE walks are not X10. `mcp-spice` is not a product run. |
@@ -64,8 +64,10 @@ caller-selected fingerprint. The server recrosses project/subject/current Thread
 gates/evidence at seal review time. A human-shaped assertion in draft JSON is not
 proof until signed MRTR for `verify.seal-cross-domain-impact-manifest@1`. There is no
 `project_cross_domain_impact_evaluation_review` and no X11 review compiler: the agent
-queues the registered operation; the server selects the unique current Thread tip and
-unique prerequisite capture.
+queues the registered operation. Its current work revision names the prerequisite
+through the required `dependsOn` leaf. That completed document may have been produced
+on an ancestor of the unique current tip; reuse requires exact descendant lineage plus
+a byte-identical, `fresh`, unarchived artifact on the tip.
 
 Static-mechanical L5 is a sibling FEA surface, not an impact slice:
 `project_evaluation_closeout_review` then `decide.accept-evaluation-closeout@1` /

@@ -74,7 +74,7 @@ export interface CrossDomainImpactEvaluationCapture {
   readonly operation: typeof ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION;
   readonly trustedRunId: string;
   readonly evaluatedAt: string;
-  /** The exact sealed document the evaluator reread from its direct basis. */
+  /** The exact sealed document named by the current work's required dependsOn leaf. */
   readonly manifestSeal: {
     readonly artifact: CrossDomainImpactReference;
     readonly trustedRunId: string;

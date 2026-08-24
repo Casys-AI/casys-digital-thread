@@ -2,10 +2,12 @@
  * Server-owned X07 impact recross.
  *
  * The command has no agent-selected causal input.  It starts from the exact
- * queued Thread basis, identifies the one manifest-seal document that created
- * that basis, reopens its full closed manifest, and evaluates every declared
- * source anchor.  The resulting capture is documentary only: no claim, work
- * item, freshness record, MRTR, or provider run is changed here.
+ * queued Thread basis, reopens the X06 seal named by the current work
+ * revision's required dependsOn leaf, and evaluates every declared source
+ * anchor.  A later attempt may reuse that named seal while the current tip
+ * still descends from its completed result.  Archived seals stay history.
+ * The resulting capture is documentary only: no claim, work item, freshness
+ * record, MRTR, or provider run is changed here.
  */
 
 import type {
@@ -49,21 +51,26 @@ import {
   type CrossDomainImpactReference,
 } from "../../../domain/impact/cross-domain-impact-manifest.ts";
 import {
+  ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
+} from "../../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
+import {
   VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
   type CrossDomainImpactManifestSealBriefGate,
+  sealCrossDomainImpactManifestWorkItemOperation,
 } from "../../../domain/impact/cross-domain-impact-manifest-proposal.ts";
+import {
+  resolveExactCompletedDependencyDocument,
+} from "../project/resolve-exact-completed-dependency-document.ts";
 import {
   positiveInteger,
   safeId,
 } from "../../../domain/kernel/case-validation.ts";
 import {
-  deterministicJson,
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type {
   EngineeringProjectSnapshot,
-  EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
 } from "../../../domain/project/engineering-project.ts";
 import type {
@@ -147,10 +154,33 @@ export class PrepareCrossDomainImpactEvaluation
       return unavailable("basis_unavailable", "The exact queued impact-evaluation Thread basis is unavailable.");
     }
 
-    const sealArtifact = selectDirectManifestSeal(project, head, normalized.basis);
-    if (!sealArtifact) {
-      return unavailable("manifest_seal_unavailable", "The current Thread basis has no unique direct cross-domain impact-manifest seal document.");
+    const selected = await resolveExactCompletedDependencyDocument({
+      project,
+      trustedRunId: normalized.trustedRunId,
+      head,
+      basis: normalized.basis,
+      currentOperation: {
+        id: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id,
+        version: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version,
+        requiresDependsOnOperation: {
+          id: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id,
+          version: VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version,
+        },
+      },
+      expectedDependencyOperation: sealCrossDomainImpactManifestWorkItemOperation(),
+      expectedProducer: {
+        serverId: "digital-thread",
+        tool: `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`,
+      },
+      snapshots: this.#snapshots,
+    });
+    if (selected.status !== "resolved") {
+      return unavailable(
+        "manifest_seal_unavailable",
+        "The current work revision does not name one exact completed cross-domain impact-manifest seal document.",
+      );
     }
+    const sealArtifact = selected.artifact;
     let seal;
     try {
       seal = await this.#manifestSeals.read(sealArtifact.fingerprint);
@@ -165,13 +195,21 @@ export class PrepareCrossDomainImpactEvaluation
       seal.sealedAt !== sealArtifact.freshness.changedAt ||
       sealArtifact.uri !== crossDomainImpactManifestSealCaptureUri(sealArtifact.fingerprint.digest)
     ) {
-      return unresolved("manifest_seal_mismatch", "The direct manifest-seal document does not exactly identify its stored capture.");
+      return unresolved("manifest_seal_mismatch", "The named manifest-seal document does not exactly identify its stored capture.");
     }
-    if (!head.previous ||
-      head.previous.snapshotId !== seal.admission.basis.snapshotId ||
-      head.previous.revision !== seal.admission.basis.revision
+    if (
+      selected.producerRun.basis?.kind !== "thread-snapshot" ||
+      seal.admission.basis.snapshotId !== selected.producerRun.basis.snapshotId ||
+      seal.admission.basis.revision !== selected.producerRun.basis.revision
     ) {
-      return unresolved("manifest_seal_mismatch", "The current impact-evaluation basis is not the direct successor of the sealed manifest basis.");
+      return unresolved("manifest_seal_mismatch", "The stored manifest-seal admission is not the exact completed X06 run basis.");
+    }
+    if (
+      !selected.resultSnapshot.previous ||
+      selected.resultSnapshot.previous.snapshotId !== seal.admission.basis.snapshotId ||
+      selected.resultSnapshot.previous.revision !== seal.admission.basis.revision
+    ) {
+      return unresolved("manifest_seal_mismatch", "The exact X06 result snapshot is not the direct successor of the sealed manifest basis.");
     }
 
     let sourceSnapshot: ThreadSnapshot | undefined;
@@ -260,9 +298,8 @@ export class PrepareCrossDomainImpactEvaluation
       return unresolved("brief_gate_unresolved", "The current approved Brief V2 does not provide every exact manifest gate mapping and dependency declaration.");
     }
 
-    // The queued X07 basis is the direct X06 successor.  Recross the branch
-    // artifacts there, so every `available`/`current` fact can later be
-    // proven as an exact X08 Thread input.
+    // Recross branch artifacts on the queued X07 basis. The named X06 seal
+    // may be an ancestor of this basis after a later descendant retry.
     const branchFacts = recrossBranchFacts(head, manifest);
     const mechanicalFact = selectMechanicalFact(manifest, lineage, sealArtifact);
     let artifactInputs: readonly CrossDomainImpactReference[];
@@ -369,89 +406,6 @@ function isCurrentProjectBasis(
 function sameBasisSnapshot(snapshot: ThreadSnapshot, basis: EngineeringThreadSnapshotBasis): boolean {
   return snapshot.id === basis.snapshotId && snapshot.revision === basis.revision &&
     snapshot.subject.id === basis.subjectId;
-}
-
-function selectDirectManifestSeal(
-  project: EngineeringProjectSnapshot,
-  head: ThreadSnapshot,
-  basis: EngineeringThreadSnapshotBasis,
-): ThreadArtifact | undefined {
-  const candidates = head.artifacts.filter((artifact) => {
-    if (
-      artifact.kind !== "document" ||
-      artifact.producer.serverId !== "digital-thread" ||
-      artifact.producer.tool !== `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`
-    ) return false;
-    const runs = project.agentRuns.filter((candidate) => candidate.id === artifact.producer.runId);
-    return runs.length === 1 && isExactManifestSealCompletion(
-      project,
-      runs[0]!,
-      artifact,
-      head,
-      basis,
-    );
-  });
-  return candidates.length === 1 ? candidates[0] : undefined;
-}
-
-/**
- * X07 may reopen only the document actually attached by the X06 run, not a
- * lookalike document whose producer label happens to match.  Project state is
- * mutable between executions, so all project-side attachment facts are
- * recrossed before the sealed capture is trusted.
- */
-function isExactManifestSealCompletion(
-  project: EngineeringProjectSnapshot,
-  run: EngineeringProjectSnapshot["agentRuns"][number],
-  artifact: ThreadArtifact,
-  head: ThreadSnapshot,
-  basis: EngineeringThreadSnapshotBasis,
-): boolean {
-  const workItems = project.workItems.filter((item) => item.id === run.workItemId);
-  const workItem = workItems[0];
-  const operation = workItem?.operation;
-  if (
-    run.status !== "completed" || !run.resultSnapshot || workItems.length !== 1 ||
-    workItem.status !== "completed" || artifact.freshness.status !== "fresh" ||
-    run.resultSnapshot.snapshotId !== basis.snapshotId ||
-    run.resultSnapshot.revision !== basis.revision ||
-    run.resultSnapshot.subjectId !== basis.subjectId ||
-    run.basis?.kind !== "thread-snapshot" || !head.previous ||
-    run.basis.snapshotId !== head.previous.snapshotId ||
-    run.basis.revision !== head.previous.revision ||
-    run.basis.subjectId !== basis.subjectId ||
-    operation?.id !== VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id ||
-    operation.version !== VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version ||
-    operation.bindings.length !== 1 || operation.bindings[0]?.name !== "approvedBrief" ||
-    operation.bindings[0].source.kind !== "approved-brief"
-  ) {
-    return false;
-  }
-  const declared = project.threadSnapshots.filter((reference) =>
-    reference.snapshotId === basis.snapshotId && reference.revision === basis.revision &&
-    reference.subjectId === basis.subjectId
-  );
-  const evidence = run.evidenceRefs[0];
-  return declared.length === 1 && run.evidenceRefs.length === 1 &&
-    workItem.evidenceRefs.length === 1 &&
-    sameEvidenceRefs(run.evidenceRefs, workItem.evidenceRefs) &&
-    evidence?.snapshotId === basis.snapshotId && evidence.snapshotRevision === basis.revision &&
-    evidence.kind === "artifact" && evidence.id === artifact.id;
-}
-
-function sameEvidenceRefs(
-  left: readonly EngineeringThreadEntityRef[],
-  right: readonly EngineeringThreadEntityRef[],
-): boolean {
-  const key = (reference: EngineeringThreadEntityRef) => deterministicJson({
-    snapshotId: reference.snapshotId,
-    snapshotRevision: reference.snapshotRevision,
-    kind: reference.kind,
-    id: reference.id,
-  });
-  const leftKeys = [...left.map(key)].sort();
-  const rightKeys = [...right.map(key)].sort();
-  return leftKeys.length === rightKeys.length && leftKeys.every((value, index) => value === rightKeys[index]);
 }
 
 function sameManifestSealAdmission(

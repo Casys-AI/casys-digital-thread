@@ -38,8 +38,10 @@ deno task mcp:call --name=project_cross_domain_impact_decision_review \
   --args='{"projectId":"<project-id>"}'
 ```
 
-There is no public X07 or X11 review compiler. Queue the registered operation; the
-server selects the unique current Thread tip and unique prerequisite capture.
+There is no public X07 or X11 review compiler. Queue the registered operation. Its
+current work revision names the prerequisite through the required `dependsOn` leaf.
+The completed document may come from an ancestor result only while the unique current
+tip remains its exact descendant and carries the same `fresh`, unarchived artifact.
 
 ## 1. Capture the closed manifest body
 
@@ -80,8 +82,12 @@ After that unique seal work item is complete, append
 `dependsOn` the unique seal work item, `approvedBrief` binding). This operation
 accepts **no** MRTR of its own.
 
-Queue and execute. X07/X08 recheck that every manifest `gateMap` still resolves exactly
-one current same-role `gateClaim`; a missing, mismatched or ambiguous mapping stops
+Queue and execute. X07 reopens the X06 seal named by the current evaluation work
+revision's required `dependsOn` leaf, including on a later descendant retry of that
+same activity. It never selects a seal by label, timestamp, recency, or `latest`.
+Archived seals stay history. X07/X08 recheck that every manifest `gateMap` still
+resolves exactly one current same-role `gateClaim`; a missing, mismatched or ambiguous
+mapping stops
 `unresolved` before evaluation capture. A successful run is X07 pure analysis plus X08
 documentary capture. It proposes `current`, `impact-unresolved`, `invalidated`, or
 `carried-forward`. It does not apply those statuses, invent work items, or queue reruns.

@@ -126,6 +126,7 @@ export class PrepareCrossDomainImpactDecision
         snapshot,
         briefGates: this.dependencies.briefGates,
         captures: this.dependencies.captures,
+        snapshots: this.dependencies.snapshots,
       });
       const decisionParameters = encodeCrossDomainImpactDecisionAdmission(
         recrossed.admission,

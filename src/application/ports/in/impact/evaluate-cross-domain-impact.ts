@@ -33,7 +33,7 @@ export type EvaluateCrossDomainImpactResult =
      * supplied selection.
      */
     readonly artifactInputs: readonly CrossDomainImpactReference[];
-    /** The direct historic X06 document from which the sealed manifest was reopened. */
+    /** The exact X06 document named by the current work's required dependsOn leaf. */
     readonly manifestSealArtifactId: string;
     readonly diagnostics: readonly EvaluateCrossDomainImpactDiagnostic[];
   }

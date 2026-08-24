@@ -3,6 +3,7 @@ import { engineeringActivityIdFromRootRevision } from "./engineering-activity.ts
 import {
   collectRequiredDependsOnOperationIssues,
   type RequiredDependsOnOperationRevision,
+  resolveRequiredDependsOnOperation,
 } from "./required-depends-on-operation.ts";
 
 const REQUIRED = { id: "verify.seal-example", version: "1" };
@@ -26,6 +27,14 @@ Deno.test(
       dependsOnWorkItemIds: [successor.id],
     };
 
+    assertEquals(
+      resolveRequiredDependsOnOperation(
+        planned,
+        PLANNED,
+        [otherActivity, successor, root],
+      ),
+      { status: "resolved", selected: successor },
+    );
     assertEquals(
       collectRequiredDependsOnOperationIssues(
         planned,
@@ -94,6 +103,14 @@ Deno.test(
         [only],
       ),
       [],
+    );
+    assertEquals(
+      resolveRequiredDependsOnOperation(
+        { id: "work-eval", dependsOnWorkItemIds: [] },
+        { id: PLANNED.id, version: PLANNED.version },
+        [only],
+      ),
+      undefined,
     );
   },
 );
