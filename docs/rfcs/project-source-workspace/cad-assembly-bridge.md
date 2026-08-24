@@ -1,60 +1,49 @@
 # CAD assembly bridge
 
-## Required source shape
+Status: architecture entry point · large-assembly path proposed · not implemented
 
-A multi-part CAD product is not one Python file. It is:
+## Authority boundary
 
-- one small coordination module for an assembly or subassembly;
-- one Build123d source file per represented `PartDefinition`;
-- one typed placement source for the immediate `PartUsage` children;
-- nested subassembly modules when the immediate child set becomes large.
+SysML/SysON is the sole authority for product structure. It owns every
+`PartDefinition`, every `PartUsage`, their owner hierarchy and definition reuse. A CAD
+source may attach geometry to one exact `PartDefinition`. A placement source may attach
+a transform to one exact `PartUsage`. Neither source may invent, delete, reparent or
+retarget structure.
 
-The placement source is engineering input. It may name exact SysML occurrence and
-definition identities plus translation/rotation values. It may not name providers,
-tools, paths, formats, images or expected output hashes.
+`ProjectSourceWorkspace` owns source files, file revisions and their exact dependency
+DAG. A server-resolved source closure is an operation input, not product structure. The
+server product-structure view is derived from an exact SysON capture and may be rebuilt
+or discarded without changing product truth.
 
-## Admission
+The Engineering Thread preserves immutable evidence of the exact SysML structure basis,
+the exact admitted source revisions and the exact generated assets.
 
-The bundle review re-opens:
+Navigation follows the same boundary: start from the exact SysML/SysON `System`,
+`PartUsage` or `PartDefinition`, then reveal its attached CAD sources and evidence. The
+workspace dependency DAG may be opened from an attached source to inspect technical
+imports, but it is not a parallel product hierarchy.
 
-1. the exact current architecture capture;
-2. the exact workspace file revisions selected for one assembly module;
-3. one ready, newly versioned multi-source Build123d compilation admission covering
-   those exact file revisions within the qualified source-count bound;
-4. the typed placement source.
+## Large-assembly design pages
 
-The server derives the draft manifest from architecture, admitted definition sources and
-the typed placement source. It must prove exactly one source for every represented
-`PartDefinition`, exact coverage of every immediate occurrence, and no extra source. The
-agent does not submit a second occurrence table. The signed decision restates this
-resolved mapping and the draft hashes before `design.write-geometry@1`.
-
-## Canonical result
-
-For the first bounded assembly module, one versioned geometry capture contains:
-
-- the assembly STEP and presentation asset;
-- an independently identified STEP per `PartDefinition`;
-- the exact occurrence-to-definition placement table;
-- source-file revision, analysis and admission provenance for every definition.
-
-FEA selects a definition STEP by the exact `PartDefinition`/asset identity. It must not
-select by content digest alone, because two different definitions may legitimately
-produce byte-identical STEP files.
-
-Archived geometry families are excluded before uniqueness checks.
-
-This bounded capture is not the product-wide target for thousands of parts. A later
-hierarchical geometry schema seals one module at a time and lets a parent assembly
-reference exact child-module geometry artifacts. It must not inline every descendant
-definition and occurrence again at the root.
+- [Dependency closure](dependency-closure.md) resolves bounded multi-file source inputs.
+- [SysML product-structure projection](sysml-product-structure-projection.md) defines the
+  disposable server read model.
+- [CAD part and module builds](cad-part-and-module-builds.md) separates reusable
+  definition geometry from occurrence placement.
+- [Hierarchical geometry evidence](hierarchical-geometry-evidence.md) keeps every capture
+  bounded to one definition and its immediate children.
+- [Incremental rebuild](incremental-rebuild.md) derives impact without a second product
+  authority.
+- [Workbench large assemblies](workbench-large-assemblies.md) projects the hierarchy
+  lazily and read-only.
+- [FEA targeting](fea-targeting.md) keeps proof selection tied to exact semantic targets.
+- [Implementation plan](implementation-plan.md) states the proving order and exit
+  criteria.
 
 ## Bounded current execution
 
-The first vertical supports one modest assembly module, the current closed Build123d
-language and the server-owned admission source-count bound. The source workspace itself
-is not limited to that size, but a navigable source module is not automatically an
-executable source set. Larger products are navigable immediately, while execution
-remains literally `unavailable` beyond the qualified assembly-module bound until the
-hierarchical evidence schema, subassembly lowering and multi-file execution path are
-qualified.
+This RFC does not widen the current closed CAD language, registered operations or
+server-owned bounds. A navigable source module is not automatically an admitted or
+executable source set. Multi-file closure, hierarchical module promotion, incremental
+assembly rebuild and assembly-level FEA remain literally `unavailable` until each path
+is implemented, registered and proven through the real runtime.
