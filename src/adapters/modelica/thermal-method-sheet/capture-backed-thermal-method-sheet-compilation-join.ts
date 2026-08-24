@@ -1,7 +1,7 @@
 /**
  * Unique Thread join of a sealed thermal method sheet for compilation recross.
  *
- * Zero seals is absence, not a gap. Two or more fresh seals fail closed.
+ * Zero seals is absence, not a gap. Two or more active seals fail closed.
  */
 
 import type { ThermalMethodSheetCompilationJoin } from "../../../application/ports/out/compile/admission/thermal-method-sheet-compilation-join.ts";
@@ -9,6 +9,7 @@ import type { ThermalMethodSheetStore } from "../../../application/ports/out/mod
 import { VERIFY_SEAL_MODELICA_THERMAL_METHOD_SHEET_OPERATION } from "../../../domain/modelica/thermal-method-sheet-proposal.ts";
 import type { ModelicaThermalMethodSheet } from "../../../domain/modelica/thermal-method-sheet.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../domain/project/engineering-project.ts";
+import { archivedRefKeys } from "../../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import type { ThermalMethodSheetSealCaptureStore } from "./verify-seal-modelica-thermal-method-sheet-run-executor.ts";
@@ -49,11 +50,13 @@ export class CaptureBackedThermalMethodSheetCompilationJoin
         "The thermal method-sheet compilation join reopened a foreign Thread snapshot.",
       );
     }
+    const archived = archivedRefKeys(snapshot);
     const matches = snapshot.artifacts.filter((artifact) =>
       artifact.kind === "document" &&
       artifact.freshness.status === "fresh" &&
       artifact.producer.serverId === "digital-thread" &&
-      artifact.producer.tool === OPERATION_REF
+      artifact.producer.tool === OPERATION_REF &&
+      !archived.has(`artifact:${artifact.id}`)
     );
     if (matches.length === 0) return undefined;
     if (matches.length !== 1) {
