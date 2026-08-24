@@ -27,6 +27,7 @@ import {
   queuedRunCancellationSummary,
 } from "../../../domain/project/engineering-project.ts";
 import { stampEngineeringActivityIdentity } from "../../../domain/project/engineering-activity.ts";
+import { collectRequiredDependsOnOperationIssues } from "../../../domain/project/required-depends-on-operation.ts";
 import {
   engineeringProjectPlanReplacementLock,
   engineeringProjectPlanReplacementLockMessage,
@@ -752,6 +753,18 @@ export class EngineeringProjectCommandService {
             );
           }
         }
+        const activityIdentity = stampDeclaredActivityIdentity(
+          draft.workItems,
+          command.workItems,
+        );
+        const requiredDependsOnRevisions = [
+          ...draft.workItems,
+          ...command.workItems.map((item) => ({
+            id: item.id,
+            ...activityIdentity.get(item.id)!,
+            operation: item.operation,
+          })),
+        ];
         const resolvedWorkItems = command.workItems.map((item) => {
           const resolved = resolvePlanOperation(planning.operations, item.operation);
           if (resolved.operation.startingPoint !== startingPoint) {
@@ -770,7 +783,7 @@ export class EngineeringProjectCommandService {
           assertRequiredDependsOnOperation(
             item,
             resolved.operation,
-            [...draft.workItems, ...command.workItems],
+            requiredDependsOnRevisions,
           );
           return {
             ...item,
@@ -791,10 +804,6 @@ export class EngineeringProjectCommandService {
           ...draft.workItems,
           ...resolvedWorkItems,
         ]);
-        const activityIdentity = stampDeclaredActivityIdentity(
-          draft.workItems,
-          resolvedWorkItems,
-        );
 
         const decisions = command.requiredDecisions.map((decision) => ({
           id: decision.id,
@@ -2640,30 +2649,19 @@ function assertRequiredDependsOnOperation(
       readonly version: string;
     };
   },
-  allWorkItems: readonly {
+  revisions: readonly {
     readonly id: string;
+    readonly activityId: string;
+    readonly predecessorRevisionId?: string;
     readonly operation?: { readonly id: string; readonly version: string };
   }[],
 ): void {
-  const required = operation.requiresDependsOnOperation;
-  if (!required) return;
-  const matches = allWorkItems.filter((candidate) =>
-    candidate.operation?.id === required.id &&
-    candidate.operation.version === required.version
-  );
-  if (matches.length !== 1) {
-    invalidInput(
-      `Operation ${operation.id}@${operation.version} must depend on the unique ` +
-        `${required.id}@${required.version} work item. Found ${matches.length}.`,
-    );
-  }
-  const requiredId = matches[0]!.id;
-  if (!item.dependsOnWorkItemIds.includes(requiredId)) {
-    invalidInput(
-      `Operation ${operation.id}@${operation.version} must depend on ` +
-        `${required.id}@${required.version} work item ${requiredId}.`,
-    );
-  }
+  const issue = collectRequiredDependsOnOperationIssues(
+    item,
+    operation,
+    revisions,
+  )[0];
+  if (issue) invalidInput(issue.message);
 }
 
 function assertNewPlanIds(

@@ -45,9 +45,10 @@ export interface RegisteredEngineeringOperation {
   readonly decisionEvidenceScope?: "thread-entity-bindings";
   readonly requiresAdditiveChange?: true;
   /**
-   * When set, every work item for this operation must `dependsOn` the unique
-   * existing work item of that registered operation. Enforced at
-   * `project_change_append`, before MRTR or queue.
+   * When set, every work item for this operation must `dependsOn` exactly one
+   * current leaf revision of that registered operation. Superseded revisions
+   * do not make the named leaf ambiguous. Enforced at `project_change_append`,
+   * before MRTR or queue.
    */
   readonly requiresDependsOnOperation?: {
     readonly id: string;
