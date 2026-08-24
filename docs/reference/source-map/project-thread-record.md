@@ -81,9 +81,10 @@ exact predecessors, derived POSIX paths, mutation-id idempotency. Event `/3.0`, 
 #### [`src/adapters/project-source-workspace/`](../../../src/adapters/project-source-workspace)
 
 Append-only event adapter under `state/local/project-source-workspaces/`, composition,
-and the fixed generic v1 attachment-role catalogue. Claim/publish fail-closed. Not a
-generic repository. `server.ts` shares one `CaptureProductStructureTraversal` with
-product navigation.
+the fixed generic v1 attachment-role catalogue, and the product-navigation authoring
+attachment reader. Claim/publish fail-closed. Not a generic repository. `server.ts`
+shares one `CaptureProductStructureTraversal` and one workspace store with product
+navigation.
 
 #### [`src/application/use-cases/project-source-workspace/`](../../../src/application/use-cases/project-source-workspace)
 

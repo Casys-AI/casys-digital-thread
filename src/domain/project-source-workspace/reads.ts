@@ -24,6 +24,7 @@ import {
   type ProjectSourceSearchQuery,
   type ProjectSourceTreeEntry,
   type ProjectSourceTreeQuery,
+  ProjectSourceWorkspaceError,
   type ProjectSourceWorkspaceSnapshot,
   type ProjectSourceWorkspaceState,
 } from "./types.ts";
@@ -552,6 +553,41 @@ function decodeAttachmentListCursor(
   workspaceRevision: number,
   filter: AttachmentListFilter,
 ): AttachmentListCursor {
+  let parsed: AttachmentListCursor;
+  try {
+    parsed = parseAttachmentListCursorPayload(cursor);
+  } catch (cause) {
+    if (
+      cause instanceof ProjectSourceWorkspaceError &&
+      (cause.code === "cursor_mismatch" || cause.code === "bound_exceeded")
+    ) {
+      throw cause;
+    }
+    workspaceError(
+      "cursor_mismatch",
+      cause instanceof Error
+        ? cause.message
+        : "Workspace page cursor is not a valid opaque cursor.",
+    );
+  }
+  if (parsed.workspaceRevision !== workspaceRevision) {
+    workspaceError(
+      "cursor_mismatch",
+      "Attachment list cursor does not match the requested workspace revision.",
+    );
+  }
+  if (deterministicJson(parsed.filter) !== deterministicJson(filter)) {
+    workspaceError(
+      "cursor_mismatch",
+      "Attachment list cursor does not match the requested filter.",
+    );
+  }
+  return parsed;
+}
+
+function parseAttachmentListCursorPayload(
+  cursor: string,
+): AttachmentListCursor {
   const decoded = decodeCursor(cursor);
   const rec = closedRecord(
     decoded,
@@ -564,18 +600,7 @@ function decodeAttachmentListCursor(
     rec.workspaceRevision,
     "$cursor.workspaceRevision",
   );
-  if (cursorRevision !== workspaceRevision) {
-    workspaceError(
-      "cursor_mismatch",
-      "Attachment list cursor does not match the requested workspace revision.",
-    );
-  }
-  if (deterministicJson(rec.filter) !== deterministicJson(filter)) {
-    workspaceError(
-      "cursor_mismatch",
-      "Attachment list cursor does not match the requested filter.",
-    );
-  }
+  const filter = parseCursorAttachmentListFilter(rec.filter);
   let after: AttachmentListCursor["after"];
   if (Object.hasOwn(rec, "after")) {
     const afterRec = closedRecord(
@@ -593,10 +618,33 @@ function decodeAttachmentListCursor(
   }
   return {
     kind: "attachment-list",
-    workspaceRevision,
+    workspaceRevision: cursorRevision,
     filter,
     ...(after ? { after } : {}),
   };
+}
+
+function parseCursorAttachmentListFilter(
+  value: unknown,
+): AttachmentListFilter {
+  const rec = closedRecord(
+    value,
+    ["fileId", "target"],
+    [],
+    "$cursor.filter",
+  );
+  const hasFileId = Object.hasOwn(rec, "fileId");
+  const hasTarget = Object.hasOwn(rec, "target");
+  if (hasFileId === hasTarget) {
+    workspaceError(
+      "cursor_mismatch",
+      "Attachment list cursor filter is not exact.",
+    );
+  }
+  if (hasFileId) {
+    return { fileId: parseProjectId(rec.fileId, "$cursor.filter.fileId") };
+  }
+  return { target: parseAttachmentTarget(rec.target, "$cursor.filter.target") };
 }
 
 function fileSourceAt(

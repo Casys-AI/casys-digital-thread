@@ -5,6 +5,13 @@
  * not product authority: exact architecture-capture/4.0 remains the basis.
  */
 
+import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
+import type {
+  ProjectSourceAttachmentDeclaredAgainst,
+  ProjectSourceAttachmentRole,
+  ProjectSourceAttachmentSourceStatus,
+  ProjectSourceAttachmentTarget,
+} from "../../../../domain/project-source-workspace/types.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 
 export const THREAD_PRODUCT_NAVIGATION_SCHEMA =
@@ -114,6 +121,35 @@ export interface ProductNavigationSourceClosure {
   workspaceEventFingerprint?: string;
   files: ProductNavigationSourceClosureFile[];
   edges: ProductNavigationSourceClosureEdge[];
+}
+
+export type ProductNavigationAuthoringBasisStatus =
+  | "exact-basis"
+  | "different-basis";
+
+export interface ProductNavigationAuthoringAttachment {
+  attachmentId: string;
+  attachmentRevision: number;
+  fingerprint: ContentFingerprint;
+  fileId: string;
+  fileHeadRevision: number | null;
+  sourceStatus: ProjectSourceAttachmentSourceStatus;
+  role: ProjectSourceAttachmentRole;
+  target: ProjectSourceAttachmentTarget;
+  declaredAgainst: ProjectSourceAttachmentDeclaredAgainst;
+  basisStatus: ProductNavigationAuthoringBasisStatus;
+}
+
+export interface ProductNavigationAuthoringAttachments {
+  schemaVersion: typeof PRODUCT_NAVIGATION_QUERY_SCHEMA;
+  status: ProductNavigationStatus;
+  basis?: ProductNavigationBasis;
+  node: ProductNavigationNode;
+  workspaceRevision?: number;
+  workspaceEventFingerprint?: string;
+  attachments: ProductNavigationAuthoringAttachment[];
+  nextCursor: string | null;
+  grants: "none";
 }
 
 export interface ProductNavigationSearch {

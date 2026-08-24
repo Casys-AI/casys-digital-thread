@@ -97,7 +97,12 @@ import {
 import { CaptureProductStructureTraversal } from "../../src/adapters/architecture/renderer/capture-product-structure-traversal.ts";
 import { ProjectProductNavigation } from "../../src/application/use-cases/product-navigation/project-product-navigation.ts";
 import type { ProductNavigationUseCase } from "../../src/application/ports/in/product-navigation/product-navigation.ts";
-import { WorkbenchProductNavigationAttachmentReader } from "../../src/adapters/thread/product-navigation-workbench.ts";
+import { WorkbenchProductNavigationEvidenceAttachmentReader } from "../../src/adapters/thread/product-navigation-workbench.ts";
+import { ProjectSourceWorkspaceAuthoringAttachmentReader } from "../../src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts";
+import {
+  PROJECT_SOURCE_WORKSPACE_BOUNDS,
+  ProjectSourceWorkspaceError,
+} from "../../src/domain/project-source-workspace/types.ts";
 import {
   PRODUCT_NAVIGATION_QUERY_SCHEMA,
   unavailableProductNavigationProjection,
@@ -383,6 +388,7 @@ export async function resolveNativeWorkbenchSubjectId(
 export function createNativeWorkbenchHandler(
   options: NativeWorkbenchHandlerOptions,
 ): (request: Request) => Promise<Response> {
+  const navigation = composeProductNavigation(options);
   return async (request) => {
     const url = new URL(request.url);
     if (url.pathname === "/healthz") {
@@ -407,11 +413,11 @@ export function createNativeWorkbenchHandler(
     }
     if (url.pathname === "/api/thread/product-navigation") {
       if (request.method !== "GET") return methodNotAllowed();
-      return await serveProductNavigationQuery(url, options);
+      return await serveProductNavigationQuery(url, options, navigation);
     }
     if (url.pathname === "/api/thread/workbench/events") {
       if (request.method !== "GET") return methodNotAllowed();
-      return await snapshotEventStream(request, options);
+      return await snapshotEventStream(request, options, navigation);
     }
     if (url.pathname === "/api/thread/workbench") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -441,6 +447,8 @@ export function createNativeWorkbenchHandler(
         options,
         context.subjectId,
         context.componentCatalog,
+        undefined,
+        navigation,
       );
       return json(
         projection,
@@ -472,6 +480,7 @@ export function createNativeWorkbenchHandler(
 async function snapshotEventStream(
   request: Request,
   options: NativeWorkbenchHandlerOptions,
+  navigation: ProductNavigationUseCase | undefined,
 ): Promise<Response> {
   let initial: ActiveTargetResolution;
   try {
@@ -543,6 +552,7 @@ async function snapshotEventStream(
               current.subjectId,
               current.componentCatalog,
               liveUpdates,
+              navigation,
             );
             controller.enqueue(encoder.encode(
               `id: ${eventId}\nevent: workbench-snapshot\ndata: ${
@@ -593,6 +603,7 @@ async function projectWorkbenchSnapshot(
   subjectId: string,
   componentCatalog?: ThreadComponentCatalog,
   liveUpdates?: LiveThreadUpdate[],
+  navigation?: ProductNavigationUseCase,
 ): Promise<EngineeringWorkbenchSnapshot> {
   if (!snapshot) {
     if (project.threadSnapshots.length > 0) {
@@ -639,6 +650,7 @@ async function projectWorkbenchSnapshot(
       subjectId,
       componentCatalog,
       updates,
+      navigation,
     ),
     snapshot.revision,
     updates,
@@ -794,6 +806,7 @@ async function projectThreadSnapshot(
   subjectId: string,
   componentCatalog: ThreadComponentCatalog | undefined,
   liveUpdates?: LiveThreadUpdate[],
+  navigation?: ProductNavigationUseCase,
 ) {
   const evidenceCatalog = await options.componentCatalogForSnapshot?.(snapshot);
   const projected = projectThreadWorkbenchSnapshot(
@@ -838,7 +851,6 @@ async function projectThreadSnapshot(
       options.evaluationCloseoutCaptures,
     )
     : withEngineeringCases;
-  const navigation = composeProductNavigation(options);
   const canonical = navigation
     ? {
       ...withCases,
@@ -868,7 +880,7 @@ function composeProductNavigation(
       options.sysmlSourceAnalysis,
     ),
     workspace: options.projectSourceWorkspace,
-    attachments: new WorkbenchProductNavigationAttachmentReader({
+    evidenceAttachments: new WorkbenchProductNavigationEvidenceAttachmentReader({
       architectureCaptures: captures,
       geometryCaptures: options.geometryCaptures,
       sysmlSourceAnalysis: options.sysmlSourceAnalysis,
@@ -877,14 +889,19 @@ function composeProductNavigation(
       requirementsCaptures: options.requirementsCaptures,
       engineeringCases: options.engineeringCaseCaptures,
     }),
+    authoringAttachments: options.projectSourceWorkspace
+      ? new ProjectSourceWorkspaceAuthoringAttachmentReader(
+        options.projectSourceWorkspace,
+      )
+      : undefined,
   });
 }
 
 async function serveProductNavigationQuery(
   url: URL,
   options: NativeWorkbenchHandlerOptions,
+  navigation: ProductNavigationUseCase | undefined,
 ): Promise<Response> {
-  const navigation = composeProductNavigation(options);
   if (!navigation) {
     return json(unavailableProductNavigationProjection(), 200);
   }
@@ -903,6 +920,9 @@ async function serveProductNavigationQuery(
   const nodeKind = url.searchParams.get("kind") === "part-usage"
     ? "part-usage" as const
     : "part-definition" as const;
+  if (view === "authoring-attachments") {
+    return await serveAuthoringAttachmentsQuery(url, navigation, projectId);
+  }
   if (view === "children" || view === "context" || view === "neighborhood") {
     const path = parseExactElementPath(url.searchParams.get("path"));
     if (path === "invalid") return invalidExactElementPath();
@@ -956,6 +976,85 @@ function invalidExactElementPath(): Response {
     "Invalid exact element path. Empty segments and latest are refused.",
     { status: 400 },
   );
+}
+
+async function serveAuthoringAttachmentsQuery(
+  url: URL,
+  navigation: ProductNavigationUseCase,
+  projectId: string,
+): Promise<Response> {
+  const kindParam = url.searchParams.get("kind");
+  if (kindParam !== "part-definition" && kindParam !== "part-usage") {
+    return invalidAuthoringAttachmentsQuery(
+      "kind must be part-definition or part-usage. latest is refused.",
+    );
+  }
+  const nodeId = url.searchParams.get("id") ?? "";
+  if (
+    nodeId === "" ||
+    nodeId === "latest" ||
+    !EXACT_ELEMENT_ID.test(nodeId)
+  ) {
+    return invalidAuthoringAttachmentsQuery(
+      "id must be an exact SysML element identity. latest is refused.",
+    );
+  }
+  const path = parseExactElementPath(url.searchParams.get("path"));
+  if (path === "invalid") return invalidExactElementPath();
+  const pageSize = parseExactPageSize(url.searchParams.get("pageSize"));
+  if (pageSize === "invalid") {
+    return invalidAuthoringAttachmentsQuery(
+      `pageSize must be an integer from 1 to ${PROJECT_SOURCE_WORKSPACE_BOUNDS.maxPageSize}. latest is refused.`,
+    );
+  }
+  const cursor = parseExactCursor(url.searchParams.get("cursor"));
+  if (cursor === "invalid") {
+    return invalidAuthoringAttachmentsQuery(
+      "cursor must be the opaque nextCursor from this view. latest is refused.",
+    );
+  }
+  try {
+    const result = await navigation.authoringAttachments({
+      projectId,
+      node: { kind: kindParam, id: nodeId, path },
+      ...(pageSize === undefined ? {} : { pageSize }),
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    return json(result, 200);
+  } catch (error) {
+    if (error instanceof ProjectSourceWorkspaceError) {
+      return invalidAuthoringAttachmentsQuery(error.message);
+    }
+    throw error;
+  }
+}
+
+function parseExactPageSize(value: string | null): number | undefined | "invalid" {
+  if (value === null || value === "") return undefined;
+  if (value === "latest") return "invalid";
+  if (!/^[1-9][0-9]*$/.test(value)) return "invalid";
+  const size = Number(value);
+  if (
+    !Number.isSafeInteger(size) ||
+    size < 1 ||
+    size > PROJECT_SOURCE_WORKSPACE_BOUNDS.maxPageSize
+  ) {
+    return "invalid";
+  }
+  return size;
+}
+
+function parseExactCursor(value: string | null): string | undefined | "invalid" {
+  if (value === null || value === "") return undefined;
+  if (value === "latest") return "invalid";
+  if (value.length > PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength) {
+    return "invalid";
+  }
+  return value;
+}
+
+function invalidAuthoringAttachmentsQuery(message: string): Response {
+  return new Response(message, { status: 400 });
 }
 
 async function serveThreadAsset(

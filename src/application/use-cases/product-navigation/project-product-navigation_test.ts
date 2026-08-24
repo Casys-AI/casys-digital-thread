@@ -3,7 +3,7 @@ import type { EngineeringProjectSnapshot } from "../../../domain/project/enginee
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import type { OpenedProductStructure } from "../../ports/out/product-navigation/product-structure-traversal.ts";
 import type { ProductNavigationNode } from "../../ports/in/product-navigation/product-navigation-read-model.ts";
-import type { ProductNavigationAttachmentFacts } from "../../ports/out/product-navigation/product-navigation-attachment-reader.ts";
+import type { ProductNavigationEvidenceAttachmentFacts } from "../../ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
 import type { ProjectSourceWorkspaceState } from "../../../domain/project-source-workspace/types.ts";
 import { sampleAgentResourceReference } from "../../../testing/agent-resource-test-support.ts";
 import { ProjectProductNavigation } from "./project-product-navigation.ts";
@@ -181,7 +181,7 @@ function service(
       load: () => Promise.reject(new Error("must not load head")),
       loadAtFresh: () => Promise.reject(new Error("must not load workspace")),
     },
-    attachments: { read: () => Promise.resolve(attachmentFacts()) },
+    evidenceAttachments: { read: () => Promise.resolve(attachmentFacts()) },
   });
 }
 
@@ -337,7 +337,7 @@ function workspaceWithHistoricalDependency(): ProjectSourceWorkspaceState {
   };
 }
 
-function attachmentFacts(): ProductNavigationAttachmentFacts {
+function attachmentFacts(): ProductNavigationEvidenceAttachmentFacts {
   return {
     nodes: [
       { ref: { kind: "part-definition", id: "def-rail" }, label: "Rail" },

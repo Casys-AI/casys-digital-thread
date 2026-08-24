@@ -14,6 +14,10 @@ Audience: both · Diátaxis: reference · Kind: coverage
 - Versioned authoring attachments (`fileId` → exact SysML element) with put, detach,
   exact read and bounded list. Replay never contacts SysON, Graphology, or the role
   catalog.
+- Product-navigation authoring-attachment page from an exact SysML node: MCP
+  `project_product_navigation_authoring_attachments` and Workbench GET
+  `view=authoring-attachments`. Distinct from Thread/admission evidence. Causal tests
+  only; MCS-01 proof is still pending.
 - Exact `AgentResourceReference` reopening before a file revision is accepted.
 - Revision-anchored snapshot, tree, search and file reads with bounded pagination.
 - Fail-closed recovery for gaps, corruption, incomplete claims and concurrent writers.
@@ -44,11 +48,11 @@ execution.
 
 ## Not implemented yet
 
-| Vertical | Missing capability                                                          | Why it remains separate                                                               |
-| -------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| 3        | MCS-01 CAD, FEA, Modelica and SPICE sources executed from workspace entries | It is the first real-product proof of the bridge, not a workspace invariant           |
-| 3b       | Product-navigation authoring attachments, source closure, admission recross | Workspace edges exist; they are not yet projected as product context or sealed        |
-| 4        | Multi-file CAD bundle, placements and hierarchical assembly evidence        | Large assemblies must stay modular and bounded; one flat product manifest is rejected |
+| Vertical | Missing capability                                                                                                 | Why it remains separate                                                                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 3        | MCS-01 CAD, FEA, Modelica and SPICE sources executed from workspace entries                                        | It is the first real-product proof of the bridge, not a workspace invariant                                                                                  |
+| 3b       | Source closure and admission recross of an attachment revision; MCS-01 proof of product-navigation authoring reads | Authoring heads are projected from exact SysML nodes (MCP + Workbench GET). Context/closure still use Thread evidence only. An authoring edge is not sealed. |
+| 4        | Multi-file CAD bundle, placements and hierarchical assembly evidence                                               | Large assemblies must stay modular and bounded; one flat product manifest is rejected                                                                        |
 
 Cross-file language imports, unlimited provider execution, and a mutable Workbench tree
 are outside current coverage.

@@ -37,6 +37,12 @@ import {
   resolveWorkbenchUiAssetPath,
 } from "./serve-native-workbench.ts";
 import { verifiedArchitectureNavigationFixture } from "../../src/adapters/architecture/renderer/capture-product-structure-traversal_test.ts";
+import { sampleAgentResourceReference } from "../../src/testing/agent-resource-test-support.ts";
+import {
+  applyProjectSourceWorkspaceCommand,
+  emptyProjectSourceWorkspace,
+} from "../../src/domain/project-source-workspace/transitions.ts";
+import type { ProjectSourceWorkspaceState } from "../../src/domain/project-source-workspace/types.ts";
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
@@ -621,6 +627,183 @@ Deno.test("native Workbench product-navigation GET is read-only and shares the a
   assertEquals(response.status, 200);
   assertEquals(body.schemaVersion, "product-navigation-query/1.0");
   assertEquals(body.status, "unavailable");
+});
+
+Deno.test("native Workbench product-navigation GET publishes authoring attachments from the shared port", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const projectId = "project.verified-architecture";
+  const project = {
+    project: {
+      id: projectId,
+      subjectId: fixture.snapshot.subject.id,
+    },
+    threadSnapshots: [{
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+      subjectId: fixture.snapshot.subject.id,
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+  const workspace = await authoringWorkspaceForFixture(projectId, fixture);
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([fixture.snapshot]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: fixture.snapshot.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+    projectSourceWorkspace: workspace.store,
+  });
+  const response = await handler(
+    new Request(
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001",
+    ),
+  );
+  const body = await response.json();
+  assertEquals(response.status, 200);
+  assertEquals(body.schemaVersion, "product-navigation-query/1.0");
+  assertEquals(body.status, "observed");
+  assertEquals(body.grants, "none");
+  assertEquals(
+    body.attachments.map((item: { attachmentId: string }) => item.attachmentId),
+    ["att-system"],
+  );
+  assertEquals(body.attachments[0]?.target, {
+    elementId: "sys-def-001",
+    elementKind: "PartDefinition",
+  });
+  assertEquals(body.attachments[0]?.basisStatus, "exact-basis");
+  const usage = await (await handler(
+    new Request(
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-usage&id=alpha-use-001&path=alpha-use-001",
+    ),
+  )).json();
+  assertEquals(usage.attachments, []);
+  const projection = await (await handler(
+    new Request("http://localhost/api/thread/product-navigation"),
+  )).json();
+  assertEquals(projection.attachments.sources, []);
+  assertEquals("workspaceRevision" in projection, false);
+  assertEquals(Array.isArray(projection.attachments), false);
+});
+
+Deno.test("native Workbench product-navigation authoring attachments GET refuses invalid input and POST", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const projectId = "project.verified-architecture";
+  const project = {
+    project: {
+      id: projectId,
+      subjectId: fixture.snapshot.subject.id,
+    },
+    threadSnapshots: [{
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+      subjectId: fixture.snapshot.subject.id,
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([fixture.snapshot]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: fixture.snapshot.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+    projectSourceWorkspace: {
+      load: () => Promise.resolve(emptyProjectSourceWorkspace(projectId)),
+      loadAtFresh: () => Promise.resolve(emptyProjectSourceWorkspace(projectId)),
+    },
+  });
+  const post = await handler(
+    new Request(
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments",
+      { method: "POST" },
+    ),
+  );
+  assertEquals(post.status, 405);
+  for (
+    const url of [
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=latest&id=sys-def-001",
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=latest",
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&path=latest",
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&pageSize=latest",
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&pageSize=51",
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&cursor=latest",
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&cursor=not-a-cursor",
+    ]
+  ) {
+    const response = await handler(new Request(url));
+    assertEquals(response.status, 400, url);
+  }
+});
+
+Deno.test("native Workbench authoring attachments GET pins nextCursor across two requests", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const projectId = "project.verified-architecture";
+  const project = {
+    project: {
+      id: projectId,
+      subjectId: fixture.snapshot.subject.id,
+    },
+    threadSnapshots: [{
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+      subjectId: fixture.snapshot.subject.id,
+    }],
+  } as unknown as EngineeringProjectSnapshot;
+  const workspace = await authoringWorkspaceForFixture(projectId, fixture, {
+    extraFile: true,
+  });
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([fixture.snapshot]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: fixture.snapshot.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+    projectSourceWorkspace: workspace.store,
+  });
+  const first = await (await handler(
+    new Request(
+      "http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&pageSize=1",
+    ),
+  )).json();
+  assertEquals(first.status, "observed");
+  assertEquals(
+    first.attachments.map((item: { attachmentId: string }) => item.attachmentId),
+    ["att-extra"],
+  );
+  assertEquals(typeof first.nextCursor, "string");
+  const second = await (await handler(
+    new Request(
+      `http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&pageSize=1&cursor=${
+        encodeURIComponent(first.nextCursor)
+      }`,
+    ),
+  )).json();
+  assertEquals(second.status, "observed");
+  assertEquals(second.workspaceRevision, first.workspaceRevision);
+  assertEquals(
+    second.attachments.map((item: { attachmentId: string }) => item.attachmentId),
+    ["att-system"],
+  );
+  const forged = await handler(
+    new Request(
+      `http://localhost/api/thread/product-navigation?view=authoring-attachments&kind=part-definition&id=sys-def-001&cursor=${
+        encodeURIComponent(
+          btoa(JSON.stringify({
+            kind: "attachment-list",
+            workspaceRevision: first.workspaceRevision,
+            filter: {
+              target: { elementId: "sys-def-001", elementKind: "PartDefinition" },
+            },
+          })),
+        )
+      }`,
+    ),
+  );
+  assertEquals(forged.status, 400);
 });
 
 Deno.test("native Workbench hides durable unattached generic requirements and geometry snapshots", async () => {
@@ -1424,6 +1607,126 @@ class EmptyThreadStore implements ThreadSnapshotStore {
   save(_snapshot: ThreadSnapshot): Promise<void> {
     return Promise.resolve();
   }
+}
+
+async function authoringWorkspaceForFixture(
+  projectId: string,
+  fixture: Awaited<ReturnType<typeof verifiedArchitectureNavigationFixture>>,
+  options: { extraFile?: boolean } = {},
+) {
+  let state = emptyProjectSourceWorkspace(projectId);
+  state = (await applyProjectSourceWorkspaceCommand(state, {
+    projectId,
+    mutationId: "m1",
+    expectedWorkspaceRevision: 0,
+    mutation: {
+      kind: "module_put",
+      moduleId: "mod-a",
+      slug: "mech",
+      displayName: "Mech",
+    },
+  })).state;
+  state = (await applyProjectSourceWorkspaceCommand(state, {
+    projectId,
+    mutationId: "f1",
+    expectedWorkspaceRevision: 1,
+    mutation: {
+      kind: "file_put",
+      fileId: "file-system",
+      moduleId: "mod-a",
+      logicalName: "system.py",
+      role: "script",
+      dependencies: [],
+      resourceRef: sampleAgentResourceReference({
+        name: "system.py",
+        mimeType: "text/plain",
+        byteCount: 1,
+      }),
+    },
+  })).state;
+  state = (await applyProjectSourceWorkspaceCommand(state, {
+    projectId,
+    mutationId: "a1",
+    expectedWorkspaceRevision: 2,
+    mutation: {
+      kind: "attachment_put",
+      attachmentId: "att-system",
+      fileId: "file-system",
+      role: { id: "design-source", version: 1 },
+      target: { elementId: "sys-def-001", elementKind: "PartDefinition" },
+      declaredAgainst: {
+        thread: {
+          snapshotId: fixture.snapshot.id,
+          revision: fixture.snapshot.revision,
+          subjectId: fixture.snapshot.subject.id,
+        },
+        architecture: {
+          artifactId: `architecture-${fixture.fingerprint.digest}`,
+          fingerprint: fixture.fingerprint,
+          captureSchema: "architecture-capture/4.0",
+        },
+      },
+    },
+  })).state;
+  if (options.extraFile) {
+    state = (await applyProjectSourceWorkspaceCommand(state, {
+      projectId,
+      mutationId: "f-extra",
+      expectedWorkspaceRevision: 3,
+      mutation: {
+        kind: "file_put",
+        fileId: "file-extra",
+        moduleId: "mod-a",
+        logicalName: "extra.py",
+        role: "script",
+        dependencies: [],
+        resourceRef: sampleAgentResourceReference({
+          name: "extra.py",
+          mimeType: "text/plain",
+          byteCount: 1,
+        }),
+      },
+    })).state;
+    state = (await applyProjectSourceWorkspaceCommand(state, {
+      projectId,
+      mutationId: "a-extra",
+      expectedWorkspaceRevision: 4,
+      mutation: {
+        kind: "attachment_put",
+        attachmentId: "att-extra",
+        fileId: "file-extra",
+        role: { id: "design-source", version: 1 },
+        target: { elementId: "sys-def-001", elementKind: "PartDefinition" },
+        declaredAgainst: {
+          thread: {
+            snapshotId: fixture.snapshot.id,
+            revision: fixture.snapshot.revision,
+            subjectId: fixture.snapshot.subject.id,
+          },
+          architecture: {
+            artifactId: `architecture-${fixture.fingerprint.digest}`,
+            fingerprint: fixture.fingerprint,
+            captureSchema: "architecture-capture/4.0",
+          },
+        },
+      },
+    })).state;
+  }
+  const revisions = new Map<number, ProjectSourceWorkspaceState>([
+    [state.workspaceRevision, state],
+  ]);
+  return {
+    store: {
+      load: () => Promise.resolve(state),
+      loadAtFresh: (_projectId: string, workspaceRevision: number) => {
+        const named = revisions.get(workspaceRevision);
+        if (!named) {
+          return Promise.reject(new Error(`missing revision ${workspaceRevision}`));
+        }
+        return Promise.resolve(named);
+      },
+    },
+  };
 }
 
 class ThreadStore implements ThreadSnapshotStore {

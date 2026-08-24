@@ -553,6 +553,10 @@ Deno.test(
       assertEquals(names.includes("project_product_navigation_search"), true);
       assertEquals(names.includes("project_product_navigation_neighborhood"), true);
       assertEquals(names.includes("project_product_navigation_context"), true);
+      assertEquals(
+        names.includes("project_product_navigation_authoring_attachments"),
+        true,
+      );
       assertEquals(names.includes("project_product_source_closure"), true);
     } finally {
       await Deno.remove(temporaryDirectory, { recursive: true });
@@ -619,6 +623,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_led_driver_source_capture",
     "project_led_driver_source_review",
     "project_plan_publish",
+    "project_product_navigation_authoring_attachments",
     "project_product_navigation_children",
     "project_product_navigation_context",
     "project_product_navigation_neighborhood",
@@ -708,6 +713,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_led_driver_source_capture",
       "project_led_driver_source_review",
       "project_plan_publish",
+      "project_product_navigation_authoring_attachments",
       "project_product_navigation_children",
       "project_product_navigation_context",
       "project_product_navigation_neighborhood",
@@ -946,6 +952,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_file_read" ||
           tool.name === "project_source_attachment_read" ||
           tool.name === "project_source_attachment_list" ||
+          tool.name === "project_product_navigation_authoring_attachments" ||
           tool.name === "project_product_navigation_children" ||
           tool.name === "project_product_navigation_context" ||
           tool.name === "project_product_navigation_neighborhood" ||
@@ -982,6 +989,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_file_read" ||
           tool.name === "project_source_attachment_read" ||
           tool.name === "project_source_attachment_list" ||
+          tool.name === "project_product_navigation_authoring_attachments" ||
           tool.name === "project_product_navigation_children" ||
           tool.name === "project_product_navigation_context" ||
           tool.name === "project_product_navigation_neighborhood" ||

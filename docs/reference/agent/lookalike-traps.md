@@ -25,12 +25,13 @@ microVM:
 SysML-first reads share one application port. Workbench GET/SSE is a projection, not a
 command surface. Graphology is a disposable index, never domain or authority.
 
-| This                                 | Is                                                                            | Is not                                                             |
-| ------------------------------------ | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `project_product_navigation_*`       | Server read-side index over exact `architecture-capture/4.0` + ThreadGraph    | Direct SysON tools, `project_source_tree`, or a UI Graphology walk |
-| `project_product_navigation_context` | Exact node plus grouped attachments (`unattached` stays literal)              | A mega JSON dump or a Workbench POST                               |
-| `project_product_source_closure`     | Technical file dependencies **after** an exact attached `fileId@fileRevision` | Product structure or a label/path join                             |
-| Graphology                           | Algorithmic navigation index in server/application adapters                   | Domain authority or a second Workbench product-structure browser   |
+| This                                               | Is                                                                                    | Is not                                                                |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `project_product_navigation_*`                     | Server read-side index over exact `architecture-capture/4.0` + ThreadGraph            | Direct SysON tools, `project_source_tree`, or a UI Graphology walk    |
+| `project_product_navigation_context`               | Exact node plus grouped Thread/admission evidence (`unattached` stays literal)        | Workspace authoring heads or a Workbench POST                         |
+| `project_product_navigation_authoring_attachments` | Active workspace authoring heads of one exact SysML target. Grants none               | Thread evidence, `represented_by`, admission, or source closure       |
+| `project_product_source_closure`                   | Technical file dependencies **after** an exact Thread/admission `fileId@fileRevision` | Product structure, an authoring-only attachment, or a label/path join |
+| Graphology                                         | Algorithmic navigation index in server/application adapters                           | Domain authority or a second Workbench product-structure browser      |
 
 ## Engineering Case catalog
 

@@ -86,6 +86,22 @@ Deno.test("product navigation tools are read-only and refuse latest in their sch
           files: [],
           edges: [],
         }),
+      authoringAttachments: () =>
+        Promise.resolve({
+          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
+          status: "unavailable",
+          node: {
+            kind: "part-definition",
+            id: "x",
+            label: "x",
+            definitionId: "x",
+            path: [],
+            expandable: false,
+          },
+          attachments: [],
+          nextCursor: null,
+          grants: "none",
+        }),
       projection: () =>
         Promise.resolve({
           schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
@@ -102,6 +118,7 @@ Deno.test("product navigation tools are read-only and refuse latest in their sch
     },
   });
   assertEquals(app.names.toSorted(), [
+    "project_product_navigation_authoring_attachments",
     "project_product_navigation_children",
     "project_product_navigation_context",
     "project_product_navigation_neighborhood",
@@ -135,9 +152,22 @@ Deno.test("product navigation tools are read-only and refuse latest in their sch
     assertEquals(schema.properties.projectId.not, { const: "latest" });
     assertEquals(schema.additionalProperties, false);
     assertEquals("snapshotId" in schema.properties, false);
+    assertEquals("workspaceRevision" in schema.properties, false);
     assertEquals("provider" in schema.properties, false);
     assertEquals("runtime" in schema.properties, false);
   }
+  const authoring = app.tool("project_product_navigation_authoring_attachments")
+    .inputSchema as {
+      required: string[];
+      additionalProperties: boolean;
+      properties: Record<string, unknown>;
+    };
+  assertEquals(authoring.required, ["projectId", "node"]);
+  assertEquals(authoring.additionalProperties, false);
+  assertEquals("snapshot" in authoring.properties, false);
+  assertEquals("workspaceRevision" in authoring.properties, false);
+  const cursor = authoring.properties.cursor as { not: { const: string } };
+  assertEquals(cursor.not, { const: "latest" });
 });
 
 Deno.test("product navigation roots tool forwards the use case structured result", async () => {
@@ -173,6 +203,7 @@ Deno.test("product navigation roots tool forwards the use case structured result
       neighborhood: () => Promise.reject(new Error("must not neighborhood")),
       context: () => Promise.reject(new Error("must not context")),
       sourceClosure: () => Promise.reject(new Error("must not closure")),
+      authoringAttachments: () => Promise.reject(new Error("must not authoring")),
       projection: () => Promise.reject(new Error("must not projection")),
     },
   });
@@ -183,6 +214,63 @@ Deno.test("product navigation roots tool forwards the use case structured result
   };
   assertEquals(result.structuredContent.status, "observed");
   assertEquals(result.structuredContent.roots[0]?.id, "def-system");
+});
+
+Deno.test("product navigation authoring attachments tool forwards the use case structured result", async () => {
+  const app = capturingApp();
+  registerProjectProductNavigationTools(app as unknown as McpApp, {
+    productNavigation: {
+      roots: () => Promise.reject(new Error("must not roots")),
+      children: () => Promise.reject(new Error("must not children")),
+      path: () => Promise.reject(new Error("must not path")),
+      search: () => Promise.reject(new Error("must not search")),
+      neighborhood: () => Promise.reject(new Error("must not neighborhood")),
+      context: () => Promise.reject(new Error("must not context")),
+      sourceClosure: () => Promise.reject(new Error("must not closure")),
+      authoringAttachments: (query) => {
+        assertEquals(query.projectId, "project.slider");
+        assertEquals(query.node, {
+          kind: "part-usage",
+          id: "usage-left",
+          path: ["usage-left"],
+        });
+        assertEquals(query.pageSize, 1);
+        return Promise.resolve({
+          schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
+          status: "observed",
+          node: {
+            kind: "part-usage",
+            id: "usage-left",
+            label: "left_rail",
+            definitionId: "def-rail",
+            usageId: "usage-left",
+            path: ["usage-left"],
+            expandable: true,
+          },
+          attachments: [],
+          nextCursor: null,
+          grants: "none",
+        });
+      },
+      projection: () => Promise.reject(new Error("must not projection")),
+    },
+  });
+  const result = await app.handle(
+    "project_product_navigation_authoring_attachments",
+    {
+      projectId: "project.slider",
+      node: {
+        kind: "part-usage",
+        id: "usage-left",
+        path: ["usage-left"],
+      },
+      pageSize: 1,
+    },
+  ) as {
+    structuredContent: { status: string; grants: string };
+  };
+  assertEquals(result.structuredContent.status, "observed");
+  assertEquals(result.structuredContent.grants, "none");
 });
 
 function capturingApp() {

@@ -27,11 +27,19 @@ import type {
   ProjectSourceWorkspaceState,
 } from "../../../domain/project-source-workspace/types.ts";
 import { contentRevisionAt } from "../../../domain/project-source-workspace/transitions.ts";
-import type { ProductNavigationAttachmentReader } from "../../ports/out/product-navigation/product-navigation-attachment-reader.ts";
+import type { ProductNavigationAuthoringAttachmentReader } from "../../ports/out/product-navigation/product-navigation-authoring-attachment-reader.ts";
+import type { ProductNavigationEvidenceAttachmentReader } from "../../ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
+import { fingerprintsEqual } from "../../../domain/kernel/deterministic-json.ts";
+import type {
+  ProjectSourceAttachmentDeclaredAgainst,
+  ProjectSourceAttachmentTarget,
+} from "../../../domain/project-source-workspace/types.ts";
 import {
   attachmentsForDefinition,
   emptyAttachments,
   PRODUCT_NAVIGATION_QUERY_SCHEMA,
+  type ProductNavigationAuthoringAttachments,
+  type ProductNavigationAuthoringBasisStatus,
   type ProductNavigationBasis,
   type ProductNavigationChildren,
   type ProductNavigationContext,
@@ -54,7 +62,8 @@ export interface ProjectProductNavigationDependencies {
     ProjectSourceWorkspaceEventStore,
     "load" | "loadAtFresh"
   >;
-  readonly attachments?: ProductNavigationAttachmentReader;
+  readonly evidenceAttachments?: ProductNavigationEvidenceAttachmentReader;
+  readonly authoringAttachments?: ProductNavigationAuthoringAttachmentReader;
 }
 
 export class ProjectProductNavigation implements ProductNavigationUseCase {
@@ -62,14 +71,18 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
   readonly #snapshots: ProjectProductNavigationDependencies["snapshots"];
   readonly #traversal: ProductStructureTraversal;
   readonly #workspace: ProjectProductNavigationDependencies["workspace"];
-  readonly #attachments: ProjectProductNavigationDependencies["attachments"];
+  readonly #evidenceAttachments:
+    ProjectProductNavigationDependencies["evidenceAttachments"];
+  readonly #authoringAttachments:
+    ProjectProductNavigationDependencies["authoringAttachments"];
 
   constructor(dependencies: ProjectProductNavigationDependencies) {
     this.#projects = dependencies.projects;
     this.#snapshots = dependencies.snapshots;
     this.#traversal = dependencies.traversal;
     this.#workspace = dependencies.workspace;
-    this.#attachments = dependencies.attachments;
+    this.#evidenceAttachments = dependencies.evidenceAttachments;
+    this.#authoringAttachments = dependencies.authoringAttachments;
   }
 
   async roots(query: ProductNavigationScope): Promise<ProductNavigationRoots> {
@@ -176,8 +189,8 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
         attachments: emptyAttachments(),
       };
     }
-    const facts = this.#attachments
-      ? await this.#attachments.read(opened.snapshot, {
+    const facts = this.#evidenceAttachments
+      ? await this.#evidenceAttachments.read(opened.snapshot, {
         projectId: query.projectId,
       })
       : undefined;
@@ -279,8 +292,8 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
         status: "unattached",
       };
     }
-    const facts = this.#attachments
-      ? await this.#attachments.read(opened.snapshot, {
+    const facts = this.#evidenceAttachments
+      ? await this.#evidenceAttachments.read(opened.snapshot, {
         projectId: query.projectId,
       })
       : undefined;
@@ -331,6 +344,57 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
     } catch {
       return { ...unavailableClosure(), basis: opened.basis };
     }
+  }
+
+  async authoringAttachments(
+    query: ProductNavigationScope & {
+      readonly node: ProductNavigationNodeQuery;
+      readonly pageSize?: number;
+      readonly cursor?: string;
+    },
+  ): Promise<ProductNavigationAuthoringAttachments> {
+    const opened = await this.open(query);
+    if (!opened) {
+      return unavailableAuthoring(unresolvedNode(query.node));
+    }
+    const node = locate(opened, query.node);
+    if (!node) {
+      return unavailableAuthoring(
+        unresolvedNode(query.node),
+        opened.basis,
+        "unattached",
+      );
+    }
+    if (!this.#authoringAttachments) {
+      return unavailableAuthoring(node, opened.basis);
+    }
+    const target = exactAuthoringTarget(node);
+    const page = await this.#authoringAttachments.listActiveHeads({
+      projectId: query.projectId,
+      target,
+      ...(query.pageSize === undefined ? {} : { pageSize: query.pageSize }),
+      ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+    });
+    return {
+      schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
+      status: "observed",
+      basis: opened.basis,
+      node,
+      workspaceRevision: page.workspaceRevision,
+      ...(page.workspaceEventFingerprint
+        ? { workspaceEventFingerprint: page.workspaceEventFingerprint }
+        : {}),
+      attachments: page.attachments.map((entry) => ({
+        ...entry,
+        basisStatus: authoringBasisStatus(
+          entry.declaredAgainst,
+          opened.basis,
+          opened.snapshot,
+        ),
+      })),
+      nextCursor: page.nextCursor,
+      grants: "none",
+    };
   }
 
   private async open(scope: ProductNavigationScope) {
@@ -465,6 +529,64 @@ function unavailableClosure(): ProductNavigationSourceClosure {
     files: [],
     edges: [],
   };
+}
+
+function unavailableAuthoring(
+  node: ProductNavigationNode,
+  basis?: ProductNavigationBasis,
+  status: ProductNavigationAuthoringAttachments["status"] = "unavailable",
+): ProductNavigationAuthoringAttachments {
+  return {
+    schemaVersion: PRODUCT_NAVIGATION_QUERY_SCHEMA,
+    status,
+    ...(basis ? { basis } : {}),
+    node,
+    attachments: [],
+    nextCursor: null,
+    grants: "none",
+  };
+}
+
+function exactAuthoringTarget(
+  node: ProductNavigationNode,
+): ProjectSourceAttachmentTarget {
+  if (node.kind === "part-definition") {
+    return { elementId: node.id, elementKind: "PartDefinition" };
+  }
+  return {
+    elementId: node.usageId ?? node.id,
+    elementKind: "PartUsage",
+  };
+}
+
+function authoringBasisStatus(
+  declared: ProjectSourceAttachmentDeclaredAgainst,
+  basis: ProductNavigationBasis,
+  snapshot: ThreadSnapshot,
+): ProductNavigationAuthoringBasisStatus {
+  if (
+    declared.thread.snapshotId === basis.threadSnapshotId &&
+    declared.thread.revision === basis.threadRevision &&
+    declared.thread.subjectId === snapshot.subject.id &&
+    declared.architecture.artifactId === basis.architectureArtifactId &&
+    fingerprintsEqual(
+      declared.architecture.fingerprint,
+      fingerprintFromRef(basis.architectureFingerprint),
+    ) &&
+    declared.architecture.captureSchema === basis.captureSchema
+  ) {
+    return "exact-basis";
+  }
+  return "different-basis";
+}
+
+function fingerprintFromRef(value: string): {
+  algorithm: "sha256";
+  digest: string;
+} | undefined {
+  const match = /^sha256:([a-f0-9]{64})$/.exec(value);
+  if (!match) return undefined;
+  return { algorithm: "sha256", digest: match[1]! };
 }
 
 function walkSourceClosure(

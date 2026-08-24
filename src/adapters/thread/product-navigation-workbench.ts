@@ -1,17 +1,18 @@
 /**
- * Shared Thread projection for product-navigation attachments.
+ * Shared Thread projection for product-navigation evidence attachments.
  *
  * MCP context and source-closure recross catalog, sealed admissions,
  * requirements targets and engineering cases from the exact Thread snapshot
- * already selected by the application port. Not a command surface.
+ * already selected by the application port. Not authoring attachments and
+ * not a command surface.
  */
 
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadWorkbenchSnapshot } from "../../presentation/workbench/thread/snapshot.ts";
 import type {
-  ProductNavigationAttachmentFacts,
-  ProductNavigationAttachmentReader,
-} from "../../application/ports/out/product-navigation/product-navigation-attachment-reader.ts";
+  ProductNavigationEvidenceAttachmentFacts,
+  ProductNavigationEvidenceAttachmentReader,
+} from "../../application/ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
 import {
   type GenericArchitectureCaptureReader,
   resolveGenericProductStructureCatalog,
@@ -43,8 +44,8 @@ export interface ProductNavigationWorkbenchDependencies {
   readonly engineeringCases?: EngineeringCaseWorkbenchEnricherDependencies;
 }
 
-export class WorkbenchProductNavigationAttachmentReader
-  implements ProductNavigationAttachmentReader {
+export class WorkbenchProductNavigationEvidenceAttachmentReader
+  implements ProductNavigationEvidenceAttachmentReader {
   readonly #dependencies: ProductNavigationWorkbenchDependencies;
 
   constructor(dependencies: ProductNavigationWorkbenchDependencies) {
@@ -54,7 +55,7 @@ export class WorkbenchProductNavigationAttachmentReader
   async read(
     snapshot: ThreadSnapshot,
     context: { readonly projectId: string },
-  ): Promise<ProductNavigationAttachmentFacts | undefined> {
+  ): Promise<ProductNavigationEvidenceAttachmentFacts | undefined> {
     const projected = await projectProductNavigationWorkbench(
       snapshot,
       context.projectId,

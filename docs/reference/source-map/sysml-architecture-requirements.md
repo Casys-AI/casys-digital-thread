@@ -23,7 +23,13 @@ agent-authored CAS, never SysON), `seed/` (`architecture.seed-syson-model@2`),
 #### [`src/application/ports/in/product-navigation/`](../../../src/application/ports/in/product-navigation)
 
 Read-only SysML-first product navigation port. MCP tools and the Workbench GET/SSE slice
-are thin consumers. Not a domain aggregate.
+are thin consumers. Not a domain aggregate. Authoring attachments and Thread evidence
+are distinct reads.
+
+#### [`src/application/ports/out/product-navigation/`](../../../src/application/ports/out/product-navigation)
+
+Outbound traversal plus two attachment readers: evidence (Thread/admission) and
+authoring (ProjectSourceWorkspace heads). They are not substitutes.
 
 #### [`src/application/use-cases/product-navigation/`](../../../src/application/use-cases/product-navigation)
 
@@ -46,12 +52,19 @@ capture fingerprint.
 #### [`src/adapters/thread/product-navigation-workbench.ts`](../../../src/adapters/thread/product-navigation-workbench.ts)
 
 Shared catalog + admission/requirements/case recross used by MCP context/closure.
-Workbench GET still publishes only the roots slice; it is not a command surface.
+Evidence attachments only. Workbench GET still publishes only the roots slice; it is not
+a command surface.
+
+#### [`src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts`](../../../src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts)
+
+Outbound adapter: active workspace attachment heads for one exact SysML target. Shared
+by MCP `project_product_navigation_authoring_attachments` and Workbench GET
+`view=authoring-attachments`. No evidence, no admission.
 
 #### [`src/tools/project-control/product-navigation-tools.ts`](../../../src/tools/project-control/product-navigation-tools.ts)
 
-Lean MCP read tools: roots, children, path, context, source closure. Grants none.
-Workbench stays GET/SSE.
+Lean MCP read tools: roots, children, path, context, authoring attachments, source
+closure. Grants none. Workbench stays GET/SSE.
 
 #### [`src/application/ports/in/architecture/`](../../../src/application/ports/in/architecture)
 

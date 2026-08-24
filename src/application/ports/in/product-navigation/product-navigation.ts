@@ -7,6 +7,7 @@
  */
 
 import type {
+  ProductNavigationAuthoringAttachments,
   ProductNavigationChildren,
   ProductNavigationContext,
   ProductNavigationNeighborhood,
@@ -54,6 +55,13 @@ export interface ProductNavigationUseCase {
       readonly fileRevision: number;
     },
   ): Promise<ProductNavigationSourceClosure>;
+  authoringAttachments(
+    query: ProductNavigationScope & {
+      readonly node: ProductNavigationNodeQuery;
+      readonly pageSize?: number;
+      readonly cursor?: string;
+    },
+  ): Promise<ProductNavigationAuthoringAttachments>;
   /**
    * Workbench GET packaging: unique root plus its immediate children and
    * grouped attachments. Same open/basis rules as the other reads.

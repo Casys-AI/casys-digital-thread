@@ -7,7 +7,13 @@
 
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import type { ProductNavigationUseCase } from "../../application/ports/in/product-navigation/product-navigation.ts";
-import { PROJECT_ID, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
+import { PROJECT_SOURCE_WORKSPACE_BOUNDS } from "../../domain/project-source-workspace/types.ts";
+import {
+  FINGERPRINT_SCHEMA,
+  PROJECT_ID,
+  READ_ONLY_ANNOTATIONS,
+  THREAD_SNAPSHOT_REF_SCHEMA,
+} from "./mcp-tool-schemas.ts";
 
 export interface ProjectProductNavigationToolDependencies {
   productNavigation?: ProductNavigationUseCase;
@@ -151,6 +157,22 @@ export function registerProjectProductNavigationTools(
       structuredContent: result as unknown as Record<string, unknown>,
     };
   });
+
+  app.registerTool(
+    projectProductNavigationAuthoringAttachmentsTool,
+    async (args) => {
+      const result = await navigation.authoringAttachments({
+        projectId: String(args.projectId),
+        node: nodeArg(args.node),
+        ...(args.pageSize === undefined ? {} : { pageSize: Number(args.pageSize) }),
+        ...(args.cursor === undefined ? {} : { cursor: String(args.cursor) }),
+      });
+      return {
+        content: contentFor(result.status, "authoring attachments"),
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    },
+  );
 }
 
 function nodeArg(value: unknown): {
@@ -316,5 +338,149 @@ const projectProductSourceClosureTool: MCPTool = {
     additionalProperties: false,
   },
   outputSchema: QUERY_OUTPUT,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const AUTHORING_ATTACHMENT = {
+  type: "object",
+  properties: {
+    attachmentId: ELEMENT_ID,
+    attachmentRevision: { type: "integer", minimum: 1 },
+    fingerprint: FINGERPRINT_SCHEMA,
+    fileId: ELEMENT_ID,
+    fileHeadRevision: {
+      anyOf: [{ type: "integer", minimum: 1 }, { type: "null" }],
+    },
+    sourceStatus: { enum: ["active", "source-removed"] },
+    role: {
+      type: "object",
+      properties: {
+        id: ELEMENT_ID,
+        version: { type: "integer", minimum: 1 },
+      },
+      required: ["id", "version"],
+      additionalProperties: false,
+    },
+    target: {
+      type: "object",
+      properties: {
+        elementId: ELEMENT_ID,
+        elementKind: { enum: ["PartDefinition", "PartUsage"] },
+      },
+      required: ["elementId", "elementKind"],
+      additionalProperties: false,
+    },
+    declaredAgainst: {
+      type: "object",
+      properties: {
+        thread: THREAD_SNAPSHOT_REF_SCHEMA,
+        architecture: {
+          type: "object",
+          properties: {
+            artifactId: ELEMENT_ID,
+            fingerprint: FINGERPRINT_SCHEMA,
+            captureSchema: { const: "architecture-capture/4.0" },
+          },
+          required: ["artifactId", "fingerprint", "captureSchema"],
+          additionalProperties: false,
+        },
+      },
+      required: ["thread", "architecture"],
+      additionalProperties: false,
+    },
+    basisStatus: { enum: ["exact-basis", "different-basis"] },
+  },
+  required: [
+    "attachmentId",
+    "attachmentRevision",
+    "fingerprint",
+    "fileId",
+    "fileHeadRevision",
+    "sourceStatus",
+    "role",
+    "target",
+    "declaredAgainst",
+    "basisStatus",
+  ],
+  additionalProperties: false,
+} as const;
+
+const AUTHORING_ATTACHMENTS_OUTPUT = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: "product-navigation-query/1.0" },
+    status: {
+      type: "string",
+      enum: ["observed", "unavailable", "unattached", "unresolved"],
+    },
+    basis: BASIS,
+    node: {
+      type: "object",
+      properties: {
+        kind: NODE_KIND,
+        id: ELEMENT_ID,
+        label: { type: "string", minLength: 1 },
+        definitionId: ELEMENT_ID,
+        usageId: ELEMENT_ID,
+        path: { type: "array", items: ELEMENT_ID, maxItems: 32 },
+        expandable: { type: "boolean" },
+      },
+      required: ["kind", "id", "label", "definitionId", "path", "expandable"],
+      additionalProperties: false,
+    },
+    workspaceRevision: { type: "integer", minimum: 0 },
+    workspaceEventFingerprint: {
+      type: "string",
+      pattern: "^sha256:[a-f0-9]{64}$",
+    },
+    attachments: { type: "array", items: AUTHORING_ATTACHMENT },
+    nextCursor: {
+      anyOf: [
+        {
+          type: "string",
+          minLength: 1,
+          maxLength: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength,
+        },
+        { type: "null" },
+      ],
+    },
+    grants: { const: "none" },
+  },
+  required: [
+    "schemaVersion",
+    "status",
+    "node",
+    "attachments",
+    "nextCursor",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
+const projectProductNavigationAuthoringAttachmentsTool: MCPTool = {
+  name: "project_product_navigation_authoring_attachments",
+  description:
+    "Read versioned ProjectSourceWorkspace authoring attachments of one exact SysML PartDefinition or PartUsage. The server selects the unique current Thread tip and architecture-capture/4.0, then lists active workspace heads for that exact target. Detached identities are omitted; source-removed stays visible. Not Thread evidence, not admission, not source closure. latest, snapshot, workspaceRevision, providers and runtimes are refused. Grants none.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      node: NODE_QUERY,
+      pageSize: {
+        type: "integer",
+        minimum: 1,
+        maximum: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxPageSize,
+      },
+      cursor: {
+        type: "string",
+        minLength: 1,
+        maxLength: PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength,
+        not: { const: "latest" },
+      },
+    },
+    required: ["projectId", "node"],
+    additionalProperties: false,
+  },
+  outputSchema: AUTHORING_ATTACHMENTS_OUTPUT,
   annotations: READ_ONLY_ANNOTATIONS,
 };

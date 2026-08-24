@@ -1,7 +1,8 @@
 # Versioned source attachments
 
-Status: aggregate and workspace MCP implemented · product-navigation authoring
-attachments, source closure/admission, and real-project proof remain pending
+Status: aggregate, workspace MCP, and product-navigation authoring-attachment reads
+implemented · source closure/admission recross of attachment revisions and real-project
+proof remain pending
 
 ## Purpose
 
@@ -93,13 +94,14 @@ not a compiler relation such as `represents` or `parameterizes`. Attaching a Mod
 CAD, SPICE, or supporting document still grants no execution right. Moving a file in the
 module tree does not retarget the edge; updating file bytes preserves it.
 
-This vertical does **not** change `project_technical_source_capture`,
-`compile.seal-admission`, `ProjectProductNavigation`, or the Workbench. Those surfaces
-still ignore `state.attachments`. A later admission vertical may reopen an exact active
-attachment, resolve its file head, and seal parser bindings separately from the
-authoring edge. A later product-navigation/Workbench vertical may project authoring
-attachments and admitted bindings as distinct collections. Graphology may later index
-the relation for bounded reads; it must never own or repair it.
+`project_technical_source_capture` and `compile.seal-admission` still ignore
+`state.attachments`. A later admission vertical may reopen an exact active attachment,
+resolve its file head, and seal parser bindings separately from the authoring edge.
+Product navigation now exposes authoring heads as a distinct collection from Thread
+evidence: `project_product_navigation_authoring_attachments` and Workbench GET
+`view=authoring-attachments`. `project_product_navigation_context` and
+`project_product_source_closure` still read only Thread/admission evidence. Graphology
+may later index the relation for bounded reads; it must never own or repair it.
 
 A draft edit still does not revoke a historical Thread admission. When admission later
 seals an attachment revision, refusing future use of that sealed admission will require
@@ -115,12 +117,32 @@ The workspace MCP surface implemented now is:
 - `project_source_attachment_read` (exact `attachmentId` + `attachmentRevision`);
 - `project_source_attachment_list` filtered by exact `fileId` or exact element identity.
 
-Pending, not implemented in this vertical:
+Product-navigation authoring reads implemented now:
 
-- `project_product_navigation_context` / Workbench reading `state.attachments`;
+- `project_product_navigation_authoring_attachments` (MCP, grants none);
+- Workbench GET `/api/thread/product-navigation?view=authoring-attachments`.
+
+Both consume `ProductNavigationUseCase.authoringAttachments`. The first page selects the
+server workspace head then recrosses it. `nextCursor` is an HMAC-sealed server envelope
+covering project, exact target, workspace revision and the internal domain sort key; a
+domain attachment-list cursor is refused. Page two reopens that pinned revision via
+`loadAtFresh`. `PartUsage` keeps `usageId` and is never reduced to `definitionId`.
+`basisStatus` is `exact-basis` or `different-basis` against the opened Thread
+architecture; SysON/Graphology are not called to repair or infer. Detached heads are
+omitted; `source-removed` stays visible.
+
+The HMAC key is ephemeral and local to one server process. A restart or another process
+invalidates an in-flight page cursor; cursors are pagination continuity, never durable
+project authority.
+
+Pending, not implemented:
+
+- `project_product_navigation_context` / Workbench reading authoring attachments as
+  evidence groups;
 - `project_technical_source_capture` and `compile.seal-admission` recrossing an
   attachment revision;
-- dependency closure selected by exact attachment identity and workspace revision.
+- dependency closure selected by exact attachment identity and workspace revision;
+- MCS-01 / real-project proof of this product-navigation read.
 
 Fail-closed catalogue decision: the five generic v1 roles (`architecture-source`,
 `design-source`, `behavior-source`, `verification-source`, `supporting-document`) are

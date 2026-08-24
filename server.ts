@@ -150,7 +150,8 @@ import {
 } from "./src/tools/project-control.ts";
 import { ProjectProductNavigation } from "./src/application/use-cases/product-navigation/project-product-navigation.ts";
 import { CaptureProductStructureTraversal } from "./src/adapters/architecture/renderer/capture-product-structure-traversal.ts";
-import { WorkbenchProductNavigationAttachmentReader } from "./src/adapters/thread/product-navigation-workbench.ts";
+import { WorkbenchProductNavigationEvidenceAttachmentReader } from "./src/adapters/thread/product-navigation-workbench.ts";
+import { ProjectSourceWorkspaceAuthoringAttachmentReader } from "./src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts";
 import {
   type ProjectBriefToolDependencies,
   registerProjectBriefTools,
@@ -1143,7 +1144,7 @@ async function createProjectControl(
         snapshots: threadSnapshots,
         traversal: productStructureTraversal,
         workspace: sourceWorkspaceStore,
-        attachments: new WorkbenchProductNavigationAttachmentReader({
+        evidenceAttachments: new WorkbenchProductNavigationEvidenceAttachmentReader({
           architectureCaptures: architectureFoundation.genericArchitectureCaptures,
           geometryCaptures: productNavigationGeometryCaptures,
           sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
@@ -1157,6 +1158,9 @@ async function createProjectControl(
             dfmCheck: dfmCaseCaptures,
           },
         }),
+        authoringAttachments: new ProjectSourceWorkspaceAuthoringAttachmentReader(
+          sourceWorkspaceStore,
+        ),
       }),
       electricalObservationMethodSheetSealReview:
         electricalProject.electricalObservationMethodSheetSealReview,
