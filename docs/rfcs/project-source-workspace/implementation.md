@@ -17,12 +17,18 @@
 - Delete the caller-authored loose tuple once every live caller is migrated.
 - Keep raw `project_resource_capture`; it remains the byte ingress.
 
-## Vertical 3: MCS-01 modular sources
+## Vertical 3: MCS-02 single-root modular proof
 
-- Attach separate rail, carriage, mount, drive, motor, electronics, Modelica, SPICE and
-  FEA source files.
-- Prove tree navigation and one-file revision without rewriting siblings.
-- Run current targeted rail CAD/FEA and admitted Modelica/SPICE from exact entries.
+- Workspace r15 contains five modules, four active files and three active attachments.
+- RailFrame advanced from file r1 to r2 without recreating its stable attachment.
+  Modelica and SPICE attachment chains advanced to r2 so each technical capture named
+  the exact current Thread basis before its admission.
+- CAD, Modelica and SPICE were captured and admitted from their exact workspace
+  attachments. Canonical RailFrame STEP then fed the part-level CalculiX proof through
+  L5.
+- The FEA proof-case JSON used generic resource ingress but was not itself a workspace
+  file. This vertical therefore proves the downstream FEA join, not workspace-native FEA
+  targeting.
 
 ## Vertical 4: admitted CAD bundle
 
@@ -30,7 +36,7 @@
 - Re-open a bounded multi-source CAD admission without the singular-source helper.
 - Expose the existing N+1 draft/seal machinery through a server-derived review.
 - Fix archive filtering and definition-asset selection by semantic identity.
-- Execute MCS-01 assembly and recross its RailFrame proof.
+- Execute a future MCS-02 assembly successor and recross its RailFrame proof.
 
 ## Explicitly later
 

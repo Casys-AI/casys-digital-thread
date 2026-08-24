@@ -11,6 +11,7 @@ import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architect
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/cad/canonical/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
+import { COMPILATION_ADMISSION_BINDING_NAME } from "../../domain/compile/admission/compilation-admission-run-operation.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
@@ -297,7 +298,7 @@ const OPERATIONS = [
     execution: "trusted",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
-      name: "compilationAdmission",
+      name: COMPILATION_ADMISSION_BINDING_NAME,
       allowedSourceKinds: ["thread-entity"],
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
@@ -382,7 +383,7 @@ const OPERATIONS = [
     execution: "trusted",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
-      name: "compilationAdmission",
+      name: COMPILATION_ADMISSION_BINDING_NAME,
       allowedSourceKinds: ["thread-entity"],
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],
@@ -413,7 +414,7 @@ const OPERATIONS = [
     execution: "trusted",
     decisionEvidenceScope: "thread-entity-bindings",
     bindings: [{
-      name: "compilationAdmission",
+      name: COMPILATION_ADMISSION_BINDING_NAME,
       allowedSourceKinds: ["thread-entity"],
       cardinality: "one",
       allowedThreadEntityKinds: ["artifact"],

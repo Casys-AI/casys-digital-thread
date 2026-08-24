@@ -40,12 +40,31 @@ For a revision, keep the same `fileId`, supply the unique active
 rewritten. A deliberate removal uses `project_source_file_remove` and creates a
 tombstone; it does not erase history or CAS bytes.
 
-## 5. Navigate without loading the project at once
+## 5. Attach the source to an exact SysML element
+
+Call `project_source_attachment_put` with a stable `attachmentId`, the stable `fileId`,
+a registered attachment role, and an exact `PartDefinition` or `PartUsage` target.
+`declaredAgainst` must name the unique current Thread tip and its exact
+`architecture-capture/4.0`; do not reconstruct either identity from a label.
+
+When the same source must be recrossed on a later Thread tip, keep `attachmentId` and
+`fileId`, set `predecessorAttachmentRevision` to the active head, and create the exact
+successor edge. This revises authoring location evidence; it does not rewrite the file
+or invalidate a sealed historical admission.
+
+## 6. Navigate without loading the project at once
 
 - `project_source_tree` lists one module's immediate children.
 - `project_source_search` filters one exact revision. `pathPrefix` starts with `/`.
 - `project_source_file_read` returns one exact content revision or tombstone.
 - `resources/read` reopens the bytes named by a content revision.
+- `project_product_navigation_authoring_attachments` starts from an exact SysML node and
+  lists its current workspace attachments.
+- `project_product_source_closure` opens the exact technical DAG only after one
+  attachment is selected.
+
+MCP navigation node kinds are the literal kebab-case values `part-definition` and
+`part-usage`. Do not send provider kinds such as `PartDefinition` to that read surface.
 
 Tree and search are paginated. Keep their revision-anchored cursor; do not reuse it with
 another revision or filter.
@@ -60,6 +79,14 @@ profile and `project-source-closure/1.0`; it refuses MIME, path, `sourceText`,
 `result.reference` to `project_technical_compilation_preview`. Never infer admission
 from workspace membership, MIME, path or a successful isolated run. A later correction
 is a new `project_resource_capture` plus a successor file revision, then a new capture.
+
+Every admission seal advances the Thread. Before sealing another source whose
+attachment names an earlier tip, create an attachment successor against the current tip
+and recapture it. Seal all planned sources first when possible; this reduces attachment
+rebases between sequential admissions. Later executions may reopen those historical
+admissions from descendant Thread tips. A `different-basis` authoring read does not
+invalidate a sealed admission, but a current closure drill-down may stay
+`unavailable`.
 
 ## Common workspace basis
 

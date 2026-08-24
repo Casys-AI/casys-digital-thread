@@ -68,6 +68,7 @@ import {
   validateIsolatedCodeExecutionReceiptRecord,
   validateIsolatedOutputProducerGenerationAdvance,
 } from "../../../domain/compile/isolation/isolated-code-execution.ts";
+import { COMPILATION_ADMISSION_BINDING_NAME } from "../../../domain/compile/admission/compilation-admission-run-operation.ts";
 import {
   validateTechnicalCompilationDocument,
 } from "../../../domain/compile/admission/technical-compilation.ts";
@@ -1176,7 +1177,8 @@ function requireExecutionShape(
     run.basis?.kind !== "thread-snapshot" ||
     !workItem || operation?.id !== DESIGN_EXECUTE_BUILD123D_OPERATION.id ||
     operation.version !== DESIGN_EXECUTE_BUILD123D_OPERATION.version ||
-    operation.bindings.length !== 1 || binding?.name !== "compilationAdmission" ||
+    operation.bindings.length !== 1 ||
+    binding?.name !== COMPILATION_ADMISSION_BINDING_NAME ||
     binding.source.kind !== "thread-entity" ||
     binding.source.reference.kind !== "artifact"
   ) {

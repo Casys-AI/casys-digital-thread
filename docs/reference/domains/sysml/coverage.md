@@ -37,6 +37,12 @@ be replaced under the same label; each newly observed attribute must correspond 
 reviewed proposal entry. This ratchet is evidence preservation, not a generic SysML
 revision or deletion facility.
 
+Named runtime proof: MCS-02 used `architecture-capture/4.0` to navigate eight separate
+product definitions, attach exact CAD/Modelica/SPICE sources to three of them, and write
+system plus RailFrame scalar requirements. See
+[MCS-02 SysML](../../../projects/motorized-camera-slider-mcs02/domains/sysml.md). This
+does not add placements, ports, flows or behavioral SysML to the covered grammar.
+
 ## Two source authorities, not one
 
 Comparison, distinct identities, and writer lookalikes: [paths](paths.md). Closed-subset

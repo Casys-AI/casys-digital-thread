@@ -48,6 +48,9 @@ starts from `compile.seal-admission@3` via `ReopenAdmittedCompilationSource`.
 | SPICE     | `project_admitted_spice_run_review`    | `simulate.run-admitted-spice@1`    | Documentary capture + `evidence.json` + `result.json` | mcp-spice, LED-driver fiche, a verdict   |
 
 Both bind one `compilationAdmission` artifact. Both refuse extra source-text bindings.
+The run-review result returns the registered operation already bound to that artifact on
+the current Thread tip; reuse it verbatim. Do not reconstruct the binding from a
+historical `compile.seal-admission@3` creation snapshot.
 
 ## Not this pattern
 

@@ -196,6 +196,24 @@ Deno.test("Build123d execution review forwards exact identity and passes through
     decisionParameters: Object.freeze([
       Object.freeze({ key: "review.identity", label: "Identity", value: "exact" }),
     ]),
+    operation: Object.freeze({
+      id: "design.execute-build123d",
+      version: "1",
+      bindings: Object.freeze([
+        Object.freeze({
+          name: "compilationAdmission",
+          source: Object.freeze({
+            kind: "thread-entity",
+            reference: Object.freeze({
+              snapshotId: REVIEW_COMMAND.basis.snapshotId,
+              snapshotRevision: REVIEW_COMMAND.basis.revision,
+              kind: "artifact",
+              id: REVIEW_COMMAND.artifactId,
+            }),
+          }),
+        }),
+      ]),
+    }),
   }) as unknown as ProjectBuild123dExecutionReviewResult;
 
   registerProjectTechnicalCompilationTools(
@@ -214,8 +232,15 @@ Deno.test("Build123d execution review forwards exact identity and passes through
     structuredClone(REVIEW_COMMAND),
   ) as Record<string, unknown>;
   assert(response.structuredContent === resultIdentity);
+  assertEquals(
+    (response.structuredContent as ProjectBuild123dExecutionReviewResult)
+      .operation,
+    resultIdentity.operation,
+  );
   assertEquals(calls, [REVIEW_COMMAND]);
   assertStringIncludes(response.content as string, REVIEW_COMMAND.artifactId);
+  assertStringIncludes(response.content as string, "verbatim");
+  assertStringIncludes(response.content as string, "compilationAdmission");
   assertStringIncludes(response.content as string, "no source bytes");
   assertStringIncludes(response.content as string, "no code was executed");
   assertStringIncludes(response.content as string, "no EngineeringProject");
@@ -229,6 +254,8 @@ Deno.test("Build123d execution review forwards exact identity and passes through
     idempotentHint: true,
     openWorldHint: false,
   });
+  assertStringIncludes(tool.description, "Reuse the returned operation verbatim");
+  assertStringIncludes(tool.description, "compilationAdmission");
   assertStringIncludes(tool.description, "performs no code execution");
   assertStringIncludes(tool.description, "returns no source bytes");
   const inputSchema = tool.inputSchema as Record<string, unknown>;

@@ -40,8 +40,11 @@ Deno.test("admitted SPICE review exposes only projectId and rejects caller-selec
   assertStringIncludes(response.content as string, "current Thread tip");
   assertStringIncludes(response.content as string, "no source bytes");
   assertStringIncludes(response.content as string, "not mcp-spice");
+  assertStringIncludes(response.content as string, "verbatim");
+  assertStringIncludes(response.content as string, "compilationAdmission");
 
   const tool = app.tool("project_admitted_spice_run_review");
+  assertStringIncludes(tool.description, "Reuse the returned operation verbatim");
   assertEquals(tool.annotations, {
     readOnlyHint: true,
     destructiveHint: false,

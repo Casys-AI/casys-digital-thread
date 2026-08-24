@@ -1,8 +1,9 @@
 # Versioned source attachments
 
-Status: aggregate, workspace MCP, product-navigation authoring-attachment reads, and
-attachment-rooted source closure/admission recross implemented · MCS-01 real-project
-proof remains pending
+Status: implemented and runtime-proven on MCS-02 for attachment creation and
+successors, product-navigation authoring reads, attachment-rooted closure, technical
+capture and admission recross. Authoring attachments inside context evidence groups
+remain pending.
 
 ## Purpose
 
@@ -72,16 +73,15 @@ architecture capture. The target must occur exactly once with the declared seman
 kind. Pure workspace replay trusts the already accepted, hash-chained event and never
 calls SysON, Graphology, or an adapter.
 
-Against a later valid architecture capture, target status is derived as:
+The current read model derives only two target-basis states:
 
-- `exact-basis`: the declared capture is still selected;
-- `carried-forward`: the same `elementId` and semantic kind exist in an exact descendant
-  capture;
-- `orphaned`: an exact descendant capture is readable and the id or kind is absent;
-- `unresolved`: lineage, capture bytes, selection, or uniqueness cannot be proved.
+- `exact-basis`: the declared Thread and architecture basis is the opened basis;
+- `different-basis`: at least one member of that exact tuple differs.
 
-No label or occurrence path repairs an orphan. Replacing a SysML element with a new id
-requires a reviewed successor attachment revision.
+It does not infer lineage, carry-forward, or orphan repair. A closure read on a
+`different-basis` attachment is `unavailable`; current recross requires an explicit
+reviewed successor attachment revision against the current basis. No label or
+occurrence path can repair or retarget the edge.
 
 The initial implementation supports only element kinds sealed by the architecture
 capture contract. Adding another SysML kind first extends that capture and its exact
@@ -138,9 +138,12 @@ Pending, not implemented:
 
 - `project_product_navigation_context` / Workbench reading authoring attachments as
   evidence groups (authoring stays a distinct collection; an exact attachment may
-  expose a read-only `project_product_source_closure`);
-- MCS-01 / real-project proof of attachment-rooted capture, closure and
-  product-navigation reads.
+  expose a read-only `project_product_source_closure`).
+
+MCS-02 observed `exact-basis` authoring reads before each admission. At Thread r20,
+the active RailFrame attachment remains visible with `basisStatus: different-basis`;
+the historical `project_product_source_closure` drill-down is `unavailable`. Neither
+state invalidates the historical sealed admission carried by that descendant Thread.
 
 Fail-closed catalogue decision: the five generic v1 roles (`architecture-source`,
 `design-source`, `behavior-source`, `verification-source`, `supporting-document`) are

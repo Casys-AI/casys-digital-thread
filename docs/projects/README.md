@@ -26,12 +26,13 @@ substitutes. Living coverage remains in
 
 ## Registry
 
-| Folder                                                                     | Role                                                                                 | Status page                                        | Live EngineeringProject (primary atelier, 2026-08-23, local)                                                                                                                                                                                                                                                                                                                          |
+| Folder                                                                     | Role                                                                                 | Status page                                        | Live EngineeringProject (primary atelier, latest observation stated per row, local)                                                                                                                                                                                                                                                                                                                          |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [articulated-led-desk-lamp](articulated-led-desk-lamp/README.md)           | Reference demo (existing RFC + generic surfaces)                                     | [status](articulated-led-desk-lamp/status.md)      | `articulated-led-desk-lamp-al01` project r227; Thread r26. Mechanical/thermal/electrical L3–L5 plus impact recross. Exact dated identities: [runtime evidence](articulated-led-desk-lamp/runtime-evidence.md).                                                                                                                                                                      |
+| [motorized-camera-slider-mcs02](motorized-camera-slider-mcs02/README.md)   | Current-contract workspace, attachment and single-root Behave proving project        | [status](motorized-camera-slider-mcs02/status.md)  | 2026-08-25: `motorized-camera-slider-mcs02` project r146; Thread r20; workspace r15. Separate mechanical, scalar-motion and circuit-current L5 closeouts; no assembly or whole-product verdict. [Runtime evidence](motorized-camera-slider-mcs02/runtime-evidence.md). |
 | [low-voltage-heated-mug-coaster](low-voltage-heated-mug-coaster/README.md) | Portability canary (agent-proposed class; human-sourced demo scope; confirmed brief) | [status](low-voltage-heated-mug-coaster/status.md) | `heated-mug-coaster-hc01` project r29 (`heated-mug-coaster-hc01:project:r29:23da822e32f1ae06`). Thread r1 documentary baseline, r2 SysON seed container, r3 single-part architecture, r4 exact PartDefinition reread (`HeatedMugCoaster`; no usages). No requirements, CAD, FEA, Modelica, electrical, or impact. Cockpit primary focus revision 4 is projection only. |
 
-Neither row is a percentage, a verdict, or permission to invent values, units,
+No registry row is a percentage, a verdict, or permission to invent values, units,
 materials, thresholds, parts, or operations.
 
 ## Truth-column legend
@@ -61,6 +62,6 @@ is L4. Make and Buy are other judgement branches; they do not close Behave
 
 `state/local/` is gitignored ([`.gitignore`](../../.gitignore)). It may drift. Name the
 atelier, the observation date, and the label **local**. A docs worktree listing is not
-the primary atelier. The 2026-08-23 primary-atelier names above are the current local
-observation for these pages. The heated-mug-coaster row is unchanged from its last
+the primary atelier. Use the observation date stated in each row: MCS-02 is observed on
+2026-08-25, while the unchanged heated-mug-coaster entry retains its earlier
 architecture-only observation.

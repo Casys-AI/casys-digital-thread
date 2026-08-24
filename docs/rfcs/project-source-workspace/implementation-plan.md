@@ -1,11 +1,12 @@
 # Large-assembly implementation plan
 
-Status: in progress · Phase A is implemented in code and causal tests · real MCP/runtime
-proof on the proving vehicle and phases B-G remain pending
+Status: in progress. Phase A exact navigation and the Phase B attachment/closure happy
+path are runtime-proven on MCS-02. The Phase B fault matrix and phases C–G remain
+incomplete.
 
 The plan extends the existing workspace and registered engineering paths without a
 parallel product authority or a universal engineering AST.
-`motorized-camera-slider-mcs01` is the proving vehicle; advancement requires evidence
+`motorized-camera-slider-mcs02` is the proving vehicle; advancement requires evidence
 from the real MCP and runtime path, not fixtures or UI copy.
 
 ## Phase A: exact SysML navigation projection
@@ -34,8 +35,9 @@ from the real MCP and runtime path, not fixtures or UI copy.
 
 ## Phase C: reusable definition builds
 
-- Attach each admitted CAD source closure to one exact `PartDefinition`.
-- Reuse the current targeted canonical CAD path where its registered contract applies.
+- Proved for the RailFrame only: attach one admitted CAD source closure to one exact
+  `PartDefinition` and reuse the current targeted canonical CAD path.
+- Pending: repeat that contract across multiple definition targets and module inputs.
 - Prove two semantic targets remain distinct when output bytes are identical.
 
 ## Phase D: one-level module build

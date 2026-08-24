@@ -8,6 +8,7 @@
  * facts stay behind server-owned outward ports.
  */
 
+import type { CompilationAdmissionRunOperation } from "../../../../../domain/compile/admission/compilation-admission-run-operation.ts";
 import type { SpiceAdmittedRunAdmission } from "../../../../../domain/electrical/spice/admitted/run-proposal.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 import type {
@@ -36,6 +37,12 @@ export interface ProjectAdmittedSpiceRunReviewCommand {
 export interface ProjectAdmittedSpiceRunReviewResult {
   readonly admission: SpiceAdmittedRunAdmission;
   readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
+  /**
+   * Registered `simulate.run-admitted-spice@1` work-item operation. Reuse
+   * verbatim: `compilationAdmission` names the selected admission artifact on
+   * the current review Thread basis, never a historical creation snapshot.
+   */
+  readonly operation: CompilationAdmissionRunOperation;
 }
 
 export interface ProjectAdmittedSpiceRunReviewUseCase {

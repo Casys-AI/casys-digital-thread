@@ -7,6 +7,7 @@
  */
 
 import type { Build123dExecutionAdmission } from "../../../../../domain/cad/isolated/build123d-execution-proposal.ts";
+import type { CompilationAdmissionRunOperation } from "../../../../../domain/compile/admission/compilation-admission-run-operation.ts";
 import type { ContentFingerprint } from "../../../../../domain/kernel/primitives.ts";
 import type {
   EngineeringDecisionProposalParameter,
@@ -25,6 +26,12 @@ export interface ProjectBuild123dExecutionReviewResult {
   readonly admission: Build123dExecutionAdmission;
   /** Unique canonical MRTR scalar sequence for `design.execute-build123d@1`. */
   readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
+  /**
+   * Registered `design.execute-build123d@1` work-item operation. Reuse
+   * verbatim: `compilationAdmission` names the selected admission artifact on
+   * the current review Thread basis, never a historical creation snapshot.
+   */
+  readonly operation: CompilationAdmissionRunOperation;
 }
 
 export interface ProjectBuild123dExecutionReviewUseCase {

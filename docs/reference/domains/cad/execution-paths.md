@@ -76,6 +76,13 @@ compile.seal-admission@3
   → optional design.seal-isolated-geometry@1
 ```
 
+`project_build123d_execution_review` returns the registered
+`design.execute-build123d@1` operation with `compilationAdmission` bound to the
+selected admission artifact on the current review Thread basis. Reuse that
+operation verbatim; do not reconstruct the thread-entity reference from a
+historical `compile.seal-admission@3` creation snapshot. The returned admission,
+`decisionParameters` and `operation` are review material only.
+
 The shared reopen use case supplies the exact admitted bytes to a code-owned wrapper in
 a network-disabled microVM. A caller cannot select the runtime, image, command,
 arguments, paths, environment, policy, validator, or output manifest. The only declared

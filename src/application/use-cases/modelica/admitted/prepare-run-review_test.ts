@@ -17,6 +17,7 @@ import {
   MODELICA_ADMITTED_EXECUTION_PROFILE,
   MODELICA_ADMITTED_OUTPUT_MANIFEST,
   parseModelicaAdmittedRunAdmissionParameters,
+  SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
 } from "../../../../domain/modelica/admitted/run-proposal.ts";
 import {
   MICROSANDBOX_LOCAL_ISOLATION_CLASS,
@@ -132,6 +133,53 @@ Deno.test("admitted Modelica review reopens sealed source and never returns Mode
   assertEquals(recursiveKeys(result).has("modelicaText"), false);
   assertDeeplyFrozen(result);
 });
+
+Deno.test(
+  "admitted Modelica review binds compilationAdmission to the current review basis, not the earlier creation snapshot",
+  async () => {
+    const fixture = await harness();
+    const result = await fixture.service.execute(fixture.command);
+    const binding = result.operation.bindings[0];
+
+    assertEquals(fixture.reopened.admission.basis.thread.snapshotId, "snapshot.7");
+    assertEquals(fixture.reopened.admission.basis.thread.revision, 7);
+    assertEquals(fixture.command.basis.snapshotId, "snapshot.8");
+    assertEquals(fixture.command.basis.revision, 8);
+    assertEquals(result.operation, {
+      id: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.id,
+      version: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION.version,
+      bindings: [{
+        name: "compilationAdmission",
+        source: {
+          kind: "thread-entity",
+          reference: {
+            snapshotId: fixture.command.basis.snapshotId,
+            snapshotRevision: fixture.command.basis.revision,
+            kind: "artifact",
+            id: fixture.command.artifactId,
+          },
+        },
+      }],
+    });
+    assertEquals(binding.name, "compilationAdmission");
+    assertEquals(binding.source.kind, "thread-entity");
+    assertEquals(binding.source.reference.kind, "artifact");
+    assertEquals(
+      binding.source.reference.snapshotId ===
+        fixture.reopened.admission.basis.thread.snapshotId,
+      false,
+    );
+    assertEquals(
+      binding.source.reference.snapshotRevision ===
+        fixture.reopened.admission.basis.thread.revision,
+      false,
+    );
+    assertEquals(recursiveKeys(result).has("sourceText"), false);
+    assertEquals(recursiveKeys(result).has("modelicaText"), false);
+    assertDeeplyFrozen(result);
+    assertDeeplyFrozen(result.operation);
+  },
+);
 
 Deno.test("admitted Modelica review refuses a Build123d admission before profile selection", async () => {
   const fixture = await harness();

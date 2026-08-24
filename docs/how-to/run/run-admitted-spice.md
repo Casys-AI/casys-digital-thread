@@ -83,8 +83,10 @@ non-archived canonical `document` produced by `digital-thread` /
 Zero SPICE candidates — including stale, archived, malformed, foreign-producer
 lookalikes, or CAD/Modelica-only admissions — fail closed. Several SPICE candidates are
 ambiguous and also fail closed. The exact admission validator rereads the
-server-selected bytes and returns the fixed parameters for
-`simulate.run-admitted-spice@1`.
+server-selected bytes and returns the fixed parameters and registered
+`simulate.run-admitted-spice@1` operation. Reuse that `operation` verbatim on the later
+work item: `compilationAdmission` names the selected admission on the current review
+Thread basis. Do not copy a historical `compile.seal-admission@3` creation snapshot.
 
 Obtain human MRTR, queue, then execute `simulate.run-admitted-spice@1`.
 

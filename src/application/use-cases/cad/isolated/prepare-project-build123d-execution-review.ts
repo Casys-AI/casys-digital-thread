@@ -4,7 +4,8 @@
  * This use case does not execute source, call an engineering provider, expose
  * source bytes, or accept caller-selected runtime facts. It reopens one exact
  * sealed compilation admission, joins it to the server-owned execution
- * profile, and derives the canonical MRTR parameters for a later operation.
+ * profile, and derives the canonical MRTR parameters plus the registered
+ * work-item operation bound to the current review basis.
  */
 
 import type {
@@ -18,9 +19,11 @@ import {
   BUILD123D_EXECUTION_OUTPUT,
   BUILD123D_EXECUTION_PROFILE,
   type Build123dExecutionAdmission,
+  DESIGN_EXECUTE_BUILD123D_OPERATION,
   encodeBuild123dExecutionAdmissionParameters,
   parseBuild123dExecutionAdmissionParameters,
 } from "../../../../domain/cad/isolated/build123d-execution-proposal.ts";
+import { assembleCompilationAdmissionRunOperation } from "../../../../domain/compile/admission/compilation-admission-run-operation.ts";
 import {
   isolatedCodeOutputManifestsEqual,
   validateContentFingerprint,
@@ -179,7 +182,15 @@ export class PrepareProjectBuild123dExecutionReview
       if (deterministicJson(reencoded) !== deterministicJson(decisionParameters)) {
         throw new TypeError("Build123d MRTR replay is not canonical.");
       }
-      result = deepFreeze({ admission: reparsed, decisionParameters: reencoded });
+      result = deepFreeze({
+        admission: reparsed,
+        decisionParameters: reencoded,
+        operation: assembleCompilationAdmissionRunOperation({
+          operation: DESIGN_EXECUTE_BUILD123D_OPERATION,
+          basis: command.basis,
+          artifactId: command.artifactId,
+        }),
+      });
     } catch {
       throw reviewError(
         "execution_profile_integrity_failed",

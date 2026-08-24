@@ -6,6 +6,7 @@
  * `compile.seal-admission@3`. Callers never supply SPICE text.
  */
 
+import { COMPILATION_ADMISSION_BINDING_NAME } from "../../../../../domain/compile/admission/compilation-admission-run-operation.ts";
 import type { IsolatedCodeExecutionRequest } from "../../../../../domain/compile/isolation/isolated-code-execution.ts";
 import {
   deterministicJson,
@@ -137,7 +138,8 @@ export function requireAdmittedSpiceExecutionShape(
     !workItem || operation?.id !== SIMULATE_RUN_ADMITTED_SPICE_OPERATION.id ||
     operation.version !== SIMULATE_RUN_ADMITTED_SPICE_OPERATION.version ||
     workItem.decisionIds.length !== 1 ||
-    operation.bindings.length !== 1 || binding?.name !== "compilationAdmission" ||
+    operation.bindings.length !== 1 ||
+    binding?.name !== COMPILATION_ADMISSION_BINDING_NAME ||
     binding.source.kind !== "thread-entity" ||
     binding.source.reference.kind !== "artifact"
   ) {

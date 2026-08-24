@@ -40,6 +40,12 @@ CA or cantilever Git cases are not live production authority. A local AL01 stati
 walk is tracking evidence, not a catalog specimen:
 [AL01 runtime evidence](../../../projects/articulated-led-desk-lamp/runtime-evidence.md).
 
+MCS-02 is the current-contract part-level proving run: its attachment-rooted canonical
+RailFrame STEP fed `verify.run-fea-static-proof@3`, both declared criteria passed, and
+the exact branch reached L5 at Thread r12. See
+[MCS-02 FEA](../../../projects/motorized-camera-slider-mcs02/domains/fea.md). It does not
+advance assembly FEA coverage.
+
 ## Outside the current surface
 
 - Arbitrary CalculiX decks, solver arguments, containers, images, paths, or provider

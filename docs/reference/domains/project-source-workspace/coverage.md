@@ -16,8 +16,9 @@ Audience: both · Diátaxis: reference · Kind: coverage
   catalog.
 - Product-navigation authoring-attachment page from an exact SysML node: MCP
   `project_product_navigation_authoring_attachments` and Workbench GET
-  `view=authoring-attachments`. Distinct from Thread/admission evidence. Causal tests
-  only; MCS-01 proof is still pending.
+  `view=authoring-attachments`. Distinct from Thread/admission evidence. MCS-02 proved
+  the MCP read against active attachments on both their declared bases and a descendant
+  Thread basis.
 - Exact `AgentResourceReference` reopening before a file revision is accepted.
 - Revision-anchored snapshot, tree, search and file reads with bounded pagination.
 - Fail-closed recovery for gaps, corruption, incomplete claims and concurrent writers.
@@ -42,24 +43,36 @@ plus a successor file revision.
 
 ## Current runtime proof
 
-MCS-01 reached workspace revision 12 through the loopback MCP on 2026-08-24: eight
-modules, three active files, exact tree/search/read, and one stable file advanced from
-revision 1 to revision 2 while its two sibling revisions remained unchanged. The
-workspace store is local runtime state; this result proves Vertical 1, not admission or
-execution.
+MCS-02 reached workspace r15 through the loopback MCP on 2026-08-25. Event fingerprint
+`0cb8b448174c7bb18af9584d7a2b03a1af1dc23219437f118dcc892252806092`
+seals five modules, four active files and three active attachments. RailFrame kept its
+attachment while its file advanced r1 → r2. Modelica and SPICE kept stable files while
+their attachment chains advanced to exact later Thread bases.
+
+Attachment-rooted v3 captures and `compile.seal-admission@3` produced the CAD,
+Modelica and SPICE admissions at Thread r4–r6. The exact CAD admission produced the
+canonical RailFrame geometry at r7. The downstream part-level FEA branch reached L5 at
+r12; admitted Modelica motion reached L5 at r16; admitted SPICE current reached L5 at
+r20. This is a real single-root bridge proof, not a complete assembly claim.
+
+At Thread r20 the active RailFrame attachment is still observable with
+`basisStatus: different-basis`. A closure drill-down against that historical attachment
+is currently `unavailable`; the already sealed admission remains historical evidence.
 
 ## Not implemented yet
 
-| Vertical | Missing capability                                                                                                 | Why it remains separate                                                                                                                                      |
-| -------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 3        | MCS-01 CAD, FEA, Modelica and SPICE sources executed from workspace entries                                        | It is the first real-product proof of the bridge, not a workspace invariant                                                                                  |
-| 3b       | MCS-01 proof of attachment-rooted capture, closure CAS and product-navigation authoring reads | Authoring heads and `project_product_source_closure` are attachment-rooted. Capture/admission recross the sealed closure. MCS-01 has not yet walked that MCP path. |
-| 4        | Multi-file CAD bundle, placements and hierarchical assembly evidence                                               | Large assemblies must stay modular and bounded; one flat product manifest is rejected                                                                        |
+| Missing capability | Why it remains separate |
+| ------------------ | ----------------------- |
+| Deterministic language-specific lowering for non-trivial multi-file closures | The workspace can seal the exact closure, but a compiler must explicitly lower every executable dependency; it may not drop files |
+| Multi-file CAD bundles and typed placements | MCS-02 produced one canonical RailFrame part only |
+| Hierarchical assembly evidence and incremental rebuild | These require exact child-module consumption and reverse impact, not a flat product manifest |
+| Assembly-level FEA targeting | The proven CalculiX `@3` branch is a single-part static proof downstream of canonical STEP |
 
 Cross-file language imports, unlimited provider execution, and a mutable Workbench tree
 are outside current coverage.
 
 ## Advancement rule
 
-A vertical is covered only after its exact MCP path has run on MCS-01 and its stored
-provenance can be reopened. Unit tests alone do not advance the coverage claim.
+A vertical is covered only after its exact MCP path has run on a named current-contract
+project and its stored provenance can be reopened. Unit tests alone do not advance the
+coverage claim.

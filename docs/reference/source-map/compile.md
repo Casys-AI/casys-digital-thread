@@ -106,6 +106,14 @@ Server-owned unique compile join: one catalog profile per source role;
 `represents`/`parameterizes` only when the SysML target is unique. Does not invent a
 lever or an AttributeUsage
 
+#### [`src/domain/compile/admission/compilation-admission-run-operation.ts`](../../../src/domain/compile/admission/compilation-admission-run-operation.ts)
+
+Named immutable admitted-compilation execution operation.
+`assembleCompilationAdmissionRunOperation` binds exactly one `compilationAdmission`
+thread-entity artifact on the current review basis. Not a historical creation ref.
+Callers pass the registered operation identity; CAD, Modelica and SPICE ids stay in
+those domains. Used by Build123d, admitted Modelica and admitted SPICE run reviews
+
 #### [`src/domain/compile/admission/technical-compilation-preview-review.ts`](../../../src/domain/compile/admission/technical-compilation-preview-review.ts)
 
 Agent-facing compile `gaps`: names and recoveries for `binding.missing` /

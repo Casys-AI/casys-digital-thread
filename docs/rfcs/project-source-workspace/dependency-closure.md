@@ -1,7 +1,8 @@
 # Server-resolved source dependency closure
 
-Status: implemented for attachment-rooted capture, CAS persist, admission recross and
-product-navigation MCP · MCS-01 real-project proof remains pending
+Status: implemented and runtime-proven on MCS-02 for attachment-rooted closure, CAS
+persistence, technical capture and admission recross. Language-specific lowering for
+non-trivial multi-file closures remains `unavailable`.
 
 ## Purpose
 
@@ -26,13 +27,13 @@ The dependency DAG supports technical imports and includes after semantic select
 is not product navigation, a product hierarchy, a substitute SysML graph, an admission
 or execution authority.
 
-## Proposed resolution contract
+## Resolution contract
 
-A closure request names the exact `projectId`, `workspaceRevision`, `attachmentId` and
-`attachmentRevision`. The server reopens the exact SysML and workspace bases, verifies
-the active attachment and target, resolves its stable `fileId` to the exact head at that
-workspace revision, walks only exact dependency edges and emits a deterministic
-topological closure containing:
+A closure request names the exact `projectId`, semantic `node`, `workspaceRevision`,
+`attachmentId` and `attachmentRevision`. The server reopens the exact SysML and
+workspace bases, verifies the active attachment and target, resolves its stable
+`fileId` to the exact head at that workspace revision, walks only exact dependency
+edges and emits a deterministic topological closure containing:
 
 - the exact roots;
 - every exact file revision and resource reference reached;
@@ -46,13 +47,21 @@ broken fingerprint or dependency outside the named workspace basis makes the clo
 `unavailable`; labels, paths, timestamps, matching digests and an implicit `latest` must
 not repair it.
 
-The public operation should return an opaque locator plus a bounded summary. The full
-closure may be retained in CAS for review and later reopened by exact reference. It
-grants no permission to compile, execute, seal or judge.
+`project_product_source_closure` returns that bounded closure directly: exact bases,
+files, directed edges and fingerprints. The opaque locator belongs instead to
+`project_technical_source_capture`, which persists the private closure for later
+admission recross. Neither operation grants permission to compile, execute, seal or
+judge.
 
 The response publishes the exact sealed SysON basis, selected semantic target, exact
 attachment, workspace revision and closure fingerprint. It accepts no `latest`, label,
 provider, runtime, parser or lowering-profile selection.
+
+MCS-02 exercised both sides of the boundary. The initial RailFrame r1 root reached a
+two-file closure and failed closed as `source.dependency-lowering-unavailable`; the
+Build123d profile did not silently drop its support file. RailFrame r2 explicitly
+removed that executable dependency, retained the stable attachment, and produced the
+singular closure later sealed by `compile.seal-admission@3`.
 
 A file tree may be displayed as a drill-down of this selected closure. It must not be an
 independent entry point for navigating the product or choosing product structure.

@@ -2,7 +2,8 @@
  * Provider-free preparation of an admitted SPICE execution review.
  *
  * Reopens one sealed compilation admission, joins it to the server-owned
- * SPICE closed-subset execution profile, and derives MRTR parameters.
+ * SPICE closed-subset execution profile, and derives MRTR parameters plus
+ * the registered work-item operation bound to the current review basis.
  * No source bytes, runtime capability, or dispatch authority are returned.
  */
 
@@ -14,6 +15,7 @@ import type {
 import {
   encodeSpiceAdmittedRunAdmissionParameters,
   parseSpiceAdmittedRunAdmissionParameters,
+  SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
   SPICE_ADMITTED_COMPILATION_PROFILE_ID,
   SPICE_ADMITTED_COMPILED_ADMISSION_SCHEMA,
   SPICE_ADMITTED_EXECUTION_PROFILE,
@@ -44,6 +46,7 @@ import {
   validateTechnicalCompilationDocument,
   validateTechnicalCompilationProfileCatalog,
 } from "../../../../../domain/compile/admission/technical-compilation.ts";
+import { assembleCompilationAdmissionRunOperation } from "../../../../../domain/compile/admission/compilation-admission-run-operation.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
@@ -172,7 +175,15 @@ export class PrepareProjectAdmittedSpiceRunReview
       if (deterministicJson(reencoded) !== deterministicJson(decisionParameters)) {
         throw new TypeError("Admitted SPICE MRTR replay is not canonical.");
       }
-      return deepFreeze({ admission: reparsed, decisionParameters: reencoded });
+      return deepFreeze({
+        admission: reparsed,
+        decisionParameters: reencoded,
+        operation: assembleCompilationAdmissionRunOperation({
+          operation: SIMULATE_RUN_ADMITTED_SPICE_OPERATION,
+          basis: command.basis,
+          artifactId: command.artifactId,
+        }),
+      });
     } catch {
       throw reviewError(
         "execution_profile_integrity_failed",

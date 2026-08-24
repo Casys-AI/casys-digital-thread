@@ -113,7 +113,7 @@ export function registerProjectTechnicalCompilationTools(
       const result = await review.execute(command);
       return {
         content:
-          `Build123d execution review for sealed admission ${command.artifactId} was prepared from exact server-reopened facts. The returned admission and decisionParameters are review material only: they contain no source bytes or runtime capability, no code was executed, and no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority was created.`,
+          `Build123d execution review for sealed admission ${command.artifactId} was prepared from exact server-reopened facts. Reuse the returned operation and its compilationAdmission binding verbatim on the later work item; do not reconstruct that thread-entity reference from a historical compile.seal-admission@3 creation snapshot. The returned admission, decisionParameters and operation are review material only: they contain no source bytes or runtime capability, no code was executed, and no EngineeringProject or Thread state, no MRTR decision, and no provider or dispatch authority was created.`,
         // The use case owns the complete admission identity and canonical MRTR
         // sequence. The MCP surface must not derive, filter, or repair either.
         structuredContent: result as unknown as Record<string, unknown>,
@@ -312,7 +312,7 @@ const projectAdmittedGeometryExportTool: MCPTool = {
 const projectBuild123dExecutionReviewTool: MCPTool = {
   name: "project_build123d_execution_review",
   description:
-    "Prepare the exact human-review identity and canonical MRTR parameters for one future qualified Build123d execution by reopening a sealed technical-compilation admission and joining it to the server-owned execution profile. This provider-free read performs no code execution, returns no source bytes or runtime capability, mutates no EngineeringProject or Thread state, and grants no MRTR, provider, or dispatch authority. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; runtime, isolation, output, profile, command, tool and transport facts remain server-owned.",
+    "Prepare the exact human-review identity, canonical MRTR parameters, and registered work-item operation for one future qualified Build123d execution by reopening a sealed technical-compilation admission and joining it to the server-owned execution profile. Reuse the returned operation verbatim: compilationAdmission is that selected admission artifact on the current review Thread basis, never a historical creation snapshot. This provider-free read performs no code execution, returns no source bytes or runtime capability, mutates no EngineeringProject or Thread state, and grants no MRTR, provider, or dispatch authority. The caller may name only the exact project, Thread basis, admission artifact id, and artifact fingerprint; runtime, isolation, output, profile, command, tool and transport facts remain server-owned.",
   inputSchema: {
     type: "object",
     properties: {

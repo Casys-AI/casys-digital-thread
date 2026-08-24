@@ -16,6 +16,7 @@ import {
   BUILD123D_EXECUTION_COMPILED_ADMISSION_SCHEMA,
   BUILD123D_EXECUTION_OUTPUT,
   BUILD123D_EXECUTION_PROFILE,
+  DESIGN_EXECUTE_BUILD123D_OPERATION,
   parseBuild123dExecutionAdmissionParameters,
 } from "../../../../domain/cad/isolated/build123d-execution-proposal.ts";
 import {
@@ -168,6 +169,53 @@ Deno.test("execution review reopens one sealed source and derives canonical prov
   assertEquals(recursiveKeys(result).has("sourceText"), false);
   assertEquals(recursiveKeys(result).has("bytes"), false);
 });
+
+Deno.test(
+  "execution review binds compilationAdmission to the current review basis, not the earlier creation snapshot",
+  async () => {
+    const fixture = await harness();
+    const result = await fixture.service.execute(fixture.command);
+    const binding = result.operation.bindings[0];
+
+    assertEquals(fixture.reopened.admission.basis.thread.snapshotId, "snapshot.7");
+    assertEquals(fixture.reopened.admission.basis.thread.revision, 7);
+    assertEquals(fixture.command.basis.snapshotId, "snapshot.8");
+    assertEquals(fixture.command.basis.revision, 8);
+    assertEquals(result.operation, {
+      id: DESIGN_EXECUTE_BUILD123D_OPERATION.id,
+      version: DESIGN_EXECUTE_BUILD123D_OPERATION.version,
+      bindings: [{
+        name: "compilationAdmission",
+        source: {
+          kind: "thread-entity",
+          reference: {
+            snapshotId: fixture.command.basis.snapshotId,
+            snapshotRevision: fixture.command.basis.revision,
+            kind: "artifact",
+            id: fixture.command.artifactId,
+          },
+        },
+      }],
+    });
+    assertEquals(binding.name, "compilationAdmission");
+    assertEquals(binding.source.kind, "thread-entity");
+    assertEquals(binding.source.reference.kind, "artifact");
+    assertEquals(
+      binding.source.reference.snapshotId ===
+        fixture.reopened.admission.basis.thread.snapshotId,
+      false,
+    );
+    assertEquals(
+      binding.source.reference.snapshotRevision ===
+        fixture.reopened.admission.basis.thread.revision,
+      false,
+    );
+    assertEquals(recursiveKeys(result).has("sourceText"), false);
+    assertEquals(recursiveKeys(result).has("bytes"), false);
+    assertDeeplyFrozen(result);
+    assertDeeplyFrozen(result.operation);
+  },
+);
 
 Deno.test("execution review is deterministic across exact reopens", async () => {
   const fixture = await harness();

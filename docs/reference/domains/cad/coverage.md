@@ -22,6 +22,11 @@ The detailed grammar and the authority of each path remain in
 | Admission          | No unresolved construct; unique server-derived `represents` artifact binding and `parameterizes` bindings; at least one finite named numeric literal must causally reach `result`.                                                                                                                                                                                                               |
 | Geometry authority | A system/bundle admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. A target admitted export can seal exactly one PartDefinition through `geometry-part-capture/1.0`; it makes no assembly, component, occurrence or placement claim. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
 
+Named runtime proof: MCS-02 captured an attachment-rooted RailFrame source, sealed its
+v3 admission at Thread r4, and published one canonical target STEP at r7 before the
+downstream FEA branch. See [MCS-02 CAD](../../../projects/motorized-camera-slider-mcs02/domains/cad.md).
+That proof covers one `PartDefinition`, not an assembly.
+
 ## Not covered
 
 These states must remain literal: they are not degraded success.

@@ -69,8 +69,11 @@ target and source are Modelica. A concurrent CAD admission is not a candidate.
 Zero Modelica candidates — including stale, archived, malformed, foreign-producer
 lookalikes, or CAD-only admissions — fail closed. Several Modelica candidates are
 ambiguous and also fail closed. The exact admission validator rereads the
-server-selected bytes and returns the fixed parameters for
-`simulate.run-admitted-modelica@1`.
+server-selected bytes and returns the fixed parameters and registered
+`simulate.run-admitted-modelica@1` operation. Reuse that `operation` verbatim on the
+later work item: `compilationAdmission` names the selected admission on the current
+review Thread basis. Do not copy a historical `compile.seal-admission@3` creation
+snapshot.
 
 Obtain human MRTR, queue, then execute `simulate.run-admitted-modelica@1`.
 

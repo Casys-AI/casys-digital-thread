@@ -2,7 +2,8 @@
  * Provider-free preparation of an admitted Modelica execution review.
  *
  * Reopens one sealed compilation admission, joins it to the server-owned
- * Modelica closed-subset execution profile, and derives MRTR parameters.
+ * Modelica closed-subset execution profile, and derives MRTR parameters plus
+ * the registered work-item operation bound to the current review basis.
  * No source bytes, runtime capability, or dispatch authority are returned.
  */
 
@@ -20,6 +21,7 @@ import {
   MODELICA_ADMITTED_RUN_ADMISSION_SCHEMA,
   type ModelicaAdmittedRunAdmission,
   parseModelicaAdmittedRunAdmissionParameters,
+  SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
 } from "../../../../domain/modelica/admitted/run-proposal.ts";
 import {
   isolatedCodeOutputManifestsEqual,
@@ -44,6 +46,7 @@ import {
   validateTechnicalCompilationDocument,
   validateTechnicalCompilationProfileCatalog,
 } from "../../../../domain/compile/admission/technical-compilation.ts";
+import { assembleCompilationAdmissionRunOperation } from "../../../../domain/compile/admission/compilation-admission-run-operation.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
@@ -172,7 +175,15 @@ export class PrepareProjectAdmittedModelicaRunReview
       if (deterministicJson(reencoded) !== deterministicJson(decisionParameters)) {
         throw new TypeError("Admitted Modelica MRTR replay is not canonical.");
       }
-      return deepFreeze({ admission: reparsed, decisionParameters: reencoded });
+      return deepFreeze({
+        admission: reparsed,
+        decisionParameters: reencoded,
+        operation: assembleCompilationAdmissionRunOperation({
+          operation: SIMULATE_RUN_ADMITTED_MODELICA_OPERATION,
+          basis: command.basis,
+          artifactId: command.artifactId,
+        }),
+      });
     } catch {
       throw reviewError(
         "execution_profile_integrity_failed",

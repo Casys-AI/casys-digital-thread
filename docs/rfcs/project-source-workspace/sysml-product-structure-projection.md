@@ -1,7 +1,8 @@
 # SysML product-structure projection
 
-Status: exact roots and read-side navigation implemented · versioned authoring
-attachments and real multi-piece proving run pending
+Status: exact roots, bounded read-side navigation and versioned authoring attachments
+are implemented and runtime-proven on MCS-02. Multi-piece CAD/module builds and
+hierarchical assembly evidence remain proposed.
 
 ## Sole authority
 
@@ -82,9 +83,9 @@ or evidence labels. Deleting it must leave no product state to recover.
 
 ## Semantic navigation and attachments
 
-Product and source navigation starts at an exact `System`, `PartUsage` or
-`PartDefinition` node in this projection. From that node, server joins expose exact
-attachments for:
+Product and source navigation starts at the semantic-root `PartDefinition` representing
+the system, any exact `PartDefinition`, or any exact `PartUsage` node in this
+projection. From that node, server joins expose exact attachments for:
 
 - workspace source roots and their revision bases;
 - canonical geometry evidence;
@@ -105,3 +106,8 @@ without flattening every descendant at the root.
 An occurrence path is a derived sequence of exact `PartUsage` identities used for
 navigation and occurrence-specific targeting. It is not a second mutable identity and
 must be recomputed when the exact SysON basis changes.
+
+MCS-02 proves navigation across eight separate SysML definitions and exact source
+attachments. Its only canonical geometry is the RailFrame part. That is not evidence
+that placements, a multi-piece CAD assembly or hierarchical geometry publication are
+implemented.
