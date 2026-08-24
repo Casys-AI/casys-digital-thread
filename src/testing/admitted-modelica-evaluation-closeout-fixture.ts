@@ -20,6 +20,7 @@ import {
 import {
   MODELICA_THERMAL_METHOD_SHEET_SEAL_ADMISSION_SCHEMA,
 } from "../domain/modelica/thermal-method-sheet-proposal.ts";
+import { requirementEvaluationIdentity } from "../domain/thread/requirement-evaluation-identity.ts";
 import {
   fingerprintModelicaThermalMethodSheet,
   MODELICA_THERMAL_METHOD_SHEET_SCHEMA,
@@ -341,7 +342,12 @@ export async function createAdmittedModelicaCloseoutEvidenceFixture(
     evaluationStatus === "fail";
   const observationId = "placeholder-output-observation";
   const primaryL4 = l4Artifacts[0];
-  const evaluationId = `${threadRequirementId}-evaluation`;
+  const evaluationId = primaryL4 === undefined
+    ? `${threadRequirementId}-evaluation-absent`
+    : requirementEvaluationIdentity({
+      requirementId: threadRequirementId,
+      evidenceFingerprint: primaryL4.fingerprint,
+    }).id;
   const violationId = "placeholder-requirement-violation";
   const artifacts = [brief, ...sourceArtifacts, ...l4Artifacts];
   const consumptions = l4Artifacts.flatMap((artifact) =>

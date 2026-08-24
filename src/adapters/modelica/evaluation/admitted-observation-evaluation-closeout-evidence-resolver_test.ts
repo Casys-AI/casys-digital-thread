@@ -10,6 +10,7 @@ import {
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
+import { requirementEvaluationIdentity } from "../../../domain/thread/requirement-evaluation-identity.ts";
 import {
   admittedModelicaEvaluationCloseoutAdmission,
   AdmittedModelicaEvaluationCloseoutResolutionError,
@@ -30,6 +31,13 @@ Deno.test(
     );
     assertEquals(resolved.captureArtifact.id, fixture.l4Artifact?.id);
     assertEquals(resolved.sheet.id, fixture.sheet.id);
+    assertEquals(
+      resolved.evaluations[0]?.id,
+      requirementEvaluationIdentity({
+        requirementId: fixture.snapshot.evaluations[0]!.requirementId,
+        evidenceFingerprint: fixture.l4Artifact!.fingerprint,
+      }).id,
+    );
     assertEquals(resolved.evaluations[0]?.status, "unresolved");
     assertEquals(resolved.evaluations[0]?.message.includes("unresolved"), true);
     assertEquals(
@@ -64,6 +72,59 @@ Deno.test(
     );
     assertEquals("syson" in fixture.dependencies, false);
     assertEquals("omc" in fixture.dependencies, false);
+  },
+);
+
+Deno.test(
+  "closeout resolver recrosses the capture-addressed L4 evaluation and refuses an unversioned id",
+  async () => {
+    const fixture = await createAdmittedModelicaCloseoutEvidenceFixture({
+      evaluationStatus: "pass",
+    });
+    const resolved = await resolveAdmittedModelicaEvaluationCloseoutEvidence(
+      fixture.dependencies,
+      {
+        project: fixture.project,
+        basis: fixture.basis,
+        snapshot: fixture.snapshot,
+      },
+    );
+    const requirementId = fixture.snapshot.evaluations[0]!.requirementId;
+    const expectedId = requirementEvaluationIdentity({
+      requirementId,
+      evidenceFingerprint: fixture.l4Artifact!.fingerprint,
+    }).id;
+    assertEquals(resolved.evaluations[0]?.id, expectedId);
+    assertEquals(resolved.evaluations[0]?.id.includes(requirementId), true);
+    assertEquals(
+      resolved.evaluations[0]?.id.endsWith(
+        fixture.l4Artifact!.fingerprint.digest,
+      ),
+      true,
+    );
+    assertEquals(
+      resolved.evaluations[0]?.id === `${requirementId}-evaluation`,
+      false,
+    );
+
+    const unversioned = structuredClone(fixture.snapshot) as ThreadSnapshot;
+    mutableRecord(unversioned.evaluations[0]!).id = `${requirementId}-evaluation`;
+    await rejectCloseout(
+      fixture,
+      unversioned,
+      "is not the exact capture outcome topology",
+    );
+
+    const foreign = structuredClone(fixture.snapshot) as ThreadSnapshot;
+    mutableRecord(foreign.evaluations[0]!).id = requirementEvaluationIdentity({
+      requirementId,
+      evidenceFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+    }).id;
+    await rejectCloseout(
+      fixture,
+      foreign,
+      "is not the exact capture outcome topology",
+    );
   },
 );
 
@@ -933,7 +994,10 @@ Deno.test(
     assertEquals(joined.snapshot.evaluations[0]?.requirementId, distinctId);
     assertEquals(
       joined.snapshot.evaluations[0]?.id,
-      `${distinctId}-evaluation`,
+      requirementEvaluationIdentity({
+        requirementId: distinctId,
+        evidenceFingerprint: joined.l4Artifact!.fingerprint,
+      }).id,
     );
     const captureResults = (joined.l4Capture as {
       readonly response: {

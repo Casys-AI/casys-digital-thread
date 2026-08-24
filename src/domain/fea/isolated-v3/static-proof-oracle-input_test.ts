@@ -99,8 +99,13 @@ Deno.test("static proof oracle evaluations keep pass/fail comparison and omit un
     context,
   );
   assertEquals(passFail[0]?.status, "pass");
+  assertEquals(passFail[0]?.requirementId, "thread-disp");
+  assertEquals(passFail[0]?.id, `thread-disp-evaluation-${VERDICT_FP}`);
+  assertEquals(passFail[0]?.id.includes(DISP.id), false);
   assertEquals(passFail[0]?.comparison !== undefined, true);
   assertEquals(passFail[1]?.status, "fail");
+  assertEquals(passFail[1]?.requirementId, "thread-stress");
+  assertEquals(passFail[1]?.id, `thread-stress-evaluation-${VERDICT_FP}`);
   assertEquals(passFail[1]?.comparison !== undefined, true);
 
   const closed = evaluationsFromStaticProofOracle(

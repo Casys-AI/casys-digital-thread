@@ -222,6 +222,7 @@ export class VerifyEvaluateAdmittedSpiceObservationsRunExecutor {
         capture: dispatch.capture,
         captureFingerprint,
         sheet: dispatch.sheet,
+        methodSheetFingerprint: dispatch.sheetFingerprint,
         evaluation: dispatch.evaluation,
         lineage: dispatch.lineage,
       });
@@ -311,6 +312,7 @@ export class VerifyEvaluateAdmittedSpiceObservationsRunExecutor {
     return {
       capture: validateSpiceAdmittedObservationEvaluationCapture(capture),
       sheet,
+      sheetFingerprint,
       evaluation,
       lineage,
       run,
@@ -353,6 +355,7 @@ export class VerifyEvaluateAdmittedSpiceObservationsRunExecutor {
       capture: dispatch.capture,
       captureFingerprint,
       sheet: dispatch.sheet,
+      methodSheetFingerprint: dispatch.sheetFingerprint,
       evaluation: dispatch.evaluation,
       lineage: dispatch.lineage,
     });

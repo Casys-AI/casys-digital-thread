@@ -16,6 +16,9 @@ import {
   type SpiceAdmittedObservationEvaluationCloseoutConsequence,
   validateSpiceAdmittedObservationEvaluationCloseoutAdmission,
 } from "../../../../domain/electrical/spice/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
+import {
+  spiceDocumentaryRequirementBindings,
+} from "../../../../domain/electrical/spice/evaluation/spice-documentary-requirement-binding.ts";
 import { VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION } from "../../../../domain/electrical/spice/evaluation/admitted-observation-evaluation-proposal.ts";
 import {
   type ElectricalObservationMethodSheet,
@@ -42,6 +45,7 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
 } from "../../../../domain/project/engineering-project.ts";
+import { requirementEvaluationIdentity } from "../../../../domain/thread/requirement-evaluation-identity.ts";
 import {
   archivedRefKeys,
   type RequirementEvaluation,
@@ -236,6 +240,7 @@ export async function resolveAdmittedSpiceEvaluationCloseoutEvidence(
     captureArtifact,
     capture,
     methodSheet.sheet,
+    methodSheet.fingerprint,
   );
   const basisFingerprint = await sha256Fingerprint(snapshot);
   return Object.freeze({
@@ -710,6 +715,7 @@ function exactEvaluations(
   captureArtifact: ThreadArtifact,
   capture: SpiceAdmittedObservationEvaluationCapture,
   sheet: ElectricalObservationMethodSheet,
+  methodSheetFingerprint: ContentFingerprint,
 ): AdmittedSpiceEvaluationCloseoutResolvedEvidence["evaluations"] {
   const byCriterion = new Map(
     capture.evaluations.map((item) => [item.criterionId, item]),
@@ -729,26 +735,32 @@ function exactEvaluations(
     evaluation.evidenceArtifactIds.length === 1 &&
     evaluation.evidenceArtifactIds[0] === captureArtifact.id
   );
-  const expectedIds = sheet.criteria.flatMap(requirementIdsForCriterion);
-  if (evidencing.length !== expectedIds.length) {
+  const bindings = sheet.criteria.flatMap((criterion) =>
+    spiceDocumentaryRequirementBindings({
+      criterion,
+      methodSheetFingerprint,
+    })
+  );
+  if (evidencing.length !== bindings.length) {
     throw integrity(
-      evidencing.length > expectedIds.length
+      evidencing.length > bindings.length
         ? "The Thread has extra L4 evaluations that are not in the exact capture outcomes."
         : "The Thread is missing L4 evaluations required by the exact capture outcomes.",
     );
   }
-  return expectedIds.map((requirementId) => {
-    const criterionId = criterionIdFromRequirement(requirementId);
-    const outcome = byCriterion.get(criterionId);
+  return bindings.map((binding) => {
+    const outcome = byCriterion.get(binding.criterionId);
     if (!outcome) {
       throw integrity(
-        `The L4 capture is missing the criterion evaluation for ${requirementId}.`,
+        `The L4 capture is missing the criterion evaluation for ${binding.requirementId}.`,
       );
     }
-    const evaluation = evidencing.find((item) => item.requirementId === requirementId);
+    const evaluation = evidencing.find((item) =>
+      item.requirementId === binding.requirementId
+    );
     if (!evaluation) {
       throw integrity(
-        `The Thread is missing the L4 evaluation for ${requirementId}.`,
+        `The Thread is missing the L4 evaluation for ${binding.requirementId}.`,
       );
     }
     recrossEvaluationTopology(
@@ -767,26 +779,9 @@ function exactEvaluations(
       ...(evaluation.comparison === undefined
         ? {}
         : { comparison: evaluation.comparison }),
-      criterionId,
+      criterionId: binding.criterionId,
     };
   });
-}
-
-function requirementIdsForCriterion(
-  criterion: ElectricalObservationMethodSheet["criteria"][number],
-): readonly string[] {
-  if (criterion.comparator === "between-inclusive") {
-    return [
-      `electrical-observation-${criterion.id}-min`,
-      `electrical-observation-${criterion.id}-max`,
-    ];
-  }
-  return [`electrical-observation-${criterion.id}`];
-}
-
-function criterionIdFromRequirement(requirementId: string): string {
-  const prefixed = requirementId.replace(/^electrical-observation-/, "");
-  return prefixed.replace(/-(min|max)$/, "");
 }
 
 function recrossEvaluationTopology(
@@ -796,7 +791,13 @@ function recrossEvaluationTopology(
   captureStatus: RequirementEvaluation["status"],
 ): void {
   const requirementId = evaluation.requirementId;
-  if (evaluation.id !== `${requirementId}-evaluation`) {
+  if (
+    evaluation.id !==
+      requirementEvaluationIdentity({
+        requirementId,
+        evidenceFingerprint: captureArtifact.fingerprint,
+      }).id
+  ) {
     throw integrity(
       `The L4 evaluation identity ${evaluation.id} is not the exact capture outcome topology.`,
     );

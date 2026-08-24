@@ -8,18 +8,24 @@ import type { ElectricalObservationMethodSheet } from "../../../../domain/electr
 import { spiceObservableSlug } from "../../../../domain/electrical/spice/admitted/documentary-thread-evidence.ts";
 import type { SpiceAdmittedObservationEvaluationResult } from "../../../../domain/electrical/spice/evaluation/admitted-observation-evaluation.ts";
 import { VERIFY_EVALUATE_ADMITTED_SPICE_OBSERVATIONS_OPERATION } from "../../../../domain/electrical/spice/evaluation/admitted-observation-evaluation-proposal.ts";
+import {
+  resolveSpiceDocumentaryRequirement,
+  spiceDocumentaryRequirementBindings,
+} from "../../../../domain/electrical/spice/evaluation/spice-documentary-requirement-binding.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
+import { requirementEvaluationIdentity } from "../../../../domain/thread/requirement-evaluation-identity.ts";
 import type { EngineeringAgentRun } from "../../../../domain/project/engineering-project.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
-import type {
-  RequirementEvaluation,
-  ThreadArtifact,
-  ThreadArtifactConsumption,
-  ThreadObservation,
-  ThreadProvenanceLink,
-  ThreadSnapshot,
-  ThreadViolation,
-  TracedRequirement,
+import {
+  archivedRefKeys,
+  type RequirementEvaluation,
+  type ThreadArtifact,
+  type ThreadArtifactConsumption,
+  type ThreadObservation,
+  type ThreadProvenanceLink,
+  type ThreadSnapshot,
+  type ThreadViolation,
+  type TracedRequirement,
 } from "../../../../domain/thread/thread-snapshot.ts";
 import {
   applyThreadSnapshotExtensionIfNew,
@@ -42,6 +48,7 @@ export function buildAdmittedSpiceObservationEvaluationSuccessor(input: {
   readonly capture: SpiceAdmittedObservationEvaluationCapture;
   readonly captureFingerprint: ContentFingerprint;
   readonly sheet: ElectricalObservationMethodSheet;
+  readonly methodSheetFingerprint: ContentFingerprint;
   readonly evaluation: SpiceAdmittedObservationEvaluationResult;
   readonly lineage: AdmittedSpiceEvaluationLineage;
 }): { readonly snapshot: ThreadSnapshot; readonly artifact: ThreadArtifact } {
@@ -89,10 +96,14 @@ export function buildAdmittedSpiceObservationEvaluationSuccessor(input: {
       status: "verified",
     }),
   );
-  const requirements: TracedRequirement[] = [];
+  const publishedRequirements: TracedRequirement[] = [];
   const observations: ThreadObservation[] = [];
   const evaluations: RequirementEvaluation[] = [];
   const violations: ThreadViolation[] = [];
+  const archivedRequirementIds = archivedSpiceDocumentaryRequirementIds(
+    input.basisSnapshot,
+  );
+  const methodSheetFingerprint = input.methodSheetFingerprint;
   for (const criterion of input.sheet.criteria) {
     const evaluated = input.evaluation.evaluations.find((item) =>
       item.criterionId === criterion.id
@@ -114,43 +125,54 @@ export function buildAdmittedSpiceObservationEvaluationSuccessor(input: {
         freshness,
       });
     }
-    const bounds = threadBounds(criterion);
-    for (const bound of bounds) {
-      const requirementId = bound.requirementId;
-      requirements.push({
-        id: requirementId,
-        name: `Electrical observation ${bound.name}`,
+    const bindings = spiceDocumentaryRequirementBindings({
+      criterion,
+      methodSheetFingerprint,
+    });
+    for (const binding of bindings) {
+      const proposed: TracedRequirement = {
+        id: binding.requirementId,
+        name: `Electrical observation ${binding.name}`,
         statement:
           `Reviewed brief gate ${criterion.briefItem.id} evaluated by the sealed electrical observation method sheet.`,
-        version: input.captureFingerprint.digest,
+        version: methodSheetFingerprint.digest,
         criterion: {
-          metric: criterion.id,
-          operator: bound.operator,
-          limit: bound.limit,
+          metric: binding.criterionId,
+          operator: binding.operator,
+          limit: binding.limit,
         },
         trace: {
           sourceArtifactId: input.lineage.methodSheet.id,
           elementId: criterion.briefItem.id,
-          targetArtifactIds: [artifact.id],
+          targetArtifactIds: [input.lineage.methodSheet.id],
         },
         freshness,
+      };
+      const resolved = resolveSpiceDocumentaryRequirement({
+        basisRequirements: input.basisSnapshot.requirements,
+        archivedRequirementIds,
+        proposed,
       });
-      const boundStatus = boundEvaluationStatus(evaluated, bound);
+      if (!resolved.reused) publishedRequirements.push(resolved.requirement);
+      const boundStatus = boundEvaluationStatus(evaluated, binding);
       const comparison = evaluated.actual && observationId &&
           (boundStatus === "pass" || boundStatus === "fail")
         ? {
           observationId,
           actual: evaluated.actual,
-          operator: bound.operator,
-          limit: bound.limit,
-          normalizedUnit: bound.limit.unit,
+          operator: binding.operator,
+          limit: binding.limit,
+          normalizedUnit: binding.limit.unit,
         }
         : undefined;
-      const evaluationId = `${requirementId}-evaluation`;
+      const evaluationId = requirementEvaluationIdentity({
+        requirementId: resolved.requirement.id,
+        evidenceFingerprint: input.captureFingerprint,
+      }).id;
       evaluations.push({
         id: evaluationId,
-        name: `Evaluate ${bound.name}`,
-        requirementId,
+        name: `Evaluate ${binding.name}`,
+        requirementId: resolved.requirement.id,
         observationIds: observationId ? [observationId] : [],
         status: boundStatus,
         evaluatedAt: sealedAt,
@@ -163,8 +185,8 @@ export function buildAdmittedSpiceObservationEvaluationSuccessor(input: {
       if (boundStatus === "fail") {
         violations.push({
           id: `${evaluationId}-violation`,
-          name: `${bound.name} violation`,
-          requirementId,
+          name: `${binding.name} violation`,
+          requirementId: resolved.requirement.id,
           evaluationId,
           severity: "error",
           status: "open",
@@ -193,13 +215,13 @@ export function buildAdmittedSpiceObservationEvaluationSuccessor(input: {
       to: { kind: "artifact" as const, id: entry.artifactId },
       rationale: "Exact bytes were reread and fingerprint-attested.",
     })),
-    ...requirements.map((requirement) => ({
-      id: `traces-${requirement.id}-to-${artifact.id}`,
+    ...publishedRequirements.map((requirement) => ({
+      id: `traces-${requirement.id}-to-${input.lineage.methodSheet.id}`,
       relation: "traces_to" as const,
       from: { kind: "requirement" as const, id: requirement.id },
-      to: { kind: "artifact" as const, id: artifact.id },
+      to: { kind: "artifact" as const, id: input.lineage.methodSheet.id },
       rationale:
-        "The documentary electrical requirement traces to the exact closed-method evaluation capture.",
+        "The documentary electrical requirement is defined by the sealed observation method sheet.",
     })),
     ...observations.flatMap((observation) =>
       observation.source.artifactIds.map((sourceArtifactId) => ({
@@ -284,7 +306,7 @@ export function buildAdmittedSpiceObservationEvaluationSuccessor(input: {
     artifacts: [artifact],
     consumptions,
     observations,
-    requirements,
+    requirements: publishedRequirements,
     evaluations,
     violations,
     provenance,
@@ -306,6 +328,18 @@ export function buildAdmittedSpiceObservationEvaluationSuccessor(input: {
   };
 }
 
+function archivedSpiceDocumentaryRequirementIds(
+  snapshot: ThreadSnapshot,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const key of archivedRefKeys(snapshot)) {
+    if (key.startsWith("requirement:")) {
+      ids.add(key.slice("requirement:".length));
+    }
+  }
+  return ids;
+}
+
 function boundEvaluationStatus(
   evaluated: SpiceAdmittedObservationEvaluationResult["evaluations"][number],
   bound: {
@@ -321,36 +355,4 @@ function boundEvaluationStatus(
     ? evaluated.actual.value <= bound.limit.value
     : evaluated.actual.value >= bound.limit.value;
   return pass ? "pass" : "fail";
-}
-
-function threadBounds(
-  criterion: ElectricalObservationMethodSheet["criteria"][number],
-): readonly {
-  readonly requirementId: string;
-  readonly name: string;
-  readonly operator: "<=" | ">=";
-  readonly limit: { readonly value: number; readonly unit: string };
-}[] {
-  if (criterion.comparator === "between-inclusive") {
-    return [
-      {
-        requirementId: `electrical-observation-${criterion.id}-min`,
-        name: `${criterion.id} minimum`,
-        operator: ">=",
-        limit: criterion.bounds!.min,
-      },
-      {
-        requirementId: `electrical-observation-${criterion.id}-max`,
-        name: `${criterion.id} maximum`,
-        operator: "<=",
-        limit: criterion.bounds!.max,
-      },
-    ];
-  }
-  return [{
-    requirementId: `electrical-observation-${criterion.id}`,
-    name: criterion.id,
-    operator: criterion.comparator,
-    limit: criterion.threshold!,
-  }];
 }

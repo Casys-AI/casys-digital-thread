@@ -25,6 +25,7 @@ import {
 } from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
+import { requirementEvaluationIdentity } from "../../../domain/thread/requirement-evaluation-identity.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
@@ -404,7 +405,10 @@ function buildSuccessor(input: {
         `SysON returned no outcome for requirement "${pair.requirement.id}".`,
       );
     }
-    const id = `${pair.requirement.id}-evaluation-${input.fingerprint.digest}`;
+    const id = requirementEvaluationIdentity({
+      requirementId: pair.requirement.id,
+      evidenceFingerprint: input.fingerprint,
+    }).id;
     const base: RequirementEvaluation = {
       id,
       name: `${pair.requirement.name} study-base evaluation`,

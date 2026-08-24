@@ -43,6 +43,7 @@ import type {
   EngineeringProjectCommandReceipt,
   EngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project.ts";
+import { requirementEvaluationIdentity } from "../../../domain/thread/requirement-evaluation-identity.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { validThermalMethodSheetPlaceholder } from "../../../testing/modelica-thermal-method-sheet-fixtures.ts";
@@ -1458,8 +1459,18 @@ function assertSplitRequirementIdentities(
     assertEquals(constraints?.[0]?.id, SYSML_REQUIREMENT_ELEMENT_ID);
   }
   const evaluation = snapshot?.evaluations[0];
+  const captureArtifact = snapshot?.artifacts.find((item) =>
+    item.producer.tool ===
+      `${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.id}@${VERIFY_EVALUATE_ADMITTED_MODELICA_OBSERVATIONS_OPERATION.version}`
+  );
   assertEquals(evaluation?.requirementId, THREAD_REQUIREMENT_ID);
-  assertEquals(evaluation?.id, `${THREAD_REQUIREMENT_ID}-evaluation`);
+  assertEquals(
+    evaluation?.id,
+    requirementEvaluationIdentity({
+      requirementId: THREAD_REQUIREMENT_ID,
+      evidenceFingerprint: captureArtifact!.fingerprint,
+    }).id,
+  );
   assertEquals(
     snapshot?.provenance.some((link) =>
       link.relation === "evaluates" &&

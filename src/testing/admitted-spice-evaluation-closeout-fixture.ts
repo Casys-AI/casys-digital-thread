@@ -23,7 +23,11 @@ import {
   fingerprintElectricalObservationMethodSheet,
   validateElectricalObservationMethodSheet,
 } from "../domain/electrical/observation-method-sheet.ts";
-import { SPICE_ADMITTED_OBSERVATION_EVALUATION_LIMITATIONS } from "../domain/electrical/spice/evaluation/admitted-observation-evaluation.ts";
+import {
+  SPICE_ADMITTED_OBSERVATION_EVALUATION_LIMITATIONS,
+} from "../domain/electrical/spice/evaluation/admitted-observation-evaluation.ts";
+import { spiceDocumentaryRequirementBindings } from "../domain/electrical/spice/evaluation/spice-documentary-requirement-binding.ts";
+import { requirementEvaluationIdentity } from "../domain/thread/requirement-evaluation-identity.ts";
 import { spiceObservableSlug } from "../domain/electrical/spice/admitted/documentary-thread-evidence.ts";
 import {
   deterministicJson,
@@ -310,8 +314,16 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
     spiceObservableSlug(criterion.id)
   }-${producerRunId}`;
   const primaryL4 = l4Artifacts[0];
-  const requirementId = `electrical-observation-${criterion.id}`;
-  const evaluationId = `${requirementId}-evaluation`;
+  const requirementId = spiceDocumentaryRequirementBindings({
+    criterion,
+    methodSheetFingerprint: sheetFingerprint,
+  })[0]!.requirementId;
+  const evaluationId = primaryL4 === undefined
+    ? `${requirementId}-evaluation-absent`
+    : requirementEvaluationIdentity({
+      requirementId,
+      evidenceFingerprint: primaryL4.fingerprint,
+    }).id;
   const artifacts = [brief, ...sourceArtifacts, ...l4Artifacts];
   const consumptions = l4Artifacts.flatMap((artifact) =>
     sourceArtifacts.map((source) => ({
@@ -401,6 +413,20 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
       to: { kind: "artifact" as const, id: brief.id },
       rationale: "The placeholder requirement constrains the brief artifact.",
     },
+    ...(sheetSeal
+      ? [{
+        id: `trace-${requirementId}-to-${sheetSeal.fingerprint.digest}`,
+        relation: "traces_to" as const,
+        from: { kind: "requirement" as const, id: requirementId },
+        to: {
+          kind: "artifact" as const,
+          id:
+            `electrical-observation-method-sheet-seal-${sheetSeal.fingerprint.digest}`,
+        },
+        rationale:
+          "The documentary electrical requirement is defined by the sealed observation method sheet.",
+      }]
+      : []),
     ...(primaryL4
       ? [{
         id: `trace-${requirementId}-to-${primaryL4.id}`,
@@ -578,34 +604,55 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
       name: `Electrical observation ${criterion.id}`,
       statement:
         `Reviewed brief gate ${criterion.briefItem.id} evaluated by the sealed electrical observation method sheet.`,
-      version: "1",
+      version: sheetFingerprint.digest,
       criterion: {
         metric: criterion.id,
         operator: "<=",
         limit: { value: 3, unit: "V" },
       },
       trace: {
-        sourceArtifactId: brief.id,
+        sourceArtifactId: sheetSeal
+          ? `electrical-observation-method-sheet-seal-${sheetSeal.fingerprint.digest}`
+          : brief.id,
         elementId: criterion.briefItem.id,
-        targetArtifactIds: [brief.id],
+        targetArtifactIds: sheetSeal
+          ? [`electrical-observation-method-sheet-seal-${sheetSeal.fingerprint.digest}`]
+          : [brief.id],
       },
       freshness: fresh(SPICE_CLOSEOUT_REVIEW_AT),
     }],
     evaluations: [],
     violations: [],
-    provenance: [{
-      id: "provenance.change.brief",
-      relation: "changes" as const,
-      from: { kind: "change" as const, id: "change.brief" },
-      to: { kind: "artifact" as const, id: brief.id },
-      rationale: "The applied change introduced the brief document.",
-    }, {
-      id: "trace-requirement-to-brief",
-      relation: "traces_to" as const,
-      from: { kind: "requirement" as const, id: requirementId },
-      to: { kind: "artifact" as const, id: brief.id },
-      rationale: "The placeholder requirement constrains the brief artifact.",
-    }],
+    provenance: [
+      {
+        id: "provenance.change.brief",
+        relation: "changes" as const,
+        from: { kind: "change" as const, id: "change.brief" },
+        to: { kind: "artifact" as const, id: brief.id },
+        rationale: "The applied change introduced the brief document.",
+      },
+      {
+        id: "trace-requirement-to-brief",
+        relation: "traces_to" as const,
+        from: { kind: "requirement" as const, id: requirementId },
+        to: { kind: "artifact" as const, id: brief.id },
+        rationale: "The placeholder requirement constrains the brief artifact.",
+      },
+      ...(sheetSeal
+        ? [{
+          id: `trace-${requirementId}-to-sheet`,
+          relation: "traces_to" as const,
+          from: { kind: "requirement" as const, id: requirementId },
+          to: {
+            kind: "artifact" as const,
+            id:
+              `electrical-observation-method-sheet-seal-${sheetSeal.fingerprint.digest}`,
+          },
+          rationale:
+            "The documentary electrical requirement is defined by the sealed observation method sheet.",
+        }]
+        : []),
+    ],
     proposedActions: [],
   });
   const snapshot = validateThreadSnapshot({
@@ -668,7 +715,7 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
       name: `Electrical observation ${criterion.id}`,
       statement:
         `Reviewed brief gate ${criterion.briefItem.id} evaluated by the sealed electrical observation method sheet.`,
-      version: storedFingerprint.digest,
+      version: sheetFingerprint.digest,
       criterion: {
         metric: criterion.id,
         operator: "<=",
@@ -679,7 +726,9 @@ export async function createAdmittedSpiceCloseoutEvidenceFixture(
           ? `electrical-observation-method-sheet-seal-${sheetSeal.fingerprint.digest}`
           : brief.id,
         elementId: criterion.briefItem.id,
-        targetArtifactIds: primaryL4 ? [primaryL4.id] : [brief.id],
+        targetArtifactIds: sheetSeal
+          ? [`electrical-observation-method-sheet-seal-${sheetSeal.fingerprint.digest}`]
+          : [brief.id],
       },
       freshness: fresh(SPICE_CLOSEOUT_REVIEW_AT),
     }],
@@ -1035,6 +1084,11 @@ async function persistMethodSheetSeal(
   ) {
     throw new TypeError(
       "Seal capture signed sheet identity is not the stored sheet fingerprint.",
+    );
+  }
+  if (fingerprintsEqual(fingerprint, sheetFingerprint)) {
+    throw new TypeError(
+      "Seal-capture artifact fingerprint must not equal the method-sheet content fingerprint.",
     );
   }
   await captures.save(fingerprint, text);

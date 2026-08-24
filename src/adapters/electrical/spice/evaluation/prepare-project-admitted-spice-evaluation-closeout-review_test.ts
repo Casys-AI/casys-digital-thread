@@ -1,14 +1,20 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import {
   createAdmittedSpiceCloseoutEvidenceFixture,
   SPICE_CLOSEOUT_REVIEW_PROJECT_ID,
 } from "../../../../testing/admitted-spice-evaluation-closeout-fixture.ts";
-import { deterministicJson } from "../../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  fingerprintsEqual,
+} from "../../../../domain/kernel/deterministic-json.ts";
+import { spiceDocumentaryRequirementBindings } from "../../../../domain/electrical/spice/evaluation/spice-documentary-requirement-binding.ts";
+import { requirementEvaluationIdentity } from "../../../../domain/thread/requirement-evaluation-identity.ts";
 import { encodeSpiceAdmittedObservationEvaluationCloseoutAdmission } from "../../../../domain/electrical/spice/evaluation/admitted-observation-evaluation-closeout-proposal.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import { PrepareProjectAdmittedSpiceEvaluationCloseoutReview } from "./prepare-project-admitted-spice-evaluation-closeout-review.ts";
 import {
   admittedSpiceEvaluationCloseoutAdmission,
+  AdmittedSpiceEvaluationCloseoutResolutionError,
   resolveAdmittedSpiceEvaluationCloseoutEvidence,
 } from "./admitted-spice-observation-evaluation-closeout-evidence-resolver.ts";
 
@@ -264,6 +270,92 @@ Deno.test(
     );
     assertEquals(resolved.l3Run.id, "run.admitted-spice");
     assertEquals(resolved.result.id, fixture.sheet.spice.result.id);
+    const sealFingerprint = fixture.sheetSeal?.fingerprint;
+    if (!sealFingerprint) {
+      throw new Error("Expected a sealed method-sheet capture artifact.");
+    }
+    assertEquals(
+      fingerprintsEqual(fixture.sheetFingerprint, sealFingerprint),
+      false,
+    );
+    const contentRequirementId = spiceDocumentaryRequirementBindings({
+      criterion: fixture.sheet.criteria[0]!,
+      methodSheetFingerprint: fixture.sheetFingerprint,
+    })[0]!.requirementId;
+    const sealRequirementId = spiceDocumentaryRequirementBindings({
+      criterion: fixture.sheet.criteria[0]!,
+      methodSheetFingerprint: sealFingerprint,
+    })[0]!.requirementId;
+    assertEquals(contentRequirementId === sealRequirementId, false);
+    assertEquals(fixture.snapshot.requirements[0]?.id, contentRequirementId);
+    assertEquals(resolved.evaluations[0]?.requirementId, contentRequirementId);
+    assertEquals(
+      fixture.snapshot.requirements[0]?.version,
+      fixture.sheetFingerprint.digest,
+    );
+  },
+);
+
+Deno.test(
+  "closeout resolver recrosses the capture-addressed L4 evaluation and refuses an unversioned id",
+  async () => {
+    const fixture = await createAdmittedSpiceCloseoutEvidenceFixture({
+      evaluationStatus: "pass",
+    });
+    const resolved = await resolveAdmittedSpiceEvaluationCloseoutEvidence(
+      fixture.dependencies,
+      {
+        project: fixture.project,
+        basis: fixture.basis,
+        snapshot: fixture.snapshot,
+      },
+    );
+    const requirementId = fixture.snapshot.evaluations[0]!.requirementId;
+    const expectedId = requirementEvaluationIdentity({
+      requirementId,
+      evidenceFingerprint: fixture.l4Artifact!.fingerprint,
+    }).id;
+    assertEquals(resolved.evaluations[0]?.id, expectedId);
+    assertEquals(resolved.evaluations[0]?.id.includes(requirementId), true);
+    assertEquals(
+      resolved.evaluations[0]?.id.endsWith(
+        fixture.l4Artifact!.fingerprint.digest,
+      ),
+      true,
+    );
+    assertEquals(
+      resolved.evaluations[0]?.id === `${requirementId}-evaluation`,
+      false,
+    );
+
+    const unversioned = structuredClone(fixture.snapshot) as ThreadSnapshot;
+    (unversioned.evaluations[0] as { id: string }).id = `${requirementId}-evaluation`;
+    await assertRejects(
+      () =>
+        resolveAdmittedSpiceEvaluationCloseoutEvidence(fixture.dependencies, {
+          project: fixture.project,
+          basis: fixture.basis,
+          snapshot: unversioned,
+        }),
+      AdmittedSpiceEvaluationCloseoutResolutionError,
+      "is not the exact capture outcome topology",
+    );
+
+    const foreign = structuredClone(fixture.snapshot) as ThreadSnapshot;
+    (foreign.evaluations[0] as { id: string }).id = requirementEvaluationIdentity({
+      requirementId,
+      evidenceFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+    }).id;
+    await assertRejects(
+      () =>
+        resolveAdmittedSpiceEvaluationCloseoutEvidence(fixture.dependencies, {
+          project: fixture.project,
+          basis: fixture.basis,
+          snapshot: foreign,
+        }),
+      AdmittedSpiceEvaluationCloseoutResolutionError,
+      "is not the exact capture outcome topology",
+    );
   },
 );
 

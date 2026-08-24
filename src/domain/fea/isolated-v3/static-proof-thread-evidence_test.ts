@@ -403,7 +403,7 @@ Deno.test("static proof fail successor publishes closed caused_by, evidences and
   const validated = validateThreadSnapshot(snapshot);
   assertEquals(validated.violations.length, 1);
   const violation = validated.violations[0]!;
-  const evaluationId = `${disp!.id}-evaluation-${"e".repeat(64)}`;
+  const evaluationId = `thread-${disp!.id}-evaluation-${"e".repeat(64)}`;
   const evidenceId = `calculix-isolated-evidence-${"d".repeat(64)}`;
   const captureId = `calculix-isolated-syson-evaluation-${"e".repeat(64)}`;
   const actionId = `${violation.id}-review`;

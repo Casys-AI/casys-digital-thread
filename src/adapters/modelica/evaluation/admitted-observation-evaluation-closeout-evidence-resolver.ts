@@ -37,6 +37,7 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
 } from "../../../domain/project/engineering-project.ts";
+import { requirementEvaluationIdentity } from "../../../domain/thread/requirement-evaluation-identity.ts";
 import {
   archivedRefKeys,
   type RequirementEvaluation,
@@ -767,7 +768,13 @@ function recrossEvaluationTopology(
   oracleResult: ParsedOracleResult,
 ): void {
   const requirementId = evaluation.requirementId;
-  if (evaluation.id !== `${requirementId}-evaluation`) {
+  if (
+    evaluation.id !==
+      requirementEvaluationIdentity({
+        requirementId,
+        evidenceFingerprint: captureArtifact.fingerprint,
+      }).id
+  ) {
     throw integrity(
       `The L4 evaluation identity ${evaluation.id} is not the exact capture outcome topology.`,
     );

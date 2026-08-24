@@ -12,6 +12,7 @@ import {
   type OracleRequirement,
 } from "../../kernel/proof-case.ts";
 import type { MechanicalRequirement } from "../seal-case/mechanical-proof-case.ts";
+import { requirementEvaluationIdentity } from "../../thread/requirement-evaluation-identity.ts";
 import type {
   RequirementEvaluation,
   RequirementEvaluationStatus,
@@ -19,10 +20,12 @@ import type {
   ThreadOperationRef,
 } from "../../thread/thread-snapshot.ts";
 
-export const STATIC_PROOF_METRIC_UNITS = Object.freeze({
-  "maximum-displacement": "mm",
-  "maximum-von-mises-stress": "MPa",
-} as const);
+export const STATIC_PROOF_METRIC_UNITS = Object.freeze(
+  {
+    "maximum-displacement": "mm",
+    "maximum-von-mises-stress": "MPa",
+  } as const,
+);
 
 export type StaticProofMetric = keyof typeof STATIC_PROOF_METRIC_UNITS;
 
@@ -59,10 +62,12 @@ export interface StaticProofEvaluationContext {
   readonly evaluator: ThreadOperationRef;
 }
 
-const RESULT_FIELD = Object.freeze({
-  "maximum-displacement": "maximumDisplacement",
-  "maximum-von-mises-stress": "maximumVonMises",
-} as const satisfies Record<StaticProofMetric, keyof StaticProofSolverMetrics>);
+const RESULT_FIELD = Object.freeze(
+  {
+    "maximum-displacement": "maximumDisplacement",
+    "maximum-von-mises-stress": "maximumVonMises",
+  } as const satisfies Record<StaticProofMetric, keyof StaticProofSolverMetrics>,
+);
 
 export function projectStaticProofRequirement(
   requirement: MechanicalRequirement,
@@ -80,8 +85,7 @@ export function buildStaticProofOracleValues(
   metrics: StaticProofSolverMetrics,
   requirements: readonly MechanicalRequirement[],
 ): StaticProofOracleValues {
-  const values: Record<string, { readonly value: number; readonly unit: string }> =
-    {};
+  const values: Record<string, { readonly value: number; readonly unit: string }> = {};
   for (const requirement of requirements) {
     const unit = STATIC_PROOF_METRIC_UNITS[requirement.metric as StaticProofMetric];
     const field = RESULT_FIELD[requirement.metric as StaticProofMetric];
@@ -126,13 +130,6 @@ export function evaluationsFromStaticProofOracle(
     evaluator,
   } = context;
 
-  if (!/^[a-f0-9]{64}$/.test(verdictCaptureFp)) {
-    throw new Error(
-      "fea-oracle-adapter: verdictCaptureFp must be a 64-character lowercase hex digest." +
-        ` Got "${verdictCaptureFp.slice(0, 12)}…" (length ${verdictCaptureFp.length}).`,
-    );
-  }
-
   const freshness: ThreadFreshness = {
     status: "fresh",
     changedAt: evaluatedAt,
@@ -140,7 +137,6 @@ export function evaluationsFromStaticProofOracle(
   };
 
   return requirements.map((requirement, index) => {
-    const id = `${requirement.id}-evaluation-${verdictCaptureFp}`;
     const observationId = observationIds[index];
     if (observationId === undefined) {
       throw new Error(
@@ -162,6 +158,10 @@ export function evaluationsFromStaticProofOracle(
           ` requirement id "${requirement.id}".`,
       );
     }
+    const id = requirementEvaluationIdentity({
+      requirementId: threadRequirementId,
+      evidenceFingerprint: { algorithm: "sha256", digest: verdictCaptureFp },
+    }).id;
 
     const status = oracleResult.status as RequirementEvaluationStatus;
     const base: RequirementEvaluation = {

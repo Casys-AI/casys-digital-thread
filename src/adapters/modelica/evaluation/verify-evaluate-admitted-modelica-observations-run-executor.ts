@@ -59,6 +59,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
 } from "../../../domain/project/engineering-project.ts";
+import { requirementEvaluationIdentity } from "../../../domain/thread/requirement-evaluation-identity.ts";
 import type {
   ProposedThreadAction,
   RequirementEvaluation,
@@ -457,6 +458,7 @@ export class VerifyEvaluateAdmittedModelicaObservationsRunExecutor {
       lineage,
       method.selections,
       captureArtifactId,
+      captureFingerprint,
       evaluationOperationRef(run.id),
     );
     const freshness = {
@@ -777,6 +779,7 @@ function evaluationsFromCapture(
   lineage: AdmittedEvaluationLineage,
   selections: readonly AdmittedObservationSelection[],
   captureArtifactId: string,
+  captureFingerprint: ContentFingerprint,
   operation: ThreadOperationRef,
 ): {
   readonly evaluations: readonly RequirementEvaluation[];
@@ -821,6 +824,7 @@ function evaluationsFromCapture(
         oracleResult: outcome,
         observation,
         captureArtifactId,
+        captureFingerprint,
         evaluator,
         sealedAt,
         freshness,
@@ -829,7 +833,7 @@ function evaluationsFromCapture(
     }
     const status = outcome?.status ?? "unresolved";
     fromOracle.push({
-      ...threadRequirementEvaluation(pair),
+      ...threadRequirementEvaluation(pair, captureFingerprint),
       observationIds: observationIdsFor(pair.selection, lineage),
       status,
       evaluatedAt: sealedAt,
@@ -844,7 +848,7 @@ function evaluationsFromCapture(
   const fromPolicy = capture.unresolved.map((item) => {
     const pair = uniquePairForSelection(pairs, item.requirementElementId);
     return {
-      ...threadRequirementEvaluation(pair),
+      ...threadRequirementEvaluation(pair, captureFingerprint),
       observationIds: observationIdsFor(
         selections.find((selection) =>
           selection.requirementElementId === item.requirementElementId
@@ -896,12 +900,13 @@ function requirementEvaluationFromOracle(input: {
   readonly oracleResult: Extract<ParsedOracleResult, { status: "pass" | "fail" }>;
   readonly observation: ThreadObservation;
   readonly captureArtifactId: string;
+  readonly captureFingerprint: ContentFingerprint;
   readonly evaluator: ThreadOperationRef;
   readonly sealedAt: string;
   readonly freshness: RequirementEvaluation["freshness"];
 }): RequirementEvaluation {
   return {
-    ...threadRequirementEvaluation(input.pair),
+    ...threadRequirementEvaluation(input.pair, input.captureFingerprint),
     observationIds: [input.observation.id],
     status: input.oracleResult.status,
     evaluatedAt: input.sealedAt,
@@ -948,13 +953,19 @@ function uniquePairForSelection(
   return matches[0]!;
 }
 
-function threadRequirementEvaluation(pair: AdmittedObservationOraclePair): {
+function threadRequirementEvaluation(
+  pair: AdmittedObservationOraclePair,
+  captureFingerprint: ContentFingerprint,
+): {
   readonly id: string;
   readonly name: string;
   readonly requirementId: string;
 } {
   return {
-    id: `${pair.threadRequirementId}-evaluation`,
+    id: requirementEvaluationIdentity({
+      requirementId: pair.threadRequirementId,
+      evidenceFingerprint: captureFingerprint,
+    }).id,
     name: `${pair.requirement.name} evaluation`,
     requirementId: pair.threadRequirementId,
   };

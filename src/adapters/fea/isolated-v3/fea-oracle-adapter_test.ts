@@ -360,8 +360,14 @@ Deno.test(
     );
     const disp = evals[0]!;
     const stress = evals[1]!;
-    assertEquals(disp.id, `${DISP_REQ.id}-evaluation-${VERDICT_FP}`);
-    assertEquals(stress.id, `${STRESS_REQ.id}-evaluation-${VERDICT_FP}`);
+    assertEquals(
+      disp.id,
+      `${THREAD_REQUIREMENT_IDS.get(DISP_REQ.id)}-evaluation-${VERDICT_FP}`,
+    );
+    assertEquals(
+      stress.id,
+      `${THREAD_REQUIREMENT_IDS.get(STRESS_REQ.id)}-evaluation-${VERDICT_FP}`,
+    );
     // Full 64-hex suffix present — fingerprint is never truncated.
     assertEquals(disp.id.endsWith(VERDICT_FP), true);
     assertEquals(disp.id.split("-evaluation-")[1]?.length, 64);
@@ -381,8 +387,8 @@ Deno.test(
     ]);
     assertThrows(
       () => feaEvaluationsFromOracle(outcomes, [DISP_REQ, STRESS_REQ], badContext),
-      Error,
-      "64-character",
+      TypeError,
+      "sha256 64-lowercase-hex",
     );
   },
 );
@@ -400,8 +406,8 @@ Deno.test(
     ]);
     assertThrows(
       () => feaEvaluationsFromOracle(outcomes, [DISP_REQ, STRESS_REQ], badContext),
-      Error,
-      "64-character",
+      TypeError,
+      "sha256 64-lowercase-hex",
     );
   },
 );
@@ -489,6 +495,11 @@ Deno.test(
       displacement.requirementId,
       "requirement-abc123-drip_tray_max_displacement",
     );
+    assertEquals(
+      displacement.id,
+      "requirement-abc123-drip_tray_max_displacement-evaluation-" + VERDICT_FP,
+    );
+    assertEquals(displacement.id.includes(DISP_REQ.id), false);
   },
 );
 

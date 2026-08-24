@@ -293,8 +293,10 @@ export interface FeaEvaluationContext {
 /**
  * Build RequirementEvaluation[] from already-obtained oracle outcomes.
  *
- * ID scheme: `${requirement.id}-evaluation-${verdictCaptureFp}` — the full
- * 64-hex digest is NEVER truncated.  Content-addressability means a re-run
+ * ID scheme: the Thread-domain RequirementEvaluation identity of the
+ * resolved Thread requirement id and the verdict-capture fingerprint.
+ * The proof-case local requirement id is never the evaluation id. The
+ * 64-hex digest is NEVER truncated. Content-addressability means a re-run
  * that produces the same oracle outcomes emits identical evaluation IDs,
  * which the snapshot idempotency guard can detect without a secondary index.
  *

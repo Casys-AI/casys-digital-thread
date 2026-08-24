@@ -12,6 +12,7 @@ import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project.ts";
+import { requirementEvaluationIdentity } from "../../../domain/thread/requirement-evaluation-identity.ts";
 import type {
   RequirementEvaluation,
   ThreadArtifact,
@@ -269,7 +270,13 @@ export async function resolveStaticMechanicalCloseoutEvidence(
       },
     },
   );
-  const criteria = exactCriteria(snapshot, proof, expected, evaluationArtifact);
+  const criteria = exactCriteria(
+    snapshot,
+    proof,
+    expected,
+    evaluationArtifact,
+    requirementIds,
+  );
   const basisFingerprint = await sha256Fingerprint(snapshot);
   const acceptanceEligible = criteria.every((criterion) => criterion.status === "pass");
   return Object.freeze({
@@ -541,13 +548,24 @@ function exactCriteria(
   proof: SealedStaticProofCapture,
   expected: readonly RequirementEvaluation[],
   evaluationArtifact: ThreadArtifact,
+  threadRequirementIds: ReadonlyMap<string, string>,
 ): StaticMechanicalCloseoutCriterion[] {
   if (expected.length !== proof.case.requirements.length) {
     throw integrity("The L4 evaluation does not cover every declared mechanical criterion.");
   }
   return proof.case.requirements.map((requirement, index) => {
     const evaluated = expected[index];
-    if (!evaluated || evaluated.id !== `${requirement.id}-evaluation-${evaluationArtifact.fingerprint.digest}`) {
+    const threadRequirementId = threadRequirementIds.get(requirement.id);
+    if (threadRequirementId === undefined) {
+      throw integrity(
+        `Proof requirement ${requirement.id} has no unique Thread requirement.`,
+      );
+    }
+    const expectedId = requirementEvaluationIdentity({
+      requirementId: threadRequirementId,
+      evidenceFingerprint: evaluationArtifact.fingerprint,
+    }).id;
+    if (!evaluated || evaluated.id !== expectedId) {
       throw integrity("The L4 evaluation criteria are not in sealed-proof order.");
     }
     const matches = snapshot.evaluations.filter((item) => item.id === evaluated.id);
