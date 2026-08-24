@@ -1,11 +1,12 @@
 # Large-assembly implementation plan
 
-Status: proposed · no phase on this page is claimed as implemented
+Status: in progress · Phase A is implemented in code and causal tests · real MCP/runtime
+proof on the proving vehicle and phases B-G remain pending
 
 The plan extends the existing workspace and registered engineering paths without a
-parallel product authority or a universal engineering AST. `motorized-camera-slider-mcs01`
-is the proving vehicle; advancement requires evidence from the real MCP and runtime
-path, not fixtures or UI copy.
+parallel product authority or a universal engineering AST.
+`motorized-camera-slider-mcs01` is the proving vehicle; advancement requires evidence
+from the real MCP and runtime path, not fixtures or UI copy.
 
 ## Phase A: exact SysML navigation projection
 
@@ -18,6 +19,8 @@ path, not fixtures or UI copy.
 
 ## Phase B: semantic attachments and exact source closure
 
+- Add a stable, separately revisioned workspace edge from `fileId` to one exact captured
+  SysML element. Preserve it across file edits and never infer a retarget from labels.
 - From exact `System`, `PartUsage` and `PartDefinition` nodes, expose attached source,
   geometry, physics and verdict references with their exact bases.
 - Resolve a bounded technical dependency closure only after selecting an attached source
@@ -73,7 +76,8 @@ The large-assembly path is not complete until a real run proves all of the follo
 - every product-structure decision reopens one exact SysON capture;
 - CAD sources and placements cannot create or delete structure;
 - root evidence references immediate children rather than inlining descendants;
-- one leaf change rebuilds that leaf and its consuming ancestors, not unrelated siblings;
+- one leaf change rebuilds that leaf and its consuming ancestors, not unrelated
+  siblings;
 - no join relies on `latest`, labels, timestamps, array order or digest alone;
 - exact source, structure, admission, runtime and asset provenance can be reopened;
 - unsupported multi-file, hierarchy or FEA surfaces remain literally `unavailable`.

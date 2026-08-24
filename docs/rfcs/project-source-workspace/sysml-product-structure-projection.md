@@ -1,6 +1,7 @@
 # SysML product-structure projection
 
-Status: proposed · not implemented
+Status: exact roots and read-side navigation implemented · versioned authoring
+attachments and real multi-piece proving run pending
 
 ## Sole authority
 
@@ -15,6 +16,27 @@ The exact SysML model stored in SysON is the sole authority for:
 The exact SysON capture sealed into the Engineering Thread fixes the structure basis for
 one review or build. Source modules, filenames, CAD manifests, geometry assets and UI
 trees cannot add, delete, move or retarget any of those elements.
+
+## Exact roots
+
+`architecture-capture/3.0` is insufficient for this projection because it records a
+`systemName` and makes readers rediscover the product root by matching a
+`PartDefinition.label`. The unique active capture is `architecture-capture/4.0`, with
+two distinct exact references:
+
+- `scopeRoot`: `{ id, kind: "Package", label? }` — compilation Package identity;
+- `semanticRoot`: `{ id, kind: "PartDefinition", label? }` — product-structure root.
+
+Each reference carries exact `id` and literal `kind`. Labels remain display text only.
+`packageName`/`systemName` stay write/display context and are never read authority. The
+parser requires exact keys, non-empty ids, `scopeRoot` corresponding to the attested
+Package, and `semanticRoot` present exactly once among `partDefinitions`. Navigation,
+catalog projection and source attachments consume `semanticRoot.id`. Compilation
+consumes `scopeRoot.id`. Readers never repeat a name or topology lookup.
+
+Version 3 captures are refused. There is no dual parser, alias, automatic migration, or
+label/topology/`latest` fallback. Historical CAS bytes are left untouched; old projects
+become `unavailable`. A new exact capture is required.
 
 ## Derived server view
 
@@ -76,8 +98,8 @@ closure for imports or includes; the workspace DAG never navigates the product.
 ## Module scopes
 
 A composite definition's build scope is derived as that exact `PartDefinition` plus its
-immediate `PartUsage` children. A child usage targets another exact definition, which may
-itself have an independently derived scope. This recursion permits nested assemblies
+immediate `PartUsage` children. A child usage targets another exact definition, which
+may itself have an independently derived scope. This recursion permits nested assemblies
 without flattening every descendant at the root.
 
 An occurrence path is a derived sequence of exact `PartUsage` identities used for

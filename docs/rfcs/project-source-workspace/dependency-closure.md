@@ -5,10 +5,10 @@ Status: proposed · not implemented
 ## Purpose
 
 Product navigation first selects an exact semantic target from the exact SysML/SysON
-graph. A reviewed attachment then identifies a bounded source root for that target. Only
-at this point does the server resolve the root's technical dependency closure from one
-exact `ProjectSourceWorkspace` revision instead of copying every source file into one
-request.
+graph. A versioned workspace attachment then identifies a bounded source root for that
+target. Only at this point does the server resolve the root's technical dependency
+closure from one exact `ProjectSourceWorkspace` revision instead of copying every source
+file into one request.
 
 This is the final composable read of the shared application product-navigation service.
 The engineering agent reaches it through a lean MCP read control; the Workbench reaches
@@ -27,11 +27,11 @@ or execution authority.
 
 ## Proposed resolution contract
 
-A closure request names the exact `projectId`, `workspaceRevision`, reviewed semantic
-attachment and bounded root file revisions. The server reopens the exact SysON and
-workspace bases, verifies that the roots are attached to the selected semantic target,
-walks only exact dependency edges and emits a deterministic topological closure
-containing:
+A closure request names the exact `projectId`, `workspaceRevision`, `attachmentId` and
+`attachmentRevision`. The server reopens the exact SysML and workspace bases, verifies
+the active attachment and target, resolves its stable `fileId` to the exact head at that
+workspace revision, walks only exact dependency edges and emits a deterministic
+topological closure containing:
 
 - the exact roots;
 - every exact file revision and resource reference reached;
@@ -39,9 +39,11 @@ containing:
 - the workspace event fingerprint and closure fingerprint;
 - bounded diagnostics for a cycle, missing node, stale edge or server-owned limit.
 
-Every referenced dependency revision must be active at that exact workspace snapshot.
-Otherwise the closure is `unavailable`; labels, paths, timestamps, matching digests and
-an implicit `latest` must not repair it.
+An exact dependency may intentionally name a historical content revision even when that
+file has a newer head. This is valid and reproducible. A missing revision, tombstone,
+broken fingerprint or dependency outside the named workspace basis makes the closure
+`unavailable`; labels, paths, timestamps, matching digests and an implicit `latest` must
+not repair it.
 
 The public operation should return an opaque locator plus a bounded summary. The full
 closure may be retained in CAS for review and later reopened by exact reference. It
@@ -56,9 +58,9 @@ independent entry point for navigating the product or choosing product structure
 
 ## Deliberate limits
 
-Resolution does not parse Python imports, Modelica `within`, SPICE `.include`, SysML text
-or a universal AST. A registered domain compiler decides whether the resolved files form
-a valid source set for its closed language and profile.
+Resolution does not parse Python imports, Modelica `within`, SPICE `.include`, SysML
+text or a universal AST. A registered domain compiler decides whether the resolved files
+form a valid source set for its closed language and profile.
 
 Node count, edge count, fan-out, depth and response size remain server-owned bounds. A
 bound limits one closure operation, not the total number of project files. Larger source
