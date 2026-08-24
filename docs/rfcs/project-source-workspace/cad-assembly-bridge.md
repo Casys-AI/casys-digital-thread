@@ -23,10 +23,10 @@ The bundle review re-opens:
    those exact file revisions within the qualified source-count bound;
 4. the typed placement source.
 
-The server derives the draft manifest from architecture, admitted definition sources
-and the typed placement source. It must prove exactly one source for every represented
-`PartDefinition`, exact coverage of every immediate occurrence, and no extra source.
-The agent does not submit a second occurrence table. The signed decision restates this
+The server derives the draft manifest from architecture, admitted definition sources and
+the typed placement source. It must prove exactly one source for every represented
+`PartDefinition`, exact coverage of every immediate occurrence, and no extra source. The
+agent does not submit a second occurrence table. The signed decision restates this
 resolved mapping and the draft hashes before `design.write-geometry@1`.
 
 ## Canonical result
@@ -52,9 +52,9 @@ definition and occurrence again at the root.
 ## Bounded current execution
 
 The first vertical supports one modest assembly module, the current closed Build123d
-language and the server-owned admission source-count bound. The source workspace
-itself is not limited to that size, but a navigable source module is not automatically
-an executable source set. Larger products are navigable immediately, while execution
+language and the server-owned admission source-count bound. The source workspace itself
+is not limited to that size, but a navigable source module is not automatically an
+executable source set. Larger products are navigable immediately, while execution
 remains literally `unavailable` beyond the qualified assembly-module bound until the
 hierarchical evidence schema, subassembly lowering and multi-file execution path are
 qualified.

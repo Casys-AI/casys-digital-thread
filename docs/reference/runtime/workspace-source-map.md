@@ -19,7 +19,7 @@ not repeat that catalogue.
 | Page                                                                                      | Owns                                                                 |
 | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | [Foundation and composition](../source-map/foundation-and-composition.md)                 | Entry docs, kernel primitives, hexagonal port roots, shared adapters |
-| [Project, Thread, and record](../source-map/project-thread-record.md)                     | Project ledger, Thread snapshot, brief, record reconciliation        |
+| [Project, Thread, and record](../source-map/project-thread-record.md)                     | Project ledger, Thread snapshot, brief, record reconciliation, source workspace |
 | [Resource ingress](../source-map/resource-ingress.md)                                     | Generic agent-resource envelope and draft CAS                        |
 | [Compile](../source-map/compile.md)                                                       | Admission, source analysis, ROP, shared isolation runner             |
 | [SysML architecture and requirements](../source-map/sysml-architecture-requirements.md)   | Renderer, agent-seal, seed, requirements, part definitions           |

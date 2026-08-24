@@ -190,3 +190,26 @@ Deno.test("reopenUtf8Text refuses invalid UTF-8 blob, disallowed MIME, and overs
     await Deno.remove(root, { recursive: true });
   }
 });
+
+Deno.test("reopenExact copies matching bytes without a MIME allowlist", async () => {
+  const root = await Deno.makeTempDir({ prefix: "reopen-exact-" });
+  try {
+    const { reopen, reference } = await persistAgentResourceText(root, {
+      name: "notes.bin",
+      mimeType: "application/octet-stream",
+      text: "abc",
+    });
+    const reopened = await reopen.reopenExact(reference);
+    assertEquals(new TextDecoder().decode(reopened.bytes), "abc");
+    const mismatch = await assertRejects(
+      () =>
+        reopen.reopenExact(
+          tamperAgentResourceReference(reference, { name: "other.bin" }),
+        ),
+      AgentResourceReopenError,
+    );
+    assertEquals(mismatch.code, "resource_mismatch");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});

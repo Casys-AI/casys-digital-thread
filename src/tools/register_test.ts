@@ -618,6 +618,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_sensitivity_base_evaluation_review",
     "project_sensitivity_study_seal_review",
     "project_snapshot",
+    "project_source_file_put",
+    "project_source_file_read",
+    "project_source_file_remove",
+    "project_source_module_put",
+    "project_source_search",
+    "project_source_tree",
+    "project_source_workspace_snapshot",
     "project_start",
     "project_technical_compilation_preview",
     "project_technical_source_capture",
@@ -690,6 +697,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_sensitivity_base_evaluation_review",
       "project_sensitivity_study_seal_review",
       "project_snapshot",
+      "project_source_file_put",
+      "project_source_file_read",
+      "project_source_file_remove",
+      "project_source_module_put",
+      "project_source_search",
+      "project_source_tree",
+      "project_source_workspace_snapshot",
       "project_start",
       "project_technical_compilation_preview",
       "project_technical_source_capture",
@@ -899,6 +913,10 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(
         annotations.readOnlyHint,
         tool.name === "project_snapshot" ||
+          tool.name === "project_source_workspace_snapshot" ||
+          tool.name === "project_source_tree" ||
+          tool.name === "project_source_search" ||
+          tool.name === "project_source_file_read" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
@@ -923,6 +941,13 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       assertEquals(
         annotations.idempotentHint,
         tool.name === "project_snapshot" ||
+          tool.name === "project_source_workspace_snapshot" ||
+          tool.name === "project_source_tree" ||
+          tool.name === "project_source_search" ||
+          tool.name === "project_source_file_read" ||
+          tool.name === "project_source_module_put" ||
+          tool.name === "project_source_file_put" ||
+          tool.name === "project_source_file_remove" ||
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_start" ||

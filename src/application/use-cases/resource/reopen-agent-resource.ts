@@ -46,6 +46,11 @@ export interface ReopenedAgentResourceText {
   readonly text: string;
 }
 
+export interface ReopenedAgentResourceBytes {
+  readonly reference: AgentResourceReference;
+  readonly bytes: Uint8Array;
+}
+
 export class ReopenAgentResource {
   readonly #store: AgentResourceStore;
 
@@ -53,10 +58,9 @@ export class ReopenAgentResource {
     this.#store = store;
   }
 
-  async reopenUtf8Text(
+  async reopenExact(
     expected: AgentResourceReference,
-    options: ReopenAgentResourceUtf8Options,
-  ): Promise<ReopenedAgentResourceText> {
+  ): Promise<ReopenedAgentResourceBytes> {
     const stored = await this.#store.read(expected.uri);
     if (!stored) {
       throw new AgentResourceReopenError(
@@ -84,6 +88,15 @@ export class ReopenAgentResource {
         "The agent resource reference does not match persisted URI, sha256, byteCount, MIME, representation, or name.",
       );
     }
+    return { reference: stored.reference, bytes: copy };
+  }
+
+  async reopenUtf8Text(
+    expected: AgentResourceReference,
+    options: ReopenAgentResourceUtf8Options,
+  ): Promise<ReopenedAgentResourceText> {
+    const reopened = await this.reopenExact(expected);
+    const copy = reopened.bytes;
     if (!options.acceptedMimeTypes.includes(expected.mimeType)) {
       throw new AgentResourceReopenError(
         "disallowed_mime",
@@ -112,7 +125,7 @@ export class ReopenAgentResource {
         "Reopened agent resource UTF-8 text does not round-trip to the stored bytes.",
       );
     }
-    return { reference: stored.reference, bytes: copy, text };
+    return { reference: reopened.reference, bytes: copy, text };
   }
 }
 

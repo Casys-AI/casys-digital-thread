@@ -1,0 +1,183 @@
+import { assertEquals, assertStringIncludes } from "@std/assert";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import { registerProjectSourceWorkspaceTools } from "./project-source-workspace-tools.ts";
+import { PROJECT_SOURCE_WORKSPACE_BOUNDS } from "../../domain/project-source-workspace/types.ts";
+
+Deno.test("source workspace tools are absent until the use case is composed", () => {
+  const app = capturingApp();
+  registerProjectSourceWorkspaceTools(app as unknown as McpApp, {});
+  assertEquals(app.names, []);
+});
+
+Deno.test("source workspace tools register closed schemas without path, provider or runtime authority", async () => {
+  const app = capturingApp();
+  registerProjectSourceWorkspaceTools(app as unknown as McpApp, {
+    sourceWorkspace: {
+      putModule: () => Promise.resolve({ grants: "none" }),
+      putFile: () => Promise.resolve({ grants: "none" }),
+      removeFile: () => Promise.resolve({ grants: "none" }),
+      snapshot: () => Promise.resolve({ grants: "none" }),
+      tree: () => Promise.resolve({ grants: "none" }),
+      search: () => Promise.resolve({ grants: "none" }),
+      readFile: (value: unknown) => {
+        const query = value as { fileRevision: number };
+        if (query.fileRevision === 2) {
+          return Promise.resolve({
+            workspaceRevision: 3,
+            derivedPath: null,
+            record: { kind: "tombstone" },
+            grants: "none",
+          });
+        }
+        return Promise.resolve({
+          workspaceRevision: 3,
+          derivedPath: "/mech/rail.py",
+          record: {
+            kind: "content",
+            resourceRef: { uri: "casys://agent-resource-capture/sha256/a" },
+          },
+          grants: "none",
+        });
+      },
+    } as never,
+  });
+  assertEquals(app.names.toSorted(), [
+    "project_source_file_put",
+    "project_source_file_read",
+    "project_source_file_remove",
+    "project_source_module_put",
+    "project_source_search",
+    "project_source_tree",
+    "project_source_workspace_snapshot",
+  ]);
+  for (
+    const name of [
+      "project_source_workspace_snapshot",
+      "project_source_tree",
+      "project_source_search",
+      "project_source_file_read",
+    ]
+  ) {
+    assertEquals(app.tool(name).annotations, {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+  }
+  for (
+    const name of [
+      "project_source_module_put",
+      "project_source_file_put",
+      "project_source_file_remove",
+    ]
+  ) {
+    assertEquals(app.tool(name).annotations, {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    });
+  }
+  const filePut = app.tool("project_source_file_put");
+  const schema = filePut.inputSchema as {
+    additionalProperties: boolean;
+    required: string[];
+    properties: Record<string, unknown>;
+  };
+  assertEquals(schema.additionalProperties, false);
+  assertEquals("path" in schema.properties, false);
+  assertEquals("sourceText" in schema.properties, false);
+  assertEquals("provider" in schema.properties, false);
+  assertEquals("runtime" in schema.properties, false);
+  assertEquals("image" in schema.properties, false);
+  assertEquals("tool" in schema.properties, false);
+  assertEquals("capture" in schema.properties, false);
+  assertEquals("captureRequest" in schema.properties, true);
+  assertEquals(schema.required.includes("resourceRef"), true);
+  assertEquals("workspaceRevision" in schema.properties, false);
+  const tree = app.tool("project_source_tree").inputSchema as {
+    required: string[];
+    properties: Record<string, unknown>;
+    additionalProperties: boolean;
+  };
+  assertEquals(tree.additionalProperties, false);
+  assertEquals(tree.required, ["projectId", "workspaceRevision"]);
+  assertEquals(
+    (tree.properties.cursor as { maxLength: number }).maxLength,
+    PROJECT_SOURCE_WORKSPACE_BOUNDS.maxCursorLength,
+  );
+  const search = app.tool("project_source_search").inputSchema as {
+    required: string[];
+    properties: Record<string, unknown>;
+    additionalProperties: boolean;
+  };
+  assertEquals(search.additionalProperties, false);
+  assertEquals(search.required, ["projectId", "workspaceRevision"]);
+  assertEquals("captureProfileId" in search.properties, false);
+  assertEquals("profileId" in search.properties, true);
+  assertEquals(
+    (search.properties.pathPrefix as { maxLength: number }).maxLength,
+    PROJECT_SOURCE_WORKSPACE_BOUNDS.maxDerivedPathLength,
+  );
+  const snapshotOut = app.tool("project_source_workspace_snapshot").outputSchema as {
+    properties: { grants: { const: string } };
+    additionalProperties: boolean;
+  };
+  assertEquals(snapshotOut.properties.grants.const, "none");
+  for (
+    const name of [
+      "project_source_tree",
+      "project_source_search",
+      "project_source_file_read",
+    ]
+  ) {
+    const output = app.tool(name).outputSchema as {
+      additionalProperties: boolean;
+      required: string[];
+    };
+    assertEquals(output.additionalProperties, false);
+    assertEquals(output.required.includes("grants"), true);
+  }
+  const fileReadOut = app.tool("project_source_file_read").outputSchema as {
+    properties: {
+      record: { oneOf: Array<{ properties: { kind: { const: string } } }> };
+    };
+  };
+  assertEquals(
+    fileReadOut.properties.record.oneOf.map((item) => item.properties.kind.const)
+      .toSorted(),
+    ["content", "tombstone"],
+  );
+  const content = await app.handler("project_source_file_read")({
+    fileId: "file-rail",
+    fileRevision: 1,
+  }) as { content: string };
+  assertStringIncludes(content.content, "resources/read");
+  const tombstone = await app.handler("project_source_file_read")({
+    fileId: "file-rail",
+    fileRevision: 2,
+  }) as { content: string };
+  assertStringIncludes(tombstone.content, "Tombstone");
+  assertEquals(tombstone.content.includes("Read bytes through"), false);
+});
+
+function capturingApp() {
+  const names: string[] = [];
+  const tools = new Map<string, MCPTool>();
+  const handlers = new Map<string, ToolHandler>();
+  return {
+    names,
+    registerTool(tool: MCPTool, handler: ToolHandler): void {
+      names.push(tool.name);
+      tools.set(tool.name, tool);
+      handlers.set(tool.name, handler);
+    },
+    tool(name: string): MCPTool {
+      return tools.get(name)!;
+    },
+    handler(name: string): ToolHandler {
+      return handlers.get(name)!;
+    },
+  };
+}

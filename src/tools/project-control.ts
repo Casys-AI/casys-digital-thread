@@ -103,6 +103,10 @@ import {
   registerProjectResourceCaptureTools,
 } from "./project-control/resource-capture-tools.ts";
 import {
+  type ProjectSourceWorkspaceToolDependencies,
+  registerProjectSourceWorkspaceTools,
+} from "./project-control/project-source-workspace-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -130,7 +134,8 @@ export interface ProjectControlToolDependencies
     ProjectDemoLoopToolDependencies,
     ProjectLedDriverSourceToolDependencies,
     ProjectSpiceReviewToolDependencies,
-    ProjectResourceCaptureToolDependencies {
+    ProjectResourceCaptureToolDependencies,
+    ProjectSourceWorkspaceToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
@@ -208,6 +213,7 @@ export function registerProjectControlTools(
   registerProjectLedDriverSourceTools(app, dependencies);
   registerProjectSpiceReviewTools(app, dependencies);
   registerProjectResourceCaptureTools(app, dependencies);
+  registerProjectSourceWorkspaceTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);
@@ -1978,14 +1984,6 @@ function positiveInteger(value: unknown, name: string): number {
     throw new TypeError(`${name} must be a positive safe integer`);
   }
   return value as number;
-}
-
-function hex64(value: unknown, name: string): string {
-  const s = requiredString(value, name);
-  if (!/^[a-f0-9]{64}$/.test(s)) {
-    throw new TypeError(`${name} must be a 64-char lowercase hex SHA-256`);
-  }
-  return s;
 }
 
 function isoDateTime(value: unknown, name: string): string {

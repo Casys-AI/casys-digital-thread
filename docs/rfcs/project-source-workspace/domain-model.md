@@ -2,13 +2,13 @@
 
 ## Aggregate
 
-`ProjectSourceWorkspace` is the consistency boundary for one project source tree.
-Every mutation uses an exact expected workspace revision and a stable mutation id.
-The persisted log contains one small event per accepted mutation; it does not copy the
-full tree on every revision.
+`ProjectSourceWorkspace` is the consistency boundary for one project source tree. Every
+mutation uses an exact expected workspace revision and a stable mutation id. The
+persisted log contains one small event per accepted mutation; it does not copy the full
+tree on every revision.
 
-The aggregate exposes a materialised read model for navigation, but the event log is
-the recovery authority.
+The aggregate exposes a materialised read model for navigation, but the event log is the
+recovery authority.
 
 ## Stable entities
 
@@ -19,8 +19,8 @@ A module is a stable grouping identity with:
 - `moduleId`, unique inside the project;
 - a parent module or the workspace root;
 - a POSIX-safe slug, unique among siblings, and a short display name;
-- an optional domain classification such as `sysml`, `cad`, `fea`, `modelica`,
-  `spice`, or `supporting`.
+- an optional domain classification such as `sysml`, `cad`, `fea`, `modelica`, `spice`,
+  or `supporting`.
 
 Modules contain identities, not source bytes. A large product is split into nested
 subsystems and subassemblies. No module may contain itself transitively.
@@ -30,8 +30,8 @@ subsystems and subassemblies. No module may contain itself transitively.
 A file has a stable `fileId`, an owning module and a POSIX-safe logical name unique in
 that module. Its logical path is derived at one exact workspace revision from the
 module-slug chain plus that name. The caller never supplies a second independent path.
-The derived path is a project navigation label, never a server filesystem path and
-never provider authority.
+The derived path is a project navigation label, never a server filesystem path and never
+provider authority.
 
 Each accepted content change creates a `ProjectSourceFileRevision` containing:
 
@@ -39,7 +39,8 @@ Each accepted content change creates a `ProjectSourceFileRevision` containing:
 - exact predecessor revision, absent only on creation;
 - full `AgentResourceReference`;
 - owning `moduleId` and logical name;
-- source role and optional registered source-capture profile/source identity;
+- source role and optional caller-authored `captureRequest` containing requested
+  parser/source identities;
 - exact dependency file-revision references;
 - fingerprint of the canonical revision record.
 
@@ -60,19 +61,20 @@ CAS bytes or history.
   exactly before a revision is accepted.
 - Branch ambiguity is refused; labels, timestamps and matching hashes never choose a
   successor.
-- A source-capture profile selects only a registered parser/policy for those bytes. A
-  file revision cannot select a compilation profile, provider, tool, image,
-  executable, endpoint, credentials or expected output.
-- Identifiers, names, dependency fan-out, module depth and mutation payloads have
-  closed server-owned bounds. Bounds constrain one operation, not the total number of
-  project files.
+- A `captureRequest` is inert draft metadata in Vertical 1 and grants nothing. The later
+  capture bridge resolves it fail-closed against the server registry. A file revision
+  cannot select a compilation profile, provider, tool, image, executable, endpoint,
+  credentials or expected output.
+- Identifiers, names, dependency fan-out, module depth and mutation payloads have closed
+  server-owned bounds. Bounds constrain one operation, not the total number of project
+  files.
 
 ## Mutation identity
 
-Every command carries a project-scoped `mutationId`. Replaying the same id with the
-same canonical command after an acknowledgement loss returns the already accepted
-workspace revision. Reusing it with different content fails closed. This is distinct
-from `expectedWorkspaceRevision`, which prevents concurrent branches.
+Every command carries a project-scoped `mutationId`. Replaying the same id with the same
+canonical command after an acknowledgement loss returns the already accepted workspace
+revision. Reusing it with different content fails closed. This is distinct from
+`expectedWorkspaceRevision`, which prevents concurrent branches.
 
 ## Why this is not a single resource-set document
 

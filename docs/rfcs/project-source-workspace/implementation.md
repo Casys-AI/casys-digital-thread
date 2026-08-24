@@ -19,8 +19,8 @@
 
 ## Vertical 3: MCS-01 modular sources
 
-- Attach separate rail, carriage, mount, drive, motor, electronics, Modelica, SPICE
-  and FEA source files.
+- Attach separate rail, carriage, mount, drive, motor, electronics, Modelica, SPICE and
+  FEA source files.
 - Prove tree navigation and one-file revision without rewriting siblings.
 - Run current targeted rail CAD/FEA and admitted Modelica/SPICE from exact entries.
 
@@ -36,14 +36,14 @@
 
 - Cross-file Modelica, SPICE `.include`, or general Python imports.
 - Unlimited provider execution.
-- Product-wide flat CAD evidence; large assemblies require hierarchical module
-  captures rather than one descendant manifest.
+- Product-wide flat CAD evidence; large assemblies require hierarchical module captures
+  rather than one descendant manifest.
 - Streaming a whole project to a model in one response.
 - A second mutable source tree in the Workbench.
 
 ## Legacy retirement
 
 This repository is in active development without compatibility clients. Once the
-workspace bridge is live, loose technical capture calls and misleading documentation
-are removed rather than maintained in parallel. Immutable historical CAS bytes may
-remain readable, but old commands and schemas do not constrain the new source model.
+workspace bridge is live, loose technical capture calls and misleading documentation are
+removed rather than maintained in parallel. Immutable historical CAS bytes may remain
+readable, but old commands and schemas do not constrain the new source model.

@@ -1,0 +1,34 @@
+/**
+ * Project-scoped append-only workspace event log. The materialised index is
+ * a replaceable read optimisation, not mutation authority.
+ */
+
+import type {
+  ProjectSourceWorkspaceEvent,
+  ProjectSourceWorkspaceState,
+} from "../../../../domain/project-source-workspace/types.ts";
+
+export type ProjectSourceWorkspaceStoreErrorCode =
+  | "cas_conflict"
+  | "incomplete_claim"
+  | "log_gap"
+  | "corrupt_log";
+
+export class ProjectSourceWorkspaceStoreError extends Error {
+  constructor(
+    readonly code: ProjectSourceWorkspaceStoreErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ProjectSourceWorkspaceStoreError";
+  }
+}
+
+export interface ProjectSourceWorkspaceEventStore {
+  load(projectId: string): Promise<ProjectSourceWorkspaceState>;
+  loadAt(
+    projectId: string,
+    workspaceRevision: number,
+  ): Promise<ProjectSourceWorkspaceState>;
+  append(event: ProjectSourceWorkspaceEvent): Promise<void>;
+}

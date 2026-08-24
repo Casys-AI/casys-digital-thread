@@ -193,6 +193,13 @@ import {
   ReopenAgentResource,
 } from "./src/application/use-cases/resource/reopen-agent-resource.ts";
 import {
+  createProjectSourceWorkspaceComposition,
+  DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY,
+} from "./src/adapters/project-source-workspace/server-composition.ts";
+import { ProjectSourceWorkspaceError } from "./src/domain/project-source-workspace/types.ts";
+import { ProjectSourceWorkspaceStoreError } from "./src/application/ports/out/project-source-workspace/project-source-workspace-event-store.ts";
+import { ProjectSourceWorkspaceApplicationError } from "./src/application/use-cases/project-source-workspace/project-source-workspace-use-cases.ts";
+import {
   createCalculixCapability,
   createFeaFoundation,
   createFeaProject,
@@ -459,6 +466,8 @@ export interface CreateConsoleServerOptions {
   recordedAnalysisDirectory?: string;
   /** Draft CAS for agent-authored MCP resource ingress. */
   agentResourceDirectory?: string;
+  /** Append-only project source workspace event log. */
+  projectSourceWorkspaceDirectory?: string;
   /**
    * Explicit qualified Build123d profile and optional isolated runtime.
    * Omitted means no review tool and no executor. A profile without a runtime
@@ -572,6 +581,9 @@ export async function createConsoleServer(
           error instanceof CockpitFocusConflictError ||
           error instanceof ProjectResourceCaptureError ||
           error instanceof AgentResourceReopenError ||
+          error instanceof ProjectSourceWorkspaceError ||
+          error instanceof ProjectSourceWorkspaceStoreError ||
+          error instanceof ProjectSourceWorkspaceApplicationError ||
           error instanceof TypeError)
         ? error.message
         : null,
@@ -917,6 +929,12 @@ async function createProjectControl(
     spiceCaptures: admittedSpice.captures,
   });
 
+  const sourceWorkspace = createProjectSourceWorkspaceComposition({
+    directory: options.projectSourceWorkspaceDirectory ??
+      DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY,
+    projects: runtime.projects,
+    resources: reopenAgentResource,
+  });
   const agentResourceIngress = createAgentResourceIngress({
     store: agentResourceStore,
     thermalSheets: thermalJoin.thermalMethodSheets,
@@ -1103,6 +1121,7 @@ async function createProjectControl(
       ledDriverSourceReview: electrical.ledDriverSourceReview,
       admittedSpiceRunReview: spiceProject.admittedSpiceRunReview,
       resourceCapture: agentResourceIngress.capture,
+      sourceWorkspace: sourceWorkspace.sourceWorkspace,
       electricalObservationMethodSheetSealReview:
         electricalProject.electricalObservationMethodSheetSealReview,
       admittedSpiceEvaluationReview: electricalProject.admittedSpiceEvaluationReview,

@@ -15,6 +15,7 @@ OpenModelica to Modelica, and CalculiX to FEA.
 | Sensitivity | First-order study declarations and catalogued offers                  | [Sensitivity](sensitivity/README.md) |
 | Electrical  | LED-driver human fiche and circuit-only SPICE closed subset           | [Electrical](electrical/README.md)   |
 | Impact      | Sealed cross-domain manifest, recross, human X09, mechanical X11      | [Impact](impact/README.md)           |
+| Source workspace | Draft source tree for one project: modules, files, exact revisions | [Project source workspace](project-source-workspace/README.md) |
 
 H01 size inventory (enforced vs missing cardinalities; no invented numbers):
 [SysML](sysml/boundedness.md), [CAD](cad/boundedness.md),

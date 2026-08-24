@@ -6,17 +6,17 @@ All mutations are agent operations and grant no MRTR or execution authority.
 
 ### `project_source_module_put`
 
-Takes `projectId`, `mutationId`, `expectedWorkspaceRevision`, `moduleId`, parent,
-slug, display name and optional domain. It creates or revises one stable module after
-checking the exact workspace revision and parent graph.
+Takes `projectId`, `mutationId`, `expectedWorkspaceRevision`, `moduleId`, parent, slug,
+display name and optional domain. It creates or revises one stable module after checking
+the exact workspace revision and parent graph.
 
 ### `project_source_file_put`
 
 Takes `projectId`, `mutationId`, `expectedWorkspaceRevision`, `fileId`, exact optional
-predecessor, `moduleId`, logical name, role, exact dependencies, optional registered
-source-capture profile/source identity, and a full `AgentResourceReference`. The
-server re-opens the CAS bytes and persists one workspace event. It never accepts a
-local path or infers project structure from the resource name.
+predecessor, `moduleId`, logical name, role, exact dependencies, optional inert
+`captureRequest`, and a full `AgentResourceReference`. The server re-opens the CAS bytes
+and persists one workspace event. It never accepts a local path or infers project
+structure from the resource name.
 
 ### `project_source_file_remove`
 
@@ -37,8 +37,8 @@ file or expose a mutable tip as product evidence.
 
 ### `project_source_tree`
 
-Lists immediate children of one module at an exact workspace revision with a cursor
-and bounded page size. Recursive loading is caller-controlled.
+Lists immediate children of one module at an exact workspace revision with a cursor and
+bounded page size. Recursive loading is caller-controlled.
 
 ### `project_source_search`
 
@@ -63,12 +63,12 @@ The target technical-capture command takes:
 projectId + exact workspace revision + exact file revision
 ```
 
-The server derives the source id, registered profile and resource reference from that
-revision, re-opens the bytes, and emits the existing source-local analysis. The profile
-is explicitly a source-capture parser/policy profile, never compilation or runtime
-selection. A revision without the required registered capture identity fails closed;
-the server does not invent it from a path or MIME. Callers no longer repeat a
-free-standing `profileId`, `sourceId`, and `resourceRef` tuple.
+The server resolves the requested source id and parser/policy profile against its
+registry, derives the resource reference from that revision, re-opens the bytes, and
+emits the existing source-local analysis. The request is never compilation or runtime
+selection. A missing or unregistered request fails closed; the server does not invent it
+from a path or MIME. Callers no longer repeat a free-standing `profileId`, `sourceId`,
+and `resourceRef` tuple.
 
 The returned review keeps its opaque locator. A new version of the technical capture
 locator and `technical-compilation-admission` grammar preserves the exact workspace

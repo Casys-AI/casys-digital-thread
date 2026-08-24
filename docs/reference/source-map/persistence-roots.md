@@ -18,6 +18,11 @@ Explicitly labelled demo evidence
 
 Ignored immutable active project revisions and CAS claims
 
+#### `state/local/project-source-workspaces/`
+
+Ignored append-only project source workspace events (`NNNNNNNNNN.claim` then `.json`).
+Rebuildable in-memory index. Not Thread evidence and not a per-mutation snapshot dump
+
 #### `state/local/engineering-project-run-leases/`
 
 Empty local OS lock targets for executor-owned scopes; generic Thread writers share an

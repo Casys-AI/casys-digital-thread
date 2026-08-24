@@ -160,6 +160,21 @@ yields `interpretation.typed.fingerprint` for the existing seal-review tools. Th
 How-to: [Capture an agent resource](../../how-to/compile/capture-an-agent-resource.md).
 Why: [MCP resource ingress](../../explanations/runtime/mcp-resource-ingress.md).
 
+### Project source workspace (draft tree)
+
+Draft authoring state for one Engineering Project. Not Thread evidence. `grants: none`.
+Contract: [project source workspace](../domains/project-source-workspace/README.md).
+
+| Tool | Authority | Effect |
+| --- | --- | --- |
+| `project_source_module_put` | Agent mutation | Create or revise one module at an exact workspace revision |
+| `project_source_file_put` | Agent mutation | Create or revise one file after reopening a full `resourceRef` from `project_resource_capture`. Optional `captureRequest` is caller-authored parser/source identity, stored inertly; Vertical 1 does not register it. Never compilation or runtime selection. No path. |
+| `project_source_file_remove` | Agent mutation | Tombstone the unique active file revision. History and CAS bytes remain |
+| `project_source_workspace_snapshot` | Read | Identity, revision, roots, counts. Does not inline every file |
+| `project_source_tree` | Read | Immediate children of one module at an exact revision; bounded page; mismatched cursor fails closed |
+| `project_source_search` | Read | Filter one exact revision; paginated; mismatched cursor fails closed |
+| `project_source_file_read` | Read | Exact file revision: content carries `AgentResourceReference` (bytes via `resources/read`); tombstone has no bytes |
+
 ### LED-driver human source
 
 | Tool                                 | Writes         | Grant                                                                                                                                      |

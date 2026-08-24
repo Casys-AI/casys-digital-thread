@@ -72,6 +72,26 @@ structural selectors
 
 Immutable project intent and execution-state contract
 
+#### [`src/domain/project-source-workspace/`](../../../src/domain/project-source-workspace)
+
+Generic draft source-tree aggregate: modules, files, exact predecessors, derived POSIX
+paths, mutation-id idempotency. Not Thread, not admission
+
+#### [`src/adapters/project-source-workspace/`](../../../src/adapters/project-source-workspace)
+
+Append-only event adapter under `state/local/project-source-workspaces/` and
+composition. Claim/publish fail-closed. Not a generic repository
+
+#### [`src/application/use-cases/project-source-workspace/`](../../../src/application/use-cases/project-source-workspace)
+
+Project-scoped mutations and revision-anchored reads. File put reopens the exact
+`AgentResourceReference` before the event is accepted. Not admission
+
+#### [`src/tools/project-control/project-source-workspace-tools.ts`](../../../src/tools/project-control/project-source-workspace-tools.ts)
+
+Seven MCP tools for the draft source tree. `grants: none`. Optional `captureRequest` is
+stored inertly; Vertical 1 does not register it
+
 #### [`src/domain/project/thread-tip.ts`](../../../src/domain/project/thread-tip.ts)
 
 Unique current Thread tip from the project ledger, plus the closed basis parse. Not
