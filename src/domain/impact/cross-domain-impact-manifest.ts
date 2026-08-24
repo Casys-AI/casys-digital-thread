@@ -25,7 +25,7 @@ import type { EngineeringGateClaimRole } from "../project/engineering-project.ts
 import type { ThreadChangeKind } from "../thread/thread-snapshot.ts";
 
 export const CROSS_DOMAIN_IMPACT_MANIFEST_SCHEMA =
-  "cross-domain-impact-manifest/1.0" as const;
+  "cross-domain-impact-manifest/2.0" as const;
 
 /**
  * Document-defined causal concept identifier. Validated as a `safeId` from the
@@ -53,14 +53,52 @@ export const CROSS_DOMAIN_IMPACT_THREAD_CHANGE_KINDS = [
 export type CrossDomainImpactThreadChangeKind =
   (typeof CROSS_DOMAIN_IMPACT_THREAD_CHANGE_KINDS)[number];
 
-/** Stable branch IDs. This foundation has no caller-defined branch namespace. */
-export const CROSS_DOMAIN_IMPACT_BRANCH_IDS = [
-  "electrical",
-  "thermal",
-  "mechanical",
-] as const;
+/**
+ * Manifest-local branch identifier. Validated as a `safeId` from the declared
+ * branch list; not a global catalogue and not free prose.
+ * The exact id `mechanical` is the only branch that may carry an independence
+ * assertion or X11 preservation semantics.
+ */
+export type CrossDomainImpactBranchId = string;
 
-export type CrossDomainImpactBranchId = (typeof CROSS_DOMAIN_IMPACT_BRANCH_IDS)[number];
+const MECHANICAL_BRANCH_ID = "mechanical";
+
+/** Parse one manifest-local branch id. */
+export function parseCrossDomainImpactBranchId(
+  value: unknown,
+  path: string,
+): CrossDomainImpactBranchId {
+  return safeId(value, path);
+}
+
+/** Lexicographic order for a declared branch vocabulary. */
+export function crossDomainImpactBranchOrder(
+  left: CrossDomainImpactBranchId,
+  right: CrossDomainImpactBranchId,
+): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * Exact set equality in both directions. Extra or missing branch ids fail
+ * closed at capture boundaries.
+ */
+export function requireExactDeclaredBranchSet(
+  ids: readonly CrossDomainImpactBranchId[],
+  declared: readonly CrossDomainImpactBranchId[],
+  path: string,
+): void {
+  const actual = [...ids].sort(crossDomainImpactBranchOrder);
+  const expected = [...declared].sort(crossDomainImpactBranchOrder);
+  if (
+    actual.length !== expected.length ||
+    actual.some((id, index) => id !== expected[index])
+  ) {
+    throw new TypeError(
+      `${path} must declare exactly the sealed manifest branch set.`,
+    );
+  }
+}
 
 export interface CrossDomainImpactReference {
   readonly id: string;
@@ -323,7 +361,7 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
     (item, index) => parseBranch(item, `$manifest.branches[${index}]`),
   );
   rejectDuplicates(branches.map((item) => item.id), "$manifest.branches ids");
-  requireClosedBranchSet(branches);
+  const declaredBranchIds = branches.map((item) => item.id);
   const branchesById = new Map(branches.map((item) => [item.id, item]));
 
   const causalEdges = arrayOf(root.causalEdges, "$manifest.causalEdges").map(
@@ -373,6 +411,13 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
     "$manifest.independenceAssertions ids",
   );
   for (const assertion of independenceAssertions) {
+    if (assertion.branchId !== MECHANICAL_BRANCH_ID) {
+      throw new TypeError(
+        `$manifest.independenceAssertions ${
+          JSON.stringify(assertion.id)
+        } is legal only for the mechanical branch.`,
+      );
+    }
     if (!branchesById.has(assertion.branchId)) {
       throw new TypeError(
         `$manifest.independenceAssertions ${
@@ -422,6 +467,11 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
       );
     }
   }
+  requireExactDeclaredBranchSet(
+    [...new Set(gateMap.map((item) => item.branchId))],
+    declaredBranchIds,
+    "$manifest.gateMap",
+  );
 
   const limitations = nonEmptyArray(root.limitations, "$manifest.limitations").map(
     (item, index) => nonEmptyText(item, `$manifest.limitations[${index}]`),
@@ -439,7 +489,9 @@ function parseBody(root: Record<string, unknown>): CrossDomainImpactManifestBody
     sourceAnchors: [...sourceAnchors].sort((left, right) =>
       left.id.localeCompare(right.id)
     ),
-    branches: [...branches].sort((left, right) => branchOrder(left.id, right.id)),
+    branches: [...branches].sort((left, right) =>
+      crossDomainImpactBranchOrder(left.id, right.id)
+    ),
     causalEdges: [...causalEdges].sort((left, right) =>
       left.id.localeCompare(right.id)
     ),
@@ -770,11 +822,7 @@ function parseChangeKind(value: unknown, path: string): CrossDomainImpactChangeK
 }
 
 function parseBranchId(value: unknown, path: string): CrossDomainImpactBranchId {
-  const id = nonEmptyText(value, path);
-  if (!CROSS_DOMAIN_IMPACT_BRANCH_IDS.includes(id as CrossDomainImpactBranchId)) {
-    throw new TypeError(`${path} must be electrical, thermal or mechanical.`);
-  }
-  return id as CrossDomainImpactBranchId;
+  return parseCrossDomainImpactBranchId(value, path);
 }
 
 function parseIsoDateTime(value: unknown, path: string): string {
@@ -783,21 +831,6 @@ function parseIsoDateTime(value: unknown, path: string): string {
     throw new TypeError(`${path} must be an ISO-8601 UTC timestamp.`);
   }
   return text;
-}
-
-function requireClosedBranchSet(branches: readonly CrossDomainImpactBranch[]): void {
-  if (branches.length !== CROSS_DOMAIN_IMPACT_BRANCH_IDS.length) {
-    throw new TypeError(
-      "$manifest.branches must declare exactly electrical, thermal and mechanical branches.",
-    );
-  }
-  for (const id of CROSS_DOMAIN_IMPACT_BRANCH_IDS) {
-    if (!branches.some((branch) => branch.id === id)) {
-      throw new TypeError(
-        `$manifest.branches must declare the ${JSON.stringify(id)} branch.`,
-      );
-    }
-  }
 }
 
 function sameReference(
@@ -820,12 +853,4 @@ function changeKindOrder(
   right: CrossDomainImpactChangeKind,
 ): number {
   return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function branchOrder(
-  left: CrossDomainImpactBranchId,
-  right: CrossDomainImpactBranchId,
-): number {
-  return CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(left) -
-    CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(right);
 }

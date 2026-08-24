@@ -25,46 +25,44 @@ import type {
 } from "../../ports/out/impact/cross-domain-impact-capture-store.ts";
 import type { CrossDomainImpactManifestReader } from "../../ports/out/impact/cross-domain-impact-manifest-reader.ts";
 import {
-  CrossDomainImpactThreadLineageReadError,
   type CrossDomainImpactThreadLineage,
   type CrossDomainImpactThreadLineageReader,
+  CrossDomainImpactThreadLineageReadError,
 } from "../../ports/out/impact/cross-domain-impact-thread-lineage-reader.ts";
 import { recrossCrossDomainImpactManifestGateMap } from "../../../domain/impact/cross-domain-impact-decision.ts";
 import {
-  evaluateCrossDomainImpact,
   type CrossDomainImpactBranchReadiness,
   type CrossDomainImpactMechanicalEvidence,
+  evaluateCrossDomainImpact,
 } from "../../../domain/impact/cross-domain-impact-evaluation.ts";
 import {
-  validateCrossDomainImpactEvaluationCapture,
+  CROSS_DOMAIN_IMPACT_EVALUATION_CAPTURE_SCHEMA,
   type CrossDomainImpactAvailability,
   type CrossDomainImpactEvaluationBranchFact,
   type CrossDomainImpactEvaluationMechanicalFact,
+  validateCrossDomainImpactEvaluationCapture,
 } from "../../../domain/impact/cross-domain-impact-evaluation-capture.ts";
 import {
   crossDomainImpactManifestSealCaptureUri,
 } from "../../../domain/impact/cross-domain-impact-manifest-seal-capture.ts";
 import {
-  CROSS_DOMAIN_IMPACT_BRANCH_IDS,
-  validateCrossDomainImpactManifest,
+  crossDomainImpactBranchOrder,
   type CrossDomainImpactManifest,
   type CrossDomainImpactReference,
+  validateCrossDomainImpactManifest,
 } from "../../../domain/impact/cross-domain-impact-manifest.ts";
 import {
   ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
 } from "../../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
 import {
-  VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
   type CrossDomainImpactManifestSealBriefGate,
   sealCrossDomainImpactManifestWorkItemOperation,
+  VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
 } from "../../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import {
   resolveExactCompletedDependencyDocument,
 } from "../project/resolve-exact-completed-dependency-document.ts";
-import {
-  positiveInteger,
-  safeId,
-} from "../../../domain/kernel/case-validation.ts";
+import { positiveInteger, safeId } from "../../../domain/kernel/case-validation.ts";
 import {
   fingerprintsEqual,
   sha256Fingerprint,
@@ -123,25 +121,39 @@ export class PrepareCrossDomainImpactEvaluation
     this.#briefGates = dependencies.briefGates;
   }
 
-  async execute(command: EvaluateCrossDomainImpactCommand): Promise<EvaluateCrossDomainImpactResult> {
+  async execute(
+    command: EvaluateCrossDomainImpactCommand,
+  ): Promise<EvaluateCrossDomainImpactResult> {
     let normalized: EvaluateCrossDomainImpactCommand;
     try {
       normalized = normalizeCommand(command);
     } catch {
-      return unresolved("invalid_request", "The impact-evaluation command is not an exact server-run basis.");
+      return unresolved(
+        "invalid_request",
+        "The impact-evaluation command is not an exact server-run basis.",
+      );
     }
 
     let project: EngineeringProjectSnapshot | undefined;
     try {
       project = await this.#projects.get(normalized.projectId);
     } catch {
-      return unavailable("project_unavailable", "The impact-evaluation project is unavailable.");
+      return unavailable(
+        "project_unavailable",
+        "The impact-evaluation project is unavailable.",
+      );
     }
     if (!project || project.project.id !== normalized.projectId) {
-      return unavailable("project_unavailable", "The impact-evaluation project is unavailable.");
+      return unavailable(
+        "project_unavailable",
+        "The impact-evaluation project is unavailable.",
+      );
     }
     if (!isCurrentProjectBasis(project, normalized.basis)) {
-      return unavailable("basis_unavailable", "The queued impact-evaluation basis is not the unique current project Thread head.");
+      return unavailable(
+        "basis_unavailable",
+        "The queued impact-evaluation basis is not the unique current project Thread head.",
+      );
     }
 
     let head: ThreadSnapshot | undefined;
@@ -149,10 +161,16 @@ export class PrepareCrossDomainImpactEvaluation
       head = await this.#snapshots.get(normalized.basis.snapshotId);
       if (head) head = validateThreadSnapshot(head);
     } catch {
-      return unavailable("basis_unavailable", "The exact queued impact-evaluation Thread basis is unavailable.");
+      return unavailable(
+        "basis_unavailable",
+        "The exact queued impact-evaluation Thread basis is unavailable.",
+      );
     }
     if (!head || !sameBasisSnapshot(head, normalized.basis)) {
-      return unavailable("basis_unavailable", "The exact queued impact-evaluation Thread basis is unavailable.");
+      return unavailable(
+        "basis_unavailable",
+        "The exact queued impact-evaluation Thread basis is unavailable.",
+      );
     }
 
     const selected = await resolveExactCompletedDependencyDocument({
@@ -171,7 +189,8 @@ export class PrepareCrossDomainImpactEvaluation
       expectedDependencyOperation: sealCrossDomainImpactManifestWorkItemOperation(),
       expectedProducer: {
         serverId: "digital-thread",
-        tool: `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`,
+        tool:
+          `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`,
       },
       snapshots: this.#snapshots,
     });
@@ -186,31 +205,47 @@ export class PrepareCrossDomainImpactEvaluation
     try {
       seal = await this.#manifestSeals.read(sealArtifact.fingerprint);
     } catch {
-      return unavailable("manifest_seal_unavailable", "The exact cross-domain impact-manifest seal capture is unavailable.");
+      return unavailable(
+        "manifest_seal_unavailable",
+        "The exact cross-domain impact-manifest seal capture is unavailable.",
+      );
     }
     if (!seal) {
-      return unavailable("manifest_seal_unavailable", "The exact cross-domain impact-manifest seal capture is unavailable.");
+      return unavailable(
+        "manifest_seal_unavailable",
+        "The exact cross-domain impact-manifest seal capture is unavailable.",
+      );
     }
     if (
       seal.trustedRunId !== sealArtifact.producer.runId ||
       seal.sealedAt !== sealArtifact.freshness.changedAt ||
-      sealArtifact.uri !== crossDomainImpactManifestSealCaptureUri(sealArtifact.fingerprint.digest)
+      sealArtifact.uri !==
+        crossDomainImpactManifestSealCaptureUri(sealArtifact.fingerprint.digest)
     ) {
-      return unresolved("manifest_seal_mismatch", "The named manifest-seal document does not exactly identify its stored capture.");
+      return unresolved(
+        "manifest_seal_mismatch",
+        "The named manifest-seal document does not exactly identify its stored capture.",
+      );
     }
     if (
       selected.producerRun.basis?.kind !== "thread-snapshot" ||
       seal.admission.basis.snapshotId !== selected.producerRun.basis.snapshotId ||
       seal.admission.basis.revision !== selected.producerRun.basis.revision
     ) {
-      return unresolved("manifest_seal_mismatch", "The stored manifest-seal admission is not the exact completed X06 run basis.");
+      return unresolved(
+        "manifest_seal_mismatch",
+        "The stored manifest-seal admission is not the exact completed X06 run basis.",
+      );
     }
     if (
       !selected.resultSnapshot.previous ||
       selected.resultSnapshot.previous.snapshotId !== seal.admission.basis.snapshotId ||
       selected.resultSnapshot.previous.revision !== seal.admission.basis.revision
     ) {
-      return unresolved("manifest_seal_mismatch", "The exact X06 result snapshot is not the direct successor of the sealed manifest basis.");
+      return unresolved(
+        "manifest_seal_mismatch",
+        "The exact X06 result snapshot is not the direct successor of the sealed manifest basis.",
+      );
     }
 
     let sourceSnapshot: ThreadSnapshot | undefined;
@@ -218,18 +253,28 @@ export class PrepareCrossDomainImpactEvaluation
       sourceSnapshot = await this.#snapshots.get(seal.admission.basis.snapshotId);
       if (sourceSnapshot) sourceSnapshot = validateThreadSnapshot(sourceSnapshot);
     } catch {
-      return unavailable("basis_unavailable", "The exact Thread basis named by the manifest seal is unavailable.");
+      return unavailable(
+        "basis_unavailable",
+        "The exact Thread basis named by the manifest seal is unavailable.",
+      );
     }
-    if (!sourceSnapshot ||
+    if (
+      !sourceSnapshot ||
       sourceSnapshot.id !== seal.admission.basis.snapshotId ||
       sourceSnapshot.revision !== seal.admission.basis.revision ||
       sourceSnapshot.subject.id !== normalized.basis.subjectId
     ) {
-      return unavailable("basis_unavailable", "The exact Thread basis named by the manifest seal is unavailable.");
+      return unavailable(
+        "basis_unavailable",
+        "The exact Thread basis named by the manifest seal is unavailable.",
+      );
     }
     const sourceFingerprint = await sha256Fingerprint(sourceSnapshot);
     if (!fingerprintsEqual(sourceFingerprint, seal.admission.basis.fingerprint)) {
-      return unresolved("manifest_seal_mismatch", "The manifest-seal basis fingerprint no longer matches its exact Thread snapshot.");
+      return unresolved(
+        "manifest_seal_mismatch",
+        "The manifest-seal basis fingerprint no longer matches its exact Thread snapshot.",
+      );
     }
 
     let reopenedManifest;
@@ -238,19 +283,37 @@ export class PrepareCrossDomainImpactEvaluation
         fingerprint: seal.admission.manifest.reference,
       });
     } catch {
-      return unavailable("manifest_unavailable", "The exact closed cross-domain impact manifest is unavailable.");
+      return unavailable(
+        "manifest_unavailable",
+        "The exact closed cross-domain impact manifest is unavailable.",
+      );
     }
     if (!reopenedManifest) {
-      return unavailable("manifest_unavailable", "The exact closed cross-domain impact manifest is unavailable.");
+      return unavailable(
+        "manifest_unavailable",
+        "The exact closed cross-domain impact manifest is unavailable.",
+      );
     }
     let manifest: CrossDomainImpactManifest;
     try {
       manifest = await validateCrossDomainImpactManifest(reopenedManifest.manifest);
     } catch {
-      return unresolved("manifest_mismatch", "The reopened cross-domain impact manifest is not a closed exact document.");
+      return unresolved(
+        "manifest_mismatch",
+        "The reopened cross-domain impact manifest is not a closed exact document.",
+      );
     }
-    if (!sameManifestSealAdmission(manifest, reopenedManifest.reference.fingerprint, seal.admission)) {
-      return unresolved("manifest_mismatch", "The reopened manifest does not match the exact human-sealed manifest admission.");
+    if (
+      !sameManifestSealAdmission(
+        manifest,
+        reopenedManifest.reference.fingerprint,
+        seal.admission,
+      )
+    ) {
+      return unresolved(
+        "manifest_mismatch",
+        "The reopened manifest does not match the exact human-sealed manifest admission.",
+      );
     }
     try {
       recrossCrossDomainImpactManifestGateMap(project.workItems, manifest.gateMap);
@@ -273,30 +336,56 @@ export class PrepareCrossDomainImpactEvaluation
       // A source anchor was independently recrossed above.  The remaining
       // known reason for this strict X04 reread to fail is evidence ambiguity;
       // X07 records it as mechanical `impact-unresolved`, never as preservation.
-      if (error instanceof CrossDomainImpactThreadLineageReadError && error.status === "unavailable") {
-        return unavailable("lineage_unavailable", "The exact manifest Thread lineage is unavailable.");
+      if (
+        error instanceof CrossDomainImpactThreadLineageReadError &&
+        error.status === "unavailable"
+      ) {
+        return unavailable(
+          "lineage_unavailable",
+          "The exact manifest Thread lineage is unavailable.",
+        );
       }
       lineage = undefined;
     }
     if (lineage && !sameLineageContext(lineage, manifest)) {
-      return unresolved("lineage_mismatch", "The manifest lineage reread does not match its project, subject, or Thread basis.");
+      return unresolved(
+        "lineage_mismatch",
+        "The manifest lineage reread does not match its project, subject, or Thread basis.",
+      );
     }
 
     let approvedBrief;
     try {
       approvedBrief = await this.#briefGates.read(normalized.projectId);
     } catch {
-      return unavailable("brief_unavailable", "The current approved Brief V2 is unavailable.");
+      return unavailable(
+        "brief_unavailable",
+        "The current approved Brief V2 is unavailable.",
+      );
     }
-    if (!approvedBrief) return unavailable("brief_unavailable", "The current approved Brief V2 is unavailable.");
-    if (approvedBrief.contractVersion !== "2.0" || approvedBrief.projectId !== normalized.projectId) {
-      return unresolved("brief_not_v2", "Impact evaluation requires the current approved Brief V2 with explicit gate dependencies.");
+    if (!approvedBrief) {
+      return unavailable(
+        "brief_unavailable",
+        "The current approved Brief V2 is unavailable.",
+      );
+    }
+    if (
+      approvedBrief.contractVersion !== "2.0" ||
+      approvedBrief.projectId !== normalized.projectId
+    ) {
+      return unresolved(
+        "brief_not_v2",
+        "Impact evaluation requires the current approved Brief V2 with explicit gate dependencies.",
+      );
     }
     let briefGates: readonly CrossDomainImpactManifestSealBriefGate[];
     try {
       briefGates = recrossCurrentBriefGates(manifest, approvedBrief);
     } catch {
-      return unresolved("brief_gate_unresolved", "The current approved Brief V2 does not provide every exact manifest gate mapping and dependency declaration.");
+      return unresolved(
+        "brief_gate_unresolved",
+        "The current approved Brief V2 does not provide every exact manifest gate mapping and dependency declaration.",
+      );
     }
 
     // Recross branch artifacts on the queued X07 basis. The named X06 seal
@@ -305,7 +394,13 @@ export class PrepareCrossDomainImpactEvaluation
     const mechanicalFact = selectMechanicalFact(manifest, lineage, sealArtifact);
     let artifactInputs: readonly CrossDomainImpactReference[];
     try {
-      artifactInputs = recrossArtifactInputs(head, manifest, branchFacts, mechanicalFact, sealArtifact);
+      artifactInputs = recrossArtifactInputs(
+        head,
+        manifest,
+        branchFacts,
+        mechanicalFact,
+        sealArtifact,
+      );
     } catch {
       return unresolved(
         "lineage_mismatch",
@@ -330,9 +425,9 @@ export class PrepareCrossDomainImpactEvaluation
     });
     try {
       const capture = await validateCrossDomainImpactEvaluationCapture({
-        schemaVersion: "cross-domain-impact-evaluation-capture/1.0",
+        schemaVersion: CROSS_DOMAIN_IMPACT_EVALUATION_CAPTURE_SCHEMA,
         kind: "cross-domain-impact-evaluation",
-        operation: { id: "analyze.evaluate-cross-domain-impact", version: "1" },
+        operation: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
         trustedRunId: normalized.trustedRunId,
         evaluatedAt: normalized.evaluatedAt,
         manifestSeal: {
@@ -370,22 +465,30 @@ export class PrepareCrossDomainImpactEvaluation
         diagnostics: [],
       };
     } catch {
-      return unresolved("lineage_mismatch", "The recrossed impact facts cannot form one closed canonical evaluation capture.");
+      return unresolved(
+        "lineage_mismatch",
+        "The recrossed impact facts cannot form one closed canonical evaluation capture.",
+      );
     }
   }
 }
 
-function normalizeCommand(value: EvaluateCrossDomainImpactCommand): EvaluateCrossDomainImpactCommand {
+function normalizeCommand(
+  value: EvaluateCrossDomainImpactCommand,
+): EvaluateCrossDomainImpactCommand {
   const projectId = safeId(value.projectId, "$impactEvaluation.projectId");
   const trustedRunId = safeId(value.trustedRunId, "$impactEvaluation.trustedRunId");
-  if (value.basis.kind !== "thread-snapshot") throw new TypeError("Impact evaluation requires a Thread basis.");
+  if (value.basis.kind !== "thread-snapshot") {
+    throw new TypeError("Impact evaluation requires a Thread basis.");
+  }
   const basis = {
     kind: "thread-snapshot" as const,
     snapshotId: safeId(value.basis.snapshotId, "$impactEvaluation.basis.snapshotId"),
     revision: positiveInteger(value.basis.revision, "$impactEvaluation.basis.revision"),
     subjectId: safeId(value.basis.subjectId, "$impactEvaluation.basis.subjectId"),
   };
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.evaluatedAt) ||
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.evaluatedAt) ||
     Number.isNaN(Date.parse(value.evaluatedAt))
   ) {
     throw new TypeError("Impact evaluation time is not exact UTC ISO-8601.");
@@ -397,14 +500,24 @@ function isCurrentProjectBasis(
   project: EngineeringProjectSnapshot,
   basis: EngineeringThreadSnapshotBasis,
 ): boolean {
-  const subjectReferences = project.threadSnapshots.filter((reference) => reference.subjectId === basis.subjectId);
-  const highestRevision = subjectReferences.reduce((highest, reference) => Math.max(highest, reference.revision), -1);
-  const heads = subjectReferences.filter((reference) => reference.revision === highestRevision);
+  const subjectReferences = project.threadSnapshots.filter((reference) =>
+    reference.subjectId === basis.subjectId
+  );
+  const highestRevision = subjectReferences.reduce(
+    (highest, reference) => Math.max(highest, reference.revision),
+    -1,
+  );
+  const heads = subjectReferences.filter((reference) =>
+    reference.revision === highestRevision
+  );
   return project.project.subjectId === basis.subjectId && heads.length === 1 &&
     heads[0]!.snapshotId === basis.snapshotId && heads[0]!.revision === basis.revision;
 }
 
-function sameBasisSnapshot(snapshot: ThreadSnapshot, basis: EngineeringThreadSnapshotBasis): boolean {
+function sameBasisSnapshot(
+  snapshot: ThreadSnapshot,
+  basis: EngineeringThreadSnapshotBasis,
+): boolean {
   return snapshot.id === basis.snapshotId && snapshot.revision === basis.revision &&
     snapshot.subject.id === basis.subjectId;
 }
@@ -413,16 +526,27 @@ function sameManifestSealAdmission(
   manifest: CrossDomainImpactManifest,
   manifestReference: CrossDomainImpactReference["fingerprint"],
   admission: {
-    readonly manifest: { readonly id: string; readonly revision: number; readonly fingerprint: CrossDomainImpactReference["fingerprint"]; readonly reference: CrossDomainImpactReference["fingerprint"] };
+    readonly manifest: {
+      readonly id: string;
+      readonly revision: number;
+      readonly fingerprint: CrossDomainImpactReference["fingerprint"];
+      readonly reference: CrossDomainImpactReference["fingerprint"];
+    };
     readonly project: CrossDomainImpactReference;
     readonly subject: CrossDomainImpactReference;
-    readonly basis: { readonly snapshotId: string; readonly revision: number; readonly fingerprint: CrossDomainImpactReference["fingerprint"] };
+    readonly basis: {
+      readonly snapshotId: string;
+      readonly revision: number;
+      readonly fingerprint: CrossDomainImpactReference["fingerprint"];
+    };
   },
 ): boolean {
-  return manifest.id === admission.manifest.id && manifest.revision === admission.manifest.revision &&
+  return manifest.id === admission.manifest.id &&
+    manifest.revision === admission.manifest.revision &&
     fingerprintsEqual(manifest.fingerprint, admission.manifest.fingerprint) &&
     fingerprintsEqual(manifestReference, admission.manifest.reference) &&
-    sameReference(manifest.project, admission.project) && sameReference(manifest.subject, admission.subject) &&
+    sameReference(manifest.project, admission.project) &&
+    sameReference(manifest.subject, admission.subject) &&
     manifest.basis.snapshotId === admission.basis.snapshotId &&
     manifest.basis.revision === admission.basis.revision &&
     fingerprintsEqual(manifest.basis.fingerprint, admission.basis.fingerprint);
@@ -433,7 +557,9 @@ async function recrossSourceAnchors(
   snapshot: ThreadSnapshot,
   manifest: CrossDomainImpactManifest,
 ): Promise<string | undefined> {
-  if (project.project.id !== manifest.project.id || project.project.subjectId !== manifest.subject.id ||
+  if (
+    project.project.id !== manifest.project.id ||
+    project.project.subjectId !== manifest.subject.id ||
     snapshot.subject.id !== manifest.subject.id
   ) {
     return "The manifest project or subject does not match its exact Thread basis.";
@@ -441,20 +567,28 @@ async function recrossSourceAnchors(
   const projectFingerprint = await sha256Fingerprint(project.project);
   const subjectFingerprint = await sha256Fingerprint(snapshot.subject);
   const snapshotFingerprint = await sha256Fingerprint(snapshot);
-  if (!fingerprintsEqual(projectFingerprint, manifest.project.fingerprint) ||
+  if (
+    !fingerprintsEqual(projectFingerprint, manifest.project.fingerprint) ||
     !fingerprintsEqual(subjectFingerprint, manifest.subject.fingerprint) ||
     !fingerprintsEqual(snapshotFingerprint, manifest.basis.fingerprint)
   ) {
     return "The manifest project, subject, or Thread basis fingerprint is no longer exact.";
   }
   for (const expected of manifest.sourceAnchors) {
-    const changes = snapshot.changeSet.changes.filter((change) => change.id === expected.threadChange.id);
-    if (changes.length !== 1) return "A declared Thread source change is unavailable or ambiguous.";
+    const changes = snapshot.changeSet.changes.filter((change) =>
+      change.id === expected.threadChange.id
+    );
+    if (changes.length !== 1) {
+      return "A declared Thread source change is unavailable or ambiguous.";
+    }
     const change = changes[0]!;
     const changeFingerprint = await sha256Fingerprint(change);
-    if (change.kind !== expected.threadChange.kind || change.target.id !== expected.source.id ||
+    if (
+      change.kind !== expected.threadChange.kind ||
+      change.target.id !== expected.source.id ||
       !fingerprintsEqual(changeFingerprint, expected.threadChange.fingerprint) ||
-      !change.afterFingerprint || !fingerprintsEqual(change.afterFingerprint, expected.source.fingerprint)
+      !change.afterFingerprint ||
+      !fingerprintsEqual(change.afterFingerprint, expected.source.fingerprint)
     ) {
       return "A declared Thread source change is not the exact manifest change.";
     }
@@ -465,14 +599,25 @@ async function recrossSourceAnchors(
       return "A declared source kind is not the exact Thread change target.";
     }
     if (expected.source.kind === "artifact") {
-      const artifacts = snapshot.artifacts.filter((item) => item.id === expected.source.id);
-      if (artifacts.length !== 1 || !fingerprintsEqual(artifacts[0]!.fingerprint, expected.source.fingerprint)) {
+      const artifacts = snapshot.artifacts.filter((item) =>
+        item.id === expected.source.id
+      );
+      if (
+        artifacts.length !== 1 ||
+        !fingerprintsEqual(artifacts[0]!.fingerprint, expected.source.fingerprint)
+      ) {
         return "A declared source artifact is unavailable or inexact.";
       }
     } else {
-      const requirements = snapshot.requirements.filter((item) => item.id === expected.source.id);
-      if (requirements.length !== 1 ||
-        !fingerprintsEqual(await sha256Fingerprint(requirements[0]), expected.source.fingerprint)
+      const requirements = snapshot.requirements.filter((item) =>
+        item.id === expected.source.id
+      );
+      if (
+        requirements.length !== 1 ||
+        !fingerprintsEqual(
+          await sha256Fingerprint(requirements[0]),
+          expected.source.fingerprint,
+        )
       ) {
         return "A declared source requirement is unavailable or inexact.";
       }
@@ -481,10 +626,16 @@ async function recrossSourceAnchors(
   return undefined;
 }
 
-function sameLineageContext(lineage: CrossDomainImpactThreadLineage, manifest: CrossDomainImpactManifest): boolean {
-  return sameReference(lineage.project, manifest.project) && sameReference(lineage.subject, manifest.subject) &&
-    lineage.basis.projectId === manifest.basis.projectId && lineage.basis.subjectId === manifest.basis.subjectId &&
-    lineage.basis.snapshotId === manifest.basis.snapshotId && lineage.basis.revision === manifest.basis.revision &&
+function sameLineageContext(
+  lineage: CrossDomainImpactThreadLineage,
+  manifest: CrossDomainImpactManifest,
+): boolean {
+  return sameReference(lineage.project, manifest.project) &&
+    sameReference(lineage.subject, manifest.subject) &&
+    lineage.basis.projectId === manifest.basis.projectId &&
+    lineage.basis.subjectId === manifest.basis.subjectId &&
+    lineage.basis.snapshotId === manifest.basis.snapshotId &&
+    lineage.basis.revision === manifest.basis.revision &&
     fingerprintsEqual(lineage.basis.fingerprint, manifest.basis.fingerprint);
 }
 
@@ -510,7 +661,9 @@ function recrossCurrentBriefGates(
   if (new Set(gates.map((item) => item.gateItemId)).size !== gates.length) {
     throw new TypeError("Impact gate mappings are not exact.");
   }
-  return [...gates].sort((left, right) => left.gateItemId.localeCompare(right.gateItemId));
+  return [...gates].sort((left, right) =>
+    left.gateItemId.localeCompare(right.gateItemId)
+  );
 }
 
 function recrossBranchFacts(
@@ -544,13 +697,22 @@ function recrossArtifactInputs(
 ): readonly CrossDomainImpactReference[] {
   const inputs = new Map<string, CrossDomainImpactReference>();
   const add = (reference: CrossDomainImpactReference) => {
-    const matches = snapshot.artifacts.filter((artifact) => artifact.id === reference.id);
-    if (matches.length !== 1 || !fingerprintsEqual(matches[0]!.fingerprint, reference.fingerprint)) {
-      throw new TypeError("A server-reread artifact input is unavailable, ambiguous, or inexact on the queued basis.");
+    const matches = snapshot.artifacts.filter((artifact) =>
+      artifact.id === reference.id
+    );
+    if (
+      matches.length !== 1 ||
+      !fingerprintsEqual(matches[0]!.fingerprint, reference.fingerprint)
+    ) {
+      throw new TypeError(
+        "A server-reread artifact input is unavailable, ambiguous, or inexact on the queued basis.",
+      );
     }
     const previous = inputs.get(reference.id);
     if (previous && !sameReference(previous, reference)) {
-      throw new TypeError("One server-reread artifact id has incompatible exact fingerprints.");
+      throw new TypeError(
+        "One server-reread artifact id has incompatible exact fingerprints.",
+      );
     }
     inputs.set(reference.id, { id: reference.id, fingerprint: reference.fingerprint });
   };
@@ -573,7 +735,9 @@ function recrossArtifactInputs(
     for (const consumption of mechanicalFact.consumptions) add(consumption.input);
   }
   return [...inputs.values()].sort((left, right) =>
-    `${left.id}:${left.fingerprint.digest}`.localeCompare(`${right.id}:${right.fingerprint.digest}`)
+    `${left.id}:${left.fingerprint.digest}`.localeCompare(
+      `${right.id}:${right.fingerprint.digest}`,
+    )
   );
 }
 
@@ -583,7 +747,10 @@ function referenceAvailability(
 ): CrossDomainImpactAvailability {
   const records = snapshot.artifacts.filter((artifact) => artifact.id === expected.id);
   if (records.length === 0) return "unavailable";
-  if (records.length !== 1 || !fingerprintsEqual(records[0]!.fingerprint, expected.fingerprint)) {
+  if (
+    records.length !== 1 ||
+    !fingerprintsEqual(records[0]!.fingerprint, expected.fingerprint)
+  ) {
     return "unresolved";
   }
   return records[0]!.freshness.status === "fresh" ? "available" : "unavailable";
@@ -604,7 +771,8 @@ function selectMechanicalFact(
 ): CrossDomainImpactEvaluationMechanicalFact {
   const expectedAnchors = new Set(manifest.sourceAnchors.map(inspectedAnchorKey));
   const candidates = manifest.independenceAssertions.filter((assertion) =>
-    assertion.branchId === "mechanical" && sameInspectedAnchorSet(assertion.inspectedSourceAnchors, expectedAnchors)
+    assertion.branchId === "mechanical" &&
+    sameInspectedAnchorSet(assertion.inspectedSourceAnchors, expectedAnchors)
   );
   if (candidates.length !== 1) {
     // This fallback is deliberately not an assertion trigger.  X03 compares it
@@ -619,7 +787,9 @@ function selectMechanicalFact(
     };
   }
   const assertion = candidates[0]!;
-  const evidence = lineage?.mechanicalEvidence.find((item) => item.assertionId === assertion.id);
+  const evidence = lineage?.mechanicalEvidence.find((item) =>
+    item.assertionId === assertion.id
+  );
   if (!evidence) {
     return {
       status: lineage === undefined ? "unresolved" : "unavailable",
@@ -646,16 +816,23 @@ function selectMechanicalFact(
 }
 
 function sameInspectedAnchorSet(
-  inspected: CrossDomainImpactManifest["independenceAssertions"][number]["inspectedSourceAnchors"],
+  inspected: CrossDomainImpactManifest["independenceAssertions"][number][
+    "inspectedSourceAnchors"
+  ],
   expected: ReadonlySet<string>,
 ): boolean {
-  const actual = new Set(inspected.map((item) =>
-    `${item.sourceAnchorId}:${item.threadChangeFingerprint.digest}:${item.sourceFingerprint.digest}`
-  ));
-  return actual.size === expected.size && [...actual].every((item) => expected.has(item));
+  const actual = new Set(
+    inspected.map((item) =>
+      `${item.sourceAnchorId}:${item.threadChangeFingerprint.digest}:${item.sourceFingerprint.digest}`
+    ),
+  );
+  return actual.size === expected.size &&
+    [...actual].every((item) => expected.has(item));
 }
 
-function inspectedAnchorKey(anchor: CrossDomainImpactManifest["sourceAnchors"][number]): string {
+function inspectedAnchorKey(
+  anchor: CrossDomainImpactManifest["sourceAnchors"][number],
+): string {
   return `${anchor.id}:${anchor.threadChange.fingerprint.digest}:${anchor.source.fingerprint.digest}`;
 }
 
@@ -667,14 +844,24 @@ function sameMechanicalConsumptions(
     readonly input: CrossDomainImpactReference;
   }[],
 ): boolean {
-  if (assertion.inspectedConsumptions.length === 0 || actual.length !== assertion.inspectedConsumptions.length) {
+  if (
+    assertion.inspectedConsumptions.length === 0 ||
+    actual.length !== assertion.inspectedConsumptions.length
+  ) {
     return false;
   }
-  const expected = new Set(assertion.inspectedConsumptions.map((item) =>
-    `${item.id}:${item.input.id}:${item.input.fingerprint.digest}`
-  ));
-  const observed = new Set(actual.map((item) => `${item.id}:${item.input.id}:${item.input.fingerprint.digest}`));
-  return expected.size === observed.size && [...expected].every((item) => observed.has(item));
+  const expected = new Set(
+    assertion.inspectedConsumptions.map((item) =>
+      `${item.id}:${item.input.id}:${item.input.fingerprint.digest}`
+    ),
+  );
+  const observed = new Set(
+    actual.map((item) =>
+      `${item.id}:${item.input.id}:${item.input.fingerprint.digest}`
+    ),
+  );
+  return expected.size === observed.size &&
+    [...expected].every((item) => observed.has(item));
 }
 
 function branchFactsToReadiness(
@@ -703,25 +890,37 @@ function mechanicalFactToEvidence(
   };
 }
 
-function sameReference(left: CrossDomainImpactReference, right: CrossDomainImpactReference): boolean {
+function sameReference(
+  left: CrossDomainImpactReference,
+  right: CrossDomainImpactReference,
+): boolean {
   return left.id === right.id && fingerprintsEqual(left.fingerprint, right.fingerprint);
 }
 
 function branchOrder(
-  left: (typeof CROSS_DOMAIN_IMPACT_BRANCH_IDS)[number],
-  right: (typeof CROSS_DOMAIN_IMPACT_BRANCH_IDS)[number],
+  left: CrossDomainImpactManifest["branches"][number]["id"],
+  right: CrossDomainImpactManifest["branches"][number]["id"],
 ): number {
-  return CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(left) - CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(right);
+  return crossDomainImpactBranchOrder(left, right);
 }
 
-function unavailable(code: ReviewCode, message: string): EvaluateCrossDomainImpactResult {
+function unavailable(
+  code: ReviewCode,
+  message: string,
+): EvaluateCrossDomainImpactResult {
   return { status: "unavailable", diagnostics: [diagnostic(code, message)] };
 }
 
-function unresolved(code: ReviewCode, message: string): EvaluateCrossDomainImpactResult {
+function unresolved(
+  code: ReviewCode,
+  message: string,
+): EvaluateCrossDomainImpactResult {
   return { status: "unresolved", diagnostics: [diagnostic(code, message)] };
 }
 
-function diagnostic(code: ReviewCode, message: string): EvaluateCrossDomainImpactDiagnostic {
+function diagnostic(
+  code: ReviewCode,
+  message: string,
+): EvaluateCrossDomainImpactDiagnostic {
   return { code, message };
 }

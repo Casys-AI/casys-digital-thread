@@ -8,6 +8,7 @@ import { createCrossDomainImpactManifest } from "./cross-domain-impact-manifest.
 import {
   documentDefinedCrossDomainImpactManifestBody,
   impactFingerprint,
+  motionDeclaredCrossDomainImpactManifestBody,
   validCrossDomainImpactEvaluationInput,
   validCrossDomainImpactManifestBody,
 } from "../../testing/cross-domain-impact-fixtures.ts";
@@ -19,8 +20,8 @@ Deno.test("cross-domain impact transitions invalidate dependent branches and car
 
   assertEquals(result.branches, [
     { branchId: "electrical", status: "invalidated" },
-    { branchId: "thermal", status: "invalidated" },
     { branchId: "mechanical", status: "carried-forward" },
+    { branchId: "thermal", status: "invalidated" },
   ]);
   assertEquals(await validateCrossDomainImpactEvaluation(result), result);
 });
@@ -46,7 +47,10 @@ Deno.test("no mechanical edge is not an independence assertion", async () => {
 
 Deno.test("unavailable mechanical evidence is explicit and never carried forward", async () => {
   const input = await validCrossDomainImpactEvaluationInput();
-  const result = await evaluateCrossDomainImpact({ ...input, mechanicalEvidence: null });
+  const result = await evaluateCrossDomainImpact({
+    ...input,
+    mechanicalEvidence: null,
+  });
 
   assertEquals(
     result.branches.find((item) => item.branchId === "mechanical")?.status,
@@ -126,8 +130,8 @@ Deno.test("dependent branches require exact current methods and joins before inv
   const result = await evaluateCrossDomainImpact(unavailable);
   assertEquals(result.branches, [
     { branchId: "electrical", status: "impact-unresolved" },
-    { branchId: "thermal", status: "impact-unresolved" },
     { branchId: "mechanical", status: "carried-forward" },
+    { branchId: "thermal", status: "impact-unresolved" },
   ]);
 });
 
@@ -143,8 +147,8 @@ Deno.test("an unavailable electrical method does not hide the independent therma
   });
   assertEquals(result.branches, [
     { branchId: "electrical", status: "impact-unresolved" },
-    { branchId: "thermal", status: "invalidated" },
     { branchId: "mechanical", status: "carried-forward" },
+    { branchId: "thermal", status: "invalidated" },
   ]);
 });
 
@@ -188,12 +192,141 @@ Deno.test("cross-domain evaluation recrosses a document-defined non-lamp change 
 
   assertEquals(result.branches, [
     { branchId: "electrical", status: "invalidated" },
-    { branchId: "thermal", status: "invalidated" },
     { branchId: "mechanical", status: "carried-forward" },
+    { branchId: "thermal", status: "invalidated" },
   ]);
   assertEquals(await validateCrossDomainImpactEvaluation(result), result);
   assertEquals(
     result.changedSources.map((item) => item.changeKind),
     ["mass-change"],
+  );
+});
+
+Deno.test("a declared motion branch uses the generic nonmechanical policy", async () => {
+  const body = motionDeclaredCrossDomainImpactManifestBody();
+  const manifest = await createCrossDomainImpactManifest(body);
+  const input = await validCrossDomainImpactEvaluationInput();
+  const readiness = manifest.branches.map((branch) => ({
+    branchId: branch.id,
+    method: { reference: branch.method, available: true },
+    joins: branch.joins.map((join) => ({ reference: join, current: true })),
+  }));
+
+  const withoutEdge = await evaluateCrossDomainImpact({
+    ...input,
+    manifest,
+    project: manifest.project,
+    subject: manifest.subject,
+    basis: manifest.basis,
+    branchReadiness: readiness,
+  });
+  assertEquals(
+    withoutEdge.branches.find((item) => item.branchId === "motion")?.status,
+    "impact-unresolved",
+  );
+  assertEquals(
+    withoutEdge.branches.find((item) => item.branchId === "mechanical")?.status,
+    "carried-forward",
+  );
+
+  const motion = manifest.branches.find((item) => item.id === "motion")!;
+  body.causalEdges.push({
+    id: "edge-power-motion",
+    fromAnchorId: "anchor-electrical-power",
+    to: {
+      branchId: "motion",
+      inputId: motion.inputs[0]!.id,
+      inputFingerprint: motion.inputs[0]!.fingerprint,
+    },
+    relation: "positive-input",
+    assertion: {
+      source: { id: "source-power-motion", fingerprint: impactFingerprint("c") },
+      justification: "Reviewed source states the exact branch input relation.",
+    },
+    scope: "Exact manifest basis only.",
+    evidence: [{ id: "source-power-motion", fingerprint: impactFingerprint("c") }],
+  });
+  const edged = await createCrossDomainImpactManifest(body);
+  const withEdge = await evaluateCrossDomainImpact({
+    ...input,
+    manifest: edged,
+    project: edged.project,
+    subject: edged.subject,
+    basis: edged.basis,
+    branchReadiness: edged.branches.map((branch) => ({
+      branchId: branch.id,
+      method: { reference: branch.method, available: true },
+      joins: branch.joins.map((join) => ({ reference: join, current: true })),
+    })),
+  });
+  assertEquals(
+    withEdge.branches.find((item) => item.branchId === "motion")?.status,
+    "invalidated",
+  );
+  assertEquals(withEdge.branches.map((item) => item.branchId), [
+    "electrical",
+    "mechanical",
+    "motion",
+    "thermal",
+  ]);
+});
+
+Deno.test("evaluation readiness must equal the declared manifest branch set in both directions", async () => {
+  const input = await validCrossDomainImpactEvaluationInput();
+  const extra = {
+    ...input,
+    branchReadiness: [
+      ...input.branchReadiness,
+      {
+        branchId: "motion",
+        method: {
+          reference: { id: "motion-method", fingerprint: impactFingerprint("a") },
+          available: true,
+        },
+        joins: [{
+          reference: { id: "motion-join", fingerprint: impactFingerprint("b") },
+          current: true,
+        }],
+      },
+    ],
+  };
+  await assertRejects(
+    () => evaluateCrossDomainImpact(extra),
+    TypeError,
+    "sealed manifest branch set",
+  );
+
+  const missing = {
+    ...input,
+    branchReadiness: input.branchReadiness.filter((item) =>
+      item.branchId !== "thermal"
+    ),
+  };
+  await assertRejects(
+    () => evaluateCrossDomainImpact(missing),
+    TypeError,
+    "sealed manifest branch set",
+  );
+});
+
+Deno.test("evaluation body validation rejects extra or missing branches", async () => {
+  const result = await evaluateCrossDomainImpact(
+    await validCrossDomainImpactEvaluationInput(),
+  );
+  const extra = structuredClone(result) as unknown as Record<string, unknown>;
+  const branches = extra.branches as Array<Record<string, unknown>>;
+  branches.push({ branchId: "motion", status: "impact-unresolved" });
+  await assertRejects(
+    () => validateCrossDomainImpactEvaluation(extra),
+    TypeError,
+    "sealed manifest branch set",
+  );
+
+  const missing = structuredClone(result) as unknown as Record<string, unknown>;
+  (missing.branches as Array<Record<string, unknown>>).pop();
+  await assertRejects(
+    () => validateCrossDomainImpactEvaluation(missing),
+    TypeError,
+    "sealed manifest branch set",
   );
 });

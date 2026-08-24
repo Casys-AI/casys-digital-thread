@@ -6,6 +6,7 @@ import {
 import {
   documentDefinedCrossDomainImpactManifestBody,
   impactFingerprint,
+  motionDeclaredCrossDomainImpactManifestBody,
   validCrossDomainImpactManifest,
   validCrossDomainImpactManifestBody,
 } from "../../testing/cross-domain-impact-fixtures.ts";
@@ -14,12 +15,12 @@ Deno.test("cross-domain impact manifest accepts a closed canonical valid declara
   const manifest = await validCrossDomainImpactManifest();
   const reread = await validateCrossDomainImpactManifest(manifest);
 
-  assertEquals(reread.schemaVersion, "cross-domain-impact-manifest/1.0");
+  assertEquals(reread.schemaVersion, "cross-domain-impact-manifest/2.0");
   assertEquals(reread.changeKinds, ["brightness", "electrical-power"]);
   assertEquals(reread.branches.map((item) => item.id), [
     "electrical",
-    "thermal",
     "mechanical",
+    "thermal",
   ]);
   assert(Object.isFrozen(reread));
 });
@@ -46,21 +47,92 @@ Deno.test("cross-domain impact manifest rejects extra keys and duplicate canonic
   );
 });
 
-Deno.test("cross-domain impact manifest rejects a caller-defined branch", async () => {
+Deno.test("cross-domain impact manifest accepts a declared nonmechanical branch such as motion", async () => {
+  const body = motionDeclaredCrossDomainImpactManifestBody();
+  const manifest = await createCrossDomainImpactManifest(body);
+  const reread = await validateCrossDomainImpactManifest(manifest);
+
+  assertEquals(reread.branches.map((item) => item.id), [
+    "electrical",
+    "mechanical",
+    "motion",
+    "thermal",
+  ]);
+});
+
+Deno.test("cross-domain impact manifest rejects an independence assertion for a nonmechanical branch", async () => {
   const body = validCrossDomainImpactManifestBody();
-  body.branches[2] = {
-    id: "optical",
-    version: "1.0",
-    inputs: [{ id: "optical-input", fingerprint: impactFingerprint("a") }],
-    method: { id: "optical-method", fingerprint: impactFingerprint("b") },
-    joins: [{ id: "optical-join", fingerprint: impactFingerprint("c") }],
-  } as never;
+  body.independenceAssertions[0]!.branchId = "thermal";
 
   await assertRejects(
     () => createCrossDomainImpactManifest(body),
     TypeError,
-    "electrical, thermal or mechanical",
+    "legal only for the mechanical branch",
   );
+
+  const motion = motionDeclaredCrossDomainImpactManifestBody();
+  motion.independenceAssertions[0]!.branchId = "motion";
+  await assertRejects(
+    () => createCrossDomainImpactManifest(motion),
+    TypeError,
+    "legal only for the mechanical branch",
+  );
+});
+
+Deno.test("cross-domain impact manifest rejects an undeclared branch on an edge or gateMap", async () => {
+  const extraGate = validCrossDomainImpactManifestBody();
+  extraGate.gateMap.push({
+    gateItemId: "gate-optical",
+    branchId: "optical",
+    role: "satisfies",
+  });
+  await assertRejects(
+    () => createCrossDomainImpactManifest(extraGate),
+    TypeError,
+    "unknown branch",
+  );
+
+  const extraEdge = validCrossDomainImpactManifestBody();
+  extraEdge.causalEdges.push({
+    id: "edge-power-optical",
+    fromAnchorId: "anchor-electrical-power",
+    to: {
+      branchId: "optical",
+      inputId: "electrical-power-input",
+      inputFingerprint: impactFingerprint("b"),
+    },
+    relation: "positive-input" as const,
+    assertion: {
+      source: { id: "source-power-optical", fingerprint: impactFingerprint("c") },
+      justification: "Reviewed source states the exact branch input relation.",
+    },
+    scope: "Exact manifest basis only.",
+    evidence: [{ id: "source-power-optical", fingerprint: impactFingerprint("c") }],
+  });
+  await assertRejects(
+    () => createCrossDomainImpactManifest(extraEdge),
+    TypeError,
+    "exact declared branch input fingerprint",
+  );
+});
+
+Deno.test("cross-domain impact manifest rejects a declared branch without a gateMap entry", async () => {
+  const body = motionDeclaredCrossDomainImpactManifestBody();
+  body.gateMap = body.gateMap.filter((item) => item.branchId !== "motion");
+
+  await assertRejects(
+    () => createCrossDomainImpactManifest(body),
+    TypeError,
+    "must have at least one canonical gateMap entry",
+  );
+});
+
+Deno.test("cross-domain impact manifest rejects an empty or unsafe branch id", async () => {
+  for (const id of ["", " ", "mass change", "mass/change", "-motion"]) {
+    const body = validCrossDomainImpactManifestBody();
+    body.branches[0] = { ...body.branches[0]!, id };
+    await assertRejects(() => createCrossDomainImpactManifest(body), TypeError);
+  }
 });
 
 Deno.test("cross-domain impact manifest requires every exact source fingerprint", async () => {

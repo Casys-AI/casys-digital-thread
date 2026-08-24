@@ -79,7 +79,7 @@ Deno.test("X09 applies the exact X07/X08 proposed claim transitions and queues n
   const successor = await fixture.snapshots.getFresh(result.resultSnapshot!.snapshotId);
   assertEquals(
     successor!.artifacts.some((artifact) =>
-      artifact.producer.tool === "decide.accept-cross-domain-impact@1"
+      artifact.producer.tool === "decide.accept-cross-domain-impact@2"
     ),
     true,
   );
@@ -236,8 +236,12 @@ async function tamperApprovalAfterPreflight(
     project.approvals = [];
     return;
   }
-  const decision = project.decisions.find((item) => item.id === DECISION) as MutableDecision;
-  const approval = project.approvals.find((item) => item.id === APPROVAL) as MutableApproval;
+  const decision = project.decisions.find((item) =>
+    item.id === DECISION
+  ) as MutableDecision;
+  const approval = project.approvals.find((item) =>
+    item.id === APPROVAL
+  ) as MutableApproval;
   const work = project.workItems.find((item) => item.id === WORK) as MutableWork;
   const run = project.agentRuns.find((item) => item.id === RUN) as MutableRun;
   if (tamper === "foreign") {
@@ -324,7 +328,7 @@ async function executorFixture(): Promise<{
     { excludeWorkItemId: WORK },
   );
   const admission = {
-    schemaVersion: "cross-domain-impact-decision-admission/1.0" as const,
+    schemaVersion: "cross-domain-impact-decision-admission/2.0" as const,
     consequence: "accept" as const,
     projectId: PROJECT,
     subjectId: SUBJECT,
@@ -637,7 +641,7 @@ async function captureFixture(): Promise<CrossDomainImpactEvaluationCapture> {
     )
   );
   return await validateCrossDomainImpactEvaluationCapture({
-    schemaVersion: "cross-domain-impact-evaluation-capture/1.0",
+    schemaVersion: "cross-domain-impact-evaluation-capture/2.0",
     kind: "cross-domain-impact-evaluation",
     operation: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
     trustedRunId: EVAL_RUN,
@@ -688,7 +692,7 @@ function previousFixture(capture: CrossDomainImpactEvaluationCapture): ThreadSna
     producer: {
       serverId: "digital-thread",
       tool: input.id === "manifest-seal-document"
-        ? "verify.seal-cross-domain-impact-manifest@1"
+        ? "verify.seal-cross-domain-impact-manifest@2"
         : "recorded-test@1",
       runId: input.id === "manifest-seal-document"
         ? "run-manifest-seal"
@@ -750,7 +754,7 @@ function evaluationBasisFixture(
   const evaluationId = `cross-domain-impact-evaluation-${captureFingerprint.digest}`;
   const producer = {
     serverId: "digital-thread",
-    tool: "analyze.evaluate-cross-domain-impact@1",
+    tool: "analyze.evaluate-cross-domain-impact@2",
     runId: EVAL_RUN,
   } as const;
   const artifact: ThreadArtifact = {

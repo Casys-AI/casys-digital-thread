@@ -11,7 +11,7 @@ import type { EngineeringOperationRef } from "../project/engineering-project.ts"
 
 export const ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION = {
   id: "analyze.evaluate-cross-domain-impact",
-  version: "1",
+  version: "2",
 } as const;
 
 /**

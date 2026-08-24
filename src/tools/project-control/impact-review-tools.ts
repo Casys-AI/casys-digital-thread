@@ -107,7 +107,7 @@ const CAPTURE_REFERENCE_SCHEMA = {
 const IMPACT_MANIFEST_CAPTURE_REVIEW_SCHEMA = {
   type: "object",
   properties: {
-    schemaVersion: { const: "cross-domain-impact-manifest-capture-review/1.0" },
+    schemaVersion: { const: "cross-domain-impact-manifest-capture-review/2.0" },
     status: { const: "captured" },
     reference: CAPTURE_REFERENCE_SCHEMA,
     summary: {
@@ -144,7 +144,7 @@ const IMPACT_MANIFEST_CAPTURE_REVIEW_SCHEMA = {
 const projectCrossDomainImpactManifestCaptureTool: MCPTool = {
   name: "project_cross_domain_impact_manifest_capture",
   description:
-    "Capture exact agent-authored cross-domain-impact-manifest/1.0 JSON in immutable draft CAS. First call project_resource_capture, then supply that full resourceRef. The JSON body must omit its computed fingerprint field. The server reopens exact UTF-8, validates the closed object, canonicalizes it, and computes the embedded body fingerprint and outer CAS fingerprint. Pass result.reference as manifestRef to project_cross_domain_impact_manifest_seal_review; never pass this whole review, sourceText, a path, a URI, or a caller-selected fingerprint. A human-shaped assertion in draft JSON is not proof. The caller does not choose provider, tool, args, or runtime. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no evaluation, gate-claim transition, or technical execution.",
+    "Capture exact agent-authored cross-domain-impact-manifest/2.0 JSON in immutable draft CAS. First call project_resource_capture, then supply that full resourceRef. The JSON body must omit its computed fingerprint field. The server reopens exact UTF-8, validates the closed object, canonicalizes it, and computes the embedded body fingerprint and outer CAS fingerprint. Pass result.reference as manifestRef to project_cross_domain_impact_manifest_seal_review; never pass this whole review, sourceText, a path, a URI, or a caller-selected fingerprint. A human-shaped assertion in draft JSON is not proof. The caller does not choose provider, tool, args, or runtime. This writes no EngineeringProject or Thread state, creates no MRTR decision, and performs no evaluation, gate-claim transition, or technical execution.",
   inputSchema: {
     type: "object",
     properties: {
@@ -160,7 +160,7 @@ const projectCrossDomainImpactManifestCaptureTool: MCPTool = {
 const projectCrossDomainImpactManifestSealReviewTool: MCPTool = {
   name: "project_cross_domain_impact_manifest_seal_review",
   description:
-    "Prepare literal unavailable/unresolved or exact human-review facts and canonical MRTR parameters for one later verify.seal-cross-domain-impact-manifest@1 document seal. The caller names only projectId and the opaque manifestRef returned by project_cross_domain_impact_manifest_capture. The server alone reopens the closed manifest, its named project/subject/Thread basis, approved Brief V2 gate identities and dependencies, and declared mechanical evidence references. This read-only operation accepts no branch, causal edge, artifact identity, provider envelope, solver/tool/argument, source bytes, approval, gate transition, evaluation result, or Workbench command; it mutates no EngineeringProject or Thread state.",
+    "Prepare literal unavailable/unresolved or exact human-review facts and canonical MRTR parameters for one later verify.seal-cross-domain-impact-manifest@2 document seal. The caller names only projectId and the opaque manifestRef returned by project_cross_domain_impact_manifest_capture. The server alone reopens the closed manifest, its named project/subject/Thread basis, approved Brief V2 gate identities and dependencies, and declared mechanical evidence references. This read-only operation accepts no branch, causal edge, artifact identity, provider envelope, solver/tool/argument, source bytes, approval, gate transition, evaluation result, or Workbench command; it mutates no EngineeringProject or Thread state.",
   inputSchema: {
     type: "object",
     properties: {
@@ -182,7 +182,7 @@ const projectCrossDomainImpactManifestSealReviewTool: MCPTool = {
 const projectCrossDomainImpactDecisionReviewTool: MCPTool = {
   name: "project_cross_domain_impact_decision_review",
   description:
-    "Prepare literal unavailable/unresolved or exact human-review facts and canonical MRTR parameters for one later decide.accept-cross-domain-impact@1. The caller names only projectId. The server reopens the unique current Thread tip and unique X07/X08 evaluation capture, then recrosses approved Brief V2 gates and existing work-item claims. X07/X08 does not propose work-item invalidations or reruns. This read-only operation accepts no branch, impact, status, provider envelope, solver/tool/argument, gate, work item, approval, or Workbench command; it mutates no EngineeringProject or Thread state and queues no rerun.",
+    "Prepare literal unavailable/unresolved or exact human-review facts and canonical MRTR parameters for one later decide.accept-cross-domain-impact@2. The caller names only projectId. The server reopens the unique current Thread tip and unique X07/X08 evaluation capture, then recrosses approved Brief V2 gates and existing work-item claims. X07/X08 does not propose work-item invalidations or reruns. This read-only operation accepts no branch, impact, status, provider envelope, solver/tool/argument, gate, work item, approval, or Workbench command; it mutates no EngineeringProject or Thread state and queues no rerun.",
   inputSchema: {
     type: "object",
     properties: {

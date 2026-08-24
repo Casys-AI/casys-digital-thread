@@ -11,7 +11,7 @@ import type { EngineeringOperationRef } from "../project/engineering-project.ts"
 
 export const ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION = {
   id: "analyze.evaluate-mechanical-preservation",
-  version: "1",
+  version: "2",
 } as const;
 
 export const MECHANICAL_PRESERVATION_LIMITS = {

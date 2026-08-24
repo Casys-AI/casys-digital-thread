@@ -62,8 +62,8 @@ L4 `pass` is never an implicit L5 or a correction/CAD/FEA grant.
 #### `state/local/recorded-analysis/impact/mechanical-preservations/`
 
 Content-addressed provider-free
-`cross-domain-impact-mechanical-preservation-capture/1.0` records for
-`analyze.evaluate-mechanical-preservation@1`. Reopens existing FEA proof/closeout
+`cross-domain-impact-mechanical-preservation-capture/2.0` records for
+`analyze.evaluate-mechanical-preservation@2`. Reopens existing FEA proof/closeout
 identities; never calls CalculiX and never creates an X10 work item.
 
 #### `state/local/recorded-analysis/architecture-sysml/`

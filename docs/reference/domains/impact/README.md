@@ -3,13 +3,20 @@
 Audience: both · Diátaxis: reference · Kind: index
 
 The impact bounded context owns closed cross-domain judgement: a sealed
-`cross-domain-impact-manifest/1.0`, a provider-free recross, a human application of
+`cross-domain-impact-manifest/2.0`, a provider-free recross, a human application of
 already-proposed gate-claim statuses, and a later mechanical preservation control.
 It never owns a solver, a provider envelope, or a Workbench command.
 
 Causal `changeKinds` are document-defined `safeId` tokens on the closed manifest.
-Branch IDs stay the protocol set `electrical|thermal|mechanical`. Those two
-vocabularies are not interchangeable.
+Branch IDs are likewise document-defined `safeId` tokens: the sealed V2 manifest
+declares its own nonempty unique lexicographically canonical branch list. Every
+edge, `gateMap` entry, independence assertion, readiness fact, evaluation
+branch, branch fact, and gate claim must join that declared set. Capture
+boundaries enforce exact set equality in both directions. There is no global
+branch catalogue. The exact id `mechanical` is the only branch that may carry
+an independence assertion or X11 preservation; every other declared branch uses
+one generic nonmechanical evaluation policy. Those two vocabularies
+(`changeKinds` vs declared branch ids) are not interchangeable.
 
 - [Coverage](coverage.md) inventories X04–X11 as they exist in production: supported,
   bounded, or `unavailable`.

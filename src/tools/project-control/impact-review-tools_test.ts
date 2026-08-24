@@ -32,7 +32,7 @@ Deno.test("project_cross_domain_impact_manifest_capture is a draft CAS write and
   const app = new CapturingApp();
   const calls: unknown[] = [];
   const review = Object.freeze({
-    schemaVersion: "cross-domain-impact-manifest-capture-review/1.0",
+    schemaVersion: "cross-domain-impact-manifest-capture-review/2.0",
     status: "captured",
     reference: Object.freeze({
       fingerprint: Object.freeze({
@@ -89,7 +89,7 @@ Deno.test("project_cross_domain_impact_manifest_capture is a draft CAS write and
     idempotentHint: true,
     openWorldHint: false,
   });
-  assertStringIncludes(tool.description, "cross-domain-impact-manifest/1.0");
+  assertStringIncludes(tool.description, "cross-domain-impact-manifest/2.0");
   assertStringIncludes(tool.description, "draft CAS");
   assertStringIncludes(tool.description, "Pass result.reference");
   assertStringIncludes(tool.description, "no EngineeringProject or Thread state");

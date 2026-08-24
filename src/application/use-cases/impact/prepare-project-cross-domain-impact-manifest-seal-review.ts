@@ -22,9 +22,10 @@ import type {
 } from "../../ports/out/impact/cross-domain-impact-thread-lineage-reader.ts";
 import { CrossDomainImpactThreadLineageReadError } from "../../ports/out/impact/cross-domain-impact-thread-lineage-reader.ts";
 import {
+  CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_ADMISSION_SCHEMA,
+  type CrossDomainImpactManifestSealAdmission,
   encodeCrossDomainImpactManifestSealAdmission,
   parseCrossDomainImpactManifestSealParameters,
-  type CrossDomainImpactManifestSealAdmission,
 } from "../../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import { recrossCrossDomainImpactManifestGateMap } from "../../../domain/impact/cross-domain-impact-decision.ts";
 import { validateCrossDomainImpactManifest } from "../../../domain/impact/cross-domain-impact-manifest.ts";
@@ -72,7 +73,9 @@ export class PrepareProjectCrossDomainImpactManifestSealReview
   readonly #briefGates: CrossDomainImpactBriefGateReader;
   readonly #projects: Pick<EngineeringProjectRevisionStore, "get">;
 
-  constructor(dependencies: PrepareProjectCrossDomainImpactManifestSealReviewDependencies) {
+  constructor(
+    dependencies: PrepareProjectCrossDomainImpactManifestSealReviewDependencies,
+  ) {
     this.#manifests = dependencies.manifests;
     this.#lineage = dependencies.lineage;
     this.#briefGates = dependencies.briefGates;
@@ -86,40 +89,69 @@ export class PrepareProjectCrossDomainImpactManifestSealReview
     try {
       command = parseCommand(value);
     } catch {
-      return unresolved("invalid_request", "The impact-manifest review request is not an exact opaque identity.");
+      return unresolved(
+        "invalid_request",
+        "The impact-manifest review request is not an exact opaque identity.",
+      );
     }
 
     let reopened;
     try {
       reopened = await this.#manifests.read(command.manifestRef);
     } catch {
-      return unavailable("manifest_unavailable", "The exact cross-domain impact manifest is unavailable.");
+      return unavailable(
+        "manifest_unavailable",
+        "The exact cross-domain impact manifest is unavailable.",
+      );
     }
     if (!reopened) {
-      return unavailable("manifest_unavailable", "The exact cross-domain impact manifest is unavailable.");
+      return unavailable(
+        "manifest_unavailable",
+        "The exact cross-domain impact manifest is unavailable.",
+      );
     }
-    if (!fingerprintsEqual(reopened.reference.fingerprint, command.manifestRef.fingerprint)) {
-      return unresolved("manifest_mismatch", "The reopened manifest does not match the requested content address.");
+    if (
+      !fingerprintsEqual(
+        reopened.reference.fingerprint,
+        command.manifestRef.fingerprint,
+      )
+    ) {
+      return unresolved(
+        "manifest_mismatch",
+        "The reopened manifest does not match the requested content address.",
+      );
     }
 
     let manifest;
     try {
       manifest = await validateCrossDomainImpactManifest(reopened.manifest);
     } catch {
-      return unresolved("manifest_mismatch", "The reopened manifest is not a closed exact manifest.");
+      return unresolved(
+        "manifest_mismatch",
+        "The reopened manifest is not a closed exact manifest.",
+      );
     }
     if (manifest.project.id !== command.projectId) {
-      return unresolved("manifest_mismatch", "The reopened manifest belongs to another project.");
+      return unresolved(
+        "manifest_mismatch",
+        "The reopened manifest belongs to another project.",
+      );
     }
 
     let project;
     try {
       project = await this.#projects.get(command.projectId);
     } catch {
-      return unavailable("project_unavailable", "The exact engineering project is unavailable.");
+      return unavailable(
+        "project_unavailable",
+        "The exact engineering project is unavailable.",
+      );
     }
     if (!project || project.project.id !== command.projectId) {
-      return unavailable("project_unavailable", "The exact engineering project is unavailable.");
+      return unavailable(
+        "project_unavailable",
+        "The exact engineering project is unavailable.",
+      );
     }
     try {
       recrossCrossDomainImpactManifestGateMap(project.workItems, manifest.gateMap);
@@ -141,10 +173,16 @@ export class PrepareProjectCrossDomainImpactManifestSealReview
           ? unavailable("lineage_unavailable", error.message)
           : unresolved("lineage_mismatch", error.message);
       }
-      return unavailable("lineage_unavailable", "The exact project and Thread lineage cannot be reopened.");
+      return unavailable(
+        "lineage_unavailable",
+        "The exact project and Thread lineage cannot be reopened.",
+      );
     }
     if (!lineage) {
-      return unavailable("lineage_unavailable", "The exact project and Thread lineage cannot be reopened.");
+      return unavailable(
+        "lineage_unavailable",
+        "The exact project and Thread lineage cannot be reopened.",
+      );
     }
     const lineageIssue = recrossLineage(manifest, lineage);
     if (lineageIssue) return unresolved(lineageIssue.code, lineageIssue.message);
@@ -153,27 +191,39 @@ export class PrepareProjectCrossDomainImpactManifestSealReview
     try {
       brief = await this.#briefGates.read(command.projectId);
     } catch {
-      return unavailable("brief_unavailable", "The current approved project brief is unavailable.");
+      return unavailable(
+        "brief_unavailable",
+        "The current approved project brief is unavailable.",
+      );
     }
     if (!brief) {
-      return unavailable("brief_unavailable", "The current approved project brief is unavailable.");
+      return unavailable(
+        "brief_unavailable",
+        "The current approved project brief is unavailable.",
+      );
     }
     if (brief.projectId !== command.projectId || brief.contractVersion !== "2.0") {
-      return unresolved("brief_not_v2", "Impact-manifest sealing requires the current approved Brief V2 with explicit gate dependencies.");
+      return unresolved(
+        "brief_not_v2",
+        "Impact-manifest sealing requires the current approved Brief V2 with explicit gate dependencies.",
+      );
     }
 
     let gates: readonly CrossDomainImpactManifestSealBriefGate[];
     try {
       gates = recrossBriefGates(manifest, brief);
     } catch {
-      return unresolved("brief_gate_unresolved", "The approved Brief V2 does not provide the exact declared gate identities and dependencies.");
+      return unresolved(
+        "brief_gate_unresolved",
+        "The approved Brief V2 does not provide the exact declared gate identities and dependencies.",
+      );
     }
     const evidenceIssue = recrossMechanicalEvidence(manifest, lineage);
     if (evidenceIssue) return unresolved(evidenceIssue.code, evidenceIssue.message);
 
     try {
       const admission: CrossDomainImpactManifestSealAdmission = {
-        schemaVersion: "cross-domain-impact-manifest-seal-admission/1.0",
+        schemaVersion: CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_ADMISSION_SCHEMA,
         manifest: {
           schemaVersion: manifest.schemaVersion,
           id: manifest.id,
@@ -199,7 +249,9 @@ export class PrepareProjectCrossDomainImpactManifestSealReview
         sourceAnchors: lineage.sourceAnchors,
         mechanicalEvidence: lineage.mechanicalEvidence,
       };
-      const decisionParameters = encodeCrossDomainImpactManifestSealAdmission(admission);
+      const decisionParameters = encodeCrossDomainImpactManifestSealAdmission(
+        admission,
+      );
       const parsed = parseCrossDomainImpactManifestSealParameters(decisionParameters);
       const canonical = encodeCrossDomainImpactManifestSealAdmission(parsed);
       if (deterministicJson(canonical) !== deterministicJson(decisionParameters)) {
@@ -212,13 +264,22 @@ export class PrepareProjectCrossDomainImpactManifestSealReview
         diagnostics: [],
       });
     } catch {
-      return unresolved("manifest_mismatch", "The recrossed impact-manifest review cannot form a closed canonical MRTR record.");
+      return unresolved(
+        "manifest_mismatch",
+        "The recrossed impact-manifest review cannot form a closed canonical MRTR record.",
+      );
     }
   }
 }
 
-function parseCommand(value: unknown): ProjectCrossDomainImpactManifestSealReviewCommand {
-  const root = exactRecord(value, ["projectId", "manifestRef"], "$impactManifestSealReview");
+function parseCommand(
+  value: unknown,
+): ProjectCrossDomainImpactManifestSealReviewCommand {
+  const root = exactRecord(
+    value,
+    ["projectId", "manifestRef"],
+    "$impactManifestSealReview",
+  );
   const manifestRef = exactRecord(
     root.manifestRef,
     ["fingerprint"],
@@ -252,10 +313,14 @@ function recrossLineage(
   ) {
     return {
       code: "lineage_mismatch",
-      message: "The reopened project, subject, or Thread basis is not the exact manifest lineage.",
+      message:
+        "The reopened project, subject, or Thread basis is not the exact manifest lineage.",
     };
   }
-  if (deterministicJson(lineage.sourceAnchors) !== deterministicJson(manifest.sourceAnchors)) {
+  if (
+    deterministicJson(lineage.sourceAnchors) !==
+      deterministicJson(manifest.sourceAnchors)
+  ) {
     return {
       code: "lineage_mismatch",
       message: "The reopened Thread source anchors are not the exact manifest anchors.",
@@ -290,7 +355,9 @@ function recrossBriefGates(
   if (new Set(gates.map((gate) => gate.gateItemId)).size !== gates.length) {
     throw new TypeError("Manifest gate mappings are not exact.");
   }
-  return [...gates].sort((left, right) => left.gateItemId.localeCompare(right.gateItemId));
+  return [...gates].sort((left, right) =>
+    left.gateItemId.localeCompare(right.gateItemId)
+  );
 }
 
 function recrossMechanicalEvidence(
@@ -301,7 +368,8 @@ function recrossMechanicalEvidence(
   if (lineage.mechanicalEvidence.length !== expected.length) {
     return {
       code: "mechanical_evidence_unresolved",
-      message: "Declared mechanical evidence cannot be reread exactly for every independence assertion.",
+      message:
+        "Declared mechanical evidence cannot be reread exactly for every independence assertion.",
     };
   }
   for (const assertion of expected) {
@@ -317,21 +385,31 @@ function recrossMechanicalEvidence(
     ) {
       return {
         code: "mechanical_evidence_unresolved",
-        message: "Declared mechanical evidence is unavailable, stale, or not an exact recross.",
+        message:
+          "Declared mechanical evidence is unavailable, stale, or not an exact recross.",
       };
     }
     for (const inspected of assertion.inspectedConsumptions) {
-      const consumption = actual.consumptions.find((candidate) => candidate.id === inspected.id);
+      const consumption = actual.consumptions.find((candidate) =>
+        candidate.id === inspected.id
+      );
       if (
         !consumption ||
         consumption.input.id !== inspected.input.id ||
-        !fingerprintsEqual(consumption.input.fingerprint, inspected.input.fingerprint) ||
+        !fingerprintsEqual(
+          consumption.input.fingerprint,
+          inspected.input.fingerprint,
+        ) ||
         consumption.consumerEvidence.id !== actual.evidence.id ||
-        !fingerprintsEqual(consumption.consumerEvidence.fingerprint, actual.evidence.fingerprint)
+        !fingerprintsEqual(
+          consumption.consumerEvidence.fingerprint,
+          actual.evidence.fingerprint,
+        )
       ) {
         return {
           code: "mechanical_evidence_unresolved",
-          message: "Declared mechanical evidence consumption is not an exact current Thread recross.",
+          message:
+            "Declared mechanical evidence consumption is not an exact current Thread recross.",
         };
       }
     }
@@ -343,7 +421,10 @@ function unavailable(
   code: ReviewCode,
   message: string,
 ): ProjectCrossDomainImpactManifestSealReviewResult {
-  return deepFreeze({ status: "unavailable", diagnostics: [diagnostic(code, message)] });
+  return deepFreeze({
+    status: "unavailable",
+    diagnostics: [diagnostic(code, message)],
+  });
 }
 
 function unresolved(

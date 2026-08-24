@@ -1,5 +1,5 @@
 /**
- * Provider-free executor for `verify.seal-cross-domain-impact-manifest@1`.
+ * Provider-free executor for `verify.seal-cross-domain-impact-manifest@2`.
  *
  * It replays the exact human-approved MRTR grammar through the read-only
  * recross, saves a closed content-addressed document capture, and appends one
@@ -22,8 +22,8 @@ import {
   type EngineeringProjectCommandService,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import {
-  parseCrossDomainImpactManifestSealParameters,
   type CrossDomainImpactManifestSealAdmission,
+  parseCrossDomainImpactManifestSealParameters,
   VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
 } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import {
@@ -89,13 +89,16 @@ export interface VerifySealCrossDomainImpactManifestRunExecutorDependencies {
 
 export class VerifySealCrossDomainImpactManifestRunExecutor {
   readonly #projects: Pick<EngineeringProjectRevisionStore, "get">;
-  readonly #commands: VerifySealCrossDomainImpactManifestRunExecutorDependencies["commands"];
+  readonly #commands:
+    VerifySealCrossDomainImpactManifestRunExecutorDependencies["commands"];
   readonly #snapshots: CrossDomainImpactThreadSnapshotStore;
   readonly #review: ProjectCrossDomainImpactManifestSealReviewUseCase;
   readonly #captures: CrossDomainImpactManifestSealCaptureStore;
   readonly #lease: EngineeringProjectRunLease;
 
-  constructor(dependencies: VerifySealCrossDomainImpactManifestRunExecutorDependencies) {
+  constructor(
+    dependencies: VerifySealCrossDomainImpactManifestRunExecutorDependencies,
+  ) {
     this.#projects = dependencies.projects;
     this.#commands = dependencies.commands;
     this.#snapshots = dependencies.snapshots;
@@ -179,15 +182,22 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
 
       const currentApproval = await requireMrtrApproval(project, run);
       if (currentApproval.decision.id !== approvedDecision.id) {
-        throw invalidTransition("The human-approved impact-manifest decision changed after claim.");
+        throw invalidTransition(
+          "The human-approved impact-manifest decision changed after claim.",
+        );
       }
       const currentAdmission = parseAdmission(currentApproval.proposal.parameters);
       if (deterministicJson(currentAdmission) !== deterministicJson(admission)) {
-        throw invalidTransition("The human-reviewed impact-manifest parameters changed after claim.");
+        throw invalidTransition(
+          "The human-reviewed impact-manifest parameters changed after claim.",
+        );
       }
 
       const currentBasis = requireBasis(run);
-      const currentBasisSnapshot = await exactBasisSnapshot(this.#snapshots, currentBasis);
+      const currentBasisSnapshot = await exactBasisSnapshot(
+        this.#snapshots,
+        currentBasis,
+      );
       await assertThreadSnapshotLineageIntact(currentBasisSnapshot, this.#snapshots);
       await this.#recrossAdmission(command.projectId, currentBasis, currentAdmission);
 
@@ -220,12 +230,17 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
       });
       snapshotWriteMayHaveBeenDispatched = true;
       await this.#snapshots.save(expectedSuccessor.snapshot);
-      const snapshotReadback = await this.#snapshots.getFresh(expectedSuccessor.snapshot.id);
+      const snapshotReadback = await this.#snapshots.getFresh(
+        expectedSuccessor.snapshot.id,
+      );
       if (
         !snapshotReadback ||
-        deterministicJson(snapshotReadback) !== deterministicJson(expectedSuccessor.snapshot)
+        deterministicJson(snapshotReadback) !==
+          deterministicJson(expectedSuccessor.snapshot)
       ) {
-        throw new Error("Impact-manifest seal ThreadSnapshot was not exactly readable after save.");
+        throw new Error(
+          "Impact-manifest seal ThreadSnapshot was not exactly readable after save.",
+        );
       }
 
       project = await this.#requiredProject(command.projectId);
@@ -246,18 +261,32 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
       if (run.status === "publishing") {
         await this.#commands.completeRun(
           origin,
-          completionCommand(command, project.revision, expectedSuccessor.snapshot, expectedSuccessor.artifact),
+          completionCommand(
+            command,
+            project.revision,
+            expectedSuccessor.snapshot,
+            expectedSuccessor.artifact,
+          ),
         );
       } else if (run.status !== "completed") {
         throw unexpectedStatus(run, "completed");
       }
 
       const complete = await this.#requiredProject(command.projectId);
-      await this.#assertCompletedEvidence(complete, command, approvedDecision, admission);
+      await this.#assertCompletedEvidence(
+        complete,
+        command,
+        approvedDecision,
+        admission,
+      );
       return complete;
     } catch (error) {
       if (snapshotWriteMayHaveBeenDispatched) {
-        const completed = await this.#completedFor(command, approvedDecision, admission);
+        const completed = await this.#completedFor(
+          command,
+          approvedDecision,
+          admission,
+        );
         if (completed) return completed;
         throw invalidTransition(
           "Impact-manifest Thread write may have been dispatched, but project attachment did not finish. Retry this exact command to reopen the deterministic successor.",
@@ -271,7 +300,10 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
   async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
     const project = await this.#projects.get(projectId);
     if (!project) {
-      throw new EngineeringProjectCommandError("project_not_found", `Engineering project ${projectId} does not exist.`);
+      throw new EngineeringProjectCommandError(
+        "project_not_found",
+        `Engineering project ${projectId} does not exist.`,
+      );
     }
     return project;
   }
@@ -287,12 +319,16 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
       admission.basis.snapshotId !== basis.snapshotId ||
       admission.basis.revision !== basis.revision
     ) {
-      throw invalidTransition("The signed impact-manifest admission is not bound to this exact project Thread basis.");
+      throw invalidTransition(
+        "The signed impact-manifest admission is not bound to this exact project Thread basis.",
+      );
     }
     const snapshot = await exactBasisSnapshot(this.#snapshots, basis);
     const snapshotFingerprint = await sha256Fingerprint(snapshot);
     if (!fingerprintsEqual(snapshotFingerprint, admission.basis.fingerprint)) {
-      throw invalidTransition("The signed impact-manifest basis fingerprint is not the exact current Thread snapshot.");
+      throw invalidTransition(
+        "The signed impact-manifest basis fingerprint is not the exact current Thread snapshot.",
+      );
     }
     const result = await this.#review.execute({
       projectId,
@@ -304,7 +340,9 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
       );
     }
     if (deterministicJson(result.admission) !== deterministicJson(admission)) {
-      throw invalidTransition("The reopened impact manifest, Brief V2, or Thread lineage differs from the signed admission.");
+      throw invalidTransition(
+        "The reopened impact manifest, Brief V2, or Thread lineage differs from the signed admission.",
+      );
     }
   }
 
@@ -329,7 +367,9 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
     const run = requireRun(project, command.runId);
     const basis = requireBasis(run);
     if (run.status !== "completed" || !run.resultSnapshot) {
-      throw invalidTransition("The impact-manifest seal did not complete through this exact run.");
+      throw invalidTransition(
+        "The impact-manifest seal did not complete through this exact run.",
+      );
     }
     await this.#recrossAdmission(command.projectId, basis, admission);
     const snapshot = await this.#snapshots.getFresh(run.resultSnapshot.snapshotId);
@@ -340,26 +380,37 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
       snapshot.previous?.snapshotId !== basis.snapshotId ||
       snapshot.previous.revision !== basis.revision
     ) {
-      throw invalidTransition("The completed impact-manifest seal lacks its exact direct Thread successor.");
+      throw invalidTransition(
+        "The completed impact-manifest seal lacks its exact direct Thread successor.",
+      );
     }
     const validated = validateThreadSnapshot(snapshot);
     const evidence = exactCompletedEvidence(project, run, validated);
-    const artifact = validated.artifacts.find((candidate) => candidate.id === evidence.id);
+    const artifact = validated.artifacts.find((candidate) =>
+      candidate.id === evidence.id
+    );
     if (!artifact || artifact.kind !== "document") {
-      throw invalidTransition("The completed impact-manifest seal evidence is not a Thread document.");
+      throw invalidTransition(
+        "The completed impact-manifest seal evidence is not a Thread document.",
+      );
     }
     const capture = await this.#captures.read(artifact.fingerprint);
-    if (!capture ||
+    if (
+      !capture ||
       capture.trustedRunId !== run.id ||
       capture.decisionId !== approvedDecision.id ||
       capture.sealedAt !== requiredStart(run) ||
       deterministicJson(capture.admission) !== deterministicJson(admission)
     ) {
-      throw invalidTransition("The completed impact-manifest seal capture no longer equals its exact run and MRTR decision.");
+      throw invalidTransition(
+        "The completed impact-manifest seal capture no longer equals its exact run and MRTR decision.",
+      );
     }
     const observedFingerprint = await sha256Fingerprint(capture);
     if (!fingerprintsEqual(observedFingerprint, artifact.fingerprint)) {
-      throw invalidTransition("The completed impact-manifest capture fingerprint no longer matches its Thread artifact.");
+      throw invalidTransition(
+        "The completed impact-manifest capture fingerprint no longer matches its Thread artifact.",
+      );
     }
     const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
     const expected = buildSuccessor({
@@ -371,7 +422,9 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
       captureUri: artifact.uri ?? "",
     });
     if (deterministicJson(expected.snapshot) !== deterministicJson(validated)) {
-      throw invalidTransition("The completed impact-manifest successor is not the exact deterministic capture extension.");
+      throw invalidTransition(
+        "The completed impact-manifest successor is not the exact deterministic capture extension.",
+      );
     }
   }
 
@@ -390,9 +443,11 @@ export class VerifySealCrossDomainImpactManifestRunExecutor {
         ...command,
         commandId: commandStep(command.commandId, "fail"),
         expectedRevision: project.revision,
-        summary: "Impact-manifest seal stopped before a ThreadSnapshot write was dispatched.",
+        summary:
+          "Impact-manifest seal stopped before a ThreadSnapshot write was dispatched.",
         code: "verify-seal-cross-domain-impact-manifest-not-published",
-        message: "The provider-free cross-domain impact-manifest seal stopped before its document was published.",
+        message:
+          "The provider-free cross-domain impact-manifest seal stopped before its document was published.",
       });
     } catch {
       // Preserve the original failure.
@@ -409,10 +464,14 @@ function buildSuccessor(input: {
   readonly captureUri: string;
 }): { readonly snapshot: ThreadSnapshot; readonly artifact: ThreadArtifact } {
   const sealedAt = requiredStart(input.run);
-  const inputArtifacts = exactInputArtifacts(input.basisSnapshot, input.capture.admission);
+  const inputArtifacts = exactInputArtifacts(
+    input.basisSnapshot,
+    input.capture.admission,
+  );
   const producer: ThreadOperationRef = {
     serverId: "digital-thread",
-    tool: `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`,
+    tool:
+      `${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id}@${VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version}`,
     runId: input.run.id,
   };
   const artifact: ThreadArtifact = {
@@ -432,7 +491,8 @@ function buildSuccessor(input: {
     },
   };
   const consumptions: ThreadArtifactConsumption[] = inputArtifacts.map((upstream) => ({
-    id: `verify-seal-cross-domain-impact-manifest-${input.run.id}:consume:${upstream.id}`,
+    id:
+      `verify-seal-cross-domain-impact-manifest-${input.run.id}:consume:${upstream.id}`,
     artifactId: upstream.id,
     consumer: producer,
     observedFingerprint: upstream.fingerprint,
@@ -441,14 +501,17 @@ function buildSuccessor(input: {
   }));
   const provenance: ThreadProvenanceLink[] = [
     ...inputArtifacts.map((upstream) => ({
-      id: `verify-seal-cross-domain-impact-manifest-${input.run.id}:derived-from:${upstream.id}`,
+      id:
+        `verify-seal-cross-domain-impact-manifest-${input.run.id}:derived-from:${upstream.id}`,
       relation: "derived_from" as const,
       from: { kind: "artifact" as const, id: artifact.id },
       to: { kind: "artifact" as const, id: upstream.id },
-      rationale: "The sealed impact manifest recrossed this exact declared artifact identity.",
+      rationale:
+        "The sealed impact manifest recrossed this exact declared artifact identity.",
     })),
     ...consumptions.map((consumption) => ({
-      id: `verify-seal-cross-domain-impact-manifest-${input.run.id}:uses:${consumption.artifactId}`,
+      id:
+        `verify-seal-cross-domain-impact-manifest-${input.run.id}:uses:${consumption.artifactId}`,
       relation: "uses" as const,
       from: { kind: "consumption" as const, id: consumption.id },
       to: { kind: "artifact" as const, id: consumption.artifactId },
@@ -473,7 +536,9 @@ function buildSuccessor(input: {
     appliedAt: sealedAt,
   });
   if (!applied.applied) {
-    throw invalidTransition("This exact cross-domain impact-manifest seal document is already present in the basis snapshot.");
+    throw invalidTransition(
+      "This exact cross-domain impact-manifest seal document is already present in the basis snapshot.",
+    );
   }
   return { snapshot: validateThreadSnapshot(applied.snapshot), artifact };
 }
@@ -489,11 +554,15 @@ function exactInputArtifacts(
     else declared.set(id, [fingerprint]);
   };
   for (const anchor of admission.sourceAnchors) {
-    if (anchor.source.kind === "artifact") add(anchor.source.id, anchor.source.fingerprint);
+    if (anchor.source.kind === "artifact") {
+      add(anchor.source.id, anchor.source.fingerprint);
+    }
   }
   for (const evidence of admission.mechanicalEvidence) {
     add(evidence.evidence.id, evidence.evidence.fingerprint);
-    for (const consumption of evidence.consumptions) add(consumption.input.id, consumption.input.fingerprint);
+    for (const consumption of evidence.consumptions) {
+      add(consumption.input.id, consumption.input.fingerprint);
+    }
   }
   return [...declared.keys()]
     .sort((left, right) => left.localeCompare(right))
@@ -502,22 +571,30 @@ function exactInputArtifacts(
       const fingerprints = declared.get(id)!;
       if (
         matches.length !== 1 ||
-        fingerprints.some((fingerprint) => !fingerprintsEqual(fingerprint, matches[0]!.fingerprint))
+        fingerprints.some((fingerprint) =>
+          !fingerprintsEqual(fingerprint, matches[0]!.fingerprint)
+        )
       ) {
-        throw invalidTransition("A signed impact-manifest artifact input is not an exact basis artifact.");
+        throw invalidTransition(
+          "A signed impact-manifest artifact input is not an exact basis artifact.",
+        );
       }
       return matches[0]!;
     });
 }
 
-function requireShape(project: EngineeringProjectSnapshot, run: EngineeringAgentRun): void {
+function requireShape(
+  project: EngineeringProjectSnapshot,
+  run: EngineeringAgentRun,
+): void {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const operation = workItem?.operation;
   if (
     run.basis?.kind !== "thread-snapshot" || !workItem ||
     operation?.id !== VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id ||
     operation.version !== VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.version ||
-    operation.bindings.length !== 1 || operation.bindings[0]?.name !== "approvedBrief" ||
+    operation.bindings.length !== 1 ||
+    operation.bindings[0]?.name !== "approvedBrief" ||
     operation.bindings[0].source.kind !== "approved-brief"
   ) {
     throw invalidTransition(
@@ -533,26 +610,42 @@ function requireClaimedShape(
 ): void {
   requireShape(project, run);
   if (run.claimedBy?.origin !== origin.kind || run.claimedBy.id !== origin.actorId) {
-    throw invalidTransition("This executor may continue only the exact impact-manifest seal run it claimed.");
+    throw invalidTransition(
+      "This executor may continue only the exact impact-manifest seal run it claimed.",
+    );
   }
 }
 
 async function requireMrtrApproval(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): Promise<{ readonly decision: EngineeringDecision; readonly proposal: NonNullable<EngineeringDecision["proposal"]> }> {
+): Promise<
+  {
+    readonly decision: EngineeringDecision;
+    readonly proposal: NonNullable<EngineeringDecision["proposal"]>;
+  }
+> {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   if (!workItem) throw invalidTransition(`Work item for run ${run.id} is absent.`);
   const basis = requireBasis(run);
-  const candidates: Array<{ decision: EngineeringDecision; proposal: NonNullable<EngineeringDecision["proposal"]> }> = [];
+  const candidates: Array<
+    {
+      decision: EngineeringDecision;
+      proposal: NonNullable<EngineeringDecision["proposal"]>;
+    }
+  > = [];
   for (const decisionId of workItem.decisionIds) {
-    const decision = project.decisions.find((candidate) => candidate.id === decisionId && candidate.status === "approved");
+    const decision = project.decisions.find((candidate) =>
+      candidate.id === decisionId && candidate.status === "approved"
+    );
     if (!decision?.proposal || !decision.inputFingerprint) continue;
     const approvals = project.approvals.filter((approval: EngineeringApproval) =>
       approval.decisionId === decision.id && approval.status === "approved" &&
-      decision.approvalIds.includes(approval.id) && approval.decidedByOrigin === "human" &&
+      decision.approvalIds.includes(approval.id) &&
+      approval.decidedByOrigin === "human" &&
       typeof approval.decidedBy === "string" && approval.decidedBy.trim().length > 0 &&
-      typeof approval.decidedAt === "string" && !Number.isNaN(Date.parse(approval.decidedAt)) &&
+      typeof approval.decidedAt === "string" &&
+      !Number.isNaN(Date.parse(approval.decidedAt)) &&
       sameSnapshotBasis(approval.baseSnapshot, basis) &&
       sameEvidenceRefs(approval.inputEvidenceRefs, decision.inputEvidenceRefs) &&
       fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
@@ -562,32 +655,51 @@ async function requireMrtrApproval(
     }
   }
   if (candidates.length !== 1) {
-    throw invalidTransition(candidates.length === 0
-      ? "No exact human-approved impact-manifest seal decision is bound to this run basis."
-      : "Ambiguous impact-manifest seal: exactly one human-approved decision is required.");
+    throw invalidTransition(
+      candidates.length === 0
+        ? "No exact human-approved impact-manifest seal decision is bound to this run basis."
+        : "Ambiguous impact-manifest seal: exactly one human-approved decision is required.",
+    );
   }
   const selected = candidates[0]!;
   const expectedDecisionFingerprint = await sha256Fingerprint({
     baseSnapshot: selected.decision.baseSnapshot,
     inputEvidenceRefs: selected.decision.inputEvidenceRefs,
-    proposal: { summary: selected.proposal.summary, parameters: selected.proposal.parameters },
+    proposal: {
+      summary: selected.proposal.summary,
+      parameters: selected.proposal.parameters,
+    },
   });
-  if (!fingerprintsEqual(expectedDecisionFingerprint, selected.decision.inputFingerprint)) {
-    throw new EngineeringProjectCommandError("invalid_input", "The impact-manifest decision fingerprint no longer seals its exact basis, evidence, summary, and parameters.");
+  if (
+    !fingerprintsEqual(expectedDecisionFingerprint, selected.decision.inputFingerprint)
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The impact-manifest decision fingerprint no longer seals its exact basis, evidence, summary, and parameters.",
+    );
   }
   const approvedDecisions = workItem.decisionIds.map((id) => {
     const decision = project.decisions.find((candidate) => candidate.id === id);
-    if (!decision?.inputFingerprint) throw invalidTransition(`Work-item decision ${id} is not exactly approved.`);
+    if (!decision?.inputFingerprint) {
+      throw invalidTransition(`Work-item decision ${id} is not exactly approved.`);
+    }
     return { id, inputFingerprint: decision.inputFingerprint };
   });
   const expectedRunFingerprint = await sha256Fingerprint({
     workItemId: workItem.id,
     basis,
-    operation: { id: workItem.operation?.id, version: workItem.operation?.version, bindings: workItem.operation?.bindings },
+    operation: {
+      id: workItem.operation?.id,
+      version: workItem.operation?.version,
+      bindings: workItem.operation?.bindings,
+    },
     approvedDecisions,
   });
   if (!fingerprintsEqual(run.inputFingerprint, expectedRunFingerprint)) {
-    throw new EngineeringProjectCommandError("invalid_input", "The impact-manifest run fingerprint no longer seals its exact MRTR decision, operation, and basis.");
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "The impact-manifest run fingerprint no longer seals its exact MRTR decision, operation, and basis.",
+    );
   }
   parseAdmission(selected.proposal.parameters);
   return selected;
@@ -601,7 +713,9 @@ function parseAdmission(
   } catch (error) {
     throw new EngineeringProjectCommandError(
       "invalid_input",
-      `Cross-domain impact-manifest seal parameters are invalid: ${error instanceof Error ? error.message : String(error)}`,
+      `Cross-domain impact-manifest seal parameters are invalid: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
 }
@@ -611,8 +725,13 @@ async function exactBasisSnapshot(
   basis: ReturnType<typeof requireBasis>,
 ): Promise<ThreadSnapshot> {
   const snapshot = await snapshots.getFresh(basis.snapshotId);
-  if (!snapshot || snapshot.id !== basis.snapshotId || snapshot.revision !== basis.revision || snapshot.subject.id !== basis.subjectId) {
-    throw invalidTransition("The exact Thread basis snapshot is not available for the impact-manifest seal.");
+  if (
+    !snapshot || snapshot.id !== basis.snapshotId ||
+    snapshot.revision !== basis.revision || snapshot.subject.id !== basis.subjectId
+  ) {
+    throw invalidTransition(
+      "The exact Thread basis snapshot is not available for the impact-manifest seal.",
+    );
   }
   return validateThreadSnapshot(snapshot);
 }
@@ -645,17 +764,26 @@ function exactCompletedEvidence(
 ): EngineeringThreadEntityRef {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const declared = project.threadSnapshots.filter((reference) =>
-    reference.snapshotId === snapshot.id && reference.revision === snapshot.revision && reference.subjectId === snapshot.subject.id
+    reference.snapshotId === snapshot.id && reference.revision === snapshot.revision &&
+    reference.subjectId === snapshot.subject.id
   );
   if (
     !workItem || declared.length !== 1 || run.evidenceRefs.length !== 1 ||
-    workItem.evidenceRefs.length !== 1 || !sameEvidenceRefs(run.evidenceRefs, workItem.evidenceRefs)
+    workItem.evidenceRefs.length !== 1 ||
+    !sameEvidenceRefs(run.evidenceRefs, workItem.evidenceRefs)
   ) {
-    throw invalidTransition("The completed impact-manifest seal is not attached to exactly one declared document artifact.");
+    throw invalidTransition(
+      "The completed impact-manifest seal is not attached to exactly one declared document artifact.",
+    );
   }
   const evidence = run.evidenceRefs[0]!;
-  if (evidence.snapshotId !== snapshot.id || evidence.snapshotRevision !== snapshot.revision || evidence.kind !== "artifact") {
-    throw invalidTransition("The completed impact-manifest evidence reference is not the sealed document.");
+  if (
+    evidence.snapshotId !== snapshot.id ||
+    evidence.snapshotRevision !== snapshot.revision || evidence.kind !== "artifact"
+  ) {
+    throw invalidTransition(
+      "The completed impact-manifest evidence reference is not the sealed document.",
+    );
   }
   return evidence;
 }
@@ -665,23 +793,31 @@ function commandStep(commandId: string, step: string): string {
 }
 
 function sameSnapshotBasis(
-  value: EngineeringDecision["baseSnapshot"] | EngineeringApproval["baseSnapshot"] | EngineeringAgentRun["basis"],
+  value:
+    | EngineeringDecision["baseSnapshot"]
+    | EngineeringApproval["baseSnapshot"]
+    | EngineeringAgentRun["basis"],
   basis: ReturnType<typeof requireBasis>,
 ): boolean {
   return !!value && "snapshotId" in value && value.snapshotId === basis.snapshotId &&
     value.revision === basis.revision && value.subjectId === basis.subjectId;
 }
 
-function sameEvidenceRefs(left: readonly EngineeringThreadEntityRef[], right: readonly EngineeringThreadEntityRef[]): boolean {
-  const key = (reference: EngineeringThreadEntityRef) => deterministicJson({
-    snapshotId: reference.snapshotId,
-    snapshotRevision: reference.snapshotRevision,
-    kind: reference.kind,
-    id: reference.id,
-  });
+function sameEvidenceRefs(
+  left: readonly EngineeringThreadEntityRef[],
+  right: readonly EngineeringThreadEntityRef[],
+): boolean {
+  const key = (reference: EngineeringThreadEntityRef) =>
+    deterministicJson({
+      snapshotId: reference.snapshotId,
+      snapshotRevision: reference.snapshotRevision,
+      kind: reference.kind,
+      id: reference.id,
+    });
   const leftKeys = [...left.map(key)].sort();
   const rightKeys = [...right.map(key)].sort();
-  return leftKeys.length === rightKeys.length && leftKeys.every((value, index) => value === rightKeys[index]);
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every((value, index) => value === rightKeys[index]);
 }
 
 function invalidTransition(message: string): EngineeringProjectCommandError {

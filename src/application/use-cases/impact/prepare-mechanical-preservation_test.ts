@@ -331,7 +331,7 @@ Deno.test("X11 stays unresolved when X09, X08 or closeout artifact metadata or i
   tamperArtifact(
     x09,
     (item) =>
-      item.producer.tool === "decide.accept-cross-domain-impact@1"
+      item.producer.tool === "decide.accept-cross-domain-impact@2"
         ? { ...item, name: "Tampered impact decision", version: "tampered" }
         : item,
   );
@@ -342,7 +342,7 @@ Deno.test("X11 stays unresolved when X09, X08 or closeout artifact metadata or i
   tamperArtifact(
     x08,
     (item) =>
-      item.producer.tool === "analyze.evaluate-cross-domain-impact@1"
+      item.producer.tool === "analyze.evaluate-cross-domain-impact@2"
         ? { ...item, uri: "casys://forged/sha256/00", version: "tampered" }
         : item,
   );
@@ -1046,7 +1046,7 @@ async function evaluationCaptureFixture(
     )
   );
   return await validateCrossDomainImpactEvaluationCapture({
-    schemaVersion: "cross-domain-impact-evaluation-capture/1.0",
+    schemaVersion: "cross-domain-impact-evaluation-capture/2.0",
     kind: "cross-domain-impact-evaluation",
     operation: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
     trustedRunId: EVAL_RUN,
@@ -1108,7 +1108,7 @@ async function decisionCaptureFixture(
   );
   const snapshotFingerprint = await sha256Fingerprint(basis);
   const admission = validateCrossDomainImpactDecisionAdmission({
-    schemaVersion: "cross-domain-impact-decision-admission/1.0",
+    schemaVersion: "cross-domain-impact-decision-admission/2.0",
     consequence: "accept",
     projectId: PROJECT,
     subjectId: SUBJECT,
@@ -1131,7 +1131,7 @@ async function decisionCaptureFixture(
     limits: CROSS_DOMAIN_IMPACT_DECISION_LIMITS,
   });
   return validateCrossDomainImpactDecisionCapture({
-    schemaVersion: "cross-domain-impact-decision-capture/1.0",
+    schemaVersion: "cross-domain-impact-decision-capture/2.0",
     kind: "cross-domain-impact-decision",
     operation: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
     trustedRunId: DECISION_RUN,
@@ -1250,7 +1250,7 @@ function rootSnapshot(
       producer: {
         serverId: "digital-thread",
         tool: input.id === "manifest-seal-document"
-          ? "verify.seal-cross-domain-impact-manifest@1"
+          ? "verify.seal-cross-domain-impact-manifest@2"
           : "recorded-test@1",
         runId: input.id === "manifest-seal-document"
           ? "run-manifest-seal"
@@ -1415,7 +1415,7 @@ function evaluationSnapshot(
 ): ThreadSnapshot {
   const producer = {
     serverId: "digital-thread",
-    tool: "analyze.evaluate-cross-domain-impact@1",
+    tool: "analyze.evaluate-cross-domain-impact@2",
     runId: EVAL_RUN,
   } as const;
   const artifact: ThreadArtifact = {
@@ -1481,7 +1481,7 @@ function decisionSnapshot(
 ): ThreadSnapshot {
   const producer = {
     serverId: "digital-thread",
-    tool: "decide.accept-cross-domain-impact@1",
+    tool: "decide.accept-cross-domain-impact@2",
     runId: DECISION_RUN,
   } as const;
   const artifact: ThreadArtifact = {
@@ -1664,8 +1664,11 @@ function projectFixture(
         kind: "review" as const,
         operation: {
           id: "analyze.evaluate-mechanical-preservation",
-          version: "1",
-          bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
+          version: "2",
+          bindings: [{
+            name: "approvedBrief",
+            source: { kind: "approved-brief" as const },
+          }],
         },
         status: "in-progress" as const,
         owner: "agent" as const,

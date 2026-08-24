@@ -18,22 +18,17 @@ import {
   rejectDuplicates,
   safeId,
 } from "../kernel/case-validation.ts";
-import {
-  fingerprintsEqual,
-  sha256Fingerprint,
-} from "../kernel/deterministic-json.ts";
+import { fingerprintsEqual, sha256Fingerprint } from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type {
   EngineeringGateClaimRole,
   EngineeringGateClaimStatus,
 } from "../project/engineering-project.ts";
 import {
-  CROSS_DOMAIN_IMPACT_BRANCH_IDS,
   CROSS_DOMAIN_IMPACT_THREAD_CHANGE_KINDS,
-  parseCrossDomainImpactChangeKind,
-  validateCrossDomainImpactManifest,
   type CrossDomainImpactAnchorSourceKind,
   type CrossDomainImpactBranchId,
+  crossDomainImpactBranchOrder,
   type CrossDomainImpactChangeKind,
   type CrossDomainImpactManifest,
   type CrossDomainImpactProjectIdentity,
@@ -41,10 +36,16 @@ import {
   type CrossDomainImpactSubjectIdentity,
   type CrossDomainImpactThreadBasis,
   type CrossDomainImpactThreadChangeKind,
+  parseCrossDomainImpactBranchId,
+  parseCrossDomainImpactChangeKind,
+  requireExactDeclaredBranchSet,
+  validateCrossDomainImpactManifest,
 } from "./cross-domain-impact-manifest.ts";
 
 export const CROSS_DOMAIN_IMPACT_EVALUATION_SCHEMA =
-  "cross-domain-impact-evaluation/1.0" as const;
+  "cross-domain-impact-evaluation/2.0" as const;
+
+const MECHANICAL_BRANCH_ID = "mechanical";
 
 /** The existing project gate-claim vocabulary; no verdict vocabulary is admitted. */
 export const CROSS_DOMAIN_IMPACT_GATE_CLAIM_STATUSES = [
@@ -174,16 +175,26 @@ export async function evaluateCrossDomainImpact(
   assertExactIdentityContext(manifest, input);
 
   const changedSources = canonicalChangedSources(input.changedSources, manifest);
-  const branchReadiness = canonicalBranchReadiness(input.branchReadiness);
+  const branchReadiness = canonicalBranchReadiness(
+    input.branchReadiness,
+    manifest.branches.map((item) => item.id),
+  );
   const mechanicalEvidence = parseMechanicalEvidence(
     input.mechanicalEvidence,
     "$evaluation.mechanicalEvidence",
   );
-  const reviewTrigger = parseReference(input.reviewTrigger, "$evaluation.reviewTrigger");
+  const reviewTrigger = parseReference(
+    input.reviewTrigger,
+    "$evaluation.reviewTrigger",
+  );
   const evaluatedAt = parseIsoDateTime(input.evaluatedAt, "$evaluation.evaluatedAt");
 
+  const declaredBranchIds = manifest.branches.map((item) => item.id);
   const changedAnchorIds = new Set(changedSources.map((item) => item.sourceAnchorId));
-  const statuses = new Map<CrossDomainImpactBranchId, CrossDomainImpactGateClaimStatus>();
+  const statuses = new Map<
+    CrossDomainImpactBranchId,
+    CrossDomainImpactGateClaimStatus
+  >();
   for (const branch of manifest.branches) {
     const hasPositiveEdge = manifest.causalEdges.some((edge) =>
       edge.to.branchId === branch.id && changedAnchorIds.has(edge.fromAnchorId)
@@ -203,7 +214,15 @@ export async function evaluateCrossDomainImpact(
     );
   }
 
-  const branches = CROSS_DOMAIN_IMPACT_BRANCH_IDS.map((branchId) => ({
+  if (
+    mechanicalEvidence !== null && !declaredBranchIds.includes(MECHANICAL_BRANCH_ID)
+  ) {
+    throw new TypeError(
+      "$evaluation.mechanicalEvidence is only admitted when mechanical is a declared branch.",
+    );
+  }
+
+  const branches = declaredBranchIds.map((branchId) => ({
     branchId,
     status: statuses.get(branchId)!,
   }));
@@ -275,7 +294,7 @@ function branchStatus(
 ): CrossDomainImpactGateClaimStatus {
   if (changedSources.length === 0) return "current";
 
-  if (branchId === "mechanical") {
+  if (branchId === MECHANICAL_BRANCH_ID) {
     if (hasPositiveEdge) return "invalidated";
     return hasCurrentMechanicalIndependenceAssertion(
         manifest,
@@ -289,7 +308,7 @@ function branchStatus(
   }
 
   if (!hasPositiveEdge) return "impact-unresolved";
-  return hasCurrentDependentBranchReadiness(
+  return hasCurrentNonmechanicalBranchReadiness(
       manifest,
       branchId,
       branchReadiness,
@@ -298,9 +317,9 @@ function branchStatus(
     : "impact-unresolved";
 }
 
-function hasCurrentDependentBranchReadiness(
+function hasCurrentNonmechanicalBranchReadiness(
   manifest: CrossDomainImpactManifest,
-  branchId: "electrical" | "thermal",
+  branchId: CrossDomainImpactBranchId,
   readiness: readonly CrossDomainImpactBranchReadiness[],
 ): boolean {
   const branch = manifest.branches.find((item) => item.id === branchId);
@@ -324,7 +343,7 @@ function hasCurrentMechanicalIndependenceAssertion(
   if (!mechanicalEvidence) return false;
   const evaluatedAtMs = Date.parse(evaluatedAt);
   return manifest.independenceAssertions.some((assertion) => {
-    if (assertion.branchId !== "mechanical") return false;
+    if (assertion.branchId !== MECHANICAL_BRANCH_ID) return false;
     if (!sameReference(assertion.review.trigger, reviewTrigger)) return false;
     if (
       Date.parse(assertion.review.reviewedAt) > evaluatedAtMs ||
@@ -333,22 +352,31 @@ function hasCurrentMechanicalIndependenceAssertion(
       return false;
     }
     if (!sameReference(assertion.evidence, mechanicalEvidence.evidence)) return false;
-    if (!sameInspectedAnchors(assertion.inspectedSourceAnchors, changedSources, manifest)) {
+    if (
+      !sameInspectedAnchors(assertion.inspectedSourceAnchors, changedSources, manifest)
+    ) {
       return false;
     }
-    return sameMechanicalConsumptions(assertion.inspectedConsumptions, mechanicalEvidence);
+    return sameMechanicalConsumptions(
+      assertion.inspectedConsumptions,
+      mechanicalEvidence,
+    );
   });
 }
 
 function sameInspectedAnchors(
-  inspected: CrossDomainImpactManifest["independenceAssertions"][number]["inspectedSourceAnchors"],
+  inspected: CrossDomainImpactManifest["independenceAssertions"][number][
+    "inspectedSourceAnchors"
+  ],
   changedSources: readonly CrossDomainImpactChangedSource[],
   manifest: CrossDomainImpactManifest,
 ): boolean {
   if (inspected.length !== changedSources.length) return false;
   const expected = new Set(
     changedSources.map((changed) => {
-      const anchor = manifest.sourceAnchors.find((item) => item.id === changed.sourceAnchorId)!;
+      const anchor = manifest.sourceAnchors.find((item) =>
+        item.id === changed.sourceAnchorId
+      )!;
       return [
         anchor.id,
         anchor.threadChange.fingerprint.digest,
@@ -365,15 +393,21 @@ function sameInspectedAnchors(
       ].join(":")
     ),
   );
-  return expected.size === actual.size && [...expected].every((item) => actual.has(item));
+  return expected.size === actual.size &&
+    [...expected].every((item) => actual.has(item));
 }
 
 function sameMechanicalConsumptions(
-  inspected: CrossDomainImpactManifest["independenceAssertions"][number]["inspectedConsumptions"],
+  inspected: CrossDomainImpactManifest["independenceAssertions"][number][
+    "inspectedConsumptions"
+  ],
   mechanicalEvidence: CrossDomainImpactMechanicalEvidence | null,
 ): boolean {
   if (!mechanicalEvidence) return false;
-  if (inspected.length === 0 || inspected.length !== mechanicalEvidence.consumptions.length) {
+  if (
+    inspected.length === 0 ||
+    inspected.length !== mechanicalEvidence.consumptions.length
+  ) {
     return false;
   }
   if (
@@ -383,11 +417,14 @@ function sameMechanicalConsumptions(
   ) {
     return false;
   }
-  const expected = new Set(inspected.map((item) => consumptionKey(item.id, item.input)));
+  const expected = new Set(
+    inspected.map((item) => consumptionKey(item.id, item.input)),
+  );
   const actual = new Set(
     mechanicalEvidence.consumptions.map((item) => consumptionKey(item.id, item.input)),
   );
-  return expected.size === actual.size && [...expected].every((item) => actual.has(item));
+  return expected.size === actual.size &&
+    [...expected].every((item) => actual.has(item));
 }
 
 function assertExactIdentityContext(
@@ -412,7 +449,10 @@ function canonicalChangedSources(
   const changed = arrayOf(value, "$evaluation.changedSources").map((item, index) =>
     parseChangedSource(item, `$evaluation.changedSources[${index}]`)
   );
-  rejectDuplicates(changed.map((item) => item.sourceAnchorId), "$evaluation.changedSources anchors");
+  rejectDuplicates(
+    changed.map((item) => item.sourceAnchorId),
+    "$evaluation.changedSources anchors",
+  );
   for (const item of changed) {
     const anchor = manifest.sourceAnchors.find((candidate) =>
       candidate.id === item.sourceAnchorId
@@ -422,30 +462,54 @@ function canonicalChangedSources(
       anchor.changeKind !== item.changeKind ||
       anchor.threadChange.id !== item.threadChange.id ||
       anchor.threadChange.kind !== item.threadChange.kind ||
-      !fingerprintsEqual(anchor.threadChange.fingerprint, item.threadChange.fingerprint) ||
+      !fingerprintsEqual(
+        anchor.threadChange.fingerprint,
+        item.threadChange.fingerprint,
+      ) ||
       anchor.source.kind !== item.source.kind ||
       anchor.source.id !== item.source.id ||
       !fingerprintsEqual(anchor.source.fingerprint, item.source.fingerprint)
     ) {
       throw new TypeError(
-        `$evaluation.changedSources ${JSON.stringify(item.sourceAnchorId)} must exactly recross a manifest sourceAnchor and its Thread change lineage.`,
+        `$evaluation.changedSources ${
+          JSON.stringify(item.sourceAnchorId)
+        } must exactly recross a manifest sourceAnchor and its Thread change lineage.`,
       );
     }
   }
-  return deepFreeze([...changed].sort((left, right) =>
-    left.sourceAnchorId.localeCompare(right.sourceAnchorId)
-  ));
+  return deepFreeze(
+    [...changed].sort((left, right) =>
+      left.sourceAnchorId.localeCompare(right.sourceAnchorId)
+    ),
+  );
 }
 
 function canonicalBranchReadiness(
   value: unknown,
+  declared: readonly CrossDomainImpactBranchId[],
 ): readonly CrossDomainImpactBranchReadiness[] {
-  const readiness = nonEmptyArray(value, "$evaluation.branchReadiness").map(
-    (item, index) => parseBranchReadiness(item, `$evaluation.branchReadiness[${index}]`),
+  const readiness = parseBranchReadinessList(value, "$evaluation.branchReadiness");
+  requireExactDeclaredBranchSet(
+    readiness.map((item) => item.branchId),
+    declared,
+    "$evaluation.branchReadiness",
   );
-  rejectDuplicates(readiness.map((item) => item.branchId), "$evaluation.branchReadiness branches");
-  requireClosedBranchSet(readiness.map((item) => item.branchId), "$evaluation.branchReadiness");
-  return deepFreeze([...readiness].sort((left, right) => branchOrder(left.branchId, right.branchId)));
+  return readiness;
+}
+
+function parseBranchReadinessList(
+  value: unknown,
+  path: string,
+): readonly CrossDomainImpactBranchReadiness[] {
+  const readiness = nonEmptyArray(value, path).map(
+    (item, index) => parseBranchReadiness(item, `${path}[${index}]`),
+  );
+  rejectDuplicates(readiness.map((item) => item.branchId), `${path} branches`);
+  return deepFreeze(
+    [...readiness].sort((left, right) =>
+      crossDomainImpactBranchOrder(left.branchId, right.branchId)
+    ),
+  );
 }
 
 function parseEvaluationBody(
@@ -467,24 +531,57 @@ function parseEvaluationBody(
   const changedSources = arrayOf(root.changedSources, "$evaluation.changedSources").map(
     (item, index) => parseChangedSource(item, `$evaluation.changedSources[${index}]`),
   );
-  rejectDuplicates(changedSources.map((item) => item.sourceAnchorId), "$evaluation.changedSources anchors");
-  const branchReadiness = canonicalBranchReadiness(root.branchReadiness);
-  const branches = nonEmptyArray(root.branches, "$evaluation.branches").map((item, index) =>
-    parseBranchResult(item, `$evaluation.branches[${index}]`)
+  rejectDuplicates(
+    changedSources.map((item) => item.sourceAnchorId),
+    "$evaluation.changedSources anchors",
   );
+  const branchReadiness = parseBranchReadinessList(
+    root.branchReadiness,
+    "$evaluation.branchReadiness",
+  );
+  const branches = nonEmptyArray(root.branches, "$evaluation.branches").map((
+    item,
+    index,
+  ) => parseBranchResult(item, `$evaluation.branches[${index}]`));
   rejectDuplicates(branches.map((item) => item.branchId), "$evaluation.branches ids");
-  requireClosedBranchSet(branches.map((item) => item.branchId), "$evaluation.branches");
+  requireExactDeclaredBranchSet(
+    branchReadiness.map((item) => item.branchId),
+    branches.map((item) => item.branchId),
+    "$evaluation.branchReadiness",
+  );
   const gateClaims = nonEmptyArray(root.gateClaims, "$evaluation.gateClaims").map(
     (item, index) => parseGateClaimTransition(item, `$evaluation.gateClaims[${index}]`),
   );
-  rejectDuplicates(gateClaims.map((item) => item.gateItemId), "$evaluation.gateClaims gateItemIds");
+  rejectDuplicates(
+    gateClaims.map((item) => item.gateItemId),
+    "$evaluation.gateClaims gateItemIds",
+  );
+  const declaredBranchIds = branches.map((item) => item.branchId);
+  requireExactDeclaredBranchSet(
+    [...new Set(gateClaims.map((item) => item.branchId))],
+    declaredBranchIds,
+    "$evaluation.gateClaims",
+  );
   const branchStatuses = new Map(branches.map((item) => [item.branchId, item.status]));
   for (const gateClaim of gateClaims) {
     if (branchStatuses.get(gateClaim.branchId) !== gateClaim.status) {
       throw new TypeError(
-        `$evaluation.gateClaims ${JSON.stringify(gateClaim.gateItemId)} must carry its branch result status.`,
+        `$evaluation.gateClaims ${
+          JSON.stringify(gateClaim.gateItemId)
+        } must carry its branch result status.`,
       );
     }
+  }
+  const mechanicalEvidence = parseMechanicalEvidence(
+    root.mechanicalEvidence,
+    "$evaluation.mechanicalEvidence",
+  );
+  if (
+    mechanicalEvidence !== null && !declaredBranchIds.includes(MECHANICAL_BRANCH_ID)
+  ) {
+    throw new TypeError(
+      "$evaluation.mechanicalEvidence is only admitted when mechanical is a declared branch.",
+    );
   }
 
   return deepFreeze({
@@ -498,19 +595,21 @@ function parseEvaluationBody(
     ),
     reviewTrigger: parseReference(root.reviewTrigger, "$evaluation.reviewTrigger"),
     branchReadiness,
-    mechanicalEvidence: parseMechanicalEvidence(
-      root.mechanicalEvidence,
-      "$evaluation.mechanicalEvidence",
-    ),
+    mechanicalEvidence,
     evaluatedAt: parseIsoDateTime(root.evaluatedAt, "$evaluation.evaluatedAt"),
-    branches: [...branches].sort((left, right) => branchOrder(left.branchId, right.branchId)),
+    branches: [...branches].sort((left, right) =>
+      crossDomainImpactBranchOrder(left.branchId, right.branchId)
+    ),
     gateClaims: [...gateClaims].sort((left, right) =>
       gateClaimKey(left).localeCompare(gateClaimKey(right))
     ),
   });
 }
 
-function parseChangedSource(value: unknown, path: string): CrossDomainImpactChangedSource {
+function parseChangedSource(
+  value: unknown,
+  path: string,
+): CrossDomainImpactChangedSource {
   const input = exactRecord(
     value,
     ["sourceAnchorId", "changeKind", "threadChange", "source"],
@@ -521,9 +620,16 @@ function parseChangedSource(value: unknown, path: string): CrossDomainImpactChan
     ["id", "kind", "fingerprint"],
     `${path}.threadChange`,
   );
-  const source = exactRecord(input.source, ["kind", "id", "fingerprint"], `${path}.source`);
+  const source = exactRecord(
+    input.source,
+    ["kind", "id", "fingerprint"],
+    `${path}.source`,
+  );
   const changeKind = parseChangeKind(input.changeKind, `${path}.changeKind`);
-  const threadChangeKind = parseThreadChangeKind(threadChange.kind, `${path}.threadChange.kind`);
+  const threadChangeKind = parseThreadChangeKind(
+    threadChange.kind,
+    `${path}.threadChange.kind`,
+  );
   const sourceKind = parseAnchorSourceKind(source.kind, `${path}.source.kind`);
   return {
     sourceAnchorId: safeId(input.sourceAnchorId, `${path}.sourceAnchorId`),
@@ -544,9 +650,16 @@ function parseChangedSource(value: unknown, path: string): CrossDomainImpactChan
   };
 }
 
-function parseBranchReadiness(value: unknown, path: string): CrossDomainImpactBranchReadiness {
+function parseBranchReadiness(
+  value: unknown,
+  path: string,
+): CrossDomainImpactBranchReadiness {
   const input = exactRecord(value, ["branchId", "method", "joins"], path);
-  const method = exactRecord(input.method, ["reference", "available"], `${path}.method`);
+  const method = exactRecord(
+    input.method,
+    ["reference", "available"],
+    `${path}.method`,
+  );
   if (typeof method.available !== "boolean") {
     throw new TypeError(`${path}.method.available must be boolean.`);
   }
@@ -589,7 +702,9 @@ function parseMechanicalEvidence(
   );
   return {
     evidence: parseReference(input.evidence, `${path}.evidence`),
-    consumptions: [...consumptions].sort((left, right) => left.id.localeCompare(right.id)),
+    consumptions: [...consumptions].sort((left, right) =>
+      left.id.localeCompare(right.id)
+    ),
   };
 }
 
@@ -600,12 +715,18 @@ function parseEvidenceConsumption(
   const input = exactRecord(value, ["id", "consumerEvidence", "input"], path);
   return {
     id: safeId(input.id, `${path}.id`),
-    consumerEvidence: parseReference(input.consumerEvidence, `${path}.consumerEvidence`),
+    consumerEvidence: parseReference(
+      input.consumerEvidence,
+      `${path}.consumerEvidence`,
+    ),
     input: parseReference(input.input, `${path}.input`),
   };
 }
 
-function parseBranchResult(value: unknown, path: string): CrossDomainImpactBranchResult {
+function parseBranchResult(
+  value: unknown,
+  path: string,
+): CrossDomainImpactBranchResult {
   const input = exactRecord(value, ["branchId", "status"], path);
   return {
     branchId: parseBranchId(input.branchId, `${path}.branchId`),
@@ -680,7 +801,11 @@ function parseThreadChangeKind(
   path: string,
 ): CrossDomainImpactThreadChangeKind {
   const kind = nonEmptyText(value, path);
-  if (!CROSS_DOMAIN_IMPACT_THREAD_CHANGE_KINDS.includes(kind as CrossDomainImpactThreadChangeKind)) {
+  if (
+    !CROSS_DOMAIN_IMPACT_THREAD_CHANGE_KINDS.includes(
+      kind as CrossDomainImpactThreadChangeKind,
+    )
+  ) {
     throw new TypeError(`${path} must use the existing Thread change vocabulary.`);
   }
   return kind as CrossDomainImpactThreadChangeKind;
@@ -698,16 +823,19 @@ function parseAnchorSourceKind(
 }
 
 function parseBranchId(value: unknown, path: string): CrossDomainImpactBranchId {
-  const id = nonEmptyText(value, path);
-  if (!CROSS_DOMAIN_IMPACT_BRANCH_IDS.includes(id as CrossDomainImpactBranchId)) {
-    throw new TypeError(`${path} must be electrical, thermal or mechanical.`);
-  }
-  return id as CrossDomainImpactBranchId;
+  return parseCrossDomainImpactBranchId(value, path);
 }
 
-function parseGateClaimStatus(value: unknown, path: string): CrossDomainImpactGateClaimStatus {
+function parseGateClaimStatus(
+  value: unknown,
+  path: string,
+): CrossDomainImpactGateClaimStatus {
   const status = nonEmptyText(value, path);
-  if (!CROSS_DOMAIN_IMPACT_GATE_CLAIM_STATUSES.includes(status as CrossDomainImpactGateClaimStatus)) {
+  if (
+    !CROSS_DOMAIN_IMPACT_GATE_CLAIM_STATUSES.includes(
+      status as CrossDomainImpactGateClaimStatus,
+    )
+  ) {
     throw new TypeError(
       `${path} must be current, impact-unresolved, invalidated or carried-forward.`,
     );
@@ -721,20 +849,6 @@ function parseIsoDateTime(value: unknown, path: string): string {
     throw new TypeError(`${path} must be an ISO-8601 UTC timestamp.`);
   }
   return text;
-}
-
-function requireClosedBranchSet(
-  ids: readonly CrossDomainImpactBranchId[],
-  path: string,
-): void {
-  if (ids.length !== CROSS_DOMAIN_IMPACT_BRANCH_IDS.length) {
-    throw new TypeError(`${path} must declare exactly electrical, thermal and mechanical.`);
-  }
-  for (const id of CROSS_DOMAIN_IMPACT_BRANCH_IDS) {
-    if (!ids.includes(id)) {
-      throw new TypeError(`${path} must declare the ${JSON.stringify(id)} branch.`);
-    }
-  }
 }
 
 function sameReference(
@@ -763,9 +877,4 @@ function consumptionKey(id: string, input: CrossDomainImpactReference): string {
 
 function gateClaimKey(value: CrossDomainImpactGateClaimTransition): string {
   return `${value.gateItemId}:${value.branchId}:${value.role}`;
-}
-
-function branchOrder(left: CrossDomainImpactBranchId, right: CrossDomainImpactBranchId): number {
-  return CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(left) -
-    CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(right);
 }

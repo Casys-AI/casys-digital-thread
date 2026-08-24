@@ -2,15 +2,22 @@ import { assertEquals, assertRejects } from "@std/assert";
 import type { ProjectCrossDomainImpactManifestSealReviewUseCase } from "../../application/ports/in/impact/project-cross-domain-impact-manifest-seal-review.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
 import type { CrossDomainImpactManifestSealCaptureStore } from "../../application/ports/out/impact/cross-domain-impact-capture-store.ts";
-import type { CompleteRunCommand, FailRunCommand, RunCommand } from "../../application/use-cases/project/engineering-project-command-service.ts";
+import type {
+  CompleteRunCommand,
+  FailRunCommand,
+  RunCommand,
+} from "../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_ADMISSION_SCHEMA,
+  type CrossDomainImpactManifestSealAdmission,
   crossDomainImpactManifestUri,
   encodeCrossDomainImpactManifestSealAdmission,
-  type CrossDomainImpactManifestSealAdmission,
 } from "../../domain/impact/cross-domain-impact-manifest-proposal.ts";
 import type { CrossDomainImpactManifestSealCapture } from "../../domain/impact/cross-domain-impact-manifest-seal-capture.ts";
-import { deterministicJson, sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
@@ -35,9 +42,10 @@ Deno.test("impact-manifest seal requires exact human MRTR, writes one documentar
   assertEquals(first.agentRuns[0]!.status, "completed");
   const result = first.agentRuns[0]!.resultSnapshot!;
   const sealed = await fixture.snapshots.getFresh(result.snapshotId);
-  const documents = sealed?.artifacts.filter((artifact) =>
-    artifact.producer.tool === "verify.seal-cross-domain-impact-manifest@1"
-  ) ?? [];
+  const documents =
+    sealed?.artifacts.filter((artifact) =>
+      artifact.producer.tool === "verify.seal-cross-domain-impact-manifest@2"
+    ) ?? [];
   assertEquals(documents.length, 1);
   const document = documents[0]!;
   assertEquals(document.inputArtifactIds, ["artifact.brief"]);
@@ -57,7 +65,8 @@ Deno.test("impact-manifest seal requires exact human MRTR, writes one documentar
     relation: "derived_from",
     from: { kind: "artifact", id: document.id },
     to: { kind: "artifact", id: "artifact.brief" },
-    rationale: "The sealed impact manifest recrossed this exact declared artifact identity.",
+    rationale:
+      "The sealed impact manifest recrossed this exact declared artifact identity.",
   }]);
   assertEquals(sealed?.provenance.filter((link) => link.relation === "uses"), [{
     id: `verify-seal-cross-domain-impact-manifest-${RUN}:uses:artifact.brief`,
@@ -88,9 +97,11 @@ Deno.test("impact-manifest seal refuses a non-human or fingerprint-inexact MRTR 
   for (const mutation of ["origin", "fingerprint"] as const) {
     const fixture = await executorFixture();
     if (mutation === "origin") {
-      (fixture.project.approvals[0] as { decidedByOrigin?: string }).decidedByOrigin = "agent";
+      (fixture.project.approvals[0] as { decidedByOrigin?: string }).decidedByOrigin =
+        "agent";
     } else {
-      (fixture.project.approvals[0] as { inputFingerprint?: ContentFingerprint }).inputFingerprint = hash("0");
+      (fixture.project.approvals[0] as { inputFingerprint?: ContentFingerprint })
+        .inputFingerprint = hash("0");
     }
     await assertRejects(
       () => fixture.executor.execute(AGENT, fixture.command),
@@ -104,7 +115,13 @@ Deno.test("impact-manifest seal refuses a non-human or fingerprint-inexact MRTR 
 
 async function executorFixture(): Promise<{
   readonly executor: VerifySealCrossDomainImpactManifestRunExecutor;
-  readonly command: { commandId: string; projectId: string; expectedRevision: number; issuedAt: string; runId: string };
+  readonly command: {
+    commandId: string;
+    projectId: string;
+    expectedRevision: number;
+    issuedAt: string;
+    runId: string;
+  };
   readonly project: MutableProject;
   readonly basis: ThreadSnapshot;
   readonly snapshots: MemorySnapshots;
@@ -117,7 +134,13 @@ async function executorFixture(): Promise<{
     id: "thread.impact.r1",
     revision: 1,
     generatedAt: AT,
-    subject: { id: SUBJECT, name: "Impact subject", kind: "system", version: "r1", modelArtifactId: "artifact.brief" },
+    subject: {
+      id: SUBJECT,
+      name: "Impact subject",
+      kind: "system",
+      version: "r1",
+      modelArtifactId: "artifact.brief",
+    },
     freshness: fresh(),
     changeSet: {
       id: "changes.impact.r1",
@@ -139,11 +162,19 @@ async function executorFixture(): Promise<{
       kind: "document",
       version: "1",
       fingerprint: hash("1"),
-      producer: { serverId: "digital-thread", tool: "baseline.from-approved-brief@1", runId: "run.brief" },
+      producer: {
+        serverId: "digital-thread",
+        tool: "baseline.from-approved-brief@1",
+        runId: "run.brief",
+      },
       inputArtifactIds: [],
       freshness: fresh(),
     }],
-    consumptions: [], observations: [], requirements: [], evaluations: [], violations: [],
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
     provenance: [{
       id: "provenance.change.brief",
       relation: "changes",
@@ -162,11 +193,15 @@ async function executorFixture(): Promise<{
   };
   const admission = admissionFixture(basisFingerprint);
   const parameters = encodeCrossDomainImpactManifestSealAdmission(admission);
-  const reviewBasis = { snapshotId: basis.id, revision: basis.revision, subjectId: SUBJECT };
+  const reviewBasis = {
+    snapshotId: basis.id,
+    revision: basis.revision,
+    subjectId: SUBJECT,
+  };
   const runBasis = { kind: "thread-snapshot" as const, ...reviewBasis };
   const operation = {
     id: "verify.seal-cross-domain-impact-manifest",
-    version: "1",
+    version: "2",
     bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
   };
   const summary = "Seal the exact cross-domain impact manifest.";
@@ -188,18 +223,80 @@ async function executorFixture(): Promise<{
     generatedAt: AT,
     project: projectIdentity,
     threadSnapshots: [reviewBasis],
-    phases: [{ id: "phase.impact", name: "Impact", order: 1, description: "Seal impact", workItemIds: [WORK], requiredDecisionIds: [DECISION], evidenceRefs: [] }],
-    workItems: [{ id: WORK, phaseId: "phase.impact", title: "Seal impact", description: "Seal exact impact", kind: "review", operation, status: "in-progress", owner: "agent", dependsOnWorkItemIds: [], evidenceRefs: [], decisionIds: [DECISION], blockerIds: [] }],
-    agentRuns: [{ id: RUN, workItemId: WORK, status: "queued", summary: "Seal impact", queuedAt: AT, basis: runBasis, inputFingerprint: runFingerprint, evidenceRefs: [] }],
-    decisions: [{ id: DECISION, phaseId: "phase.impact", title: "Approve impact", question: "Seal?", status: "approved", requestedAt: AT, baseSnapshot: reviewBasis, inputFingerprint: decisionFingerprint, inputEvidenceRefs: [], approvalIds: [APPROVAL], proposal: { summary, parameters, proposedAt: AT, proposedBy: { id: AGENT.actorId, origin: "agent" } } }],
-    approvals: [{ id: APPROVAL, decisionId: DECISION, status: "approved", requestedAt: AT, decidedAt: AT, decidedBy: "human.impact", decidedByOrigin: "human", rationale: "Reviewed exact manifest.", baseSnapshot: reviewBasis, inputFingerprint: decisionFingerprint, inputEvidenceRefs: [] }],
-    blockers: [], commandReceipts: [],
+    phases: [{
+      id: "phase.impact",
+      name: "Impact",
+      order: 1,
+      description: "Seal impact",
+      workItemIds: [WORK],
+      requiredDecisionIds: [DECISION],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: WORK,
+      phaseId: "phase.impact",
+      title: "Seal impact",
+      description: "Seal exact impact",
+      kind: "review",
+      operation,
+      status: "in-progress",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [DECISION],
+      blockerIds: [],
+    }],
+    agentRuns: [{
+      id: RUN,
+      workItemId: WORK,
+      status: "queued",
+      summary: "Seal impact",
+      queuedAt: AT,
+      basis: runBasis,
+      inputFingerprint: runFingerprint,
+      evidenceRefs: [],
+    }],
+    decisions: [{
+      id: DECISION,
+      phaseId: "phase.impact",
+      title: "Approve impact",
+      question: "Seal?",
+      status: "approved",
+      requestedAt: AT,
+      baseSnapshot: reviewBasis,
+      inputFingerprint: decisionFingerprint,
+      inputEvidenceRefs: [],
+      approvalIds: [APPROVAL],
+      proposal: {
+        summary,
+        parameters,
+        proposedAt: AT,
+        proposedBy: { id: AGENT.actorId, origin: "agent" },
+      },
+    }],
+    approvals: [{
+      id: APPROVAL,
+      decisionId: DECISION,
+      status: "approved",
+      requestedAt: AT,
+      decidedAt: AT,
+      decidedBy: "human.impact",
+      decidedByOrigin: "human",
+      rationale: "Reviewed exact manifest.",
+      baseSnapshot: reviewBasis,
+      inputFingerprint: decisionFingerprint,
+      inputEvidenceRefs: [],
+    }],
+    blockers: [],
+    commandReceipts: [],
   } as unknown as MutableProject;
   const snapshots = new MemorySnapshots(basis);
   const captures = new MemoryCaptures();
   const review = new FixedReview(admission, parameters);
   const commands = new MemoryCommands(project);
-  const projects: Pick<EngineeringProjectRevisionStore, "get"> = { get: () => Promise.resolve(project) };
+  const projects: Pick<EngineeringProjectRevisionStore, "get"> = {
+    get: () => Promise.resolve(project),
+  };
   return {
     executor: new VerifySealCrossDomainImpactManifestRunExecutor({
       projects,
@@ -209,7 +306,13 @@ async function executorFixture(): Promise<{
       captures,
       lease: { withLease: (_projectId, _scope, work) => work() },
     }),
-    command: { commandId: "command.impact", projectId: PROJECT, expectedRevision: 1, issuedAt: AT, runId: RUN },
+    command: {
+      commandId: "command.impact",
+      projectId: PROJECT,
+      expectedRevision: 1,
+      issuedAt: AT,
+      runId: RUN,
+    },
     project,
     basis,
     snapshots,
@@ -219,12 +322,14 @@ async function executorFixture(): Promise<{
   };
 }
 
-function admissionFixture(basisFingerprint: ContentFingerprint): CrossDomainImpactManifestSealAdmission {
+function admissionFixture(
+  basisFingerprint: ContentFingerprint,
+): CrossDomainImpactManifestSealAdmission {
   const reference = hash("e");
   return {
     schemaVersion: CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_ADMISSION_SCHEMA,
     manifest: {
-      schemaVersion: "cross-domain-impact-manifest/1.0",
+      schemaVersion: "cross-domain-impact-manifest/2.0",
       id: "manifest.impact",
       revision: 1,
       fingerprint: hash("d"),
@@ -233,22 +338,66 @@ function admissionFixture(basisFingerprint: ContentFingerprint): CrossDomainImpa
     },
     project: { id: PROJECT, fingerprint: hash("a") },
     subject: { id: SUBJECT, fingerprint: hash("b") },
-    basis: { snapshotId: "thread.impact.r1", revision: 1, fingerprint: basisFingerprint },
+    basis: {
+      snapshotId: "thread.impact.r1",
+      revision: 1,
+      fingerprint: basisFingerprint,
+    },
     brief: {
       contractVersion: "2.0",
       id: "brief.impact",
       revision: 2,
       fingerprint: hash("c"),
       gates: [
-        { gateItemId: "gate.electrical", kind: "success-criterion", branchId: "electrical", role: "satisfies", fingerprint: hash("1"), dependsOnItemIds: [] },
-        { gateItemId: "gate.mechanical", kind: "success-criterion", branchId: "mechanical", role: "satisfies", fingerprint: hash("2"), dependsOnItemIds: [] },
-        { gateItemId: "gate.thermal", kind: "success-criterion", branchId: "thermal", role: "contributes-to", fingerprint: hash("3"), dependsOnItemIds: [] },
+        {
+          gateItemId: "gate.electrical",
+          kind: "success-criterion",
+          branchId: "electrical",
+          role: "satisfies",
+          fingerprint: hash("1"),
+          dependsOnItemIds: [],
+        },
+        {
+          gateItemId: "gate.mechanical",
+          kind: "success-criterion",
+          branchId: "mechanical",
+          role: "satisfies",
+          fingerprint: hash("2"),
+          dependsOnItemIds: [],
+        },
+        {
+          gateItemId: "gate.thermal",
+          kind: "success-criterion",
+          branchId: "thermal",
+          role: "contributes-to",
+          fingerprint: hash("3"),
+          dependsOnItemIds: [],
+        },
       ],
     },
     sourceAnchors: [
-      sourceAnchor("anchor.brief", "brief", "change.brief", "artifact.brief", "1", "artifact"),
-      sourceAnchor("anchor.brightness", "brightness", "change.brightness", "requirement.brightness", "2"),
-      sourceAnchor("anchor.power", "electrical-power", "change.power", "requirement.power", "3"),
+      sourceAnchor(
+        "anchor.brief",
+        "brief",
+        "change.brief",
+        "artifact.brief",
+        "1",
+        "artifact",
+      ),
+      sourceAnchor(
+        "anchor.brightness",
+        "brightness",
+        "change.brightness",
+        "requirement.brightness",
+        "2",
+      ),
+      sourceAnchor(
+        "anchor.power",
+        "electrical-power",
+        "change.power",
+        "requirement.power",
+        "3",
+      ),
     ],
     mechanicalEvidence: [],
   };
@@ -266,7 +415,11 @@ function sourceAnchor(
     id,
     changeKind,
     role: "reviewed-change-source" as const,
-    threadChange: { id: changeId, kind: "modified" as const, fingerprint: hash(digest) },
+    threadChange: {
+      id: changeId,
+      kind: "modified" as const,
+      fingerprint: hash(digest),
+    },
     source: { kind: sourceKind, id: sourceId, fingerprint: hash(digest) },
   };
 }
@@ -275,28 +428,51 @@ class FixedReview implements ProjectCrossDomainImpactManifestSealReviewUseCase {
   calls = 0;
   constructor(
     readonly admission: CrossDomainImpactManifestSealAdmission,
-    readonly parameters: ReturnType<typeof encodeCrossDomainImpactManifestSealAdmission>,
+    readonly parameters: ReturnType<
+      typeof encodeCrossDomainImpactManifestSealAdmission
+    >,
   ) {}
   execute() {
     this.calls += 1;
-    return Promise.resolve({ status: "resolved" as const, admission: this.admission, decisionParameters: this.parameters, diagnostics: [] });
+    return Promise.resolve({
+      status: "resolved" as const,
+      admission: this.admission,
+      decisionParameters: this.parameters,
+      diagnostics: [],
+    });
   }
 }
 
 class MemorySnapshots implements CrossDomainImpactThreadSnapshotStore {
   readonly items = new Map<string, ThreadSnapshot>();
   saves = 0;
-  constructor(basis: ThreadSnapshot) { this.items.set(basis.id, structuredClone(basis)); }
-  get(id: string) { const value = this.items.get(id); return Promise.resolve(value && structuredClone(value)); }
-  getFresh(id: string) { return this.get(id); }
+  constructor(basis: ThreadSnapshot) {
+    this.items.set(basis.id, structuredClone(basis));
+  }
+  get(id: string) {
+    const value = this.items.get(id);
+    return Promise.resolve(value && structuredClone(value));
+  }
+  getFresh(id: string) {
+    return this.get(id);
+  }
   latest(subjectId: string) {
-    const values = [...this.items.values()].filter((item) => item.subject.id === subjectId);
-    return Promise.resolve(values.sort((left, right) => right.revision - left.revision)[0]);
+    const values = [...this.items.values()].filter((item) =>
+      item.subject.id === subjectId
+    );
+    return Promise.resolve(
+      values.sort((left, right) => right.revision - left.revision)[0],
+    );
   }
   save(snapshot: ThreadSnapshot) {
     const existing = this.items.get(snapshot.id);
-    if (existing && deterministicJson(existing) !== deterministicJson(snapshot)) return Promise.reject(new Error("non-idempotent snapshot"));
-    if (!existing) { this.items.set(snapshot.id, structuredClone(snapshot)); this.saves += 1; }
+    if (existing && deterministicJson(existing) !== deterministicJson(snapshot)) {
+      return Promise.reject(new Error("non-idempotent snapshot"));
+    }
+    if (!existing) {
+      this.items.set(snapshot.id, structuredClone(snapshot));
+      this.saves += 1;
+    }
     return Promise.resolve();
   }
 }
@@ -307,11 +483,22 @@ class MemoryCaptures implements CrossDomainImpactManifestSealCaptureStore {
   async save(capture: CrossDomainImpactManifestSealCapture) {
     const fingerprint = await sha256Fingerprint(capture);
     const existing = this.items.get(fingerprint.digest);
-    if (existing && deterministicJson(existing) !== deterministicJson(capture)) throw new Error("non-idempotent capture");
-    if (!existing) { this.items.set(fingerprint.digest, structuredClone(capture)); this.saves += 1; }
-    return { fingerprint, uri: `casys://cross-domain-impact-manifest-seal-capture/sha256/${fingerprint.digest}` };
+    if (existing && deterministicJson(existing) !== deterministicJson(capture)) {
+      throw new Error("non-idempotent capture");
+    }
+    if (!existing) {
+      this.items.set(fingerprint.digest, structuredClone(capture));
+      this.saves += 1;
+    }
+    return {
+      fingerprint,
+      uri:
+        `casys://cross-domain-impact-manifest-seal-capture/sha256/${fingerprint.digest}`,
+    };
   }
-  read(fingerprint: ContentFingerprint) { return Promise.resolve(this.items.get(fingerprint.digest)); }
+  read(fingerprint: ContentFingerprint) {
+    return Promise.resolve(this.items.get(fingerprint.digest));
+  }
 }
 
 class MemoryCommands {
@@ -327,7 +514,11 @@ class MemoryCommands {
     }
     return Promise.resolve(this.project);
   }
-  publishRun() { (this.project.agentRuns[0] as MutableRun).status = "publishing"; this.project.revision += 1; return Promise.resolve(this.project); }
+  publishRun() {
+    (this.project.agentRuns[0] as MutableRun).status = "publishing";
+    this.project.revision += 1;
+    return Promise.resolve(this.project);
+  }
   async completeRun(origin: typeof AGENT, command: CompleteRunCommand) {
     const run = this.project.agentRuns[0] as MutableRun;
     if (run.status === "completed") return this.project;
@@ -342,9 +533,16 @@ class MemoryCommands {
     this.project.threadSnapshots.push(command.resultSnapshot);
     this.project.revision += 1;
     this.project.commandReceipts.push({
-      commandId: command.commandId, type: "agent-run.complete", actor: { id: origin.actorId, origin: origin.kind }, issuedAt: command.issuedAt, appliedAt: AT,
+      commandId: command.commandId,
+      type: "agent-run.complete",
+      actor: { id: origin.actorId, origin: origin.kind },
+      issuedAt: command.issuedAt,
+      appliedAt: AT,
       requestFingerprint: await sha256Fingerprint({ command }),
-      resultingSnapshot: { snapshotId: `project.impact.r${this.project.revision}`, revision: this.project.revision },
+      resultingSnapshot: {
+        snapshotId: `project.impact.r${this.project.revision}`,
+        revision: this.project.revision,
+      },
     });
     return this.project;
   }
@@ -364,11 +562,26 @@ type MutableProject = EngineeringProjectSnapshot & {
   workItems: Array<EngineeringProjectSnapshot["workItems"][number]>;
   agentRuns: Array<EngineeringProjectSnapshot["agentRuns"][number]>;
   approvals: Array<EngineeringProjectSnapshot["approvals"][number]>;
-  commandReceipts: Array<NonNullable<EngineeringProjectSnapshot["commandReceipts"]>[number]>;
+  commandReceipts: Array<
+    NonNullable<EngineeringProjectSnapshot["commandReceipts"]>[number]
+  >;
 };
-type MutableRun = { -readonly [Key in keyof EngineeringProjectSnapshot["agentRuns"][number]]: EngineeringProjectSnapshot["agentRuns"][number][Key] };
-type MutableWork = { -readonly [Key in keyof EngineeringProjectSnapshot["workItems"][number]]: EngineeringProjectSnapshot["workItems"][number][Key] };
-type MutablePhase = { -readonly [Key in keyof EngineeringProjectSnapshot["phases"][number]]: EngineeringProjectSnapshot["phases"][number][Key] };
+type MutableRun = {
+  -readonly [Key in keyof EngineeringProjectSnapshot["agentRuns"][number]]:
+    EngineeringProjectSnapshot["agentRuns"][number][Key];
+};
+type MutableWork = {
+  -readonly [Key in keyof EngineeringProjectSnapshot["workItems"][number]]:
+    EngineeringProjectSnapshot["workItems"][number][Key];
+};
+type MutablePhase = {
+  -readonly [Key in keyof EngineeringProjectSnapshot["phases"][number]]:
+    EngineeringProjectSnapshot["phases"][number][Key];
+};
 
-function hash(character: string): ContentFingerprint { return { algorithm: "sha256", digest: character.repeat(64) }; }
-function fresh() { return { status: "fresh" as const, changedAt: AT, invalidatedByChangeIds: [] }; }
+function hash(character: string): ContentFingerprint {
+  return { algorithm: "sha256", digest: character.repeat(64) };
+}
+function fresh() {
+  return { status: "fresh" as const, changedAt: AT, invalidatedByChangeIds: [] };
+}

@@ -21,9 +21,8 @@ import { fingerprintsEqual } from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { CrossDomainImpactManifestSealBriefGate } from "./cross-domain-impact-manifest-proposal.ts";
 import {
-  CROSS_DOMAIN_IMPACT_BRANCH_IDS,
-  type CrossDomainImpactBranchId,
   type CrossDomainImpactReference,
+  parseCrossDomainImpactBranchId,
 } from "./cross-domain-impact-manifest.ts";
 import {
   ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION,
@@ -35,7 +34,7 @@ import {
 } from "./cross-domain-impact-mechanical-preservation.ts";
 
 export const CROSS_DOMAIN_IMPACT_MECHANICAL_PRESERVATION_CAPTURE_SCHEMA =
-  "cross-domain-impact-mechanical-preservation-capture/1.0" as const;
+  "cross-domain-impact-mechanical-preservation-capture/2.0" as const;
 export const CROSS_DOMAIN_IMPACT_MECHANICAL_PRESERVATION_CAPTURE_URI_PREFIX =
   "casys://cross-domain-impact-mechanical-preservation-capture/sha256/" as const;
 
@@ -295,14 +294,11 @@ function parseBriefGate(
   if (ordered.some((item, index) => item !== dependsOnItemIds[index])) {
     throw new TypeError(`${path}.dependsOnItemIds must be canonically ordered.`);
   }
-  const branchId = nonEmptyText(input.branchId, `${path}.branchId`);
-  if (!CROSS_DOMAIN_IMPACT_BRANCH_IDS.includes(branchId as CrossDomainImpactBranchId)) {
-    throw new TypeError(`${path}.branchId must be electrical, thermal or mechanical.`);
-  }
+  const branchId = parseCrossDomainImpactBranchId(input.branchId, `${path}.branchId`);
   return {
     gateItemId: safeId(input.gateItemId, `${path}.gateItemId`),
     kind,
-    branchId: branchId as CrossDomainImpactBranchId,
+    branchId,
     role: role as "contributes-to" | "satisfies",
     fingerprint: parseFingerprint(input.fingerprint, `${path}.fingerprint`),
     dependsOnItemIds: ordered,

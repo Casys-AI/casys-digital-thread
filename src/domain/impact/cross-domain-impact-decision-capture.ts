@@ -24,7 +24,7 @@ import {
 } from "./cross-domain-impact-decision-proposal.ts";
 
 export const CROSS_DOMAIN_IMPACT_DECISION_CAPTURE_SCHEMA =
-  "cross-domain-impact-decision-capture/1.0" as const;
+  "cross-domain-impact-decision-capture/2.0" as const;
 export const CROSS_DOMAIN_IMPACT_DECISION_CAPTURE_URI_PREFIX =
   "casys://cross-domain-impact-decision-capture/sha256/" as const;
 

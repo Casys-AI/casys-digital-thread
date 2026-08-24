@@ -1,5 +1,5 @@
 /**
- * Human-only executor for `decide.accept-cross-domain-impact@1`.
+ * Human-only executor for `decide.accept-cross-domain-impact@2`.
  *
  * It recrosses the exact X07/X08 evaluation capture, Brief V2 gates, and
  * existing work-item claims, writes one documentary Thread successor, then
@@ -27,6 +27,7 @@ import {
   recrossCrossDomainImpactDecision,
 } from "../../application/use-cases/impact/recross-cross-domain-impact-decision.ts";
 import {
+  CROSS_DOMAIN_IMPACT_DECISION_CAPTURE_SCHEMA,
   type CrossDomainImpactDecisionCapture,
   crossDomainImpactDecisionCaptureUri,
   validateCrossDomainImpactDecisionCapture,
@@ -105,7 +106,7 @@ export class DecideAcceptCrossDomainImpactRunExecutor {
     if (origin.kind !== "human") {
       throw new EngineeringProjectCommandError(
         "permission_denied",
-        "Only a human operator can execute decide.accept-cross-domain-impact@1. " +
+        "Only a human operator can execute decide.accept-cross-domain-impact@2. " +
           "An impact evaluation is not an impact decision.",
       );
     }
@@ -210,7 +211,7 @@ export class DecideAcceptCrossDomainImpactRunExecutor {
       }
 
       const capture = validateCrossDomainImpactDecisionCapture({
-        schemaVersion: "cross-domain-impact-decision-capture/1.0",
+        schemaVersion: CROSS_DOMAIN_IMPACT_DECISION_CAPTURE_SCHEMA,
         kind: "cross-domain-impact-decision",
         operation: DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
         trustedRunId: run.id,

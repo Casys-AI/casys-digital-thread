@@ -35,7 +35,7 @@ Deno.test("impact-manifest capture writes draft CAS, rereads, and stays referenc
     const review = await capture.capture({ resourceRef: persisted.reference });
     assertEquals(
       review.schemaVersion,
-      "cross-domain-impact-manifest-capture-review/1.0",
+      "cross-domain-impact-manifest-capture-review/2.0",
     );
     assertEquals(review.status, "captured");
     assertEquals(review.grants, "none");
@@ -92,7 +92,7 @@ Deno.test("impact-manifest capture is deterministic and immediately readable", a
     const reopened = await manifests.read(first.reference);
     assert(reopened);
     assertEquals(reopened.reference.fingerprint, first.reference.fingerprint);
-    assertEquals(reopened.manifest.schemaVersion, "cross-domain-impact-manifest/1.0");
+    assertEquals(reopened.manifest.schemaVersion, "cross-domain-impact-manifest/2.0");
   } finally {
     await Deno.remove(root, { recursive: true });
   }

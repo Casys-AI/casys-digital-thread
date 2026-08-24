@@ -1,5 +1,5 @@
 /**
- * Provider-free executor for `analyze.evaluate-mechanical-preservation@1`.
+ * Provider-free executor for `analyze.evaluate-mechanical-preservation@2`.
  *
  * It persists a closed X11 recross and one documentary Thread artifact. The
  * artifact records carried-forward or impact-unresolved only: it never changes

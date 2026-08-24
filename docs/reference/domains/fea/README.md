@@ -26,6 +26,6 @@ The shared product sequence is `project_fea_proof_case_capture` →
 `project_fea_isolated_run_review` →
 `verify.run-fea-static-proof@3`, then human L5 closeout
 ([review static-mechanical closeout](../../../how-to/behave/review-static-mechanical-closeout.md)).
-Cross-domain `analyze.evaluate-mechanical-preservation@1` rereads that exact
+Cross-domain `analyze.evaluate-mechanical-preservation@2` rereads that exact
 proof/closeout after an impact decision; it does not run CalculiX. Impact
 inventory: [impact coverage](../impact/coverage.md).

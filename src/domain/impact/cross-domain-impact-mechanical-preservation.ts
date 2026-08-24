@@ -37,7 +37,7 @@ import {
 } from "./cross-domain-impact-manifest.ts";
 
 export const CROSS_DOMAIN_IMPACT_MECHANICAL_PRESERVATION_SCHEMA =
-  "cross-domain-impact-mechanical-preservation/1.0" as const;
+  "cross-domain-impact-mechanical-preservation/2.0" as const;
 
 export const MECHANICAL_PRESERVATION_FEA_PROOF_TOOL =
   "verify.run-fea-static-proof@3" as const;

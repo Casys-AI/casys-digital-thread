@@ -16,7 +16,7 @@ Sibling: [coverage](coverage.md). Shared isolation:
 | ----- | --------- | -------- |
 | Human | Consequential X06 seal MRTR, X09 claim application, and static-mechanical L5 closeout | Author solver payloads, provider envelopes, or invented gate statuses |
 | Agent | Queue and execute **registered** operations after the required human decision | Choose provider/tool/args, self-approve MRTR, invent a branch, or apply X09 |
-| Server | Unique Thread tip, unique captures, Brief V2 gates, profiles, recross, CAS | Accept `latest`, caller-selected runtimes, or a fourth branch id |
+| Server | Unique Thread tip, unique captures, Brief V2 gates, profiles, recross, CAS | Accept `latest`, caller-selected runtimes, or a branch id absent from the sealed manifest |
 | Workbench | Read-only `GET` + SSE projection | Receive commands, MCP authority, or provider credentials |
 
 X07 and X11 are documentary (`riskClass: low`): they take the `approvedBrief` binding,
@@ -39,10 +39,10 @@ Authority:
 | ------- | ----- | ------ |
 | Extra JSON keys | `exactRecord` refuses | Enforced |
 | Manifest body fingerprint | SHA-256 of canonical body; digest mismatch refused | Enforced |
-| Branch set | Exactly `electrical`, `thermal`, `mechanical` | Enforced |
+| Branch set | Manifest-local nonempty unique lexicographic `safeId` list; exact set equality both directions at capture | Enforced |
 | Causal `changeKinds` | Non-empty unique `safeId`; each has an exact `sourceAnchor`; lexicographic order | Enforced uniqueness; **unbounded** count |
 | Causal edges | Positive `positive-input` only; exact branch input fingerprint | Enforced; no negative edge; **unbounded** count |
-| Independence assertions | Human author; `assertion: independent`; exact inspected anchors/consumptions | Enforced shape; **unbounded** count |
+| Independence assertions | Human author; `assertion: independent`; exact inspected anchors/consumptions; legal only for `mechanical` | Enforced shape; **unbounded** count |
 | Gate-claim statuses | `current` \| `impact-unresolved` \| `invalidated` \| `carried-forward` | Enforced. Never `pass`/`fail` |
 | X07/X08 limits | `providerCalls`, `solverCalls`, `gateClaimTransitions`, `workItemInvalidations`, `rerunProposals` = `none` | Enforced |
 | X09 claim map | Each proposed gate-claim recrosses exactly one existing work-item claim | Enforced; missing/ambiguous/mismatched refused |

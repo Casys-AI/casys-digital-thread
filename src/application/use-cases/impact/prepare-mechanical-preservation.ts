@@ -61,6 +61,7 @@ import {
   uniqueArtifact,
 } from "./recross-mechanical-preservation.ts";
 import {
+  CROSS_DOMAIN_IMPACT_MECHANICAL_PRESERVATION_CAPTURE_SCHEMA,
   validateMechanicalPreservationCapture,
 } from "../../../domain/impact/cross-domain-impact-mechanical-preservation-capture.ts";
 import {
@@ -445,7 +446,7 @@ export class PrepareMechanicalPreservation
 
     try {
       const capture = await validateMechanicalPreservationCapture({
-        schemaVersion: "cross-domain-impact-mechanical-preservation-capture/1.0",
+        schemaVersion: CROSS_DOMAIN_IMPACT_MECHANICAL_PRESERVATION_CAPTURE_SCHEMA,
         kind: "cross-domain-impact-mechanical-preservation",
         operation: ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION,
         trustedRunId: normalized.trustedRunId,

@@ -209,13 +209,16 @@ manufacturing decision, or certification verdict.
 
 Causal `changeKinds` on the sealed manifest are document-defined `safeId` tokens from
 the source anchors, not a code catalog and not free prose. They are canonicalized by
-lexicographic order. Branch IDs stay the closed Behave judgement set
-`electrical|thermal|mechanical`.
+lexicographic order. Branch IDs are likewise document-defined `safeId` tokens on
+that same V2 manifest: a nonempty unique lexicographically canonical list, not a
+global catalogue. Extra or missing branch data fails closed. The exact id
+`mechanical` keeps X11 preservation; every other declared branch uses one generic
+nonmechanical policy.
 
 `project_cross_domain_impact_manifest_seal_review` is likewise read-only: its caller
 names only a project and an opaque manifest fingerprint. The server rereads the closed
 manifest, exact Thread lineage, declared mechanical evidence, and current approved Brief
-V2 gate dependencies; `verify.seal-cross-domain-impact-manifest@1` can then seal that
+V2 gate dependencies; `verify.seal-cross-domain-impact-manifest@2` can then seal that
 same identity after a separate human MRTR. Neither surface evaluates a branch, changes a
 gate claim, calls a solver/provider, or creates a Workbench command path. The post-MRTR
 seal is one fresh documentary Thread document whose capture records those identities; it
@@ -224,16 +227,16 @@ transition, invalidation, proposed work item, or automatic rerun.
 
 `project_cross_domain_impact_decision_review` is the later read-only recross: the caller
 names only `projectId`. Before X09 work exists, the server selects the unique completed
-`analyze.evaluate-cross-domain-impact@1` activity leaf, proves its exact completed
+`analyze.evaluate-cross-domain-impact@2` activity leaf, proves its exact completed
 document on the unique current Thread tip, then recrosses Brief V2 gates and existing
-work-item claims into canonical MRTR parameters. `decide.accept-cross-domain-impact@1`
+work-item claims into canonical MRTR parameters. `decide.accept-cross-domain-impact@2`
 is the human-only decision that applies those already-proposed gate-claim statuses onto
 existing work-item claims. X07/X08 records `workItemInvalidations` and `rerunProposals`
 as `none`; this decision does not add, invalidate, or queue work items. It writes one
 documentary Thread successor and mutates project gate claims atomically. It queues no
 rerun and calls no provider.
 
-`analyze.evaluate-mechanical-preservation@1` is the later provider-free X11 control. The
+`analyze.evaluate-mechanical-preservation@2` is the later provider-free X11 control. The
 caller queues only the registered operation (approvedBrief binding). The X11 work's
 required `dependsOn` leaf names the completed X09 decision document. Its result may be
 an ancestor of the unique current Thread tip only while exact descendant lineage and a

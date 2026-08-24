@@ -1,5 +1,5 @@
 /**
- * Closed MRTR grammar for `decide.accept-cross-domain-impact@1`.
+ * Closed MRTR grammar for `decide.accept-cross-domain-impact@2`.
  *
  * The signed parameters name identities and the already-proposed X07/X08
  * gate-claim statuses recrossed onto existing work-item claims. X07/X08 does
@@ -27,11 +27,11 @@ import {
 
 export const DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION = {
   id: "decide.accept-cross-domain-impact",
-  version: "1",
+  version: "2",
 } as const;
 
 export const CROSS_DOMAIN_IMPACT_DECISION_ADMISSION_SCHEMA =
-  "cross-domain-impact-decision-admission/1.0" as const;
+  "cross-domain-impact-decision-admission/2.0" as const;
 
 export const CROSS_DOMAIN_IMPACT_DECISION_LIMITS = {
   providerCalls: "none",

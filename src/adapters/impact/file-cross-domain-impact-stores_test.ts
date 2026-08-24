@@ -61,7 +61,7 @@ Deno.test("impact manifest and seal capture readers reopen only their closed con
     const capture = validateCrossDomainImpactManifestSealCapture({
       schemaVersion: CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_CAPTURE_SCHEMA,
       kind: "cross-domain-impact-manifest-seal",
-      operation: { id: "verify.seal-cross-domain-impact-manifest", version: "1" },
+      operation: { id: "verify.seal-cross-domain-impact-manifest", version: "2" },
       trustedRunId: "run.impact.store",
       decisionId: "decision.impact.store",
       sealedAt: "2026-08-22T09:00:00.000Z",
@@ -165,7 +165,7 @@ Deno.test("mechanical preservation capture store reopens only its closed content
       )
     );
     const capture = await validateMechanicalPreservationCapture({
-      schemaVersion: "cross-domain-impact-mechanical-preservation-capture/1.0",
+      schemaVersion: "cross-domain-impact-mechanical-preservation-capture/2.0",
       kind: "cross-domain-impact-mechanical-preservation",
       operation: ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION,
       trustedRunId: "run-mechanical-preservation",

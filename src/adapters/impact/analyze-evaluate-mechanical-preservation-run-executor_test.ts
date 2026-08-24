@@ -46,7 +46,7 @@ Deno.test("X11 captures carried-forward FEA identities as Thread consumptions an
   const result = completed.agentRuns[0]!.resultSnapshot!;
   const successor = await fixture.snapshots.getFresh(result.snapshotId);
   const document = successor!.artifacts.find((artifact) =>
-    artifact.producer.tool === "analyze.evaluate-mechanical-preservation@1"
+    artifact.producer.tool === "analyze.evaluate-mechanical-preservation@2"
   )!;
 
   assertEquals(
@@ -229,7 +229,7 @@ async function captureFixture(): Promise<MechanicalPreservationCapture> {
     )
   );
   return await validateMechanicalPreservationCapture({
-    schemaVersion: "cross-domain-impact-mechanical-preservation-capture/1.0",
+    schemaVersion: "cross-domain-impact-mechanical-preservation-capture/2.0",
     kind: "cross-domain-impact-mechanical-preservation",
     operation: ANALYZE_EVALUATE_MECHANICAL_PRESERVATION_OPERATION,
     trustedRunId: RUN,
@@ -278,7 +278,7 @@ function basisFixture(capture: MechanicalPreservationCapture): ThreadSnapshot {
     producer: {
       serverId: "digital-thread",
       tool: input.id === capture.decision.artifact.id
-        ? "decide.accept-cross-domain-impact@1"
+        ? "decide.accept-cross-domain-impact@2"
         : "recorded-test@1",
       runId: input.id === capture.decision.artifact.id
         ? "run-impact-decision"

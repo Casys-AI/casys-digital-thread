@@ -1,25 +1,21 @@
 /**
- * Closed documentary capture for `verify.seal-cross-domain-impact-manifest@1`.
+ * Closed documentary capture for `verify.seal-cross-domain-impact-manifest@2`.
  *
  * This is a seal of recrossed identities, not a cross-domain evaluation. It
  * carries neither branch outcomes nor gate-claim transitions and cannot turn a
  * declared independence assertion into a pass/fail verdict.
  */
 
+import { exactRecord, literalValue, safeId } from "../kernel/case-validation.ts";
 import {
-  exactRecord,
-  literalValue,
-  safeId,
-} from "../kernel/case-validation.ts";
-import {
+  type CrossDomainImpactManifestSealAdmission,
   encodeCrossDomainImpactManifestSealAdmission,
   parseCrossDomainImpactManifestSealParameters,
-  type CrossDomainImpactManifestSealAdmission,
   VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION,
 } from "./cross-domain-impact-manifest-proposal.ts";
 
 export const CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_CAPTURE_SCHEMA =
-  "cross-domain-impact-manifest-seal-capture/1.0" as const;
+  "cross-domain-impact-manifest-seal-capture/2.0" as const;
 export const CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_CAPTURE_URI_PREFIX =
   "casys://cross-domain-impact-manifest-seal-capture/sha256/" as const;
 
@@ -56,8 +52,16 @@ export function validateCrossDomainImpactManifestSealCapture(
     CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_CAPTURE_SCHEMA,
     "$impactManifestSealCapture.schemaVersion",
   );
-  literalValue(root.kind, "cross-domain-impact-manifest-seal", "$impactManifestSealCapture.kind");
-  const operation = exactRecord(root.operation, ["id", "version"], "$impactManifestSealCapture.operation");
+  literalValue(
+    root.kind,
+    "cross-domain-impact-manifest-seal",
+    "$impactManifestSealCapture.kind",
+  );
+  const operation = exactRecord(
+    root.operation,
+    ["id", "version"],
+    "$impactManifestSealCapture.operation",
+  );
   literalValue(
     operation.id,
     VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION.id,

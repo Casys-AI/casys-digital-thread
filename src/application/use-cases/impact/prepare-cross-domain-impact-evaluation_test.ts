@@ -14,7 +14,9 @@ const SUBJECT = "subject-impact-selection";
 
 Deno.test("X07 refuses a lookalike X05 document not exactly attached by its completed run", async () => {
   const head = manifestSealHead();
-  const project = projectWithTamperedManifestSealAttachment(head) as EngineeringProjectSnapshot;
+  const project = projectWithTamperedManifestSealAttachment(
+    head,
+  ) as EngineeringProjectSnapshot;
   const evaluation = new PrepareCrossDomainImpactEvaluation({
     projects: { get: () => Promise.resolve(project) },
     snapshots: { get: () => Promise.resolve(head) },
@@ -32,12 +34,19 @@ Deno.test("X07 refuses a lookalike X05 document not exactly attached by its comp
   const result = await evaluation.execute({
     projectId: PROJECT,
     trustedRunId: "run-impact-evaluation",
-    basis: { kind: "thread-snapshot", snapshotId: head.id, revision: head.revision, subjectId: SUBJECT },
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: head.id,
+      revision: head.revision,
+      subjectId: SUBJECT,
+    },
     evaluatedAt: AT,
   });
 
   assertEquals(result.status, "unavailable");
-  assertEquals(result.diagnostics.map((item) => item.code), ["manifest_seal_unavailable"]);
+  assertEquals(result.diagnostics.map((item) => item.code), [
+    "manifest_seal_unavailable",
+  ]);
 });
 
 Deno.test("X07 recross accepts unsorted unique Brief V2 dependencies as a canonical copy", () => {
@@ -87,7 +96,12 @@ Deno.test("X07 reopens the named X06 dependsOn leaf on a later descendant retry"
   const result = await evaluation.execute({
     projectId: PROJECT,
     trustedRunId: "run-impact-evaluation",
-    basis: { kind: "thread-snapshot", snapshotId: r3.id, revision: r3.revision, subjectId: SUBJECT },
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: r3.id,
+      revision: r3.revision,
+      subjectId: SUBJECT,
+    },
     evaluatedAt: AT,
   });
 
@@ -131,11 +145,12 @@ function manifestSealHead(): ThreadSnapshot {
       kind: "document",
       version: "1",
       fingerprint,
-      uri: "casys://cross-domain-impact-manifest-seal-capture/sha256/" + fingerprint.digest,
+      uri: "casys://cross-domain-impact-manifest-seal-capture/sha256/" +
+        fingerprint.digest,
       mediaType: "application/json",
       producer: {
         serverId: "digital-thread",
-        tool: "verify.seal-cross-domain-impact-manifest@1",
+        tool: "verify.seal-cross-domain-impact-manifest@2",
         runId: "run-manifest-seal",
       },
       inputArtifactIds: [],
@@ -180,7 +195,11 @@ function projectWithTamperedManifestSealAttachment(head: ThreadSnapshot): unknow
       subjectId: SUBJECT,
       objective: { title: "Impact", statement: "Refuse tampered attachment." },
     },
-    threadSnapshots: [{ snapshotId: head.id, revision: head.revision, subjectId: SUBJECT }],
+    threadSnapshots: [{
+      snapshotId: head.id,
+      revision: head.revision,
+      subjectId: SUBJECT,
+    }],
     phases: [{
       id: "phase-impact-selection",
       name: "Impact",
@@ -214,8 +233,11 @@ function projectWithTamperedManifestSealAttachment(head: ThreadSnapshot): unknow
       kind: "review",
       operation: {
         id: "analyze.evaluate-cross-domain-impact",
-        version: "1",
-        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
+        version: "2",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" as const },
+        }],
       },
       status: "in-progress",
       owner: "agent",
@@ -233,7 +255,11 @@ function projectWithTamperedManifestSealAttachment(head: ThreadSnapshot): unknow
       startedAt: AT,
       completedAt: AT,
       basis,
-      resultSnapshot: { snapshotId: head.id, revision: head.revision, subjectId: SUBJECT },
+      resultSnapshot: {
+        snapshotId: head.id,
+        revision: head.revision,
+        subjectId: SUBJECT,
+      },
       evidenceRefs: [],
     }, {
       id: "run-impact-evaluation",
@@ -242,7 +268,12 @@ function projectWithTamperedManifestSealAttachment(head: ThreadSnapshot): unknow
       summary: "Evaluate impact",
       queuedAt: AT,
       startedAt: AT,
-      basis: { kind: "thread-snapshot" as const, snapshotId: head.id, revision: head.revision, subjectId: SUBJECT },
+      basis: {
+        kind: "thread-snapshot" as const,
+        snapshotId: head.id,
+        revision: head.revision,
+        subjectId: SUBJECT,
+      },
       evidenceRefs: [],
     }],
     decisions: [],
@@ -266,7 +297,10 @@ function descendantHead(r2: ThreadSnapshot): ThreadSnapshot {
   });
 }
 
-function descendantProject(r2: ThreadSnapshot, r3: ThreadSnapshot): EngineeringProjectSnapshot {
+function descendantProject(
+  r2: ThreadSnapshot,
+  r3: ThreadSnapshot,
+): EngineeringProjectSnapshot {
   const evidence = {
     snapshotId: r2.id,
     snapshotRevision: r2.revision,
@@ -326,8 +360,11 @@ function descendantProject(r2: ThreadSnapshot, r3: ThreadSnapshot): EngineeringP
       kind: "review",
       operation: {
         id: "analyze.evaluate-cross-domain-impact",
-        version: "1",
-        bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
+        version: "2",
+        bindings: [{
+          name: "approvedBrief",
+          source: { kind: "approved-brief" as const },
+        }],
       },
       status: "in-progress",
       owner: "agent",

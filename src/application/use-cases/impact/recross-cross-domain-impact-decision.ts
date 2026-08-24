@@ -16,6 +16,7 @@ import {
   recrossCrossDomainImpactWorkItemClaims,
 } from "../../../domain/impact/cross-domain-impact-decision.ts";
 import {
+  CROSS_DOMAIN_IMPACT_DECISION_ADMISSION_SCHEMA,
   CROSS_DOMAIN_IMPACT_DECISION_LIMITS,
   type CrossDomainImpactDecisionAdmission,
   DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION,
@@ -254,7 +255,7 @@ export async function recrossCrossDomainImpactDecision(
   }
 
   const admission = validateCrossDomainImpactDecisionAdmission({
-    schemaVersion: "cross-domain-impact-decision-admission/1.0",
+    schemaVersion: CROSS_DOMAIN_IMPACT_DECISION_ADMISSION_SCHEMA,
     consequence: "accept",
     projectId: input.project.project.id,
     subjectId: input.project.project.subjectId,

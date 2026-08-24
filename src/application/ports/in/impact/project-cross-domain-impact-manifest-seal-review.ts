@@ -29,13 +29,15 @@ export type ProjectCrossDomainImpactManifestSealReviewResult =
     readonly status: "resolved";
     /** Exact human-review facts only; it does not grant an MRTR or dispatch. */
     readonly admission: CrossDomainImpactManifestSealAdmission;
-    /** Canonical grammar for `verify.seal-cross-domain-impact-manifest@1`. */
+    /** Canonical grammar for `verify.seal-cross-domain-impact-manifest@2`. */
     readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
-    readonly diagnostics: readonly ProjectCrossDomainImpactManifestSealReviewDiagnostic[];
+    readonly diagnostics:
+      readonly ProjectCrossDomainImpactManifestSealReviewDiagnostic[];
   }
   | {
     readonly status: "unavailable" | "unresolved";
-    readonly diagnostics: readonly ProjectCrossDomainImpactManifestSealReviewDiagnostic[];
+    readonly diagnostics:
+      readonly ProjectCrossDomainImpactManifestSealReviewDiagnostic[];
   };
 
 export interface ProjectCrossDomainImpactManifestSealReviewUseCase {

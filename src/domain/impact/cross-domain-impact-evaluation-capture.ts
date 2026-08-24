@@ -22,20 +22,22 @@ import { fingerprintsEqual } from "../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { ThreadFreshnessStatus } from "../thread/thread-snapshot.ts";
 import {
-  CROSS_DOMAIN_IMPACT_BRANCH_IDS,
   type CrossDomainImpactBranchId,
+  crossDomainImpactBranchOrder,
   type CrossDomainImpactReference,
+  parseCrossDomainImpactBranchId,
+  requireExactDeclaredBranchSet,
 } from "./cross-domain-impact-manifest.ts";
 import {
   CROSS_DOMAIN_IMPACT_EVALUATION_SCHEMA,
-  validateCrossDomainImpactEvaluation,
   type CrossDomainImpactEvaluation,
+  validateCrossDomainImpactEvaluation,
 } from "./cross-domain-impact-evaluation.ts";
 import { ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION } from "./cross-domain-impact-evaluation-proposal.ts";
 import type { CrossDomainImpactManifestSealBriefGate } from "./cross-domain-impact-manifest-proposal.ts";
 
 export const CROSS_DOMAIN_IMPACT_EVALUATION_CAPTURE_SCHEMA =
-  "cross-domain-impact-evaluation-capture/1.0" as const;
+  "cross-domain-impact-evaluation-capture/2.0" as const;
 export const CROSS_DOMAIN_IMPACT_EVALUATION_CAPTURE_URI_PREFIX =
   "casys://cross-domain-impact-evaluation-capture/sha256/" as const;
 
@@ -145,8 +147,16 @@ export async function validateCrossDomainImpactEvaluationCapture(
     CROSS_DOMAIN_IMPACT_EVALUATION_CAPTURE_SCHEMA,
     "$impactEvaluationCapture.schemaVersion",
   );
-  literalValue(root.kind, "cross-domain-impact-evaluation", "$impactEvaluationCapture.kind");
-  const operation = exactRecord(root.operation, ["id", "version"], "$impactEvaluationCapture.operation");
+  literalValue(
+    root.kind,
+    "cross-domain-impact-evaluation",
+    "$impactEvaluationCapture.kind",
+  );
+  const operation = exactRecord(
+    root.operation,
+    ["id", "version"],
+    "$impactEvaluationCapture.operation",
+  );
   literalValue(
     operation.id,
     ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id,
@@ -157,13 +167,28 @@ export async function validateCrossDomainImpactEvaluationCapture(
     ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version,
     "$impactEvaluationCapture.operation.version",
   );
-  const trustedRunId = safeId(root.trustedRunId, "$impactEvaluationCapture.trustedRunId");
-  const evaluatedAt = parseIsoDateTime(root.evaluatedAt, "$impactEvaluationCapture.evaluatedAt");
-  const manifestSeal = parseManifestSeal(root.manifestSeal, "$impactEvaluationCapture.manifestSeal");
-  const artifactInputs = parseArtifactInputs(root.artifactInputs, "$impactEvaluationCapture.artifactInputs");
+  const trustedRunId = safeId(
+    root.trustedRunId,
+    "$impactEvaluationCapture.trustedRunId",
+  );
+  const evaluatedAt = parseIsoDateTime(
+    root.evaluatedAt,
+    "$impactEvaluationCapture.evaluatedAt",
+  );
+  const manifestSeal = parseManifestSeal(
+    root.manifestSeal,
+    "$impactEvaluationCapture.manifestSeal",
+  );
+  const artifactInputs = parseArtifactInputs(
+    root.artifactInputs,
+    "$impactEvaluationCapture.artifactInputs",
+  );
   const manifest = parseManifest(root.manifest, "$impactEvaluationCapture.manifest");
   const brief = parseBrief(root.brief, "$impactEvaluationCapture.brief");
-  const branchFacts = parseBranchFacts(root.branchFacts, "$impactEvaluationCapture.branchFacts");
+  const branchFacts = parseBranchFacts(
+    root.branchFacts,
+    "$impactEvaluationCapture.branchFacts",
+  );
   const mechanicalFact = parseMechanicalFact(
     root.mechanicalFact,
     "$impactEvaluationCapture.mechanicalFact",
@@ -172,18 +197,28 @@ export async function validateCrossDomainImpactEvaluationCapture(
   const limits = parseLimits(root.limits, "$impactEvaluationCapture.limits");
 
   if (evaluation.evaluatedAt !== evaluatedAt) {
-    throw new TypeError("$impactEvaluationCapture.evaluatedAt must equal evaluation.evaluatedAt.");
+    throw new TypeError(
+      "$impactEvaluationCapture.evaluatedAt must equal evaluation.evaluatedAt.",
+    );
   }
   if (
     evaluation.manifest.id !== manifest.id ||
     !fingerprintsEqual(evaluation.manifest.fingerprint, manifest.fingerprint)
   ) {
-    throw new TypeError("$impactEvaluationCapture.manifest must exactly identify evaluation.manifest.");
+    throw new TypeError(
+      "$impactEvaluationCapture.manifest must exactly identify evaluation.manifest.",
+    );
   }
   assertBranchFactsMatchEvaluation(branchFacts, evaluation);
   assertBriefGatesMatchEvaluation(brief.gates, evaluation);
   assertMechanicalFactMatchesEvaluation(mechanicalFact, evaluation);
-  assertArtifactInputsMatchRecross(artifactInputs, manifestSeal, evaluation, branchFacts, mechanicalFact);
+  assertArtifactInputsMatchRecross(
+    artifactInputs,
+    manifestSeal,
+    evaluation,
+    branchFacts,
+    mechanicalFact,
+  );
 
   return deepFreeze({
     schemaVersion: CROSS_DOMAIN_IMPACT_EVALUATION_CAPTURE_SCHEMA,
@@ -202,7 +237,10 @@ export async function validateCrossDomainImpactEvaluationCapture(
   });
 }
 
-function parseManifestSeal(value: unknown, path: string): CrossDomainImpactEvaluationCapture["manifestSeal"] {
+function parseManifestSeal(
+  value: unknown,
+  path: string,
+): CrossDomainImpactEvaluationCapture["manifestSeal"] {
   const input = exactRecord(value, ["artifact", "trustedRunId"], path);
   return {
     artifact: parseReference(input.artifact, `${path}.artifact`),
@@ -218,14 +256,21 @@ function parseArtifactInputs(
     parseReference(item, `${path}[${index}]`)
   );
   rejectDuplicates(inputs.map(referenceKey), `${path} exact references`);
-  const ordered = [...inputs].sort((left, right) => referenceKey(left).localeCompare(referenceKey(right)));
-  if (ordered.some((item, index) => referenceKey(item) !== referenceKey(inputs[index]!))) {
+  const ordered = [...inputs].sort((left, right) =>
+    referenceKey(left).localeCompare(referenceKey(right))
+  );
+  if (
+    ordered.some((item, index) => referenceKey(item) !== referenceKey(inputs[index]!))
+  ) {
     throw new TypeError(`${path} must be canonically ordered.`);
   }
   return deepFreeze(ordered);
 }
 
-function parseManifest(value: unknown, path: string): CrossDomainImpactEvaluationCapture["manifest"] {
+function parseManifest(
+  value: unknown,
+  path: string,
+): CrossDomainImpactEvaluationCapture["manifest"] {
   const input = exactRecord(value, ["id", "fingerprint", "reference"], path);
   return {
     id: safeId(input.id, `${path}.id`),
@@ -234,7 +279,10 @@ function parseManifest(value: unknown, path: string): CrossDomainImpactEvaluatio
   };
 }
 
-function parseBrief(value: unknown, path: string): CrossDomainImpactEvaluationCapture["brief"] {
+function parseBrief(
+  value: unknown,
+  path: string,
+): CrossDomainImpactEvaluationCapture["brief"] {
   const input = exactRecord(value, ["id", "revision", "fingerprint", "gates"], path);
   const gates = nonEmptyArray(input.gates, `${path}.gates`).map((item, index) =>
     parseBriefGate(item, `${path}.gates[${index}]`)
@@ -244,11 +292,16 @@ function parseBrief(value: unknown, path: string): CrossDomainImpactEvaluationCa
     id: safeId(input.id, `${path}.id`),
     revision: positiveInteger(input.revision, `${path}.revision`),
     fingerprint: parseFingerprint(input.fingerprint, `${path}.fingerprint`),
-    gates: [...gates].sort((left, right) => left.gateItemId.localeCompare(right.gateItemId)),
+    gates: [...gates].sort((left, right) =>
+      left.gateItemId.localeCompare(right.gateItemId)
+    ),
   };
 }
 
-function parseBriefGate(value: unknown, path: string): CrossDomainImpactManifestSealBriefGate {
+function parseBriefGate(
+  value: unknown,
+  path: string,
+): CrossDomainImpactManifestSealBriefGate {
   const input = exactRecord(
     value,
     ["gateItemId", "kind", "branchId", "role", "fingerprint", "dependsOnItemIds"],
@@ -256,17 +309,22 @@ function parseBriefGate(value: unknown, path: string): CrossDomainImpactManifest
   );
   const kind = nonEmptyText(input.kind, `${path}.kind`);
   if (kind !== "success-criterion" && kind !== "verification-activity") {
-    throw new TypeError(`${path}.kind must be success-criterion or verification-activity.`);
+    throw new TypeError(
+      `${path}.kind must be success-criterion or verification-activity.`,
+    );
   }
   const role = nonEmptyText(input.role, `${path}.role`);
   if (role !== "contributes-to" && role !== "satisfies") {
     throw new TypeError(`${path}.role must be contributes-to or satisfies.`);
   }
-  const dependsOnItemIds = arrayOf(input.dependsOnItemIds, `${path}.dependsOnItemIds`).map(
-    (item, index) => safeId(item, `${path}.dependsOnItemIds[${index}]`),
-  );
+  const dependsOnItemIds = arrayOf(input.dependsOnItemIds, `${path}.dependsOnItemIds`)
+    .map(
+      (item, index) => safeId(item, `${path}.dependsOnItemIds[${index}]`),
+    );
   rejectDuplicates(dependsOnItemIds, `${path}.dependsOnItemIds`);
-  const orderedDependencies = [...dependsOnItemIds].sort((left, right) => left.localeCompare(right));
+  const orderedDependencies = [...dependsOnItemIds].sort((left, right) =>
+    left.localeCompare(right)
+  );
   if (orderedDependencies.some((item, index) => item !== dependsOnItemIds[index])) {
     throw new TypeError(`${path}.dependsOnItemIds must be canonically ordered.`);
   }
@@ -285,49 +343,90 @@ function parseBranchFacts(
   path: string,
 ): readonly CrossDomainImpactEvaluationBranchFact[] {
   const facts = nonEmptyArray(value, path).map((item, index) => {
-    const input = exactRecord(item, ["branchId", "method", "joins"], `${path}[${index}]`);
-    const method = exactRecord(input.method, ["reference", "availability"], `${path}[${index}].method`);
-    const availability = nonEmptyText(method.availability, `${path}[${index}].method.availability`);
+    const input = exactRecord(
+      item,
+      ["branchId", "method", "joins"],
+      `${path}[${index}]`,
+    );
+    const method = exactRecord(
+      input.method,
+      ["reference", "availability"],
+      `${path}[${index}].method`,
+    );
+    const availability = nonEmptyText(
+      method.availability,
+      `${path}[${index}].method.availability`,
+    );
     if (!AVAILABILITY.includes(availability as CrossDomainImpactAvailability)) {
-      throw new TypeError(`${path}[${index}].method.availability is not a literal availability state.`);
+      throw new TypeError(
+        `${path}[${index}].method.availability is not a literal availability state.`,
+      );
     }
-    const joins = nonEmptyArray(input.joins, `${path}[${index}].joins`).map((join, joinIndex) => {
-      const parsed = exactRecord(
-        join,
-        ["reference", "currentness"],
-        `${path}[${index}].joins[${joinIndex}]`,
-      );
-      const currentness = nonEmptyText(
-        parsed.currentness,
-        `${path}[${index}].joins[${joinIndex}].currentness`,
-      );
-      if (!CURRENTNESS.includes(currentness as CrossDomainImpactJoinCurrentness)) {
-        throw new TypeError(`${path}[${index}].joins[${joinIndex}].currentness is not literal.`);
-      }
-      return {
-        reference: parseReference(parsed.reference, `${path}[${index}].joins[${joinIndex}].reference`),
-        currentness: currentness as CrossDomainImpactJoinCurrentness,
-      };
-    });
-    rejectDuplicates(joins.map((item) => referenceKey(item.reference)), `${path}[${index}].joins`);
+    const joins = nonEmptyArray(input.joins, `${path}[${index}].joins`).map(
+      (join, joinIndex) => {
+        const parsed = exactRecord(
+          join,
+          ["reference", "currentness"],
+          `${path}[${index}].joins[${joinIndex}]`,
+        );
+        const currentness = nonEmptyText(
+          parsed.currentness,
+          `${path}[${index}].joins[${joinIndex}].currentness`,
+        );
+        if (!CURRENTNESS.includes(currentness as CrossDomainImpactJoinCurrentness)) {
+          throw new TypeError(
+            `${path}[${index}].joins[${joinIndex}].currentness is not literal.`,
+          );
+        }
+        return {
+          reference: parseReference(
+            parsed.reference,
+            `${path}[${index}].joins[${joinIndex}].reference`,
+          ),
+          currentness: currentness as CrossDomainImpactJoinCurrentness,
+        };
+      },
+    );
+    rejectDuplicates(
+      joins.map((item) => referenceKey(item.reference)),
+      `${path}[${index}].joins`,
+    );
     return {
       branchId: parseBranchId(input.branchId, `${path}[${index}].branchId`),
       method: {
-        reference: parseReference(method.reference, `${path}[${index}].method.reference`),
+        reference: parseReference(
+          method.reference,
+          `${path}[${index}].method.reference`,
+        ),
         availability: availability as CrossDomainImpactAvailability,
       },
-      joins: [...joins].sort((left, right) => referenceKey(left.reference).localeCompare(referenceKey(right.reference))),
+      joins: [...joins].sort((left, right) =>
+        referenceKey(left.reference).localeCompare(referenceKey(right.reference))
+      ),
     };
   });
   rejectDuplicates(facts.map((item) => item.branchId), `${path} branchIds`);
-  requireClosedBranchSet(facts.map((item) => item.branchId), path);
-  return deepFreeze([...facts].sort((left, right) => branchOrder(left.branchId, right.branchId)));
+  return deepFreeze(
+    [...facts].sort((left, right) =>
+      crossDomainImpactBranchOrder(left.branchId, right.branchId)
+    ),
+  );
 }
 
-function parseMechanicalFact(value: unknown, path: string): CrossDomainImpactEvaluationMechanicalFact {
+function parseMechanicalFact(
+  value: unknown,
+  path: string,
+): CrossDomainImpactEvaluationMechanicalFact {
   const input = exactRecord(
     value,
-    ["status", "assertionId", "reviewTrigger", "evidence", "evidenceFreshness", "consumptions"],
+    [
+      "status",
+      "assertionId",
+      "reviewTrigger",
+      "evidence",
+      "evidenceFreshness",
+      "consumptions",
+    ],
     path,
   );
   const status = nonEmptyText(input.status, `${path}.status`);
@@ -337,32 +436,46 @@ function parseMechanicalFact(value: unknown, path: string): CrossDomainImpactEva
   const assertionId = input.assertionId === null
     ? null
     : safeId(input.assertionId, `${path}.assertionId`);
-  const evidence = input.evidence === null ? null : parseReference(input.evidence, `${path}.evidence`);
+  const evidence = input.evidence === null
+    ? null
+    : parseReference(input.evidence, `${path}.evidence`);
   const evidenceFreshness = input.evidenceFreshness === null
     ? null
     : parseFreshness(input.evidenceFreshness, `${path}.evidenceFreshness`);
-  const consumptions = arrayOf(input.consumptions, `${path}.consumptions`).map((item, index) => {
-    const consumption = exactRecord(
-      item,
-      ["id", "consumerEvidence", "input"],
-      `${path}.consumptions[${index}]`,
-    );
-    return {
-      id: safeId(consumption.id, `${path}.consumptions[${index}].id`),
-      consumerEvidence: parseReference(
-        consumption.consumerEvidence,
-        `${path}.consumptions[${index}].consumerEvidence`,
-      ),
-      input: parseReference(consumption.input, `${path}.consumptions[${index}].input`),
-    };
-  });
+  const consumptions = arrayOf(input.consumptions, `${path}.consumptions`).map(
+    (item, index) => {
+      const consumption = exactRecord(
+        item,
+        ["id", "consumerEvidence", "input"],
+        `${path}.consumptions[${index}]`,
+      );
+      return {
+        id: safeId(consumption.id, `${path}.consumptions[${index}].id`),
+        consumerEvidence: parseReference(
+          consumption.consumerEvidence,
+          `${path}.consumptions[${index}].consumerEvidence`,
+        ),
+        input: parseReference(
+          consumption.input,
+          `${path}.consumptions[${index}].input`,
+        ),
+      };
+    },
+  );
   rejectDuplicates(consumptions.map((item) => item.id), `${path}.consumptions ids`);
   if (status === "current") {
-    if (!assertionId || !evidence || evidenceFreshness !== "fresh" || consumptions.length === 0) {
-      throw new TypeError(`${path} current requires an exact assertion, fresh evidence, and consumption facts.`);
+    if (
+      !assertionId || !evidence || evidenceFreshness !== "fresh" ||
+      consumptions.length === 0
+    ) {
+      throw new TypeError(
+        `${path} current requires an exact assertion, fresh evidence, and consumption facts.`,
+      );
     }
     if (consumptions.some((item) => !sameReference(item.consumerEvidence, evidence))) {
-      throw new TypeError(`${path} current consumptions must name the exact mechanical evidence.`);
+      throw new TypeError(
+        `${path} current consumptions must name the exact mechanical evidence.`,
+      );
     }
   }
   return {
@@ -371,14 +484,25 @@ function parseMechanicalFact(value: unknown, path: string): CrossDomainImpactEva
     reviewTrigger: parseReference(input.reviewTrigger, `${path}.reviewTrigger`),
     evidence,
     evidenceFreshness,
-    consumptions: [...consumptions].sort((left, right) => left.id.localeCompare(right.id)),
+    consumptions: [...consumptions].sort((left, right) =>
+      left.id.localeCompare(right.id)
+    ),
   };
 }
 
-function parseLimits(value: unknown, path: string): CrossDomainImpactEvaluationCapture["limits"] {
+function parseLimits(
+  value: unknown,
+  path: string,
+): CrossDomainImpactEvaluationCapture["limits"] {
   const input = exactRecord(
     value,
-    ["providerCalls", "solverCalls", "gateClaimTransitions", "workItemInvalidations", "rerunProposals"],
+    [
+      "providerCalls",
+      "solverCalls",
+      "gateClaimTransitions",
+      "workItemInvalidations",
+      "rerunProposals",
+    ],
     path,
   );
   literalValue(input.providerCalls, "none", `${path}.providerCalls`);
@@ -399,6 +523,16 @@ function assertBranchFactsMatchEvaluation(
   facts: readonly CrossDomainImpactEvaluationBranchFact[],
   evaluation: CrossDomainImpactEvaluation,
 ): void {
+  requireExactDeclaredBranchSet(
+    facts.map((item) => item.branchId),
+    evaluation.branchReadiness.map((item) => item.branchId),
+    "$impactEvaluationCapture.branchFacts",
+  );
+  requireExactDeclaredBranchSet(
+    facts.map((item) => item.branchId),
+    evaluation.branches.map((item) => item.branchId),
+    "$impactEvaluationCapture.branchFacts",
+  );
   for (const readiness of evaluation.branchReadiness) {
     const fact = facts.find((item) => item.branchId === readiness.branchId);
     if (
@@ -407,12 +541,18 @@ function assertBranchFactsMatchEvaluation(
       (fact.method.availability === "available") !== readiness.method.available ||
       fact.joins.length !== readiness.joins.length
     ) {
-      throw new TypeError("$impactEvaluationCapture.branchFacts must exactly recross evaluation.branchReadiness.");
+      throw new TypeError(
+        "$impactEvaluationCapture.branchFacts must exactly recross evaluation.branchReadiness.",
+      );
     }
     for (const join of readiness.joins) {
-      const actual = fact.joins.find((candidate) => sameReference(candidate.reference, join.reference));
+      const actual = fact.joins.find((candidate) =>
+        sameReference(candidate.reference, join.reference)
+      );
       if (!actual || (actual.currentness === "current") !== join.current) {
-        throw new TypeError("$impactEvaluationCapture.branchFacts join currentness must exactly recross evaluation.");
+        throw new TypeError(
+          "$impactEvaluationCapture.branchFacts join currentness must exactly recross evaluation.",
+        );
       }
     }
   }
@@ -423,12 +563,16 @@ function assertBriefGatesMatchEvaluation(
   evaluation: CrossDomainImpactEvaluation,
 ): void {
   if (gates.length !== evaluation.gateClaims.length) {
-    throw new TypeError("$impactEvaluationCapture.brief.gates must exactly cover evaluation gate claims.");
+    throw new TypeError(
+      "$impactEvaluationCapture.brief.gates must exactly cover evaluation gate claims.",
+    );
   }
   for (const claim of evaluation.gateClaims) {
     const gate = gates.find((candidate) => candidate.gateItemId === claim.gateItemId);
     if (!gate || gate.branchId !== claim.branchId || gate.role !== claim.role) {
-      throw new TypeError("$impactEvaluationCapture.brief.gates must retain the exact gate-map branch and role.");
+      throw new TypeError(
+        "$impactEvaluationCapture.brief.gates must retain the exact gate-map branch and role.",
+      );
     }
   }
 }
@@ -438,19 +582,32 @@ function assertMechanicalFactMatchesEvaluation(
   evaluation: CrossDomainImpactEvaluation,
 ): void {
   if (fact.status === "current") {
-    if (!evaluation.mechanicalEvidence || !fact.evidence || !sameReference(
-      evaluation.mechanicalEvidence.evidence,
-      fact.evidence,
-    )) {
-      throw new TypeError("$impactEvaluationCapture current mechanical fact must be the exact evaluation evidence.");
+    if (
+      !evaluation.mechanicalEvidence || !fact.evidence || !sameReference(
+        evaluation.mechanicalEvidence.evidence,
+        fact.evidence,
+      )
+    ) {
+      throw new TypeError(
+        "$impactEvaluationCapture current mechanical fact must be the exact evaluation evidence.",
+      );
     }
-    if (!sameMechanicalConsumptions(fact.consumptions, evaluation.mechanicalEvidence.consumptions)) {
-      throw new TypeError("$impactEvaluationCapture current mechanical fact must retain every exact evaluation consumption.");
+    if (
+      !sameMechanicalConsumptions(
+        fact.consumptions,
+        evaluation.mechanicalEvidence.consumptions,
+      )
+    ) {
+      throw new TypeError(
+        "$impactEvaluationCapture current mechanical fact must retain every exact evaluation consumption.",
+      );
     }
     return;
   }
   if (evaluation.mechanicalEvidence !== null) {
-    throw new TypeError("$impactEvaluationCapture non-current mechanical fact cannot supply evaluation evidence.");
+    throw new TypeError(
+      "$impactEvaluationCapture non-current mechanical fact cannot supply evaluation evidence.",
+    );
   }
 }
 
@@ -470,7 +627,9 @@ function assertArtifactInputsMatchRecross(
   const add = (reference: CrossDomainImpactReference) => {
     const previous = expected.get(reference.id);
     if (previous && !sameReference(previous, reference)) {
-      throw new TypeError("$impactEvaluationCapture cannot consume incompatible fingerprints for one artifact id.");
+      throw new TypeError(
+        "$impactEvaluationCapture cannot consume incompatible fingerprints for one artifact id.",
+      );
     }
     expected.set(reference.id, reference);
   };
@@ -486,7 +645,9 @@ function assertArtifactInputsMatchRecross(
   }
   if (mechanicalFact.status === "current") {
     if (!mechanicalFact.evidence) {
-      throw new TypeError("$impactEvaluationCapture current mechanical evidence is absent from provenance inputs.");
+      throw new TypeError(
+        "$impactEvaluationCapture current mechanical evidence is absent from provenance inputs.",
+      );
     }
     add(mechanicalFact.evidence);
     for (const consumption of mechanicalFact.consumptions) add(consumption.input);
@@ -496,27 +657,37 @@ function assertArtifactInputsMatchRecross(
   for (const input of inputs) {
     const previous = actual.get(input.id);
     if (previous && !sameReference(previous, input)) {
-      throw new TypeError("$impactEvaluationCapture.artifactInputs cannot contain incompatible fingerprints for one artifact id.");
+      throw new TypeError(
+        "$impactEvaluationCapture.artifactInputs cannot contain incompatible fingerprints for one artifact id.",
+      );
     }
     actual.set(input.id, input);
   }
-  if (actual.size !== expected.size || [...expected].some(([id, reference]) => {
-    const actualReference = actual.get(id);
-    return !actualReference || !sameReference(actualReference, reference);
-  })) {
-    throw new TypeError("$impactEvaluationCapture.artifactInputs must exactly equal the server-reread artifact set.");
+  if (
+    actual.size !== expected.size || [...expected].some(([id, reference]) => {
+      const actualReference = actual.get(id);
+      return !actualReference || !sameReference(actualReference, reference);
+    })
+  ) {
+    throw new TypeError(
+      "$impactEvaluationCapture.artifactInputs must exactly equal the server-reread artifact set.",
+    );
   }
 }
 
 function sameMechanicalConsumptions(
   left: readonly CrossDomainImpactEvaluationMechanicalFact["consumptions"][number][],
-  right: readonly NonNullable<CrossDomainImpactEvaluation["mechanicalEvidence"]>["consumptions"][number][],
+  right: readonly NonNullable<
+    CrossDomainImpactEvaluation["mechanicalEvidence"]
+  >["consumptions"][number][],
 ): boolean {
-  const key = (item: CrossDomainImpactEvaluationMechanicalFact["consumptions"][number]) =>
-    `${item.id}:${referenceKey(item.consumerEvidence)}:${referenceKey(item.input)}`;
+  const key = (
+    item: CrossDomainImpactEvaluationMechanicalFact["consumptions"][number],
+  ) => `${item.id}:${referenceKey(item.consumerEvidence)}:${referenceKey(item.input)}`;
   const leftKeys = [...left.map(key)].sort();
   const rightKeys = [...right.map(key)].sort();
-  return leftKeys.length === rightKeys.length && leftKeys.every((item, index) => item === rightKeys[index]);
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every((item, index) => item === rightKeys[index]);
 }
 
 function parseReference(value: unknown, path: string): CrossDomainImpactReference {
@@ -546,11 +717,7 @@ function parseFreshness(value: unknown, path: string): ThreadFreshnessStatus {
 }
 
 function parseBranchId(value: unknown, path: string): CrossDomainImpactBranchId {
-  const id = nonEmptyText(value, path);
-  if (!CROSS_DOMAIN_IMPACT_BRANCH_IDS.includes(id as CrossDomainImpactBranchId)) {
-    throw new TypeError(`${path} must be electrical, thermal or mechanical.`);
-  }
-  return id as CrossDomainImpactBranchId;
+  return parseCrossDomainImpactBranchId(value, path);
 }
 
 function parseIsoDateTime(value: unknown, path: string): string {
@@ -561,26 +728,15 @@ function parseIsoDateTime(value: unknown, path: string): string {
   return text;
 }
 
-function requireClosedBranchSet(ids: readonly CrossDomainImpactBranchId[], path: string): void {
-  if (ids.length !== CROSS_DOMAIN_IMPACT_BRANCH_IDS.length) {
-    throw new TypeError(`${path} must declare exactly electrical, thermal and mechanical.`);
-  }
-  for (const id of CROSS_DOMAIN_IMPACT_BRANCH_IDS) {
-    if (!ids.includes(id)) throw new TypeError(`${path} is missing ${id}.`);
-  }
-}
-
-function sameReference(left: CrossDomainImpactReference, right: CrossDomainImpactReference): boolean {
+function sameReference(
+  left: CrossDomainImpactReference,
+  right: CrossDomainImpactReference,
+): boolean {
   return left.id === right.id && fingerprintsEqual(left.fingerprint, right.fingerprint);
 }
 
 function referenceKey(value: CrossDomainImpactReference): string {
   return `${value.id}:${value.fingerprint.algorithm}:${value.fingerprint.digest}`;
-}
-
-function branchOrder(left: CrossDomainImpactBranchId, right: CrossDomainImpactBranchId): number {
-  return CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(left) -
-    CROSS_DOMAIN_IMPACT_BRANCH_IDS.indexOf(right);
 }
 
 void CROSS_DOMAIN_IMPACT_EVALUATION_SCHEMA;

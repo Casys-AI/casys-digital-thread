@@ -11,25 +11,31 @@ import {
   evaluateCrossDomainImpact,
 } from "../../domain/impact/cross-domain-impact-evaluation.ts";
 import {
-  crossDomainImpactEvaluationCaptureUri,
   type CrossDomainImpactEvaluationCapture,
+  crossDomainImpactEvaluationCaptureUri,
   validateCrossDomainImpactEvaluationCapture,
 } from "../../domain/impact/cross-domain-impact-evaluation-capture.ts";
 import {
   ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
 } from "../../domain/impact/cross-domain-impact-evaluation-proposal.ts";
-import { deterministicJson, sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
-import type { ThreadArtifact, ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
+import type {
+  ThreadArtifact,
+  ThreadSnapshot,
+} from "../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../domain/thread/thread-snapshot-validation.ts";
 import {
   impactFingerprint,
   validCrossDomainImpactEvaluationInput,
 } from "../../testing/cross-domain-impact-fixtures.ts";
 import {
-  type CrossDomainImpactEvaluationThreadSnapshotStore,
   AnalyzeEvaluateCrossDomainImpactRunExecutor,
+  type CrossDomainImpactEvaluationThreadSnapshotStore,
 } from "./analyze-evaluate-cross-domain-impact-run-executor.ts";
 
 const AT = "2026-08-22T09:00:00.000Z";
@@ -47,13 +53,18 @@ Deno.test(
     const result = completed.agentRuns[0]!.resultSnapshot!;
     const successor = await fixture.snapshots.getFresh(result.snapshotId);
     const document = successor!.artifacts.find((artifact) =>
-      artifact.producer.tool === "analyze.evaluate-cross-domain-impact@1"
+      artifact.producer.tool === "analyze.evaluate-cross-domain-impact@2"
     )!;
 
-    assertEquals(document.inputArtifactIds, fixture.capture.artifactInputs.map((item) => item.id));
+    assertEquals(
+      document.inputArtifactIds,
+      fixture.capture.artifactInputs.map((item) => item.id),
+    );
     assertEquals(
       successor!.consumptions
-        .filter((item) => deterministicJson(item.consumer) === deterministicJson(document.producer))
+        .filter((item) =>
+          deterministicJson(item.consumer) === deterministicJson(document.producer)
+        )
         .map((item) => item.artifactId)
         .sort(),
       [...document.inputArtifactIds].sort(),
@@ -102,7 +113,13 @@ Deno.test("X08 rejects a completed run whose result snapshot revision or subject
 
 async function executorFixture(): Promise<{
   readonly executor: AnalyzeEvaluateCrossDomainImpactRunExecutor;
-  readonly command: { commandId: string; projectId: string; expectedRevision: number; issuedAt: string; runId: string };
+  readonly command: {
+    commandId: string;
+    projectId: string;
+    expectedRevision: number;
+    issuedAt: string;
+    runId: string;
+  };
   readonly project: MutableProject;
   readonly basis: ThreadSnapshot;
   readonly snapshots: MemorySnapshots;
@@ -110,7 +127,11 @@ async function executorFixture(): Promise<{
 }> {
   const capture = await captureFixture();
   const basis = basisFixture(capture);
-  const basisRef = { snapshotId: basis.id, revision: basis.revision, subjectId: basis.subject.id };
+  const basisRef = {
+    snapshotId: basis.id,
+    revision: basis.revision,
+    subjectId: basis.subject.id,
+  };
   const operation = {
     id: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.id,
     version: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION.version,
@@ -202,7 +223,10 @@ async function captureFixture(): Promise<CrossDomainImpactEvaluationCapture> {
   const branchFacts = input.branchReadiness.map((branch) => ({
     branchId: branch.branchId,
     method: { reference: branch.method.reference, availability: "available" as const },
-    joins: branch.joins.map((join) => ({ reference: join.reference, currentness: "current" as const })),
+    joins: branch.joins.map((join) => ({
+      reference: join.reference,
+      currentness: "current" as const,
+    })),
   }));
   const mechanicalEvidence = input.mechanicalEvidence!;
   const mechanicalFact = {
@@ -215,12 +239,18 @@ async function captureFixture(): Promise<CrossDomainImpactEvaluationCapture> {
   };
   const artifactInputs = [
     { id: "manifest-seal-document", fingerprint: impactFingerprint("9") },
-    ...branchFacts.flatMap((branch) => [branch.method.reference, ...branch.joins.map((join) => join.reference)]),
+    ...branchFacts.flatMap((
+      branch,
+    ) => [branch.method.reference, ...branch.joins.map((join) => join.reference)]),
     mechanicalEvidence.evidence,
     ...mechanicalEvidence.consumptions.map((item) => item.input),
-  ].sort((left, right) => `${left.id}:${left.fingerprint.digest}`.localeCompare(`${right.id}:${right.fingerprint.digest}`));
+  ].sort((left, right) =>
+    `${left.id}:${left.fingerprint.digest}`.localeCompare(
+      `${right.id}:${right.fingerprint.digest}`,
+    )
+  );
   return await validateCrossDomainImpactEvaluationCapture({
-    schemaVersion: "cross-domain-impact-evaluation-capture/1.0",
+    schemaVersion: "cross-domain-impact-evaluation-capture/2.0",
     kind: "cross-domain-impact-evaluation",
     operation: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
     trustedRunId: RUN,
@@ -271,9 +301,11 @@ function basisFixture(capture: CrossDomainImpactEvaluationCapture): ThreadSnapsh
     producer: {
       serverId: "digital-thread",
       tool: input.id === "manifest-seal-document"
-        ? "verify.seal-cross-domain-impact-manifest@1"
+        ? "verify.seal-cross-domain-impact-manifest@2"
         : "recorded-test@1",
-      runId: input.id === "manifest-seal-document" ? "run-manifest-seal" : `run-${input.id}`,
+      runId: input.id === "manifest-seal-document"
+        ? "run-manifest-seal"
+        : `run-${input.id}`,
     },
     inputArtifactIds: [],
     freshness: fresh(),
@@ -355,8 +387,12 @@ class MemorySnapshots implements CrossDomainImpactEvaluationThreadSnapshotStore 
   }
 
   latest(subjectId: string) {
-    const values = [...this.items.values()].filter((item) => item.subject.id === subjectId);
-    return Promise.resolve(values.sort((left, right) => right.revision - left.revision)[0]);
+    const values = [...this.items.values()].filter((item) =>
+      item.subject.id === subjectId
+    );
+    return Promise.resolve(
+      values.sort((left, right) => right.revision - left.revision)[0],
+    );
   }
 
   save(snapshot: ThreadSnapshot) {
@@ -379,7 +415,10 @@ class MemoryCaptures implements CrossDomainImpactEvaluationCaptureStore {
     const capture = await validateCrossDomainImpactEvaluationCapture(value);
     const fingerprint = await sha256Fingerprint(capture);
     this.items.set(fingerprint.digest, structuredClone(capture));
-    return { fingerprint, uri: crossDomainImpactEvaluationCaptureUri(fingerprint.digest) };
+    return {
+      fingerprint,
+      uri: crossDomainImpactEvaluationCaptureUri(fingerprint.digest),
+    };
   }
 
   read(fingerprint: ContentFingerprint) {
@@ -452,16 +491,21 @@ type MutableProject = EngineeringProjectSnapshot & {
   phases: Array<EngineeringProjectSnapshot["phases"][number]>;
   workItems: Array<EngineeringProjectSnapshot["workItems"][number]>;
   agentRuns: Array<EngineeringProjectSnapshot["agentRuns"][number]>;
-  commandReceipts: Array<NonNullable<EngineeringProjectSnapshot["commandReceipts"]>[number]>;
+  commandReceipts: Array<
+    NonNullable<EngineeringProjectSnapshot["commandReceipts"]>[number]
+  >;
 };
 type MutableRun = {
-  -readonly [Key in keyof EngineeringProjectSnapshot["agentRuns"][number]]: EngineeringProjectSnapshot["agentRuns"][number][Key];
+  -readonly [Key in keyof EngineeringProjectSnapshot["agentRuns"][number]]:
+    EngineeringProjectSnapshot["agentRuns"][number][Key];
 };
 type MutableWork = {
-  -readonly [Key in keyof EngineeringProjectSnapshot["workItems"][number]]: EngineeringProjectSnapshot["workItems"][number][Key];
+  -readonly [Key in keyof EngineeringProjectSnapshot["workItems"][number]]:
+    EngineeringProjectSnapshot["workItems"][number][Key];
 };
 type MutablePhase = {
-  -readonly [Key in keyof EngineeringProjectSnapshot["phases"][number]]: EngineeringProjectSnapshot["phases"][number][Key];
+  -readonly [Key in keyof EngineeringProjectSnapshot["phases"][number]]:
+    EngineeringProjectSnapshot["phases"][number][Key];
 };
 
 function fresh() {

@@ -11,7 +11,7 @@ import type { ContentFingerprint } from "../kernel/primitives.ts";
 import type { CrossDomainImpactManifest } from "./cross-domain-impact-manifest.ts";
 
 export const CROSS_DOMAIN_IMPACT_MANIFEST_CAPTURE_REVIEW_SCHEMA =
-  "cross-domain-impact-manifest-capture-review/1.0" as const;
+  "cross-domain-impact-manifest-capture-review/2.0" as const;
 
 export interface CrossDomainImpactManifestCaptureReference {
   readonly fingerprint: ContentFingerprint;
@@ -89,7 +89,7 @@ export function captureReviewContent(
     `grants is none: this review authorizes neither MRTR, Thread write, ` +
     `evaluation, gate-claim transition, provider, solver, tool, nor ` +
     `runtime. A caller-authored human-shaped assertion in draft JSON is ` +
-    `not proof until verify.seal-cross-domain-impact-manifest@1 after ` +
+    `not proof until verify.seal-cross-domain-impact-manifest@2 after ` +
     `signed MRTR. This creates no EngineeringProject or Thread state.`
   );
 }

@@ -525,7 +525,7 @@ async function recrossFixture(options: RecrossFixtureOptions = {}) {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "analyze.evaluate-cross-domain-impact@1",
+      tool: "analyze.evaluate-cross-domain-impact@2",
       runId: EVAL_RUN,
     },
     inputArtifactIds: capture.artifactInputs.map((item) => item.id),
@@ -854,7 +854,7 @@ async function captureFixture(): Promise<CrossDomainImpactEvaluationCapture> {
     )
   );
   return await validateCrossDomainImpactEvaluationCapture({
-    schemaVersion: "cross-domain-impact-evaluation-capture/1.0",
+    schemaVersion: "cross-domain-impact-evaluation-capture/2.0",
     kind: "cross-domain-impact-evaluation",
     operation: ANALYZE_EVALUATE_CROSS_DOMAIN_IMPACT_OPERATION,
     trustedRunId: EVAL_RUN,

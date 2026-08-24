@@ -1,5 +1,5 @@
 /**
- * Closed MRTR grammar for `verify.seal-cross-domain-impact-manifest@1`.
+ * Closed MRTR grammar for `verify.seal-cross-domain-impact-manifest@2`.
  *
  * The proposal seals exact identities, Brief V2 gate dependencies, and the
  * already-declared Thread evidence recross. It is intentionally not an impact
@@ -25,21 +25,21 @@ import type {
   EngineeringOperationRef,
 } from "../project/engineering-project.ts";
 import {
-  CROSS_DOMAIN_IMPACT_BRANCH_IDS,
   CROSS_DOMAIN_IMPACT_MANIFEST_SCHEMA,
-  parseCrossDomainImpactChangeKind,
   type CrossDomainImpactBranchId,
   type CrossDomainImpactSourceAnchor,
+  parseCrossDomainImpactBranchId,
+  parseCrossDomainImpactChangeKind,
 } from "./cross-domain-impact-manifest.ts";
 import type { ThreadFreshnessStatus } from "../thread/thread-snapshot.ts";
 
 export const VERIFY_SEAL_CROSS_DOMAIN_IMPACT_MANIFEST_OPERATION = {
   id: "verify.seal-cross-domain-impact-manifest",
-  version: "1",
+  version: "2",
 } as const;
 
 export const CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_ADMISSION_SCHEMA =
-  "cross-domain-impact-manifest-seal-admission/1.0" as const;
+  "cross-domain-impact-manifest-seal-admission/2.0" as const;
 
 export const CROSS_DOMAIN_IMPACT_MANIFEST_URI_PREFIX =
   "casys://cross-domain-impact-manifest/sha256/" as const;
@@ -160,8 +160,7 @@ const PARAMETER_LABELS: Record<(typeof PARAMETER_KEYS)[number], string> = {
   "impact.brief.fingerprint.digest": "Approved brief fingerprint",
   "impact.brief.gates.canonicalJson": "Brief V2 gate dependencies",
   "impact.sourceAnchors.canonicalJson": "Reviewed Thread source anchors",
-  "impact.mechanicalEvidence.canonicalJson":
-    "Declared mechanical evidence recross",
+  "impact.mechanicalEvidence.canonicalJson": "Declared mechanical evidence recross",
 };
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -212,7 +211,9 @@ export function parseCrossDomainImpactManifestSealParameters(
       );
     }
     if (parameter.unit !== undefined) {
-      throw new TypeError(`Cross-domain impact manifest seal parameter ${expected} has no unit.`);
+      throw new TypeError(
+        `Cross-domain impact manifest seal parameter ${expected} has no unit.`,
+      );
     }
     values.set(expected, parameter.value);
   }
@@ -221,7 +222,10 @@ export function parseCrossDomainImpactManifestSealParameters(
     manifest: {
       schemaVersion: values.get("impact.manifest.schemaVersion"),
       id: values.get("impact.manifest.id"),
-      revision: integerValue(values.get("impact.manifest.revision"), "impact.manifest.revision"),
+      revision: integerValue(
+        values.get("impact.manifest.revision"),
+        "impact.manifest.revision",
+      ),
       fingerprint: fingerprintFromDigest(
         values.get("impact.manifest.fingerprint.digest"),
         "impact.manifest.fingerprint",
@@ -251,7 +255,10 @@ export function parseCrossDomainImpactManifestSealParameters(
     },
     basis: {
       snapshotId: values.get("impact.basis.snapshotId"),
-      revision: integerValue(values.get("impact.basis.revision"), "impact.basis.revision"),
+      revision: integerValue(
+        values.get("impact.basis.revision"),
+        "impact.basis.revision",
+      ),
       fingerprint: fingerprintFromDigest(
         values.get("impact.basis.fingerprint.digest"),
         "impact.basis.fingerprint",
@@ -260,7 +267,10 @@ export function parseCrossDomainImpactManifestSealParameters(
     brief: {
       contractVersion: values.get("impact.brief.contractVersion"),
       id: values.get("impact.brief.id"),
-      revision: integerValue(values.get("impact.brief.revision"), "impact.brief.revision"),
+      revision: integerValue(
+        values.get("impact.brief.revision"),
+        "impact.brief.revision",
+      ),
       fingerprint: fingerprintFromDigest(
         values.get("impact.brief.fingerprint.digest"),
         "impact.brief.fingerprint",
@@ -315,7 +325,9 @@ export function validateCrossDomainImpactManifestSealAdmission(
   );
   const expectedManifestUri = crossDomainImpactManifestUri(reference);
   if (manifest.uri !== expectedManifestUri) {
-    throw new TypeError("$impactManifestSeal.manifest.uri must be the server-issued CAS URI.");
+    throw new TypeError(
+      "$impactManifestSeal.manifest.uri must be the server-issued CAS URI.",
+    );
   }
   const project = parseIdentity(root.project, "$impactManifestSeal.project");
   const subject = parseIdentity(root.subject, "$impactManifestSeal.subject");
@@ -329,20 +341,33 @@ export function validateCrossDomainImpactManifestSealAdmission(
     ["contractVersion", "id", "revision", "fingerprint", "gates"],
     "$impactManifestSeal.brief",
   );
-  literalValue(brief.contractVersion, "2.0", "$impactManifestSeal.brief.contractVersion");
+  literalValue(
+    brief.contractVersion,
+    "2.0",
+    "$impactManifestSeal.brief.contractVersion",
+  );
 
   const sourceAnchors = arrayOf(
     root.sourceAnchors,
     "$impactManifestSeal.sourceAnchors",
-  ).map((item, index) => parseSourceAnchor(item, `$impactManifestSeal.sourceAnchors[${index}]`));
+  ).map((item, index) =>
+    parseSourceAnchor(item, `$impactManifestSeal.sourceAnchors[${index}]`)
+  );
   if (sourceAnchors.length === 0) {
     throw new TypeError("$impactManifestSeal.sourceAnchors must not be empty.");
   }
-  rejectDuplicates(sourceAnchors.map((item) => item.id), "$impactManifestSeal.sourceAnchors ids");
+  rejectDuplicates(
+    sourceAnchors.map((item) => item.id),
+    "$impactManifestSeal.sourceAnchors ids",
+  );
   const canonicalSourceAnchors = [...sourceAnchors].sort((left, right) =>
     left.id.localeCompare(right.id)
   );
-  requireCanonicalArray(root.sourceAnchors, canonicalSourceAnchors, "$impactManifestSeal.sourceAnchors");
+  requireCanonicalArray(
+    root.sourceAnchors,
+    canonicalSourceAnchors,
+    "$impactManifestSeal.sourceAnchors",
+  );
 
   const gates = arrayOf(brief.gates, "$impactManifestSeal.brief.gates").map(
     (item, index) => parseBriefGate(item, `$impactManifestSeal.brief.gates[${index}]`),
@@ -350,7 +375,10 @@ export function validateCrossDomainImpactManifestSealAdmission(
   if (gates.length === 0) {
     throw new TypeError("$impactManifestSeal.brief.gates must not be empty.");
   }
-  rejectDuplicates(gates.map((item) => item.gateItemId), "$impactManifestSeal.brief.gates ids");
+  rejectDuplicates(
+    gates.map((item) => item.gateItemId),
+    "$impactManifestSeal.brief.gates ids",
+  );
   const canonicalGates = [...gates].sort((left, right) =>
     left.gateItemId.localeCompare(right.gateItemId)
   );
@@ -380,7 +408,10 @@ export function validateCrossDomainImpactManifestSealAdmission(
     manifest: {
       schemaVersion: CROSS_DOMAIN_IMPACT_MANIFEST_SCHEMA,
       id: safeId(manifest.id, "$impactManifestSeal.manifest.id"),
-      revision: positiveInteger(manifest.revision, "$impactManifestSeal.manifest.revision"),
+      revision: positiveInteger(
+        manifest.revision,
+        "$impactManifestSeal.manifest.revision",
+      ),
       fingerprint: parseFingerprint(
         manifest.fingerprint,
         "$impactManifestSeal.manifest.fingerprint",
@@ -393,13 +424,19 @@ export function validateCrossDomainImpactManifestSealAdmission(
     basis: {
       snapshotId: safeId(basis.snapshotId, "$impactManifestSeal.basis.snapshotId"),
       revision: positiveInteger(basis.revision, "$impactManifestSeal.basis.revision"),
-      fingerprint: parseFingerprint(basis.fingerprint, "$impactManifestSeal.basis.fingerprint"),
+      fingerprint: parseFingerprint(
+        basis.fingerprint,
+        "$impactManifestSeal.basis.fingerprint",
+      ),
     },
     brief: {
       contractVersion: "2.0",
       id: safeId(brief.id, "$impactManifestSeal.brief.id"),
       revision: positiveInteger(brief.revision, "$impactManifestSeal.brief.revision"),
-      fingerprint: parseFingerprint(brief.fingerprint, "$impactManifestSeal.brief.fingerprint"),
+      fingerprint: parseFingerprint(
+        brief.fingerprint,
+        "$impactManifestSeal.brief.fingerprint",
+      ),
       gates: canonicalGates,
     },
     sourceAnchors: canonicalSourceAnchors,
@@ -412,30 +449,53 @@ function parameterValue(
   key: (typeof PARAMETER_KEYS)[number],
 ): EngineeringDecisionProposalParameter["value"] {
   switch (key) {
-    case "impact.manifest.seal.schemaVersion": return admission.schemaVersion;
-    case "impact.manifest.schemaVersion": return admission.manifest.schemaVersion;
-    case "impact.manifest.id": return admission.manifest.id;
-    case "impact.manifest.revision": return admission.manifest.revision;
-    case "impact.manifest.fingerprint.digest": return admission.manifest.fingerprint.digest;
-    case "impact.manifest.reference.digest": return admission.manifest.reference.digest;
-    case "impact.project.id": return admission.project.id;
-    case "impact.project.fingerprint.digest": return admission.project.fingerprint.digest;
-    case "impact.subject.id": return admission.subject.id;
-    case "impact.subject.fingerprint.digest": return admission.subject.fingerprint.digest;
-    case "impact.basis.snapshotId": return admission.basis.snapshotId;
-    case "impact.basis.revision": return admission.basis.revision;
-    case "impact.basis.fingerprint.digest": return admission.basis.fingerprint.digest;
-    case "impact.brief.contractVersion": return admission.brief.contractVersion;
-    case "impact.brief.id": return admission.brief.id;
-    case "impact.brief.revision": return admission.brief.revision;
-    case "impact.brief.fingerprint.digest": return admission.brief.fingerprint.digest;
-    case "impact.brief.gates.canonicalJson": return deterministicJson(admission.brief.gates);
-    case "impact.sourceAnchors.canonicalJson": return deterministicJson(admission.sourceAnchors);
-    case "impact.mechanicalEvidence.canonicalJson": return deterministicJson(admission.mechanicalEvidence);
+    case "impact.manifest.seal.schemaVersion":
+      return admission.schemaVersion;
+    case "impact.manifest.schemaVersion":
+      return admission.manifest.schemaVersion;
+    case "impact.manifest.id":
+      return admission.manifest.id;
+    case "impact.manifest.revision":
+      return admission.manifest.revision;
+    case "impact.manifest.fingerprint.digest":
+      return admission.manifest.fingerprint.digest;
+    case "impact.manifest.reference.digest":
+      return admission.manifest.reference.digest;
+    case "impact.project.id":
+      return admission.project.id;
+    case "impact.project.fingerprint.digest":
+      return admission.project.fingerprint.digest;
+    case "impact.subject.id":
+      return admission.subject.id;
+    case "impact.subject.fingerprint.digest":
+      return admission.subject.fingerprint.digest;
+    case "impact.basis.snapshotId":
+      return admission.basis.snapshotId;
+    case "impact.basis.revision":
+      return admission.basis.revision;
+    case "impact.basis.fingerprint.digest":
+      return admission.basis.fingerprint.digest;
+    case "impact.brief.contractVersion":
+      return admission.brief.contractVersion;
+    case "impact.brief.id":
+      return admission.brief.id;
+    case "impact.brief.revision":
+      return admission.brief.revision;
+    case "impact.brief.fingerprint.digest":
+      return admission.brief.fingerprint.digest;
+    case "impact.brief.gates.canonicalJson":
+      return deterministicJson(admission.brief.gates);
+    case "impact.sourceAnchors.canonicalJson":
+      return deterministicJson(admission.sourceAnchors);
+    case "impact.mechanicalEvidence.canonicalJson":
+      return deterministicJson(admission.mechanicalEvidence);
   }
 }
 
-function parseIdentity(value: unknown, path: string): { id: string; fingerprint: ContentFingerprint } {
+function parseIdentity(
+  value: unknown,
+  path: string,
+): { id: string; fingerprint: ContentFingerprint } {
   const input = exactRecord(value, ["id", "fingerprint"], path);
   return {
     id: safeId(input.id, `${path}.id`),
@@ -443,19 +503,43 @@ function parseIdentity(value: unknown, path: string): { id: string; fingerprint:
   };
 }
 
-function parseSourceAnchor(value: unknown, path: string): CrossDomainImpactSourceAnchor {
-  const input = exactRecord(value, ["id", "changeKind", "role", "threadChange", "source"], path);
-  const changeKind = parseCrossDomainImpactChangeKind(input.changeKind, `${path}.changeKind`);
+function parseSourceAnchor(
+  value: unknown,
+  path: string,
+): CrossDomainImpactSourceAnchor {
+  const input = exactRecord(value, [
+    "id",
+    "changeKind",
+    "role",
+    "threadChange",
+    "source",
+  ], path);
+  const changeKind = parseCrossDomainImpactChangeKind(
+    input.changeKind,
+    `${path}.changeKind`,
+  );
   literalValue(input.role, "reviewed-change-source", `${path}.role`);
-  const change = exactRecord(input.threadChange, ["id", "kind", "fingerprint"], `${path}.threadChange`);
+  const change = exactRecord(
+    input.threadChange,
+    ["id", "kind", "fingerprint"],
+    `${path}.threadChange`,
+  );
   const kind = nonEmptyText(change.kind, `${path}.threadChange.kind`);
   if (!["created", "modified", "deleted", "archived"].includes(kind)) {
-    throw new TypeError(`${path}.threadChange.kind must use the existing Thread change vocabulary.`);
+    throw new TypeError(
+      `${path}.threadChange.kind must use the existing Thread change vocabulary.`,
+    );
   }
-  const source = exactRecord(input.source, ["kind", "id", "fingerprint"], `${path}.source`);
+  const source = exactRecord(
+    input.source,
+    ["kind", "id", "fingerprint"],
+    `${path}.source`,
+  );
   const sourceKind = nonEmptyText(source.kind, `${path}.source.kind`);
   if (!["artifact", "requirement", "sysml-element"].includes(sourceKind)) {
-    throw new TypeError(`${path}.source.kind must be artifact, requirement or sysml-element.`);
+    throw new TypeError(
+      `${path}.source.kind must be artifact, requirement or sysml-element.`,
+    );
   }
   return {
     id: safeId(input.id, `${path}.id`),
@@ -464,7 +548,10 @@ function parseSourceAnchor(value: unknown, path: string): CrossDomainImpactSourc
     threadChange: {
       id: safeId(change.id, `${path}.threadChange.id`),
       kind: kind as CrossDomainImpactSourceAnchor["threadChange"]["kind"],
-      fingerprint: parseFingerprint(change.fingerprint, `${path}.threadChange.fingerprint`),
+      fingerprint: parseFingerprint(
+        change.fingerprint,
+        `${path}.threadChange.fingerprint`,
+      ),
     },
     source: {
       kind: sourceKind as CrossDomainImpactSourceAnchor["source"]["kind"],
@@ -474,30 +561,46 @@ function parseSourceAnchor(value: unknown, path: string): CrossDomainImpactSourc
   };
 }
 
-function parseBriefGate(value: unknown, path: string): CrossDomainImpactManifestSealBriefGate {
-  const input = exactRecord(value, ["gateItemId", "kind", "branchId", "role", "fingerprint", "dependsOnItemIds"], path);
+function parseBriefGate(
+  value: unknown,
+  path: string,
+): CrossDomainImpactManifestSealBriefGate {
+  const input = exactRecord(value, [
+    "gateItemId",
+    "kind",
+    "branchId",
+    "role",
+    "fingerprint",
+    "dependsOnItemIds",
+  ], path);
   const kind = nonEmptyText(input.kind, `${path}.kind`);
   if (kind !== "success-criterion" && kind !== "verification-activity") {
-    throw new TypeError(`${path}.kind must be success-criterion or verification-activity.`);
+    throw new TypeError(
+      `${path}.kind must be success-criterion or verification-activity.`,
+    );
   }
-  const branchId = nonEmptyText(input.branchId, `${path}.branchId`);
-  if (!CROSS_DOMAIN_IMPACT_BRANCH_IDS.includes(branchId as CrossDomainImpactBranchId)) {
-    throw new TypeError(`${path}.branchId must be a closed impact branch id.`);
-  }
+  const branchId = parseCrossDomainImpactBranchId(input.branchId, `${path}.branchId`);
   const role = nonEmptyText(input.role, `${path}.role`);
   if (!GATE_ROLES.includes(role as EngineeringGateClaimRole)) {
     throw new TypeError(`${path}.role must be contributes-to or satisfies.`);
   }
-  const dependsOnItemIds = arrayOf(input.dependsOnItemIds, `${path}.dependsOnItemIds`).map(
-    (item, index) => safeId(item, `${path}.dependsOnItemIds[${index}]`),
-  );
+  const dependsOnItemIds = arrayOf(input.dependsOnItemIds, `${path}.dependsOnItemIds`)
+    .map(
+      (item, index) => safeId(item, `${path}.dependsOnItemIds[${index}]`),
+    );
   rejectDuplicates(dependsOnItemIds, `${path}.dependsOnItemIds`);
-  const canonicalDependencies = [...dependsOnItemIds].sort((left, right) => left.localeCompare(right));
-  requireCanonicalArray(input.dependsOnItemIds, canonicalDependencies, `${path}.dependsOnItemIds`);
+  const canonicalDependencies = [...dependsOnItemIds].sort((left, right) =>
+    left.localeCompare(right)
+  );
+  requireCanonicalArray(
+    input.dependsOnItemIds,
+    canonicalDependencies,
+    `${path}.dependsOnItemIds`,
+  );
   return {
     gateItemId: safeId(input.gateItemId, `${path}.gateItemId`),
     kind,
-    branchId: branchId as CrossDomainImpactBranchId,
+    branchId,
     role: role as EngineeringGateClaimRole,
     fingerprint: parseFingerprint(input.fingerprint, `${path}.fingerprint`),
     dependsOnItemIds: canonicalDependencies,
@@ -508,25 +611,42 @@ function parseMechanicalEvidence(
   value: unknown,
   path: string,
 ): CrossDomainImpactManifestSealMechanicalEvidence {
-  const input = exactRecord(value, ["assertionId", "evidence", "evidenceFreshness", "consumptions"], path);
+  const input = exactRecord(value, [
+    "assertionId",
+    "evidence",
+    "evidenceFreshness",
+    "consumptions",
+  ], path);
   const freshness = nonEmptyText(input.evidenceFreshness, `${path}.evidenceFreshness`);
   if (!FRESHNESS.includes(freshness as ThreadFreshnessStatus)) {
     throw new TypeError(`${path}.evidenceFreshness must be a Thread freshness status.`);
   }
-  const consumptions = arrayOf(input.consumptions, `${path}.consumptions`).map((item, index) => {
-    const consumption = exactRecord(item, ["id", "consumerEvidence", "input"], `${path}.consumptions[${index}]`);
-    return {
-      id: safeId(consumption.id, `${path}.consumptions[${index}].id`),
-      consumerEvidence: parseIdentity(
-        consumption.consumerEvidence,
-        `${path}.consumptions[${index}].consumerEvidence`,
-      ),
-      input: parseIdentity(consumption.input, `${path}.consumptions[${index}].input`),
-    };
-  });
+  const consumptions = arrayOf(input.consumptions, `${path}.consumptions`).map(
+    (item, index) => {
+      const consumption = exactRecord(
+        item,
+        ["id", "consumerEvidence", "input"],
+        `${path}.consumptions[${index}]`,
+      );
+      return {
+        id: safeId(consumption.id, `${path}.consumptions[${index}].id`),
+        consumerEvidence: parseIdentity(
+          consumption.consumerEvidence,
+          `${path}.consumptions[${index}].consumerEvidence`,
+        ),
+        input: parseIdentity(consumption.input, `${path}.consumptions[${index}].input`),
+      };
+    },
+  );
   rejectDuplicates(consumptions.map((item) => item.id), `${path}.consumptions ids`);
-  const canonicalConsumptions = [...consumptions].sort((left, right) => left.id.localeCompare(right.id));
-  requireCanonicalArray(input.consumptions, canonicalConsumptions, `${path}.consumptions`);
+  const canonicalConsumptions = [...consumptions].sort((left, right) =>
+    left.id.localeCompare(right.id)
+  );
+  requireCanonicalArray(
+    input.consumptions,
+    canonicalConsumptions,
+    `${path}.consumptions`,
+  );
   return {
     assertionId: safeId(input.assertionId, `${path}.assertionId`),
     evidence: parseIdentity(input.evidence, `${path}.evidence`),

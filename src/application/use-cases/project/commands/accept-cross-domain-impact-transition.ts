@@ -64,7 +64,7 @@ export async function applyAcceptCrossDomainImpactDecision(
     operation.version !== DECIDE_ACCEPT_CROSS_DOMAIN_IMPACT_OPERATION.version
   ) {
     invalidTransition(
-      "This command may complete only decide.accept-cross-domain-impact@1.",
+      "This command may complete only decide.accept-cross-domain-impact@2.",
     );
   }
   if (run.status !== "queued") {
@@ -117,7 +117,7 @@ export async function applyAcceptCrossDomainImpactDecision(
   const basis = run.basis;
   if (basis?.kind !== "thread-snapshot") {
     invalidTransition(
-      "This command may complete only decide.accept-cross-domain-impact@1.",
+      "This command may complete only decide.accept-cross-domain-impact@2.",
     );
   }
   const baseSnapshot = threadSnapshotReference(basis);

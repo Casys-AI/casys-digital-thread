@@ -2,10 +2,13 @@
 
 Audience: both · Diátaxis: how-to · Kind: how-to
 
-Walk a closed `cross-domain-impact-manifest/1.0` from public draft capture through
+Walk a closed `cross-domain-impact-manifest/2.0` from public draft capture through
 seal, X07/X08 recross, human X09, and X11 mechanical preservation. The Workbench is
 read-only. The person never types a provider tool. The agent queues only registered
-operations.
+operations. The JSON body declares its own branch list: nonempty unique
+lexicographic `safeId` tokens, not a global catalogue. Extra or missing branch
+data fails closed. Independence assertions remain legal only for the exact id
+`mechanical`.
 
 Truth: [impact coverage](../../reference/domains/impact/coverage.md),
 [impact boundedness](../../reference/domains/impact/boundedness.md),
@@ -47,7 +50,8 @@ tip remains its exact descendant and carries the same `fresh`, unarchived artifa
 
 Upload the JSON body with `project_resource_capture`, then call
 `project_cross_domain_impact_manifest_capture` with that full `resourceRef`. Exact
-`cross-domain-impact-manifest/1.0` body keys, no `fingerprint` field. The server
+`cross-domain-impact-manifest/2.0` body keys, no `fingerprint` field, and a
+declared nonempty unique lexicographic branch list. The server
 canonicalizes, computes the embedded body fingerprint and the outer CAS fingerprint, and
 returns `status: captured`, opaque `reference.fingerprint`, a summary of exact
 ids/revision/basis/`changeKinds`, and `grants: none`. Do not echo or persist a path or
@@ -64,7 +68,7 @@ declared evidence. Each manifest `gateMap` entry must resolve exactly one curren
 work-item `gateClaim` with the same role. Missing, mismatched or ambiguous claims stop
 `unresolved`. Stop on `unavailable` or `unresolved`.
 
-On `resolved`, append `verify.seal-cross-domain-impact-manifest@1` with the sole
+On `resolved`, append `verify.seal-cross-domain-impact-manifest@2` with the sole
 `approvedBrief` binding and the returned `decisionParameters`:
 
 ```text
@@ -78,7 +82,7 @@ solver.
 ## 3. Recross without mutating claims (X07 / X08)
 
 After that unique seal work item is complete, append
-`analyze.evaluate-cross-domain-impact@1` (`requiresAdditiveChange`,
+`analyze.evaluate-cross-domain-impact@2` (`requiresAdditiveChange`,
 `dependsOn` the unique seal work item, `approvedBrief` binding). This operation
 accepts **no** MRTR of its own.
 
@@ -97,7 +101,7 @@ documentary capture. It proposes `current`, `impact-unresolved`, `invalidated`, 
 Call `project_cross_domain_impact_decision_review` with `projectId` only. X09 recrosses
 the sealed result itself; stop on `unavailable` or `unresolved`.
 
-On `resolved`, append `decide.accept-cross-domain-impact@1` (`mustOrigin: human`) with
+On `resolved`, append `decide.accept-cross-domain-impact@2` (`mustOrigin: human`) with
 the returned `decisionParameters`. Human MRTR, then agent queue and execute.
 
 X09 `accept` applies the **already-proposed** statuses onto existing work-item claims.
@@ -107,7 +111,7 @@ stay `reruns: none` and `newWorkItems: none`.
 ## 5. Mechanical preservation (X11)
 
 After the unique X09 decision is complete, append
-`analyze.evaluate-mechanical-preservation@1` (`dependsOn` that decision work item,
+`analyze.evaluate-mechanical-preservation@2` (`dependsOn` that decision work item,
 `approvedBrief` binding, no MRTR of its own). Queue and execute.
 
 `carried-forward` requires a current independence assertion covering the exact

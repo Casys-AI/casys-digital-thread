@@ -13,7 +13,7 @@ export function impactFingerprint(character: string) {
 /** Mutable body fixture so focused tests can make one adversarial alteration. */
 export function validCrossDomainImpactManifestBody() {
   return {
-    schemaVersion: "cross-domain-impact-manifest/1.0" as const,
+    schemaVersion: "cross-domain-impact-manifest/2.0" as const,
     id: "impact-manifest-led-1",
     revision: 1,
     project: {
@@ -66,24 +66,33 @@ export function validCrossDomainImpactManifestBody() {
     ],
     branches: [
       {
-        id: "electrical" as const,
+        id: "electrical" as string,
         version: "1.0" as const,
         inputs: [{ id: "electrical-power-input", fingerprint: impactFingerprint("b") }],
-        method: { id: "electrical-method-evidence", fingerprint: impactFingerprint("c") },
+        method: {
+          id: "electrical-method-evidence",
+          fingerprint: impactFingerprint("c"),
+        },
         joins: [{ id: "electrical-power-join", fingerprint: impactFingerprint("d") }],
       },
       {
-        id: "thermal" as const,
+        id: "thermal" as string,
         version: "1.0" as const,
         inputs: [{ id: "thermal-power-input", fingerprint: impactFingerprint("e") }],
         method: { id: "thermal-method-evidence", fingerprint: impactFingerprint("f") },
         joins: [{ id: "thermal-power-join", fingerprint: impactFingerprint("a") }],
       },
       {
-        id: "mechanical" as const,
+        id: "mechanical" as string,
         version: "1.0" as const,
-        inputs: [{ id: "mechanical-static-input", fingerprint: impactFingerprint("b") }],
-        method: { id: "mechanical-method-evidence", fingerprint: impactFingerprint("c") },
+        inputs: [{
+          id: "mechanical-static-input",
+          fingerprint: impactFingerprint("b"),
+        }],
+        method: {
+          id: "mechanical-method-evidence",
+          fingerprint: impactFingerprint("c"),
+        },
         joins: [{ id: "mechanical-static-join", fingerprint: impactFingerprint("d") }],
       },
     ],
@@ -92,23 +101,29 @@ export function validCrossDomainImpactManifestBody() {
         id: "edge-power-electrical",
         fromAnchorId: "anchor-electrical-power",
         to: {
-          branchId: "electrical" as const,
+          branchId: "electrical" as string,
           inputId: "electrical-power-input",
           inputFingerprint: impactFingerprint("b"),
         },
         relation: "positive-input" as const,
         assertion: {
-          source: { id: "source-power-electrical", fingerprint: impactFingerprint("c") },
+          source: {
+            id: "source-power-electrical",
+            fingerprint: impactFingerprint("c"),
+          },
           justification: "Reviewed source states the exact branch input relation.",
         },
         scope: "Exact manifest basis only.",
-        evidence: [{ id: "source-power-electrical", fingerprint: impactFingerprint("c") }],
+        evidence: [{
+          id: "source-power-electrical",
+          fingerprint: impactFingerprint("c"),
+        }],
       },
       {
         id: "edge-power-thermal",
         fromAnchorId: "anchor-electrical-power",
         to: {
-          branchId: "thermal" as const,
+          branchId: "thermal" as string,
           inputId: "thermal-power-input",
           inputFingerprint: impactFingerprint("e"),
         },
@@ -124,11 +139,15 @@ export function validCrossDomainImpactManifestBody() {
     independenceAssertions: [
       {
         id: "mechanical-independence-r7",
-        branchId: "mechanical" as const,
+        branchId: "mechanical" as string,
         assertion: "independent" as const,
         author: { kind: "human" as const, id: "human-reviewer-1" },
-        source: { id: "source-mechanical-independence", fingerprint: impactFingerprint("a") },
-        justification: "The reviewed mechanical evidence consumes only the named exact input.",
+        source: {
+          id: "source-mechanical-independence",
+          fingerprint: impactFingerprint("a"),
+        },
+        justification:
+          "The reviewed mechanical evidence consumes only the named exact input.",
         inspectedSourceAnchors: [
           {
             sourceAnchorId: "anchor-electrical-power",
@@ -136,7 +155,10 @@ export function validCrossDomainImpactManifestBody() {
             sourceFingerprint: impactFingerprint("e"),
           },
         ],
-        evidence: { id: "mechanical-fea-evidence", fingerprint: impactFingerprint("b") },
+        evidence: {
+          id: "mechanical-fea-evidence",
+          fingerprint: impactFingerprint("b"),
+        },
         inspectedConsumptions: [
           {
             id: "mechanical-consumption-step",
@@ -144,22 +166,55 @@ export function validCrossDomainImpactManifestBody() {
           },
         ],
         review: {
-          trigger: { id: "impact-review-trigger-r7", fingerprint: impactFingerprint("d") },
+          trigger: {
+            id: "impact-review-trigger-r7",
+            fingerprint: impactFingerprint("d"),
+          },
           reviewedAt: "2026-08-20T09:00:00.000Z",
           expiresAt: "2026-09-20T09:00:00.000Z",
         },
       },
     ],
     gateMap: [
-      { gateItemId: "gate-electrical", branchId: "electrical" as const, role: "satisfies" as const },
-      { gateItemId: "gate-thermal", branchId: "thermal" as const, role: "contributes-to" as const },
-      { gateItemId: "gate-mechanical", branchId: "mechanical" as const, role: "satisfies" as const },
+      {
+        gateItemId: "gate-electrical",
+        branchId: "electrical" as string,
+        role: "satisfies" as const,
+      },
+      {
+        gateItemId: "gate-thermal",
+        branchId: "thermal" as string,
+        role: "contributes-to" as const,
+      },
+      {
+        gateItemId: "gate-mechanical",
+        branchId: "mechanical" as string,
+        role: "satisfies" as const,
+      },
     ],
     limitations: [
       "No interaction without a positive causal edge is proved.",
       "This manifest does not execute or qualify any method.",
     ],
   };
+}
+
+/** Adds `motion` as a declared nonmechanical branch with no causal edge. */
+export function motionDeclaredCrossDomainImpactManifestBody() {
+  const body = validCrossDomainImpactManifestBody();
+  body.branches.push({
+    id: "motion" as string,
+    version: "1.0" as const,
+    inputs: [{ id: "motion-input", fingerprint: impactFingerprint("e") }],
+    method: { id: "motion-method-evidence", fingerprint: impactFingerprint("f") },
+    joins: [{ id: "motion-join", fingerprint: impactFingerprint("a") }],
+  });
+  body.gateMap.push({
+    gateItemId: "gate-motion",
+    branchId: "motion" as string,
+    role: "contributes-to" as const,
+  });
+  return body;
 }
 
 /** Same closed shape with document-defined kinds that are not a code catalog. */
@@ -189,11 +244,15 @@ export function documentDefinedCrossDomainImpactManifestBody() {
   return body;
 }
 
-export async function validCrossDomainImpactManifest(): Promise<CrossDomainImpactManifest> {
+export async function validCrossDomainImpactManifest(): Promise<
+  CrossDomainImpactManifest
+> {
   return await createCrossDomainImpactManifest(validCrossDomainImpactManifestBody());
 }
 
-export async function validCrossDomainImpactEvaluationInput(): Promise<CrossDomainImpactEvaluationInput> {
+export async function validCrossDomainImpactEvaluationInput(): Promise<
+  CrossDomainImpactEvaluationInput
+> {
   const manifest = await validCrossDomainImpactManifest();
   const power = manifest.sourceAnchors.find((item) =>
     item.id === "anchor-electrical-power"
@@ -209,7 +268,10 @@ export async function validCrossDomainImpactEvaluationInput(): Promise<CrossDoma
       threadChange: power.threadChange,
       source: power.source,
     }],
-    reviewTrigger: { id: "impact-review-trigger-r7", fingerprint: impactFingerprint("d") },
+    reviewTrigger: {
+      id: "impact-review-trigger-r7",
+      fingerprint: impactFingerprint("d"),
+    },
     branchReadiness: manifest.branches.map((branch) => ({
       branchId: branch.id,
       method: { reference: branch.method, available: true },
@@ -219,7 +281,10 @@ export async function validCrossDomainImpactEvaluationInput(): Promise<CrossDoma
       evidence: { id: "mechanical-fea-evidence", fingerprint: impactFingerprint("b") },
       consumptions: [{
         id: "mechanical-consumption-step",
-        consumerEvidence: { id: "mechanical-fea-evidence", fingerprint: impactFingerprint("b") },
+        consumerEvidence: {
+          id: "mechanical-fea-evidence",
+          fingerprint: impactFingerprint("b"),
+        },
         input: { id: "mechanical-step-input", fingerprint: impactFingerprint("c") },
       }],
     },

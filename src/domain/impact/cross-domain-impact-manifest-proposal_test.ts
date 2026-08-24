@@ -45,30 +45,41 @@ Deno.test("cross-domain impact manifest seal capture retains only exact document
   const capture = validateCrossDomainImpactManifestSealCapture({
     schemaVersion: CROSS_DOMAIN_IMPACT_MANIFEST_SEAL_CAPTURE_SCHEMA,
     kind: "cross-domain-impact-manifest-seal",
-    operation: { id: "verify.seal-cross-domain-impact-manifest", version: "1" },
+    operation: { id: "verify.seal-cross-domain-impact-manifest", version: "2" },
     trustedRunId: "run.impact.seal",
     decisionId: "decision.impact.seal",
     sealedAt: "2026-08-22T09:00:00.000Z",
     admission,
   });
   assertEquals(capture.admission.manifest.reference, admission.manifest.reference);
-  assertThrows(() => validateCrossDomainImpactManifestSealCapture({
-    ...capture,
-    operation: { id: "verify.run-solver", version: "1" },
-  }));
-  assertThrows(() => validateCrossDomainImpactManifestSealCapture({
-    ...capture,
-    branchOutcomes: [{ branchId: "mechanical", status: "carried-forward" }],
-  }));
-  assertThrows(() => validateCrossDomainImpactManifestSealCapture({
-    ...capture,
-    gateClaimTransitions: [{ gateItemId: "gate.mechanical", status: "carried-forward" }],
-  }));
+  assertThrows(() =>
+    validateCrossDomainImpactManifestSealCapture({
+      ...capture,
+      operation: { id: "verify.run-solver", version: "1" },
+    })
+  );
+  assertThrows(() =>
+    validateCrossDomainImpactManifestSealCapture({
+      ...capture,
+      branchOutcomes: [{ branchId: "mechanical", status: "carried-forward" }],
+    })
+  );
+  assertThrows(() =>
+    validateCrossDomainImpactManifestSealCapture({
+      ...capture,
+      gateClaimTransitions: [{
+        gateItemId: "gate.mechanical",
+        status: "carried-forward",
+      }],
+    })
+  );
 });
 
 Deno.test("cross-domain impact seal proposal accepts a document-defined non-lamp change kind", async () => {
   const admission = await admissionFixtureFrom(
-    await createCrossDomainImpactManifest(documentDefinedCrossDomainImpactManifestBody()),
+    await createCrossDomainImpactManifest(
+      documentDefinedCrossDomainImpactManifestBody(),
+    ),
   );
   const parsed = parseCrossDomainImpactManifestSealParameters(
     encodeCrossDomainImpactManifestSealAdmission(admission),
@@ -134,7 +145,10 @@ async function admissionFixtureFrom(
         kind: "success-criterion" as const,
         branchId: gate.branchId,
         role: gate.role,
-        fingerprint: { algorithm: "sha256" as const, digest: `${index + 1}`.repeat(64) },
+        fingerprint: {
+          algorithm: "sha256" as const,
+          digest: `${index + 1}`.repeat(64),
+        },
         dependsOnItemIds: index === 0 ? [] : ["brief.source.impact"],
       })).sort((left, right) => left.gateItemId.localeCompare(right.gateItemId)),
     },

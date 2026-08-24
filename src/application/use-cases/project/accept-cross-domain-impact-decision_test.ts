@@ -341,7 +341,7 @@ async function queuedImpactDecision(): Promise<{
   );
   const brief = project.framing!.currentBrief!;
   const admission = {
-    schemaVersion: "cross-domain-impact-decision-admission/1.0" as const,
+    schemaVersion: "cross-domain-impact-decision-admission/2.0" as const,
     consequence: "accept" as const,
     projectId: PROJECT_ID,
     subjectId: project.project.subjectId,
