@@ -199,7 +199,7 @@ the provider-free sibling: it seals one agent-authored closed-subset analysis as
 Thread document and never calls SysON. `model.write-requirements@1` renders and
 re-extracts human-approved integer scalar constraints against an exact architecture
 basis; decimal literals are rejected before SysON until the provider can round-trip
-`LiteralRational`. The legacy `design.write-geometry@1` seals the hashes from a
+`LiteralRational`. The generic `design.write-geometry@1` seals the hashes from a
 separately previewed and human-approved MCP sandbox draft; it never re-executes
 build123d. The isolated sibling is `compile.seal-admission@1` then
 `design.execute-build123d@1`, which publishes a documentary capture and a noncanonical
@@ -258,7 +258,7 @@ proof. X11 does not call CalculiX, mutate claims, or create X10 work items or re
 
 Lookalike traps for agents: [lookalike traps](../agent/lookalike-traps.md).
 
-The legacy generic geometry boundary separates preview from seal, and it separates two
+The current generic geometry boundary separates preview from seal, and it separates two
 _natures of execution_ across two instances of the same MCP provider. `mcp-build123d`
 only ever runs server-fixed recipes rendered from reviewed code, and mounts the shared
 `exports` volume. `mcp-build123d-sandbox` runs geometry programs _proposed by an agent_

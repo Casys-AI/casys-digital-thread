@@ -16,6 +16,7 @@ import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts"
 import {
   captureGeometryBundleDraft,
   captureGeometryDraft,
+  currentGenericGeometryDraftCaptureSchema,
   GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_DRAFT_CAPTURE_SCHEMA,
   geometryBundleManifestFromDraft,
@@ -158,6 +159,7 @@ Deno.test("captureGeometryDraft saves a verifiable JSON capture for a valid scri
     assertEquals(capture.assemblyFiles[0]?.name, "geometry-preview-assembly");
     assertEquals(capture.assemblyFiles[0]?.fingerprint.digest, HEX64);
     assertEquals(capture.partMeshes.length, 0);
+    assertEquals(capture.sourceAnalysis.selector, { kind: "assembly" });
     assertEquals(capture.fingerprint.algorithm, "sha256");
 
     // CAS readback: the store must have the JSON under the capture fingerprint.
@@ -636,6 +638,8 @@ Deno.test("captureGeometryBundleDraft exports one exact assembly and one exact s
       definitionScript,
     );
     assertEquals(capture.schemaVersion, GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA);
+    assertEquals(capture.sourceAnalyses.assembly.selector, { kind: "assembly" });
+    assertEquals(capture.sourceAnalyses.partDefinitions.length, 1);
     assertEquals(capture.producer.runId, "preview:bundle-v2");
     assertEquals(capture.partDefinitions.length, 1);
     assertEquals(capture.occurrences.length, 2);
@@ -941,5 +945,31 @@ Deno.test("geometry bundle canonical sources reject source or N+1 provenance mut
     );
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("current generic draft schemas are 1.2 and 2.1; older identities are rejected", () => {
+  assertEquals(
+    currentGenericGeometryDraftCaptureSchema("geometry-draft-capture/1.2"),
+    GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+  );
+  assertEquals(
+    currentGenericGeometryDraftCaptureSchema("geometry-draft-capture/2.1"),
+    GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
+  );
+  for (const schema of [
+    "geometry-draft-capture/1.0",
+    "geometry-draft-capture/1.1",
+    "geometry-draft-capture/2.0",
+  ]) {
+    try {
+      currentGenericGeometryDraftCaptureSchema(schema);
+      throw new Error(`expected ${schema} to be rejected`);
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      if (!error.message.includes("Unsupported geometry draft capture schema")) {
+        throw error;
+      }
+    }
   }
 });

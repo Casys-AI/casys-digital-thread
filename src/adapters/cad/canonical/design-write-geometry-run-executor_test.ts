@@ -104,7 +104,6 @@ import {
   GEOMETRY_DRAFT_CAPTURE_SCHEMA,
   type GeometryBundleDraftCapture,
   geometryBundleManifestFromDraft,
-  LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
 } from "./geometry-draft-capture.ts";
 import {
   GEOMETRY_DRAFT_ADMISSION_SCHEMA,
@@ -546,14 +545,22 @@ Deno.test("GeometryArtifactRemovedError carries the subject ID in its message", 
   assertEquals(error.message.includes("geometry_artifact_removed"), true);
 });
 
-Deno.test("geometry preview provenance keeps v1.0 readable without inventing a provider run", () => {
-  assertEquals(
-    requireDraftPreviewProducer({
-      schemaVersion: LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
-      producer: { serverId: "build123d", tool: "build123d_export" },
-    }),
-    undefined,
-  );
+Deno.test("geometry preview provenance rejects old draft schemas and requires the current preview run", () => {
+  for (const schemaVersion of [
+    "geometry-draft-capture/1.0",
+    "geometry-draft-capture/1.1",
+    "geometry-draft-capture/2.0",
+  ]) {
+    assertThrows(
+      () =>
+        requireDraftPreviewProducer({
+          schemaVersion,
+          producer: { serverId: "build123d", tool: "build123d_export" },
+        }),
+      EngineeringProjectCommandError,
+      "Unsupported geometry draft capture schema",
+    );
+  }
   assertEquals(
     requireDraftPreviewProducer({
       schemaVersion: GEOMETRY_DRAFT_CAPTURE_SCHEMA,
@@ -584,9 +591,9 @@ Deno.test("geometry preview provenance keeps v1.0 readable without inventing a p
   );
 });
 
-Deno.test("geometry seal revalidates legacy GLB paths before canonical writes", () => {
+Deno.test("geometry seal revalidates current GLB paths before canonical writes", () => {
   requireDraftAssemblyPaths({
-    schemaVersion: LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+    schemaVersion: GEOMETRY_DRAFT_CAPTURE_SCHEMA,
     assemblyFiles: [{
       format: "gltf",
       containerPath: "/exports/geometry-preview-assembly.glb",
@@ -595,7 +602,7 @@ Deno.test("geometry seal revalidates legacy GLB paths before canonical writes", 
   assertThrows(
     () =>
       requireDraftAssemblyPaths({
-        schemaVersion: LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+        schemaVersion: GEOMETRY_DRAFT_CAPTURE_SCHEMA,
         assemblyFiles: [{
           format: "gltf",
           containerPath: "/exports/geometry-preview-assembly.gltf",
@@ -1108,7 +1115,7 @@ Deno.test("geometry bundle predecessor resolution refuses a self-hashed capture 
     },
   };
   const capture = {
-    schemaVersion: "geometry-capture/1.1",
+    schemaVersion: "geometry-capture/1.2",
     operation: DESIGN_WRITE_GEOMETRY_OPERATION,
     trustedRunId: "run:wrong",
     draftDigest: HEX64,
@@ -1118,7 +1125,21 @@ Deno.test("geometry bundle predecessor resolution refuses a self-hashed capture 
       fingerprint: { algorithm: "sha256", digest: HEX64 },
       producerRunId: "run:architecture",
     },
-    previewProducer: null,
+    previewProducer: {
+      serverId: "build123d-sandbox",
+      tool: "build123d_export",
+      runId: "preview:expected",
+    },
+    sourceAnalyses: {
+      assembly: {
+        sourceId: "cad-assembly",
+        selector: { kind: "assembly" },
+        sourceFingerprint: { algorithm: "sha256", digest: HEX64 },
+        sourceCaptureFingerprint: { algorithm: "sha256", digest: HEX64 },
+        analysisFingerprint: { algorithm: "sha256", digest: HEX64 },
+      },
+      partDefinitions: [],
+    },
     sealedAt: "2026-08-08T00:00:00.000Z",
   };
   const fingerprint = await sha256Fingerprint(capture);
@@ -1158,8 +1179,61 @@ Deno.test("geometry bundle predecessor resolution refuses a self-hashed capture 
 for (
   const schemaVersion of [
     "geometry-capture/1.1",
-    "geometry-capture/1.2",
     "geometry-capture/2.0",
+  ] as const
+) {
+  Deno.test(
+    `geometry bundle predecessor resolution rejects old ${schemaVersion} capture`,
+    async () => {
+      const capture = {
+        schemaVersion,
+        operation: DESIGN_WRITE_GEOMETRY_OPERATION,
+        trustedRunId: "run:expected",
+        manifest: {
+          schemaVersion: schemaVersion.startsWith("geometry-capture/1.")
+            ? GEOMETRY_MANIFEST_SCHEMA
+            : GEOMETRY_BUNDLE_MANIFEST_SCHEMA,
+        },
+      };
+      const fingerprint = await sha256Fingerprint(capture);
+      const artifact: ThreadArtifact = {
+        id: `geometry-${fingerprint.digest}`,
+        name: "Geometry",
+        kind: "cad-model",
+        version: fingerprint.digest,
+        fingerprint,
+        uri: `${GEOMETRY_CAPTURE_URI_PREFIX}sha256/${fingerprint.digest}`,
+        mediaType: "application/json",
+        producer: {
+          serverId: "digital-thread",
+          tool: "design.write-geometry@1",
+          runId: "run:expected",
+        },
+        inputArtifactIds: [],
+        freshness: SNAP_FRESHNESS,
+      };
+      const basis = { ...minimalSnapshotBase("basis", 2), artifacts: [artifact] };
+      await assertRejects(
+        () =>
+          requireGeometryBundlePredecessor(
+            basis,
+            bundlePredecessorParams({ artifactId: artifact.id, fingerprint }),
+            {
+              read: () => Promise.resolve(deterministicJson(capture)),
+              save: () => Promise.reject(new Error("unexpected")),
+              uriFor: () => "unused",
+            },
+          ),
+        EngineeringProjectCommandError,
+        "capture schema is unsupported",
+      );
+    },
+  );
+}
+
+for (
+  const schemaVersion of [
+    "geometry-capture/1.2",
     "geometry-capture/2.1",
   ] as const
 ) {
@@ -1497,6 +1571,8 @@ async function buildGeoFixture(
       },
       runId: opts.architectureCaptureDefect === "foreign-source-analysis"
         ? "run:foreign-architecture"
+        : opts.architectureCaptureDefect === "wrong-trusted-run"
+        ? "run:unrelated-architecture"
         : "run:architecture",
       operation: MODEL_WRITE_ARCHITECTURE_OPERATION,
       sourceFingerprint: { algorithm: "sha256" as const, digest: "a".repeat(64) },
@@ -1955,7 +2031,7 @@ async function buildGeoFixture(
       signedDraftDigest = draft.fingerprint.digest;
       if (opts.legacyDraftPath) {
         const legacyDraft = {
-          schemaVersion: LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
+          schemaVersion: "geometry-draft-capture/1.0",
           kind: draft.kind,
           capturedAt: draft.capturedAt,
           subject: draft.subject,
@@ -2631,7 +2707,7 @@ async function queueGeometryBundleUpgrade(
       id: "decision:geometry-bundle-upgrade",
       phaseId: "geometry-bundle-upgrade",
       title: "Geometry bundle v2",
-      question: "Replace the exact legacy geometry tip with this bundle?",
+      question: "Replace the exact current assembly geometry tip with this bundle?",
     }],
   });
   project = await fixture.commands.proposeDecision(AGENT, {
@@ -2647,7 +2723,7 @@ async function queueGeometryBundleUpgrade(
     },
     proposal: {
       summary:
-        "Seal independent definition geometry and supersede the exact legacy tip.",
+        "Seal independent definition geometry and supersede the exact current assembly geometry tip.",
       parameters: encodeGeometryDecisionParameters(
         bundleDraft.fingerprint.digest,
         signedManifest,
@@ -3458,6 +3534,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       published,
       fixture.archCaptures,
       fixture.geoCaptures,
+      fixture.sysmlSourceAnalysis,
     );
     assertExists(catalog);
     const occurrences = catalog.components.filter((component) =>
@@ -3543,6 +3620,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
         candidate,
         fixture.archCaptures,
         fixture.geoCaptures,
+        fixture.sysmlSourceAnalysis,
       );
       assertExists(unavailable);
       assertEquals(
@@ -3672,6 +3750,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       published,
       fixture.archCaptures,
       { read: () => Promise.resolve(undefined) },
+      fixture.sysmlSourceAnalysis,
     );
     assertExists(missingCaptureCatalog);
     assertEquals(missingCaptureCatalog.components.length, catalog.components.length);
@@ -3695,6 +3774,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       ambiguous,
       fixture.archCaptures,
       fixture.geoCaptures,
+      fixture.sysmlSourceAnalysis,
     );
     assertExists(ambiguousCatalog);
     assertEquals(ambiguousCatalog.components.length, catalog.components.length);
@@ -3704,7 +3784,7 @@ Deno.test("geometry bundle v2 seals independent PartDefinition STEP and raw sour
       ).length,
       0,
     );
-    assertStringIncludes(ambiguousCatalog.rationale, "multiple active capture tips");
+    assertStringIncludes(ambiguousCatalog.rationale, "not durably readable");
 
     const revisionBeforeReplay = completed.revision;
     const replayed = await executor.execute(AGENT, command);
@@ -3736,6 +3816,7 @@ Deno.test("geometry bundle v2 keeps STEP-only PartDefinitions viewer-free", asyn
       published,
       fixture.archCaptures,
       fixture.geoCaptures,
+      fixture.sysmlSourceAnalysis,
     );
     assertExists(catalog);
     const parts = catalog.components.filter((component) => component.kind === "part");
@@ -4087,36 +4168,36 @@ Deno.test("successive geometry seals may reuse identical binary bytes under dist
   }
 });
 
-Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry family", async () => {
+Deno.test("geometry bundle v2 supersedes and archives the exact current assembly geometry family", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-upgrade-" });
   try {
-    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
-    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+    const assemblyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const assemblyCompleted = await makeExecutor(assemblyFixture, tmpDir).execute(
       AGENT,
-      executionCommand(legacyFixture),
+      executionCommand(assemblyFixture),
     );
-    const legacyRun = legacyCompleted.agentRuns.find((run) =>
-      run.id === legacyFixture.queued.runId
+    const legacyRun = assemblyCompleted.agentRuns.find((run) =>
+      run.id === assemblyFixture.queued.runId
     );
     assertExists(legacyRun?.resultSnapshot);
-    const legacySnapshot = await legacyFixture.snapshots.get(
+    const assemblySnapshot = await assemblyFixture.snapshots.get(
       legacyRun.resultSnapshot.snapshotId,
     );
-    assertExists(legacySnapshot);
-    const legacyPrimary = legacySnapshot.artifacts.find((artifact) =>
+    assertExists(assemblySnapshot);
+    const assemblyPrimary = assemblySnapshot.artifacts.find((artifact) =>
       artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) &&
       artifact.producer.runId === legacyRun.id
     );
-    const legacyBinaries = legacySnapshot.artifacts.filter((artifact) =>
-      artifact.id.startsWith(`cad-asset-${legacyPrimary?.fingerprint.digest}-`) ||
-      artifact.id.startsWith(`mesh-${legacyPrimary?.fingerprint.digest}-`)
+    const legacyBinaries = assemblySnapshot.artifacts.filter((artifact) =>
+      artifact.id.startsWith(`cad-asset-${assemblyPrimary?.fingerprint.digest}-`) ||
+      artifact.id.startsWith(`mesh-${assemblyPrimary?.fingerprint.digest}-`)
     );
-    assertExists(legacyPrimary);
+    assertExists(assemblyPrimary);
     assertEquals(legacyBinaries.length > 0, true);
 
     const upgradeFixture = await queueGeometryBundleUpgrade(
-      legacyFixture,
-      legacyCompleted,
+      assemblyFixture,
+      assemblyCompleted,
     );
     const command = {
       ...executionCommand(upgradeFixture),
@@ -4137,11 +4218,11 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
       artifact.producer.runId === run.id
     );
     assertExists(newPrimary);
-    assertEquals(newPrimary.inputArtifactIds.includes(legacyPrimary.id), true);
+    assertEquals(newPrimary.inputArtifactIds.includes(assemblyPrimary.id), true);
     assertEquals(
       snapshot.provenance.some((link) =>
         link.relation === "supersedes" && link.from.id === newPrimary.id &&
-        link.to.id === legacyPrimary.id
+        link.to.id === assemblyPrimary.id
       ),
       true,
     );
@@ -4149,7 +4230,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
       snapshot.changeSet.changes.filter((change) => change.kind === "archived")
         .map((change) => `${change.target.kind}:${change.target.id}`),
     );
-    assertEquals(archived.has(`artifact:${legacyPrimary.id}`), true);
+    assertEquals(archived.has(`artifact:${assemblyPrimary.id}`), true);
     for (const binary of legacyBinaries) {
       assertEquals(archived.has(`artifact:${binary.id}`), true);
     }
@@ -4163,6 +4244,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
       snapshot,
       upgradeFixture.archCaptures,
       upgradeFixture.geoCaptures,
+      upgradeFixture.sysmlSourceAnalysis,
     );
     assertExists(upgradedCatalog);
     assertEquals(
@@ -4179,6 +4261,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
         candidate,
         upgradeFixture.archCaptures,
         upgradeFixture.geoCaptures,
+        upgradeFixture.sysmlSourceAnalysis,
       );
       assertExists(unavailable);
       assertEquals(
@@ -4205,7 +4288,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
     const duplicateSupersedes = mutableClone(snapshot);
     const supersedes = duplicateSupersedes.provenance.find((link) =>
       link.relation === "supersedes" && link.from.id === newPrimary.id &&
-      link.to.id === legacyPrimary.id
+      link.to.id === assemblyPrimary.id
     );
     assertExists(supersedes);
     duplicateSupersedes.provenance.push({
@@ -4217,12 +4300,12 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
     const missingDerivedFrom = mutableClone(snapshot);
     missingDerivedFrom.provenance = missingDerivedFrom.provenance.filter((link) =>
       !(link.relation === "derived_from" && link.from.id === newPrimary.id &&
-        link.to.id === legacyPrimary.id)
+        link.to.id === assemblyPrimary.id)
     );
     await assertNoUpgradedCad(missingDerivedFrom, "unique derived_from");
 
     const predecessorConsumptionId =
-      `consume-geometry-${legacyPrimary.id}-by-${newPrimary.id}`;
+      `consume-geometry-${assemblyPrimary.id}-by-${newPrimary.id}`;
     const missingPredecessorUses = mutableClone(snapshot);
     missingPredecessorUses.provenance = missingPredecessorUses.provenance.filter(
       (link) =>
@@ -4236,7 +4319,7 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
 
     const predecessorDerived = snapshot.provenance.find((link) =>
       link.relation === "derived_from" && link.from.id === newPrimary.id &&
-      link.to.id === legacyPrimary.id
+      link.to.id === assemblyPrimary.id
     );
     const predecessorUses = snapshot.provenance.find((link) =>
       link.relation === "uses" && link.from.kind === "consumption" &&
@@ -4278,14 +4361,14 @@ Deno.test("geometry bundle v2 supersedes and archives the exact legacy geometry 
 Deno.test("a third geometry generation refuses a v2 predecessor with broken own lineage", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-transitive-lineage-" });
   try {
-    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
-    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+    const assemblyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const assemblyCompleted = await makeExecutor(assemblyFixture, tmpDir).execute(
       AGENT,
-      executionCommand(legacyFixture),
+      executionCommand(assemblyFixture),
     );
     const upgradeFixture = await queueGeometryBundleUpgrade(
-      legacyFixture,
-      legacyCompleted,
+      assemblyFixture,
+      assemblyCompleted,
     );
     const upgraded = await makeExecutor(upgradeFixture, tmpDir).execute(
       AGENT,
@@ -4393,17 +4476,17 @@ Deno.test("a third geometry generation refuses a v2 predecessor with broken own 
   }
 });
 
-Deno.test("geometry bundle v2 refuses an active legacy tip when predecessor is omitted", async () => {
+Deno.test("geometry bundle v2 refuses an active current assembly geometry tip when predecessor is omitted", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-missing-predecessor-" });
   try {
-    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
-    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+    const assemblyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const assemblyCompleted = await makeExecutor(assemblyFixture, tmpDir).execute(
       AGENT,
-      executionCommand(legacyFixture),
+      executionCommand(assemblyFixture),
     );
     const upgradeFixture = await queueGeometryBundleUpgrade(
-      legacyFixture,
-      legacyCompleted,
+      assemblyFixture,
+      assemblyCompleted,
       { omitPredecessor: true },
     );
     let captureWrites = 0;
@@ -4433,14 +4516,14 @@ Deno.test("geometry bundle v2 refuses an active legacy tip when predecessor is o
 Deno.test("geometry bundle v2 refuses an arbitrary active artifact traced to the predecessor family", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-rogue-family-" });
   try {
-    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
-    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+    const assemblyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const assemblyCompleted = await makeExecutor(assemblyFixture, tmpDir).execute(
       AGENT,
-      executionCommand(legacyFixture),
+      executionCommand(assemblyFixture),
     );
     const upgradeFixture = await queueGeometryBundleUpgrade(
-      legacyFixture,
-      legacyCompleted,
+      assemblyFixture,
+      assemblyCompleted,
     );
     const basisId = upgradeFixture.baselineRef.snapshotId;
     let snapshotWrites = 0;
@@ -4526,14 +4609,14 @@ Deno.test("geometry bundle v2 refuses an arbitrary active artifact traced to the
 Deno.test("geometry bundle v2 refuses non-canonical predecessor binary trace and uses evidence before publication", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-bundle-predecessor-binary-" });
   try {
-    const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
-    const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+    const assemblyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+    const assemblyCompleted = await makeExecutor(assemblyFixture, tmpDir).execute(
       AGENT,
-      executionCommand(legacyFixture),
+      executionCommand(assemblyFixture),
     );
     const upgradeFixture = await queueGeometryBundleUpgrade(
-      legacyFixture,
-      legacyCompleted,
+      assemblyFixture,
+      assemblyCompleted,
     );
     const basisId = upgradeFixture.baselineRef.snapshotId;
 
@@ -4624,14 +4707,14 @@ for (
         prefix: `geo-bundle-predecessor-${defect}-`,
       });
       try {
-        const legacyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
-        const legacyCompleted = await makeExecutor(legacyFixture, tmpDir).execute(
+        const assemblyFixture = await buildGeoFixture(tmpDir, { mode: "happy" });
+        const assemblyCompleted = await makeExecutor(assemblyFixture, tmpDir).execute(
           AGENT,
-          executionCommand(legacyFixture),
+          executionCommand(assemblyFixture),
         );
         const upgradeFixture = await queueGeometryBundleUpgrade(
-          legacyFixture,
-          legacyCompleted,
+          assemblyFixture,
+          assemblyCompleted,
         );
         const basisId = upgradeFixture.baselineRef.snapshotId;
         let snapshotWrites = 0;
@@ -5067,34 +5150,32 @@ Deno.test(
   },
 );
 
-Deno.test("the full executor accepts a legacy v1.0 GLB draft", async () => {
+Deno.test("the full executor rejects a legacy v1.0 GLB draft before canonical writes", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-legacy-glb-" });
   try {
     const fixture = await buildGeoFixture(tmpDir, {
       mode: "happy",
       legacyDraftPath: "glb",
     });
-    const completed = await makeExecutor(fixture, tmpDir).execute(
-      AGENT,
-      executionCommand(fixture),
+    let captureWrites = 0;
+    const noCanonicalWriteStore: GeometryCaptureStore = {
+      uriFor: (fingerprint) => fixture.geoCaptures.uriFor(fingerprint),
+      read: (fingerprint) => fixture.geoCaptures.read(fingerprint),
+      save: () => {
+        captureWrites++;
+        return Promise.reject(new Error("unexpected canonical capture write"));
+      },
+    };
+    await assertRejects(
+      () =>
+        makeExecutor(fixture, tmpDir, noCanonicalWriteStore).execute(
+          AGENT,
+          executionCommand(fixture),
+        ),
+      EngineeringProjectCommandError,
+      "Unsupported geometry draft capture schema",
     );
-    const run = completed.agentRuns.find((candidate) =>
-      candidate.id === fixture.queued.runId
-    );
-    assertExists(run?.resultSnapshot);
-    const published = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
-    assertExists(published);
-    const binary = published.artifacts.find((artifact) =>
-      artifact.id.startsWith("cad-asset-")
-    );
-    assertExists(binary);
-    assertEquals(binary.uri?.endsWith(".glb"), true);
-    assertEquals(binary.mediaType, "model/gltf-binary");
-    assertEquals(binary.producer, {
-      serverId: "digital-thread",
-      tool: "design.write-geometry@1",
-      runId: fixture.queued.runId,
-    });
+    assertEquals(captureWrites, 0);
   } finally {
     await Deno.remove(tmpDir, { recursive: true });
   }
@@ -5128,7 +5209,7 @@ Deno.test("the full executor rejects a legacy v1.0 .gltf path before canonical w
           executionCommand(fixture),
         ),
       EngineeringProjectCommandError,
-      'fixed basename "geometry-preview-assembly.glb"',
+      "Unsupported geometry draft capture schema",
     );
 
     assertEquals(captureWrites, 0);
@@ -5400,6 +5481,7 @@ Deno.test("target PartDefinition seal reopens one admitted draft, promotes deter
       snapshot,
       queued.fixture.archCaptures,
       queued.fixture.geoCaptures,
+      queued.fixture.sysmlSourceAnalysis,
     );
     assertExists(catalog);
     assertStringIncludes(catalog.rationale, "active targeted geometry capture set");
@@ -5457,6 +5539,7 @@ Deno.test("target PartDefinition seal reopens one admitted draft, promotes deter
       targetOnly,
       queued.fixture.archCaptures,
       queued.fixture.geoCaptures,
+      queued.fixture.sysmlSourceAnalysis,
     );
     assertExists(incompleteCatalog);
     assertEquals(
@@ -5740,6 +5823,7 @@ Deno.test("same-target target seals supersede only their own files while differe
       snapshot,
       successorQueued.fixture.archCaptures,
       successorQueued.fixture.geoCaptures,
+      successorQueued.fixture.sysmlSourceAnalysis,
     );
     assertExists(catalog);
     const targetBindings = catalog.components.flatMap((component) =>

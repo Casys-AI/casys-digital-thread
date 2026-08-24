@@ -171,9 +171,9 @@ only, never an approval or execution authority
 
 #### `state/local/geometry-draft-captures/`
 
-Historical `geometry-draft-capture/1.0`, `1.1`, `2.0` or current analysis-bearing `1.2`,
-`2.1`; current records seal exact source-analysis references before preview and never
-enter a `ThreadSnapshot`
+Current analysis-bearing `geometry-draft-capture/1.2` and `2.1`; records seal exact
+source-analysis references before preview and never enter a `ThreadSnapshot`. Older
+draft schemas are unsupported.
 
 #### `state/local/geometry-draft-assets/<sha256>`
 
@@ -182,7 +182,6 @@ read-only by `/api/draft-assets/<digest>`
 
 #### `state/local/geometry-captures/`
 
-Historical `geometry-capture/1.1`, `2.0` or current `1.2`, `2.1`; current records
-additionally seal verified passive source-analysis references while retaining editable
-sources, sandbox provenance, predecessor lineage and independent PartDefinition STEP
-assets
+Current `geometry-capture/1.2` and `2.1`; records seal verified passive source-analysis
+references while retaining editable sources, sandbox provenance, predecessor lineage and
+independent PartDefinition STEP assets. Older capture schemas are unsupported.

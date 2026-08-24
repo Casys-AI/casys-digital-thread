@@ -7,7 +7,6 @@ import { sha256Hex } from "../../kernel/deterministic-json.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../cad/canonical/geometry-part-manifest.ts";
 
 export const FEA_PROOF_GEOMETRY_CAPTURE_SCHEMAS = [
-  "geometry-capture/2.0",
   "geometry-capture/2.1",
   GEOMETRY_PART_CAPTURE_SCHEMA,
 ] as const;
@@ -43,7 +42,6 @@ export async function extractParametricCadProvenanceFromGeometryCapture(
   const record = capture as Record<string, unknown>;
   const schemaVersion = record.schemaVersion;
   if (
-    schemaVersion !== "geometry-capture/2.0" &&
     schemaVersion !== "geometry-capture/2.1" &&
     schemaVersion !== GEOMETRY_PART_CAPTURE_SCHEMA
   ) {

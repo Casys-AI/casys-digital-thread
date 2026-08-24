@@ -117,9 +117,10 @@ writes one Thread document; no thread-assets copy, cad-model, or FEA authority
 
 #### [`src/adapters/cad/canonical/geometry-bundle-product-catalog.ts`](../../../src/adapters/cad/canonical/geometry-bundle-product-catalog.ts)
 
-Strict read-only current `geometry-capture/2.1` plus historical 2.0 projector: active
-tip, source/N+1 provenance, binary traces, and exact SysML occurrence-to-STEP bindings
-without label joins
+Strict read-only current projector for `geometry-capture/1.2` (assembly),
+`geometry-capture/2.1` (bundle), and `geometry-part-capture/1.0` (target): active tip,
+source/N+1 provenance, binary traces, and exact SysML occurrence-to-STEP bindings
+without label joins. Older captures are rejected.
 
 #### [`src/domain/cad/canonical/geometry-proposal.ts`](../../../src/domain/cad/canonical/geometry-proposal.ts)
 

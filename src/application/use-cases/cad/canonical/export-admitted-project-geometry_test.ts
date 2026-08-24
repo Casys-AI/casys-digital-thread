@@ -486,6 +486,22 @@ Deno.test("an unrepresented multi-part target fails before the provider", async 
   assertEquals(fixture.exporter.targetedCalls.length, 0);
 });
 
+Deno.test("an old geometry-capture/2.0 cannot authorize a targeted predecessor", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  await addV2Capture(fixture, {
+    inputArtifactIds: ["artifact.sysml"],
+    schemaVersion: "geometry-capture/2.0",
+  });
+
+  await assertExportError(
+    () => fixture.service.execute(fixture.command),
+    "geometry_part_predecessor_unavailable",
+  );
+  assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 0);
+});
+
 Deno.test("an active attested V2 bundle covering the target blocks part preview before the provider", async () => {
   const fixture = await harness();
   fixture.architecture.graph = multiPartArchitecture();
@@ -854,7 +870,10 @@ function multiPartArchitecture(): ArchitecturePartGraph {
 
 async function addV2Capture(
   fixture: Harness,
-  options: { readonly inputArtifactIds: readonly string[] },
+  options: {
+    readonly inputArtifactIds: readonly string[];
+    readonly schemaVersion?: "geometry-capture/2.0" | "geometry-capture/2.1";
+  },
 ): Promise<void> {
   const sealedAt = "2026-08-13T08:00:00.000Z";
   const architectureFingerprint =
@@ -900,8 +919,9 @@ async function addV2Capture(
       partMeshes: [] as const,
     },
   };
+  const schemaVersion = options.schemaVersion ?? "geometry-capture/2.1";
   const capture = {
-    schemaVersion: "geometry-capture/2.0",
+    schemaVersion,
     operation: { id: "design.write-geometry", version: "1" },
     trustedRunId: "run.geometry.v2",
     draftDigest: "d".repeat(64),
@@ -917,6 +937,9 @@ async function addV2Capture(
       runId: "preview.geometry.v2",
     },
     sourceScripts: {},
+    ...(schemaVersion === "geometry-capture/2.1"
+      ? { sourceAnalyses: { assembly: {}, partDefinitions: [] } }
+      : {}),
     sealedAt,
   };
   const fingerprint = await sha256Fingerprint(capture);

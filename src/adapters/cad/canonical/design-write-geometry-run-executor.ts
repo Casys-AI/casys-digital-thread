@@ -86,7 +86,6 @@ import {
   GEOMETRY_ARCHITECTURE_CAPTURE_USE_RATIONALE,
   GEOMETRY_ARCHITECTURE_DERIVATION_RATIONALE,
   GEOMETRY_BINARY_CAPTURE_USE_RATIONALE,
-  GEOMETRY_BINARY_DERIVATION_RATIONALE,
   GEOMETRY_BINARY_TRACE_RATIONALE,
   GEOMETRY_PREDECESSOR_CAPTURE_USE_RATIONALE,
   GEOMETRY_PREDECESSOR_DERIVATION_RATIONALE,
@@ -122,15 +121,13 @@ import {
 import {
   assertGeometryBundleDraftPaths,
   assertGeometryDraftAssemblyPaths,
+  currentGenericGeometryDraftCaptureSchema,
   GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
   GEOMETRY_DRAFT_ASSETS_DIR,
   GEOMETRY_DRAFT_CAPTURE_SCHEMA,
   type GeometryBundleCanonicalSources,
   type GeometryBundleDraftCapture,
   geometryBundleManifestFromDraft,
-  LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
-  PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA,
-  PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA,
   requireGeometryBundleCanonicalSources,
   requireGeometryBundleDraftAssetMetadata,
 } from "./geometry-draft-capture.ts";
@@ -180,12 +177,9 @@ import type { LiveThreadUpdateMilestoneJournal } from "../../shared/stores/live-
  */
 export { DESIGN_WRITE_GEOMETRY_OPERATION };
 
-/** Historical captures produced before passive native-source analysis. */
-export const PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
-export const PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA =
-  "geometry-capture/2.0" as const;
-/** Current captures seal the exact passive analysis references from the draft. */
+/** Current assembly capture: seals the exact passive analysis from the draft. */
 export const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.2" as const;
+/** Current complete-system bundle capture: seals exact N+1 sourceAnalyses. */
 export const GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.1" as const;
 export const GEOMETRY_CANONICAL_ASSETS_DIR = "state/local/thread-assets" as const;
 
@@ -198,43 +192,26 @@ interface SealedGeometrySourceAnalyses {
 }
 
 type GeometryCaptureSchema =
-  | typeof PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA
-  | typeof PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA
   | typeof GEOMETRY_CAPTURE_SCHEMA
   | typeof GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
 
 function isGeometryCaptureSchema(value: unknown): value is GeometryCaptureSchema {
-  return value === PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA ||
-    value === PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA ||
-    value === GEOMETRY_CAPTURE_SCHEMA || value === GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
+  return value === GEOMETRY_CAPTURE_SCHEMA ||
+    value === GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
 }
 
 function isGeometryBundleCaptureSchema(
   value: GeometryCaptureSchema,
 ): boolean {
-  return value === PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA ||
-    value === GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
-}
-
-function isAnalyzedGeometryCaptureSchema(
-  value: GeometryCaptureSchema,
-): boolean {
-  return value === GEOMETRY_CAPTURE_SCHEMA ||
-    value === GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
+  return value === GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
 }
 
 function geometryCaptureSchema(
   manifest: AnyGeometryManifest,
-  sourceAnalyses: SealedGeometrySourceAnalyses | undefined,
 ): GeometryCaptureSchema {
-  if (manifest.schemaVersion === "geometry-manifest/2.0") {
-    return sourceAnalyses
-      ? GEOMETRY_BUNDLE_CAPTURE_SCHEMA
-      : PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA;
-  }
-  return sourceAnalyses
-    ? GEOMETRY_CAPTURE_SCHEMA
-    : PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA;
+  return manifest.schemaVersion === "geometry-manifest/2.0"
+    ? GEOMETRY_BUNDLE_CAPTURE_SCHEMA
+    : GEOMETRY_CAPTURE_SCHEMA;
 }
 
 function geometryManifestPredecessor(
@@ -316,7 +293,7 @@ export class GeometryAssetVerificationError extends Error {
  * scenario (human signs hashes for D2 while the viewer shows D1) without
  * bootstrapping a full project fixture.
  */
-type LegacyGeometryDraftManifestShape = {
+type AssemblyGeometryDraftManifestShape = {
   readonly subject: GeometryManifest["architectureBasis"];
   readonly scriptHash: ContentFingerprint;
   readonly exportFormats: GeometryManifest["exportFormats"];
@@ -334,7 +311,7 @@ type LegacyGeometryDraftManifestShape = {
 export function assertMrtrManifestMatchesDraft(
   signed: AnyGeometryManifest | GeometryPartManifest,
   draft:
-    | LegacyGeometryDraftManifestShape
+    | AssemblyGeometryDraftManifestShape
     | Omit<GeometryBundleDraftCapture, "fingerprint">
     | Omit<GeometryPartDraftCapture, "fingerprint">,
 ): void {
@@ -364,21 +341,21 @@ export function assertMrtrManifestMatchesDraft(
     }
     return;
   }
-  const legacyDraft = draft as LegacyGeometryDraftManifestShape;
+  const assemblyDraft = draft as AssemblyGeometryDraftManifestShape;
   const reconstructed: GeometryManifest = {
     schemaVersion: "geometry-manifest/1.0",
-    architectureBasis: legacyDraft.subject,
-    components: legacyDraft.components,
+    architectureBasis: assemblyDraft.subject,
+    components: assemblyDraft.components,
     unitSystem: "mm",
-    exportFormats: legacyDraft.exportFormats,
-    scriptHash: legacyDraft.scriptHash,
+    exportFormats: assemblyDraft.exportFormats,
+    scriptHash: assemblyDraft.scriptHash,
     artifactHashes: {
-      assemblyFiles: legacyDraft.assemblyFiles.map((file) => ({
+      assemblyFiles: assemblyDraft.assemblyFiles.map((file) => ({
         format: file.format,
         name: file.name,
         fingerprint: file.fingerprint,
       })),
-      partMeshes: legacyDraft.partMeshes.map((mesh) => ({
+      partMeshes: assemblyDraft.partMeshes.map((mesh) => ({
         semanticKey: mesh.usageName,
         name: mesh.name,
         fingerprint: mesh.fingerprint,
@@ -723,6 +700,12 @@ export class DesignWriteGeometryRunExecutor {
       // decision, the verified draft record, and the verified architecture.
       const { assemblyFiles = [], partMeshes = [] } = params.manifest.artifactHashes ??
         {};
+      if (!partDraft && !sourceAnalyses) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          "Current generic geometry capture requires exact source analyses.",
+        );
+      }
       const captureRecord = partDraft
         ? geometryPartCaptureRecord({
           params,
@@ -733,7 +716,7 @@ export class DesignWriteGeometryRunExecutor {
           draft: partDraft,
         })
         : {
-          schemaVersion: geometryCaptureSchema(params.manifest, sourceAnalyses),
+          schemaVersion: geometryCaptureSchema(params.manifest),
           operation: DESIGN_WRITE_GEOMETRY_OPERATION,
           trustedRunId: run.id,
           draftDigest: params.draftDigest,
@@ -743,9 +726,9 @@ export class DesignWriteGeometryRunExecutor {
             fingerprint: architectureArtifact.fingerprint,
             producerRunId: architectureArtifact.producer.runId,
           },
-          previewProducer: previewProducer ?? null,
+          previewProducer,
           ...(bundleSources ? { sourceScripts: bundleSources } : {}),
-          ...(sourceAnalyses ? { sourceAnalyses } : {}),
+          sourceAnalyses,
           sealedAt: capturedAt,
         };
       const captureFp = await sha256Fingerprint(captureRecord);
@@ -1127,6 +1110,11 @@ export class DesignWriteGeometryRunExecutor {
         },
       );
     const capturedAt = requiredStart(run);
+    if (!partDraft && !sourceAnalyses) {
+      throw completedGeometryIntegrityError(
+        "the primary capture is missing exact source analyses",
+      );
+    }
     const expectedCapture = partDraft
       ? geometryPartCaptureRecord({
         params,
@@ -1137,7 +1125,7 @@ export class DesignWriteGeometryRunExecutor {
         draft: partDraft,
       })
       : {
-        schemaVersion: geometryCaptureSchema(params.manifest, sourceAnalyses),
+        schemaVersion: geometryCaptureSchema(params.manifest),
         operation: DESIGN_WRITE_GEOMETRY_OPERATION,
         trustedRunId: run.id,
         draftDigest: params.draftDigest,
@@ -1147,9 +1135,9 @@ export class DesignWriteGeometryRunExecutor {
           fingerprint: architectureArtifact.fingerprint,
           producerRunId: architectureArtifact.producer.runId,
         },
-        previewProducer: previewProducer ?? null,
+        previewProducer,
         ...(bundleSources ? { sourceScripts: bundleSources } : {}),
-        ...(sourceAnalyses ? { sourceAnalyses } : {}),
+        sourceAnalyses,
         sealedAt: capturedAt,
       };
     const observedCaptureFingerprint = await sha256Fingerprint(capture);
@@ -1581,7 +1569,7 @@ interface GeometrySourceAnalysisStores {
   readonly sourceAnalysisCaptures: FileCaptureStore<"source-analysis">;
 }
 
-/** Dispatch by signed manifest family; historic V1/V2 resolution stays intact. */
+/** Dispatch by signed manifest family; assembly and bundle resolution stay distinct. */
 async function requireGeometryPredecessor(
   base: ThreadSnapshot,
   params: GeometryDecisionParameters,
@@ -1986,11 +1974,7 @@ async function requireExactGeometryPartPredecessorCapture(
   }
   const previewProducer = geometryPredecessorPreviewProducer(
     record.previewProducer,
-    GEOMETRY_BUNDLE_CAPTURE_SCHEMA,
   );
-  if (!previewProducer) {
-    invalidGeometryPredecessor("target capture has no exact sandbox preview producer");
-  }
   const sealedAt = geometryPredecessorInstant(record.sealedAt, "target capture.sealedAt");
   requireExactGeometryPredecessorArchitectureAttestation(
     base,
@@ -2179,7 +2163,7 @@ function requireExactGeometryPartPredecessorFamily(
 
 interface ExactGeometryPredecessorCapture {
   readonly params: GeometryDecisionParameters;
-  readonly previewProducer: ThreadOperationRef | undefined;
+  readonly previewProducer: ThreadOperationRef;
   readonly sealedAt: string;
 }
 
@@ -2199,7 +2183,6 @@ async function requireExactGeometryPredecessorCapture(
     invalidGeometryPredecessor("capture schema is unsupported");
   }
   const bundleSchema = isGeometryBundleCaptureSchema(schema);
-  const analyzedSchema = isAnalyzedGeometryCaptureSchema(schema);
   exactGeometryPredecessorKeys(
     record,
     [
@@ -2211,7 +2194,7 @@ async function requireExactGeometryPredecessorCapture(
       "architectureBasis",
       "previewProducer",
       ...(bundleSchema ? ["sourceScripts"] : []),
-      ...(analyzedSchema ? ["sourceAnalyses"] : []),
+      "sourceAnalyses",
       "sealedAt",
     ],
     "capture",
@@ -2332,7 +2315,6 @@ async function requireExactGeometryPredecessorCapture(
 
   const previewProducer = geometryPredecessorPreviewProducer(
     record.previewProducer,
-    schema,
   );
   const sealedAt = geometryPredecessorInstant(record.sealedAt, "sealedAt");
   requireExactGeometryPredecessorArchitectureAttestation(
@@ -2365,18 +2347,16 @@ async function requireExactGeometryPredecessorCapture(
       >,
     );
   }
-  if (analyzedSchema) {
-    if (!sourceAnalysisStores) {
-      invalidGeometryPredecessor(
-        "source-analysis stores are unavailable for an analyzed capture",
-      );
-    }
-    await requireCanonicalGeometrySourceAnalyses(
-      record.sourceAnalyses,
-      params,
-      sourceAnalysisStores,
+  if (!sourceAnalysisStores) {
+    invalidGeometryPredecessor(
+      "source-analysis stores are unavailable for a current capture",
     );
   }
+  await requireCanonicalGeometrySourceAnalyses(
+    record.sourceAnalyses,
+    params,
+    sourceAnalysisStores,
+  );
   return { params, previewProducer, sealedAt };
 }
 
@@ -2636,7 +2616,7 @@ function requireExactGeometryPredecessorFamily(
   base: ThreadSnapshot,
   primary: ThreadArtifact,
   params: GeometryDecisionParameters,
-  previewProducer: ThreadOperationRef | undefined,
+  previewProducer: ThreadOperationRef,
   sealedAt: string,
 ): readonly ThreadArtifact[] {
   const digest = primary.fingerprint.digest;
@@ -2714,7 +2694,6 @@ function requireExactGeometryPredecessorFamily(
   if (family.length !== expected.size + 1) {
     invalidGeometryPredecessor("binary family is incomplete or contains extra assets");
   }
-  const binaryProducer = previewProducer ?? primary.producer;
   for (const [id, descriptor] of expected) {
     const matches = family.filter((candidate) => candidate.id === id);
     if (matches.length !== 1) {
@@ -2726,27 +2705,21 @@ function requireExactGeometryPredecessorFamily(
       artifact.version !== descriptor.fingerprint.digest ||
       !fingerprintsEqual(artifact.fingerprint, descriptor.fingerprint) ||
       artifact.uri !== descriptor.uri || artifact.mediaType !== descriptor.mediaType ||
-      deterministicJson(artifact.producer) !== deterministicJson(binaryProducer) ||
-      deterministicJson(artifact.inputArtifactIds) !==
-        deterministicJson(previewProducer ? [] : [primary.id]) ||
+      deterministicJson(artifact.producer) !== deterministicJson(previewProducer) ||
+      deterministicJson(artifact.inputArtifactIds) !== deterministicJson([]) ||
       artifact.freshness.status !== "fresh" ||
       artifact.freshness.changedAt !== sealedAt ||
       artifact.freshness.invalidatedByChangeIds.length !== 0
     ) {
       invalidGeometryPredecessor(`binary artifact ${id} metadata is not exact`);
     }
-    const relation = previewProducer ? "traces_to" : "derived_from";
     const captureLinks = base.provenance.filter((link) =>
-      link.relation === relation && link.from.kind === "artifact" &&
+      link.relation === "traces_to" && link.from.kind === "artifact" &&
       link.from.id === id && link.to.kind === "artifact" &&
       link.to.id === primary.id
     );
-    const expectedCaptureLinkId = `${
-      previewProducer ? "traces" : "derived"
-    }-${id}-from-${primary.id}`;
-    const expectedCaptureRationale = previewProducer
-      ? GEOMETRY_BINARY_TRACE_RATIONALE
-      : GEOMETRY_BINARY_DERIVATION_RATIONALE;
+    const expectedCaptureLinkId = `traces-${id}-from-${primary.id}`;
+    const expectedCaptureRationale = GEOMETRY_BINARY_TRACE_RATIONALE;
     if (
       captureLinks.length !== 1 ||
       captureLinks[0]!.id !== expectedCaptureLinkId ||
@@ -2783,18 +2756,11 @@ function requireExactGeometryPredecessorFamily(
 
 function geometryPredecessorPreviewProducer(
   value: unknown,
-  schema: GeometryCaptureSchema,
-): ThreadOperationRef | undefined {
+): ThreadOperationRef {
   if (value === null) {
-    if (
-      isGeometryBundleCaptureSchema(schema) ||
-      isAnalyzedGeometryCaptureSchema(schema)
-    ) {
-      invalidGeometryPredecessor(
-        "current or v2 capture has no sandbox preview producer",
-      );
-    }
-    return undefined;
+    invalidGeometryPredecessor(
+      "current capture has no sandbox preview producer",
+    );
   }
   const producer = geometryPredecessorObject(value, "previewProducer");
   exactGeometryPredecessorKeys(
@@ -3189,7 +3155,7 @@ async function loadReviewedGeometryDraft(
   draftAssetDirectory?: string,
   targetAdmissionContext?: TargetPartAdmissionReopenContext,
 ): Promise<{
-  readonly previewProducer: ThreadOperationRef | undefined;
+  readonly previewProducer: ThreadOperationRef;
   readonly bundleSources: GeometryBundleCanonicalSources | undefined;
   readonly bundleAssetBytes: ReadonlyMap<string, number> | undefined;
   readonly sourceAnalyses: SealedGeometrySourceAnalyses | undefined;
@@ -3440,9 +3406,6 @@ async function loadReviewedGeometryPartDraft(
       );
     }
     const previewProducer = requireDraftPreviewProducer(draft);
-    if (!previewProducer) {
-      throw new TypeError("target draft has no exact sandbox preview producer");
-    }
     return {
       previewProducer,
       bundleSources: undefined,
@@ -3474,16 +3437,13 @@ function geometryPartCaptureRecord(options: {
   readonly runId: string;
   readonly capturedAt: string;
   readonly architectureArtifact: ThreadArtifact;
-  readonly previewProducer: ThreadOperationRef | undefined;
+  readonly previewProducer: ThreadOperationRef;
   readonly draft: Omit<GeometryPartDraftCapture, "fingerprint">;
 }) {
   const { params, runId, capturedAt, architectureArtifact, previewProducer, draft } =
     options;
   if (params.manifest.schemaVersion !== GEOMETRY_PART_MANIFEST_SCHEMA) {
     throw new TypeError("Target capture requires a geometry-part-manifest/1.0 decision.");
-  }
-  if (!previewProducer) {
-    throw new TypeError("Target capture requires the exact Build123d preview producer.");
   }
   const target = params.manifest.target;
   const stepIndex = target.files!.findIndex((file) => file.format === "step");
@@ -3533,16 +3493,8 @@ async function requireReviewedGeometrySourceAnalyses(
   params: GeometryDecisionParameters,
   geometrySourceCaptures: FileCaptureStore<"geometry-source">,
   sourceAnalysisCaptures: FileCaptureStore<"source-analysis">,
-): Promise<SealedGeometrySourceAnalyses | undefined> {
+): Promise<SealedGeometrySourceAnalyses> {
   const schema = draft.schemaVersion;
-  if (
-    schema === LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA ||
-    schema === PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA ||
-    schema === PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA
-  ) {
-    return undefined;
-  }
-
   const stores = {
     sourceCaptures: geometrySourceCaptures,
     analysisCaptures: sourceAnalysisCaptures,
@@ -3681,26 +3633,20 @@ async function requireCanonicalGeometrySourceAnalyses(
       "A v1 canonical source-analysis set must not contain PartDefinitions.",
     );
   }
-  const result = await requireReviewedGeometrySourceAnalyses(
+  return await requireReviewedGeometrySourceAnalyses(
     syntheticDraft,
     params,
     stores.geometrySourceCaptures,
     stores.sourceAnalysisCaptures,
   );
-  if (!result) {
-    throw new TypeError("Canonical geometry source analyses were not resolved.");
-  }
-  return result;
 }
 
 /**
- * Recover the actual preview invocation from a signed draft capture.
- *
- * v1.0 did not record a run id. Those existing drafts remain readable, but the
- * resulting canonical binary must then be attributed to the local seal instead
- * of inventing a build123d run. v1.1 requires the exact preview run identity.
+ * Recover the exact preview invocation from a current signed draft capture.
+ * Generic drafts are 1.2 or 2.1; the target-part family is a separate current
+ * schema and stores analysis under `sourceAnalysis`.
  */
-function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undefined {
+function requireDraftPreviewProducer(value: unknown): ThreadOperationRef {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
@@ -3709,18 +3655,15 @@ function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undef
   }
   const draft = value as Record<string, unknown>;
   const schemaVersion = draft.schemaVersion;
-  if (
-    schemaVersion !== GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
-    schemaVersion !== PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
-    schemaVersion !== LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA &&
-    schemaVersion !== PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA &&
-    schemaVersion !== GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA &&
-    schemaVersion !== GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA
-  ) {
-    throw new EngineeringProjectCommandError(
-      "invalid_transition",
-      `Unsupported geometry draft capture schema: ${String(schemaVersion)}.`,
-    );
+  if (schemaVersion !== GEOMETRY_PART_DRAFT_CAPTURE_SCHEMA) {
+    try {
+      currentGenericGeometryDraftCaptureSchema(schemaVersion);
+    } catch {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Unsupported geometry draft capture schema: ${String(schemaVersion)}.`,
+      );
+    }
   }
   const rawProducer = draft.producer;
   if (!rawProducer || typeof rawProducer !== "object" || Array.isArray(rawProducer)) {
@@ -3730,15 +3673,6 @@ function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undef
     );
   }
   const producer = rawProducer as Record<string, unknown>;
-  if (schemaVersion === LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA) {
-    if (producer.serverId !== "build123d" || producer.tool !== "build123d_export") {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Legacy geometry draft capture producer is not build123d/build123d_export.",
-      );
-    }
-    return undefined;
-  }
   if (
     producer.serverId !== "build123d-sandbox" ||
     producer.tool !== "build123d_export"
@@ -3762,11 +3696,10 @@ function requireDraftPreviewProducer(value: unknown): ThreadOperationRef | undef
 }
 
 function isGeometryBundleDraftSchema(value: unknown): boolean {
-  return value === PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA ||
-    value === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA;
+  return value === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA;
 }
 
-/** Fail closed on legacy and current draft paths before canonical capture writes. */
+/** Fail closed on current draft paths before canonical capture writes. */
 function requireDraftAssemblyPaths(value: unknown): void {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new EngineeringProjectCommandError(
@@ -4166,7 +4099,7 @@ function buildExtension(options: {
   captureFp: ContentFingerprint;
   captureUri: string;
   params: GeometryDecisionParameters;
-  previewProducer: ThreadOperationRef | undefined;
+  previewProducer: ThreadOperationRef;
   predecessor: GeometryPredecessorContext | undefined;
 }) {
   const {
@@ -4193,9 +4126,6 @@ function buildExtension(options: {
       `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
     runId,
   };
-  // Legacy draft-capture/1.0 records had no preview run identity. In that case
-  // the only exact operation we can truthfully attribute is this local seal.
-  const binaryProducer = previewProducer ?? sealProducer;
 
   // Primary geometry artifact: the sealed geometry capture (JSON).
   const primaryArtifact: ThreadArtifact = {
@@ -4230,8 +4160,8 @@ function buildExtension(options: {
       fingerprint: mesh.fingerprint,
       uri: `/api/thread/assets/${mesh.fingerprint.digest}.stl`,
       mediaType: "model/stl",
-      producer: binaryProducer,
-      inputArtifactIds: previewProducer ? [] : [artifactId],
+      producer: previewProducer,
+      inputArtifactIds: [],
       freshness,
     }));
 
@@ -4259,8 +4189,8 @@ function buildExtension(options: {
             geometryAssetExtension(file.format)
           }`,
           mediaType: geometryAssetMediaType(file.format),
-          producer: binaryProducer,
-          inputArtifactIds: previewProducer ? [] : [artifactId],
+          producer: previewProducer,
+          inputArtifactIds: [],
           freshness,
         }))
       )
@@ -4287,8 +4217,8 @@ function buildExtension(options: {
           geometryAssetExtension(file.format)
         }`,
         mediaType: geometryAssetMediaType(file.format),
-        producer: binaryProducer,
-        inputArtifactIds: previewProducer ? [] : [artifactId],
+        producer: previewProducer,
+        inputArtifactIds: [],
         freshness,
       }))
       : [];
@@ -4307,8 +4237,8 @@ function buildExtension(options: {
         geometryAssetExtension(file.format)
       }`,
       mediaType: geometryAssetMediaType(file.format),
-      producer: binaryProducer,
-      inputArtifactIds: previewProducer ? [] : [artifactId],
+      producer: previewProducer,
+      inputArtifactIds: [],
       freshness,
     }));
 
@@ -4410,15 +4340,11 @@ function buildExtension(options: {
       ...binaryArtifacts.flatMap((artifact, index) => {
         const binaryConsumption = binaryConsumptions[index]!;
         return [{
-          id: `${
-            previewProducer ? "traces" : "derived"
-          }-${artifact.id}-from-${artifactId}`,
-          relation: previewProducer ? "traces_to" as const : "derived_from" as const,
+          id: `traces-${artifact.id}-from-${artifactId}`,
+          relation: "traces_to" as const,
           from: { kind: "artifact" as const, id: artifact.id },
           to: { kind: "artifact" as const, id: artifactId },
-          rationale: previewProducer
-            ? GEOMETRY_BINARY_TRACE_RATIONALE
-            : GEOMETRY_BINARY_DERIVATION_RATIONALE,
+          rationale: GEOMETRY_BINARY_TRACE_RATIONALE,
         }, {
           id: `uses-${binaryConsumption.id}`,
           relation: "uses" as const,

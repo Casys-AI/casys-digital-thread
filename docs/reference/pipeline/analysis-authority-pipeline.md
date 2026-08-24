@@ -12,7 +12,7 @@ they are never a second, bypassable tool surface.
 | [Compilation and isolation](compilation-and-isolation.md)                   | Admission compiler, CAD/Modelica/CalculiX isolated verticals (extracted) |
 | [Admitted source isolated execution](admitted-source-isolated-execution.md) | Shared reopen → microVM pattern                                          |
 | Contracts and ownership                                                     | `source-analysis/1.0` vs assertions vs Thread                            |
-| Implemented verticals                                                       | Legacy CAD preview, brief, SysML renderer, agent-authored SysML          |
+| Implemented verticals                                                       | Current generic CAD preview, brief, SysML renderer, agent-authored SysML |
 | Current authority boundary                                                  | What is live vs documentary                                              |
 
 ```mermaid
@@ -156,9 +156,9 @@ contract in `src/application/ports/in/project-run-executor.ts`. Canonical CAD dr
 come from `project_admitted_geometry_export`. Concrete registered executors remain the
 only components allowed to call private provider MCP clients for admitted project runs.
 
-## Implemented legacy CAD preview and promotion vertical
+## Implemented generic CAD preview and promotion vertical
 
-The following MCP-backed CAD path remains the historical sandbox export used by
+The following MCP-backed CAD path remains the current generic sandbox export used by
 `project_admitted_geometry_export`. `project_geometry_preview` is not a product entry.
 `design.write-geometry@1` seals only a draft stamped from `compile.seal-admission@1`. It
 is not the local microVM execution path and must not be used as evidence that isolated
@@ -189,10 +189,10 @@ response exposes the source, source-capture and analysis digests. The draft dige
 those references; the geometry seal and completed replay re-read every record and fail
 before canonical writes if one is missing or divergent.
 
-Historical draft schemas `1.0`, `1.1` and `2.0`, and canonical capture schemas `1.1` and
-`2.0`, remain readable. They do not gain fictional analyses. New captures use the
-analysis-bearing schemas above. Downstream Product Structure and FEA readers accept both
-the historical and current bundle forms.
+Older draft schemas `1.0`, `1.1` and `2.0`, and older canonical capture schemas `1.1` and
+`2.0`, are unsupported and are rejected. They are not migrated, dual-read, or given
+fictional analyses. Downstream Product Structure and FEA readers accept only the current
+assembly, bundle, and target-part forms.
 
 ## Implemented approved-brief vertical
 

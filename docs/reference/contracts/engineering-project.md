@@ -262,31 +262,33 @@ measurements, or publish a pass/fail verdict.
 
 Geometry is a two-step boundary. Canonical drafts come from
 `project_admitted_geometry_export` after `compile.seal-admission@1`.
-`project_geometry_preview` is not a product entry. Legacy `geometry-draft-capture/1.1`
-remains readable and assembly-only. A complete bundle uses `geometry-draft-capture/2.1`:
-one exact assembly source plus one exact source per unique SysML `PartDefinition`,
-dispatched as an isolated N+1 sequence after every source and identity validates. Its
-manifest requires authoritative STEP for the assembly and each definition. A system-only
-architecture (zero PartUsages, one PartDefinition) is a valid v2 bundle: empty
-components and occurrences, and that unique PartDefinition is the FEA target. Otherwise
-the manifest carries an exhaustive, identity-based
-`PartUsage -> PartDefinition -> placement` table in a right-handed millimetre frame with
-extrinsic X/Y/Z degree rotations. The placement is local to the PartDefinition that owns
-the PartUsage; reusing that parent repeats the local placement on each expanded product
-path without duplicating the semantic PartUsage declaration. build123d's `gltf` token is
-accepted only with its actual binary `.glb` output.
+`project_geometry_preview` is not a product entry. The current assembly draft is
+`geometry-draft-capture/1.2` and requires exact `sourceAnalysis`. A complete bundle uses
+`geometry-draft-capture/2.1`: one exact assembly source plus one exact source per unique
+SysML `PartDefinition`, dispatched as an isolated N+1 sequence after every source and
+identity validates, and requires exact `sourceAnalyses`. Its manifest requires
+authoritative STEP for the assembly and each definition. A system-only architecture
+(zero PartUsages, one PartDefinition) is a valid v2 bundle: empty components and
+occurrences, and that unique PartDefinition is the FEA target. Otherwise the manifest
+carries an exhaustive, identity-based `PartUsage -> PartDefinition -> placement` table
+in a right-handed millimetre frame with extrinsic X/Y/Z degree rotations. The placement
+is local to the PartDefinition that owns the PartUsage; reusing that parent repeats the
+local placement on each expanded product path without duplicating the semantic PartUsage
+declaration. build123d's `gltf` token is accepted only with its actual binary `.glb`
+output. Older draft schemas `1.0`, `1.1` and `2.0` are unsupported.
 
 The preview returns flat decision parameters for a fresh human review. Only
-`design.write-geometry@1` may seal those approved hashes. `geometry-manifest/1.0`
-retains the existing `geometry-capture/1.1` meaning; the explicit
-`geometry-manifest/2.0` discriminator produces `geometry-capture/2.0`, retains the
+`design.write-geometry@1` may seal those approved hashes. `geometry-manifest/1.0` is the
+current assembly dialect and produces `geometry-capture/1.2`. The explicit
+`geometry-manifest/2.0` discriminator produces `geometry-capture/2.1`, retains the
 approved editable sources and ordered N+1 provenance, and publishes independent
-definition assets without changing legacy replay. The seal makes no provider call. An
-upgrade must name the unique active predecessor, archives its exact geometry family, and
-records `derived_from` plus `supersedes`; ambiguity fails before canonical writes.
-Product projection rereads the v2 capture and attaches the seal-owned authoritative STEP
-artifact to each exact SysML occurrence. Reused definitions share that binding; labels
-are never joins and no `build123d` provider identity is invented.
+definition assets. Older canonical schemas `1.1` and `2.0` are unsupported. The seal
+makes no provider call. An upgrade must name the unique active predecessor, archives
+its exact geometry family, and records `derived_from` plus `supersedes`; ambiguity
+fails before canonical writes. Product projection rereads the current capture and
+attaches the seal-owned authoritative STEP artifact to each exact SysML occurrence.
+Reused definitions share that binding; labels are never joins and no `build123d`
+provider identity is invented.
 
 `record.archive-lineage@1` is the governed retirement step. No constant in its executor
 names a product: project identity comes from the exact run basis, and the work item
@@ -307,7 +309,7 @@ material constants. The executor reopens the exact signed
 or raw compiled case bytes — recrosses the unique current Thread tip, validates the
 compiled JSON against `mechanical-proof-case/1.0`, computes `canonicalProofText` and its
 SHA-256, and fails immediately if the MRTR-signed digest diverges. It then verifies the
-geometry artifact by kind, fingerprint, and `geometry-capture/2.0` schema, confirms the
+geometry artifact by kind, fingerprint, and `geometry-capture/2.1` schema, confirms the
 target `PartDefinition` model element in that capture, re-reads the requirements-capture
 to confirm the authoritative tip matches the MRTR-signed artifact, and checks every
 proof requirement against the corresponding oracle requirement. The resulting

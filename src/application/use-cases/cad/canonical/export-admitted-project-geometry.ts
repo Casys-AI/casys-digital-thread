@@ -643,7 +643,7 @@ function assembleResult(
 ): ProjectAdmittedGeometryExportResult {
   if (draft.partMeshes.length !== 0) {
     throw new TypeError(
-      "A system-only admitted draft cannot carry legacy part meshes.",
+      "A system-only admitted draft cannot carry assembly part meshes.",
     );
   }
   const manifest: GeometryBundleManifest = {
@@ -793,7 +793,6 @@ class TargetedPartPredecessorError extends Error {
 }
 
 const GEOMETRY_CAPTURE_URI_PREFIX = "casys://geometry-capture/sha256/";
-const PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.0" as const;
 const ANALYZED_GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.1" as const;
 
 type TargetedCanonicalManifest = GeometryBundleManifest | GeometryPartManifest;
@@ -975,10 +974,7 @@ async function readAttestedCanonicalGeometryCapture(
   const schema = record.schemaVersion;
   const manifestValue = record.manifest;
   try {
-    if (
-      schema === PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA ||
-      schema === ANALYZED_GEOMETRY_BUNDLE_CAPTURE_SCHEMA
-    ) {
+    if (schema === ANALYZED_GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
       const manifest = manifestValue as GeometryBundleManifest;
       assertGeometryBundleManifest(manifest, { requireCompleted: true });
       if (
@@ -1032,19 +1028,6 @@ function canonicalCaptureKeys(value: unknown): readonly string[] {
     throw new TypeError("capture must be an object");
   }
   const schema = (value as Record<string, unknown>).schemaVersion;
-  if (schema === PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
-    return [
-      "schemaVersion",
-      "operation",
-      "trustedRunId",
-      "draftDigest",
-      "manifest",
-      "architectureBasis",
-      "previewProducer",
-      "sourceScripts",
-      "sealedAt",
-    ];
-  }
   if (schema === ANALYZED_GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
     return [
       "schemaVersion",

@@ -29,7 +29,6 @@ import type {
 
 /** Bundle captures the seal executor already admits. Not 1.x geometry captures. */
 export const FEA_PROOF_SEAL_GEOMETRY_CAPTURE_SCHEMAS = [
-  "geometry-capture/2.0",
   "geometry-capture/2.1",
   GEOMETRY_PART_CAPTURE_SCHEMA,
 ] as const;

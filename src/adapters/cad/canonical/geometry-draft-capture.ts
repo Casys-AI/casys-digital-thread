@@ -70,23 +70,30 @@ import {
 
 // ── Schema constant ───────────────────────────────────────────────────────────
 
-/**
- * v1.1 adds the orchestrator-assigned preview run identity.  The write executor
- * still accepts v1.0 records so already reviewed local drafts remain sealable,
- * but only v1.1 drafts can attribute their binary producer to an exact preview
- * invocation.
- */
-export const LEGACY_GEOMETRY_DRAFT_CAPTURE_SCHEMA =
-  "geometry-draft-capture/1.0" as const;
-/** Historical preview-run attribution, before passive source analysis existed. */
-export const PRE_ANALYSIS_GEOMETRY_DRAFT_CAPTURE_SCHEMA =
-  "geometry-draft-capture/1.1" as const;
+/** Current assembly draft: preview-run identity plus exact source-analysis. */
 export const GEOMETRY_DRAFT_CAPTURE_SCHEMA = "geometry-draft-capture/1.2" as const;
-/** Historical bundle with exact sources but no captured source analysis. */
-export const PRE_ANALYSIS_GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA =
-  "geometry-draft-capture/2.0" as const;
+/** Current complete-system bundle draft: N+1 sources plus exact sourceAnalyses. */
 export const GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA =
   "geometry-draft-capture/2.1" as const;
+
+export type CurrentGenericGeometryDraftCaptureSchema =
+  | typeof GEOMETRY_DRAFT_CAPTURE_SCHEMA
+  | typeof GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA;
+
+/** Current generic drafts only. Old 1.0/1.1/2.0 identities are unsupported. */
+export function currentGenericGeometryDraftCaptureSchema(
+  value: unknown,
+): CurrentGenericGeometryDraftCaptureSchema {
+  if (
+    value === GEOMETRY_DRAFT_CAPTURE_SCHEMA ||
+    value === GEOMETRY_BUNDLE_DRAFT_CAPTURE_SCHEMA
+  ) {
+    return value;
+  }
+  throw new TypeError(
+    `Unsupported geometry draft capture schema: ${String(value)}.`,
+  );
+}
 
 /** Server-fixed name prefix used for all geometry preview exports. */
 const PREVIEW_ASSEMBLY_NAME = "geometry-preview-assembly" as const;
@@ -1218,8 +1225,8 @@ function requireDraftAssetMetadata(
 
 /**
  * Revalidate persisted draft paths at seal time as well as at preview time.
- * This is intentionally `unknown`-based because v1.0 captures predate the
- * typed v1.1 producer identity but must not bypass the GLB/container contract.
+ * This is intentionally `unknown`-based so a persisted current draft cannot
+ * bypass the GLB/container contract through TypeScript shape trust.
  */
 export function assertGeometryDraftAssemblyPaths(value: unknown): void {
   if (!Array.isArray(value)) {

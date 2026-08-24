@@ -53,9 +53,7 @@ import {
 } from "../../../domain/thread/thread-snapshot.ts";
 import { GEOMETRY_CAPTURE_URI_PREFIX } from "../../shared/cas/file-capture-store.ts";
 
-const PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.1" as const;
 const GEOMETRY_CAPTURE_SCHEMA = "geometry-capture/1.2" as const;
-const PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.0" as const;
 const GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.1" as const;
 const GEOMETRY_PART_CAPTURE_SCHEMA = "geometry-part-capture/1.0" as const;
 
@@ -130,14 +128,14 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
     const bundles = results.flatMap((result) =>
       result.kind === "bundle" ? [result.bundle] : []
     );
-    const legacyCount = results.filter((result) => result.kind === "legacy").length;
+    const assemblyCount = results.filter((result) => result.kind === "assembly").length;
     const targetIds = new Set(
       targets.map((target) => target.manifest.target.partDefinitionElementId),
     );
     if (
-      targetIds.size !== targets.length || bundles.length > 1 || legacyCount > 1 ||
+      targetIds.size !== targets.length || bundles.length > 1 || assemblyCount > 1 ||
       (bundles.length > 0 && targets.length > 0) ||
-      (bundles.length > 0 && legacyCount > 0)
+      (bundles.length > 0 && assemblyCount > 0)
     ) {
       return withoutCad(
         architectureCatalog,
@@ -150,7 +148,7 @@ export async function enrichGenericProductCatalogWithGeometryBundle(
     if (bundles[0]) {
       return attachExactCadBindings(architectureCatalog, bundles[0]);
     }
-    if (legacyCount === 1) {
+    if (assemblyCount === 1) {
       return withoutCad(
         architectureCatalog,
         "The active geometry capture is an assembly-only seal; it contains no independent PartDefinition STEP mapping.",
@@ -186,7 +184,7 @@ async function verifyGeometryCapture(
   primary: ThreadArtifact,
   captures: GenericGeometryCaptureReader,
 ): Promise<
-  | { readonly kind: "legacy" }
+  | { readonly kind: "assembly" }
   | { readonly kind: "targeted"; readonly target: VerifiedTargetGeometry }
   | { readonly kind: "bundle"; readonly bundle: VerifiedGeometryBundle }
 > {
@@ -213,9 +211,7 @@ async function verifyGeometryCapture(
   }
   const schemaVersion = capture.schemaVersion;
   if (
-    schemaVersion !== PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA &&
     schemaVersion !== GEOMETRY_CAPTURE_SCHEMA &&
-    schemaVersion !== PRE_ANALYSIS_GEOMETRY_BUNDLE_CAPTURE_SCHEMA &&
     schemaVersion !== GEOMETRY_BUNDLE_CAPTURE_SCHEMA &&
     schemaVersion !== GEOMETRY_PART_CAPTURE_SCHEMA
   ) {
@@ -244,11 +240,8 @@ async function verifyGeometryCapture(
     };
   }
 
-  if (
-    schemaVersion === PRE_ANALYSIS_GEOMETRY_CAPTURE_SCHEMA ||
-    schemaVersion === GEOMETRY_CAPTURE_SCHEMA
-  ) {
-    return { kind: "legacy" };
+  if (schemaVersion === GEOMETRY_CAPTURE_SCHEMA) {
+    return { kind: "assembly" };
   }
 
   assertOnlyKeys(capture, [

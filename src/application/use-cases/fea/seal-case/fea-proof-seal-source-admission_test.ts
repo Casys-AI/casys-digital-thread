@@ -38,6 +38,30 @@ Deno.test("an unreadable geometry capture is unavailable, not resolved", async (
   }
 });
 
+Deno.test("geometry-capture/2.0 is rejected by FEA source admission", async () => {
+  const admitted = await admitFeaProofSealSource({
+    ...world(),
+    geometryCaptures: {
+      read: () => Promise.resolve(JSON.stringify({
+        schemaVersion: "geometry-capture/2.0",
+        manifest: {
+          partDefinitions: [{
+            elementId: TARGET_ID,
+            files: [{
+              format: "step",
+              fingerprint: { algorithm: "sha256", digest: STEP_DIGEST },
+            }],
+          }],
+        },
+      })),
+    },
+  });
+  assertEquals(admitted.status, "unresolved");
+  if (admitted.status === "unresolved") {
+    assertEquals(admitted.diagnostic.code, "geometry-capture-invalid");
+  }
+});
+
 Deno.test("a target missing from the geometry capture stays unresolved", async () => {
   const admitted = await admitFeaProofSealSource({
     ...world(),
