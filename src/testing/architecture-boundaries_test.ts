@@ -19,7 +19,7 @@ interface ArchitectureCycleAllowance {
   readonly rationale: string;
 }
 
-const SCAN_ROOTS = ["server.ts", "src", "scripts"] as const;
+const SCAN_ROOTS = ["server.ts", "src", "scripts", "desktop"] as const;
 const EXCLUDED_DIRECTORY_NAMES = new Set([
   "dist",
   "node_modules",
@@ -39,6 +39,16 @@ const RETIRED_DIRECTORIES = [
  * reviewable allowance instead of disappearing from the architecture report.
  */
 const ALLOWED_TYPE_MEDIATED_CYCLES: readonly ArchitectureCycleAllowance[] = [];
+
+/**
+ * Production use cases may not import `src/orchestration/`.
+ * A surviving edge must name exact source and target files and a rationale.
+ */
+const ALLOWED_USE_CASE_ORCHESTRATION_IMPORTS: readonly {
+  readonly source: string;
+  readonly target: string;
+  readonly rationale: string;
+}[] = [];
 
 Deno.test("production imports preserve inward architecture boundaries and remain runtime-acyclic", async () => {
   const modules = await productionModules();
@@ -61,7 +71,7 @@ Deno.test("production imports preserve inward architecture boundaries and remain
   assertEquals(
     boundaryViolations,
     [],
-    "Domain stays inward; application never depends on presentation; presentation read models depend only on presentation or domain; tools may not import adapters, presentation, or UI.",
+    "Domain stays inward; application use cases do not import orchestration except an exact justified allowance; presentation read models depend only on presentation or domain; UI does not import desktop runtime; desktop does not import the web UI.",
   );
   const resurrected = [];
   for (const directory of RETIRED_DIRECTORIES) {
@@ -193,6 +203,107 @@ Deno.test("presentation remains outward of application and depends on domain by 
       "type-only",
     )),
   ], [true, true, false, false, true, false, true, true, true, true]);
+});
+
+Deno.test("application use cases stay inward of adapters and orchestration", () => {
+  const edge = (
+    source: string,
+    target: string,
+    kind: ImportKind,
+  ): ModuleImport => ({ source, target, kind, specifier: target });
+
+  assertEquals([
+    isForbiddenLayerImport(edge(
+      "src/application/use-cases/electrical/spice/evaluation/prepare-project-admitted-spice-evaluation-review.ts",
+      "src/adapters/electrical/observation-method-sheet/electrical-observation-method-sheet-seal-capture.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/application/use-cases/electrical/spice/evaluation/prepare-project-admitted-spice-evaluation-review.ts",
+      "src/domain/electrical/observation-method-sheet-seal-capture.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/application/use-cases/registered-project-run-executor.ts",
+      "src/orchestration/operations/approved-brief-baseline.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/application/use-cases/registered-project-run-executor.ts",
+      "src/domain/compile/brief/approved-brief-baseline.ts",
+      "runtime",
+    )),
+  ], [true, false, true, false]);
+  assertEquals(
+    ALLOWED_USE_CASE_ORCHESTRATION_IMPORTS.every((entry) =>
+      entry.source.startsWith("src/application/use-cases/") &&
+      entry.target.startsWith("src/orchestration/") &&
+      entry.rationale.trim().length > 0
+    ),
+    true,
+    "A use-case orchestration allowance must name exact files and a rationale.",
+  );
+});
+
+Deno.test("desktop chat and UI share the presentation contract without crossing runtimes", () => {
+  const edge = (
+    source: string,
+    target: string,
+    kind: ImportKind,
+  ): ModuleImport => ({ source, target, kind, specifier: target });
+
+  assertEquals([
+    isForbiddenLayerImport(edge(
+      "src/ui/src/thread/desktop-chat.tsx",
+      "desktop/src/chat/bindings.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/ui/src/thread/desktop-chat.tsx",
+      "src/presentation/desktop/chat/contracts.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "desktop/src/chat/bindings.ts",
+      "src/presentation/desktop/chat/contracts.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "desktop/src/chat/bindings.ts",
+      "src/ui/src/thread/desktop-chat.tsx",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/application/use-cases/registered-project-run-executor.ts",
+      "desktop/src/chat/bindings.ts",
+      "runtime",
+    )),
+  ], [true, false, false, true, true]);
+});
+
+Deno.test("architecture census includes desktop and the shared chat contract", async () => {
+  const modules = await productionModules();
+  assertEquals(modules.has("desktop/src/chat/bindings.ts"), true);
+  assertEquals(
+    modules.has("src/presentation/desktop/chat/contracts.ts"),
+    true,
+  );
+  assertEquals(
+    resolveTypeScriptModule(
+      "src/ui/src/thread/desktop-chat.tsx",
+      "../../../presentation/desktop/chat/contracts.ts",
+      modules,
+    ),
+    "src/presentation/desktop/chat/contracts.ts",
+  );
+  assertEquals(
+    resolveTypeScriptModule(
+      "desktop/src/chat/bindings.ts",
+      "../../../src/presentation/desktop/chat/contracts.ts",
+      modules,
+    ),
+    "src/presentation/desktop/chat/contracts.ts",
+  );
 });
 
 Deno.test("runtime cycle detection rejects cycles while type-only back edges remain reportable", () => {
@@ -563,11 +674,15 @@ function isForbiddenLayerImport(dependency: ModuleImport): boolean {
     ].some((prefix) => target.startsWith(prefix));
   }
   if (source.startsWith("src/application/use-cases/")) {
+    if (target.startsWith("src/orchestration/")) {
+      return !ALLOWED_USE_CASE_ORCHESTRATION_IMPORTS.some((entry) =>
+        entry.source === source && entry.target === target
+      );
+    }
     return ![
       "src/application/ports/",
       "src/application/use-cases/",
       "src/domain/",
-      "src/orchestration/",
     ].some((prefix) => target.startsWith(prefix));
   }
   if (source.startsWith("src/application/")) {
@@ -576,12 +691,19 @@ function isForbiddenLayerImport(dependency: ModuleImport): boolean {
       "src/presentation/",
       "src/tools/",
       "src/ui/",
+      "desktop/",
     ].some((prefix) => target.startsWith(prefix));
   }
   if (source.startsWith("src/tools/")) {
-    return ["src/adapters/", "src/presentation/", "src/ui/"].some((prefix) =>
-      target.startsWith(prefix)
+    return ["src/adapters/", "src/presentation/", "src/ui/", "desktop/"].some(
+      (prefix) => target.startsWith(prefix),
     );
+  }
+  if (source.startsWith("src/ui/")) {
+    return target.startsWith("desktop/");
+  }
+  if (source.startsWith("desktop/")) {
+    return target.startsWith("src/ui/");
   }
   if (!source.startsWith("src/presentation/")) return false;
   if (target.startsWith("src/presentation/")) return false;

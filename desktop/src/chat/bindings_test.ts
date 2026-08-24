@@ -5,7 +5,10 @@ import {
   type DesktopChatBindingHost,
   registerDesktopChatBindings,
 } from "./bindings.ts";
-import { type ChatConversationDto, DESKTOP_CHAT_PROTOCOL } from "./contracts.ts";
+import {
+  type ChatConversationDto,
+  DESKTOP_CHAT_PROTOCOL,
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 
 Deno.test("Desktop registers only two narrow, versioned Chat bindings", async () => {
   const handlers = new Map<string, (input: unknown) => unknown>();

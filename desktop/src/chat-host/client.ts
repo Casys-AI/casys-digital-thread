@@ -7,7 +7,7 @@ import {
   type ChatSnapshotRequest,
   parseChatCommandResponse,
   parseChatSnapshotDto,
-} from "../chat/contracts.ts";
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 import {
   CHAT_HOST_IPC_PROTOCOL,
   type ChatHostIpcResponse,

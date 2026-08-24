@@ -1,4 +1,7 @@
-import type { ChatConversationStatus, ChatMessageDto } from "./contracts.ts";
+import type {
+  ChatConversationStatus,
+  ChatMessageDto,
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 
 export interface StoredConversation {
   readonly id: string;

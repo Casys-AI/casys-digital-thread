@@ -5,7 +5,7 @@ import {
   parseChatCommandRequest,
   parseChatSnapshotRequest,
   parseDesktopChatBindingCommandRequest,
-} from "./contracts.ts";
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 import type { ExternalUrlOpener } from "./external-url.ts";
 
 export const CHAT_SNAPSHOT_BINDING = "casysChatSnapshot" as const;

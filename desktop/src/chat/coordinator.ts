@@ -7,7 +7,7 @@ import {
   type ChatPendingInteractionDto,
   type ChatSnapshotDto,
   DESKTOP_CHAT_PROTOCOL,
-} from "./contracts.ts";
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 import type {
   ChatRuntimeAdapter,
   RuntimeElicitationContext,

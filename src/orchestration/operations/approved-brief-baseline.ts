@@ -25,6 +25,7 @@ import {
   briefSourceIdFor,
   validateBriefSourceAnalysisReference,
 } from "../../domain/compile/brief/brief-source-analysis-reference.ts";
+import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../domain/compile/brief/approved-brief-baseline.ts";
 import type {
   ContentFingerprint,
   ThreadSnapshot,
@@ -36,11 +37,6 @@ export const APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA =
   "approved-brief-baseline-capture/1.0" as const;
 export const APPROVED_BRIEF_BASELINE_CAPTURE_SCHEMA_V1_1 =
   "approved-brief-baseline-capture/1.1" as const;
-
-export const APPROVED_BRIEF_BASELINE_OPERATION = {
-  id: "baseline.from-approved-brief",
-  version: "1",
-} as const;
 
 export interface MaterializeApprovedBriefBaselineInput {
   /** Current project revision carrying the reviewed plan and claimed run. */

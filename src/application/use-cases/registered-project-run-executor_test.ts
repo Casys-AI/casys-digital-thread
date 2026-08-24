@@ -1,7 +1,7 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
-import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../orchestration/operations/approved-brief-baseline.ts";
+import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../domain/compile/brief/approved-brief-baseline.ts";
 import type { RegisteredProjectRunExecutorCommand } from "../ports/in/project-run-executor.ts";
 import { RegisteredProjectRunExecutor } from "./registered-project-run-executor.ts";
 

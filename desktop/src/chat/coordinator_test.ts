@@ -1,6 +1,9 @@
 import { assert, assertEquals, assertMatch } from "jsr:@std/assert@1.0.14";
 import { ChatCoordinator } from "./coordinator.ts";
-import { type ChatCommandRequest, DESKTOP_CHAT_PROTOCOL } from "./contracts.ts";
+import {
+  type ChatCommandRequest,
+  DESKTOP_CHAT_PROTOCOL,
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 import type {
   ChatRuntimeAdapter,
   ChatRuntimePort,

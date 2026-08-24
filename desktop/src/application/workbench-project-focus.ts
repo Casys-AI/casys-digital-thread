@@ -1,5 +1,5 @@
 import { ENGINEERING_WORKBENCH_SCHEMA } from "../../../src/presentation/workbench/engineering/schema.ts";
-import { parseCasysProjectId } from "../chat/contracts.ts";
+import { parseCasysProjectId } from "../../../src/presentation/desktop/chat/contracts.ts";
 import type { DesktopChatProjectFocusAuthority } from "../chat/bindings.ts";
 import {
   WORKBENCH_ACCESS_HEADER,

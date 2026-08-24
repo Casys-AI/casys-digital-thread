@@ -16,7 +16,7 @@ import type { EngineeringProjectRevisionStore } from "../../../../ports/out/engi
 import {
   ELECTRICAL_OBSERVATION_METHOD_SHEET_SEAL_CAPTURE_URI_PREFIX,
   validateElectricalObservationMethodSheetSealCapture,
-} from "../../../../../adapters/electrical/observation-method-sheet/electrical-observation-method-sheet-seal-capture.ts";
+} from "../../../../../domain/electrical/observation-method-sheet-seal-capture.ts";
 import {
   deriveSpiceAdmittedObservationEvaluationMethod,
   fingerprintSpiceAdmittedObservationEvaluationMethod,

@@ -22,8 +22,8 @@ import {
 } from "../../domain/compile/source/source-analysis-frontend-registry.ts";
 import { validateSourceAnalysisBundle } from "../../domain/compile/source/source-analysis.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
+import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../domain/compile/brief/approved-brief-baseline.ts";
 import {
-  APPROVED_BRIEF_BASELINE_OPERATION,
   materializeApprovedBriefBaseline,
   prepareApprovedBriefBaselineEligibility,
 } from "../../orchestration/operations/approved-brief-baseline.ts";

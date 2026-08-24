@@ -3,30 +3,33 @@
  *
  * Documentary Thread payload for
  * `verify.seal-electrical-observation-method-sheet@1`. Identities only.
+ * CAS directories and byte stores stay in the electrical adapter.
  */
 
 import {
-  encodeElectricalObservationMethodSheetSealAdmission,
   type ElectricalObservationMethodSheetSealAdmission,
+  encodeElectricalObservationMethodSheetSealAdmission,
   parseElectricalObservationMethodSheetSealParameters,
   VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
-} from "../../../domain/electrical/observation-method-sheet-proposal.ts";
-import type { ElectricalObservationMethodSheetRecross } from "../../../domain/electrical/observation-method-sheet-recross.ts";
+} from "./observation-method-sheet-proposal.ts";
+import type { ElectricalObservationMethodSheetRecross } from "./observation-method-sheet-recross.ts";
 import {
   arrayOf,
   exactRecord,
   literalValue,
   nonEmptyText,
   safeId,
-} from "../../../domain/kernel/case-validation.ts";
-import { fingerprintsEqual } from "../../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
-import { ELECTRICAL_OBSERVATION_METHOD_SHEET_CAPTURE_URI_PREFIX } from "../../shared/cas/file-capture-store.ts";
+} from "../kernel/case-validation.ts";
+import { fingerprintsEqual } from "../kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 
 export const ELECTRICAL_OBSERVATION_METHOD_SHEET_SEAL_CAPTURE_SCHEMA =
   "electrical-observation-method-sheet-seal-capture/1.0" as const;
 export const ELECTRICAL_OBSERVATION_METHOD_SHEET_SEAL_CAPTURE_URI_PREFIX =
   "casys://electrical-observation-method-sheet-seal-capture/sha256/" as const;
+
+const ELECTRICAL_OBSERVATION_METHOD_SHEET_URI_PREFIX =
+  "casys://electrical-observation-method-sheet-capture/sha256/" as const;
 
 export interface ElectricalObservationMethodSheetSealCapture {
   readonly schemaVersion:
@@ -52,7 +55,7 @@ export interface ElectricalObservationMethodSheetSealCapture {
 export function electricalObservationMethodSheetUri(
   fingerprint: ContentFingerprint,
 ): string {
-  return `${ELECTRICAL_OBSERVATION_METHOD_SHEET_CAPTURE_URI_PREFIX}sha256/${fingerprint.digest}`;
+  return `${ELECTRICAL_OBSERVATION_METHOD_SHEET_URI_PREFIX}${fingerprint.digest}`;
 }
 
 export function recrossFromCapture(
@@ -190,9 +193,7 @@ function parseFingerprint(value: unknown, path: string): ContentFingerprint {
 }
 
 function arrayOfIds(value: unknown, path: string): readonly string[] {
-  return arrayOf(value, path).map((item, index) =>
-    safeId(item, `${path}[${index}]`)
-  );
+  return arrayOf(value, path).map((item, index) => safeId(item, `${path}[${index}]`));
 }
 
 function arrayOfText(value: unknown, path: string): readonly string[] {

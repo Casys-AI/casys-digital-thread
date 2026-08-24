@@ -4,7 +4,7 @@ import {
   type ChatPendingInteractionDto,
   validateExternalHttpsUrl,
   validateSafeRegexPattern,
-} from "./contracts.ts";
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 import type {
   RuntimeElicitationRequest,
   RuntimePermissionRequest,

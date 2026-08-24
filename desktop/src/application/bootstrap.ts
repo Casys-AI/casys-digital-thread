@@ -11,7 +11,7 @@ import {
 import {
   CHAT_HOST_COMPONENT_ID,
   CHAT_HOST_COMPONENT_VERSION,
-} from "../chat/contracts.ts";
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 import {
   type ApplicationSupportLayout,
   type ComponentManifest,

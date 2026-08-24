@@ -1,3 +1,10 @@
+/**
+ * Closed `casys-desktop-chat/1.0` presentation contract.
+ *
+ * Desktop host and Workbench UI reconstruct these DTOs. Host process, bindings,
+ * and chat-runtime stay in `desktop/`.
+ */
+
 export const DESKTOP_CHAT_PROTOCOL = "casys-desktop-chat/1.0" as const;
 export const CHAT_HOST_COMPONENT_ID = "chat-host" as const;
 export const CHAT_HOST_COMPONENT_VERSION = "0.4.0" as const;

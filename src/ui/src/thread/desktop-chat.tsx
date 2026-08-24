@@ -15,7 +15,7 @@ import {
   type DesktopChatBindingCommandRequest,
   parseChatCommandResponse,
   parseChatSnapshotDto,
-} from "../../../../desktop/src/chat/contracts.ts";
+} from "../../../presentation/desktop/chat/contracts.ts";
 
 interface DesktopBindings {
   casysChatSnapshot(input: {

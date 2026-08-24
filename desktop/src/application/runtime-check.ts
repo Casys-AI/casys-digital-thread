@@ -9,7 +9,7 @@ import {
 import {
   CHAT_HOST_COMPONENT_ID,
   CHAT_HOST_COMPONENT_VERSION,
-} from "../chat/contracts.ts";
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 import { MACOS_EXTERNAL_URL_OPENER_NAME } from "../chat/external-url.ts";
 import { PACKAGED_CHAT_HOST_NAME } from "../chat-host/path.ts";
 import { validateComponentManifest } from "../host/mod.ts";

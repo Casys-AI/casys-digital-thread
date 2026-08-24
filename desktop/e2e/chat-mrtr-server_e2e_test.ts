@@ -3,7 +3,7 @@ import { createConsoleServer } from "../../server.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../../src/application/use-cases/project/project-brief-command-service.ts";
 import { ChatCoordinator } from "../src/chat/coordinator.ts";
-import { DESKTOP_CHAT_PROTOCOL } from "../src/chat/contracts.ts";
+import { DESKTOP_CHAT_PROTOCOL } from "../../src/presentation/desktop/chat/contracts.ts";
 import type {
   ChatRuntimeAdapter,
   ChatRuntimePort,

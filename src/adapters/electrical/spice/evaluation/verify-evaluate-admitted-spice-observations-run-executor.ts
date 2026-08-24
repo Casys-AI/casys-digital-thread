@@ -65,7 +65,7 @@ import {
 import {
   ELECTRICAL_OBSERVATION_METHOD_SHEET_SEAL_CAPTURE_URI_PREFIX,
   validateElectricalObservationMethodSheetSealCapture,
-} from "../../observation-method-sheet/electrical-observation-method-sheet-seal-capture.ts";
+} from "../../../../domain/electrical/observation-method-sheet-seal-capture.ts";
 import type { ElectricalObservationMethodSheetSealCaptureStore } from "../../observation-method-sheet/verify-seal-electrical-observation-method-sheet-run-executor.ts";
 import {
   canonicalSpiceAdmittedObservationEvaluationCaptureText,

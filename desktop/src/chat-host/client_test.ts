@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "jsr:@std/assert@1.0.14";
 import pins from "../../chat-runtime/pins.json" with { type: "json" };
-import { CHAT_HOST_COMPONENT_VERSION } from "../chat/contracts.ts";
+import { CHAT_HOST_COMPONENT_VERSION } from "../../../src/presentation/desktop/chat/contracts.ts";
 import { type ChatHostChild, ChatHostClient, validateAbsolutePath } from "./client.ts";
 import { CHAT_HOST_IPC_PROTOCOL } from "./protocol.ts";
 

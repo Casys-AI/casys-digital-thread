@@ -10,7 +10,7 @@ import {
   CHAT_HOST_COMPONENT_VERSION,
   parseChatCommandRequest,
   parseChatSnapshotRequest,
-} from "../chat/contracts.ts";
+} from "../../../src/presentation/desktop/chat/contracts.ts";
 import { NodeChatConversationStore } from "./node-store.ts";
 import { CHAT_HOST_IPC_PROTOCOL } from "./protocol.ts";
 import { createPinnedRuntimeAdapter } from "./runtime-adapter.ts";

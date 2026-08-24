@@ -3,7 +3,7 @@ import type { EngineeringProjectCommandOrigin } from "../ports/in/engineering-pr
 import type { EngineeringProjectRevisionStore } from "../ports/out/engineering-project-revision-store.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
-import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../orchestration/operations/approved-brief-baseline.ts";
+import { APPROVED_BRIEF_BASELINE_OPERATION } from "../../domain/compile/brief/approved-brief-baseline.ts";
 import type {
   ProjectRunExecutor,
   RegisteredProjectRunExecutorCommand,

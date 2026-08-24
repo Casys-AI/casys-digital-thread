@@ -73,7 +73,7 @@ import {
   electricalObservationMethodSheetUri,
   recrossFromCapture,
   validateElectricalObservationMethodSheetSealCapture,
-} from "./electrical-observation-method-sheet-seal-capture.ts";
+} from "../../../domain/electrical/observation-method-sheet-seal-capture.ts";
 
 export { VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION };
 

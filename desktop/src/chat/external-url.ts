@@ -1,5 +1,5 @@
 import type { DesktopPlatform } from "../host/mod.ts";
-import { validateExternalHttpsUrl } from "./contracts.ts";
+import { validateExternalHttpsUrl } from "../../../src/presentation/desktop/chat/contracts.ts";
 
 export interface ExternalUrlOpener {
   open(url: string): Promise<void>;

@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ChatMessageDto } from "../chat/contracts.ts";
+import type { ChatMessageDto } from "../../../src/presentation/desktop/chat/contracts.ts";
 import type { ChatConversationStore, StoredConversation } from "../chat/store.ts";
 
 interface StoredIndex {
